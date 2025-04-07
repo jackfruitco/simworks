@@ -1,0 +1,67 @@
+{% extends 'accounts/accounts_base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="invite-container" x-data="{
+    viewMode: 'list',
+    page: 1,
+    loading: false,
+    noMore: false,
+    claimedFilter: '',
+    expiredFilter: '',
+    invitedByFilter: [],
+}" x-init="() => {
+    window.addEventListener('scroll', () => {
+        const loader = document.getElementById('pagination-loader');
+        if (loader && loader.getBoundingClientRect().top < window.innerHeight) {
+            loader.dispatchEvent(new Event('revealed'));
+        }
+    });
+}">
+    <h1>All Invitations</h1>
+
+    <div class="margin-bottom" style="text-align: right;">
+        <button class="button small" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+            Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
+        </button>
+    </div>
+
+    <div class="filter-bar">
+        <select class="filter-input" x-model="claimedFilter">
+            <option value="">All</option>
+            <option value="true">Claimed</option>
+            <option value="false">Unclaimed</option>
+        </select>
+        <select class="filter-input" x-model="expiredFilter">
+            <option value="">All</option>
+            <option value="true">Expired</option>
+            <option value="false">Active</option>
+        </select>
+        <select class="filter-input" multiple x-model="invitedByFilter">
+            <template x-for="inviter in {{ inviter_choices|safe }}">
+                <option :value="inviter" x-text="inviter"></option>
+            </template>
+        </select>
+    </div>
+
+    <div class="margin-top" style="text-align: right;">
+        <button class="button small" @click="claimedFilter = ''; expiredFilter = ''; invitedByFilter = []; page = 1; $nextTick(() => { document.getElementById('invite-list').innerHTML = ''; document.getElementById('invite-list').dispatchEvent(new Event('load')); })">
+            Clear Filters
+        </button>
+    </div>
+
+    <div id="invite-list" :hx-get="`/accounts/invitations/?page=1&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`" hx-trigger="load" hx-target="#invite-list" hx-swap="beforeend">
+    </div>
+
+    <div
+        id="pagination-loader"
+        class="center margin-top"
+        :hx-get="`/accounts/invitations/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
+        hx-trigger="revealed"
+        hx-target="#invite-list"
+        hx-swap="beforeend"
+    >
+        <button class="button small" disabled>Loading more invitations...</button>
+    </div>
+</div>
+{% endblock %}

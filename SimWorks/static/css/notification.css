@@ -1,0 +1,96 @@
+/* notification.css */
+
+/* Container for notifications */
+#notifications-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+/* Base toast style */
+.toast {
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 250px;
+    color: #fff;
+    font-size: 1rem;
+    background-color: #3182ce; /* default info background */
+    animation: fadeIn 0.3s ease-out;
+    max-width: 90vw;
+    word-wrap: break-word;
+    position: relative;
+}
+
+/* Variation for success messages */
+.toast-success {
+    background-color: #38a169 !important; /* green */
+}
+
+/* Variation for error messages */
+.toast-error {
+    background-color: #e53e3e !important; /* red */
+}
+
+/* Variation for warning messages */
+.toast-warning {
+    background-color: #dd6b20 !important; /* orange */
+}
+
+/* Dismiss button */
+.toast button.dismiss {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 1.25rem;
+    margin-left: 1rem;
+    cursor: pointer;
+}
+
+/* Optional timeout progress bar */
+.toast::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.4);
+    animation: toastTimeout 5s linear forwards;
+}
+
+/* Progress bar animation */
+@keyframes toastTimeout {
+    from {
+        width: 100%;
+    }
+    to {
+        width: 0%;
+    }
+}
+
+/* Transition animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Hide toast on removal */
+.toast.hide {
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
+}

@@ -1,0 +1,110 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{% block favicon %}{% static 'icons/i-internal-medicine.svg' %}{% endblock %}">
+    {% block style %}
+        <link rel="stylesheet" href="{% static 'css/base.css' %}">
+        <link rel="stylesheet" href="{% static 'css/notification.css' %}">
+    {% endblock style %}
+    {% block head-scripts %}
+        <script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+        <!--<script SimWorks="{% static 'js/htmx.min.js' %}" defer></script>-->
+        <!--<script SimWorks="{% static 'js/intersect.min.js'%}" defer></script>--->
+        <!--<script SimWorks="{% static "js/alpine.min.js" %}" defer></script>--->
+        <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+        <script src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js" defer></script>
+        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+    {% endblock head-scripts %}
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1">
+    <meta name="description" property="og:description" content="{% block meta_description %}{{ SITE_DESCRIPTION }}{% endblock %}">
+    <meta name="keywords" content="seo">
+</head>
+<body class="background"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+
+    {% block header %}{% include 'partials/header.html' %}{% endblock %}
+    {% block notifications %}{% include 'partials/notifications.html' %}{% endblock %}
+
+    <main id="main">
+        {% block parallax %}{% endblock %}
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block footer %}{% include 'partials/footer.html' %}{% endblock %}
+
+    {% block scripts %}
+        <script src="{% static 'core/js/notifications.js' %}"></script>
+    <script>
+    // Construct the WebSocket URL (note: use wss:// for production over HTTPS)
+    const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/`;
+
+    const notificationSocket = new WebSocket(wsUrl)
+
+    notificationSocket.onmessage = function(e) {
+      const data = JSON.parse(e.data);
+      // Call a function to display the notification toast
+      displayToast(data.notification);
+    };
+
+    notificationSocket.onclose = function(e) {
+      console.error('Notifications socket closed unexpectedly');
+    };
+
+    function displayToast(message) {
+      const container = document.getElementById('notifications-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerHTML = `<span>${message}</span>
+                         <button onclick="this.parentElement.remove()">×</button>`;
+      container.insertBefore(toast, container.firstChild);
+
+      const sound = document.getElementById("toast-sound");
+      if (sound) {
+        sound.currentTime = 0;
+        sound.play().catch(() => {});
+      }
+
+      setTimeout(() => {
+        toast.classList.add('hide');
+        setTimeout(() => toast.remove(), 200);
+      }, 3000);
+    }
+    </script>
+    <script>
+    function themeToggle() {
+      return {
+        dark: false,
+        label: '🌙',
+        init() {
+          const saved = localStorage.getItem('theme');
+          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          this.dark = saved === 'dark' || (!saved && prefersDark);
+          this.updateTheme();
+        },
+        toggle() {
+          this.dark = !this.dark;
+          localStorage.setItem('theme', this.dark ? 'dark' : 'light');
+          this.updateTheme();
+        },
+        updateTheme() {
+          document.body.setAttribute('data-theme', this.dark ? 'dark' : 'light');
+          this.label = this.dark ? '🌞' : '🌙';
+        }
+      }
+    }
+    </script>
+    {% endblock scripts %}
+
+<audio id="alert-sound" preload="auto">
+  <source src="{% static 'core/sounds/alert.wav' %}" type="audio/wav">
+</audio>
+
+<audio id="simulation-ended-sound" preload="auto">
+  <source src="{% static 'core/sounds/simulation_ended.wav' %}" type="audio/wav">
+</audio>
+</body>
+</html>

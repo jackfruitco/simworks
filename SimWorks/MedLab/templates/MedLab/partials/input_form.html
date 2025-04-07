@@ -1,0 +1,18 @@
+{% load static %}
+
+<form id="chat-form" @submit.prevent="sendMessage">
+  <button type="button" id="emoji-button" title="Emoji" class="emoji-button hide-small">
+        <span class="iconify chat-icon" data-icon="fa6-regular:face-smile" data-inline="false"></span>
+  </button>
+  <input
+    x-model="messageText"
+    id="chat-message-input"
+    type="text"
+    placeholder="Message..."
+    @input="notifyTyping"
+    autofocus
+  >
+    <button type="submit">
+      <span class="iconify chat-icon signal-blue" data-icon="bi:arrow-up-circle-fill" data-inline="false"></span>
+    </button>
+</form>

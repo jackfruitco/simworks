@@ -1,0 +1,56 @@
+{% load static %}
+
+<header id="header" x-data="{ openMenu: false }">
+    <!-- Header Navigation Bar  -->
+    <div id="navBar" class="top bar flex">
+        <a href="{% url 'home' %}" class="bar-item button">
+            <span class="iconify fit" data-icon="line-md:home-twotone" data-inline="true"></span> Home</a>
+        <a href="{% url 'MedLab:index' %}" class="bar-item button hide-small">
+            <span class="iconify fit" data-icon="line-md:cellphone-twotone" data-inline="true"></span> MedLab</a>
+        <!-- Header User Welcome / User Registration -->
+        {% if user.is_authenticated %}
+        <div id="user-info" class="bar-item end user-info hide-small">
+            <span>Welcome, {{ user.first_name|default:user.username }}!</span>
+        </div>
+        {% else %}
+        <a href="{% url 'accounts:login' %}" class="bar-item end button acct hide-small">
+            <span class="iconify fit" data-icon="mdi:login-variant" data-inline="true"></span> Login</a>
+        <a href="{% url 'accounts:signup' %}" class="bar-item button acct hide-small">
+            <span class="iconify fit" data-icon="mdi:register-outline" data-inline="true"></span> Register!</a>
+        {% endif %}
+        <!-- User Menu Toggle -->
+        <button id="user-menu-toggle" @click="openMenu = ! openMenu" @click.outside="openMenu = false" class="bar-item button hover-black">
+            <span class="iconify" data-icon="fa-solid:bars" data-inline="false"></span>
+        </button>
+    </div>
+    <!-- User Menu -->
+    <div id="user-menu" class="bar-item top right">
+        <!-- User Menu Dropdown -->
+        <div id="user-menu-dropdown" x-cloak x-show.important="openMenu">
+            <!-- Small Screen Navigation -->
+            <div id="small-screen-nav" class="hide-medium hide-large">
+                <a href="{% url 'MedLab:index' %}" class="sidebar-item button" @click="openMenu = false"> MedLab</a>
+            </div>
+            <!-- User Account Navigation -->
+            <div id="user-account-nav">
+                {% if user.is_authenticated %}
+                    <a href="{% url 'accounts:profile' %}" class="sidebar-item button" @click="openMenu = false">Profile</a>
+                    <!--<a href="{% url 'accounts:logout' %}" class="sidebar-item button" @click="openMenu = false">Logout</a>-->
+                    <form action="{% url 'accounts:logout' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="sidebar-item button" @click="open-menu = false">Logout</button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'accounts:login' %}" class="sidebar-item button acct hide-large hide-medium" @click="openMenu = false">Login</a>
+                    <a href="{% url 'accounts:signup' %}" class="sidebar-item button acct hide-large hide-medium" @click="openMenu = false">Registration</a>
+                {% endif %}
+                <div class="sidebar-item" x-data="themeToggle()" x-init="init()">
+                    <button @click="toggle()" class="theme-toggle" title="Toggle theme">
+                        <span x-show="!dark" class="iconify transition-transform duration-300 rotate-0" data-icon="line-md:moon-filled-alt-to-sunny-filled-loop-transition" data-inline="false"></span>
+                        <span x-show="dark" class="iconify transition-transform duration-300 rotate-180" data-icon="line-md:sunny-filled-loop-to-moon-alt-filled-transition" data-inline="false"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>

@@ -1,0 +1,53 @@
+{% load static %}
+
+<section
+  id="chat-panel"
+  x-data="ChatManager('{{ simulation.id }}', '{{ user.username }}')"
+  class="chat-container"
+>
+  <!-- Load Older Button (fallback for scroll) -->
+  <button
+    id="load-older-btn"
+    class="load-older"
+    @click="loadOlderMessages()"
+    x-show="hasMoreMessages"
+  >
+    Load Older Messages
+  </button>
+
+  <!-- Message area (HTMX loaded & scroll monitored) -->
+  <div
+    id="chat-messages"
+    class="message-list"
+    data-has-messages="false"
+    hx-get="{% url 'MedLab:refresh_messages' simulation.id %}"
+    hx-trigger="load"
+    hx-swap="innerHTML"
+    @scroll.passive="handleScroll"
+  >
+    <!-- Messages will be swapped here by HTMX -->
+  </div>
+
+  <!-- New Messages Button -->
+  <button id="new-message-btn" class="new-message-btn hidden" title="Jump to latest">
+    ⬇ New Messages
+  </button>
+
+  <!-- Typing indicator -->
+  {% include "MedLab/partials/typing_indicator.html" %}
+
+  <!-- Input form -->
+{% if simulation_locked %}
+    <p class="text-muted">Simulation complete. Chat is now read-only.</p>
+{% else %}
+    {% include 'MedLab/partials/input_form.html' %}
+{% endif %}
+</section>
+
+<audio id="send-sound" preload="auto">
+  <source src="{% static 'MedLab/sounds/send.mp3' %}" type="audio/mpeg">
+</audio>
+
+<audio id="receive-sound" preload="auto">
+  <source src="{% static 'MedLab/sounds/receive.mp3' %}" type="audio/mpeg">
+</audio>

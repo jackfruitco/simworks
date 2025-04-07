@@ -1,0 +1,66 @@
+    <section class="simulation-history-section">
+        {% if simulations %}
+            <form id="simulation-search-form"
+                  hx-get="{% url 'MedLab:index' %}"
+                  hx-target="#simulation-history"
+                  hx-push-url="true"
+                  hx-trigger="submit"
+                  class="search-form flex flex-col gap-2 bg-white dark:bg-zinc-900 p-4 rounded-md shadow">
+                <input type="text" name="q" placeholder="Search for simulations..." value="{{ search_query }}" autocomplete="off">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" name="search_messages" value="1" {% if search_messages %}checked{% endif %}>
+                    Look in simulation messages also
+                </label>
+                <button type="submit" class="btn-primary">Search</button>
+            </form>
+            <div id="simulation-history"
+                 x-data="{ scroll: 0 }"
+                 x-init="
+                     setInterval(() => {
+                         scroll = $el.scrollTop;
+                         $el.dispatchEvent(new CustomEvent('refresh'));
+                     }, 10000);
+                 "
+                 @htmx:after-swap.window="
+                     $nextTick(() => {
+                         $el.scrollTop = scroll;
+                     })
+                 ">
+                <ul hx-get="{% url 'MedLab:index' %}"
+                    hx-trigger="refresh from:closest div"
+                    hx-target="#simulation-history"
+                    hx-swap="innerHTML">
+                    {% for sim in simulations %}
+                        <li>
+                            <a href="{% url 'MedLab:run_simulation' sim.id %}">{{ sim }}</a>
+                            – {% if sim.end %}✅ Complete{% else %}🟢 In Progress{% endif %}
+                            – Length: {{ sim.length|default:"—" }}
+                            – Time Limit: {{ sim.time_limit|default:"None" }}
+                        </li>
+                    {% empty %}
+                        <li>No simulations yet.</li>
+                    {% endfor %}
+                </ul>
+                <div class="pagination">
+                    {% if simulations.has_previous %}
+                        <a hx-get="?page={{ simulations.previous_page_number }}"
+                           hx-target="#simulation-history"
+                           hx-swap="innerHTML"
+                           href="?page={{ simulations.previous_page_number }}">« Previous</a>
+                    {% endif %}
+
+                    <span>Page {{ simulations.number }} of {{ simulations.paginator.num_pages }}</span>
+
+                    {% if simulations.has_next %}
+                        <a hx-get="?page={{ simulations.next_page_number }}"
+                           hx-target="#simulation-history"
+                           hx-swap="innerHTML"
+                           href="?page={{ simulations.next_page_number }}">Next »</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <p class="no-simulations-msg">You haven't started any simulations... <a
+                    href="{% url 'MedLab:create_simulation' %}" class="button">start one now</a> and let the chaos begin 🩺💥</p>
+        {% endif %}
+    </section>

@@ -1,0 +1,30 @@
+{% extends "accounts/accounts_base.html" %}
+{% load static %}
+
+{% block title %}Invite User - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div id="invite-content" class="invite-container">
+    <h1>Invite a User</h1>
+    {% if form.errors %}
+      <div class="error">
+        Please correct the errors below.
+      </div>
+    {% endif %}
+    <form method="post"
+          action="{% url 'accounts:new-invite' %}"
+          hx-post="{% url 'accounts:new-invite' %}"
+          hx-target="#invite-content"
+          hx-swap="innerHTML transition:true"
+          hx-indicator="#invite-loading">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" hx-indicator="#invite-loading">
+            Send Invitation
+        </button>
+        <span id="invite-loading" class="loading-icon" style="display: none;">
+            <span class="iconify" data-icon="line-md:loading-twotone-loop" data-inline="false"></span>
+        </span>
+    </form>
+</div>
+{% endblock %}

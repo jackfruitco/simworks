@@ -1,0 +1,19 @@
+{% comment %} Renders a list of chat messages {% endcomment %}
+{% for message in messages %}
+  <div class="chat-bubble {% if message.sender == user.username %}user{% else %}sim{% endif %}"
+       data-message-id="{{ message.id }}">
+    <strong class="sender-name">
+      {{ message.display_name|default:message.sender.get_full_name|default:message.sender.username }}
+    </strong>
+    {{ message.content|linebreaksbr }}
+    <div class="timestamp">
+      <span class="bubble-time">{{ message.timestamp|date:"H:i" }}</span>
+      {% if message.sender == user.username %}
+        <span class="status-icons" x-data="{ delivered: true, read: false }">
+          <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
+          <span class="iconify status-icon read-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="read"></span>
+        </span>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}

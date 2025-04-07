@@ -1,6 +1,7 @@
 # Byte-compiled files
 __pycache__/
 *.py[cod]
+**/__pycache__/
 
 # Distribution / packaging
 .Python
@@ -18,4 +19,3 @@ venv/
 ENV/
 env/
 *env*
-

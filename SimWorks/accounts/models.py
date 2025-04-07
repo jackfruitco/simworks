@@ -1,0 +1,62 @@
+# accounts/models.py
+import uuid
+from datetime import timedelta
+
+from django.conf import settings
+from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.shortcuts import reverse
+from django.utils import timezone
+
+
+class CustomUser(AbstractUser):
+    role = models.CharField(max_length=100, blank=True, null=True)
+
+
+class Invitation(models.Model):
+    token = models.CharField(max_length=64, unique=True, editable=False)
+    email = models.EmailField(
+        blank=True, null=True, help_text="Optional: email address of the invitee"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    claimed = models.BooleanField(default=False)
+    claimed_at = models.DateTimeField(blank=True, null=True)
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_invitations",
+    )
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            # Generate a secure token; using uuid or secrets.token_urlsafe() are good choices.
+            import secrets
+
+            self.token = secrets.token_urlsafe(32)
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(days=3)
+        super().save(*args, **kwargs)
+
+    @property
+    def invitation_link(self):
+        return reverse("accounts:signup", kwargs={"token": self.token})
+
+    @property
+    def is_expired(self):
+        return self.expires_at and timezone.now() > self.expires_at
+
+    def clean(self):
+        if self.claimed and not self.claimed_at:
+            raise ValidationError("Used invitation must have a claimed_at timestamp.")
+
+    def mark_as_claimed(self):
+        self.claimed = True
+        self.claimed_at = timezone.now()
+        self.save()
+
+    def __str__(self):
+        return f"Invitation {self.token} ({'claimed' if self.claimed else 'unclaimed'})"

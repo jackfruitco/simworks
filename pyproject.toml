@@ -1,10 +1,19 @@
 [project]
-name = "sim-works"
+name = "SimWorks"
 version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
-    "django>=5.1.7",
+    "channels>=4.2.2",
+    "channels-redis>=4.2.1",
+    "daphne>=4.1.2",
+    "django>=5.2",
+    "django-htmx>=1.23.0",
+    "django-redis>=5.4.0",
+    "openai>=1.69.0",
+    "pre-commit>=4.2.0",
     "psycopg>=3.2.6",
     "psycopg-binary>=3.2.6",
+    "redis>=5.2.1",
+    "zope-interface>=7.2",
 ]

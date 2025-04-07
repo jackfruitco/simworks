@@ -1,0 +1,92 @@
+{% extends 'MedLab/MedLab_base.html' %}
+{% load static %}
+
+{% block style %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'MedLab/chat.css' %}">
+{% endblock style %}
+
+{% block head-scripts %}
+    <script src="{% static 'MedLab/js/chat.js' %}"></script>
+    {{ block.super }}
+{% endblock head-scripts %}
+
+{% block content %}
+    <div id="simulation-container" class="sim-wrapper">
+
+      <!-- Simulation header or status bar -->
+      <div class="sim-header" x-data="{ chatOpen: true }">
+        <h2>Simulation Running</h2>
+        <div x-data="simTimer({{ sim_start_unix }}, {{ time_limit_ms|default:'null' }})" x-init="start()" class="sim-timer">
+          Time Elapsed: <span x-text="formatted"></span>
+        </div>
+        <form method="POST" action="{% url 'MedLab:end_simulation' simulation.id %}" x-show="!{{ simulation.is_ended|yesno:'true,false' }}">
+            {% csrf_token %}
+            <button type="submit" class="end-sim-btn">End Simulation</button>
+        </form>
+        <button @click="chatOpen = !chatOpen" class="chat-toggle-btn">
+          <span x-text="chatOpen ? 'Hide Chat' : 'Show Chat'"></span>
+        </button>
+      </div>
+
+      <!-- Simulation main layout -->
+      <div class="sim-layout" x-data="{ chatOpen: true }">
+        <!-- Simulation controls and Metadata -->
+        <div class="sim-main">
+        {% include 'MedLab/partials/simulation_metadata.html' %}
+        </div>
+
+        <!-- Chat panel -->
+        <div class="sim-chat" :class="{ 'collapsible': !chatOpen }">
+          {% include "MedLab/chat.html" %}
+        </div>
+      </div>
+    </div>
+{% endblock content %}
+
+{% block scripts %}
+    {{ block.super }}
+    <script src="{% static 'MedLab/js/chat.js' %}"></script>
+    <script>
+    function simTimer(simStartTimestamp, simTimeLimit = null) {
+      return {
+        formatted: '00:00',
+        countdown: simTimeLimit !== null,
+        ended: false,
+        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value,
+        start() {
+          this.update(simStartTimestamp);
+          setInterval(() => this.update(simStartTimestamp), 1000);
+        },
+        autoEnd() {
+          if (!this.ended) {
+            fetch("{% url 'MedLab:end_simulation' simulation.id %}", {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": this.csrfToken,
+              },
+            });
+            this.ended = true;
+          }
+        },
+        update(startTs) {
+          const now = Date.now();
+          let elapsedMs = now - startTs;
+          if (this.countdown) {
+            const remainingMs = simTimeLimit - elapsedMs;
+            const remainingSec = Math.max(Math.floor(remainingMs / 1000), 0);
+            const mins = String(Math.floor(remainingSec / 60)).padStart(2, '0');
+            const secs = String(remainingSec % 60).padStart(2, '0');
+            this.formatted = `${mins}:${secs}`;
+            if (remainingMs <= 0) this.autoEnd();
+          } else {
+            const elapsedSec = Math.floor(elapsedMs / 1000);
+            const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+            const secs = String(elapsedSec % 60).padStart(2, '0');
+            this.formatted = `${mins}:${secs}`;
+          }
+        }
+      };
+    }
+    </script>
+{% endblock scripts %}

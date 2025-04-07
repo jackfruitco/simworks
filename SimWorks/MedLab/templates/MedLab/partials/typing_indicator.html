@@ -1,0 +1,16 @@
+<div id="typing-indicator"
+     class="typing-indicator">
+    <div id="indicator-wrapper"
+         x-show="typingUsers.length > 0"
+        x-transition
+        x-cloak>
+        <template x-for="user in typingUsers" :key="user.username">
+            <div class="typing-user-bubble">
+                <span class="initials" x-text="user.displayInitials"></span>
+            </div>
+        </template>
+        <div class="dot-container">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        </div>
+    </div>
+</div>

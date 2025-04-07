@@ -1,6 +1,10 @@
 #!/bin/bash
 
-# Check if Django Server is running
-curl localhost:8000/health || exit 1
-
-exit 0
+# Check if Django server is responding
+if curl -fs http://localhost:8000/health > /dev/null; then
+    echo "Healthcheck passed."
+    exit 0
+else
+    echo "Healthcheck failed."
+    exit 1
+fi

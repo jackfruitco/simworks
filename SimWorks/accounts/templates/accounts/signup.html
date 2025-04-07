@@ -1,0 +1,36 @@
+{% extends "accounts/accounts_base.html" %}
+{% load static %}
+
+{% block style %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'css/registration.css' %}">
+{% endblock style %}
+
+{% block title %}Sign Up - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <h1>Sign Up</h1>
+    {% if form.errors %}
+      <div class="error">
+        Please correct the errors below.
+      </div>
+    {% endif %}
+    <form method="post" action="{% url 'accounts:signup' %}">
+        {% csrf_token %}
+        {% if token %}
+        <input type="hidden" name="token" value="{{ token }}">
+        {% else %}
+        <div class="form-group">
+            <label for="id_token">Invitation Token:</label>
+            <input type="text" name="token" id="id_token" placeholder="Enter your invitation token">
+        </div>
+        {% endif %}
+        {{ form.as_p }}
+        <button type="submit">Sign Up</button>
+    </form>
+    <p>
+      Already have an account? <a href="{% url 'accounts:login' %}">Login</a>.
+    </p>
+</div>
+{% endblock %}

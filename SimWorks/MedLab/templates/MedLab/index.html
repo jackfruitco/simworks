@@ -1,0 +1,26 @@
+{% extends 'MedLab/MedLab_base.html' %}
+{% load static %}
+
+{% block content %}
+
+<header class="page-header">
+    <h1>Welcome to MedLab</h1>
+    {% if user.is_authenticated %}
+        <form method="post" action="{% url 'MedLab:create_simulation' %}" class="start-form">
+            {% csrf_token %}
+            <button type="submit" class="button small">Begin New Simulation</button>
+        </form>
+    {% endif %}
+</header>
+
+{% if user.is_authenticated %}
+    <h2>
+    {% if user.first_name %}
+        {{ user.first_name }}'s Simulation History
+    {% else %}
+        Your Simulation History
+    {% endif %}
+    </h2>
+    {% include 'MedLab/partials/simulation_history.html' %}
+{% endif %}
+{% endblock content %}
