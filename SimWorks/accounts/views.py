@@ -21,7 +21,7 @@ def signup(request):
     if token:
         try:
             invitation = Invitation.objects.get(token=token, claimed=False)
-            if invitation.is_expired():
+            if invitation.is_expired:
                 invitation = None
         except Invitation.DoesNotExist:
             invitation = None
