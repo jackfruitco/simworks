@@ -103,13 +103,21 @@ def get_initial_response(
         simulation.prompt_id = get_default_prompt()
         simulation.save()
 
-    prompt = simulation.prompt.content.strip()
-    prompt += f"\n\nYour name is {simulation.sim_patient_full_name}. Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
+    model_instruction = simulation.prompt.content.strip()
+    model_instruction += f"\n\nYour name is {simulation.sim_patient_full_name}. Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
 
     response = client.responses.create(
         model=model,
-        instructions=prompt,
-        input='Begin Simulation.',
+        input=[
+            {
+                "role": "developer",
+                "content": model_instruction,
+            },
+            {
+                "role": "user",
+                "content": "Begin simulation",
+            },
+        ],
     )
 
     logger.debug(f"Generated initial scenario message for Simulation {simulation.id}")
