@@ -62,7 +62,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     {
                         "type": "error",
                         "message": error_message,
-                        "redirect": reverse("MedLab:index"),
+                        "redirect": reverse("ChatLab:index"),
                     }
                 )
             )

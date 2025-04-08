@@ -7,10 +7,10 @@ from typing import Tuple
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import QuerySet
-from MedLab.models import Message
-from MedLab.models import RoleChoices
-from MedLab.models import Simulation
-from MedLab.models import SimulationMetafield
+from ChatLab.models import Message
+from ChatLab.models import RoleChoices
+from ChatLab.models import Simulation
+from ChatLab.models import SimulationMetafield
 from openai import OpenAI
 
 """
@@ -50,7 +50,7 @@ def get_response(
     :return: A QuerySet of newly created Message objects representing the AI-generated chat responses.
     """
     if model is None:
-        model = getattr(settings, "OPENAI_MODEL", "gpt-4")
+        model = getattr(settings, "OPENAI_MODEL", "gpt-4o-mini")
 
     logger.info(
         f"Requesting SimMessage for Simulation #{user_msg.simulation.pk} in response to {user_msg.sender}'s input (ID: {user_msg.id})..."
@@ -98,7 +98,7 @@ def get_initial_response(
 
     # Ensure the simulation has a prompt; if not, use a default prompt.
     if not simulation.prompt:
-        from MedLab.models import get_default_prompt  # Assumes this function exists.
+        from ChatLab.models import get_default_prompt  # Assumes this function exists.
 
         simulation.prompt_id = get_default_prompt()
         simulation.save()
@@ -108,7 +108,8 @@ def get_initial_response(
 
     response = client.responses.create(
         model=model,
-        input=prompt,
+        instructions=prompt,
+        input='Begin Simulation.',
     )
 
     logger.debug(f"Generated initial scenario message for Simulation {simulation.id}")

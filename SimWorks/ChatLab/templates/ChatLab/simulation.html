@@ -1,13 +1,13 @@
-{% extends 'MedLab/MedLab_base.html' %}
+{% extends 'ChatLab/ChatLab_base.html' %}
 {% load static %}
 
 {% block style %}
     {{ block.super }}
-    <link rel="stylesheet" href="{% static 'MedLab/chat.css' %}">
+    <link rel="stylesheet" href="{% static 'ChatLab/chat.css' %}">
 {% endblock style %}
 
 {% block head-scripts %}
-    <script src="{% static 'MedLab/js/chat.js' %}"></script>
+    <script src="{% static 'ChatLab/js/chat.js' %}"></script>
     {{ block.super }}
 {% endblock head-scripts %}
 
@@ -20,7 +20,7 @@
         <div x-data="simTimer({{ sim_start_unix }}, {{ time_limit_ms|default:'null' }})" x-init="start()" class="sim-timer">
           Time Elapsed: <span x-text="formatted"></span>
         </div>
-        <form method="POST" action="{% url 'MedLab:end_simulation' simulation.id %}" x-show="!{{ simulation.is_ended|yesno:'true,false' }}">
+        <form method="POST" action="{% url 'ChatLab:end_simulation' simulation.id %}" x-show="!{{ simulation.is_ended|yesno:'true,false' }}">
             {% csrf_token %}
             <button type="submit" class="end-sim-btn">End Simulation</button>
         </form>
@@ -33,12 +33,12 @@
       <div class="sim-layout" x-data="{ chatOpen: true }">
         <!-- Simulation controls and Metadata -->
         <div class="sim-main">
-        {% include 'MedLab/partials/simulation_metadata.html' %}
+        {% include 'ChatLab/partials/simulation_metadata.html' %}
         </div>
 
         <!-- Chat panel -->
         <div class="sim-chat" :class="{ 'collapsible': !chatOpen }">
-          {% include "MedLab/chat.html" %}
+          {% include "ChatLab/chat.html" %}
         </div>
       </div>
     </div>
@@ -46,7 +46,7 @@
 
 {% block scripts %}
     {{ block.super }}
-    <script src="{% static 'MedLab/js/chat.js' %}"></script>
+    <script src="{% static 'ChatLab/js/chat.js' %}"></script>
     <script>
     function simTimer(simStartTimestamp, simTimeLimit = null) {
       return {
@@ -60,7 +60,7 @@
         },
         autoEnd() {
           if (!this.ended) {
-            fetch("{% url 'MedLab:end_simulation' simulation.id %}", {
+            fetch("{% url 'ChatLab:end_simulation' simulation.id %}", {
               method: "POST",
               headers: {
                 "X-CSRFToken": this.csrfToken,

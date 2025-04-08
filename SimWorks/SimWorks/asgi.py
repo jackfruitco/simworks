@@ -20,14 +20,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SimWorks.settings")
 # is populated before importing code that may import ORM models.
 django_asgi_app = get_asgi_application()
 
-from MedLab.routing import websocket_urlpatterns as medlab_ws
+from ChatLab.routing import websocket_urlpatterns as chatlab_ws
 from core.routing import websocket_urlpatterns as core_ws
 
 application = ProtocolTypeRouter(
     {
         "http": get_asgi_application(),
         "websocket": AllowedHostsOriginValidator(
-            AuthMiddlewareStack(URLRouter(medlab_ws + core_ws))
+            AuthMiddlewareStack(URLRouter(chatlab_ws + core_ws))
         ),
     }
 )

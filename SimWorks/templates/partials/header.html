@@ -5,8 +5,8 @@
     <div id="navBar" class="top bar flex">
         <a href="{% url 'home' %}" class="bar-item button">
             <span class="iconify fit" data-icon="line-md:home-twotone" data-inline="true"></span> Home</a>
-        <a href="{% url 'MedLab:index' %}" class="bar-item button hide-small">
-            <span class="iconify fit" data-icon="line-md:cellphone-twotone" data-inline="true"></span> MedLab</a>
+        <a href="{% url 'ChatLab:index' %}" class="bar-item button hide-small">
+            <span class="iconify fit" data-icon="line-md:cellphone-twotone" data-inline="true"></span> ChatLab</a>
         <!-- Header User Welcome / User Registration -->
         {% if user.is_authenticated %}
         <div id="user-info" class="bar-item end user-info hide-small">
@@ -29,7 +29,7 @@
         <div id="user-menu-dropdown" x-cloak x-show.important="openMenu">
             <!-- Small Screen Navigation -->
             <div id="small-screen-nav" class="hide-medium hide-large">
-                <a href="{% url 'MedLab:index' %}" class="sidebar-item button" @click="openMenu = false"> MedLab</a>
+                <a href="{% url 'ChatLab:index' %}" class="sidebar-item button" @click="openMenu = false"> ChatLab</a>
             </div>
             <!-- User Account Navigation -->
             <div id="user-account-nav">

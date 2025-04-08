@@ -20,7 +20,7 @@
     id="chat-messages"
     class="message-list"
     data-has-messages="false"
-    hx-get="{% url 'MedLab:refresh_messages' simulation.id %}"
+    hx-get="{% url 'ChatLab:refresh_messages' simulation.id %}"
     hx-trigger="load"
     hx-swap="innerHTML"
     @scroll.passive="handleScroll"
@@ -34,20 +34,20 @@
   </button>
 
   <!-- Typing indicator -->
-  {% include "MedLab/partials/typing_indicator.html" %}
+  {% include "ChatLab/partials/typing_indicator.html" %}
 
   <!-- Input form -->
 {% if simulation_locked %}
     <p class="text-muted">Simulation complete. Chat is now read-only.</p>
 {% else %}
-    {% include 'MedLab/partials/input_form.html' %}
+    {% include 'ChatLab/partials/input_form.html' %}
 {% endif %}
 </section>
 
 <audio id="send-sound" preload="auto">
-  <source src="{% static 'MedLab/sounds/send.mp3' %}" type="audio/mpeg">
+  <source src="{% static 'ChatLab/sounds/send.mp3' %}" type="audio/mpeg">
 </audio>
 
 <audio id="receive-sound" preload="auto">
-  <source src="{% static 'MedLab/sounds/receive.mp3' %}" type="audio/mpeg">
+  <source src="{% static 'ChatLab/sounds/receive.mp3' %}" type="audio/mpeg">
 </audio>

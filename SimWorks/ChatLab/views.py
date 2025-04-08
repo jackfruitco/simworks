@@ -43,9 +43,9 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "MedLab/partials/simulation_history.html"
+        "ChatLab/partials/simulation_history.html"
         if request.htmx
-        else "MedLab/index.html"
+        else "ChatLab/index.html"
     )
     return render(
         request,
@@ -79,7 +79,7 @@ def create_simulation(request):
 
     def start_initial_response(sim):
         logger.info(
-            f"[MedLab] requesting initial SimMessage for Simulation {sim.id} ({sim})"
+            f"[ChatLab] requesting initial SimMessage for Simulation {sim.id} ({sim})"
         )
         try:
             # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
@@ -98,14 +98,14 @@ def create_simulation(request):
                 )
         except Exception as e:
             logger.exception(
-                f"[MedLab] Failed to generate initial SimMessage for Simulation {sim.id}: {e}"
+                f"[ChatLab] Failed to generate initial SimMessage for Simulation {sim.id}: {e}"
             )
 
     threading.Thread(
         target=start_initial_response, args=(simulation,), daemon=True
     ).start()
 
-    return redirect("MedLab:run_simulation", simulation_id=simulation.id)
+    return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
 
 
 @login_required
@@ -130,12 +130,12 @@ def run_simulation(request, simulation_id):
         "simulated_locked": simulated_locked,
     }
 
-    return render(request, "MedLab/simulation.html", context)
+    return render(request, "ChatLab/simulation.html", context)
 
 
 @require_GET
 def refresh_metadata(request, simulation_id):
-    logger.info(f"[MedLab] refreshing metadata for SIM #{simulation_id}....")
+    logger.info(f"[ChatLab] refreshing metadata for SIM #{simulation_id}....")
     simulation = get_object_or_404(Simulation, id=simulation_id)
 
     if request.GET.get("force") != "1":
@@ -150,9 +150,9 @@ def refresh_metadata(request, simulation_id):
         "metadata": simulation.metadata.all(),
     }
     logger.info(
-        f"[MedLab] [Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
+        f"[ChatLab] [Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
-    return render(request, "MedLab/partials/simulation_metadata.html", context)
+    return render(request, "ChatLab/partials/simulation_metadata.html", context)
 
 
 @require_GET
@@ -161,7 +161,7 @@ def refresh_messages(request, simulation_id):
         "-timestamp"
     )[:5]
     messages = reversed(messages)  # Show oldest at top
-    return render(request, "MedLab/partials/messages.html", {"messages": messages})
+    return render(request, "ChatLab/partials/messages.html", {"messages": messages})
 
 
 @require_GET
@@ -176,7 +176,7 @@ def load_older_messages(request, simulation_id):
         simulation_id=simulation_id, timestamp__lt=before_message.timestamp
     ).order_by("-timestamp")[:5]
     messages = reversed(messages)
-    return render(request, "MedLab/partials/messages.html", {"messages": messages})
+    return render(request, "ChatLab/partials/messages.html", {"messages": messages})
 
 
 from django.views.decorators.http import require_POST
@@ -189,4 +189,4 @@ def end_simulation(request, simulation_id):
     if not simulation.end:
         simulation.end = now()
         simulation.save()
-    return redirect("MedLab:run_simulation", simulation_id=simulation.id)
+    return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
