@@ -1,8 +1,0 @@
-#footer {
-    display: flex;
-    justify-content: center;
-    width: 100vw;
-    height: 12vh;
-    bottom: 0 !important;
-    position: fixed !important;
-}
