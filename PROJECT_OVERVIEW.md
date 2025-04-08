@@ -1,5 +1,5 @@
 
-## SimWorks / MedLab – Project Overview
+## SimWorks / ChatLab – Project Overview
 
 ### 🔧 Project Summary
 SimWorks is a Django-based web app simulating real-time military medical scenarios for U.S. Army SOF medics. It features a secure, Signal-inspired chat interface to deliver immersive, AI-powered TeleMed interactions. The platform supports live message delivery, toast notifications, dark/light themes, and mobile-first responsiveness.
@@ -8,11 +8,11 @@ SimWorks is a Django-based web app simulating real-time military medical scenari
 
 ### 📦 App Structure
 
-#### MedLab/
+#### ChatLab/
 - `models.py`: Simulation, Message, Prompt
 - `views.py`: simulation launch, chat UI, lazy loading, search
-- `templates/MedLab/`: includes `index.html`, `chat.html`, `simulation.html`, and `partials/`
-- `static/MedLab/`: `chat.css`, `style.css`, `sounds/`
+- `templates/ChatLab/`: includes `index.html`, `chat.html`, `simulation.html`, and `partials/`
+- `static/ChatLab/`: `chat.css`, `style.css`, `sounds/`
 
 #### core/
 - WebSocket consumer for notifications
@@ -54,7 +54,7 @@ SimWorks is a Django-based web app simulating real-time military medical scenari
   - Staff-editable via admin or UI
   - `get_default_prompt()` ensures default exists and is linked
 - **Static Assets**:
-  - Chat sounds in `static/MedLab/sounds/`
+  - Chat sounds in `static/ChatLab/sounds/`
   - Theme and chat styles in `base.css`, `chat.css`, `style.css`
 
 ---

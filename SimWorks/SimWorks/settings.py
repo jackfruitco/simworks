@@ -62,7 +62,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
     "core",
-    "MedLab",
+    "ChatLab",
     "django_htmx",
 ]
 
@@ -128,6 +128,7 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", 'gpt-4o-mini')
 LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()
 
 LOGGING = {
@@ -159,7 +160,7 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
-        "MedLab": {
+        "ChatLab": {
             "handlers": ["console"],
             "level": LOG_LEVEL,
             "propagate": False,

@@ -1,7 +1,7 @@
     <section class="simulation-history-section">
         {% if simulations %}
             <form id="simulation-search-form"
-                  hx-get="{% url 'MedLab:index' %}"
+                  hx-get="{% url 'ChatLab:index' %}"
                   hx-target="#simulation-history"
                   hx-push-url="true"
                   hx-trigger="submit"
@@ -26,13 +26,13 @@
                          $el.scrollTop = scroll;
                      })
                  ">
-                <ul hx-get="{% url 'MedLab:index' %}"
+                <ul hx-get="{% url 'ChatLab:index' %}"
                     hx-trigger="refresh from:closest div"
                     hx-target="#simulation-history"
                     hx-swap="innerHTML">
                     {% for sim in simulations %}
                         <li>
-                            <a href="{% url 'MedLab:run_simulation' sim.id %}">{{ sim }}</a>
+                            <a href="{% url 'ChatLab:run_simulation' sim.id %}">{{ sim }}</a>
                             – {% if sim.end %}✅ Complete{% else %}🟢 In Progress{% endif %}
                             – Length: {{ sim.length|default:"—" }}
                             – Time Limit: {{ sim.time_limit|default:"None" }}
@@ -61,6 +61,6 @@
             </div>
         {% else %}
             <p class="no-simulations-msg">You haven't started any simulations... <a
-                    href="{% url 'MedLab:create_simulation' %}" class="button">start one now</a> and let the chaos begin 🩺💥</p>
+                    href="{% url 'ChatLab:create_simulation' %}" class="button">start one now</a> and let the chaos begin 🩺💥</p>
         {% endif %}
     </section>

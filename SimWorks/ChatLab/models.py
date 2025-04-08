@@ -179,9 +179,9 @@ class Simulation(models.Model):
 
     def __str__(self) -> str:
         if self.description:
-            return f"MedLab Sim #{self.pk}: {self.description}"
+            return f"ChatLab Sim #{self.pk}: {self.description}"
         else:
-            return f"MedLab Sim #{self.pk}"
+            return f"ChatLab Sim #{self.pk}"
 
 
 class SimulationMetafield(models.Model):
@@ -273,7 +273,7 @@ class Message(models.Model):
             )
         super().save(*args, **kwargs)
         logger.info(
-            "[Message.save] %s message for MedLab Sim #%s from %s (ID: %s)",
+            "[Message.save] %s message for ChatLab Sim #%s from %s (ID: %s)",
             "New" if is_new else "Modified",
             self.simulation.pk,
             self.sender.username if self.sender else "System",
@@ -286,4 +286,4 @@ class Message(models.Model):
 
     def __str__(self) -> str:
         role_label = dict(RoleChoices.choices).get(self.role, self.role)
-        return f"MedLab Sim #{self.simulation.pk} {role_label.capitalize()} Message (ID: {self.pk})"
+        return f"ChatLab Sim #{self.simulation.pk} {role_label.capitalize()} Message (ID: {self.pk})"

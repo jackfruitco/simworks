@@ -8,9 +8,9 @@
     <section class="start-simulation">
         <h2>Start a New Simulation</h2>
         <div class="simulation-buttons">
-            <form method="post" action="{% url 'MedLab:create_simulation' %}" class="start-form">
+            <form method="post" action="{% url 'ChatLab:create_simulation' %}" class="start-form">
                 {% csrf_token %}
-                <button type="submit" class="button small">Begin New MedLab Simulation</button>
+                <button type="submit" class="button small">Begin New ChatLab Simulation</button>
             </form>
         </div>
     </section>
@@ -21,7 +21,7 @@
             <input type="text" placeholder="Filter simulations..." class="filter-input">
             <button type="button" class="filter-button">Filter</button>
         </div>
-        {% include 'MedLab/partials/simulation_history.html' %}
+        {% include 'ChatLab/partials/simulation_history.html' %}
     </section>
 </div>
 <section id="profile-links" class="profile-container center">
