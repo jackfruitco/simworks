@@ -183,6 +183,16 @@ class Simulation(models.Model):
         else:
             return f"ChatLab Sim #{self.pk}"
 
+    def get_or_assign_prompt(self):
+        """
+        Return the current prompt assigned to the simulation. If none exists,
+        assign the system default prompt and return it.
+        """
+        if not self.prompt:
+            self.prompt_id = get_default_prompt()
+            self.save(update_fields=["prompt"])
+        return self.prompt
+
 
 class SimulationMetafield(models.Model):
     created = models.DateTimeField(auto_now_add=True)
