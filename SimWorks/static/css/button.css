@@ -15,7 +15,7 @@
 }
 
 .button.primary {
-  background-color: var(--color-user);
+  background-color: var(--color-bg-outgoing);
   color: var(--color-text-light);
 }
 
@@ -25,7 +25,7 @@
 }
 
 .button.sim {
-  background-color: var(--color-sim);
+  background-color: var(--color-bg-incoming);
   color: var(--color-text-light);
 }
 
