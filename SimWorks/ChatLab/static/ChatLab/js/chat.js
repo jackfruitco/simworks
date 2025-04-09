@@ -235,7 +235,7 @@ function ChatManager(simulation_id, currentUser) {
 
             const wasAtBottom = this.isScrolledToBottom();
             const messageDiv = document.createElement('div');
-            messageDiv.className = `chat-bubble ${isSender ? 'user' : 'sim'}`;
+            messageDiv.className = `chat-bubble ${isSender ? 'outgoing' : 'incoming'}`;
             messageDiv.innerHTML = `
                 ${!isSender ? `<strong class="sender-name">${this.escapeHtml(displayName)}</strong>` : ''}
                 ${content}

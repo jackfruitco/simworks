@@ -10,7 +10,7 @@
 
 {% block content %}
     {% include 'partials/dev_warning.html' %}
-    <div class="login-container">
+    <div class="login-container mt-8 mx-auto">
         <h1>Login</h1>
         {% if form.errors %}
           <div class="error">
@@ -28,7 +28,7 @@
                 <label for="id_password">Password:</label>
                 {{ form.password }}
             </div>
-            <button type="submit">Login</button>
+            <button type="submit" class="button primary">Login</button>
         </form>
         {# <p>Don't have an accounts? <a href="{% url 'signup' %}">Sign up</a></p> #}
     </div>

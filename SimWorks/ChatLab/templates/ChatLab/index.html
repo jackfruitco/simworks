@@ -8,7 +8,7 @@
     {% if user.is_authenticated %}
         <form method="post" action="{% url 'ChatLab:create_simulation' %}" class="start-form">
             {% csrf_token %}
-            <button type="submit" class="button small">Begin New Simulation</button>
+            <button type="submit" class="button primary small">Begin New Simulation</button>
         </form>
     {% endif %}
 </header>

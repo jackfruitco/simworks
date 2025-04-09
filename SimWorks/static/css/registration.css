@@ -1,10 +1,9 @@
-/* registration.css */
 @import url("theme.css");
 
 /* Container for the login/registration form */
 .login-container {
   max-width: 400px;
-  margin: 2rem auto;
+  /* margin: 2rem auto; */ /* Use spacing utility class instead: e.g., mt-8 mx-auto */
   background-color: var(--color-bg-alt);
   padding: 2rem;
   border: 1px solid var(--color-border);
@@ -44,23 +43,6 @@
   font-size: 1rem;
   background-color: var(--color-bg);
   color: var(--color-text-dark);
-}
-
-/* Submit button styling */
-.login-container form button[type="submit"] {
-  padding: 0.75rem;
-  font-size: 1rem;
-  background-color: var(--jckfrt-olive);
-  color: var(--color-text-light);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  margin-top: 1rem;
-}
-
-.login-container form button[type="submit"]:hover {
-  background-color: var(--jckfrt-dark);
 }
 
 /* Error message styling */

@@ -20,8 +20,8 @@
 }">
     <h1>All Invitations</h1>
 
-    <div class="margin-bottom" style="text-align: right;">
-        <button class="button small" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+    <div class="mb-16" style="text-align: right;">
+        <button class="button primary small" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
             Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
         </button>
     </div>
@@ -44,8 +44,8 @@
         </select>
     </div>
 
-    <div class="margin-top" style="text-align: right;">
-        <button class="button small" @click="claimedFilter = ''; expiredFilter = ''; invitedByFilter = []; page = 1; $nextTick(() => { document.getElementById('invite-list').innerHTML = ''; document.getElementById('invite-list').dispatchEvent(new Event('load')); })">
+    <div class="mt-16 mx-auto" style="text-align: right;">
+        <button class="button ghost small" @click="claimedFilter = ''; expiredFilter = ''; invitedByFilter = []; page = 1; $nextTick(() => { document.getElementById('invite-list').innerHTML = ''; document.getElementById('invite-list').dispatchEvent(new Event('load')); })">
             Clear Filters
         </button>
     </div>
@@ -55,13 +55,13 @@
 
     <div
         id="pagination-loader"
-        class="center margin-top"
+        class="mt-16 mx-auto center"
         :hx-get="`/accounts/invitations/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
         hx-trigger="revealed"
         hx-target="#invite-list"
         hx-swap="beforeend"
     >
-        <button class="button small" disabled>Loading more invitations...</button>
+        <button class="button primary small" disabled>Loading more invitations...</button>
     </div>
 </div>
 {% endblock %}

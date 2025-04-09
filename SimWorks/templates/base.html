@@ -59,7 +59,7 @@
       const toast = document.createElement('div');
       toast.className = 'toast';
       toast.innerHTML = `<span>${message}</span>
-                         <button onclick="this.parentElement.remove()">×</button>`;
+                         <button onclick="this.parentElement.remove()">X</button>`;
       container.insertBefore(toast, container.firstChild);
 
       const sound = document.getElementById("toast-sound");
