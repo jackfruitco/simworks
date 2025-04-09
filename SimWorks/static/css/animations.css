@@ -1,0 +1,73 @@
+/* Entrance fade-in and upward movement */
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Standard fade-in from below */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Subtle vertical wave entrance animation */
+@keyframes wave-in {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0px);
+    opacity: 1;
+  }
+}
+
+/* Fading loop in/out */
+@keyframes fading {
+  0%   { opacity: 0; }
+  50%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* One-time fade-in */
+@keyframes opac {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Typing bounce animation for dot indicators */
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+
+/* Single bounce for button attention grab */
+@keyframes bounceOnce {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+  60% { transform: translateY(2px); }
+}
+
+/* Continuous spinning rotation */
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(359deg); }
+}

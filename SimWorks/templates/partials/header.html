@@ -34,11 +34,11 @@
             <!-- User Account Navigation -->
             <div id="user-account-nav">
                 {% if user.is_authenticated %}
-                    <a href="{% url 'accounts:profile' %}" class="sidebar-item button" @click="openMenu = false">Profile</a>
+                    <a href="{% url 'accounts:profile' %}" class="sidebar-item button my-4" @click="openMenu = false">Profile</a>
                     <!--<a href="{% url 'accounts:logout' %}" class="sidebar-item button" @click="openMenu = false">Logout</a>-->
                     <form action="{% url 'accounts:logout' %}" method="post" style="display: inline;">
                         {% csrf_token %}
-                        <button type="submit" class="sidebar-item button" @click="open-menu = false">Logout</button>
+                        <button type="submit" class="sidebar-item button my-4 accent" @click="open-menu = false">Logout</button>
                     </form>
                 {% else %}
                     <a href="{% url 'accounts:login' %}" class="sidebar-item button acct hide-large hide-medium" @click="openMenu = false">Login</a>

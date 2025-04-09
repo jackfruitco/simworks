@@ -1,6 +1,6 @@
 {% for invite in invitations %}
     {% if view_mode == 'grid' %}
-        <div class="invite-tile" style="--tile-index: {{ forloop.counter0 }}">
+        <div class="tile-card" style="--tile-index: {{ forloop.counter0 }}">
             <p><strong>Email:</strong> {{ invite.email }}</p>
             <p><strong>Created:</strong> {{ invite.created_at }}</p>
             <p><strong>Expires:</strong> {{ invite.expires_at }}</p>

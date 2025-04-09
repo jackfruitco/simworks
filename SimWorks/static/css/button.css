@@ -14,20 +14,46 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-#button.alt, .button.alt {
+.button.primary {
+  background-color: var(--color-user);
+  color: var(--color-text-light);
+}
+
+.button.secondary {
+  background-color: var(--jckfrt-olive);
+  color: var(--color-text-light);
+}
+
+.button.sim {
+  background-color: var(--color-sim);
+  color: var(--color-text-light);
+}
+
+.button.ghost {
+  background-color: var(--color-border);
+  color: var(--color-text-dark);
+}
+
+.button.accent {
+  background-color: var(--jckfrt-yellow);
+  color: var(--jckfrt-olive);
+}
+
+.button.alt {
   background-color: var(--jckfrt-olive)!important;
+}
+
+.button.acct {
+  background-color: var(--jckfrt-yellow)!important;
+  color: var(--jckfrt-olive)!important;
+  padding: 3px 10px;
+  margin: 5px 5px;
 }
 
 #header {
   .bar-item.button {
     white-space: normal;
     background-color: var(--jckfrt-dark)!important;
-    }
-  .button.acct {
-    background-color: var(--jckfrt-yellow)!important;
-    color: var(--jckfrt-olive)!important;
-    padding: 3px 10px;
-    margin: 5px 5px;
   }
 }
 
@@ -43,29 +69,29 @@
 }
 
 /* Responsive size variants */
-.button .small {
+.button.small {
   font-size: 0.875rem;
   padding: 0.4rem 0.9rem;
 }
 
-.button .medium {
+.button.medium {
   font-size: 1rem;
   padding: 0.5rem 1.25rem;
 }
 
-.button .large {
+.button.large {
   font-size: 1.125rem;
   padding: 0.75rem 1.5rem;
 }
 
 @media only screen and (min-width: 768px) {
-  .button .small { font-size: 0.9rem; }
-  .button .medium { font-size: 1.05rem; }
-  .button .large { font-size: 1.25rem; }
+  .button.small { font-size: 0.9rem; }
+  .button.medium { font-size: 1.05rem; }
+  .button.large { font-size: 1.25rem; }
 }
 
 @media only screen and (min-width: 1024px) {
-  .button .small { font-size: 1rem; }
-  .button .medium { font-size: 1.15rem; }
-  .button .large { font-size: 1.35rem; }
+  .button.small { font-size: 1rem; }
+  .button.medium { font-size: 1.15rem; }
+  .button.large { font-size: 1.35rem; }
 }

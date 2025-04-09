@@ -13,19 +13,6 @@
   --color-border: #ddd;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Dark Theme Defaults */
-    --color-bg: #121212;
-    --color-bg-alt: #1e1e1e;
-    --color-user: var(--color-signal-blue);
-    --color-sim: #2A2F32;
-    --color-text-dark: #f0f0f0;
-    --color-text-light: #fff;
-    --color-muted: #aaa;
-    --color-border: #333;
-  }
-}
 
 body {
   background-color: var(--color-bg);
@@ -71,7 +58,6 @@ body {
   display: inline-block;
   line-height: 1.4;
   word-wrap: break-word;
-  animation: fadeInUp 0.3s ease;
 }
 
 .chat-bubble.user {
@@ -110,18 +96,6 @@ body {
   }
 }
 
-/* Message animation */
-@keyframes fadeInUp {
-  0% {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Typing indicator animation */
 .typing-indicator {
   display: flex;
@@ -152,17 +126,6 @@ body {
 
 .typing-indicator .dot:nth-child(3) {
   animation-delay: 0.4s;
-}
-
-@keyframes typingBounce {
-  0%, 80%, 100% {
-    transform: scale(0.9);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1.2);
-    opacity: 1;
-  }
 }
 
 /* Chat input and button styles */
@@ -266,16 +229,6 @@ body {
   display: none;
 }
 
-body[data-theme="dark"] {
-  --color-bg: #121212;
-  --color-bg-alt: #1e1e1e;
-  --color-user: #007aff;
-  --color-sim: #2a2a2a;
-  --color-text-dark: #f0f0f0;
-  --color-text-light: #fff;
-  --color-muted: #aaa;
-  --color-border: #333;
-}
 
 .emoji-icon {
   width: 20px;
@@ -298,11 +251,6 @@ body[data-theme="dark"] {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  .emoji-icon {
-    fill: var(--color-text-light);
-  }
-}
 
 .bubble-inner {
   padding: 0.5rem 0.75rem;
@@ -311,7 +259,6 @@ body[data-theme="dark"] {
   display: inline-block;
   word-wrap: break-word;
   line-height: 1.4;
-  animation: fadeInUp 0.3s ease;
 }
 
 .bubble-user {
@@ -404,12 +351,6 @@ body[data-theme="dark"] {
   align-items: center;
   gap: 0.25rem;
   margin-left: 0.5rem;
-}
-
-@keyframes bounceOnce {
-  0%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-4px); }
-  60% { transform: translateY(2px); }
 }
 
 .new-message-btn.bounce {
