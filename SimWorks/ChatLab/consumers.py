@@ -4,25 +4,23 @@ import json
 import logging
 import random
 import time
-from logging import CRITICAL
 from logging import DEBUG
 from logging import ERROR
 from logging import INFO
-from logging import WARNING
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from core.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
-from services import openai_chat
+from core.ai.async_client import AsyncOpenAIChatService
 
 from .models import Message
 from .models import RoleChoices
 from .models import Simulation
 
 logger = logging.getLogger(__name__)
-
+ai = AsyncOpenAIChatService()
 
 class ChatConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
@@ -260,7 +258,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Send user's input to OpenAI to generate response, then
             # Wait until the minimum delay time is met
-            sim_responses = await sync_to_async(openai_chat.get_response)(user_msg)
+            sim_responses = await ai.generate_patient_reply(user_msg)
 
             elapsed = time.monotonic() - start_time
             if elapsed < min_delay_time:

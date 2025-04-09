@@ -74,16 +74,17 @@ def create_simulation(request):
 
     # Generate initial scenario and first SIM message in background
     import threading
-    from services.openai_chat import get_initial_response
+    from core.ai.async_client import AsyncOpenAIChatService
     from channels.layers import get_channel_layer
 
+    ai = AsyncOpenAIChatService()
     def start_initial_response(sim):
         logger.info(
             f"[ChatLab] requesting initial SimMessage for Simulation {sim.id} ({sim})"
         )
         try:
             # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
-            sim_responses = get_initial_response(sim)
+            sim_responses = async_to_sync(ai.generate_patient_intro)(sim)
 
             # Get channel layer and send the initial SimMessage to the group
             channel_layer = get_channel_layer()
