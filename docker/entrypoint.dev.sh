@@ -17,6 +17,21 @@ echo
 echo "Applying database migrations..."
 python manage.py migrate
 
+# Create default UserRole objects
+echo
+echo "Creating default user roles if not already exists..."
+python manage.py shell -c "\
+from accounts.models import UserRole; \
+UserRole.objects.exists() or UserRole.objects.bulk_create([ \
+    UserRole(name='EMT (NREMT-B)'), \
+    UserRole(name='Paramedic (NRP)'), \
+    UserRole(name='Military Medic'), \
+    UserRole(name='SOF Medic'), \
+    UserRole(name='RN'), \
+    UserRole(name='RN, BSN'), \
+    UserRole(name='Physician') \
+])"
+
 # Create AppDev superuser if it doesn't exist,
 # and only if DJANGO_DEBUG is set to True in .env
 if [ "${DJANGO_DEBUG:-}" = "True" ]; then
@@ -25,8 +40,9 @@ if [ "${DJANGO_DEBUG:-}" = "True" ]; then
   python manage.py shell -c "\
 from django.contrib.auth import get_user_model; \
 User = get_user_model(); \
+role, created = UserRole.objects.get_or_create(name='SOF Medic')
 User.objects.filter(username='appDev').exists() or \
-User.objects.create_superuser('appDev', 'dev@example.com', 'appDev')"
+User.objects.create_superuser(username='appDev', password='appDev', role=role)"
 else
   echo "Skipping dev superuser setup — DJANGO_DEBUG is not set to 'True'."
 fi
