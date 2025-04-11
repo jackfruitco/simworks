@@ -11,8 +11,20 @@ from django.utils import timezone
 
 
 class CustomUser(AbstractUser):
-    role = models.CharField(max_length=100, blank=True, null=True)
+    role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
 
+class UserRole(models.Model):
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Role",
+        default=1,
+        unique=True,
+    )
+
+    def __str__(self):
+        return self.name
 
 class Invitation(models.Model):
     token = models.CharField(max_length=64, unique=True, editable=False)
@@ -50,8 +62,9 @@ class Invitation(models.Model):
         super().save(*args, **kwargs)
 
     @property
-    def invitation_link(self):
-        return reverse("accounts:signup", kwargs={"token": self.token})
+    def link(self):
+        signup_url = reverse("accounts:signup")
+        return f"{signup_url}?token={self.token}"
 
     @property
     def is_expired(self):

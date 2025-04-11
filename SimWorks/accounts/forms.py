@@ -31,7 +31,7 @@ class CustomUserCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = get_user_model()  # This references your 'accounts.CustomUser'
         # Add invitation_token so it appears on the form
-        fields = ("username", "email", "first_name", "last_name", "invitation_token")
+        fields = ("username", "email", "role", "first_name", "last_name", "invitation_token")
 
     def clean_invitation_token(self):
         """Validate the invitation token is correct, unclaimed, and not expired."""

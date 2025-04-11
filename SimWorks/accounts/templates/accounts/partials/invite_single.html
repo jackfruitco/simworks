@@ -1,13 +1,12 @@
-{% for invite in invitations %}
-    {% if view_mode == 'grid' %}
+
+{% if view_mode == 'grid' %}
+    {% for invite in invitations %}
         <div class="tile-card" style="--tile-index: {{ forloop.counter0 }}">
             <p><strong>Email:</strong> {{ invite.email }}</p>
-            <p><strong>Created:</strong> {{ invite.created_at }}</p>
-            <p><strong>Expires:</strong> {{ invite.expires_at }}</p>
-            <p><strong>Claimed:</strong> {{ invite.claimed }}</p>
+            <p><strong>Claimed:</strong> {{ invite.is_claimed }}</p>
             <p><strong>Expired:</strong> {{ invite.is_expired }}</p>
+            <p><strong>Expires:</strong> {{ invite.expires_at }}</p>
             <p><strong>Invited By:</strong> {{ invite.invited_by }}</p>
-            <p><strong>Token:</strong> <code>{{ invite.token }}</code></p>
             <div x-data="{ open: false }" class="invite-settings">
                 <button @click="open = !open" class="settings-button">
                     <span class="iconify" data-icon="mdi:cog-outline"></span>
@@ -15,18 +14,28 @@
                 <div x-show="open" class="settings-menu" @click.outside="open = false">
                     <button disabled title="Email integration not yet available">Resend Invitation</button>
                     <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate Invitation</a>
-                    <button @click="$clipboard(`{{ invite.invitation_link }}`)">
+                    <button @click="$clipboard(`{{ invite.link }}`)">
                         <span class="iconify" data-icon="solar:copy-line-duotone" data-inline="true"></span>Copy Invite URL</button>
                 </div>
             </div>
         </div>
-    {% else %}
+    {% endfor %}
+{% else %}
+    <table>
+        <tr>
+            <th>Email</th>
+            <th>Claimed</th>
+            <th>Expired</th>
+            <th>Expiration</th>
+            <th>Invited By</th>
+            <th>Token</th>
+        </tr>
+        {% for invite in invitations %}
         <tr>
             <td>{{ invite.email }}</td>
-            <td>{{ invite.created_at }}</td>
-            <td>{{ invite.expires_at }}</td>
-            <td>{{ invite.claimed }}</td>
+            <td>{{ invite.is_claimed }}</td>
             <td>{{ invite.is_expired }}</td>
+            <td>{{ invite.expires_at }}</td>
             <td>{{ invite.invited_by }}</td>
             <td><code>{{ invite.token }}</code></td>
             <td>
@@ -37,10 +46,12 @@
                     <div x-show="open" class="settings-menu" @click.outside="open = false">
                         <button disabled title="Email integration not yet available">Resend</button>
                         <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate</a>
-                        <button @click="$clipboard(`{{ invite.invitation_link }}`)">Copy URL</button>
+                        <button @click="$clipboard(`{{ invite.link }}`)">Copy URL</button>
                     </div>
                 </div>
             </td>
         </tr>
-    {% endif %}
-{% endfor %}
+        {% endfor %}
+    </table>
+{% endif %}
+

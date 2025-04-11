@@ -69,17 +69,20 @@
 }
 
 /* Responsive size variants */
-.button.small {
+.button.small,
+.button.sm {
   font-size: 0.875rem;
   padding: 0.4rem 0.9rem;
 }
 
-.button.medium {
+.button.medium,
+.button.md {
   font-size: 1rem;
   padding: 0.5rem 1.25rem;
 }
 
-.button.large {
+.button.large,
+.button.lg {
   font-size: 1.125rem;
   padding: 0.75rem 1.5rem;
 }

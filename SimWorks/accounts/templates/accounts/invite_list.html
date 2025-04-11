@@ -21,12 +21,15 @@
     <h1>All Invitations</h1>
 
     <div class="mb-16" style="text-align: right;">
-        <button class="button primary small" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+        <button class="button primary small"
+            @click="viewMode = viewMode === 'list' ? 'grid' : 'list';
+                    document.getElementById('invite-list').innerHTML = '';
+                    document.getElementById('invite-list').dispatchEvent(new Event('load'))">
             Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
         </button>
     </div>
 
-    <div class="filter-bar">
+    <div class="filter-bar" style="max-height: 300px; overflow-y: auto;">
         <select class="filter-input" x-model="claimedFilter">
             <option value="">All</option>
             <option value="true">Claimed</option>
@@ -50,17 +53,21 @@
         </button>
     </div>
 
-    <div id="invite-list" :hx-get="`/accounts/invitations/?page=1&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`" hx-trigger="load" hx-target="#invite-list" hx-swap="beforeend">
+    <div id="invite-list" :hx-get="`/accounts/invitations/list/?page=1&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`" hx-trigger="load" hx-target="#invite-list" hx-swap="beforeend">
     </div>
 
-    <div
-        id="pagination-loader"
-        class="mt-16 mx-auto center"
-        :hx-get="`/accounts/invitations/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
-        hx-trigger="revealed"
-        hx-target="#invite-list"
-        hx-swap="beforeend"
-    >
+<div
+    id="pagination-loader"
+    class="mt-16 mx-auto center"
+    :hx-get="`/accounts/invitations/list/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
+    hx-trigger="revealed"
+    hx-target="#invite-list"
+    hx-swap="beforeend"
+    hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
+    x-show="!noMore"
+>
+    <button class="button primary small" disabled>Loading more invitations...</button>
+</div>
         <button class="button primary small" disabled>Loading more invitations...</button>
     </div>
 </div>
