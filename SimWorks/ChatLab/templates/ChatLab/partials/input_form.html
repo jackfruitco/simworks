@@ -1,6 +1,9 @@
 {% load static %}
 
-<form id="chat-form" @submit.prevent="sendMessage">
+<form id="chat-form"
+    @submit.prevent="sendMessage"
+    x-data="{ isLocked: {{ simulation.is_ended|yesno:'true,false' }} }"
+>
   <button type="button" id="emoji-button" title="Emoji" class="emoji-button hide-small">
         <span class="iconify chat-icon" data-icon="fa6-regular:face-smile" data-inline="false"></span>
   </button>
@@ -8,11 +11,17 @@
     x-model="messageText"
     id="chat-message-input"
     type="text"
-    placeholder="Message..."
+    :disabled="isLocked"
+    :placeholder="isLocked ? 'Simulation locked.' : 'Message'"
     @input="notifyTyping"
     autofocus
   >
-    <button type="submit">
-      <span class="iconify chat-icon mr-4 color-accent-blue" data-icon="bi:arrow-up-circle-fill" data-inline="false"></span>
+    <button type="submit" :disabled="isLocked">
+      <span
+          class="iconify chat-icon mr-4"
+          :class="{ 'color-accent-blue': !isLocked }"
+          data-icon="bi:arrow-up-circle-fill"
+          data-inline="false"
+      ></span>
     </button>
 </form>

@@ -119,16 +119,16 @@ def run_simulation(request, simulation_id):
             "You do not have permission to view this simulation."
         )
 
-    if simulation.is_complete:
-        simulated_locked = True
-    else:
-        simulated_locked = False
+    # if simulation.is_complete:
+    #     simulation_locked = True
+    # else:
+    #     simulation_locked = False
 
     context = {
         "simulation": simulation,
         "metadata": metadata,
         "sim_start_unix": int(simulation.start.timestamp() * 1000),
-        "simulated_locked": simulated_locked,
+        "simulation_locked": simulation.is_complete,
     }
 
     return render(request, "ChatLab/simulation.html", context)
@@ -190,4 +190,5 @@ def end_simulation(request, simulation_id):
     if not simulation.end:
         simulation.end = now()
         simulation.save()
+
     return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
