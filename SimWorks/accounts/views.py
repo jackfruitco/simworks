@@ -2,7 +2,6 @@ from accounts.decorators import is_inviter
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import user_passes_test
-from django.contrib.auth.forms import UserCreationForm
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import redirect
@@ -11,34 +10,21 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import InvitationForm
+from .forms import InvitationForm, CustomUserCreationForm
 from .models import Invitation
 
 
 def signup(request):
     token = request.GET.get("token") or request.POST.get("token")
-    invitation = None
-    if token:
-        try:
-            invitation = Invitation.objects.get(token=token, claimed=False)
-            if invitation.is_expired:
-                invitation = None
-        except Invitation.DoesNotExist:
-            invitation = None
-
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
-        if form.is_valid() and invitation:
+        form = CustomUserCreationForm(request.POST)
+        if form.is_valid():
             user = form.save()
-            # Mark invitation as used
-            invitation.mark_as_claimed()
             login(request, user)
-            return redirect("profile")
-        else:
-            if not invitation:
-                form.add_error("token", "Invitation token is invalid or expired.")
+            return redirect("accounts:profile")
     else:
-        form = UserCreationForm(initial={"token": token} if token else None)
+        # Pre-populate the invitation_token field if a token exists
+        form = CustomUserCreationForm(initial={"invitation_token": token} if token else None)
 
     return render(request, "accounts/signup.html", {"form": form, "token": token})
 

@@ -14,7 +14,7 @@
                 </button>
                 <div x-show="open" class="settings-menu" @click.outside="open = false">
                     <button disabled title="Email integration not yet available">Resend Invitation</button>
-                    <a href="{% url 'accounts:recreate_invite' token=invite.token %}">Recreate Invitation</a>
+                    <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate Invitation</a>
                     <button @click="$clipboard(`{{ invite.invitation_link }}`)">
                         <span class="iconify" data-icon="solar:copy-line-duotone" data-inline="true"></span>Copy Invite URL</button>
                 </div>
@@ -36,7 +36,7 @@
                     </button>
                     <div x-show="open" class="settings-menu" @click.outside="open = false">
                         <button disabled title="Email integration not yet available">Resend</button>
-                        <a href="{% url 'accounts:recreate_invite' token=invite.token %}">Recreate</a>
+                        <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate</a>
                         <button @click="$clipboard(`{{ invite.invitation_link }}`)">Copy URL</button>
                     </div>
                 </div>
