@@ -182,3 +182,9 @@ MEDIA_ROOT = BASE_DIR.parent / "media"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+SITE_NAME = check_env("SITE_NAME")
+SITE_ADMIN = {
+    "NAME": check_env("SITE_ADMIN_NAME", default="SimWorks"),
+    "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
+}
