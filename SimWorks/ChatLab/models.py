@@ -4,6 +4,8 @@ from datetime import datetime
 from datetime import timedelta
 from hashlib import sha256
 
+from core.SimAI.prompts import ChatLabModifiers
+from core.SimAI.prompts import DEFAULT_PROMPT_BASE
 from core.utils import randomize_display_name
 from django.conf import settings
 from django.db import models
@@ -19,7 +21,8 @@ logger = logging.getLogger(__name__)
 def get_default_prompt():
     """"""
     prompt, created = Prompt.objects.get_or_create(
-        title=DEFAULT_PROMPT_TITLE, defaults={"content": DEFAULT_PROMPT_CONTENT}
+        title=DEFAULT_PROMPT_TITLE,
+        defaults={"content": DEFAULT_PROMPT_BASE + ChatLabModifiers.default()},
     )
     return prompt.id
 
@@ -88,6 +91,7 @@ class Simulation(models.Model):
 
     description = models.TextField(blank=True, null=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    openai_model = models.CharField(blank=True, null=True, max_length=128)
     metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
 
     sim_patient_full_name = models.CharField(max_length=100, blank=True)
@@ -194,15 +198,16 @@ class Simulation(models.Model):
         return self.prompt
 
 
-class SimulationMetafield(models.Model):
+class SimulationMetadata(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
-    key = models.TextField(blank=False, null=False)
-    value = models.TextField(blank=False, null=False)
+    key = models.CharField(blank=False, null=False, max_length=64)
+    attribute = models.CharField(blank=False, null=False, max_length=64)
+    value = models.CharField(blank=False, null=False, max_length=255)
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
@@ -213,7 +218,7 @@ class SimulationMetafield(models.Model):
         )
         self.simulation.save(update_fields=["metadata_checksum"])
         logger.info(
-            "[SimulationMetafield.save] %s metafield: %s for SIM #%s (ID: %s)",
+            "[SimulationMetadata.save] %s metafield: %s for SIM #%s (ID: %s)",
             "New" if is_new else "Modified",
             self.key.lower(),
             self.simulation.id,
@@ -221,7 +226,10 @@ class SimulationMetafield(models.Model):
         )
 
     def __str__(self):
-        return f"SIM #{self.simulation.id} Metafield: {self.key.title()} " f""
+        return (
+            f"Sim#{self.simulation.id} Metadata ({self.attribute.lower()}): {self.key.title()} "
+            f""
+        )
 
 
 class Message(models.Model):

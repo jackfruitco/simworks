@@ -4,6 +4,7 @@ from .models import *
 
 # Register your models here.
 admin.site.register(Message)
+admin.site.register(SimulationMetadata)
 
 
 @admin.register(Prompt)
@@ -30,11 +31,22 @@ class PromptAdmin(admin.ModelAdmin):
     modified_by_display.short_description = "Modified By"
 
 
+class MetadataInline(admin.TabularInline):
+    model = SimulationMetadata
+    extra = 0
+    readonly_fields = ("attribute", "key")
+    fieldsets = [
+        (None, {"fields": ("value",)}),
+    ]
+
+
 @admin.register(Simulation)
 class SimulationAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "start", "prompt", "is_complete", "is_timed_out")
+    list_display = ("id", "start", "user", "is_complete", "is_timed_out")
     fields = ("user", "start", "end", "time_limit", "prompt")
     readonly_fields = ("start", "end")
     list_filter = ("prompt", "end", "time_limit")
     search_fields = ("user__username", "prompt__title")
-    ordering = ("-start",)
+    ordering = ("-id",)
+
+    inlines = [MetadataInline]

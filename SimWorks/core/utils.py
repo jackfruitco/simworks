@@ -10,6 +10,7 @@ fake = Faker()
 # A unique sentinel to detect if a default value was provided.
 _SENTINEL = object()
 
+
 def check_env(var_name, default=_SENTINEL):
     """
     Retrieves the environment variable or returns the default if provided.
@@ -25,8 +26,11 @@ def check_env(var_name, default=_SENTINEL):
     except KeyError:
         if default is not _SENTINEL:
             return default
-        error_msg = f"{var_name} not found! Did you set the environment variable {var_name}?"
-        raise ImproperlyConfigured(error_msg)
+        error_msg = (
+            f"{var_name} not found! Did you set the environment variable {var_name}?"
+        )
+        # raise ImproperlyConfigured(error_msg)
+
 
 def generate_fake_name() -> str:
     return fake.name()

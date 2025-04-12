@@ -46,22 +46,22 @@ LOGGING = {
         },
         "ChatLab": {
             "handlers": ["console"],
-            "level": check_env('CHATLAB_LOG_LEVEL', None) or LOG_LEVEL,
+            "level": check_env("CHATLAB_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
         "accounts": {
             "handlers": ["console"],
-            "level": check_env('ACCOUNTS_LOG_LEVEL', None) or LOG_LEVEL,
+            "level": check_env("ACCOUNTS_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
         "notifications": {
             "handlers": ["console"],
-            "level": check_env('NOTIFY_LOG_LEVEL', None) or LOG_LEVEL,
+            "level": check_env("NOTIFY_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "core.ai": {
+        "core.SimAI": {
             "handlers": ["console"],
-            "level": check_env('AI_LOG_LEVEL', None) or LOG_LEVEL,
+            "level": check_env("SIM-AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
     },

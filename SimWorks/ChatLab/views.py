@@ -1,7 +1,7 @@
 import logging
 
 from asgiref.sync import async_to_sync
-from core.utils import generate_random_full_name
+from core.utils import generate_fake_name
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -64,7 +64,7 @@ def create_simulation(request):
     simulation = Simulation.objects.create(
         user=request.user,
         start=now(),
-        sim_patient_full_name=generate_random_full_name(),
+        sim_patient_full_name=generate_fake_name(),
     )
 
     User = get_user_model()
@@ -74,10 +74,11 @@ def create_simulation(request):
 
     # Generate initial scenario and first SIM message in background
     import threading
-    from core.ai.async_client import AsyncOpenAIChatService
+    from core.SimAI.async_client import AsyncOpenAIChatService
     from channels.layers import get_channel_layer
 
     ai = AsyncOpenAIChatService()
+
     def start_initial_response(sim):
         logger.info(
             f"[ChatLab] requesting initial SimMessage for Simulation {sim.id} ({sim})"

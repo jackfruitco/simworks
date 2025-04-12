@@ -1,11 +1,12 @@
 import logging
-from typing import List, Optional
+from typing import List
+from typing import Optional
 
+from ChatLab.models import Message
+from ChatLab.models import Simulation
+from core.SimAI.parser import OpenAIResponseParser
 from django.conf import settings
-from ChatLab.models import Message, Simulation
 from openai import OpenAI
-
-from core.ai.parser import OpenAIResponseParser
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class OpenAIChatService:
     def get_initial_response(self, simulation: Simulation) -> List[Message]:
         if not simulation.prompt:
             from ChatLab.models import get_default_prompt
+
             simulation.prompt_id = get_default_prompt()
             simulation.save()
 
@@ -52,8 +54,12 @@ class OpenAIChatService:
             ],
         )
 
-        logger.debug(f"Generated initial scenario message for Simulation {simulation.id}")
-        logger.info(f"[SIM #{simulation.id}] OpenAI Initial response: {response.output_text}")
+        logger.debug(
+            f"Generated initial scenario message for Simulation {simulation.id}"
+        )
+        logger.info(
+            f"[SIM #{simulation.id}] OpenAI Initial response: {response.output_text}"
+        )
 
         parser = OpenAIResponseParser(simulation)
         return parser.parse_full_response(response.output_text, response.id)

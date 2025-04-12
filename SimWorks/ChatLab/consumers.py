@@ -10,10 +10,10 @@ from logging import INFO
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from core.SimAI.async_client import AsyncOpenAIChatService
 from core.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
-from core.ai.async_client import AsyncOpenAIChatService
 
 from .models import Message
 from .models import RoleChoices
@@ -21,6 +21,7 @@ from .models import Simulation
 
 logger = logging.getLogger(__name__)
 ai = AsyncOpenAIChatService()
+
 
 class ChatConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
