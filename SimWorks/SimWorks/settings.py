@@ -1,19 +1,12 @@
 import os
+import os
 import re
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
-
-def get_env_variable(var_name):
-    try:
-        return os.environ[var_name]
-    except KeyError:
-        error_msg = (
-            f"{var_name} not found! Did you set the environment variable {var_name}?"
-        )
-        raise ImproperlyConfigured(error_msg)
-
+from core.utils import check_env
+from .logging import LOGGING
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -127,63 +120,15 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-OPENAI_API_KEY = get_env_variable("OPENAI_API_KEY")
+OPENAI_API_KEY = check_env("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", 'gpt-4o-mini')
-LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()
-
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "verbose": {
-            "format": "[{asctime}] {levelname} [{name}:{lineno}] {message}",
-            "style": "{",
-        },
-        "simple": {
-            "format": "{levelname} {message}",
-            "style": "{",
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "verbose",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": LOG_LEVEL,
-    },
-    "loggers": {
-        "django": {
-            "handlers": ["console"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-        "ChatLab": {
-            "handlers": ["console"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-        "openai_chat": {
-            "handlers": ["console"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-        "notifications": {
-            "handlers": ["console"],
-            "level": LOG_LEVEL,
-            "propagate": False,
-        },
-    },
-}
 
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                f"redis://:{get_env_variable('REDIS_PASSWORD')}@{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', 6379)}"
+                f"redis://:{check_env('REDIS_PASSWORD')}@{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', 6379)}"
             ],
         },
     }
@@ -237,3 +182,9 @@ MEDIA_ROOT = BASE_DIR.parent / "media"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+SITE_NAME = check_env("SITE_NAME")
+SITE_ADMIN = {
+    "NAME": check_env("SITE_ADMIN_NAME", default="SimWorks"),
+    "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
+}

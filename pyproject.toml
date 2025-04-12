@@ -10,6 +10,7 @@ dependencies = [
     "django>=5.2",
     "django-htmx>=1.23.0",
     "django-redis>=5.4.0",
+    "faker>=37.1.0",
     "openai>=1.69.0",
     "pre-commit>=4.2.0",
     "psycopg>=3.2.6",
