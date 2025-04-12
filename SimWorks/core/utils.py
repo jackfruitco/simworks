@@ -3,7 +3,9 @@ import random
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
+from faker import Faker
 
+fake = Faker()
 
 # A unique sentinel to detect if a default value was provided.
 _SENTINEL = object()
@@ -26,28 +28,8 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = f"{var_name} not found! Did you set the environment variable {var_name}?"
         raise ImproperlyConfigured(error_msg)
 
-def generate_random_full_name() -> str:
-    first_names = [
-        "Tyler",
-        "Jordan",
-        "Alex",
-        "Morgan",
-        "Taylor",
-        "Chris",
-        "Jamie",
-        "Drew",
-    ]
-    last_names = [
-        "Johnson",
-        "Smith",
-        "Taylor",
-        "Davis",
-        "Brown",
-        "Anderson",
-        "Lee",
-        "Miller",
-    ]
-    return f"{random.choice(first_names)} {random.choice(last_names)}"
+def generate_fake_name() -> str:
+    return fake.name()
 
 
 def randomize_display_name(full_name: str) -> str:
