@@ -11,8 +11,20 @@ from django.utils import timezone
 
 
 class CustomUser(AbstractUser):
-    role = models.CharField(max_length=100, blank=True, null=True)
+    role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
 
+class UserRole(models.Model):
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Role",
+        default=1,
+        unique=True,
+    )
+
+    def __str__(self):
+        return self.name
 
 class Invitation(models.Model):
     token = models.CharField(max_length=64, unique=True, editable=False)
@@ -21,14 +33,22 @@ class Invitation(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(blank=True, null=True)
-    claimed = models.BooleanField(default=False)
-    claimed_at = models.DateTimeField(blank=True, null=True)
     invited_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="sent_invitations",
+    )
+
+    is_claimed = models.BooleanField(default=False)
+    claimed_at = models.DateTimeField(blank=True, null=True)
+    claimed_by = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invitation",
     )
 
     def save(self, *args, **kwargs):
@@ -42,21 +62,23 @@ class Invitation(models.Model):
         super().save(*args, **kwargs)
 
     @property
-    def invitation_link(self):
-        return reverse("accounts:signup", kwargs={"token": self.token})
+    def link(self):
+        signup_url = reverse("accounts:signup")
+        return f"{signup_url}?token={self.token}"
 
     @property
     def is_expired(self):
         return self.expires_at and timezone.now() > self.expires_at
 
     def clean(self):
-        if self.claimed and not self.claimed_at:
+        if self.is_claimed and not self.claimed_at:
             raise ValidationError("Used invitation must have a claimed_at timestamp.")
 
-    def mark_as_claimed(self):
-        self.claimed = True
+    def mark_as_claimed(self, user: CustomUser = None):
+        self.is_claimed = True
         self.claimed_at = timezone.now()
+        self.claimed_by = user
         self.save()
 
     def __str__(self):
-        return f"Invitation {self.token} ({'claimed' if self.claimed else 'unclaimed'})"
+        return f"Invitation {self.token} ({'claimed' if self.is_claimed else 'unclaimed'})"

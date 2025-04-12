@@ -18,15 +18,28 @@
     {% endif %}
     <form method="post" action="{% url 'accounts:signup' %}">
         {% csrf_token %}
-        {% if token %}
-        <input type="hidden" name="token" value="{{ token }}">
-        {% else %}
         <div class="form-group">
-            <label for="id_token">Invitation Token:</label>
-            <input type="text" name="token" id="id_token" placeholder="Enter your invitation token">
+            <label for="{{ form.invitation_token.id_for_label }}">Invitation Token:</label>
+            {% if token %}
+                <input type="text" name="{{ form.invitation_token.name }}" id="{{ form.invitation_token.id_for_label }}" value="{{ invitation_token }}" readonly>
+            {% else %}
+                {{ form.invitation_token }}
+            {% endif %}
         </div>
-        {% endif %}
-        {{ form.as_p }}
+        {% for field in form %}
+            {% if field.name != "invitation_token" %}
+                <p>
+                    {{ field.label_tag }}<br>
+                    {{ field }}
+                    {% if field.errors %}
+                        <span class="error">{{ field.errors }}</span>
+                    {% endif %}
+                    {% if field.help_text %}
+                        <small>{{ field.help_text }}</small>
+                    {% endif %}
+                </p>
+            {% endif %}
+        {% endfor %}
         <button class="button primary" type="submit">Sign Up</button>
     </form>
     <p>
