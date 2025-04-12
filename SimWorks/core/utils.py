@@ -1,9 +1,30 @@
+import os
 import random
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured
 
-User = get_user_model()
 
+# A unique sentinel to detect if a default value was provided.
+_SENTINEL = object()
+
+def check_env(var_name, default=_SENTINEL):
+    """
+    Retrieves the environment variable or returns the default if provided.
+    Raises ImproperlyConfigured if the variable is not found and no default is provided.
+
+    :param var_name: The name of the environment variable.
+    :param default: The default value to return if the variable is not found.
+                    If not provided, an error is raised.
+    :return: The environment variable value or the default.
+    """
+    try:
+        return os.environ[var_name]
+    except KeyError:
+        if default is not _SENTINEL:
+            return default
+        error_msg = f"{var_name} not found! Did you set the environment variable {var_name}?"
+        raise ImproperlyConfigured(error_msg)
 
 def generate_random_full_name() -> str:
     first_names = [
@@ -59,6 +80,7 @@ def get_user_initials(user) -> str:
     - If username is numeric: returns 'Unk'
     """
 
+    User = get_user_model()
     if type(user) == str:
         try:
             user = User.objects.get(username=user)
