@@ -61,7 +61,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app/docker/healthcheck.sh
 
 # Switch to the non-privileged user to run the application.
-USER appuser
+# USER appuser
 
 # Set working directory to SimWorks Django root
 WORKDIR /app/SimWorks
