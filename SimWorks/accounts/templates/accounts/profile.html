@@ -30,6 +30,7 @@
     {% if user.is_staff %}
     <a href="{% url 'accounts:new-invite' %}" class="button small">New Invitation</a>
     <a href="{% url 'accounts:list-invites' %}" class="button small">View Invitations</a>
+    <a href="{% url 'SimManAI:usage-report' %}" class="button small">View Usage Analytics</a>
     {% endif %}
 </section>
 {% endblock content %}

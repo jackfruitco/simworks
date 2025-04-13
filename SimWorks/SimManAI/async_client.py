@@ -13,13 +13,11 @@ from typing import Optional
 from asgiref.sync import sync_to_async
 from ChatLab.models import Message
 from ChatLab.models import Simulation
-from core.SimAI import prompts
-from core.SimAI.output_schemas import build_message_output_schema
-from core.SimAI.parser import _get_system_user
-from core.SimAI.parser import StructuredOutputParser
+from . import prompts
+from .output_schemas import build_message_output_schema
+from .openai_gateway import process_response
 from django.conf import settings
 from openai import AsyncOpenAI
-
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +107,36 @@ class AsyncOpenAIChatService:
     async def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
         return logger.log(level, f"[{func_name}]: {msg}")
 
+    async def generate_patient_intro(
+        self, simulation: Simulation, stream: bool = False
+    ) -> List[Message]:
+        """
+        Generate the initial introduction message for the patient in the simulation.
+
+        Args:
+            simulation (Simulation): The simulation object.
+            stream (bool): If the feedback should be streamed.
+
+        Returns:
+            List[Message]: A list of Message objects representing the initial introduction.
+        """
+        func_name = inspect.currentframe().f_code.co_name
+
+        prompt = await sync_to_async(simulation.get_or_assign_prompt)()
+        text = await build_message_output_schema(initial=True)
+
+        input_payload = await build_patient_intro_payload(
+            simulation, prompt
+        )  # Build the payload for the introduction
+        response = await self.client.responses.create(
+            model=self.model,
+            input=input_payload,
+            text=text,
+            stream=stream,
+        )
+
+        return await process_response(response, simulation, stream)
+
     async def generate_patient_reply(
         self, user_msg: Message, stream: bool = False
     ) -> List[Message]:
@@ -133,64 +161,15 @@ class AsyncOpenAIChatService:
         # Build payload (prompt, instructions), then get response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
         text = await build_message_output_schema()
-        system_user = await sync_to_async(_get_system_user)()
         response = await self.client.responses.create(
             model=self.model,
             text=text,
             stream=stream,
             **payload,
         )
-        # DEBUG logging
-        await self.log(
-            func_name=func_name,
-            msg=f"OpenAI response text ({type(response)}): {response.output_text}",
-            level=logging.DEBUG,
-        )
 
-        # DEPRECATED; openai_id will be set on messages from OpenAI, not from user
-        # await sync_to_async(user_msg.set_openai_id)(response.id)
-
-        parser = StructuredOutputParser(user_msg.simulation, system_user, response.id)
-        return await parser.parse_output(response.output_text)
-
-    async def generate_patient_intro(
-        self, simulation: Simulation, stream: bool = False
-    ) -> List[Message]:
-        """
-        Generate the initial introduction message for the patient in the simulation.
-
-        Args:
-            simulation (Simulation): The simulation object.
-            stream (bool): If the feedback should be streamed.
-
-        Returns:
-            List[Message]: A list of Message objects representing the initial introduction.
-        """
-        prompt = await sync_to_async(simulation.get_or_assign_prompt)()
-        text = await build_message_output_schema(initial=True)
-
-        input_payload = await build_patient_intro_payload(
-            simulation, prompt
-        )  # Build the payload for the introduction
-        response = await self.client.responses.create(
-            model=self.model,
-            input=input_payload,
-            text=text,
-            stream=stream,
-        )
-
-        logger.info(
-            f"Generated initial scenario message for Simulation {simulation.id}"
-        )
-        logger.debug(
-            f"[SIM #{simulation.id}] OpenAI Initial response: {response.output_text}"
-        )
-
-        system_user = await sync_to_async(_get_system_user)()
-        # parser = OpenAIResponseParser(simulation, system_user)  # Initialize the response parser for the simulation
-        # return await parser.parse_full_response(response.output_text, response.id)  # Parse and return the response
-        parser = StructuredOutputParser(simulation, system_user, response.id)
-        return await parser.parse_output(response.output_text)
+        simulation = user_msg.simulation
+        return await process_response(response, simulation, stream)
 
     async def generate_simulation_feedback(
         self, simulation: Simulation, stream: bool = False
@@ -212,6 +191,4 @@ class AsyncOpenAIChatService:
             **payload,
         )
 
-        system_user = await sync_to_async(_get_system_user)()
-        parser = StructuredOutputParser(simulation, system_user, response.id)
-        return await parser.parse_output(response.output_text)
+        return await process_response(response, simulation, stream)

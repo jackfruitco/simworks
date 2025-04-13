@@ -19,22 +19,12 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-def _get_system_user():
-    """
-    Lazy-loads the system user.
-    """
-    user, _ = User.objects.get_or_create(
-        username="System", defaults={"first_name": "System", "is_active": False}
-    )
-    return user
-
-
 class StructuredOutputParser:
     """
     A utility class responsible for parsing the OpenAI structured output into metadata and messages...
     """
 
-    def __init__(self, simulation: Simulation, system_user, response_id):
+    def __init__(self, simulation: Simulation, system_user: User, response_id):
         self.simulation = simulation
         self.system_user = system_user
         self.response_id = response_id
@@ -69,7 +59,7 @@ class StructuredOutputParser:
         }
         patient_metadata.update(patient_data.get("additional_metadata", {}))
 
-        logger.info(
+        logger.debug(
             f"{func_name} parsed {len(messages)} {'message' if len(messages) == 1 else 'messages'}:"
         )
         logger.debug(

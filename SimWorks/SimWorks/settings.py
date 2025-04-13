@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
     "core",
+    "SimManAI",
     "ChatLab",
     "django_htmx",
 ]

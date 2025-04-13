@@ -30,7 +30,7 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = (
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
-        raise ImproperlyConfigured(error_msg)
+        # raise ImproperlyConfigured(error_msg)
 
 
 class AppColorFormatter(logging.Formatter):
@@ -100,3 +100,15 @@ def get_user_initials(user) -> str:
     elif hasattr(user, "username") and user.username and not user.username.isnumeric():
         return user.username[0].upper()
     return "Unk"
+
+def get_system_user(name="System", **defaults):
+    """
+    Lazy-loads a system user by name.
+    By default, returns the user with username 'System'.
+    Additional defaults (like first_name, is_active) can be passed.
+    """
+    User = get_user_model()
+    defaults.setdefault("first_name", name)
+    defaults.setdefault("is_active", False)
+    user, _ = User.objects.get_or_create(username=name, defaults=defaults)
+    return user

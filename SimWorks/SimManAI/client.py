@@ -4,7 +4,7 @@ from typing import Optional
 
 from ChatLab.models import Message
 from ChatLab.models import Simulation
-from core.SimAI.parser import OpenAIResponseParser
+from SimManAI.parser import OpenAIResponseParser
 from django.conf import settings
 from openai import OpenAI
 

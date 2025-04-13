@@ -18,7 +18,7 @@ def dynamic_type(
       - always optional: `initial=False, only=False`.
       - initial required: `initial=True, only=False`.
       - initial *only*: `initial=initial, only=True`.
-      - disable key: 'disabled=True`.
+      - disable key: `disabled=True`.
 
     :return string: JSON Schema Type
     """

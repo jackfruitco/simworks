@@ -31,6 +31,9 @@ class Invitation(models.Model):
     email = models.EmailField(
         blank=True, null=True, help_text="Optional: email address of the invitee"
     )
+    first_name = models.CharField(
+        blank=True, null=True, help_text="Optional: first name of the invitee", max_length=100
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(blank=True, null=True)
     invited_by = models.ForeignKey(

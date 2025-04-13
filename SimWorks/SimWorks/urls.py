@@ -1,3 +1,5 @@
+# SimWorks/urls.py
+
 from core import views as CoreViews
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
@@ -11,6 +13,7 @@ sitemaps = {
 urlpatterns = [
     path("", CoreViews.index, name="home"),
     path("admin/", admin.site.urls),
+    path("SimManAI/", include("SimManAI.urls")),
     path("accounts/", include("accounts.urls")),
     path("ChatLab/", include("ChatLab.urls")),
     path(
