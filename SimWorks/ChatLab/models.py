@@ -4,19 +4,17 @@ from datetime import datetime
 from datetime import timedelta
 from hashlib import sha256
 
-from core.SimAI.prompts import ChatLabModifiers
-from core.SimAI.prompts import DEFAULT_PROMPT_BASE
+from SimManAI.prompts import ChatLabModifiers
+from SimManAI.prompts import DEFAULT_PROMPT_BASE
 from core.utils import randomize_display_name
 from django.conf import settings
 from django.db import models
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
-from .constants import DEFAULT_PROMPT_CONTENT
 from .constants import DEFAULT_PROMPT_TITLE
 
 logger = logging.getLogger(__name__)
-
 
 def get_default_prompt():
     """"""
@@ -170,16 +168,8 @@ class Simulation(models.Model):
             self.sim_patient_display_name = randomize_display_name(
                 self.sim_patient_full_name
             )
-
         super().save(*args, **kwargs)
 
-        if self.time_limit:
-            run_time = f" with max run time set to {self.time_limit}"
-        else:
-            run_time = f" with no max run time"
-        logger.info(
-            f"New Simulation: Sim #{self.pk} created for {self.user.username}{run_time}"
-        )
 
     def __str__(self) -> str:
         if self.description:
@@ -217,13 +207,6 @@ class SimulationMetadata(models.Model):
             self.simulation.calculate_metadata_checksum()
         )
         self.simulation.save(update_fields=["metadata_checksum"])
-        logger.info(
-            "[SimulationMetadata.save] %s metafield: %s for SIM #%s (ID: %s)",
-            "New" if is_new else "Modified",
-            self.key.lower(),
-            self.simulation.id,
-            self.id,
-        )
 
     def __str__(self):
         return (
@@ -290,13 +273,6 @@ class Message(models.Model):
                 else 1
             )
         super().save(*args, **kwargs)
-        logger.info(
-            "[Message.save] %s message for ChatLab Sim #%s from %s (ID: %s)",
-            "New" if is_new else "Modified",
-            self.simulation.pk,
-            self.sender.username if self.sender else "System",
-            self.pk,
-        )
 
     class Meta:
         unique_together = ("simulation", "order")

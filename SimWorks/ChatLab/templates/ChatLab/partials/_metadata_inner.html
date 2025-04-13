@@ -1,0 +1,9 @@
+{% if metadata %}
+  <ul class="sim-metadata">
+    {% for metafield in metadata %}
+      <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|title }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="sim-metadata-empty">No data available yet.</div>
+{% endif %}

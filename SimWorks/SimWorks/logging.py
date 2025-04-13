@@ -20,6 +20,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
+            "()": "core.utils.AppColorFormatter",
             "format": "[{asctime}] {levelname} [{name}:{lineno}] {message}",
             "style": "{",
         },
@@ -59,7 +60,7 @@ LOGGING = {
             "level": check_env("NOTIFY_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "core.SimAI": {
+        "core.SimManAI": {
             "handlers": ["console"],
             "level": check_env("SIM-AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,

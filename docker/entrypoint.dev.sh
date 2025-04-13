@@ -36,7 +36,7 @@ UserRole.objects.exists() or UserRole.objects.bulk_create([ \
 # and only if DJANGO_DEBUG is set to True in .env
 if [ "${DJANGO_DEBUG:-}" = "True" ]; then
   echo
-  echo "Checking for Developer superuser if not exists..."
+  echo "Creating developer superuser if not exists..."
   python manage.py shell -c "\
 from django.contrib.auth import get_user_model; \
 User = get_user_model(); \

@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 
@@ -30,6 +31,22 @@ def check_env(var_name, default=_SENTINEL):
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
         # raise ImproperlyConfigured(error_msg)
+
+
+class AppColorFormatter(logging.Formatter):
+    COLORS = {
+        "ChatLab": "\033[94m",       # Blue
+        "SimManAI": "\033[92m",      # Green
+        "accounts": "\033[95m",      # Magenta
+        "notifications": "\033[93m", # Yellow
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        app = record.name.split(".")[0]
+        color = self.COLORS.get(app, "")
+        record.name = f"{color}{record.name}{self.RESET}" if color else record.name
+        return super().format(record)
 
 
 def generate_fake_name() -> str:
@@ -83,3 +100,15 @@ def get_user_initials(user) -> str:
     elif hasattr(user, "username") and user.username and not user.username.isnumeric():
         return user.username[0].upper()
     return "Unk"
+
+def get_system_user(name="System", **defaults):
+    """
+    Lazy-loads a system user by name.
+    By default, returns the user with username 'System'.
+    Additional defaults (like first_name, is_active) can be passed.
+    """
+    User = get_user_model()
+    defaults.setdefault("first_name", name)
+    defaults.setdefault("is_active", False)
+    user, _ = User.objects.get_or_create(username=name, defaults=defaults)
+    return user

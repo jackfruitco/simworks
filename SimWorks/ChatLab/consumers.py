@@ -4,13 +4,10 @@ import json
 import logging
 import random
 import time
-from logging import DEBUG
-from logging import ERROR
-from logging import INFO
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from core.SimAI.async_client import AsyncOpenAIChatService
+from SimManAI.async_client import AsyncOpenAIChatService
 from core.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
@@ -31,7 +28,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_group_name = None
         self.simulation = None
 
-    def log(self, func_name, msg="triggered", level=DEBUG) -> None:
+    def log(self, func_name, msg="triggered", level=logging.DEBUG) -> None:
         return logger.log(level, f"{func_name}: {msg}")
 
     async def connect(self) -> None:
@@ -54,7 +51,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         except Simulation.DoesNotExist:
             error_message = f"Simulation with id {self.simulation_id} does not exist."
-            ChatConsumer.log(self, func_name, error_message, level=ERROR)
+            ChatConsumer.log(self, func_name, error_message, level=logging.ERROR)
             # Send an error message to the client before closing
             await self.send(
                 text_data=json.dumps(
@@ -145,9 +142,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Parse the incoming data
         data = json.loads(text_data)
         event_type = data.get("type")  # Identify the type of event
-        ChatConsumer.log(
-            self, func_name, f"{event_type} event received: {data}", level=INFO
-        )
+        ChatConsumer.log(self, func_name, f"{event_type} event received: {data}")
 
         if event_type == "message":
             await self.handle_message(data)

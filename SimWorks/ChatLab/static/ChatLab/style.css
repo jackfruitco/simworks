@@ -91,6 +91,16 @@ body {
 .sim-metadata li:nth-child(8)  { animation-delay: 0.8s;  }
 .sim-metadata li:nth-child(9)  { animation-delay: 0.9s;  }
 .sim-metadata li:nth-child(10) { animation-delay: 0.10s; }
+.sim-metadata li:nth-child(11)  { animation-delay: 0.1s;  }
+.sim-metadata li:nth-child(12)  { animation-delay: 0.2s;  }
+.sim-metadata li:nth-child(13)  { animation-delay: 0.3s;  }
+.sim-metadata li:nth-child(14)  { animation-delay: 0.4s;  }
+.sim-metadata li:nth-child(15)  { animation-delay: 0.5s;  }
+.sim-metadata li:nth-child(16)  { animation-delay: 0.6s;  }
+.sim-metadata li:nth-child(17)  { animation-delay: 0.7s;  }
+.sim-metadata li:nth-child(18)  { animation-delay: 0.8s;  }
+.sim-metadata li:nth-child(19)  { animation-delay: 0.9s;  }
+.sim-metadata li:nth-child(20) { animation-delay: 0.10s; }
 /* You can add more or use JS if the count is dynamic */
 
 /* Layout utilities */
