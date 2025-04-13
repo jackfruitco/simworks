@@ -1,5 +1,6 @@
 import logging
 
+from accounts.models import UserRole
 from asgiref.sync import async_to_sync
 from core.utils import generate_fake_name
 from django.contrib.auth import get_user_model
@@ -69,19 +70,21 @@ def create_simulation(request):
 
     User = get_user_model()
     system_user, _ = User.objects.get_or_create(
-        username="System", defaults={"first_name": "System", "is_active": False}
+        username="System",
+        role=UserRole.objects.get_or_create(name="System")[0],
+        defaults={"first_name": "System", "is_active": False, },
     )
 
     # Generate initial scenario and first SIM message in background
     import threading
-    from core.SimAI.async_client import AsyncOpenAIChatService
+    from SimManAI.async_client import AsyncOpenAIChatService
     from channels.layers import get_channel_layer
 
     ai = AsyncOpenAIChatService()
 
     def start_initial_response(sim):
-        logger.info(
-            f"[ChatLab] requesting initial SimMessage for Simulation {sim.id} ({sim})"
+        logger.debug(
+            f"[ChatLab] requesting initial SimMessage for Sim#{sim.id}"
         )
         try:
             # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
@@ -100,7 +103,7 @@ def create_simulation(request):
                 )
         except Exception as e:
             logger.exception(
-                f"[ChatLab] Failed to generate initial SimMessage for Simulation {sim.id}: {e}"
+                f"Failed to generate initial SimMessage for Sim#{sim.id}: {e}"
             )
 
     threading.Thread(
@@ -137,7 +140,6 @@ def run_simulation(request, simulation_id):
 
 @require_GET
 def refresh_metadata(request, simulation_id):
-    logger.info(f"[ChatLab] refreshing metadata for SIM #{simulation_id}....")
     simulation = get_object_or_404(Simulation, id=simulation_id)
 
     if request.GET.get("force") != "1":
@@ -151,8 +153,8 @@ def refresh_metadata(request, simulation_id):
         "simulation": simulation,
         "metadata": simulation.metadata.all(),
     }
-    logger.info(
-        f"[ChatLab] [Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
+    logger.debug(
+        f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
     return render(request, "ChatLab/partials/simulation_metadata.html", context)
 

@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 
@@ -29,7 +30,23 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = (
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
-        # raise ImproperlyConfigured(error_msg)
+        raise ImproperlyConfigured(error_msg)
+
+
+class AppColorFormatter(logging.Formatter):
+    COLORS = {
+        "ChatLab": "\033[94m",       # Blue
+        "SimManAI": "\033[92m",      # Green
+        "accounts": "\033[95m",      # Magenta
+        "notifications": "\033[93m", # Yellow
+    }
+    RESET = "\033[0m"
+
+    def format(self, record):
+        app = record.name.split(".")[0]
+        color = self.COLORS.get(app, "")
+        record.name = f"{color}{record.name}{self.RESET}" if color else record.name
+        return super().format(record)
 
 
 def generate_fake_name() -> str:
