@@ -19,6 +19,11 @@ SimWorks is a Django-based web app simulating real-time military medical scenari
 - Toast logic (`notifications.js`), audio (`alert.wav`, `simulation_ended.wav`)
 - Notification display and persistent session storage
 
+#### SimManAI/
+- OpenAI Async client to build, generate, process, and parse AI responses
+- Flow: client --> gateway --> parser -> client --> (ChatConsumer)
+- Includes OpenAI Token analyics to track and manage usage 
+
 #### Frontend Technologies
 - **HTMX** for partial loading and refreshes (message history, search)
 - **Alpine.js** for theme toggle, auto-refresh, typing behavior
@@ -85,5 +90,3 @@ When errors occur:
 4. **HTMX Logic** — confirm `request.htmx` returns the correct partial
 
 ---
-
-_This file is intended to assist Patch (aka ChatGPT) in consistently and efficiently supporting SimWorks development._
