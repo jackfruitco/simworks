@@ -5,11 +5,11 @@ services:
       - stack.env
     expose:
       - 8000
-    hostname: 'server'
+    # hostname: 'server'
     volumes:
       - static-vol:/app/static
       - media-vol:/app/media
-      - nginx-conf:/app/nginx
+      # - nginx-conf:/app/nginx
       - /opt/www/logs:/app/logs
     command: ["/app/docker/entrypoint.prod.sh"]
     restart: unless-stopped
@@ -58,7 +58,9 @@ services:
     env_file:
       - stack.env
     volumes:
-      - nginx-conf:/etc/nginx/conf.d
+      - /opt/SimWorks/nginx/nginx.template.conf:/etc/nginx/nginx.template.conf:ro
+      - /opt/SimWorks/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/SimWorks/nginx/nginx-entrypoint.sh:/docker-entrypoint.d/nginx-entrypoint.sh:ro
       - static-vol:/app/static
       - media-vol:/app/media
     depends_on:
@@ -66,6 +68,7 @@ services:
     networks:
       - SimWorksNet
       - _TunnelNet
+    entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
   redis:
     image: redis:${REDIS_IMAGE_TAG:-7.4.2-alpine}
