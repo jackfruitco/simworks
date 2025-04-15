@@ -2,9 +2,29 @@ from django.contrib import admin
 
 from .models import *
 
-# Register your models here.
-admin.site.register(Message)
-admin.site.register(SimulationMetadata)
+
+@admin.register(Message)
+class MessageAdmin(admin.ModelAdmin):
+    list_display = (
+        "__str__",
+        "simulation__pk",
+        "sender",
+        "role",
+    )
+    list_filter = ("simulation__pk", "role", "sender")
+
+    fieldsets = [
+        (None, {"fields": ("simulation", "order", "sender", "role")}),
+        ("Contents", {"fields": ("content",)}),
+        ("OpenAI Response", {
+            "classes": ("collapse",),
+            "fields": ("response__raw",)
+        })
+
+    ]
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Prompt)
@@ -34,10 +54,12 @@ class PromptAdmin(admin.ModelAdmin):
 class MetadataInline(admin.TabularInline):
     model = SimulationMetadata
     extra = 0
-    readonly_fields = ("attribute", "key")
     fieldsets = [
-        (None, {"fields": ("value",)}),
+        (None, {"fields": ("attribute", "key", "value",)}),
     ]
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Simulation)
@@ -50,3 +72,12 @@ class SimulationAdmin(admin.ModelAdmin):
     ordering = ("-id",)
 
     inlines = [MetadataInline]
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+@admin.register(SimulationMetadata)
+class SimulationMetadataAdmin(admin.ModelAdmin):
+
+    def has_change_permission(self, request, obj=None):
+        return False
