@@ -49,7 +49,7 @@ async def process_response(response, simulation, stream=False) -> List[Message]:
         logger.debug(f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}")
 
     system_user = await sync_to_async(get_system_user)()
-    parser = StructuredOutputParser(simulation, system_user, response_obj.id)
+    parser = StructuredOutputParser(simulation, system_user, response_obj)
     return await parser.parse_output(response.output_text)
 
 async def consume_response(response, simulation, stream=False) -> List[Message]:

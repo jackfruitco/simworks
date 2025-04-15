@@ -59,7 +59,7 @@ services:
       - .env
     volumes:
       - ../nginx/nginx.template.conf:/etc/nginx/nginx.template.conf:ro
-      - ../nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../nginx/default.dev.conf:/etc/nginx/conf.d/default.conf:ro
       - ../nginx/nginx-entrypoint.sh:/docker-entrypoint.d/nginx-entrypoint.sh:ro
       - static-vol:/app/static
       - media-vol:/app/media

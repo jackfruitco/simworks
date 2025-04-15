@@ -4,6 +4,7 @@ from datetime import datetime
 from datetime import timedelta
 from hashlib import sha256
 
+from SimManAI.models import Response
 from SimManAI.prompts import ChatLabModifiers
 from SimManAI.prompts import DEFAULT_PROMPT_BASE
 from core.utils import randomize_display_name
@@ -229,6 +230,14 @@ class Message(models.Model):
 
     is_read = models.BooleanField(default=False)
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
+    response = models.ForeignKey(
+        "SimManAI.Response",
+        on_delete=models.CASCADE,
+        verbose_name="OpenAI Response",
+        related_name="messages",
+        null=True,
+        blank=True,
+    )
     openai_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
 
@@ -280,4 +289,4 @@ class Message(models.Model):
 
     def __str__(self) -> str:
         role_label = dict(RoleChoices.choices).get(self.role, self.role)
-        return f"ChatLab Sim #{self.simulation.pk} {role_label.capitalize()} Message (ID: {self.pk})"
+        return f"ChatLab Sim#{self.simulation.pk} Message #{self.order} ({role_label})"

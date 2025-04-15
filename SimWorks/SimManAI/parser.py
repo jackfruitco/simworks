@@ -24,10 +24,10 @@ class StructuredOutputParser:
     A utility class responsible for parsing the OpenAI structured output into metadata and messages...
     """
 
-    def __init__(self, simulation: Simulation, system_user: User, response_id):
+    def __init__(self, simulation: Simulation, system_user: User, response):
         self.simulation = simulation
         self.system_user = system_user
-        self.response_id = response_id
+        self.response = response
 
     async def parse_output(self, output: dict or str) -> List[Message]:
         """
@@ -100,7 +100,8 @@ class StructuredOutputParser:
             sender=self.system_user,
             display_name=display_name,
             role=RoleChoices.ASSISTANT,
-            openai_id=self.response_id,
+            openai_id=self.response.id,
+            response=self.response,
         )
 
     async def _parse_metadata(self, metadata: dict, attribute: str) -> None:
