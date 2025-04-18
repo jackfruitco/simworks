@@ -22,7 +22,7 @@ body, main {
 a { color: inherit; }
 .iconify.fit { max-height: 100%; max-width: 100%; }
 
-#main { padding-top: 35px; padding-bottom: 12vh;}
+#main { padding-top: 35px !important; padding-bottom: var(--footer-height) !important;}
 
 #parallax {
     background-attachment: scroll;

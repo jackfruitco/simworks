@@ -14,35 +14,48 @@
 {% block content %}
     <div id="simulation-container" class="sim-wrapper">
 
-      <!-- Simulation header or status bar -->
-      <div class="sim-header" x-data="{ chatOpen: true }">
-        <h2>Simulation Running</h2>
-        <div x-data="simTimer({{ sim_start_unix }}, {{ time_limit_ms|default:'null' }})" x-init="start()" class="sim-timer">
-          Time Elapsed: <span x-text="formatted"></span>
-        </div>
-        <form method="POST" action="{% url 'ChatLab:end_simulation' simulation.id %}" x-show="!{{ simulation.is_ended|yesno:'true,false' }}">
-            {% csrf_token %}
-            <button type="submit" class="end-sim-btn">End Simulation</button>
-        </form>
-      {% comment %}
-        <button @click="chatOpen = !chatOpen" class="chat-toggle-btn">
-          <span x-text="chatOpen ? 'Hide Chat' : 'Show Chat'"></span>
-        </button>
-    {% endcomment %}
-      </div>
-
-      <!-- Simulation main layout -->
-      <div class="sim-main" x-data="{ chatOpen: true }">
-        <!-- Simulation controls and Metadata -->
-        <div class="sim-sidebar">
-        {% include 'ChatLab/partials/simulation_metadata_wrapper.html' %}
+        <!-- Simulation header or status bar -->
+        <div class="sim-header" x-data="{ chatOpen: true }">
+            <h2>Simulation Running</h2>
+            <div x-data="simTimer({{ sim_start_unix }}, {{ time_limit_ms|default:'null' }})" x-init="start()" class="sim-timer">
+              Time Elapsed: <span x-text="formatted"></span>
+            </div>
+            <form method="POST" action="{% url 'ChatLab:end_simulation' simulation.id %}" x-show="!{{ simulation.is_ended|yesno:'true,false' }}">
+                {% csrf_token %}
+                <button type="submit" class="end-sim-btn">End Simulation</button>
+            </form>
+            {% comment %}
+            <button @click="chatOpen = !chatOpen" class="chat-toggle-btn">
+              <span x-text="chatOpen ? 'Hide Chat' : 'Show Chat'"></span>
+            </button>
+            {% endcomment %}
         </div>
 
-        <!-- Chat panel -->
-        <div class="sim-chat" :class="{ 'collapsible': !chatOpen }">
-          {% include "ChatLab/chat.html" %}
+        <!-- Simulation main layout -->
+        <div class="sim-main"
+             x-data="sidebarGesture()"
+             @touchstart="startTouch($event)"
+             @touchmove="moveTouch($event)"
+             @touchend="endTouch()">
+
+            <!-- Sidebar Pull Tray (small screens only) -->
+            <div class="sidebar-tray"
+                 x-show="!sidebarOpen"
+                 :class="{ 'attention': shouldPulse }"
+                 @click="openSidebar()">
+                <span class="tray-line"></span>
+            </div>
+
+            <div class="sim-sidebar"
+                 :class="{ 'visible': sidebarOpen }"
+                 @click.outside="maybeClose">
+              {% include 'ChatLab/partials/simulation_metadata_wrapper.html' %}
+            </div>
+
+            <div class="sim-chat" :class="{ 'collapsed': sidebarOpen }">
+            {% include "ChatLab/chat.html" %}
+            </div>
         </div>
-      </div>
     </div>
 {% endblock content %}
 

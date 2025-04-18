@@ -317,11 +317,6 @@
     flex-grow: 1;
     height: 100%;
   }
-
-  main#main {
-    padding-bottom: 0 !important;
-    margin-bottom: 0 !important;
-  }
 }
 
 
