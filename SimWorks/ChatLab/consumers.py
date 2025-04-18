@@ -191,14 +191,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name)
 
-        if simulation.end:
+        if simulation.end_timestamp:
             return True
 
         if (
             simulation.time_limit
-            and (simulation.start + simulation.time_limit) < timezone.now()
+            and (simulation.start_timestamp + simulation.time_limit) < timezone.now()
         ):
-            simulation.end = timezone.now()
+            simulation.end_timestamp = timezone.now()
             await sync_to_async(simulation.save)()
 
             # Send notification to user
@@ -248,7 +248,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # await asyncio.sleep(random.uniform(1.0, 5.0))
             # await self.simulate_system_typing(simulation.sim_patient_initials)
 
-            # Record start time for typing indicator
+            # Record start_timestamp time for typing indicator
             start_time = time.monotonic()
             min_delay_time = random.uniform(3.0, 8.0)
 
@@ -382,7 +382,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Simulate the system user beginning or stopping typing.
 
         :param display_initials: Initials to show in the typing indicator
-        :param started: True for typing start, False for stop
+        :param started: True for typing start_timestamp, False for stop
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(

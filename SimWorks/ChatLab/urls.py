@@ -29,7 +29,7 @@ urlpatterns = [
         name="load_older_messages",
     ),
     path(
-        "simulation/<int:simulation_id>/end/",
+        "simulation/<int:simulation_id>/end_timestamp/",
         views.end_simulation,
         name="end_simulation",
     ),

@@ -12,7 +12,7 @@ from core.utils import get_system_user
 logger = logging.getLogger(__name__)
 
 
-async def process_response(response, simulation, stream=False) -> List[Message]:
+async def process_response(response, simulation, stream=False, response_type=None) -> List[Message]:
     """
     Unified entry point for handling an OpenAI response within a simulation.
 
@@ -48,10 +48,13 @@ async def process_response(response, simulation, stream=False) -> List[Message]:
         logger.debug(f"[Sim#{simulation.pk}] raw OpenAI output: {response}")
         logger.debug(f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}")
 
-    system_user = await sync_to_async(get_system_user)()
-    parser = StructuredOutputParser(simulation, system_user, response_obj)
-    return await parser.parse_output(response.output_text)
+    if response_type=='feedback':
+        return []
+    else:
+        system_user = await sync_to_async(get_system_user)()
+        parser = StructuredOutputParser(simulation, system_user, response_obj)
+        return await parser.parse_output(response.output_text)
 
-async def consume_response(response, simulation, stream=False) -> List[Message]:
+async def consume_response(response, simulation, stream=False, response_type=None) -> List[Message]:
     logger.error("SimManAI.consume_response called, but not implemented. Switching to SimManAI.process_response")
     return await process_response(response, simulation, stream=False)

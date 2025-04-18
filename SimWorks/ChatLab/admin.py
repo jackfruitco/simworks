@@ -7,11 +7,11 @@ from .models import *
 class MessageAdmin(admin.ModelAdmin):
     list_display = (
         "__str__",
-        "simulation__pk",
+        "simulation",
         "sender",
         "role",
     )
-    list_filter = ("simulation__pk", "role", "sender")
+    list_filter = ("simulation", "role", "sender")
 
     fieldsets = [
         (None, {"fields": ("simulation", "order", "sender", "role")}),
@@ -64,10 +64,10 @@ class MetadataInline(admin.TabularInline):
 
 @admin.register(Simulation)
 class SimulationAdmin(admin.ModelAdmin):
-    list_display = ("id", "start", "user", "is_complete", "is_timed_out")
-    fields = ("user", "start", "end", "time_limit", "prompt")
-    readonly_fields = ("start", "end")
-    list_filter = ("prompt", "end", "time_limit")
+    list_display = ("id", "start_timestamp", "user", "is_complete", "is_timed_out")
+    fields = ("user", "start_timestamp", "end_timestamp", "time_limit", "prompt")
+    readonly_fields = ("start_timestamp", "end_timestamp")
+    list_filter = ("prompt", "end_timestamp", "time_limit")
     search_fields = ("user__username", "prompt__title")
     ordering = ("-id",)
 

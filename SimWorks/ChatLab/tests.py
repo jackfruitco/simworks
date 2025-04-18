@@ -80,13 +80,13 @@ class SimulationModelTests(TestCase):
         self.assertTrue(sim.in_progress)
         self.assertFalse(sim.is_complete)
         self.assertFalse(sim.is_timed_out)
-        sim.end = timezone.now()
+        sim.end_timestamp = timezone.now()
         sim.save()
         self.assertTrue(sim.is_complete)
 
     def test_simulation_with_time_limit(self):
         sim = Simulation.objects.create(user=self.user, time_limit=timedelta(seconds=1))
-        sim.start = timezone.now() - timedelta(seconds=2)
+        sim.start_timestamp = timezone.now() - timedelta(seconds=2)
         sim.save()
         self.assertTrue(sim.is_timed_out)
         self.assertTrue(sim.is_complete)

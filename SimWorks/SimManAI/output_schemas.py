@@ -30,7 +30,7 @@ def dynamic_type(
         return base if initial else [base, "null"]
 
 
-async def build_message_output_schema(initial: bool = False) -> dict:
+async def build_message_schema(initial: bool = False) -> dict:
     """Return dict with JSON Schema for OpenAI Response Output."""
     return {
         "format": {

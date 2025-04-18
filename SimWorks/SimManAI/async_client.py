@@ -14,30 +14,12 @@ from asgiref.sync import sync_to_async
 from ChatLab.models import Message
 from ChatLab.models import Simulation
 from . import prompts
-from .output_schemas import build_message_output_schema
+from .output_schemas import build_message_schema
 from .openai_gateway import process_response
 from django.conf import settings
 from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
-
-
-@sync_to_async
-def build_patient_reply_payload(user_msg: Message) -> dict:
-    """
-    Build the payload for the patient's reply to be sent to OpenAI.
-
-    Args:
-        user_msg (Message): The user's message object containing the previous response ID and input.
-
-    Returns:
-        dict: A dictionary containing the previous response ID and user input.
-    """
-    return {
-        "previous_response_id": user_msg.get_previous_openai_id(),
-        "input": user_msg.get_openai_input(),
-    }
-
 
 @sync_to_async
 def build_patient_intro_payload(simulation: Simulation, prompt) -> List[dict]:
@@ -60,6 +42,23 @@ def build_patient_intro_payload(simulation: Simulation, prompt) -> List[dict]:
         {"role": "developer", "content": instruction},
         {"role": "user", "content": "Begin simulation"},
     ]
+
+
+@sync_to_async
+def build_patient_reply_payload(user_msg: Message) -> dict:
+    """
+    Build the payload for the patient's reply to be sent to OpenAI.
+
+    Args:
+        user_msg (Message): The user's message object containing the previous response ID and input.
+
+    Returns:
+        dict: A dictionary containing the previous response ID and user input.
+    """
+    return {
+        "previous_response_id": user_msg.get_previous_openai_id(),
+        "input": user_msg.get_openai_input(),
+    }
 
 
 @sync_to_async
@@ -123,7 +122,7 @@ class AsyncOpenAIChatService:
         func_name = inspect.currentframe().f_code.co_name
 
         prompt = await sync_to_async(simulation.get_or_assign_prompt)()
-        text = await build_message_output_schema(initial=True)
+        text = await build_message_schema(initial=True)
 
         input_payload = await build_patient_intro_payload(
             simulation, prompt
@@ -160,7 +159,7 @@ class AsyncOpenAIChatService:
 
         # Build payload (prompt, instructions), then get response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
-        text = await build_message_output_schema()
+        text = await build_message_schema()
         response = await self.client.responses.create(
             model=self.model,
             text=text,
@@ -191,4 +190,4 @@ class AsyncOpenAIChatService:
             **payload,
         )
 
-        return await process_response(response, simulation, stream)
+        return await process_response(response, simulation, stream, response_type='feedback')

@@ -38,7 +38,7 @@ def index(request):
         else:
             simulations = simulations.filter(description__icontains=search_query)
 
-    simulations = simulations.order_by("-start")
+    simulations = simulations.order_by("-start_timestamp")
     paginator = Paginator(simulations, 10)
     page_number = request.GET.get("page")
     page_obj = paginator.get_page(page_number)
@@ -64,7 +64,7 @@ def create_simulation(request):
     # Create simulation first
     simulation = Simulation.objects.create(
         user=request.user,
-        start=now(),
+        start_timestamp=now(),
         sim_patient_full_name=generate_fake_name(),
     )
 
@@ -131,7 +131,7 @@ def run_simulation(request, simulation_id):
     context = {
         "simulation": simulation,
         "metadata": metadata,
-        "sim_start_unix": int(simulation.start.timestamp() * 1000),
+        "sim_start_unix": int(simulation.start_timestamp.timestamp() * 1000),
         "simulation_locked": simulation.is_complete,
     }
 
@@ -190,8 +190,9 @@ from django.views.decorators.http import require_POST
 @login_required
 def end_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id, user=request.user)
-    if not simulation.end:
-        simulation.end = now()
-        simulation.save()
+    if not simulation.end_timestamp:
+        simulation.end()
+
+
 
     return redirect("ChatLab:run_simulation", simulation_id=simulation.id)

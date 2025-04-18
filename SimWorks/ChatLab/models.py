@@ -74,8 +74,8 @@ class Prompt(models.Model):
 
 
 class Simulation(models.Model):
-    start = models.DateTimeField(auto_now_add=True)
-    end = models.DateTimeField(blank=True, null=True)
+    start_timestamp = models.DateTimeField(auto_now_add=True)
+    end_timestamp = models.DateTimeField(blank=True, null=True)
     time_limit = models.DurationField(
         blank=True, null=True, help_text="Optional max duration for this simulation"
     )
@@ -113,13 +113,13 @@ class Simulation(models.Model):
     @property
     def in_progress(self) -> bool:
         """Return if simulation is in progress"""
-        return self.end is None or self.end < datetime.now()
+        return self.end_timestamp is None or self.end_timestamp < datetime.now()
 
     @property
     def is_complete(self) -> bool:
         """Return if simulation has already completed."""
-        return self.end is not None or (
-            self.time_limit and now() > self.start + self.time_limit
+        return self.end_timestamp is not None or (
+                self.time_limit and now() > self.start_timestamp + self.time_limit
         )
 
     @property
@@ -128,13 +128,13 @@ class Simulation(models.Model):
 
     @property
     def is_timed_out(self):
-        return bool(self.time_limit and now() > self.start + self.time_limit)
+        return bool(self.time_limit and now() > self.start_timestamp + self.time_limit)
 
     @property
     def length(self) -> timedelta or None:
-        """Return timedelta from simulation start to finish, or None if not ended"""
-        if self.start and self.end:
-            return self.end - self.start
+        """Return timedelta from simulation start_timestamp to finish, or None if not ended"""
+        if self.start_timestamp and self.end_timestamp:
+            return self.end_timestamp - self.start_timestamp
         return None
 
     @property
@@ -149,6 +149,18 @@ class Simulation(models.Model):
                 {"role": message.get_role_display(), "content": message.content}
             )
         return _history
+
+    def end(self):
+        self.end_timestamp = now()
+        self.save()
+        self.generate_feedback()
+
+    def generate_feedback(self):
+        from asgiref.sync import async_to_sync
+        from SimManAI.async_client import AsyncOpenAIChatService
+
+        service = AsyncOpenAIChatService()
+        async_to_sync(service.generate_simulation_feedback)(self)
 
     def calculate_metadata_checksum(self) -> str:
         # Get sorted list of (key, value) pairs
