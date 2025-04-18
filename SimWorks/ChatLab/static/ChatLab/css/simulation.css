@@ -1,0 +1,94 @@
+@import url('/static/css/theme.css');
+@import url('/static/ChatLab/css/chat.css');
+@import url('/static/ChatLab/css/sim-metadata.css');
+
+/* ───────────────────────────────────────────────
+   Base Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+#simulation-container {
+    height: 100%;
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.sim-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-bg);
+    color: var(--color-text-dark);
+}
+
+.sim-header {
+    /* height: 8vh; */
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--color-bg-alt);
+}
+
+.sim-timer {
+    font-weight: bold;
+    font-size: 1rem;
+    color: var(--color-muted);
+}
+
+.sim-main {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.sim-sidebar {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    display: none;
+}
+
+#footer {
+    max-height: 5vh;
+}
+
+#footer .p-16 {
+    padding: 0 !important;
+    margin: auto;
+}
+
+/* ───────────────────────────────────────────────
+   Medium Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 48em) {
+    /* 768px; portrait tablet and larger */
+    .sim-header {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+    .sim-main {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr;
+    }
+    .sim-sidebar {
+        display: flex;
+        flex: 1;
+        padding: 1rem;
+        overflow-y: auto;
+    }
+}
+
+/* ───────────────────────────────────────────────
+   Large Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 64em) {
+    /* 1024px; landscape tablet and larger */
+    .sim-main {
+        grid-template-columns: 1.5fr 2fr;
+    }
+    .sim-timer {
+        font-size: 1.2rem;
+    }
+}

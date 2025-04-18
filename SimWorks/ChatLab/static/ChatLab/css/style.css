@@ -1,0 +1,95 @@
+@import url('/static/css/theme.css');
+
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Index Page Layout */
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.search-form input[type="text"] {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.search-form label {
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+#simulation-history ul {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+#simulation-history li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #ccc;
+}
+
+#simulation-history li a {
+  font-weight: bold;
+  color: #1d4ed8;
+}
+
+#simulation-history .pagination {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+#simulation-history .pagination a {
+  text-decoration: none;
+  color: #2563eb;
+}
+
+@media (min-width: 640px) {
+  .search-form input[type="text"] {
+    max-width: 300px;
+  }
+}
+
+@media (min-width: 768px) {
+  .search-form {
+    gap: 1rem;
+  }
+
+  #simulation-history li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  #simulation-history li a {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* Layout utilities */
+.flex-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-grow {
+  flex: 1 1 auto;
+}
+
+.overflow-auto {
+  overflow: auto;
+}
