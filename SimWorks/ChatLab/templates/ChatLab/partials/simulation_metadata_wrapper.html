@@ -6,9 +6,9 @@
     localStorage.setItem(this.key, JSON.stringify(this.open));
   }
 }">
-  <div class="sim-metadata-header">
-  <h3 class="medium txt-jckfrt-dark">Simulation Data</h3>
-    <button @click="open = !open" class="button primary small" x-text="open ? 'Hide' : 'Show'"></button>
+  <div class="sim-metadata-header p-2">
+        <h3 class="medium txt-jckfrt-dark">Simulation Data</h3>
+        <button @click="open = !open" class="button primary small hide-small" x-text="open ? 'Hide' : 'Show'"></button>
   </div>
   <div id="simulation-metadata"
        x-transition:enter="transition ease-out duration-300"

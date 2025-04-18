@@ -1,6 +1,4 @@
-{% extends 'accounts/accounts_base.html' %}
-
-{% block content %}
+<!-- Invite Success -->
 <div id="invite-success-content" class="invite-container animate-fade-in">
   <h1>Invitation Created</h1>
 
@@ -10,4 +8,3 @@
     <a href="{% url 'accounts:list-invites' %}" class="button" hx-get="{% url 'accounts:list-invites' %}" hx-target="#invite-content" hx-swap="innerHTML transition:true">Return to All Invitations</a>
   </div>
 </div>
-{% endblock %}

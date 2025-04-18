@@ -156,7 +156,7 @@ def refresh_metadata(request, simulation_id):
     logger.debug(
         f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
-    return render(request, "ChatLab/partials/simulation_metadata.html", context)
+    return render(request, "ChatLab/partials/_metadata_inner.html", context)
 
 
 @require_GET

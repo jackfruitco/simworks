@@ -19,7 +19,7 @@
           hx-indicator="#invite-loading">
         {% csrf_token %}
         {{ form.as_p }}
-        <button class="button primary" type="submit" hx-indicator="#invite-loading">
+        <button class="button primary m-auto" type="submit" hx-indicator="#invite-loading">
             Create Invite Token
         </button>
         <span id="invite-loading" class="loading-icon" style="display: none;">

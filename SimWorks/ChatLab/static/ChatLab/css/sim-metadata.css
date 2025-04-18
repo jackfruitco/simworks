@@ -1,0 +1,75 @@
+.sim-metadata {
+  list-style: none;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem auto;
+  background-color: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  max-width: 90%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+.sim-metadata li {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: fadeIn 0.4s ease-out forwards;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-dark);
+  font-size: 0.95rem;
+}
+
+/* Stagger animation for each li */
+.sim-metadata li:nth-child(1)  { animation-delay: 0.1s;  }
+.sim-metadata li:nth-child(2)  { animation-delay: 0.2s;  }
+.sim-metadata li:nth-child(3)  { animation-delay: 0.3s;  }
+.sim-metadata li:nth-child(4)  { animation-delay: 0.4s;  }
+.sim-metadata li:nth-child(5)  { animation-delay: 0.5s;  }
+.sim-metadata li:nth-child(6)  { animation-delay: 0.6s;  }
+.sim-metadata li:nth-child(7)  { animation-delay: 0.7s;  }
+.sim-metadata li:nth-child(8)  { animation-delay: 0.8s;  }
+.sim-metadata li:nth-child(9)  { animation-delay: 0.9s;  }
+.sim-metadata li:nth-child(10) { animation-delay: 0.10s; }
+.sim-metadata li:nth-child(11)  { animation-delay: 0.1s;  }
+.sim-metadata li:nth-child(12)  { animation-delay: 0.2s;  }
+.sim-metadata li:nth-child(13)  { animation-delay: 0.3s;  }
+.sim-metadata li:nth-child(14)  { animation-delay: 0.4s;  }
+.sim-metadata li:nth-child(15)  { animation-delay: 0.5s;  }
+.sim-metadata li:nth-child(16)  { animation-delay: 0.6s;  }
+.sim-metadata li:nth-child(17)  { animation-delay: 0.7s;  }
+.sim-metadata li:nth-child(18)  { animation-delay: 0.8s;  }
+.sim-metadata li:nth-child(19)  { animation-delay: 0.9s;  }
+.sim-metadata li:nth-child(20) { animation-delay: 0.10s; }
+/* You can add more or use JS if the count is dynamic */
+
+.sim-metadata li:last-child {
+  border-bottom: none;
+}
+
+.sim-metadata li::before {
+  content: "📋 ";
+  margin-right: 0.25rem;
+  opacity: 0.8;
+}
+
+.sim-metadata-empty {
+  font-style: italic;
+  color: var(--color-muted);
+  padding: 0.5rem 1rem;
+  text-align: center;
+}
+
+/* ───────────────────────────────────────────────
+   Medium Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 48em) {
+    /* 768px; portrait tablet and larger */
+}
+
+
+/* ───────────────────────────────────────────────
+   Large Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 64em) {
+    /* 1024px; landscape tablet and larger */
+}

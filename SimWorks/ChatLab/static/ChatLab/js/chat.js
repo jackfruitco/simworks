@@ -119,6 +119,11 @@ function ChatManager(simulation_id, currentUser) {
                             if (typeof data === "string") {
                               this.metadataDiv.outerHTML = data;
                               this.metadataDiv = document.getElementById('simulation-metadata');
+                              // If tray was previously marked as seen, re-trigger attention on new metadata
+                              if (localStorage.getItem('seenSidebarTray') === 'true') {
+                                localStorage.removeItem('seenSidebarTray');
+                                if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
+                              }
                             } else if (data.changed === false) {
                               // fallback: metadata div is empty → force refresh
                               if (!this.metadataDiv.querySelector('ul.sim-metadata')) {
@@ -340,3 +345,64 @@ function ChatManager(simulation_id, currentUser) {
 }
 
 window.ChatManager = ChatManager;
+
+function sidebarGesture() {
+  return {
+    shouldPulse:  localStorage.getItem('seenSidebarTray') !== 'true',
+    sidebarOpen: false,
+    startX: 0,
+    endX: 0,
+    swipeThreshold: 40,
+
+    openSidebar() {
+        this.sidebarOpen = true;
+        this.justOpened = true;
+        localStorage.setItem('seenSidebarTray', 'true');
+        this.shouldPulse = false;
+
+        setTimeout(() => {
+          this.justOpened = false;
+        }, 50);
+    },
+
+    startTouch(event) {
+      this.startX = event.changedTouches[0].screenX;
+    },
+    moveTouch(event) {
+      this.endX = event.changedTouches[0].screenX;
+    },
+    endTouch() {
+      const diff = this.endX - this.startX;
+
+    if (!this.sidebarOpen && this.startX > 10 && this.startX < 60 && diff > this.swipeThreshold) {
+        this.openSidebar();
+      } else if (this.sidebarOpen && diff < -this.swipeThreshold) {
+        this.closeSidebar();
+      }
+    },
+
+    maybeClose(event) {
+      if (window.innerWidth < 768 && !this.justOpened) {
+        this.closeSidebar();
+      }
+    },
+
+    closeSidebar() {
+        const sidebar = document.querySelector('.sim-sidebar');
+        if (!sidebar) {
+          this.sidebarOpen = false;
+          return;
+        }
+
+        // Add slideOut animation
+        sidebar.classList.add('slide-out');
+
+        // Wait for animation to finish before removing .visible and resetting sidebarOpen
+        setTimeout(() => {
+          sidebar.classList.remove('slide-out');
+          sidebar.classList.remove('visible');
+          this.sidebarOpen = false;
+        }, 250); // must match the slideOutLeft animation duration
+    }
+  };
+}

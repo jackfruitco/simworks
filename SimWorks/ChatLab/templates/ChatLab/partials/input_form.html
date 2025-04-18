@@ -16,7 +16,10 @@
     @input="notifyTyping"
     autofocus
   >
-    <button type="submit" :disabled="isLocked">
+    <button
+            class="hide-small"
+            type="submit"
+            :disabled="isLocked">
       <span
           class="iconify chat-icon mr-4"
           :class="{ 'color-accent-blue': !isLocked }"

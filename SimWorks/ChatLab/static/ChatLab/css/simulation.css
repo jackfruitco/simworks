@@ -1,0 +1,185 @@
+@import url('/static/css/theme.css');
+@import url('/static/ChatLab/css/chat.css');
+@import url('/static/ChatLab/css/sim-metadata.css');
+
+/* ───────────────────────────────────────────────
+   Base Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+#simulation-container {
+    height: 100%;
+    padding-bottom: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.sim-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-bg);
+    color: var(--color-text-dark);
+}
+
+.sim-header {
+    padding: 0.25rem 0.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--color-bg-alt);
+}
+
+.sim-timer {
+    font-weight: bold;
+    font-size: 1rem;
+    color: var(--color-muted);
+}
+
+.sim-main {
+    /* height: calc(100vh - var(--footer-height, 5vh)); */
+    height: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+
+.sim-sidebar {
+  display: block; /* not none */
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 80vw;
+  max-width: 320px;
+  background-color: var(--color-bg-alt);
+  border-right: 1px solid var(--color-border);
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 100;
+}
+
+.sim-sidebar.visible {
+  transform: translateX(0);
+  animation: slideInLeft 0.3s ease-out;
+}
+
+.sim-sidebar:not(.visible) {
+  animation: slideOutLeft 0.25s ease-in;
+}
+
+.sim-chat.collapsed {
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+/* Show toggle button only on small screens */
+.sidebar-toggle {
+  display: block;
+  background: var(--color-bg-alt);
+  border: none;
+  color: var(--color-text-dark);
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+  z-index: 110;
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+}
+
+.sidebar-tray {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 40px;
+  background-color: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-right: none;
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 105;
+  cursor: pointer;
+}
+
+.sidebar-tray.attention {
+  animation: trayPulse 1s ease-in-out;
+}
+
+.sim-sidebar.slide-out {
+  animation: slideOutLeft 0.25s ease-in;
+}
+
+.tray-line {
+  width: 4px;
+  height: 20px;
+  background-color: var(--color-muted);
+  border-radius: 2px;
+}
+
+#footer {
+    max-height: 5vh;
+}
+
+#footer .p-16 {
+    padding: 0 !important;
+    margin: auto;
+}
+
+/* ───────────────────────────────────────────────
+   Medium Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 48em) {
+    /* 768px; portrait tablet and larger */
+    .sim-header {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+    .sim-main {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr;
+    }
+    .sim-sidebar {
+        position: relative;
+        transform: none !important;
+        animation: none !important;
+        width: auto;
+        max-width: none;
+        height: auto;
+        max-height: 100%;
+        overflow-y: auto;
+        display: flex;
+    }
+    .sim-chat {
+        height: 100%;
+        overflow-y: auto;
+        max-height: 100%;
+    }
+    .sim-chat.collapsed {
+        filter: none;
+        pointer-events: auto;
+    }
+    .sidebar-toggle,
+    .sidebar-tray {
+        display: none;
+    }
+    .sim-sidebar {
+        height: 100%;
+    }
+}
+
+/* ───────────────────────────────────────────────
+   Large Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 64em) {
+    /* 1024px; landscape tablet and larger */
+    .sim-main {
+        grid-template-columns: 1.5fr 2fr;
+    }
+    .sim-timer {
+        font-size: 1.2rem;
+    }
+}
