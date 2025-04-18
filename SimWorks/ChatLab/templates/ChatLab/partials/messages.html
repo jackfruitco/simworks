@@ -7,13 +7,17 @@
     </strong>
     {{ message.content|linebreaksbr }}
     <div class="timestamp">
-      <span class="bubble-time">{{ message.timestamp|date:"H:i" }}</span>
-      {% if message.sender == user.username %}
+        <span
+          class="bubble-time"
+          x-data="{ time: new Date('{{ message.timestamp|date:'c' }}').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) }"
+          x-text="time">
+        </span>
+        {% if message.sender == user.username %}
         <span class="status-icons" x-data="{ delivered: true, read: false }">
           <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
           <span class="iconify status-icon read-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="read"></span>
         </span>
-      {% endif %}
+        {% endif %}
     </div>
   </div>
 {% endfor %}
