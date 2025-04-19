@@ -185,9 +185,10 @@ class AsyncOpenAIChatService:
             List[Message]: A list of Message objects representing the AI-generated feedback.
         """
         payload = await build_feedback_payload(simulation)
+        text = await feedback_schema()
         response = await self.client.responses.create(
             model=self.model,
-            text=feedback_schema(),
+            text=text,
             stream=stream,
             **payload,
         )

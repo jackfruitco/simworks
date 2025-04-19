@@ -33,7 +33,7 @@
                     {% for sim in simulations %}
                         <li>
                             <a href="{% url 'ChatLab:run_simulation' sim.id %}">{{ sim }}</a>
-                            – {% if sim.end %}✅ Complete{% else %}🟢 In Progress{% endif %}
+                            – {% if sim.is_complete %}✅ Complete{% else %}🟢 In Progress{% endif %}
                             – Length: {{ sim.length|default:"—" }}
                             – Time Limit: {{ sim.time_limit|default:"None" }}
                         </li>

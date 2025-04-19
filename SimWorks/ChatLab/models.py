@@ -208,9 +208,9 @@ class SimulationMetadata(models.Model):
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
-    key = models.CharField(blank=False, null=False, max_length=64)
+    key = models.CharField(blank=False, null=False, max_length=255)
     attribute = models.CharField(blank=False, null=False, max_length=64)
-    value = models.CharField(blank=False, null=False, max_length=255)
+    value = models.CharField(blank=False, null=False, max_length=2000)
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None

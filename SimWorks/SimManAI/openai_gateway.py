@@ -51,12 +51,9 @@ async def process_response(response, simulation, stream=False, response_type=Res
         logger.debug(f"[Sim#{simulation.pk}] raw OpenAI output: {response}")
         logger.debug(f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}")
 
-    if response_type==ResponseType.FEEDBACK:
-        return []
-    else:
-        system_user = await sync_to_async(get_system_user)()
-        parser = StructuredOutputParser(simulation, system_user, response_obj)
-        return await parser.parse_output(response.output_text)
+    system_user = await sync_to_async(get_system_user)()
+    parser = StructuredOutputParser(simulation, system_user, response_obj)
+    return await parser.parse_output(response.output_text, response_type)
 
 async def consume_response(response, simulation, stream=False, response_type=None) -> List[Message]:
     logger.error("SimManAI.consume_response called, but not implemented. Switching to SimManAI.process_response")

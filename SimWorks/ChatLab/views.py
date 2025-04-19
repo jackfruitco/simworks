@@ -116,23 +116,20 @@ def create_simulation(request):
 @login_required
 def run_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id)
-    metadata = simulation.metadata.all()
+    metadata = simulation.metadata.exclude(attribute="feedback")
+    feedback = simulation.metadata.filter(attribute="feedback")
 
     if simulation.user != request.user:
         return HttpResponseForbidden(
             "You do not have permission to view this simulation."
         )
 
-    # if simulation.is_complete:
-    #     simulation_locked = True
-    # else:
-    #     simulation_locked = False
-
     context = {
         "simulation": simulation,
         "metadata": metadata,
         "sim_start_unix": int(simulation.start_timestamp.timestamp() * 1000),
         "simulation_locked": simulation.is_complete,
+        "feedback": feedback,
     }
 
     return render(request, "ChatLab/simulation.html", context)
@@ -157,7 +154,6 @@ def refresh_metadata(request, simulation_id):
         f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
     return render(request, "ChatLab/partials/_metadata_inner.html", context)
-
 
 @require_GET
 def refresh_messages(request, simulation_id):
@@ -192,7 +188,4 @@ def end_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id, user=request.user)
     if not simulation.end_timestamp:
         simulation.end()
-
-
-
     return redirect("ChatLab:run_simulation", simulation_id=simulation.id)

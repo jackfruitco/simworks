@@ -225,7 +225,7 @@ async def message_schema(initial: bool = False) -> dict:
         }
     }
 
-def feedback_schema() -> dict:
+async def feedback_schema() -> dict:
     """Return dict with JSON Schema for OpenAI Feedback Output."""
     return {
         "format": {
@@ -254,8 +254,9 @@ def feedback_schema() -> dict:
                     },
                     "feedback": {
                         "type": "string",
-                        "description": "Overall feedback to user.",
-                        "minLengths": 500,
+                        "description": "Specific feedback to user based on the simulation.",
+                        "minLengths": 700,
+                        "maxLengths": 2000,
                     },
                     "topics": {
                         "type": "array",

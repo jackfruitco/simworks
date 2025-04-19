@@ -8,6 +8,7 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 
+from .models import ResponseType
 from asgiref.sync import sync_to_async
 from ChatLab.models import Message
 from ChatLab.models import RoleChoices
@@ -29,7 +30,7 @@ class StructuredOutputParser:
         self.system_user = system_user
         self.response = response
 
-    async def parse_output(self, output: dict or str) -> List[Message]:
+    async def parse_output(self, output: dict or str, response_type: ResponseType=ResponseType.REPLY) -> List[Message]:
         """
         Parses the OpenAI structured output, saving metadata as SimulationMetadata objects and
         returning a list of messages.
@@ -39,6 +40,12 @@ class StructuredOutputParser:
         # Convert output to dict if provided as string
         if type(output) is str:
             output = json.loads(output)
+
+        if response_type is ResponseType.FEEDBACK:
+            await self.log(func_name, f"Feedback Output: {output}" )
+            # feedback = output.get("metadata", {})
+            await self._parse_metadata(output, response_type.label)
+            return []
 
         messages = output.get("messages", [])
         metadata = output.get("metadata", {})
@@ -127,7 +134,7 @@ class StructuredOutputParser:
                     value_str = str(value)
                 metafield = await sync_to_async(SimulationMetadata.objects.create)(
                     simulation=self.simulation,
-                    key=key.lower(),
+                    key=key.lower().replace("_", " "),
                     value=value_str,
                     attribute=attribute,
                 )
@@ -148,7 +155,7 @@ class StructuredOutputParser:
                             SimulationMetadata.objects.create
                         )(
                             simulation=self.simulation,
-                            key=f"Condition #{index} {key.lower()}",
+                            key=f"Condition #{index} {key.lower().replace("_", " ")}",
                             value=value_str,
                             attribute=attribute,
                         )
@@ -170,80 +177,7 @@ class StructuredOutputParser:
                 WARNING,
             )
 
+
     @staticmethod
     async def log(func_name, msg="triggered", level=DEBUG) -> None:
         return logger.log(level, f"[{func_name}]: {msg}")
-
-
-class OpenAIResponseParser:
-    """
-    A utility class responsible for parsing OpenAI response output into metadata and messages.
-    """
-
-    def __init__(self, simulation: Simulation, system_user):
-        self.simulation = simulation
-        self.system_user = system_user
-        logger.error(
-            "[DEPRECATED] `OpenAIResponseParser` is deprecated. Please use `StructuredOutputParser` instead."
-        )
-
-    async def parse_full_response(
-        self, output_text: str, openai_id: Optional[str] = None
-    ) -> List[Message]:
-        """
-        Parses a full OpenAI response into metadata and assistant messages.
-        """
-        metadata_str, content = self._split_output(output_text)
-        await self._parse_metadata(metadata_str)
-        return await self._parse_messages(content, openai_id)
-
-    @staticmethod
-    async def _split_output(output_text: str) -> Tuple[str, str]:
-        """
-        Splits the OpenAI response into metadata and content.
-        """
-        output = output_text.strip()
-        if not output:
-            return "{}", ""
-        if ";" in output:
-            return output.split(";", 1)
-        if output.startswith("{") and output.endswith("}"):
-            return output, ""
-        return "{}", output
-
-    async def _parse_metadata(self, metadata_str: str) -> None:
-        """
-        Parses and saves metadata from the OpenAI response.
-        """
-        try:
-            data = json.loads(metadata_str.replace("'", '"'))
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse OpenAI metadata JSON: %s", e)
-            data = {}
-
-        for key, value in data.items():
-            await sync_to_async(self.simulation.metadata.create)(
-                key=key.lower(), value=str(value).lower()
-            )
-
-    async def _parse_messages(
-        self, content: str, openai_id: Optional[str] = None
-    ) -> List[Message]:
-        display_name = getattr(self.simulation, "sim_patient_display_name", "Unknown")
-        message_texts = [
-            msg.strip() for msg in content.split("SimMsg:")[1:] if msg.strip()
-        ]
-        messages = []
-
-        for msg_text in message_texts:
-            msg = await sync_to_async(Message.objects.create)(
-                simulation=self.simulation,
-                sender=self.system_user,
-                display_name=display_name,
-                role=RoleChoices.ASSISTANT,
-                content=msg_text,
-                openai_id=openai_id,
-            )
-            messages.append(msg)
-
-        return messages

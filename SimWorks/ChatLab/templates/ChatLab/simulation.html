@@ -49,7 +49,7 @@
             <div class="sim-sidebar"
                  :class="{ 'visible': sidebarOpen }"
                  @click.outside="maybeClose">
-              {% include 'ChatLab/partials/simulation_metadata_wrapper.html' %}
+              {% include 'ChatLab/partials/sim_sidebar_wrapper.html' %}
             </div>
 
             <div class="sim-chat" :class="{ 'collapsed': sidebarOpen }">
