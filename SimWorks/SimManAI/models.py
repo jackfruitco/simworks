@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.utils.timezone import now
 
+from core.utils import compute_fingerprint
 from .querysets.response_queryset import ResponseQuerySet
 
 from django.utils.translation import gettext_lazy as _
@@ -23,6 +24,12 @@ class Prompt(models.Model):
         null=True,
         blank=True,
         related_name="modified_prompts",
+    )
+    fingerprint = models.CharField(
+        max_length=64,
+        editable=False,
+        db_index=True,
+        unique=True
     )
     is_archived = models.BooleanField(default=False)
 
@@ -48,6 +55,10 @@ class Prompt(models.Model):
 
     def set_modified_by(self, user):
         self._modified_by = user
+
+    # in Prompt model
+    def compute_own_fingerprint(self):
+        return compute_fingerprint(self.title, self.text)
 
 
 class ResponseType(models.TextChoices):

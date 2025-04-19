@@ -7,7 +7,9 @@ dynamically construct composite prompts with chained modifier methods.
 
 from typing import Union
 from accounts.models import UserRole
+from core.utils import compute_fingerprint
 from .models import Prompt
+import hashlib
 
 
 DEFAULT_PROMPT_BASE = (
@@ -343,20 +345,29 @@ def get_or_create_prompt(
     title = prompt.title
     text = prompt.text
     summary = prompt.summary
+    fingerprint = compute_fingerprint(title.strip(), text.strip())
 
-    # Use `title` as unique identifier — it encodes app_label, modifiers, and role
-    instance, created = Prompt.objects.get_or_create(
+    # Return Prompt instance with matching fingerprint if exists
+    existing = Prompt.objects.filter(fingerprint=fingerprint).first()
+    if existing:
+        return existing
+
+    # Check for Prompt instance with matching title, but not fingerprint
+    # If existing, archive old instance and increment version on title
+    prior = Prompt.objects.filter(title=title).first()
+    if prior:
+        prior.is_archived = True
+        prior.save(update_fields=["is_archived"])
+        base_title = title
+        version = 2
+        while Prompt.objects.filter(title=f"{base_title} v{version}").exists():
+            version += 1
+        title = f"{base_title} v{version}"
+
+    return Prompt.objects.create(
         title=title,
-        defaults={
-            "text": text,
-            "summary": summary,
-        }
+        text=text,
+        summary=summary,
+        fingerprint=fingerprint,
+        is_archived=False,
     )
-
-    # Optional: ensure text is up to date if an old title was reused (optional sync)
-    if not created and instance.text != text:
-        instance.text = text
-        instance.summary = summary
-        instance.save(update_fields=["text", "summary"])
-
-    return instance

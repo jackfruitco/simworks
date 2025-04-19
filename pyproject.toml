@@ -17,6 +17,7 @@ dependencies = [
     "psycopg>=3.2.6",
     "psycopg-binary>=3.2.6",
     "pydantic>=2.11.3",
+    "pytest>=8.3.5",
     "redis>=5.2.1",
     "typing-extensions>=4.13.2",
     "zope-interface>=7.2",
