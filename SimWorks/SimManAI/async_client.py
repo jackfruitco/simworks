@@ -14,7 +14,8 @@ from asgiref.sync import sync_to_async
 from ChatLab.models import Message
 from ChatLab.models import Simulation
 from . import prompts
-from .output_schemas import build_message_schema
+from .models import ResponseType
+from .output_schemas import message_schema, feedback_schema
 from .openai_gateway import process_response
 from django.conf import settings
 from openai import AsyncOpenAI
@@ -122,7 +123,7 @@ class AsyncOpenAIChatService:
         func_name = inspect.currentframe().f_code.co_name
 
         prompt = await sync_to_async(simulation.get_or_assign_prompt)()
-        text = await build_message_schema(initial=True)
+        text = await message_schema(initial=True)
 
         input_payload = await build_patient_intro_payload(
             simulation, prompt
@@ -159,7 +160,7 @@ class AsyncOpenAIChatService:
 
         # Build payload (prompt, instructions), then get response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
-        text = await build_message_schema()
+        text = await message_schema()
         response = await self.client.responses.create(
             model=self.model,
             text=text,
@@ -186,8 +187,9 @@ class AsyncOpenAIChatService:
         payload = await build_feedback_payload(simulation)
         response = await self.client.responses.create(
             model=self.model,
+            text=feedback_schema(),
             stream=stream,
             **payload,
         )
 
-        return await process_response(response, simulation, stream, response_type='feedback')
+        return await process_response(response, simulation, stream, response_type=ResponseType.FEEDBACK)

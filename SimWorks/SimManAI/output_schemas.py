@@ -30,7 +30,7 @@ def dynamic_type(
         return base if initial else [base, "null"]
 
 
-async def build_message_schema(initial: bool = False) -> dict:
+async def message_schema(initial: bool = False) -> dict:
     """Return dict with JSON Schema for OpenAI Response Output."""
     return {
         "format": {
@@ -222,5 +222,49 @@ async def build_message_schema(initial: bool = False) -> dict:
                 "required": ["messages", "metadata"],
                 "additionalProperties": False,
             },
+        }
+    }
+
+def feedback_schema() -> dict:
+    """Return dict with JSON Schema for OpenAI Feedback Output."""
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": "user_feedback",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "required": ["correct_diagnosis", "correct_treatment_plan", "patient_experience", "feedback", "topics"],
+                "additionalProperties": False,
+                "properties": {
+                    "correct_diagnosis": {
+                        "type": "string",
+                        "description": "Whether the diagnosis provided or discussed with the patient is correct or not.",
+                        "enum": ["true", "false", "partial"],
+                    },
+                    "correct_treatment_plan": {
+                        "type": "string",
+                        "description": "The treatment plan to which the patient is correct or not.",
+                        "enum": ["true", "false", "partial"],
+                    },
+                    "patient_experience": {
+                        "type": "number",
+                        "description": "The patient experience that the patient received, including clarity of instructions, hospitality, etc.",
+                        "enum": [0, 1, 2, 3, 4, 5],
+                    },
+                    "feedback": {
+                        "type": "string",
+                        "description": "Overall feedback to user.",
+                        "minLengths": 500,
+                    },
+                    "topics": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "description": "The topics that the user should study or research to further development and understanding.",
+                        }
+                    }
+                }
+            }
         }
     }

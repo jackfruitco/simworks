@@ -2,6 +2,14 @@ from django.db import models
 from django.conf import settings
 from SimManAI.querysets.response_queryset import ResponseQuerySet
 
+from django.utils.translation import gettext_lazy as _
+
+class ResponseType(models.TextChoices):
+    INITIAL = ("I", _("initial"))
+    REPLY = ("R", _("reply"))
+    FEEDBACK = ("F", _("feedback"))
+
+
 class Response(models.Model):
     """Object to store data for the OpenAI responses."""
 
@@ -14,6 +22,8 @@ class Response(models.Model):
     raw = models.TextField(verbose_name="OpenAI Raw Response")
     id = models.CharField("OpenAI Response ID", max_length=255, primary_key=True)
     order = models.PositiveIntegerField(editable=False)
+    type = models.CharField(choices=ResponseType, default=ResponseType.REPLY, max_length=2)
+
 
     input_tokens = models.PositiveIntegerField(default=0)
     output_tokens = models.PositiveIntegerField(default=0)
