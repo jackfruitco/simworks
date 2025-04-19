@@ -1,10 +1,12 @@
+{% load filters %}
+
 {% if feedback %}
   <ul class="sim-metadata">
     {% for metafield in feedback %}
         {% if metafield.key|lower == "feedback" %}
             <li><i style="color: var(--color-muted)">{{ metafield.value|lower }}</i></li>
         {% else %}
-            <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|title }}</li>
+            <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|feedback }}</li>
         {% endif %}
     {% endfor %}
   </ul>
