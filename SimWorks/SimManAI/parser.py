@@ -30,69 +30,75 @@ class StructuredOutputParser:
         self.system_user = system_user
         self.response = response
 
-    async def parse_output(self, output: dict or str, response_type: ResponseType=ResponseType.REPLY) -> List[Message]:
-        """
-        Parses the OpenAI structured output, saving metadata as SimulationMetadata objects and
-        returning a list of messages.
-        """
+    async def parse_output(self, output: dict or str, response_type: ResponseType = ResponseType.REPLY) -> List[
+        Message]:
         func_name = inspect.currentframe().f_code.co_name
 
-        # Convert output to dict if provided as string
-        if type(output) is str:
+        if isinstance(output, str):
             output = json.loads(output)
 
+        # If it's a full OpenAI response, merge all assistant message outputs
+        if isinstance(output, dict) and "output" in output:
+            assistant_messages = output["output"]
+            output_chunks = []
+
+            for msg in assistant_messages:
+                for part in msg.get("content", []):
+                    if part.get("type") == "output_text":
+                        try:
+                            parsed = json.loads(part["text"])
+                            output_chunks.append(parsed)
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"[{func_name}] Failed to parse part: {e}")
+
+            # Merge messages and metadata
+            merged_output = {"messages": [], "metadata": {"patient_metadata": {}, "simulation_metadata": []}}
+            for chunk in output_chunks:
+                merged_output["messages"].extend(chunk.get("messages", []))
+                metadata = chunk.get("metadata", {})
+
+                # Merge patient_metadata
+                if "patient_metadata" in metadata:
+                    merged_output["metadata"]["patient_metadata"].update(metadata["patient_metadata"])
+
+                # Extend simulation_metadata list
+                if "simulation_metadata" in metadata:
+                    merged_output["metadata"]["simulation_metadata"].extend(
+                        metadata["simulation_metadata"]
+                    )
+
+            output = merged_output
+
         if response_type is ResponseType.FEEDBACK:
-            await self.log(func_name, f"Feedback Output: {output}" )
-            # feedback = output.get("metadata", {})
+            await self.log(func_name, f"Feedback Output: {output}")
             await self._parse_metadata(output, response_type.label)
             return []
 
+        # Now handle normal parsing flow
         messages = output.get("messages", [])
         metadata = output.get("metadata", {})
 
-        # For patient metadata, we assume 'patient' is a dictionary that can contain both
-        # general metadata (demographics, etc.) and a separate "history" key.
         patient_data = metadata.get("patient_metadata", {})
         simulation_data = metadata.get("simulation_metadata", {})
-
-        # Separate medical_history metadata from patient_metadata:
         patient_history = patient_data.get("medical_history", {})
-
-        # Pull additional metadata into top-level patient_metadata
         patient_metadata = {
-            k: v
-            for k, v in patient_data.items()
-            if k not in ("medical_history", "additional")
+            k: v for k, v in patient_data.items() if k not in ("medical_history", "additional")
         }
         patient_metadata.update(patient_data.get("additional_metadata", {}))
 
-        logger.debug(
-            f"{func_name} parsed {len(messages)} {'message' if len(messages) == 1 else 'messages'}:"
-        )
-        logger.debug(
-            f"{func_name} simulation_data {type(simulation_data)}: {simulation_data}"
-        )
+        logger.debug(f"{func_name} parsed {len(messages)} messages")
+        logger.debug(f"{func_name} simulation_data {type(simulation_data)}: {simulation_data}")
 
-        # Create tasks for saving metadata concurrently.
         metadata_tasks = []
         if patient_metadata:
-            metadata_tasks.append(
-                self._parse_metadata(patient_metadata, "patient metadata")
-            )
+            metadata_tasks.append(self._parse_metadata(patient_metadata, "patient metadata"))
         if patient_history:
-            metadata_tasks.append(
-                self._parse_metadata(patient_history, "patient history")
-            )
+            metadata_tasks.append(self._parse_metadata(patient_history, "patient history"))
         if simulation_data:
-            metadata_tasks.append(
-                self._parse_metadata(simulation_data, "simulation metadata")
-            )
+            metadata_tasks.append(self._parse_metadata(simulation_data, "simulation metadata"))
 
         await asyncio.gather(*metadata_tasks)
-
-        # Process messages concurrently
-        message_tasks = [self._parse_message(message) for message in messages]
-        await self.log(func_name, f"message_tasks built: {message_tasks}")
+        message_tasks = [self._parse_message(m) for m in messages]
         return await asyncio.gather(*message_tasks)
 
     async def _parse_message(self, message: dict) -> Optional[Message]:
