@@ -61,17 +61,16 @@ def index(request):
 
 @login_required
 def create_simulation(request):
-    # Create simulation first
     simulation = Simulation.objects.create(
         user=request.user,
-        start_timestamp=now(),
         sim_patient_full_name=generate_fake_name(),
+        start_timestamp=now()
     )
 
     User = get_user_model()
     system_user, _ = User.objects.get_or_create(
         username="System",
-        role=UserRole.objects.get_or_create(name="System")[0],
+        role=UserRole.objects.get_or_create(title="System")[0],
         defaults={"first_name": "System", "is_active": False, },
     )
 
@@ -88,7 +87,7 @@ def create_simulation(request):
         )
         try:
             # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
-            sim_responses = async_to_sync(ai.generate_patient_intro)(sim)
+            sim_responses = async_to_sync(ai.generate_patient_initial)(sim, False)
 
             # Get channel layer and send the initial SimMessage to the group
             channel_layer = get_channel_layer()
@@ -116,23 +115,20 @@ def create_simulation(request):
 @login_required
 def run_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id)
-    metadata = simulation.metadata.all()
+    metadata = simulation.metadata.exclude(attribute="feedback")
+    feedback = simulation.metadata.filter(attribute="feedback")
 
     if simulation.user != request.user:
         return HttpResponseForbidden(
             "You do not have permission to view this simulation."
         )
 
-    # if simulation.is_complete:
-    #     simulation_locked = True
-    # else:
-    #     simulation_locked = False
-
     context = {
         "simulation": simulation,
         "metadata": metadata,
         "sim_start_unix": int(simulation.start_timestamp.timestamp() * 1000),
         "simulation_locked": simulation.is_complete,
+        "feedback": feedback,
     }
 
     return render(request, "ChatLab/simulation.html", context)
@@ -157,7 +153,6 @@ def refresh_metadata(request, simulation_id):
         f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
     return render(request, "ChatLab/partials/_metadata_inner.html", context)
-
 
 @require_GET
 def refresh_messages(request, simulation_id):
@@ -192,7 +187,4 @@ def end_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id, user=request.user)
     if not simulation.end_timestamp:
         simulation.end()
-
-
-
     return redirect("ChatLab:run_simulation", simulation_id=simulation.id)

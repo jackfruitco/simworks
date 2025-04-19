@@ -19,13 +19,13 @@ echo "Creating default user roles if not already exists..."
 python manage.py shell -c "\
 from accounts.models import UserRole; \
 UserRole.objects.exists() or UserRole.objects.bulk_create([ \
-    UserRole(name='EMT (NREMT-B)'), \
-    UserRole(name='Paramedic (NRP)'), \
-    UserRole(name='Military Medic'), \
-    UserRole(name='SOF Medic'), \
-    UserRole(name='RN'), \
-    UserRole(name='RN, BSN'), \
-    UserRole(name='Physician') \
+    UserRole(title='EMT (NREMT-B)'), \
+    UserRole(title='Paramedic (NRP)'), \
+    UserRole(title='Military Medic'), \
+    UserRole(title='SOF Medic'), \
+    UserRole(title='RN'), \
+    UserRole(title='RN, BSN'), \
+    UserRole(title='Physician') \
 ])"
 
 # Start server

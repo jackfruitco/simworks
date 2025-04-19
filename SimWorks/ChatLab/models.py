@@ -4,26 +4,16 @@ from datetime import datetime
 from datetime import timedelta
 from hashlib import sha256
 
-from SimManAI.models import Response
-from SimManAI.prompts import ChatLabModifiers
-from SimManAI.prompts import DEFAULT_PROMPT_BASE
+from SimManAI.models import Response, Prompt
+from SimManAI.prompts import get_or_create_prompt
+
 from core.utils import randomize_display_name
 from django.conf import settings
 from django.db import models
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
-from .constants import DEFAULT_PROMPT_TITLE
-
 logger = logging.getLogger(__name__)
-
-def get_default_prompt():
-    """"""
-    prompt, created = Prompt.objects.get_or_create(
-        title=DEFAULT_PROMPT_TITLE,
-        defaults={"content": DEFAULT_PROMPT_BASE + ChatLabModifiers.default()},
-    )
-    return prompt.id
 
 
 class RoleChoices(models.TextChoices):
@@ -31,68 +21,39 @@ class RoleChoices(models.TextChoices):
     ASSISTANT = "A", _("assistant")
 
 
-class Prompt(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="created_prompts",
-    )
-    modified_at = models.DateTimeField(auto_now=True)
-    modified_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="modified_prompts",
-    )
-    is_archived = models.BooleanField(default=False)
+class SimulationManager(models.Manager):
+    def create(self, **kwargs):
+        user = kwargs.get("user")
+        prompt = kwargs.get("prompt")
 
-    title = models.CharField(max_length=100)
-    content = models.TextField(help_text="The scenario prompt sent to OpenAI.")
+        if not prompt:
+            if not user:
+                raise ValueError("Cannot auto-generate prompt without user.")
+            role = getattr(user, "role", None)
+            kwargs["prompt"] = get_or_create_prompt(app_label="ChatLab", role=role)
 
-    @property
-    def is_active(self) -> bool:
-        return not self.is_archived
-
-    def __str__(self):
-        return self.title
-
-    def save(self, *args, **kwargs):
-        """Update modification fields if object already exists."""
-        if self.pk is not None:
-            self.modified_at = now()
-            if hasattr(self, "_modified_by"):
-                self.modified_by = self._modified_by
-
-        super().save(*args, **kwargs)
-
-    def set_modified_by(self, user):
-        self._modified_by = user
-
+        return super().create(**kwargs)
 
 class Simulation(models.Model):
     start_timestamp = models.DateTimeField(auto_now_add=True)
     end_timestamp = models.DateTimeField(blank=True, null=True)
+    objects = SimulationManager()
     time_limit = models.DurationField(
         blank=True, null=True, help_text="Optional max duration for this simulation"
     )
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    openai_model = models.CharField(blank=True, null=True, max_length=128)
+    metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
     prompt = models.ForeignKey(
         Prompt,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        default=get_default_prompt,
+        on_delete=models.RESTRICT,
+        null=False,
+        blank=False,
         help_text=_("The prompt to use as AI instructions."),
     )
 
     description = models.TextField(blank=True, null=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    openai_model = models.CharField(blank=True, null=True, max_length=128)
-    metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
-
     sim_patient_full_name = models.CharField(max_length=100, blank=True)
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
 
@@ -168,9 +129,25 @@ class Simulation(models.Model):
         encoded = json.dumps(data)
         return sha256(encoded.encode("utf-8")).hexdigest()
 
-    def save(self, *args, **kwargs):
-        updating_name = False
+    @classmethod
+    def create_with_default_prompt(cls, user, app_label="ChatLab", **kwargs):
+        """
+        Create a Simulation with a default prompt based on the user role and app_label.
+        """
+        from SimManAI.prompts import get_or_create_prompt
 
+        prompt = get_or_create_prompt(app_label=app_label, role=user.role)
+        return cls.objects.create(user=user, prompt=prompt, **kwargs)
+
+    def save(self, *args, **kwargs):
+        # Ensure prompt is set based on user.role if not already provided
+        if not self.prompt:
+            if not self.user:
+                raise ValueError("Cannot assign default prompt without a user.")
+            self.prompt = get_or_create_prompt(app_label="ChatLab", role=getattr(self.user, "role", None))
+
+        # Handle display name update if full name is changed
+        updating_name = False
         if self.pk:
             old = Simulation.objects.get(pk=self.pk)
             updating_name = old.sim_patient_full_name != self.sim_patient_full_name
@@ -178,27 +155,15 @@ class Simulation(models.Model):
             updating_name = bool(self.sim_patient_full_name)
 
         if updating_name:
-            self.sim_patient_display_name = randomize_display_name(
-                self.sim_patient_full_name
-            )
-        super().save(*args, **kwargs)
+            self.sim_patient_display_name = randomize_display_name(self.sim_patient_full_name)
 
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         if self.description:
             return f"ChatLab Sim #{self.pk}: {self.description}"
         else:
             return f"ChatLab Sim #{self.pk}"
-
-    def get_or_assign_prompt(self):
-        """
-        Return the current prompt assigned to the simulation. If none exists,
-        assign the system default prompt and return it.
-        """
-        if not self.prompt:
-            self.prompt_id = get_default_prompt()
-            self.save(update_fields=["prompt"])
-        return self.prompt
 
 
 class SimulationMetadata(models.Model):
@@ -208,9 +173,9 @@ class SimulationMetadata(models.Model):
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
-    key = models.CharField(blank=False, null=False, max_length=64)
+    key = models.CharField(blank=False, null=False, max_length=255)
     attribute = models.CharField(blank=False, null=False, max_length=64)
-    value = models.CharField(blank=False, null=False, max_length=255)
+    value = models.CharField(blank=False, null=False, max_length=2000)
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None

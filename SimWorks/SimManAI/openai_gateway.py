@@ -4,6 +4,7 @@ from typing import List
 
 from asgiref.sync import sync_to_async
 
+from .models import ResponseType
 from ChatLab.models import Message
 from SimManAI.models import Response
 from SimManAI.parser import StructuredOutputParser
@@ -12,7 +13,7 @@ from core.utils import get_system_user
 logger = logging.getLogger(__name__)
 
 
-async def process_response(response, simulation, stream=False, response_type=None) -> List[Message]:
+async def process_response(response, simulation, stream=False, response_type=ResponseType.REPLY) -> List[Message]:
     """
     Unified entry point for handling an OpenAI response within a simulation.
 
@@ -24,6 +25,7 @@ async def process_response(response, simulation, stream=False, response_type=Non
         response: The OpenAI response object (assumed Pydantic or dict-compatible)
         simulation: The associated Simulation instance
         stream: Optional flag to indicate streaming response processing
+        response_type: The type response (see .models.ResponseType)
 
     Returns:
         list of Message instances created via parser
@@ -35,6 +37,7 @@ async def process_response(response, simulation, stream=False, response_type=Non
     user = await sync_to_async(lambda: simulation.user)()
 
     response_obj = await sync_to_async(Response.objects.create)(
+        type=response_type,
         simulation=simulation,
         user=user,
         raw=json.dumps(response.model_dump(), indent=2),
@@ -48,12 +51,9 @@ async def process_response(response, simulation, stream=False, response_type=Non
         logger.debug(f"[Sim#{simulation.pk}] raw OpenAI output: {response}")
         logger.debug(f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}")
 
-    if response_type=='feedback':
-        return []
-    else:
-        system_user = await sync_to_async(get_system_user)()
-        parser = StructuredOutputParser(simulation, system_user, response_obj)
-        return await parser.parse_output(response.output_text)
+    system_user = await sync_to_async(get_system_user)()
+    parser = StructuredOutputParser(simulation, system_user, response_obj)
+    return await parser.parse_output(response.output_text, response_type)
 
 async def consume_response(response, simulation, stream=False, response_type=None) -> List[Message]:
     logger.error("SimManAI.consume_response called, but not implemented. Switching to SimManAI.process_response")

@@ -1,9 +1,9 @@
+import hashlib
 import logging
 import os
 import random
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ImproperlyConfigured
 from faker import Faker
 
 fake = Faker()
@@ -112,3 +112,16 @@ def get_system_user(name="System", **defaults):
     defaults.setdefault("is_active", False)
     user, _ = User.objects.get_or_create(username=name, defaults=defaults)
     return user
+
+def compute_fingerprint(*args: str) -> str:
+    """
+    Compute a SHA256 hash from any number of string arguments.
+
+    Args:
+        *args (str): Any number of strings to combine and hash.
+
+    Returns:
+        str: The SHA256 hex digest of the combined string.
+    """
+    combined = "".join(arg.strip() for arg in args if isinstance(arg, str))
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()

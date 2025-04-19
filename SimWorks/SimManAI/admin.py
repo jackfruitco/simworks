@@ -20,11 +20,11 @@ class MessagesInline(admin.TabularInline):
 
 @admin.register(Response)
 class ResponseAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "user", "created", "simulation")
-    list_filter = ("simulation", "user")
+    list_display = ("__str__", "user", "created", "simulation", "type")
+    list_filter = ("simulation", "user", "type")
 
     fieldsets = (
-        ('Response Data', {"fields": ("id", "simulation", "user", "created")}),
+        ('Response Data', {"fields": ("id", "simulation", "type", "user", "created")}),
         ('OpenAI Usage Data', {"fields": ("input_tokens", "output_tokens", "reasoning_tokens")}),
         ('Raw Output', {
             "classes": ("collapse",),

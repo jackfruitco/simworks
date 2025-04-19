@@ -23,13 +23,13 @@ echo "Creating default user roles if not already exists..."
 python manage.py shell -c "\
 from accounts.models import UserRole; \
 UserRole.objects.exists() or UserRole.objects.bulk_create([ \
-    UserRole(name='EMT (NREMT-B)'), \
-    UserRole(name='Paramedic (NRP)'), \
-    UserRole(name='Military Medic'), \
-    UserRole(name='SOF Medic'), \
-    UserRole(name='RN'), \
-    UserRole(name='RN, BSN'), \
-    UserRole(name='Physician') \
+    UserRole(title='EMT (NREMT-B)'), \
+    UserRole(title='Paramedic (NRP)'), \
+    UserRole(title='Military Medic'), \
+    UserRole(title='SOF Medic'), \
+    UserRole(title='RN'), \
+    UserRole(title='RN, BSN'), \
+    UserRole(title='Physician') \
 ])"
 
 # Create AppDev superuser if it doesn't exist,
@@ -40,7 +40,7 @@ if [ "${DJANGO_DEBUG:-}" = "True" ]; then
   python manage.py shell -c "\
 from django.contrib.auth import get_user_model; \
 User = get_user_model(); \
-role, created = UserRole.objects.get_or_create(name='SOF Medic')
+role, created = UserRole.objects.get_or_create(title='SOF Medic')
 User.objects.filter(username='appDev').exists() or \
 User.objects.create_superuser(username='appDev', password='appDev', role=role)"
 else

@@ -68,6 +68,17 @@
   animation: slideOutLeft 0.25s ease-in;
 }
 
+.sim-sidebar-wrapper {
+    width: 100%;
+}
+#sim-metadata-header,
+#sim-feedback-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    align-items: center;
+}
+
 .sim-chat.collapsed {
   filter: blur(2px);
   pointer-events: none;

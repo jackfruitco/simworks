@@ -1,12 +1,9 @@
 import logging
 from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.apps import apps
-
 
 logger = logging.getLogger(__name__)
 
-@receiver(post_save)
 def log_model_save(sender, instance, created, **kwargs):
     class_name = sender.__name__
     object_id = getattr(instance, 'id', 'N/A')
@@ -24,8 +21,10 @@ def log_model_save(sender, instance, created, **kwargs):
 
     logger.info(msg)
 
-# Connect to all models in ChatLab
-chatlab_models = apps.get_app_config("ChatLab").get_models()
-
-for model in chatlab_models:
-    post_save.connect(log_model_save, sender=model, dispatch_uid=f"log_save_{model.__name__}")
+# Connect only once per model
+for model in apps.get_app_config("ChatLab").get_models():
+    post_save.connect(
+        log_model_save,
+        sender=model,
+        dispatch_uid=f"chatlab_log_save_{model.__name__}"
+    )

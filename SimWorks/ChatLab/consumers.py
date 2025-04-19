@@ -52,7 +52,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except Simulation.DoesNotExist:
             error_message = f"Simulation with id {self.simulation_id} does not exist."
             ChatConsumer.log(self, func_name, error_message, level=logging.ERROR)
-            # Send an error message to the client before closing
+            logger.exception("Failed to connect: Simulation ID not found")
+            await self.accept()  # Accept before sending
             await self.send(
                 text_data=json.dumps(
                     {
@@ -62,6 +63,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     }
                 )
             )
+            # Socket must be accepted before sending.
             await self.close(code=4004)
             return
 

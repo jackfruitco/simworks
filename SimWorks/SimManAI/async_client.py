@@ -14,7 +14,8 @@ from asgiref.sync import sync_to_async
 from ChatLab.models import Message
 from ChatLab.models import Simulation
 from . import prompts
-from .output_schemas import build_message_schema
+from .models import ResponseType
+from .output_schemas import message_schema, feedback_schema
 from .openai_gateway import process_response
 from django.conf import settings
 from openai import AsyncOpenAI
@@ -22,25 +23,24 @@ from openai import AsyncOpenAI
 logger = logging.getLogger(__name__)
 
 @sync_to_async
-def build_patient_intro_payload(simulation: Simulation, prompt) -> List[dict]:
+def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
     """
     Build the initial payload for the patient's introduction in the simulation.
 
     Args:
         simulation (Simulation): The simulation object containing prompt and patient information.
-        prompt (Prompt): The prompt object containing prompt information for this simulation.
 
     Returns:
         List[dict]: A list of dictionaries representing the role and content for the introduction.
     """
-    instruction = prompt.content.strip()
+    instruction = simulation.prompt.text.strip()
     instruction += (
         f"\n\nYour name is {simulation.sim_patient_full_name}. "
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
     )
     return [
         {"role": "developer", "content": instruction},
-        {"role": "user", "content": "Begin simulation"},
+        {"role": "user", "content": "Begin."},
     ]
 
 
@@ -106,7 +106,7 @@ class AsyncOpenAIChatService:
     async def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
         return logger.log(level, f"[{func_name}]: {msg}")
 
-    async def generate_patient_intro(
+    async def generate_patient_initial(
         self, simulation: Simulation, stream: bool = False
     ) -> List[Message]:
         """
@@ -121,12 +121,10 @@ class AsyncOpenAIChatService:
         """
         func_name = inspect.currentframe().f_code.co_name
 
-        prompt = await sync_to_async(simulation.get_or_assign_prompt)()
-        text = await build_message_schema(initial=True)
+        # Get output schema as `text`, and input_payload (prompt, message)
+        text = await message_schema(initial=True)
+        input_payload = await build_patient_initial_payload(simulation)
 
-        input_payload = await build_patient_intro_payload(
-            simulation, prompt
-        )  # Build the payload for the introduction
         response = await self.client.responses.create(
             model=self.model,
             input=input_payload,
@@ -159,7 +157,7 @@ class AsyncOpenAIChatService:
 
         # Build payload (prompt, instructions), then get response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
-        text = await build_message_schema()
+        text = await message_schema()
         response = await self.client.responses.create(
             model=self.model,
             text=text,
@@ -184,10 +182,12 @@ class AsyncOpenAIChatService:
             List[Message]: A list of Message objects representing the AI-generated feedback.
         """
         payload = await build_feedback_payload(simulation)
+        text = await feedback_schema()
         response = await self.client.responses.create(
             model=self.model,
+            text=text,
             stream=stream,
             **payload,
         )
 
-        return await process_response(response, simulation, stream, response_type='feedback')
+        return await process_response(response, simulation, stream, response_type=ResponseType.FEEDBACK)
