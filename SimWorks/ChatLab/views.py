@@ -61,17 +61,16 @@ def index(request):
 
 @login_required
 def create_simulation(request):
-    # Create simulation first
     simulation = Simulation.objects.create(
         user=request.user,
-        start_timestamp=now(),
         sim_patient_full_name=generate_fake_name(),
+        start_timestamp=now()
     )
 
     User = get_user_model()
     system_user, _ = User.objects.get_or_create(
         username="System",
-        role=UserRole.objects.get_or_create(name="System")[0],
+        role=UserRole.objects.get_or_create(title="System")[0],
         defaults={"first_name": "System", "is_active": False, },
     )
 
@@ -88,7 +87,7 @@ def create_simulation(request):
         )
         try:
             # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
-            sim_responses = async_to_sync(ai.generate_patient_intro)(sim)
+            sim_responses = async_to_sync(ai.generate_patient_initial)(sim, False)
 
             # Get channel layer and send the initial SimMessage to the group
             channel_layer = get_channel_layer()

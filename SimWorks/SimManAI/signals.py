@@ -5,12 +5,18 @@ from django.apps import apps
 
 logger = logging.getLogger(__name__)
 
+# Cache SimManAI models to restrict logging only to this app
+simmanai_models = set(apps.get_app_config("SimManAI").get_models())
+
 @receiver(post_save)
 def log_model_save(sender, instance, created, **kwargs):
+    # Skip if sender is not a model from this app
+    if sender not in simmanai_models:
+        return  # Only handle SimManAI models
+
     class_name = sender.__name__
     object_id = getattr(instance, 'id', 'N/A')
     object_name = str(instance)
-
     status = "CREATED" if created else "MODIFIED"
     msg = f"[{class_name}] {object_name} (ID: {object_id}) was {status}."
 
@@ -23,8 +29,6 @@ def log_model_save(sender, instance, created, **kwargs):
 
     logger.info(msg)
 
-# Connect to all models in app
-models = apps.get_app_config("SimManAI").get_models()
-
-for model in models:
-    post_save.connect(log_model_save, sender=model, dispatch_uid=f"log_save_{model.__name__}")
+# Connect signal only for models from this app
+for model in simmanai_models:
+    post_save.connect(log_model_save, sender=model, dispatch_uid=f"log_save_SimManAI_{model.__name__}")

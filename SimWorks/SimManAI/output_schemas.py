@@ -69,6 +69,12 @@ async def message_schema(initial: bool = False) -> dict:
                                 ),  # initial_only
                                 "description": "Patient metadata.",
                                 "properties": {
+                                    "name": {
+                                        "type": dynamic_type(
+                                            "string", True, only=True
+                                        ),
+                                        "description": "The name of the patient.",
+                                    },
                                     "age": {
                                         "type": dynamic_type(
                                             "number", initial, only=True

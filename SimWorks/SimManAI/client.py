@@ -40,7 +40,7 @@ class OpenAIChatService:
             simulation.prompt_id = get_default_prompt()
             simulation.save()
 
-        instruction = simulation.prompt.content.strip()
+        instruction = simulation.prompt.text.strip()
         instruction += (
             f"\n\nYour name is {simulation.sim_patient_full_name}. "
             f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."

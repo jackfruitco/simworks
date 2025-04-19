@@ -14,7 +14,7 @@ class CustomUser(AbstractUser):
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
 
 class UserRole(models.Model):
-    name = models.CharField(
+    title = models.CharField(
         max_length=100,
         blank=True,
         null=True,
@@ -24,7 +24,18 @@ class UserRole(models.Model):
     )
 
     def __str__(self):
-        return self.name
+        return self.title
+
+
+class RoleResource(models.Model):
+    created = models.DateTimeField(auto_now_add=True)
+    modified = models.DateTimeField(auto_now=True)
+
+    role = models.ForeignKey("UserRole", on_delete=models.PROTECT, related_name="resources")
+    resource = models.CharField(max_length=100, blank=False, null=False, default="")
+
+    def __str__(self):
+        return self.resource
 
 class Invitation(models.Model):
     token = models.CharField(max_length=64, unique=True, editable=False)
