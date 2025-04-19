@@ -25,6 +25,18 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"User '{username}' already exists. Skipping."))
                 continue
 
+            role_id = fields.get("role")
+            if not role_id:
+                self.stdout.write(
+                    self.style.WARNING(f"User '{username}' missing role. Assigning default role ID 1."))
+                role_id = 1  # fallback; replace with a sensible default ID or logic
+
+            try:
+                role = UserRole.objects.get(id=role_id)
+            except UserRole.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f"Role ID {role_id} not found for '{username}', skipping user."))
+                continue
+
             user = CustomUser(
                 username=username,
                 email=fields.get("email", ""),
@@ -34,17 +46,7 @@ class Command(BaseCommand):
                 date_joined=fields.get("date_joined"),
                 last_login=fields.get("last_login"),
                 password=fields["password"],  # Preserves hash
+                role=role,  # required!
             )
             user.save()
-
-            role_id = fields.get("role")
-            if role_id:
-                try:
-                    role = UserRole.objects.get(id=role_id)
-                    user.role = role
-                    user.save(update_fields=["role"])
-                    self.stdout.write(self.style.SUCCESS(f"Assigned role '{role}' to '{username}'"))
-                except UserRole.DoesNotExist:
-                    self.stdout.write(self.style.ERROR(f"Role ID {role_id} not found for '{username}'"))
-
-            self.stdout.write(self.style.SUCCESS(f"Created user: {username}"))
+            self.stdout.write(self.style.SUCCESS(f"Created user: {username} with role '{role}'"))
