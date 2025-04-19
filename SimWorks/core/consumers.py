@@ -8,16 +8,18 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 class NotificationsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # Only allow authenticated users to connect
-        if self.scope["user"].is_anonymous:
-            await self.close()
-        else:
-            self.user = self.scope["user"]
-            self.group_name = f"notifications_{self.user.id}"
-
-            # Join the user's notifications group
-            await self.channel_layer.group_add(self.group_name, self.channel_name)
-            await self.accept()
+        try:
+            if self.scope["user"].is_anonymous:
+                logger.warning("Anonymous user attempted to connect to NotificationsConsumer.")
+                await self.close(code=4001)
+            else:
+                self.user = self.scope["user"]
+                self.group_name = f"notifications_{self.user.id}"
+                await self.channel_layer.group_add(self.group_name, self.channel_name)
+                await self.accept()
+        except Exception as e:
+            logger.exception("Failed to connect NotificationsConsumer: %s", str(e))
+            await self.close(code=1011)
 
     async def disconnect(self, close_code):
         group = getattr(self, "group_name", None)
