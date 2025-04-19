@@ -6,6 +6,27 @@ from ChatLab.admin import MetadataInline
 from .models import *
 from ChatLab.models import Message
 
+@admin.register(Prompt)
+class PromptAdmin(admin.ModelAdmin):
+    list_display = (
+        "title",
+        "created_at",
+        "is_archived",
+    )
+    list_editable = ("is_archived",)
+    list_filter = ("created_by", "is_archived")
+    search_fields = ("title", "content")
+
+    def created_by_display(self, obj):
+        return obj.created_by.username if obj.created_by else "System"
+
+    created_by_display.short_description = "Created By"
+
+    def modified_by_display(self, obj):
+        return obj.modified_by.username if obj.modified_by else "System"
+
+    modified_by_display.short_description = "Modified By"
+
 
 class MessagesInline(admin.TabularInline):
     model = Message
