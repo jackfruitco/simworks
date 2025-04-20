@@ -76,7 +76,7 @@ class SimulationModelTests(TestCase):
 
     def test_simulation_str_and_props(self):
         sim = Simulation.objects.create(user=self.user)
-        self.assertIn("ChatLab Sim #", str(sim))
+        self.assertIn("chatlab Sim #", str(sim))
         self.assertTrue(sim.in_progress)
         self.assertFalse(sim.is_complete)
         self.assertFalse(sim.is_timed_out)

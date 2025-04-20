@@ -205,7 +205,7 @@ class PromptTemplate:
         prompt_text = prompt.default().with_chatlab().finalize()
         prompt_title = prompt.title
     """
-    def __init__(self, role: Union[UserRole, int, None] = None, app_label: str = "ChatLab"):
+    def __init__(self, role: Union[UserRole, int, None] = None, app_label: str = "chatlab"):
         self.app_label = app_label
         self._cached_modifiers = None
         self._sections = []
@@ -241,9 +241,9 @@ class PromptTemplate:
     def summary(self) -> str:
         """Return a structured summary of the prompt configuration."""
         role_title = self.role.title if self.role else "Unassigned"
-        env_labels = [label for label in self._modifiers_used if label not in ("Base", "UserRole", "ChatLab", "Feedback", "PauseX", "Azimuth", "Summary")]
+        env_labels = [label for label in self._modifiers_used if label not in ("Base", "UserRole", "chatlab", "Feedback", "PauseX", "Azimuth", "Summary")]
         return (
-            f"Simulation Type: ChatLab\n"
+            f"Simulation Type: chatlab\n"
             f"Training Role: {role_title}\n"
             f"Environment: {', '.join(env_labels) or 'Default'}\n"
             f"Included Modifiers: {', '.join(self._modifiers_used)}"
@@ -285,7 +285,7 @@ class PromptTemplate:
         return self
 
     def with_chatlab(self):
-        return self._add_modifier(self.modifiers.ChatLab.default(), "ChatLab")
+        return self._add_modifier(self.modifiers.ChatLab.default(), "chatlab")
 
     def with_feedback(self):
         return self._add_modifier(self.modifiers.Feedback.default(), "Feedback")
@@ -310,7 +310,7 @@ class PromptTemplate:
 modifiers = PromptModifiers()
 
 def get_or_create_prompt(
-    app_label: str = "ChatLab",
+    app_label: str = "chatlab",
     role: Union[UserRole, int, None] = None,
     include_feedback: bool = False,
     environment: str = None,

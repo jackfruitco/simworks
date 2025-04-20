@@ -10,10 +10,10 @@ from typing import Tuple
 
 from .models import ResponseType
 from asgiref.sync import sync_to_async
-from ChatLab.models import Message
-from ChatLab.models import RoleChoices
-from ChatLab.models import Simulation
-from ChatLab.models import SimulationMetadata
+from chatlab.models import Message
+from chatlab.models import RoleChoices
+from chatlab.models import Simulation
+from chatlab.models import SimulationMetadata
 from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)

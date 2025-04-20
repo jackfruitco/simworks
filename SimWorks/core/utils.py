@@ -35,8 +35,8 @@ def check_env(var_name, default=_SENTINEL):
 
 class AppColorFormatter(logging.Formatter):
     COLORS = {
-        "ChatLab": "\033[94m",       # Blue
-        "SimManAI": "\033[92m",      # Green
+        "chatlab": "\033[94m",       # Blue
+        "simai": "\033[92m",      # Green
         "accounts": "\033[95m",      # Magenta
         "notifications": "\033[93m", # Yellow
     }

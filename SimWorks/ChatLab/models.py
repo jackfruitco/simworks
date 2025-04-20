@@ -4,8 +4,8 @@ from datetime import datetime
 from datetime import timedelta
 from hashlib import sha256
 
-from SimManAI.models import Response, Prompt
-from SimManAI.prompts import get_or_create_prompt
+from simai.models import Response, Prompt
+from simai.prompts import get_or_create_prompt
 
 from core.utils import randomize_display_name
 from django.conf import settings
@@ -30,7 +30,7 @@ class SimulationManager(models.Manager):
             if not user:
                 raise ValueError("Cannot auto-generate prompt without user.")
             role = getattr(user, "role", None)
-            kwargs["prompt"] = get_or_create_prompt(app_label="ChatLab", role=role)
+            kwargs["prompt"] = get_or_create_prompt(app_label="chatlab", role=role)
 
         return super().create(**kwargs)
 
@@ -118,7 +118,7 @@ class Simulation(models.Model):
 
     def generate_feedback(self):
         from asgiref.sync import async_to_sync
-        from SimManAI.async_client import AsyncOpenAIChatService
+        from simai.async_client import AsyncOpenAIChatService
 
         service = AsyncOpenAIChatService()
         async_to_sync(service.generate_simulation_feedback)(self)
@@ -130,11 +130,11 @@ class Simulation(models.Model):
         return sha256(encoded.encode("utf-8")).hexdigest()
 
     @classmethod
-    def create_with_default_prompt(cls, user, app_label="ChatLab", **kwargs):
+    def create_with_default_prompt(cls, user, app_label="chatlab", **kwargs):
         """
         Create a Simulation with a default prompt based on the user role and app_label.
         """
-        from SimManAI.prompts import get_or_create_prompt
+        from simai.prompts import get_or_create_prompt
 
         prompt = get_or_create_prompt(app_label=app_label, role=user.role)
         return cls.objects.create(user=user, prompt=prompt, **kwargs)
@@ -144,7 +144,7 @@ class Simulation(models.Model):
         if not self.prompt:
             if not self.user:
                 raise ValueError("Cannot assign default prompt without a user.")
-            self.prompt = get_or_create_prompt(app_label="ChatLab", role=getattr(self.user, "role", None))
+            self.prompt = get_or_create_prompt(app_label="chatlab", role=getattr(self.user, "role", None))
 
         # Handle display name update if full name is changed
         updating_name = False
@@ -208,7 +208,7 @@ class Message(models.Model):
     is_read = models.BooleanField(default=False)
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
     response = models.ForeignKey(
-        "SimManAI.Response",
+        "simai.Response",
         on_delete=models.CASCADE,
         verbose_name="OpenAI Response",
         related_name="messages",

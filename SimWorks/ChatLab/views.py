@@ -44,9 +44,9 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "ChatLab/partials/simulation_history.html"
+        "chatlab/partials/simulation_history.html"
         if request.htmx
-        else "ChatLab/index.html"
+        else "chatlab/index.html"
     )
     return render(
         request,
@@ -76,14 +76,14 @@ def create_simulation(request):
 
     # Generate initial scenario and first SIM message in background
     import threading
-    from SimManAI.async_client import AsyncOpenAIChatService
+    from simai.async_client import AsyncOpenAIChatService
     from channels.layers import get_channel_layer
 
     ai = AsyncOpenAIChatService()
 
     def start_initial_response(sim):
         logger.debug(
-            f"[ChatLab] requesting initial SimMessage for Sim#{sim.id}"
+            f"[chatlab] requesting initial SimMessage for Sim#{sim.id}"
         )
         try:
             # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
@@ -109,7 +109,7 @@ def create_simulation(request):
         target=start_initial_response, args=(simulation,), daemon=True
     ).start()
 
-    return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
+    return redirect("chatlab:run_simulation", simulation_id=simulation.id)
 
 
 @login_required
@@ -131,7 +131,7 @@ def run_simulation(request, simulation_id):
         "feedback": feedback,
     }
 
-    return render(request, "ChatLab/simulation.html", context)
+    return render(request, "chatlab/simulation.html", context)
 
 
 @require_GET
@@ -152,7 +152,7 @@ def refresh_metadata(request, simulation_id):
     logger.debug(
         f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
-    return render(request, "ChatLab/partials/_metadata_inner.html", context)
+    return render(request, "chatlab/partials/_metadata_inner.html", context)
 
 @require_GET
 def refresh_messages(request, simulation_id):
@@ -160,7 +160,7 @@ def refresh_messages(request, simulation_id):
         "-timestamp"
     )[:5]
     messages = reversed(messages)  # Show oldest at top
-    return render(request, "ChatLab/partials/messages.html", {"messages": messages})
+    return render(request, "chatlab/partials/messages.html", {"messages": messages})
 
 
 @require_GET
@@ -175,7 +175,7 @@ def load_older_messages(request, simulation_id):
         simulation_id=simulation_id, timestamp__lt=before_message.timestamp
     ).order_by("-timestamp")[:5]
     messages = reversed(messages)
-    return render(request, "ChatLab/partials/messages.html", {"messages": messages})
+    return render(request, "chatlab/partials/messages.html", {"messages": messages})
 
 
 from django.views.decorators.http import require_POST
@@ -187,4 +187,4 @@ def end_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id, user=request.user)
     if not simulation.end_timestamp:
         simulation.end()
-    return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
+    return redirect("chatlab:run_simulation", simulation_id=simulation.id)

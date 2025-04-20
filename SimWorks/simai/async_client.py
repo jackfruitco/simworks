@@ -11,8 +11,8 @@ from typing import List
 from typing import Optional
 
 from asgiref.sync import sync_to_async
-from ChatLab.models import Message
-from ChatLab.models import Simulation
+from chatlab.models import Message
+from chatlab.models import Simulation
 from . import prompts
 from .models import ResponseType
 from .output_schemas import message_schema, feedback_schema

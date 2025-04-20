@@ -7,7 +7,7 @@ import time
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from SimManAI.async_client import AsyncOpenAIChatService
+from simai.async_client import AsyncOpenAIChatService
 from core.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
@@ -59,7 +59,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     {
                         "type": "error",
                         "message": error_message,
-                        "redirect": reverse("ChatLab:index"),
+                        "redirect": reverse("chatlab:index"),
                     }
                 )
             )

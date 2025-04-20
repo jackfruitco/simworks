@@ -45,7 +45,7 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
-        "ChatLab": {
+        "chatlab": {
             "handlers": ["console"],
             "level": check_env("CHATLAB_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
@@ -60,7 +60,7 @@ LOGGING = {
             "level": check_env("NOTIFY_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "core.SimManAI": {
+        "core.simai": {
             "handlers": ["console"],
             "level": check_env("SIM-AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,

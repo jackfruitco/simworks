@@ -2,9 +2,9 @@ from django.contrib import admin
 from django.utils.html import format_html_join
 from django.utils.safestring import mark_safe
 
-from ChatLab.admin import MetadataInline
+from chatlab.admin import MetadataInline
 from .models import *
-from ChatLab.models import Message
+from chatlab.models import Message
 
 @admin.register(Prompt)
 class PromptAdmin(admin.ModelAdmin):

@@ -5,14 +5,14 @@ from django.apps import apps
 
 logger = logging.getLogger(__name__)
 
-# Cache SimManAI models to restrict logging only to this app
-simmanai_models = set(apps.get_app_config("SimManAI").get_models())
+# Cache simai models to restrict logging only to this app
+simmanai_models = set(apps.get_app_config("simai").get_models())
 
 
 def log_model_save(sender, instance, created, **kwargs):
     # Skip if sender is not a model from this app
     if sender not in simmanai_models:
-        return  # Only handle SimManAI models
+        return  # Only handle simai models
 
     class_name = sender.__name__
     object_id = getattr(instance, 'id', 'N/A')
@@ -29,8 +29,8 @@ def log_model_save(sender, instance, created, **kwargs):
 
     logger.info(msg)
 
-# Connect to all models in SimManAI
-models = apps.get_app_config("SimManAI").get_models()
+# Connect to all models in simai
+models = apps.get_app_config("simai").get_models()
 
 for model in models:
     post_save.connect(

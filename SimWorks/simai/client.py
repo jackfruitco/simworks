@@ -2,9 +2,9 @@ import logging
 from typing import List
 from typing import Optional
 
-from ChatLab.models import Message
-from ChatLab.models import Simulation
-from SimManAI.parser import OpenAIResponseParser
+from chatlab.models import Message
+from chatlab.models import Simulation
+from simai.parser import OpenAIResponseParser
 from django.conf import settings
 from openai import OpenAI
 
@@ -35,7 +35,7 @@ class OpenAIChatService:
 
     def get_initial_response(self, simulation: Simulation) -> List[Message]:
         if not simulation.prompt:
-            from ChatLab.models import get_default_prompt
+            from chatlab.models import get_default_prompt
 
             simulation.prompt_id = get_default_prompt()
             simulation.save()

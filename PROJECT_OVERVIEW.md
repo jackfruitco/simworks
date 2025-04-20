@@ -8,11 +8,11 @@ SimWorks is a Django-based web app simulating real-time military medical scenari
 
 ### 📦 App Structure
 
-#### ChatLab/
+#### chatlab/
 - `models.py`: Simulation, Message, Prompt
 - `views.py`: simulation launch, chat UI, lazy loading, search
-- `templates/ChatLab/`: includes `index.html`, `chat.html`, `simulation.html`, and `partials/`
-- `static/ChatLab/`: `chat.css`, `style.css`, `sounds/`
+- `templates/chatlab/`: includes `index.html`, `chat.html`, `simulation.html`, and `partials/`
+- `static/chatlab/`: `chat.css`, `style.css`, `sounds/`
 
 #### core/
 - WebSocket consumer for notifications
@@ -59,7 +59,7 @@ SimWorks is a Django-based web app simulating real-time military medical scenari
   - Staff-editable via admin or UI
   - `get_default_prompt()` ensures default exists and is linked
 - **Static Assets**:
-  - Chat sounds in `static/ChatLab/sounds/`
+  - Chat sounds in `static/chatlab/sounds/`
   - Theme and chat styles in `base.css`, `chat.css`, `style.css`
 
 ---

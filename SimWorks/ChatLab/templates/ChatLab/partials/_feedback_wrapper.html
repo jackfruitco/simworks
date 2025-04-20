@@ -14,11 +14,11 @@
          x-transition:leave-start="opacity-100 translate-y-0"
          x-transition:leave-end="opacity-0 -translate-y-2"
          {% comment %}
-         hx-get="{% url 'ChatLab:refresh_feedback' simulation.id %}"
+         hx-get="{% url 'chatlab:refresh_feedback' simulation.id %}"
          hx-swap="outerHTML"
          hx-trigger="refreshFeedback">
          {% endcomment %}
-        {% include "ChatLab/partials/_feedback_inner.html" %}
+        {% include "chatlab/partials/_feedback_inner.html" %}
     </div>
 
     {% else %}
