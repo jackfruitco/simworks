@@ -143,7 +143,7 @@ function ChatManager(simulation_id, currentUser) {
                         try {
                             content = JSON.parse(content);
                         } catch (e) {
-                            console.warn("Failed to parse message content", e);
+                            console.warn("Failed to parse message text", e);
                         }
                     }
                     console.log("[appendMessage]", { content, isSender, status, displayName });
@@ -208,7 +208,7 @@ function ChatManager(simulation_id, currentUser) {
                         content = JSON.parse(content);
                     }
                 } catch (e) {
-                    console.warn("Failed to parse message content", e);
+                    console.warn("Failed to parse message text", e);
                 }
             }
 

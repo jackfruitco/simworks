@@ -27,7 +27,7 @@ class Message(models.Model):
 
     simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE)
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    content = models.TextField(blank=True, null=True)
+    text = models.TextField(blank=True, null=True)
     role = models.CharField(
         max_length=2,
         choices=RoleChoices.choices,
@@ -69,7 +69,7 @@ class Message(models.Model):
         """Return list formatted for OpenAI Responses API input."""
         return {
             "role": self.get_role_display(),
-            "content": self.content,
+            "text": self.text,
         }
 
     def save(self, *args, **kwargs):
