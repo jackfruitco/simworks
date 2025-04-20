@@ -1,3 +1,5 @@
+# chatlab/views.py
+
 import logging
 
 from django.contrib.auth.decorators import login_required
@@ -9,7 +11,7 @@ from django.shortcuts import redirect
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
-from chatlab.utils import create_simulation, maybe_start_simulation
+from chatlab.utils import create_new_simulation, maybe_start_simulation
 from simcore.models import Simulation
 from .models import Message
 
@@ -56,7 +58,7 @@ def index(request):
 
 @login_required
 def create_simulation(request):
-    sim = create_simulation(request.user)
+    sim = create_new_simulation(request.user)
     return redirect("chatlab:run_simulation", simulation_id=sim.id)
 
 
