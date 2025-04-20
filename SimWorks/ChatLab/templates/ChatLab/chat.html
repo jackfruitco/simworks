@@ -20,7 +20,7 @@
     id="chat-messages"
     class="message-list"
     data-has-messages="false"
-    hx-get="{% url 'ChatLab:refresh_messages' simulation.id %}"
+    hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
     hx-trigger="load"
     hx-swap="innerHTML"
     @scroll.passive="handleScroll"
@@ -34,23 +34,23 @@
   </button>
 
   <!-- Typing indicator -->
-  {% include "ChatLab/partials/typing_indicator.html" %}
+  {% include "chatlab/partials/typing_indicator.html" %}
 
 {% comment %}
   <!-- Input form -->
 {% if simulation_locked %}
-    <p class="text-muted">Simulation complete. Chat is now read-only.</p>
+    <p class="content-muted">Simulation complete. Chat is now read-only.</p>
 {% else %}
-    {% include 'ChatLab/partials/input_form.html' %}
+    {% include 'chatlab/partials/input_form.html' %}
 {% endif %}
 {% endcomment %}
-{% include 'ChatLab/partials/input_form.html' %}
+{% include 'chatlab/partials/input_form.html' %}
 </section>
 
 <audio id="send-sound" preload="auto">
-  <source src="{% static 'ChatLab/sounds/send.mp3' %}" type="audio/mpeg">
+  <source src="{% static 'chatlab/sounds/send.mp3' %}" type="audio/mpeg">
 </audio>
 
 <audio id="receive-sound" preload="auto">
-  <source src="{% static 'ChatLab/sounds/receive.mp3' %}" type="audio/mpeg">
+  <source src="{% static 'chatlab/sounds/receive.mp3' %}" type="audio/mpeg">
 </audio>

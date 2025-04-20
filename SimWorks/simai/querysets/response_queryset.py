@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils.timezone import now
-from SimManAI.analytics.response_analytics import ResponseAnalytics
+from simai.analytics.response_analytics import ResponseAnalytics
 
 
 class ResponseQuerySet(models.QuerySet):

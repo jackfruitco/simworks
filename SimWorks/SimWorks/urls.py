@@ -13,9 +13,9 @@ sitemaps = {
 urlpatterns = [
     path("", CoreViews.index, name="home"),
     path("admin/", admin.site.urls),
-    path("SimManAI/", include("SimManAI.urls")),
+    path("simai/", include("simai.urls")),
     path("accounts/", include("accounts.urls")),
-    path("ChatLab/", include("ChatLab.urls")),
+    path("chatlab/", include("chatlab.urls")),
     path(
         "robots.txt",
         CoreViews.RobotsView.as_view(content_type="text/plain"),

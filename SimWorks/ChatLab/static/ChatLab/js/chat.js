@@ -106,7 +106,7 @@ function ChatManager(simulation_id, currentUser) {
                     if (!isSender) {
                         this.simulateSystemTyping(false);
                         // trigger hx-get to update Simulation Metadata
-                        fetch(`/ChatLab/simulation/${this.simulation_id}/refresh/metadata/`)
+                        fetch(`/chatlab/simulation/${this.simulation_id}/refresh/metadata/`)
                           .then(res => {
                             const contentType = res.headers.get("content-type");
                             if (contentType && contentType.includes("application/json")) {
@@ -128,7 +128,7 @@ function ChatManager(simulation_id, currentUser) {
                               // fallback: metadata div is empty → force refresh
                               if (!this.metadataDiv.querySelector('ul.sim-metadata')) {
                                 console.warn("[metadata] Forcing fallback render...");
-                                fetch(`/ChatLab/simulation/${this.simulation_id}/refresh/metadata/?force=1`)
+                                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/metadata/?force=1`)
                                   .then(res => res.text())
                                   .then(html => {
                                     this.metadataDiv.outerHTML = html;

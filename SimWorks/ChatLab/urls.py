@@ -2,7 +2,7 @@ from django.urls import path
 
 from . import views
 
-app_name = "ChatLab"
+app_name = "chatlab"
 
 urlpatterns = [
     path("", views.index, name="index"),

@@ -11,8 +11,8 @@ from typing import List
 from typing import Optional
 
 from asgiref.sync import sync_to_async
-from ChatLab.models import Message
-from ChatLab.models import Simulation
+from chatlab.models import Message
+from simcore.models import Simulation
 from . import prompts
 from .models import ResponseType
 from .output_schemas import message_schema, feedback_schema
@@ -33,7 +33,7 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
     Returns:
         List[dict]: A list of dictionaries representing the role and content for the introduction.
     """
-    instruction = simulation.prompt.text.strip()
+    instruction = simulation.prompt.content.strip()
     instruction += (
         f"\n\nYour name is {simulation.sim_patient_full_name}. "
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
@@ -124,7 +124,7 @@ class AsyncOpenAIChatService:
         """
         func_name = inspect.currentframe().f_code.co_name
 
-        # Get output schema as `text`, and input_payload (prompt, message)
+        # Get output schema as `content`, and input_payload (prompt, message)
         text = await message_schema(initial=True)
         input_payload = await build_patient_initial_payload(simulation)
 

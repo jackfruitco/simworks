@@ -5,9 +5,9 @@ from typing import List
 from asgiref.sync import sync_to_async
 
 from .models import ResponseType
-from ChatLab.models import Message
-from SimManAI.models import Response
-from SimManAI.parser import StructuredOutputParser
+from chatlab.models import Message
+from simai.models import Response
+from simai.parser import StructuredOutputParser
 from core.utils import get_system_user
 
 logger = logging.getLogger(__name__)
@@ -56,5 +56,5 @@ async def process_response(response, simulation, stream=False, response_type=Res
     return await parser.parse_output(response.output_text, response_type)
 
 async def consume_response(response, simulation, stream=False, response_type=None) -> List[Message]:
-    logger.error("SimManAI.consume_response called, but not implemented. Switching to SimManAI.process_response")
+    logger.error("simai.consume_response called, but not implemented. Switching to simai.process_response")
     return await process_response(response, simulation, stream=False)

@@ -1,9 +1,9 @@
-# SimManAI/urls.py
+# simai/urls.py
 
 from django.urls import path
-from SimManAI import views
+from simai import views
 
-app_name = 'SimManAI'
+app_name = 'simai'
 
 urlpatterns = [
     path("analytics/usage/", views.usage_report, name="usage-report"),

@@ -10,10 +10,9 @@ from typing import Tuple
 
 from .models import ResponseType
 from asgiref.sync import sync_to_async
-from ChatLab.models import Message
-from ChatLab.models import RoleChoices
-from ChatLab.models import Simulation
-from ChatLab.models import SimulationMetadata
+from chatlab.models import Message
+from chatlab.models import RoleChoices
+from simcore.models import Simulation, SimulationMetadata
 from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ class StructuredOutputParser:
                 for part in msg.get("content") or []:
                     if part.get("type") == "output_text":
                         try:
-                            parsed = json.loads(part["text"])
+                            parsed = json.loads(part["content"])
                             output_chunks.append(parsed)
                         except json.JSONDecodeError as e:
                             logger.warning(f"[{func_name}] Failed to parse part: {e}")

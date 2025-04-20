@@ -7,7 +7,7 @@
 
     <section class="start-simulation">
         <div class="simulation-buttons">
-            <form method="post" action="{% url 'ChatLab:create_simulation' %}" class="start-form">
+            <form method="post" action="{% url 'chatlab:create_simulation' %}" class="start-form">
                 {% csrf_token %}
                 <button type="submit" class="button primary medium" style="margin: auto">New ChatLab Sim</button>
             </form>
@@ -22,7 +22,7 @@
             <button type="button" class="button">Filter</button>
         </div>
         {% endcomment %}
-        {% include 'ChatLab/partials/simulation_history.html' %}
+        {% include 'chatlab/partials/simulation_history.html' %}
     </section>
 </div>
 <section id="profile-links" class="profile-link-grid profile-container center">
@@ -30,7 +30,7 @@
     {% if user.is_staff %}
     <a href="{% url 'accounts:new-invite' %}" class="button small">New Invitation</a>
     <a href="{% url 'accounts:list-invites' %}" class="button small">View Invitations</a>
-    <a href="{% url 'SimManAI:usage-report' %}" class="button small">View Usage Analytics</a>
+    <a href="{% url 'simai:usage-report' %}" class="button small">View Usage Analytics</a>
     {% endif %}
 </section>
 {% endblock content %}

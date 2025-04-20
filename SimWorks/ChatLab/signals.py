@@ -22,7 +22,7 @@ def log_model_save(sender, instance, created, **kwargs):
     logger.info(msg)
 
 # Connect only once per model
-for model in apps.get_app_config("ChatLab").get_models():
+for model in apps.get_app_config("chatlab").get_models():
     post_save.connect(
         log_model_save,
         sender=model,

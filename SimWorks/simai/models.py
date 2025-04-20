@@ -34,7 +34,7 @@ class Prompt(models.Model):
     is_archived = models.BooleanField(default=False)
 
     title = models.CharField(max_length=255, unique=True)
-    text = models.TextField(help_text="The scenario prompt sent to OpenAI.")
+    content = models.TextField(help_text="The scenario prompt sent to OpenAI.")
     summary = models.TextField(help_text="The prompt summary.")
 
     @property
@@ -58,7 +58,7 @@ class Prompt(models.Model):
 
     # in Prompt model
     def compute_own_fingerprint(self):
-        return compute_fingerprint(self.title, self.text)
+        return compute_fingerprint(self.title, self.content)
 
 
 class ResponseType(models.TextChoices):
@@ -74,7 +74,7 @@ class Response(models.Model):
     modified = models.DateTimeField(auto_now=True)
     objects = ResponseQuerySet.as_manager()
 
-    simulation = models.ForeignKey("ChatLab.Simulation", related_name="responses", on_delete=models.CASCADE)
+    simulation = models.ForeignKey("simcore.Simulation", related_name="responses", on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="responses", on_delete=models.CASCADE)
     raw = models.TextField(verbose_name="OpenAI Raw Response")
     id = models.CharField("OpenAI Response ID", max_length=255, primary_key=True)

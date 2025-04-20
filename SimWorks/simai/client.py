@@ -2,9 +2,9 @@ import logging
 from typing import List
 from typing import Optional
 
-from ChatLab.models import Message
-from ChatLab.models import Simulation
-from SimManAI.parser import OpenAIResponseParser
+from chatlab.models import Message
+from simcore.models import Simulation
+from simai.parser import OpenAIResponseParser
 from django.conf import settings
 from openai import OpenAI
 
@@ -35,12 +35,12 @@ class OpenAIChatService:
 
     def get_initial_response(self, simulation: Simulation) -> List[Message]:
         if not simulation.prompt:
-            from ChatLab.models import get_default_prompt
+            from chatlab.models import get_default_prompt
 
             simulation.prompt_id = get_default_prompt()
             simulation.save()
 
-        instruction = simulation.prompt.text.strip()
+        instruction = simulation.prompt.content.strip()
         instruction += (
             f"\n\nYour name is {simulation.sim_patient_full_name}. "
             f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."

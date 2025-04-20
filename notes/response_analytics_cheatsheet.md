@@ -9,7 +9,7 @@ This document outlines all the available filters, grouping, and aggregation meth
 These are used directly from the `Response` model manager:
 
 ```python
-from SimManAI.models import Response
+from simai.models import Response
 ```
 
 | Method             | Description                             |

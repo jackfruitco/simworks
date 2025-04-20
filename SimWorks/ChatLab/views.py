@@ -1,9 +1,7 @@
+# chatlab/views.py
+
 import logging
 
-from accounts.models import UserRole
-from asgiref.sync import async_to_sync
-from core.utils import generate_fake_name
-from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import HttpResponseForbidden
@@ -11,11 +9,11 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
-from django.utils.timezone import now
 from django.views.decorators.http import require_GET
 
+from chatlab.utils import create_new_simulation, maybe_start_simulation
+from simcore.models import Simulation
 from .models import Message
-from .models import Simulation
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +42,9 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "ChatLab/partials/simulation_history.html"
+        "chatlab/partials/simulation_history.html"
         if request.htmx
-        else "ChatLab/index.html"
+        else "chatlab/index.html"
     )
     return render(
         request,
@@ -58,70 +56,23 @@ def index(request):
         },
     )
 
-
 @login_required
 def create_simulation(request):
-    simulation = Simulation.objects.create(
-        user=request.user,
-        sim_patient_full_name=generate_fake_name(),
-        start_timestamp=now()
-    )
-
-    User = get_user_model()
-    system_user, _ = User.objects.get_or_create(
-        username="System",
-        role=UserRole.objects.get_or_create(title="System")[0],
-        defaults={"first_name": "System", "is_active": False, },
-    )
-
-    # Generate initial scenario and first SIM message in background
-    import threading
-    from SimManAI.async_client import AsyncOpenAIChatService
-    from channels.layers import get_channel_layer
-
-    ai = AsyncOpenAIChatService()
-
-    def start_initial_response(sim):
-        logger.debug(
-            f"[ChatLab] requesting initial SimMessage for Sim#{sim.id}"
-        )
-        try:
-            # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
-            sim_responses = async_to_sync(ai.generate_patient_initial)(sim, False)
-
-            # Get channel layer and send the initial SimMessage to the group
-            channel_layer = get_channel_layer()
-            for message in sim_responses:
-                async_to_sync(channel_layer.group_send)(
-                    f"simulation_{sim.id}",  # Group name based on simulation ID
-                    {
-                        "type": "chat_message",
-                        "content": message.content,
-                        "display_name": sim.sim_patient_full_name,
-                    },
-                )
-        except Exception as e:
-            logger.exception(
-                f"Failed to generate initial SimMessage for Sim#{sim.id}: {e}"
-            )
-
-    threading.Thread(
-        target=start_initial_response, args=(simulation,), daemon=True
-    ).start()
-
-    return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
+    sim = create_new_simulation(request.user)
+    return redirect("chatlab:run_simulation", simulation_id=sim.id)
 
 
 @login_required
 def run_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id)
-    metadata = simulation.metadata.exclude(attribute="feedback")
-    feedback = simulation.metadata.filter(attribute="feedback")
 
     if simulation.user != request.user:
-        return HttpResponseForbidden(
-            "You do not have permission to view this simulation."
-        )
+        return HttpResponseForbidden("Waaaaaait a minute. This isn't your simulation!")
+
+    maybe_start_simulation(simulation)
+
+    metadata = simulation.metadata.exclude(attribute="feedback")
+    feedback = simulation.metadata.filter(attribute="feedback")
 
     context = {
         "simulation": simulation,
@@ -131,7 +82,7 @@ def run_simulation(request, simulation_id):
         "feedback": feedback,
     }
 
-    return render(request, "ChatLab/simulation.html", context)
+    return render(request, "chatlab/simulation.html", context)
 
 
 @require_GET
@@ -152,7 +103,7 @@ def refresh_metadata(request, simulation_id):
     logger.debug(
         f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
     )
-    return render(request, "ChatLab/partials/_metadata_inner.html", context)
+    return render(request, "chatlab/partials/_metadata_inner.html", context)
 
 @require_GET
 def refresh_messages(request, simulation_id):
@@ -160,7 +111,7 @@ def refresh_messages(request, simulation_id):
         "-timestamp"
     )[:5]
     messages = reversed(messages)  # Show oldest at top
-    return render(request, "ChatLab/partials/messages.html", {"messages": messages})
+    return render(request, "chatlab/partials/messages.html", {"messages": messages})
 
 
 @require_GET
@@ -175,7 +126,7 @@ def load_older_messages(request, simulation_id):
         simulation_id=simulation_id, timestamp__lt=before_message.timestamp
     ).order_by("-timestamp")[:5]
     messages = reversed(messages)
-    return render(request, "ChatLab/partials/messages.html", {"messages": messages})
+    return render(request, "chatlab/partials/messages.html", {"messages": messages})
 
 
 from django.views.decorators.http import require_POST
@@ -187,4 +138,4 @@ def end_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id, user=request.user)
     if not simulation.end_timestamp:
         simulation.end()
-    return redirect("ChatLab:run_simulation", simulation_id=simulation.id)
+    return redirect("chatlab:run_simulation", simulation_id=simulation.id)

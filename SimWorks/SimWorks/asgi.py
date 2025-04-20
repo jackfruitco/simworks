@@ -20,7 +20,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "SimWorks.settings")
 # is populated before importing code that may import ORM models.
 django_asgi_app = get_asgi_application()
 
-from ChatLab.routing import websocket_urlpatterns as chatlab_ws
+from chatlab.routing import websocket_urlpatterns as chatlab_ws
 from core.routing import websocket_urlpatterns as core_ws
 
 application = ProtocolTypeRouter(

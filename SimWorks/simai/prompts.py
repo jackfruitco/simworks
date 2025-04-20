@@ -198,14 +198,14 @@ class PromptModifiers:
 class PromptTemplate:
     """
     Wrapper class that provides access to base prompt content and all related modifier groups.
-    Supports a fluent interface to chain additional modifiers into the final prompt text.
+    Supports a fluent interface to chain additional modifiers into the final prompt content.
 
     Example usage:
         prompt = PromptTemplate(role=some_role)
         prompt_text = prompt.default().with_chatlab().finalize()
         prompt_title = prompt.title
     """
-    def __init__(self, role: Union[UserRole, int, None] = None, app_label: str = "ChatLab"):
+    def __init__(self, role: Union[UserRole, int, None] = None, app_label: str = "chatlab"):
         self.app_label = app_label
         self._cached_modifiers = None
         self._sections = []
@@ -222,8 +222,8 @@ class PromptTemplate:
             self.role = role
 
     @property
-    def text(self) -> str:
-        """Final assembled prompt text."""
+    def content(self) -> str:
+        """Final assembled prompt content."""
         return "\n".join(section.strip() for section in self._sections if section)
 
     @property
@@ -241,9 +241,9 @@ class PromptTemplate:
     def summary(self) -> str:
         """Return a structured summary of the prompt configuration."""
         role_title = self.role.title if self.role else "Unassigned"
-        env_labels = [label for label in self._modifiers_used if label not in ("Base", "UserRole", "ChatLab", "Feedback", "PauseX", "Azimuth", "Summary")]
+        env_labels = [label for label in self._modifiers_used if label not in ("Base", "UserRole", "chatlab", "Feedback", "PauseX", "Azimuth", "Summary")]
         return (
-            f"Simulation Type: ChatLab\n"
+            f"Simulation Type: chatlab\n"
             f"Training Role: {role_title}\n"
             f"Environment: {', '.join(env_labels) or 'Default'}\n"
             f"Included Modifiers: {', '.join(self._modifiers_used)}"
@@ -285,7 +285,7 @@ class PromptTemplate:
         return self
 
     def with_chatlab(self):
-        return self._add_modifier(self.modifiers.ChatLab.default(), "ChatLab")
+        return self._add_modifier(self.modifiers.ChatLab.default(), "chatlab")
 
     def with_feedback(self):
         return self._add_modifier(self.modifiers.Feedback.default(), "Feedback")
@@ -310,7 +310,7 @@ class PromptTemplate:
 modifiers = PromptModifiers()
 
 def get_or_create_prompt(
-    app_label: str = "ChatLab",
+    app_label: str = "chatlab",
     role: Union[UserRole, int, None] = None,
     include_feedback: bool = False,
     environment: str = None,
@@ -343,9 +343,9 @@ def get_or_create_prompt(
 
     # Build fields
     title = prompt.title
-    text = prompt.text
+    content = prompt.content
     summary = prompt.summary
-    fingerprint = compute_fingerprint(title.strip(), text.strip())
+    fingerprint = compute_fingerprint(title.strip(), content.strip())
 
     # Return Prompt instance with matching fingerprint if exists
     existing = Prompt.objects.filter(fingerprint=fingerprint).first()
@@ -366,7 +366,7 @@ def get_or_create_prompt(
 
     return Prompt.objects.create(
         title=title,
-        text=text,
+        content=content,
         summary=summary,
         fingerprint=fingerprint,
         is_archived=False,

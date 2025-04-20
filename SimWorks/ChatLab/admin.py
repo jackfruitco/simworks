@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from simcore.models import SimulationMetadata
 from .models import *
 
 
