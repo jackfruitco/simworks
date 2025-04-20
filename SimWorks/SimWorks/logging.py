@@ -60,9 +60,14 @@ LOGGING = {
             "level": check_env("NOTIFY_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "core.simai": {
+        "simai": {
             "handlers": ["console"],
-            "level": check_env("SIM-AI_LOG_LEVEL", None) or LOG_LEVEL,
+            "level": check_env("SIMAI_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "simcore": {
+            "handlers": ["console"],
+            "level": check_env("SIMCORE_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
     },
