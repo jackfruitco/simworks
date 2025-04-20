@@ -75,7 +75,7 @@ class SimulationModelTests(TestCase):
         self.sim_patient_name = "Tyler Johnson"
 
     def test_simulation_str_and_props(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         self.assertIn("chatlab Sim #", str(sim))
         self.assertTrue(sim.in_progress)
         self.assertFalse(sim.is_complete)
@@ -85,7 +85,7 @@ class SimulationModelTests(TestCase):
         self.assertTrue(sim.is_complete)
 
     def test_simulation_with_time_limit(self):
-        sim = Simulation.objects.create(user=self.user, time_limit=timedelta(seconds=1))
+        sim = Simulation.objects.create(user=self.user, time_limit=timedelta(seconds=1), lab_label="chatlab")
         sim.start_timestamp = timezone.now() - timedelta(seconds=2)
         sim.save()
         self.assertTrue(sim.is_timed_out)
@@ -95,13 +95,14 @@ class SimulationModelTests(TestCase):
         now = timezone.now()
         sim = Simulation.objects.create(
             user=self.user, start=now, end=now + timedelta(minutes=10)
+            , lab_label="chatlab"
         )
         self.assertEqual(sim.length, timedelta(minutes=10))
 
     def test_simulation_history(self):
         sim = Simulation.objects.create(user=self.user)
         Message.objects.create(
-            simulation=sim, sender=self.user, content="Hello", role=RoleChoices.USER
+            simulation=sim, sender=self.user, content="Hello", role=RoleChoices.USER, lab_label="chatlab"
         )
         Message.objects.create(
             simulation=sim,
@@ -114,12 +115,12 @@ class SimulationModelTests(TestCase):
         self.assertEqual(history[0]["role"], RoleChoices.ASSISTANT)
 
     def test_simulation_uses_default_prompt(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         self.assertIsNotNone(sim.prompt)
         self.assertEqual(sim.prompt.title, "Default Prompt")
 
     def test_simulation_history_ordering(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         Message.objects.create(
             simulation=sim, sender=self.user, content="Oldest", role=RoleChoices.USER
         )
@@ -134,24 +135,24 @@ class SimulationModelTests(TestCase):
 
     def test_simulation_queryset_filter_by_user(self):
         other = User.objects.create_user(username="someone_else")
-        Simulation.objects.create(user=self.user)
-        Simulation.objects.create(user=other)
+        Simulation.objects.create(user=self.user, lab_label="chatlab")
+        Simulation.objects.create(user=other, lab_label="chatlab")
         user_sims = Simulation.objects.filter(user=self.user)
         self.assertEqual(user_sims.count(), 1)
 
     def test_simulation_prompt_is_default_if_not_set(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         self.assertEqual(sim.prompt.title, "Default Prompt")
 
     def test_message_order_in_simulation(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         m1 = Message.objects.create(simulation=sim, sender=self.user, content="first")
         m2 = Message.objects.create(simulation=sim, sender=self.user, content="second")
         all_messages = sim.message_set.order_by("order")
         self.assertEqual(list(all_messages), [m1, m2])
 
     def test_message_deletion_on_simulation_delete(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         Message.objects.create(simulation=sim, sender=self.user, content="bye")
         sim.delete()
         self.assertEqual(Message.objects.count(), 0)
@@ -163,7 +164,7 @@ class SimulationModelTests(TestCase):
             )
 
     def test_message_with_response_link(self):
-        sim = Simulation.objects.create(user=self.user)
+        sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
         response = Message.objects.create(
             simulation=sim,
             sender=self.user,
@@ -188,6 +189,7 @@ class SimulationModelTests(TestCase):
     def test_sim_patient_display_name_only_changes_if_full_name_changes(self):
         sim = Simulation.objects.create(
             user=self.user, sim_patient_full_name="Tyler Johnson"
+            , lab_label="chatlab"
         )
         original_display = sim.sim_patient_display_name
 
@@ -206,7 +208,7 @@ class SimulationModelTests(TestCase):
 class MessageModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="msg_user")
-        self.sim = Simulation.objects.create(user=self.user)
+        self.sim = Simulation.objects.create(user=self.user, lab_label="chatlab")
 
     def test_message_ordering_and_str(self):
         m1 = Message.objects.create(
