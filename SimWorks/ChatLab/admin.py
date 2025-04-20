@@ -16,7 +16,7 @@ class MessageAdmin(admin.ModelAdmin):
 
     fieldsets = [
         (None, {"fields": ("simulation", "order", "sender", "role")}),
-        ("Contents", {"fields": ("text",)}),
+        ("Contents", {"fields": ("content",)}),
         ("OpenAI Response", {
             "classes": ("collapse",),
             "fields": ("response__raw",)

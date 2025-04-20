@@ -15,7 +15,7 @@ class ChatLabConfig(AppConfig):
                     "timestamp": msg.timestamp,
                     "role": msg.role,
                     "sender": msg.display_name or str(msg.sender),
-                    "text": msg.text,
+                    "content": msg.content,
                 }
                 for msg in Message.objects.filter(simulation=simulation).order_by("timestamp")
             ]

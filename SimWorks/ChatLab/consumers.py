@@ -160,7 +160,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )()
             if first_msg:
                 print("[WebSocket] Received client_ready event")
-                print(f"[WebSocket] Sending message to group: {first_msg.text}")
+                print(f"[WebSocket] Sending message to group: {first_msg.content}")
                 sender_username = await sync_to_async(
                     lambda: first_msg.sender.username
                 )()
@@ -174,7 +174,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     self.room_group_name,
                     {
                         "type": "chat_message",
-                        "text": first_msg.text,
+                        "content": first_msg.content,
                         "sender": sender_username,
                         "display_name": display_name,
                         "display_initials": display_initials,
@@ -220,13 +220,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Handle incoming user messages, save them to DB, and trigger AI response.
 
-        :param data: A dict containing at least 'text' and 'role'
+        :param data: A dict containing at least 'content' and 'role'
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name)
 
         is_from_user = data.get("role", "").upper() == "USER"
-        content = data["text"]
+        content = data["content"]
         sender = self.scope["user"]
 
         if is_from_user:
@@ -347,7 +347,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "type": "chat_message",
             "id": str(message.id),
             "sender": sender_username,
-            "text": message.text,
+            "content": message.content,
             "display_name": display_name,
             "display_initials": display_initials,
         }
@@ -467,25 +467,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Send a chat message to the WebSocket from the room group.
 
-        :param event: Dict with message metadata and text
+        :param event: Dict with message metadata and content
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name)
 
-        # Check if 'text' exists in event
-        content = event.get("text", None)
+        # Check if 'content' exists in event
+        content = event.get("content", None)
         if content is None:
-            ChatConsumer.log(self, func_name, "Error! chat_message text is None")
+            ChatConsumer.log(self, func_name, "Error! chat_message content is None")
             return
 
-        # Proceed to send the message if 'text' exists
+        # Proceed to send the message if 'content' exists
         await self.send(
             text_data=json.dumps(
                 {
                     "id": event.get("id"),
                     "type": "chat_message",
                     "status": event.get("status"),
-                    "text": content,
+                    "content": content,
                     "display_name": event.get("display_name"),
                     "sender": event.get("sender") or "System",
                 }
