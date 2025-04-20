@@ -57,7 +57,10 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
     """
     return {
         "previous_response_id": user_msg.get_previous_openai_id(),
-        "input": user_msg.get_openai_input(),
+        "input": [
+            user_msg.get_openai_input(),
+            # {"role": "user", "content": "content"},
+        ],
     }
 
 

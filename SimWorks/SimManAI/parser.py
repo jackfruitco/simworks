@@ -34,6 +34,8 @@ class StructuredOutputParser:
         Message]:
         func_name = inspect.currentframe().f_code.co_name
 
+        logger.debug(f"output_text: {output}")
+
         if isinstance(output, str):
             output = json.loads(output)
 
@@ -43,7 +45,7 @@ class StructuredOutputParser:
             output_chunks = []
 
             for msg in assistant_messages:
-                for part in msg.get("content", []):
+                for part in msg.get("content") or []:
                     if part.get("type") == "output_text":
                         try:
                             parsed = json.loads(part["text"])
@@ -54,8 +56,8 @@ class StructuredOutputParser:
             # Merge messages and metadata
             merged_output = {"messages": [], "metadata": {"patient_metadata": {}, "simulation_metadata": []}}
             for chunk in output_chunks:
-                merged_output["messages"].extend(chunk.get("messages", []))
-                metadata = chunk.get("metadata", {})
+                merged_output["messages"].extend(chunk.get("messages") or [])
+                metadata = chunk.get("metadata") or {}
 
                 # Merge patient_metadata
                 if "patient_metadata" in metadata:
@@ -75,16 +77,17 @@ class StructuredOutputParser:
             return []
 
         # Now handle normal parsing flow
-        messages = output.get("messages", [])
-        metadata = output.get("metadata", {})
+        messages = output.get("messages") or []
+        metadata = output.get("metadata") or {}
 
-        patient_data = metadata.get("patient_metadata", {})
-        simulation_data = metadata.get("simulation_metadata", {})
-        patient_history = patient_data.get("medical_history", {})
+        # Gracefully handle missing or null metadata blocks
+        patient_data = metadata.get("patient_metadata") or {}
+        simulation_data = metadata.get("simulation_metadata") or {}
+        patient_history = patient_data.get("medical_history") or {}
         patient_metadata = {
             k: v for k, v in patient_data.items() if k not in ("medical_history", "additional")
         }
-        patient_metadata.update(patient_data.get("additional_metadata", {}))
+        patient_metadata.update(patient_data.get("additional_metadata") or {})
 
         logger.debug(f"{func_name} parsed {len(messages)} messages")
         logger.debug(f"{func_name} simulation_data {type(simulation_data)}: {simulation_data}")

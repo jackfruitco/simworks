@@ -236,14 +236,12 @@ class Message(models.Model):
         )
         return previous_message.openai_id if previous_message else None
 
-    def get_openai_input(self) -> list:
+    def get_openai_input(self) -> dict:
         """Return list formatted for OpenAI Responses API input."""
-        return [
-            {
-                "role": self.get_role_display(),
-                "content": self.content,
-            }
-        ]
+        return {
+            "role": self.get_role_display(),
+            "content": self.content,
+        }
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None

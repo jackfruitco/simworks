@@ -36,7 +36,7 @@ async def message_schema(initial: bool = False) -> dict:
         "format": {
             "type": "json_schema",
             "name": "patient_response",
-            "strict": False,
+            "strict": True,
             "schema": {
                 "type": dynamic_type(base="object", initial=True, only=False),
                 "properties": {
@@ -45,6 +45,8 @@ async def message_schema(initial: bool = False) -> dict:
                         "description": "Simulated SMS messages from the patient.",
                         "items": {
                             "type": dynamic_type("object", True, only=False),
+                            "required": ["sender", "content"],
+                            "additionalProperties": False,
                             "properties": {
                                 "sender": {
                                     "type": dynamic_type("string", True, only=False),
@@ -55,8 +57,6 @@ async def message_schema(initial: bool = False) -> dict:
                                     "description": "The content of the message sent by the patient.",
                                 },
                             },
-                            "required": ["sender", "content"],
-                            "additionalProperties": False,
                         },
                     },
                     "metadata": {
@@ -166,6 +166,7 @@ async def message_schema(initial: bool = False) -> dict:
                                     },
                                 },
                                 "required": [
+                                    "name",
                                     "age",
                                     "gender",
                                     "location",
