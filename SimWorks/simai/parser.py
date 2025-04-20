@@ -44,10 +44,10 @@ class StructuredOutputParser:
             output_chunks = []
 
             for msg in assistant_messages:
-                for part in msg.get("text") or []:
+                for part in msg.get("content") or []:
                     if part.get("type") == "output_text":
                         try:
-                            parsed = json.loads(part["text"])
+                            parsed = json.loads(part["content"])
                             output_chunks.append(parsed)
                         except json.JSONDecodeError as e:
                             logger.warning(f"[{func_name}] Failed to parse part: {e}")
@@ -111,7 +111,7 @@ class StructuredOutputParser:
 
         return await sync_to_async(Message.objects.create)(
             simulation=self.simulation,
-            content=message["text"],
+            content=message["content"],
             sender=self.system_user,
             display_name=display_name,
             role=RoleChoices.ASSISTANT,

@@ -15,7 +15,7 @@ class PromptAdmin(admin.ModelAdmin):
     )
     list_editable = ("is_archived",)
     list_filter = ("created_by", "is_archived")
-    search_fields = ("title", "text")
+    search_fields = ("title", "content")
 
     def created_by_display(self, obj):
         return obj.created_by.username if obj.created_by else "System"
@@ -31,9 +31,9 @@ class PromptAdmin(admin.ModelAdmin):
 class MessagesInline(admin.TabularInline):
     model = Message
     extra = 0
-    readonly_fields = ("text", "role")
+    readonly_fields = ("content", "role")
     fieldsets = [
-        (None, {"fields": ("text", "role")}),
+        (None, {"fields": ("content", "role")}),
     ]
 
     def has_change_permission(self, request, obj=None):

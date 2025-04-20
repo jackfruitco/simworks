@@ -1,10 +1,13 @@
+# chatlab/utils.py
+
 import logging
 import threading
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.utils.timezone import now
 
-from chatlab.models import ChatSimulation
+from chatlab.models import ChatSession
 from core.utils import get_or_create_system_user
 from simai.async_client import AsyncOpenAIChatService
 from simcore.models import Simulation
@@ -13,16 +16,17 @@ from simcore.utils import generate_fake_name
 logger = logging.getLogger(__name__)
 
 
-def create_simulation(user):
-    """Create a new Simulation and ChatSimulation, and trigger AI patient intro."""
+def create_new_simulation(user):
+    """Create a new Simulation and ChatSession, and trigger AI patient intro."""
     # Create base Simulation
     simulation = Simulation.objects.create(
         user=user,
+        lab_label="chatlab",
         sim_patient_full_name=generate_fake_name(),
     )
 
     # Link ChatLab extension
-    ChatSimulation.objects.create(simulation=simulation)
+    ChatSession.objects.create(simulation=simulation)
 
     # Get System user
     system_user = get_or_create_system_user()
@@ -40,7 +44,7 @@ def create_simulation(user):
                     f"simulation_{sim.id}",
                     {
                         "type": "chat_message",
-                        "text": message.text,
+                        "content": message.content,
                         "display_name": sim.sim_patient_display_name,
                     },
                 )
@@ -50,8 +54,6 @@ def create_simulation(user):
     threading.Thread(target=start_initial_response, args=(simulation,), daemon=True).start()
 
     return simulation
-
-from django.utils.timezone import now
 
 def maybe_start_simulation(simulation):
     """Starts the simulation if not already started."""

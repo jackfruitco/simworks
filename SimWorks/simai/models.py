@@ -34,7 +34,7 @@ class Prompt(models.Model):
     is_archived = models.BooleanField(default=False)
 
     title = models.CharField(max_length=255, unique=True)
-    text = models.TextField(help_text="The scenario prompt sent to OpenAI.")
+    content = models.TextField(help_text="The scenario prompt sent to OpenAI.")
     summary = models.TextField(help_text="The prompt summary.")
 
     @property
@@ -58,7 +58,7 @@ class Prompt(models.Model):
 
     # in Prompt model
     def compute_own_fingerprint(self):
-        return compute_fingerprint(self.title, self.text)
+        return compute_fingerprint(self.title, self.content)
 
 
 class ResponseType(models.TextChoices):

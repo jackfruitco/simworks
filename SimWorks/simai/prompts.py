@@ -197,8 +197,8 @@ class PromptModifiers:
 
 class PromptTemplate:
     """
-    Wrapper class that provides access to base prompt text and all related modifier groups.
-    Supports a fluent interface to chain additional modifiers into the final prompt text.
+    Wrapper class that provides access to base prompt content and all related modifier groups.
+    Supports a fluent interface to chain additional modifiers into the final prompt content.
 
     Example usage:
         prompt = PromptTemplate(role=some_role)
@@ -222,8 +222,8 @@ class PromptTemplate:
             self.role = role
 
     @property
-    def text(self) -> str:
-        """Final assembled prompt text."""
+    def content(self) -> str:
+        """Final assembled prompt content."""
         return "\n".join(section.strip() for section in self._sections if section)
 
     @property
@@ -343,9 +343,9 @@ def get_or_create_prompt(
 
     # Build fields
     title = prompt.title
-    text = prompt.text
+    content = prompt.content
     summary = prompt.summary
-    fingerprint = compute_fingerprint(title.strip(), text.strip())
+    fingerprint = compute_fingerprint(title.strip(), content.strip())
 
     # Return Prompt instance with matching fingerprint if exists
     existing = Prompt.objects.filter(fingerprint=fingerprint).first()
@@ -366,7 +366,7 @@ def get_or_create_prompt(
 
     return Prompt.objects.create(
         title=title,
-        text=text,
+        content=content,
         summary=summary,
         fingerprint=fingerprint,
         is_archived=False,

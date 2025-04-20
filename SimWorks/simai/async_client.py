@@ -31,9 +31,9 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
         simulation (Simulation): The simulation object containing prompt and patient information.
 
     Returns:
-        List[dict]: A list of dictionaries representing the role and text for the introduction.
+        List[dict]: A list of dictionaries representing the role and content for the introduction.
     """
-    instruction = simulation.prompt.text.strip()
+    instruction = simulation.prompt.content.strip()
     instruction += (
         f"\n\nYour name is {simulation.sim_patient_full_name}. "
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
@@ -59,7 +59,7 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         "previous_response_id": user_msg.get_previous_openai_id(),
         "input": [
             user_msg.get_openai_input(),
-            # {"role": "user", "content": "text"},
+            # {"role": "user", "content": "content"},
         ],
     }
 
@@ -124,7 +124,7 @@ class AsyncOpenAIChatService:
         """
         func_name = inspect.currentframe().f_code.co_name
 
-        # Get output schema as `text`, and input_payload (prompt, message)
+        # Get output schema as `content`, and input_payload (prompt, message)
         text = await message_schema(initial=True)
         input_payload = await build_patient_initial_payload(simulation)
 
