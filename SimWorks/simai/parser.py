@@ -12,8 +12,7 @@ from .models import ResponseType
 from asgiref.sync import sync_to_async
 from chatlab.models import Message
 from chatlab.models import RoleChoices
-from chatlab.models import Simulation
-from chatlab.models import SimulationMetadata
+from simcore.models import Simulation, SimulationMetadata
 from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)

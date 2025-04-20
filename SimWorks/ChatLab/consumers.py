@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from .models import Message
 from .models import RoleChoices
-from .models import Simulation
+from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
 ai = AsyncOpenAIChatService()

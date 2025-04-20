@@ -8,7 +8,7 @@ from .models import get_default_prompt
 from .models import Message
 from .models import Prompt
 from .models import RoleChoices
-from .models import Simulation
+from simcore.models import Simulation
 
 User = get_user_model()
 

@@ -15,7 +15,7 @@ from django.utils.timezone import now
 from django.views.decorators.http import require_GET
 
 from .models import Message
-from .models import Simulation
+from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
 

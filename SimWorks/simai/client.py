@@ -3,7 +3,7 @@ from typing import List
 from typing import Optional
 
 from chatlab.models import Message
-from chatlab.models import Simulation
+from simcore.models import Simulation
 from simai.parser import OpenAIResponseParser
 from django.conf import settings
 from openai import OpenAI

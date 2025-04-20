@@ -74,7 +74,7 @@ class Response(models.Model):
     modified = models.DateTimeField(auto_now=True)
     objects = ResponseQuerySet.as_manager()
 
-    simulation = models.ForeignKey("chatlab.Simulation", related_name="responses", on_delete=models.CASCADE)
+    simulation = models.ForeignKey("simcore.Simulation", related_name="responses", on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="responses", on_delete=models.CASCADE)
     raw = models.TextField(verbose_name="OpenAI Raw Response")
     id = models.CharField("OpenAI Response ID", max_length=255, primary_key=True)
