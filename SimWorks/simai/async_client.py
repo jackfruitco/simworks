@@ -31,7 +31,7 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
         simulation (Simulation): The simulation object containing prompt and patient information.
 
     Returns:
-        List[dict]: A list of dictionaries representing the role and content for the introduction.
+        List[dict]: A list of dictionaries representing the role and text for the introduction.
     """
     instruction = simulation.prompt.text.strip()
     instruction += (
@@ -39,8 +39,8 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
     )
     return [
-        {"role": "developer", "content": instruction},
-        {"role": "user", "content": "Begin."},
+        {"role": "developer", "text": instruction},
+        {"role": "user", "text": "Begin."},
     ]
 
 
@@ -59,7 +59,7 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         "previous_response_id": user_msg.get_previous_openai_id(),
         "input": [
             user_msg.get_openai_input(),
-            # {"role": "user", "content": "content"},
+            # {"role": "user", "text": "text"},
         ],
     }
 
@@ -83,8 +83,8 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     return {
         "previous_response_id": last_ai_msg.openai_id if last_ai_msg else None,
         "input": [
-            {"role": "developer", "content": prompts.Feedback.default()},
-            {"role": "user", "content": "Provide feedback to the user"},
+            {"role": "developer", "text": prompts.Feedback.default()},
+            {"role": "user", "text": "Provide feedback to the user"},
         ],
     }
 

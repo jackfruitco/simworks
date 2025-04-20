@@ -44,7 +44,7 @@ class StructuredOutputParser:
             output_chunks = []
 
             for msg in assistant_messages:
-                for part in msg.get("content") or []:
+                for part in msg.get("text") or []:
                     if part.get("type") == "output_text":
                         try:
                             parsed = json.loads(part["text"])
@@ -111,7 +111,7 @@ class StructuredOutputParser:
 
         return await sync_to_async(Message.objects.create)(
             simulation=self.simulation,
-            content=message["content"],
+            content=message["text"],
             sender=self.system_user,
             display_name=display_name,
             role=RoleChoices.ASSISTANT,

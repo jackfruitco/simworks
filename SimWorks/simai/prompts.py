@@ -197,7 +197,7 @@ class PromptModifiers:
 
 class PromptTemplate:
     """
-    Wrapper class that provides access to base prompt content and all related modifier groups.
+    Wrapper class that provides access to base prompt text and all related modifier groups.
     Supports a fluent interface to chain additional modifiers into the final prompt text.
 
     Example usage:

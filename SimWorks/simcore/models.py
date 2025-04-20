@@ -53,6 +53,14 @@ class Simulation(models.Model):
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
 
     @property
+    def history(self) -> list:
+        """
+        Returns combined simulation history from all registered apps.
+        """
+        from simcore.history_registry import get_sim_history
+        return get_sim_history(self)
+
+    @property
     def sim_patient_initials(self):
         parts = self.sim_patient_display_name.strip().split()
         if not parts:

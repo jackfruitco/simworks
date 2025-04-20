@@ -45,16 +45,16 @@ async def message_schema(initial: bool = False) -> dict:
                         "description": "Simulated SMS messages from the patient.",
                         "items": {
                             "type": dynamic_type("object", True, only=False),
-                            "required": ["sender", "content"],
+                            "required": ["sender", "text"],
                             "additionalProperties": False,
                             "properties": {
                                 "sender": {
                                     "type": dynamic_type("string", True, only=False),
                                     "description": "The role of the sender, e.g., patient.",
                                 },
-                                "content": {
+                                "text": {
                                     "type": dynamic_type("string", True, only=False),
-                                    "description": "The content of the message sent by the patient.",
+                                    "description": "The text of the message sent by the patient.",
                                 },
                             },
                         },

@@ -49,8 +49,8 @@ class OpenAIChatService:
         response = self.client.responses.create(
             model=self.model,
             input=[
-                {"role": "developer", "content": instruction},
-                {"role": "user", "content": "Begin simulation"},
+                {"role": "developer", "text": instruction},
+                {"role": "user", "text": "Begin simulation"},
             ],
         )
 
