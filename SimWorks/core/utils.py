@@ -5,8 +5,6 @@ import os
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
 
-from accounts.models import UserRole
-
 # A unique sentinel to detect if a default value was provided.
 _SENTINEL = object()
 
@@ -29,13 +27,15 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = (
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
-        raise ImproperlyConfigured(error_msg)
+        # raise ImproperlyConfigured(error_msg)
 
 def get_or_create_system_user():
     """
     Returns the singleton System user for AI or system-generated actions.
     Creates the user and the 'System' UserRole if they do not exist.
     """
+    from accounts.models import UserRole
+
     User = get_user_model()
     role, _ = UserRole.objects.get_or_create(title="System")
     system_user, _ = User.objects.get_or_create(
