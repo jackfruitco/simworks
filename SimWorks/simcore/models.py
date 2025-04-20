@@ -15,17 +15,58 @@ from simai.prompts import get_or_create_prompt
 logger = logging.getLogger(__name__)
 
 
+class BaseSession(models.Model):
+    """
+    Abstract base model for Lab-specific session tracking tied to a Simulation.
+
+    This model is intended to be subclassed by individual Lab apps
+    (e.g., ChatLab, VoiceLab, VidLab) to represent the session context
+    associated with a single Simulation instance.
+
+    Purpose:
+        - Encapsulate shared session-level fields (e.g., timestamps, notes).
+        - Maintain a clean separation of concerns: Simulation logic lives in `simcore`,
+          while per-Lab session data is stored in the corresponding app.
+        - Enable consistent access patterns and tooling across Labs, while allowing
+          each to extend its Session model as needed.
+
+    Example:
+        class ChatSession(BaseSession):
+            chat_theme = models.CharField(...)
+            language_model = models.CharField(...)
+
+    This design supports scalable, modular simulations where each Lab app manages
+    its own session concerns without tightly coupling back to core simulation logic.
+    """
+
+    simulation = models.OneToOneField(
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="session"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        abstract = True
+
+
 class SimulationManager(models.Manager):
-    def create(self, **kwargs):
-        user = kwargs.get("user")
-        prompt = kwargs.get("prompt")
+    def create(self, *, user=None, prompt=None, lab_label=None, is_template=False, **kwargs):
+        if not user and not is_template:
+            raise ValueError("Simulation must have a user unless marked as template.")
+
+        if not prompt and user and lab_label:
+            from simai.prompts import get_or_create_prompt
+            role = getattr(user, "role", None)
+            prompt = get_or_create_prompt(app_label=lab_label, role=role)
 
         if not prompt:
-            if not user:
-                raise ValueError("Cannot auto-generate prompt without user.")
-            role = getattr(user, "role", None)
-            kwargs["prompt"] = get_or_create_prompt(app_label="chatlab", role=role)
+            raise ValueError("Prompt must be provided if no user/lab_label fallback is available.")
 
+        kwargs["user"] = user
+        kwargs["prompt"] = prompt
         return super().create(**kwargs)
 
 

@@ -5,7 +5,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from simai.models import Response, Prompt
-from simcore.models import Simulation
+from simcore.models import Simulation, BaseSession
 
 logger = logging.getLogger(__name__)
 
@@ -14,20 +14,21 @@ class RoleChoices(models.TextChoices):
     USER = "U", _("user")
     ASSISTANT = "A", _("assistant")
 
-class ChatSimulation(models.Model):
-    simulation = models.OneToOneField(Simulation, on_delete=models.CASCADE, related_name="chatlab")
 
-    @property
-    def chat_history(self) -> list:
-        """Return message history for simulation"""
-        return []
+class ChatSession(BaseSession):
+    """
+    Represents a session within ChatLab that extends a shared Simulation instance.
+    Additional chat-specific behaviors or fields can be added here.
+    """
+    pass
+
 
 class Message(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
 
     simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE)
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    text = models.TextField(blank=True, null=True)
+    content = models.TextField(blank=True, null=True)
     role = models.CharField(
         max_length=2,
         choices=RoleChoices.choices,
@@ -69,7 +70,7 @@ class Message(models.Model):
         """Return list formatted for OpenAI Responses API input."""
         return {
             "role": self.get_role_display(),
-            "text": self.text,
+            "content": self.content,
         }
 
     def save(self, *args, **kwargs):
