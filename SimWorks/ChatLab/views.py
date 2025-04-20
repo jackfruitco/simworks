@@ -1,9 +1,5 @@
 import logging
 
-from accounts.models import UserRole
-from asgiref.sync import async_to_sync
-from core.utils import generate_fake_name
-from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.http import HttpResponseForbidden
@@ -11,11 +7,11 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
-from django.utils.timezone import now
 from django.views.decorators.http import require_GET
 
-from .models import Message
+from chatlab.utils import create_simulation, maybe_start_simulation
 from simcore.models import Simulation
+from .models import Message
 
 logger = logging.getLogger(__name__)
 
@@ -58,70 +54,23 @@ def index(request):
         },
     )
 
-
 @login_required
 def create_simulation(request):
-    simulation = Simulation.objects.create(
-        user=request.user,
-        sim_patient_full_name=generate_fake_name(),
-        start_timestamp=now()
-    )
-
-    User = get_user_model()
-    system_user, _ = User.objects.get_or_create(
-        username="System",
-        role=UserRole.objects.get_or_create(title="System")[0],
-        defaults={"first_name": "System", "is_active": False, },
-    )
-
-    # Generate initial scenario and first SIM message in background
-    import threading
-    from simai.async_client import AsyncOpenAIChatService
-    from channels.layers import get_channel_layer
-
-    ai = AsyncOpenAIChatService()
-
-    def start_initial_response(sim):
-        logger.debug(
-            f"[chatlab] requesting initial SimMessage for Sim#{sim.id}"
-        )
-        try:
-            # Send initial prompt to OpenAI, generate the initial SimMessage, and create the Message
-            sim_responses = async_to_sync(ai.generate_patient_initial)(sim, False)
-
-            # Get channel layer and send the initial SimMessage to the group
-            channel_layer = get_channel_layer()
-            for message in sim_responses:
-                async_to_sync(channel_layer.group_send)(
-                    f"simulation_{sim.id}",  # Group name based on simulation ID
-                    {
-                        "type": "chat_message",
-                        "content": message.content,
-                        "display_name": sim.sim_patient_full_name,
-                    },
-                )
-        except Exception as e:
-            logger.exception(
-                f"Failed to generate initial SimMessage for Sim#{sim.id}: {e}"
-            )
-
-    threading.Thread(
-        target=start_initial_response, args=(simulation,), daemon=True
-    ).start()
-
-    return redirect("chatlab:run_simulation", simulation_id=simulation.id)
+    sim = create_simulation(request.user)
+    return redirect("chatlab:run_simulation", simulation_id=sim.id)
 
 
 @login_required
 def run_simulation(request, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id)
-    metadata = simulation.metadata.exclude(attribute="feedback")
-    feedback = simulation.metadata.filter(attribute="feedback")
 
     if simulation.user != request.user:
-        return HttpResponseForbidden(
-            "You do not have permission to view this simulation."
-        )
+        return HttpResponseForbidden("Waaaaaait a minute. This isn't your simulation!")
+
+    maybe_start_simulation(simulation)
+
+    metadata = simulation.metadata.exclude(attribute="feedback")
+    feedback = simulation.metadata.filter(attribute="feedback")
 
     context = {
         "simulation": simulation,
