@@ -17,6 +17,7 @@ class MetadataInline(admin.TabularInline):
 
 @admin.register(Simulation)
 class SimulationAdmin(admin.ModelAdmin):
+    change_form_template = "admin/simulation_change_form.html"
 
     @admin.display(boolean=True, description="Is Complete?")
     def is_complete_display(self, obj):

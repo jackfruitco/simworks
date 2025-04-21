@@ -2,7 +2,7 @@
 
 from core.utils.formatters.registry import register_formatter
 
-@register_formatter("openai_prompt")
+@register_formatter("openai_prompt", extension="txt")
 def as_openai_prompt(self):
     """
     Render user scenario log as an OpenAI prompt string.

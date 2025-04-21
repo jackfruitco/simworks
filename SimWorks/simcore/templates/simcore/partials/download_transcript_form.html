@@ -1,0 +1,24 @@
+{% load static %}
+
+<form method="get"
+      action="{% url 'simcore:download_simulation_transcript' %}"
+      class="form-group space-y-2 border rounded-md p-4 shadow-sm bg-white dark:bg-gray-900">
+
+  <label for="format" class="block font-medium text-sm text-gray-700 dark:text-gray-200">
+    Export Transcript As
+  </label>
+
+  <select name="format"
+          id="format"
+          class="w-full rounded-md border-gray-300 shadow-sm dark:bg-gray-800 dark:text-gray-100">
+    <option value="sim_transcript_md">Markdown (.md)</option>
+    <option value="json">JSON (.json)</option>
+    <option value="csv">CSV (.csv)</option>
+    <option value="txt">Plain Text (.txt)</option>
+  </select>
+
+  <button type="submit"
+          class="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600">
+    ⬇️ Download
+  </button>
+</form>

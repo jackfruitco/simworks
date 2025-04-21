@@ -1,8 +1,11 @@
 import decimal
+import html
 import logging
-import uuid
 import os
+import uuid
 from datetime import datetime
+
+from django.http import HttpResponse
 
 from core.utils.formatters.registry import registry
 
@@ -35,15 +38,35 @@ class Formatter:
     def safe_data(self):
         """
         Returns a list of dicts with all values safely serialized.
-        Ensures the data is JSON/CSV-safe by applying _safe_serialize to every value.
+        Ensures the data is JSON/CSV-safe by applying _safe_serialize and Unicode normalization to every value.
         """
+        def decode_unicode_escapes(text):
+            try:
+                return text.encode('utf-8').decode('unicode_escape')
+            except Exception:
+                return text
+
+        def clean_string(s):
+            if isinstance(s, str):
+                return html.unescape(decode_unicode_escapes(s))
+            return s
+
+        def _clean(obj):
+            if isinstance(obj, dict):
+                return {k: _clean(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_clean(i) for i in obj]
+            else:
+                return clean_string(obj)
+
         raw = self.as_serializable()
         row_dicts = []
         for row in raw:
             if isinstance(row, dict):
-                row_dicts.append({k: self.safe_serialize(v) for k, v in row.items()})
+                cleaned = {k: self.safe_serialize(_clean(v)) for k, v in row.items()}
+                row_dicts.append(cleaned)
             else:
-                row_dicts.append({"value": self.safe_serialize(row)})
+                row_dicts.append({"value": self.safe_serialize(_clean(row))})
         return row_dicts
 
     def as_serializable(self):
@@ -104,6 +127,45 @@ class Formatter:
         except IOError as e:
             logger.error(f"[Formatter] Failed to write to {path}: {e}")
             raise
+
+    def download(self, format_type, filename=None, content_type=None, **kwargs):
+        """
+        Render and return the data as a downloadable HTTP response.
+
+        Args:
+            format_type (str): The formatter to use (e.g., 'json', 'md', etc.).
+            filename (str, optional): If not given, will be generated.
+            content_type (str, optional): MIME type to send. Defaults based on format.
+            **kwargs: Additional options passed to the formatter.
+
+        Returns:
+            HttpResponse: A response that triggers a browser download.
+        """
+        output = self.render(format_type, **kwargs)
+        format_type = format_type.strip().lower().lstrip(".")
+        format_key = registry.extension_map.get(format_type, format_type)
+
+        # Attempt to infer file extension from the format key
+        ext = next((k for k, v in registry.extension_map.items() if v == format_key), format_key)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if not filename:
+            filename = f"transcript_{timestamp}.{ext}"
+        elif not filename.endswith(f".{ext}"):
+            filename = f"{filename}.{ext}"
+
+        if not content_type:
+            content_type = {
+                "json": "application/json",
+                "csv": "text/csv",
+                "md": "text/markdown",
+                "markdown": "text/markdown",
+                "txt": "text/plain",
+            }.get(ext, "application/octet-stream")
+
+        response = HttpResponse(output, content_type=content_type)
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
     def pretty_print(self, indent=2, output=None):
         """

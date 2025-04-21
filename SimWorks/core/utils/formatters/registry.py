@@ -6,7 +6,6 @@ class FormatterRegistry:
             "csv": "csv",
             "md": "markdown",
             "markdown": "markdown",
-            "txt": "openai_prompt",
         }
 
     @property
@@ -16,13 +15,18 @@ class FormatterRegistry:
         """
         return dict(self._extension_map)
 
-    def register(self, name: str):
+    def register(self, name: str, extension: str = None):
         """
         Decorator to register a formatter function under a given format name.
+        Optionally maps a file extension to that format.
         """
+
         def decorator(func):
             self.registry[name.lower()] = func
+            if extension:
+                self._extension_map[extension.lower()] = name.lower()
             return func
+
         return decorator
 
     def get(self, name: str):
