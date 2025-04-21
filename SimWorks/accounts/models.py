@@ -8,6 +8,7 @@ from django.db import models
 from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
+from core.utils.formatters import Formatter
 
 from simcore.models import Simulation
 
