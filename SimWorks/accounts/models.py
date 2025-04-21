@@ -15,16 +15,6 @@ from simcore.models import Simulation
 class CustomUser(AbstractUser):
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
 
-class UserRole(models.Model):
-    title = models.CharField(
-        max_length=100,
-        blank=True,
-        null=True,
-        verbose_name="Role",
-        default=1,
-        unique=True,
-    )
-
     def get_scenario_log(self, within_days=None, within_weeks=None, within_months=None):
         """
         Return a queryset of scenario data (diagnosis and chief complaint) filtered by time.
@@ -44,6 +34,16 @@ class UserRole(models.Model):
             qs = qs.filter(start_timestamp__gte=cutoff)
 
         return qs.values("id", "start_timestamp", "diagnosis", "chief_complaint")
+
+class UserRole(models.Model):
+    title = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Role",
+        default=1,
+        unique=True,
+    )
 
     def __str__(self):
         return self.title
