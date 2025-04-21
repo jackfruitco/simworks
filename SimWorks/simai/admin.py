@@ -2,7 +2,6 @@ from django.contrib import admin
 from django.utils.html import format_html_join
 from django.utils.safestring import mark_safe
 
-from chatlab.admin import MetadataInline
 from .models import *
 from chatlab.models import Message
 
@@ -26,6 +25,9 @@ class PromptAdmin(admin.ModelAdmin):
         return obj.modified_by.username if obj.modified_by else "System"
 
     modified_by_display.short_description = "Modified By"
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 class MessagesInline(admin.TabularInline):
