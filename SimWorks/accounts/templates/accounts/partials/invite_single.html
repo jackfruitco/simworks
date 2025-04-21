@@ -52,9 +52,11 @@
                         <button disabled title="Email integration not yet available">Resend</button>
                         <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate</a>
                         <button
-                            @click="$clipboard(`{{ invite.link }}`)"
-                            @clipboard.copied="copied = true; open = false; setTimeout(() => copied = false, 1500)"
-                        >Copy URL</button>
+                          x-data
+                          @click="copyToClipboard('https://simworks.jkfrt.com{{ invite.link }}').then(() => alert('Copied!'))"
+                        >
+                          Copy URL
+                        </button>
                         <span x-show="copied" x-transition class="copied-tooltip" style="margin-left: 0.5rem; color: green; font-size: 0.85rem;">Copied!</span>
                     </div>
                 </div>

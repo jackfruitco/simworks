@@ -102,6 +102,51 @@
         }
       }
     }
+    function copyToClipboard(input) {
+      return new Promise((resolve, reject) => {
+        let text;
+
+        if (typeof input === "string") {
+          text = input;
+        } else if (input instanceof Element) {
+          text = input.innerText || input.textContent;
+        } else {
+          return reject("Invalid input: must be a string or DOM element");
+        }
+
+        if (!text) return reject("No text to copy.");
+
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(() => {
+            console.log("Copied to clipboard:", text);
+            resolve();
+          }).catch(reject);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+
+          try {
+            const successful = document.execCommand("copy");
+            document.body.removeChild(textarea);
+
+            if (successful) {
+              console.log("Copied to clipboard:", text);
+              resolve();
+            } else {
+              reject("Copy command unsuccessful");
+            }
+          } catch (err) {
+            document.body.removeChild(textarea);
+            reject(err);
+          }
+        }
+      });
+    }
     </script>
     {% endblock scripts %}
 
