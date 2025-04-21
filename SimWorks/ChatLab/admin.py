@@ -14,7 +14,7 @@ class MessageAdmin(admin.ModelAdmin):
     list_filter = ("simulation", "role", "sender")
 
     fieldsets = [
-        (None, {"fields": ("simulation", "order", "sender", "role")}),
+        (None, {"fields": (("simulation", "order"), ("sender", "role"))}),
         ("Contents", {"fields": ("content",)}),
         ("OpenAI Response", {
             "classes": ("collapse",),
