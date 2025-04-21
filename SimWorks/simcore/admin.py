@@ -25,30 +25,30 @@ class SimulationAdmin(admin.ModelAdmin):
     @admin.display(description="Correct Diagnosis")
     def correct_diagnosis(self, obj):
         if obj.is_in_progress:
-            return "⏳ in progress"
+            return format_html('<img src="/static/admin/img/icon-in-progress.svg" alt="In Progress">')
 
         val = obj.metadata.filter(key="correct diagnosis").values_list("value", flat=True).first()
         if val == "true":
-            return format_html('<span style="color:green;">🟢</span>')
+            return format_html('<img src="/static/admin/img/icon-yes.svg" alt="True">')
         elif val == "false":
-            return format_html('<span style="color:red;">🔴</span>')
+            return format_html('<img src="/static/admin/img/icon-no.svg" alt="False">')
         elif val == "partial":
-            return format_html('<span style="color:orange;">🟡</span>')
-        return "—"
+            return format_html('<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">')
+        return format_html('<img src="/static/admin/img/icon-unknown.svg" alt="Missing">')
 
     @admin.display(description="Correct Treatment Plan")
     def correct_treatment_plan(self, obj):
         if obj.is_in_progress:
-            return "⏳"
+            return format_html('<img src="/static/admin/img/icon-in-progress.svg" alt="In Progress">')
 
         val = obj.metadata.filter(key="correct treatment plan").values_list("value", flat=True).first()
         if val == "true":
-            return format_html('<span style="color:green;">🟢</span>')
+            return format_html('<img src="/static/admin/img/icon-yes.svg" alt="True">')
         elif val == "false":
-            return format_html('<span style="color:red;">🔴</span>')
+            return format_html('<img src="/static/admin/img/icon-no.svg" alt="False">')
         elif val == "partial":
-            return format_html('<span style="color:orange;">🟡</span>')
-        return "—"
+            return format_html('<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">')
+        return format_html('<img src="/static/admin/img/icon-unknown.svg" alt="Missing">')
 
     list_display = ("id", "user", "is_complete_display", "correct_diagnosis", "correct_treatment_plan", "start_timestamp")
     fieldsets = [
