@@ -97,12 +97,12 @@ class Simulation(models.Model):
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
 
     @property
-    def history(self) -> list:
+    def history(self, _format=None) -> list:
         """
         Returns combined simulation history from all registered apps.
         """
         from simcore.history_registry import get_sim_history
-        return get_sim_history(self)
+        return get_sim_history(self, _format)
 
     @property
     def sim_patient_initials(self):

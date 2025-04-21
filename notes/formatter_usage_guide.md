@@ -35,18 +35,43 @@ formatter.supported_formats()
 ## 🖨 Rendering Output
 
 ```python
-formatter.render("json")        # JSON string
-formatter.render("csv")         # CSV format
-formatter.render("markdown")    # Markdown table
-formatter.render("log_pairs")   # Tuple string
-formatter.render("openai_prompt")  # OpenAI formatted string
+# Render to string
+formatter.render("json")
+formatter.render("csv")
+formatter.render("markdown")
+formatter.render("log_pairs")
+formatter.render("openai_prompt")
+
+# Use keyword arguments (e.g., indent for JSON)
+formatter.render("json", indent=2)
+
+# Use file-style extensions
+formatter.render(".md")
+formatter.render(".json", indent=2)
+
+# Output directly to file
+formatter.render("markdown", output="file", filepath="/tmp/log.md")
+formatter.render("json", output="file", filepath="log.json", indent=4)
+
+# Pretty-print to console or file
+formatter.pretty_print(indent=2)  # stdout
+formatter.pretty_print(indent=2, output="output.json")  # to file
 ```
 
-Pretty-print for easier debug:
+---
 
-```python
-formatter.pretty_print()
-```
+## 📂 File Extension Support
+
+The `Formatter.render()` method also supports format calls using common file extensions:
+
+| Extension | Interpreted Format |
+|-----------|--------------------|
+| `.json`   | `json`             |
+| `.csv`    | `csv`              |
+| `.md`     | `markdown`         |
+| `.txt`    | `openai_prompt`    |
+
+These can also be used in .render() and pretty_print() for file export and formatting convenience.
 
 ---
 
@@ -84,6 +109,7 @@ formatter.render("custom_format")
 log = user.get_scenario_log()
 formatter = Formatter(log)
 formatter.render("openai_prompt")
+formatter.render(".md")  # Markdown version of the log
 ```
 
 This returns a message like:
