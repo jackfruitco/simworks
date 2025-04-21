@@ -82,6 +82,7 @@ class StructuredOutputParser:
         # Gracefully handle missing or null metadata blocks
         patient_data = metadata.get("patient_metadata") or {}
         simulation_data = metadata.get("simulation_metadata") or {}
+        scenario_data = metadata.get("scenario_metadata") or {}
         patient_history = patient_data.get("medical_history") or {}
         patient_metadata = {
             k: v for k, v in patient_data.items() if k not in ("medical_history", "additional")
@@ -98,6 +99,8 @@ class StructuredOutputParser:
             metadata_tasks.append(self._parse_metadata(patient_history, "patient history"))
         if simulation_data:
             metadata_tasks.append(self._parse_metadata(simulation_data, "simulation metadata"))
+        if scenario_data:
+            await self._parse_scenario_attribute(scenario_data)
 
         await asyncio.gather(*metadata_tasks)
         message_tasks = [self._parse_message(m) for m in messages]
@@ -184,6 +187,38 @@ class StructuredOutputParser:
                 f"Expected metadata to be a dict or list, but got {type(metadata)}",
                 WARNING,
             )
+
+    async def _parse_scenario_attribute(self, attributes: dict) -> None:
+        """
+        Validates and applies scenario attributes to this simulation.
+        Accepts a dict with optional 'diagnosis' and 'chief_complaint' keys.
+
+        Raises:
+            TypeError: if input is not a dict-like object.
+            ValueError: if an unknown key is encountered.
+        """
+        if not isinstance(attributes, dict):
+            try:
+                attributes = dict(attributes)
+            except Exception:
+                raise TypeError("Scenario attributes must be a dict or convertible to dict.")
+
+        allowed_keys = {"diagnosis", "chief_complaint"}
+        unknown_keys = set(attributes) - allowed_keys
+        updated_fields = []
+
+        if unknown_keys:
+            raise ValueError(f"Unknown scenario attribute(s): {', '.join(unknown_keys)}")
+
+        for k, v in attributes.items():
+            if k in allowed_keys:
+                setattr(self.simulation, k, v)
+                updated_fields.append(k)
+            else:
+                logger.warning(f"Ignored unknown scenario attribute: {k}={v}")
+
+        if updated_fields:
+            await sync_to_async(self.simulation.save)(update_fields=updated_fields)
 
 
     @staticmethod

@@ -2,7 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.utils.timezone import now
 
-from core.utils import compute_fingerprint
+from core.utils.hash import compute_fingerprint
 from .querysets.response_queryset import ResponseQuerySet
 
 from django.utils.translation import gettext_lazy as _

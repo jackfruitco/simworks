@@ -11,7 +11,7 @@ Usage:
 
 """
 
-from core.utils import check_env
+from core.utils.system import check_env
 
 LOG_LEVEL = check_env("DJANGO_LOG_LEVEL", "INFO").upper()
 

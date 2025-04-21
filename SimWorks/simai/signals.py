@@ -1,40 +1,17 @@
 import logging
 from django.db.models.signals import post_save
-from django.dispatch import receiver
 from django.apps import apps
+from core.utils import log_model_save
 
 logger = logging.getLogger(__name__)
 
-# Cache simai models to restrict logging only to this app
-simmanai_models = set(apps.get_app_config("simai").get_models())
+def log_model_save_signal(sender, instance, created, **kwargs):
+    log_model_save(instance, created)
 
-
-def log_model_save(sender, instance, created, **kwargs):
-    # Skip if sender is not a model from this app
-    if sender not in simmanai_models:
-        return  # Only handle simai models
-
-    class_name = sender.__name__
-    object_id = getattr(instance, 'id', 'N/A')
-    object_name = str(instance)
-    status = "CREATED" if created else "MODIFIED"
-    msg = f"[{class_name}] {object_name} (ID: {object_id}) was {status}."
-
-    if logger.isEnabledFor(logging.DEBUG):
-        try:
-            debug_info = f"Full object data: {vars(instance)}"
-        except Exception as e:
-            debug_info = f"(Could not inspect instance: {e})"
-        msg += f" | DEBUG: {debug_info}"
-
-    logger.info(msg)
-
-# Connect to all models in simai
-models = apps.get_app_config("simai").get_models()
-
-for model in models:
+# Connect only once per model
+for model in apps.get_app_config("simai").get_models():
     post_save.connect(
-        log_model_save,
+        log_model_save_signal,
         sender=model,
-        dispatch_uid=f"simmanai_log_save_{model.__name__}"
+        dispatch_uid=f"simai_log_save_{model.__name__}"
     )

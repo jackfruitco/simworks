@@ -1,0 +1,27 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+  {{ block.super }}
+  <li>
+    <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk %}">
+      <button type="submit" class="button">Download Transcript (.md)</button>
+    </form>
+  </li>
+{% comment %}
+  <li>
+    <form
+            method="get"
+            action="{% url 'admin:chatlab_simulation_download_transcript' original.pk %}"
+            style="display: inline; align-items: center"
+    >
+      <select name="format" style="margin-right: 0.5em;">
+        <option value="chat-history_md">Markdown (.md)</option>
+        <option value="json">JSON (.json)</option>
+        <option value="csv">CSV (.csv)</option>
+        <option value="txt">Plain Text (.txt)</option>
+      </select>
+      <button type="submit" class="button" style="vertical-align: middle;">⬇️ Download</button>
+    </form>
+  </li>
+{% endcomment %}
+{% endblock %}

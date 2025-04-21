@@ -5,7 +5,7 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
-from core.utils import check_env
+from core.utils.system import check_env
 from .logging import LOGGING
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.

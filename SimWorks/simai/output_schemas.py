@@ -39,6 +39,8 @@ async def message_schema(initial: bool = False) -> dict:
             "strict": True,
             "schema": {
                 "type": dynamic_type(base="object", initial=True, only=False),
+                "required": ["messages", "metadata"],
+                "additionalProperties": False,
                 "properties": {
                     "messages": {
                         "type": dynamic_type("array", True, only=False),
@@ -51,6 +53,7 @@ async def message_schema(initial: bool = False) -> dict:
                                 "sender": {
                                     "type": dynamic_type("string", True, only=False),
                                     "description": "The role of the sender, e.g., patient.",
+                                    "enum": ["patient"]
                                 },
                                 "content": {
                                     "type": dynamic_type("string", True, only=False),
@@ -62,12 +65,21 @@ async def message_schema(initial: bool = False) -> dict:
                     "metadata": {
                         "type": dynamic_type("object", initial, only=False),
                         "description": "Metadata about the patient.",
+                        "required": ["patient_metadata", "simulation_metadata", "scenario_metadata"],
+                        "additionalProperties": False,
                         "properties": {
                             "patient_metadata": {
-                                "type": dynamic_type(
-                                    "object", initial, only=True
-                                ),  # initial_only
                                 "description": "Patient metadata.",
+                                "type": dynamic_type("object", initial, only=True),
+                                "required": [
+                                    "name",
+                                    "age",
+                                    "gender",
+                                    "location",
+                                    "medical_history",
+                                    "additional",
+                                ],
+                                "additionalProperties": False,
                                 "properties": {
                                     "name": {
                                         "type": dynamic_type(
@@ -85,24 +97,27 @@ async def message_schema(initial: bool = False) -> dict:
                                         "type": dynamic_type(
                                             "string", initial, only=True
                                         ),
-                                        "description": "The gender of the patient.",
+                                        "description": "The gender of the patient. Should match the name.",
                                         "enum": ["male", "female"],
                                     },
                                     "location": {
                                         "type": dynamic_type(
                                             "string", initial, only=True
                                         ),
-                                        "description": "The location of the patient. Can include all or part of City, State/Province, Country.",
+                                        "description": "The current location of the patient. Can include all or part of City, State/Province, Country.",
                                     },
                                     "medical_history": {
-                                        "type": dynamic_type(
-                                            "array", False, only=False
-                                        ),  # always_optional: union with null
+                                        "type": dynamic_type("array", False, only=False),
                                         "description": "Known medical history for the patient. Does not need to be relevant.",
+                                        "additionalProperties": False,
                                         "items": {
-                                            "type": dynamic_type(
-                                                "object", False, only=False
-                                            ),
+                                            "type": dynamic_type("object", False, only=False),
+                                            "additionalProperties": False,
+                                            "required": [
+                                                "diagnosis",
+                                                "resolved",
+                                                "duration",
+                                            ],
                                             "properties": {
                                                 "diagnosis": {
                                                     "type": dynamic_type(
@@ -129,23 +144,16 @@ async def message_schema(initial: bool = False) -> dict:
                                                     "description": "The time this problem started, or time since it began.",
                                                 },
                                             },
-                                            "required": [
-                                                "diagnosis",
-                                                "resolved",
-                                                "duration",
-                                            ],
-                                            "additionalProperties": False,
                                         },
                                     },
                                     "additional": {
-                                        "type": dynamic_type(
-                                            "array", False, only=False
-                                        ),
                                         "description": "Additional patient metadata as key:value pairs.",
+                                        "type": dynamic_type("array", False, only=False),
+                                        "additionalProperties": False,
                                         "items": {
-                                            "type": dynamic_type(
-                                                "object", True, only=False
-                                            ),
+                                            "type": dynamic_type("object", True, only=False),
+                                            "required": ["key", "value"],
+                                            "additionalProperties": False,
                                             "properties": {
                                                 "key": {
                                                     "type": dynamic_type(
@@ -160,74 +168,54 @@ async def message_schema(initial: bool = False) -> dict:
                                                     "description": "The value of the patient metadata.",
                                                 },
                                             },
-                                            "required": ["key", "value"],
-                                            "additionalProperties": False,
                                         },
                                     },
                                 },
-                                "required": [
-                                    "name",
-                                    "age",
-                                    "gender",
-                                    "location",
-                                    "medical_history",
-                                    "additional",
-                                ],
-                                "additionalProperties": False,
                             },
+                            # Patient metadata related to the scenario
                             "simulation_metadata": {
-                                "type": dynamic_type(
-                                    "array", initial, only=False
-                                ),  # initial_required: depends on 'initial'
+                                "type": dynamic_type("array", initial, only=False),
                                 "description": "Simulation metadata.",
                                 "items": {
-                                    "type": dynamic_type("object", True, only=False),
+                                    "description": "Additional simulation metadata.",
+                                    "type": dynamic_type("object", False, only=False),
+                                    "required": ["key", "value"],
+                                    "additionalProperties": False,
                                     "properties": {
-                                        "chief_complaint": {
+                                        "key": {
+                                            "description": "The key of the simulation metadata.",
                                             "type": dynamic_type(
-                                                "string", initial, only=True
+                                                "string", True, only=False
                                             ),
-                                            "description": "The chief complaint of the patient (chief complaint only, not a sentence).",
                                         },
-                                        "additional": {
+                                        "value": {
+                                            "description": "The value of the simulation metadata.",
                                             "type": dynamic_type(
-                                                "array", False, only=False
+                                                "string", True, only=False
                                             ),
-                                            "description": "Additional simulation metadata.",
-                                            "items": {
-                                                "type": dynamic_type(
-                                                    "object", True, only=False
-                                                ),
-                                                "properties": {
-                                                    "key": {
-                                                        "type": dynamic_type(
-                                                            "string", True, only=False
-                                                        ),
-                                                        "description": "The key of the simulation metadata.",
-                                                    },
-                                                    "value": {
-                                                        "type": dynamic_type(
-                                                            "string", True, only=False
-                                                        ),
-                                                        "description": "The value of the simulation metadata.",
-                                                    },
-                                                },
-                                                "required": ["key", "value"],
-                                                "additionalProperties": False,
-                                            },
                                         },
                                     },
-                                    "required": ["chief_complaint", "additional"],
-                                    "additionalProperties": False,
                                 },
                             },
+                            "scenario_metadata": {
+                                "description": "Metadata about the scenario.",
+                                "type": dynamic_type("object", initial, only=True),
+                                "required": ["diagnosis", "chief_complaint"],
+                                "additionalProperties": False,
+                                "properties": {
+                                    "diagnosis": {
+                                        "description": "The medical diagnosis (not the symptom) for the scenario script.",
+                                        "type": "string",
+                                    },
+                                    "chief_complaint": {
+                                        "description": "The patient's initial or chief complaint for the scenario script.",
+                                        "type": "string",
+                                    }
+                                }
+                            }
                         },
-                        "required": ["patient_metadata", "simulation_metadata"],
-                        "additionalProperties": False,
                     },
                 },
-                "required": ["messages", "metadata"],
-                "additionalProperties": False,
             },
         }
     }
@@ -262,8 +250,8 @@ async def feedback_schema() -> dict:
                     "feedback": {
                         "type": "string",
                         "description": "Specific feedback to user based on the simulation.",
-                        "minLengths": 700,
-                        "maxLengths": 2000,
+                        # "minLength": 700,
+                        # "maxLength": 2000,
                     },
                     "topics": {
                         "type": "array",

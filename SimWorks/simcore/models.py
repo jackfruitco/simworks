@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from hashlib import sha256
 
 from django.conf import settings
@@ -8,9 +8,9 @@ from django.db import models
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
-from simcore.utils import randomize_display_name
 from simai.models import Prompt
 from simai.prompts import get_or_create_prompt
+from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class SimulationManager(models.Manager):
         if not prompt and user and lab_label:
             from simai.prompts import get_or_create_prompt
             role = getattr(user, "role", None)
-            prompt = get_or_create_prompt(app_label=lab_label, role=role)
+            prompt = get_or_create_prompt(app_label=lab_label, role=role, user=user)
 
         if not prompt:
             raise ValueError("Prompt must be provided if no user/lab_label fallback is available.")
@@ -89,17 +89,20 @@ class Simulation(models.Model):
         help_text=_("The prompt to use as AI instructions."),
     )
 
-    description = models.TextField(blank=True, null=True)
+    # description = models.TextField(blank=True, null=True)
+    diagnosis = models.CharField(max_length=255, blank=True, null=True)
+    chief_complaint = models.CharField(max_length=255, blank=True, null=True)
+
     sim_patient_full_name = models.CharField(max_length=100, blank=True)
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
 
     @property
-    def history(self) -> list:
+    def history(self, _format=None) -> list:
         """
         Returns combined simulation history from all registered apps.
         """
         from simcore.history_registry import get_sim_history
-        return get_sim_history(self)
+        return get_sim_history(self, _format)
 
     @property
     def sim_patient_initials(self):
@@ -113,22 +116,23 @@ class Simulation(models.Model):
         # Use first and last word initials if more than one word
         return f"{parts[0][0].upper()}{parts[-1][0].upper()}"
 
-    diagnosis = models.TextField(blank=True, null=True, max_length=100)
-
-    @property
-    def in_progress(self) -> bool:
-        """Return if simulation is in progress"""
-        return self.end_timestamp is None or self.end_timestamp < datetime.now()
-
     @property
     def is_complete(self) -> bool:
-        """Return if simulation has already completed."""
-        return self.end_timestamp is not None or (
-                self.time_limit and now() > self.start_timestamp + self.time_limit
-        )
+        """Returns True if simulation has ended, either manually or due to timeout."""
+        if self.end_timestamp:
+            return True
+        if self.time_limit:
+            return now() > self.start_timestamp + self.time_limit
+        return False
 
     @property
-    def is_ended(self):
+    def is_in_progress(self) -> bool:
+        """Returns True only if simulation is actively in progress."""
+        return not self.is_complete
+
+    @property
+    def is_ended(self) -> bool:
+        """Alias for is_complete to preserve compatibility."""
         return self.is_complete
 
     @property
@@ -163,11 +167,11 @@ class Simulation(models.Model):
     @classmethod
     def create_with_default_prompt(cls, user, app_label="chatlab", **kwargs):
         """
-        Create a Simulation with a default prompt based on the user role and app_label.
+        Create a Simulation with a default prompt based on the user role and lab_label.
         """
         from simai.prompts import get_or_create_prompt
 
-        prompt = get_or_create_prompt(app_label=app_label, role=user.role)
+        prompt = get_or_create_prompt(app_label=app_label, user=user, role=user.role)
         return cls.objects.create(user=user, prompt=prompt, **kwargs)
 
     def save(self, *args, **kwargs):
@@ -175,7 +179,7 @@ class Simulation(models.Model):
         if not self.prompt:
             if not self.user:
                 raise ValueError("Cannot assign default prompt without a user.")
-            self.prompt = get_or_create_prompt(app_label="chatlab", role=getattr(self.user, "role", None))
+            self.prompt = get_or_create_prompt(app_label="chatlab", user=self.user, role=getattr(self.user, "role", None))
 
         # Handle display name update if full name is changed
         updating_name = False
@@ -191,10 +195,10 @@ class Simulation(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        if self.description:
-            return f"ChatLab Sim #{self.pk}: {self.description}"
-        else:
-            return f"ChatLab Sim #{self.pk}"
+        base = f"Simulation {self.pk}"
+        if self.diagnosis:
+            base = base + f": {self.chief_complaint}"
+        return base
 
 
 class SimulationMetadata(models.Model):
