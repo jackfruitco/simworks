@@ -60,7 +60,7 @@ class SimulationManager(models.Manager):
         if not prompt and user and lab_label:
             from simai.prompts import get_or_create_prompt
             role = getattr(user, "role", None)
-            prompt = get_or_create_prompt(app_label=lab_label, role=role)
+            prompt = get_or_create_prompt(app_label=lab_label, role=role, user=user)
 
         if not prompt:
             raise ValueError("Prompt must be provided if no user/lab_label fallback is available.")
@@ -171,7 +171,7 @@ class Simulation(models.Model):
         """
         from simai.prompts import get_or_create_prompt
 
-        prompt = get_or_create_prompt(app_label=app_label, role=user.role)
+        prompt = get_or_create_prompt(app_label=app_label, user=user, role=user.role)
         return cls.objects.create(user=user, prompt=prompt, **kwargs)
 
     def save(self, *args, **kwargs):
@@ -179,7 +179,7 @@ class Simulation(models.Model):
         if not self.prompt:
             if not self.user:
                 raise ValueError("Cannot assign default prompt without a user.")
-            self.prompt = get_or_create_prompt(app_label="chatlab", role=getattr(self.user, "role", None))
+            self.prompt = get_or_create_prompt(app_label="chatlab", user=self.user, role=getattr(self.user, "role", None))
 
         # Handle display name update if full name is changed
         updating_name = False
