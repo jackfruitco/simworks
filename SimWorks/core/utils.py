@@ -1,9 +1,12 @@
+# core/utils.py
 import hashlib
 import logging
 import os
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
+
+logger = logging.getLogger(__name__)
 
 # A unique sentinel to detect if a default value was provided.
 _SENTINEL = object()
@@ -27,7 +30,7 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = (
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
-        # raise ImproperlyConfigured(error_msg)
+        raise ImproperlyConfigured(error_msg)
 
 def get_or_create_system_user():
     """
@@ -89,3 +92,23 @@ def compute_fingerprint(*args: str) -> str:
     """
     combined = "".join(arg.strip() for arg in args if isinstance(arg, str))
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+
+def log_model_save(instance, created: bool, model_name: str = None, extra: dict = None):
+    """
+    Standardized logger for model save events.
+
+    Args:
+        instance: The model instance being saved.
+        created (bool): Whether this is a creation event.
+        model_name (str): Optional override for the model name in logs.
+        extra (dict): Optional extra fields to log for debugging.
+    """
+    model = model_name or instance.__class__.__name__
+    prefix = f"[{model}]"
+    obj_id = getattr(instance, "id", None)
+    extra_data = f" | DEBUG: Full object data: {instance.__dict__}" if extra is None else f" | Extra: {extra}"
+
+    if created:
+        logger.info(f"{prefix} {instance} (ID: {obj_id}) was CREATED.{extra_data}")
+    else:
+        logger.info(f"{prefix} {instance} (ID: {obj_id}) was UPDATED.{extra_data}")

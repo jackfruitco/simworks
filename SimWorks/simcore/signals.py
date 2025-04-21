@@ -9,9 +9,9 @@ def log_model_save_signal(sender, instance, created, **kwargs):
     log_model_save(instance, created)
 
 # Connect only once per model
-for model in apps.get_app_config("chatlab").get_models():
+for model in apps.get_app_config("simcore").get_models():
     post_save.connect(
         log_model_save_signal,
         sender=model,
-        dispatch_uid=f"chatlab_log_save_{model.__name__}"
+        dispatch_uid=f"simcore_log_save_{model.__name__}"
     )
