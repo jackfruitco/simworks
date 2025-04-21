@@ -5,11 +5,14 @@ and specific conditions to enhance the realism of interactions. Use PromptTempla
 dynamically construct composite prompts with chained modifier methods.
 """
 
+from typing import TYPE_CHECKING
 from typing import Union
-from accounts.models import UserRole
+
 from core.utils import compute_fingerprint
 from .models import Prompt
-import hashlib
+
+if TYPE_CHECKING:
+    from accounts.models import UserRole
 
 
 DEFAULT_PROMPT_BASE = (
@@ -205,8 +208,9 @@ class PromptTemplate:
         prompt_text = prompt.default().with_chatlab().finalize()
         prompt_title = prompt.title
     """
-    def __init__(self, role: Union[UserRole, int, None] = None, app_label: str = "chatlab"):
-        self.app_label = app_label
+    def __init__(self, role: Union["UserRole", int, None] = None, lab_label: str = "chatlab"):
+        from accounts.models import UserRole
+        self.app_label = lab_label
         self._cached_modifiers = None
         self._sections = []
         self._modifiers_used: list[str] = []        # used to generate prompt.title
@@ -311,20 +315,20 @@ modifiers = PromptModifiers()
 
 def get_or_create_prompt(
     app_label: str = "chatlab",
-    role: Union[UserRole, int, None] = None,
+    role: Union["UserRole", int, None] = None,
     include_feedback: bool = False,
     environment: str = None,
     extra_modifiers: list[str] = None
 ) -> Prompt:
     """
     Build a Prompt instance using dynamic modifiers.
-    - `app_label`: name of the app providing the simulation context
+    - `lab_label`: name of the app providing the simulation context
     - `role`: UserRole instance or ID
     - `include_feedback`: adds the feedback modifier (for facilitator guidance)
     - `environment`: optional string from EnvironmentModifiers (e.g., `TRAINING_AUSTERE`)
     - `extra_modifiers`: additional label strings to add to .summary for clarity
     """
-    prompt = PromptTemplate(role=role, app_label=app_label).default()
+    prompt = PromptTemplate(role=role, lab_label=app_label).default()
 
     if app_label.lower() == "chatlab":
         prompt.with_chatlab()
