@@ -1,5 +1,4 @@
 # accounts/models.py
-import uuid
 from datetime import timedelta
 
 from django.conf import settings
@@ -8,10 +7,34 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.shortcuts import reverse
 from django.utils import timezone
+from django.utils.timezone import now
+from core.utils.formatters import Formatter
+
+from simcore.models import Simulation
 
 
 class CustomUser(AbstractUser):
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
+
+    def get_scenario_log(self, within_days=None, within_weeks=None, within_months=None):
+        """
+        Return a queryset of scenario data (diagnosis and chief complaint) filtered by time.
+        Priority of filters: days > weeks > months.
+        """
+        # Prioritize the most specific time range
+        if within_days is None:
+            if within_weeks is not None:
+                within_days = within_weeks * 7
+            elif within_months is not None:
+                within_days = within_months * 30  # Approximate month
+
+        qs = Simulation.objects.filter(user=self).exclude(diagnosis__isnull=True)
+
+        if within_days:
+            cutoff = now() - timedelta(days=within_days)
+            qs = qs.filter(start_timestamp__gte=cutoff)
+
+        return qs.values("id", "start_timestamp", "diagnosis", "chief_complaint")
 
 class UserRole(models.Model):
     title = models.CharField(

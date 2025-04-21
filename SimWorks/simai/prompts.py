@@ -5,11 +5,15 @@ and specific conditions to enhance the realism of interactions. Use PromptTempla
 dynamically construct composite prompts with chained modifier methods.
 """
 
+from typing import TYPE_CHECKING
 from typing import Union
-from accounts.models import UserRole
+
+from core.utils import Formatter
 from core.utils import compute_fingerprint
 from .models import Prompt
-import hashlib
+
+if TYPE_CHECKING:
+    from accounts.models import CustomUser, UserRole
 
 
 DEFAULT_PROMPT_BASE = (
@@ -18,7 +22,8 @@ DEFAULT_PROMPT_BASE = (
 
     Select a diagnosis and develop a corresponding clinical scenario script 
     using simple, everyday language that reflects the knowledge level of an
-    average person.
+    average person. "Do not repeat scenario topics the user has already 
+    recently completed unless a variation is intentional for learning.
     
     Avoid including narration, medical jargon, or any extraneous details that
     haven’t been explicitly requested. Adopt a natural texting style—using 
@@ -36,28 +41,60 @@ DEFAULT_PROMPT_BASE = (
     addressing the conversation from within the current scenario without 
     repeating your role parameters.
 
-    Do not exit the scenario.
+    Do not exit the scenario.\n\n
     """
 )
 
-class UserRoleModifiers:
-    def __init__(self, role=None):
+class UserModifiers:
+    def __init__(self, role=None, user=None):
         self.role = role
+        self.user = user
+        self.Role = self.Role(role)
+        self.Log = self.Log(user)
 
-    def resource_list(self):
-        if not self.role:
-            return "None"
-        qs = self.role.resources.all()
-        return ", ".join(str(r) for r in qs) if qs.exists() else "None"
+    class Role:
+        def __init__(self, role):
+            self.role = role
 
-    def default(self):
-        if not self.role:
-            return "The person you are training has no specific role assigned.\n"
-        return (
-            f"The person you are training is a {self.role.title.title()}.\n"
-            f"The diagnosis script should reflect training at that level.\n"
-            f"Consider the following resources: {self.resource_list()}.\n"
-        )
+        def resource_list(self):
+            if not self.role:
+                return "None"
+            qs = self.role.resources.all()
+            return ", ".join(str(r) for r in qs) if qs.exists() else "None"
+
+        def default(self):
+            if not self.role:
+                return "The person you are training has no specific role assigned.\n"
+            return (
+                f"The person you are training is a {self.role.title.title()}.\n"
+                f"The treatment plan should reflect training at that level.\n"
+                f"Consider the following resources: {self.resource_list()}.\n"
+            )
+
+    class Log:
+        def __init__(self, user):
+            self.user = user
+
+        def format_log(self, log: list[dict]) -> str:
+            return Formatter(log).render("openai_prompt")
+
+        def default(self, within_days: int = 180):
+            if not self.user:
+                return ""
+            get_log = getattr(self.user, "get_scenario_log", None)
+            if not callable(get_log):
+                return ""
+            log = list(get_log(within_days=within_days))
+            return self.format_log(log)
+
+        def last_month(self):
+            return self.default(within_days=30)
+
+        def last_six_months(self):
+            return self.default(within_days=180)
+
+        def last_year(self):
+            return self.default(within_days=365)
 
 class Feedback:
     BASE = (
@@ -70,7 +107,7 @@ class Feedback:
         improve, without discouragement. Be direct, concise, and encouraging.
         
         Where applicable, provide evidence-based medicine, related screening 
-        tools, and special tests or questionnaires the user could implement.
+        tools, and special tests or questionnaires the user could implement.\n\n
         """
     )
 
@@ -98,7 +135,7 @@ class Feedback:
         Your feedback should make the correct diagnosis and treatment plan 
         clear and unambiguous, even if the user did not reach them. It is not
         only acceptable—but required—to inform the trainee when their diagnosis
-        or plan was incorrect, as long as it is done constructively.
+        or plan was incorrect, as long as it is done constructively.\n\n
         """
     )
 
@@ -112,7 +149,7 @@ class Feedback:
         ask more history questions. Recommend using history-taking tools like
         SAMPLE, OPQRST, etc. if they haven't already. For this message only,
         you are the simulation facilitator. After this message, resume the role
-        of the patient.
+        of the patient.\n\n
         """
     )
 
@@ -130,7 +167,7 @@ class Feedback:
         
         Be supportive and constructive—your role is to coach, not to give
         answers. Encourage their clinical reasoning by guiding them toward 
-        the correct approach rather than revealing it directly.
+        the correct approach rather than revealing it directly.\n\n
         """
     )
 
@@ -152,7 +189,7 @@ class ChatLabModifiers:
         Choose a diagnosis that a non-medical person might realistically text 
         about, and avoid conditions that clearly represent immediate 
         emergencies (such as massive trauma or a heart attack), which would not
-        typically be communicated via text.
+        typically be communicated via text.\n\n
         """
     )
 
@@ -167,14 +204,16 @@ class EnvironmentModifiers:
 
     class Military:
         __slots__ = ()
-        DEPLOYED_COMBAT = "You are deployed in a combat environment. "
-        DEPLOYED_NONCOMBAT = "You are deployed in a noncombat environment. "
-        GARRISON_ONDUTY = "You are in a garrison environment, on duty. "
-        GARRISON_OFFDUTY = "You are in a garrison environment, off duty. "
-        TRAINING = "You are at a training event in the field on a military base. "
+        DEPLOYED_COMBAT = "You are deployed in a combat environment.\n\n"
+        DEPLOYED_NONCOMBAT = "You are deployed in a noncombat environment.\n\n"
+        GARRISON_ONDUTY = "You are in a garrison environment, on duty.\n\n"
+        GARRISON_OFFDUTY = "You are in a garrison environment, off duty.\n\n"
+        TRAINING = "You are at a training event in the field on a military base.\n\n"
         TRAINING_AUSTERE = (
-            "You are at a training event not on a military installation, and "
-            "are more than 3 hours from any medical care, including hospitals and EMS. "
+            """
+            You are at a training event not on a military installation, and 
+            are more than 3 hours from any medical care, including hospitals and EMS.\n\n
+            """
         )
 
         @classmethod
@@ -182,9 +221,9 @@ class EnvironmentModifiers:
             return cls.DEPLOYED_NONCOMBAT
 
     class EMS:
-        CITY = "You are an EMS provider operating in a city."
-        COUNTY = "You are an EMS provider operating in a rural county."
-        AIR_MEDICAL = "You are a flight medic on an air medical transport."
+        CITY = "You are an EMS provider operating in a city.\n\n"
+        COUNTY = "You are an EMS provider operating in a rural county.\n\n"
+        AIR_MEDICAL = "You are a flight medic on an air medical transport.\n\n"
 
 
 class PromptModifiers:
@@ -192,7 +231,7 @@ class PromptModifiers:
     ChatLab = ChatLabModifiers
     Environ = EnvironmentModifiers
     Feedback = Feedback
-    UserRole = UserRoleModifiers
+    User = UserModifiers
 
 
 class PromptTemplate:
@@ -205,11 +244,27 @@ class PromptTemplate:
         prompt_text = prompt.default().with_chatlab().finalize()
         prompt_title = prompt.title
     """
-    def __init__(self, role: Union[UserRole, int, None] = None, app_label: str = "chatlab"):
-        self.app_label = app_label
+    def __init__(
+            self,
+            role: Union["UserRole", int, None] = None,
+            user: Union["CustomUser", int, None] = None,
+            lab_label: str = "chatlab"
+    ):
+        from accounts.models import UserRole, CustomUser
+        self.app_label = lab_label
         self._cached_modifiers = None
         self._sections = []
-        self._modifiers_used: list[str] = []        # used to generate prompt.title
+        self._modifiers_used: list[str] = []
+
+        # Allow passing either a User object, a User ID, or None
+        # User object should be passed to decrease DB hits
+        if isinstance(user, int):
+            try:
+                self.user = CustomUser.objects.get(id=role)
+            except CustomUser.DoesNotExist:
+                self.user = None
+        else:
+            self.user = user
 
         # Allow passing either a UserRole object, a role ID, or None
         # UserRole object should be passed to decrease DB hits
@@ -260,7 +315,7 @@ class PromptTemplate:
                 ChatLab = ChatLabModifiers()
                 Feedback = Feedback()
                 Environ = EnvironmentModifiers()
-                UserRole = UserRoleModifiers(role=self.role)
+                User = UserModifiers(role=self.role, user=self.user)
             self._cached_modifiers = Modifiers()
         return self._cached_modifiers
 
@@ -280,8 +335,10 @@ class PromptTemplate:
 
     def default(self):
         self._add_modifier(self.base, "Base")
+        if self.user:
+            self._add_modifier(self.modifiers.User.Log.default(), "UserHistory")
         if self.role:
-            self._add_modifier(self.modifiers.UserRole.default(), "UserRole")
+            self._add_modifier(self.modifiers.User.Role.default(), "UserRole")
         return self
 
     def with_chatlab(self):
@@ -307,24 +364,31 @@ class PromptTemplate:
         self._modifiers_used.clear()
         return self
 
+    def with_user_history(self, within_days: int = 180):
+        return self._add_modifier(self.modifiers.User.Log.default(within_days), "UserHistory")
+
+    def without_user_history(self):
+        return self
+
 modifiers = PromptModifiers()
 
 def get_or_create_prompt(
     app_label: str = "chatlab",
-    role: Union[UserRole, int, None] = None,
+    user: "CustomUser" = None,
+    role: Union["UserRole", int, None] = None,
     include_feedback: bool = False,
     environment: str = None,
-    extra_modifiers: list[str] = None
+    extra_modifiers: list[str] = None,
 ) -> Prompt:
     """
     Build a Prompt instance using dynamic modifiers.
-    - `app_label`: name of the app providing the simulation context
+    - `lab_label`: name of the app providing the simulation context
     - `role`: UserRole instance or ID
     - `include_feedback`: adds the feedback modifier (for facilitator guidance)
     - `environment`: optional string from EnvironmentModifiers (e.g., `TRAINING_AUSTERE`)
     - `extra_modifiers`: additional label strings to add to .summary for clarity
     """
-    prompt = PromptTemplate(role=role, app_label=app_label).default()
+    prompt = PromptTemplate(role=role, lab_label=app_label, user=user).default()
 
     if app_label.lower() == "chatlab":
         prompt.with_chatlab()
