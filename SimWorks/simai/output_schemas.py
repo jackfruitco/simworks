@@ -204,11 +204,11 @@ async def message_schema(initial: bool = False) -> dict:
                                 "additionalProperties": False,
                                 "properties": {
                                     "diagnosis": {
-                                        "description": "The diagnosis for the scenario script.",
+                                        "description": "The medical diagnosis (not the symptom) for the scenario script.",
                                         "type": "string",
                                     },
                                     "chief_complaint": {
-                                        "description": "The chief complaint for the scenario script.",
+                                        "description": "The patient's initial or chief complaint for the scenario script.",
                                         "type": "string",
                                     }
                                 }

@@ -21,7 +21,8 @@ DEFAULT_PROMPT_BASE = (
 
     Select a diagnosis and develop a corresponding clinical scenario script 
     using simple, everyday language that reflects the knowledge level of an
-    average person.
+    average person. "Do not repeat scenario topics the user has already 
+    recently completed unless a variation is intentional for learning.
     
     Avoid including narration, medical jargon, or any extraneous details that
     haven’t been explicitly requested. Adopt a natural texting style—using 
@@ -39,7 +40,7 @@ DEFAULT_PROMPT_BASE = (
     addressing the conversation from within the current scenario without 
     repeating your role parameters.
 
-    Do not exit the scenario.
+    Do not exit the scenario.\n\n
     """
 )
 
@@ -65,7 +66,7 @@ class UserModifiers:
                 return "The person you are training has no specific role assigned.\n"
             return (
                 f"The person you are training is a {self.role.title.title()}.\n"
-                f"The diagnosis script should reflect training at that level.\n"
+                f"The treatment plan should reflect training at that level.\n"
                 f"Consider the following resources: {self.resource_list()}.\n"
             )
 
@@ -82,9 +83,11 @@ class UserModifiers:
             if not lines:
                 return ""
             return (
-                "The user has recently completed scenarios with these chief complaint–diagnosis pairs. "
-                "It's acceptable to reuse some, but avoid excessive repetition.\n\n"
-                f"[{', '.join(lines)}]"
+                f"""
+                The user has already completed scenarios with the following chief complaint → diagnosis pairs.
+                You must avoid reusing these unless a deliberate variation is needed:\n
+                {', '.join(lines)}\n\n
+                """
             )
 
         def default(self, within_days: int = 180):
@@ -116,7 +119,7 @@ class Feedback:
         improve, without discouragement. Be direct, concise, and encouraging.
         
         Where applicable, provide evidence-based medicine, related screening 
-        tools, and special tests or questionnaires the user could implement.
+        tools, and special tests or questionnaires the user could implement.\n\n
         """
     )
 
@@ -144,7 +147,7 @@ class Feedback:
         Your feedback should make the correct diagnosis and treatment plan 
         clear and unambiguous, even if the user did not reach them. It is not
         only acceptable—but required—to inform the trainee when their diagnosis
-        or plan was incorrect, as long as it is done constructively.
+        or plan was incorrect, as long as it is done constructively.\n\n
         """
     )
 
@@ -158,7 +161,7 @@ class Feedback:
         ask more history questions. Recommend using history-taking tools like
         SAMPLE, OPQRST, etc. if they haven't already. For this message only,
         you are the simulation facilitator. After this message, resume the role
-        of the patient.
+        of the patient.\n\n
         """
     )
 
@@ -176,7 +179,7 @@ class Feedback:
         
         Be supportive and constructive—your role is to coach, not to give
         answers. Encourage their clinical reasoning by guiding them toward 
-        the correct approach rather than revealing it directly.
+        the correct approach rather than revealing it directly.\n\n
         """
     )
 
@@ -198,7 +201,7 @@ class ChatLabModifiers:
         Choose a diagnosis that a non-medical person might realistically text 
         about, and avoid conditions that clearly represent immediate 
         emergencies (such as massive trauma or a heart attack), which would not
-        typically be communicated via text.
+        typically be communicated via text.\n\n
         """
     )
 
@@ -213,14 +216,16 @@ class EnvironmentModifiers:
 
     class Military:
         __slots__ = ()
-        DEPLOYED_COMBAT = "You are deployed in a combat environment. "
-        DEPLOYED_NONCOMBAT = "You are deployed in a noncombat environment. "
-        GARRISON_ONDUTY = "You are in a garrison environment, on duty. "
-        GARRISON_OFFDUTY = "You are in a garrison environment, off duty. "
-        TRAINING = "You are at a training event in the field on a military base. "
+        DEPLOYED_COMBAT = "You are deployed in a combat environment.\n\n"
+        DEPLOYED_NONCOMBAT = "You are deployed in a noncombat environment.\n\n"
+        GARRISON_ONDUTY = "You are in a garrison environment, on duty.\n\n"
+        GARRISON_OFFDUTY = "You are in a garrison environment, off duty.\n\n"
+        TRAINING = "You are at a training event in the field on a military base.\n\n"
         TRAINING_AUSTERE = (
-            "You are at a training event not on a military installation, and "
-            "are more than 3 hours from any medical care, including hospitals and EMS. "
+            """
+            You are at a training event not on a military installation, and 
+            are more than 3 hours from any medical care, including hospitals and EMS.\n\n
+            """
         )
 
         @classmethod
@@ -228,9 +233,9 @@ class EnvironmentModifiers:
             return cls.DEPLOYED_NONCOMBAT
 
     class EMS:
-        CITY = "You are an EMS provider operating in a city."
-        COUNTY = "You are an EMS provider operating in a rural county."
-        AIR_MEDICAL = "You are a flight medic on an air medical transport."
+        CITY = "You are an EMS provider operating in a city.\n\n"
+        COUNTY = "You are an EMS provider operating in a rural county.\n\n"
+        AIR_MEDICAL = "You are a flight medic on an air medical transport.\n\n"
 
 
 class PromptModifiers:
