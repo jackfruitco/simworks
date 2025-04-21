@@ -1,6 +1,8 @@
 from django.contrib import admin
+from django.utils.html import format_html
 
 from .models import *
+
 
 class MetadataInline(admin.TabularInline):
     model = SimulationMetadata
@@ -22,22 +24,38 @@ class SimulationAdmin(admin.ModelAdmin):
 
     @admin.display(description="Correct Diagnosis")
     def correct_diagnosis(self, obj):
-        if obj.is_in_progress: return "still in progress"
-        val = obj.metadata.filter(key="correct_diagnosis").values_list("value", flat=True).first()
-        return "undetermined" if val is None else val
+        if obj.is_in_progress:
+            return "⏳ in progress"
+
+        val = obj.metadata.filter(key="correct diagnosis").values_list("value", flat=True).first()
+        if val == "true":
+            return format_html('<span style="color:green;">🟢</span>')
+        elif val == "false":
+            return format_html('<span style="color:red;">🔴</span>')
+        elif val == "partial":
+            return format_html('<span style="color:orange;">🟡</span>')
+        return "—"
 
     @admin.display(description="Correct Treatment Plan")
     def correct_treatment_plan(self, obj):
-        if obj.is_in_progress: return "still in progress"
-        val= obj.metadata.filter(key="correct_treatment_plan").values_list("value", flat=True).first()
-        return "undetermined" if val is None else val
+        if obj.is_in_progress:
+            return "⏳"
+
+        val = obj.metadata.filter(key="correct treatment plan").values_list("value", flat=True).first()
+        if val == "true":
+            return format_html('<span style="color:green;">🟢</span>')
+        elif val == "false":
+            return format_html('<span style="color:red;">🔴</span>')
+        elif val == "partial":
+            return format_html('<span style="color:orange;">🟡</span>')
+        return "—"
 
     list_display = ("id", "user", "is_complete_display", "correct_diagnosis", "correct_treatment_plan", "start_timestamp")
     fieldsets = [
-        (None, {"fields": ("user", "start_timestamp", "end_timestamp", "time_limit", "prompt")}),
+        (None, {"fields": ("user", ("start_timestamp", "end_timestamp", "time_limit"), "prompt")}),
         ("SCENARIO ATTRIBUTES", {
             "classes": ("collapse",),
-            "fields": ("diagnosis", "chief_complaint", "correct_diagnosis","correct_treatment_plan")
+            "fields": (("diagnosis", "chief_complaint"), ("correct_diagnosis","correct_treatment_plan"))
         }),
     ]
     list_filter = ("user",)
