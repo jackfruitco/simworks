@@ -74,7 +74,7 @@ hyperlink==21.0.0
     # via
     #   autobahn
     #   twisted
-identify==2.6.9
+identify==2.6.10
     # via pre-commit
 idna==3.10
     # via
