@@ -118,7 +118,7 @@ pydantic==2.11.3
     # via
     #   simworks (pyproject.toml)
     #   openai
-pydantic-core==2.33.1
+pydantic-core==2.34.1
     # via pydantic
 pyopenssl==25.0.0
     # via twisted
