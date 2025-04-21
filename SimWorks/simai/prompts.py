@@ -8,6 +8,7 @@ dynamically construct composite prompts with chained modifier methods.
 from typing import TYPE_CHECKING
 from typing import Union
 
+from core.utils import Formatter
 from core.utils import compute_fingerprint
 from .models import Prompt
 
@@ -75,20 +76,7 @@ class UserModifiers:
             self.user = user
 
         def format_log(self, log: list[dict]) -> str:
-            lines = [
-                f'("{entry["chief_complaint"]}", "{entry["diagnosis"]}")'
-                for entry in log
-                if entry.get("chief_complaint") and entry.get("diagnosis")
-            ]
-            if not lines:
-                return ""
-            return (
-                f"""
-                The user has already completed scenarios with the following chief complaint → diagnosis pairs.
-                You must avoid reusing these unless a deliberate variation is needed:\n
-                {', '.join(lines)}\n\n
-                """
-            )
+            return Formatter(log).render("openai_prompt")
 
         def default(self, within_days: int = 180):
             if not self.user:
