@@ -103,7 +103,7 @@ class Invitation(models.Model):
 
     @property
     def get_absolute_url(self):
-        return reverse("register-with-token", kwargs={"token": self.token})
+        return reverse("accounts:register-with-token", kwargs={"token": self.token})
 
     @property
     def is_expired(self):
