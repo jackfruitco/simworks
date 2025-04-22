@@ -15,7 +15,7 @@
         {% else %}
         <a href="{% url 'accounts:login' %}" class="bar-item end button acct hide-small">
             <span class="iconify fit" data-icon="mdi:login-variant" data-inline="true"></span> Login</a>
-        <a href="{% url 'register' %}" class="bar-item button acct hide-small">
+        <a href="{% url 'accounts:register' %}" class="bar-item button acct hide-small">
             <span class="iconify fit" data-icon="mdi:register-outline" data-inline="true"></span> Register!</a>
         {% endif %}
         <!-- User Menu Toggle -->
@@ -42,7 +42,7 @@
                     </form>
                 {% else %}
                     <a href="{% url 'accounts:login' %}" class="sidebar-item button acct hide-large hide-medium" @click="openMenu = false">Login</a>
-                    <a href="{% url 'register' %}" class="sidebar-item button acct hide-large hide-medium" @click="openMenu = false">Registration</a>
+                    <a href="{% url 'accounts:register' %}" class="sidebar-item button acct hide-large hide-medium" @click="openMenu = false">Registration</a>
                 {% endif %}
                 <div class="sidebar-item" x-data="themeToggle()" x-init="init()">
                     <button @click="toggle()" class="theme-toggle" title="Toggle theme">
