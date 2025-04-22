@@ -16,12 +16,12 @@
         Please correct the errors below.
       </div>
     {% endif %}
-    <form method="post" action="{% url 'accounts:signup' %}">
+    <form method="post" action="{% url 'register' %}">
         {% csrf_token %}
         <div class="form-group">
             <label for="{{ form.invitation_token.id_for_label }}">Invitation Token:</label>
             {% if token %}
-                <input type="text" name="{{ form.invitation_token.name }}" id="{{ form.invitation_token.id_for_label }}" value="{{ invitation_token }}" readonly>
+                <input type="text" name="{{ form.invitation_token.name }}" id="{{ form.invitation_token.id_for_label }}" value="{{ token }}" readonly>
             {% else %}
                 {{ form.invitation_token }}
             {% endif %}

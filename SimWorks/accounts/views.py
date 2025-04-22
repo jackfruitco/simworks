@@ -14,8 +14,8 @@ from .forms import InvitationForm, CustomUserCreationForm
 from .models import Invitation
 
 
-def signup(request):
-    token = request.GET.get("token") or request.POST.get("token")
+def register(request, token=None):
+    token = token or request.GET.get("token") or request.POST.get("token")
     if request.method == "POST":
         form = CustomUserCreationForm(request.POST)
         if form.is_valid():
