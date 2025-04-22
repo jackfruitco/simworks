@@ -302,7 +302,7 @@ function ChatManager(simulation_id, currentUser) {
                 container.setAttribute('hx-trigger', 'revealed');
                 htmx.process(container);
 
-                fetch(`/chat/${this.simulation_id}/load-older/?before=${messageId}`)
+                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`)
                     .then(response => response.text())
                     .then(html => {
                         if (!html.includes('data-message-id')) {
