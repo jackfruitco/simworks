@@ -98,10 +98,12 @@ class Invitation(models.Model):
             self.expires_at = timezone.now() + timedelta(days=3)
         super().save(*args, **kwargs)
 
+    def url(self, request):
+        return request.build_absolute_uri(self.get_absolute_url)
+
     @property
-    def link(self):
-        signup_url = reverse("accounts:signup")
-        return f"{signup_url}?token={self.token}"
+    def get_absolute_url(self):
+        return reverse("register-with-token", kwargs={"token": self.token})
 
     @property
     def is_expired(self):
