@@ -3,8 +3,18 @@
 {% block object-tools-items %}
   {{ block.super }}
   <li>
-    <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk %}">
+    <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk "sim_transcript_txt" %}">
+      <button type="submit" class="button">Download Transcript (.txt)</button>
+    </form>
+  </li>
+  <li>
+    <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk "sim_transcript_md" %}">
       <button type="submit" class="button">Download Transcript (.md)</button>
+    </form>
+  </li>
+  <li>
+    <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk "sim_transcript_csv" %}">
+      <button type="submit" class="button">Download Transcript (.csv)</button>
     </form>
   </li>
 {% comment %}

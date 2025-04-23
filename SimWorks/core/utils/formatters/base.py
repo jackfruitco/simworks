@@ -151,7 +151,7 @@ class Formatter:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if not filename:
             filename = f"transcript_{timestamp}.{ext}"
-        elif not filename.endswith(f".{ext}"):
+        elif not filename.lower().endswith(f".{ext}"):
             filename = f"{filename}.{ext}"
 
         if not content_type:
