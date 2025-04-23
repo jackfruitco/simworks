@@ -28,10 +28,14 @@ function ChatManager(simulation_id, currentUser) {
             });
 
             this.messagesDiv.addEventListener('scroll', () => {
-              if (this.isScrolledToBottom()) {
-                this.newMessageBtn.classList.add('hidden');
-                this.newMessageBtn.classList.remove('bounce');
-              }
+                if (this.isScrolledToBottom()) {
+                    this.newMessageBtn.classList.add('hidden');
+                    this.newMessageBtn.classList.remove('bounce');
+                }
+                // Auto-load older messages when at top
+                if (this.messagesDiv.scrollTop === 0 && this.hasMoreMessages) {
+                    this.loadOlderMessages();
+                }
             });
         },
         notifyTyping() {
@@ -296,17 +300,45 @@ function ChatManager(simulation_id, currentUser) {
             const firstMessage = container.firstElementChild;
             const messageId = firstMessage?.dataset?.messageId || null;
 
+            const loadButton = document.getElementById('load-older-btn');
+            if (loadButton) {
+                loadButton.disabled = true;
+                loadButton.textContent = "Loading...";
+            }
+
             if (messageId) {
-                container.setAttribute('hx-get', `/chat/${this.simulation_id}/load-older/?before=${messageId}`);
-                container.setAttribute('hx-swap', 'beforebegin');
-                container.setAttribute('hx-trigger', 'revealed');
-                htmx.process(container);
+                let anchor = document.getElementById('message-load-anchor');
+                if (!anchor) {
+                    anchor = document.createElement('div');
+                    anchor.id = 'message-load-anchor';
+                    container.prepend(anchor);
+                }
+
+                // Store scroll height before HTMX loads older messages
+                const previousHeight = container.scrollHeight;
+
+                anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`);
+                anchor.setAttribute('hx-swap', 'beforebegin');
+                anchor.setAttribute('hx-trigger', 'load');
+                htmx.process(anchor);
+
+                // After HTMX swaps in new content, adjust scrollTop to preserve position
+                htmx.on(anchor, 'htmx:afterSwap', () => {
+                    const addedHeight = container.scrollHeight - previousHeight;
+                    container.scrollTop += addedHeight;
+                });
 
                 fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`)
                     .then(response => response.text())
                     .then(html => {
                         if (!html.includes('data-message-id')) {
                             this.hasMoreMessages = false;
+                            if (loadButton) loadButton.style.display = "none";
+                        } else {
+                            if (loadButton) {
+                                loadButton.disabled = false;
+                                loadButton.textContent = "Load Older Messages";
+                            }
                         }
                     });
             }
