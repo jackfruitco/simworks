@@ -5,7 +5,7 @@ from core.utils import Formatter
 from simcore.models import Simulation
 
 
-def download_simulation_transcript(request, simulation_id):
+def download_simulation_transcript(request, simulation_id, format_type="sim_transcript_txt"):
     sim = get_object_or_404(Simulation, id=simulation_id)
     formatter = Formatter(sim.history)
-    return formatter.download("chat_transcript_md", filename=f"transcript_Sim{sim.pk}")
+    return formatter.download(format_type=format_type, filename=f"Sim{sim.pk}_transcript")
