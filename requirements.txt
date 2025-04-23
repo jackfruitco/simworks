@@ -133,7 +133,7 @@ redis==5.2.1
     #   django-redis
 service-identity==24.2.0
     # via twisted
-setuptools==78.1.0
+setuptools==79.0.0
     # via
     #   autobahn
     #   incremental
