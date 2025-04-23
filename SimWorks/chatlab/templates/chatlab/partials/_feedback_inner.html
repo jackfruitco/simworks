@@ -4,7 +4,7 @@
   <ul class="sim-metadata">
     {% for metafield in feedback %}
         {% if metafield.key|lower == "feedback" %}
-            <li><i style="color: var(--color-muted)">{{ metafield.value|lower }}</i></li>
+            <li><i style="color: var(--color-muted)">{{ metafield.value }}</i></li>
         {% else %}
             <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|feedback }}</li>
         {% endif %}
