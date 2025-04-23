@@ -92,7 +92,7 @@ msgpack==1.1.0
     # via channels-redis
 nodeenv==1.9.1
     # via pre-commit
-openai==1.74.0
+openai==1.76.0
     # via simworks (pyproject.toml)
 packaging==25.0
     # via pytest
