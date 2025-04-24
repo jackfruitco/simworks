@@ -7,15 +7,18 @@
   <button type="button" id="emoji-button" title="Emoji" class="emoji-button hide-small">
         <span class="iconify chat-icon" data-icon="fa6-regular:face-smile" data-inline="false"></span>
   </button>
-  <input
+  <textarea
     x-model="messageText"
     id="chat-message-input"
-    type="text"
+    x-ref="messageInput"
+    x-on:input="$refs.messageInput.style.height = 'auto'; $refs.messageInput.style.height = $refs.messageInput.scrollHeight + 'px'"
     :disabled="isLocked"
     :placeholder="isLocked ? 'Simulation locked.' : 'Message'"
     @input="notifyTyping"
+    rows="1"
+    style="resize: none"
     autofocus
-  >
+  ></textarea>
     <button
             class="hide-small"
             type="submit"

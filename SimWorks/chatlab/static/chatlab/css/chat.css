@@ -121,12 +121,17 @@
   width: 95%;
   line-height: 1.4;
   padding: 0.25rem 1rem;
-  overflow-y: auto;
   font-size: 1rem;
   border: none;
   border-radius: 2rem;
   background-color: var(--color-bg-incoming);
   color: var(--color-text-dark);
+
+  overflow-x: hidden;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: calc(1.4em * 3 + 1rem); /* 3 lines + padding */
 }
 
 
