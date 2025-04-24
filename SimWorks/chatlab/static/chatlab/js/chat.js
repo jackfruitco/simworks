@@ -37,6 +37,23 @@ function ChatManager(simulation_id, currentUser) {
                     this.loadOlderMessages();
                 }
             });
+
+            // Enhanced message input behavior: auto-resize and send on Enter, Shift+Enter for newline
+            if (this.messageInput) {
+                // Auto-resize on input
+                this.messageInput.addEventListener('input', () => {
+                    this.messageInput.style.height = 'auto';
+                    this.messageInput.style.height = this.messageInput.scrollHeight + 'px';
+                });
+
+                // Send on Enter, allow Shift+Enter for newline
+                this.messageInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
+                    }
+                });
+            }
         },
         notifyTyping() {
             const now = Date.now();

@@ -90,6 +90,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             func_name=func_name,
             msg=f"sending connect init message for {'new' if new_simulation else 'existing'} simulation (SIM:{self.simulation_id})",
         )
+
+        # Send client message with initial setup information
         await self.send(
             text_data=json.dumps(
                 {
@@ -101,6 +103,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+        # Simulate sim patient typing to client
         if new_simulation:
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -170,6 +173,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 display_initials = await sync_to_async(
                     lambda: first_msg.simulation.sim_patient_initials
                 )()
+                """
                 await self.channel_layer.group_send(
                     self.room_group_name,
                     {
@@ -182,6 +186,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "id": str(first_msg.id),
                     },
                 )
+                """
 
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
