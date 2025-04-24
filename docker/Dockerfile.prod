@@ -35,7 +35,7 @@ WORKDIR /app
 COPY --from=builder /usr/local /usr/local
 
 COPY SimWorks /app/SimWorks
-COPY docker/entrypoint.dev.sh /app/docker/entrypoint.dev.sh
+COPY docker/entrypoint.prod.sh /app/docker/entrypoint.prod.sh
 COPY docker/healthcheck.sh /app/docker/healthcheck.sh
 
 RUN chmod +x /app/docker/entrypoint.dev.sh /app/docker/healthcheck.sh
