@@ -38,7 +38,7 @@ COPY SimWorks /app/SimWorks
 COPY docker/entrypoint.prod.sh /app/docker/entrypoint.prod.sh
 COPY docker/healthcheck.sh /app/docker/healthcheck.sh
 
-RUN chmod +x /app/docker/entrypoint.dev.sh /app/docker/healthcheck.sh
+RUN chmod +x /app/docker/entrypoint.prod.sh /app/docker/healthcheck.sh
 
 # Create a non-privileged user that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
