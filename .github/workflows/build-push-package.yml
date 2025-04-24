@@ -39,6 +39,29 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Extract version from tag
+      if: github.event_name == 'release'
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+    - name: Set Docker tag from version
+      if: github.event_name == 'release'
+      run: |
+        echo "CUSTOM_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_ENV
+        echo "LATEST_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_ENV
+
+    - name: Update pyproject.toml version
+      if: github.event_name == 'release'
+      run: |
+        sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+
+    - name: Commit version bump
+      if: github.event_name == 'release'
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git commit -am "chore: bump version to $VERSION from release tag"
+        git push
+
     - name: Build and push Docker image
       id: push
       uses: docker/build-push-action@v6
@@ -46,8 +69,13 @@ jobs:
         context: .
         file: docker/Dockerfile.prod
         push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: |
+          ${{ env.CUSTOM_TAG }}
+          ${{ env.LATEST_TAG }}
+          ${{ steps.meta.outputs.tags }}
+        labels: |
+          org.opencontainers.image.version=${{ env.VERSION }}
+          ${{ steps.meta.outputs.labels }}
 
     - name: Generate artifact attestation
       uses: actions/attest-build-provenance@v2
