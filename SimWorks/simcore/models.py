@@ -5,6 +5,7 @@ from hashlib import sha256
 
 from django.conf import settings
 from django.db import models
+from django.db.models import QuerySet
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
@@ -174,6 +175,11 @@ class Simulation(models.Model):
         prompt = get_or_create_prompt(app_label=app_label, user=user, role=user.role)
         return cls.objects.create(user=user, prompt=prompt, **kwargs)
 
+    @property
+    def formatted_patient_history(self):
+        raw = self.metadata.filter(attribute="patient history")
+        return SimulationMetadata.format_patient_history(raw)
+
     def save(self, *args, **kwargs):
         # Ensure prompt is set based on user.role if not already provided
         if not self.prompt:
@@ -211,6 +217,30 @@ class SimulationMetadata(models.Model):
     key = models.CharField(blank=False, null=False, max_length=255)
     attribute = models.CharField(blank=False, null=False, max_length=64)
     value = models.CharField(blank=False, null=False, max_length=2000)
+
+    @classmethod
+    def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
+        from collections import defaultdict
+
+        grouped = defaultdict(dict)
+        for entry in history_metadata:
+            key = entry.key
+            value = entry.value
+            prefix, field = key.rsplit(" ", 1)
+            grouped[prefix][field] = value
+        logger.debug(f"grouped: {grouped}")
+
+        formatted = [
+            {"key": prefix, "value": "{diagnosis} ({resolved}, {duration})".format(
+                diagnosis=data.get("diagnosis", "Unknown").title(),
+                resolved=data.get("resolved", "Unknown"),
+                duration=data.get("duration", "Unknown")
+            )}
+            for prefix, data in grouped.items()
+        ]
+        logger.debug(f"formatted: {formatted}")
+
+        return formatted
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None

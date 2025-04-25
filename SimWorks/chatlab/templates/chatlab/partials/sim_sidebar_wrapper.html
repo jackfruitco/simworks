@@ -1,18 +1,23 @@
-<div class="sim-sidebar-wrapper" x-data="{
-  metadataKey: `simMetadataOpen_{{ simulation.id }}`,
-  metadataOpen: JSON.parse(localStorage.getItem(`simMetadataOpen_{{ simulation.id }}`) ?? 'true'),
-  toggleMetadata() {
-    this.metadataOpen = !this.metadataOpen;
-    localStorage.setItem(this.metadataKey, JSON.stringify(this.metadataOpen));
-  },
-
-  feedbackKey: `simFeedbackOpen_{{ simulation.id }}`,
-  feedbackOpen: JSON.parse(localStorage.getItem(`simFeedbackOpen_{{ simulation.id }}`) ?? 'true'),
-  toggleFeedback() {
-    this.feedbackOpen = !this.feedbackOpen;
-    localStorage.setItem(this.feedbackKey, JSON.stringify(this.feedbackOpen));
-  }
-}">
+<div class="sim-sidebar-wrapper" x-data="sidebarMetadata({{ simulation.id }})">
     {% include 'chatlab/partials/_metadata_wrapper.html' %}
     {% include 'chatlab/partials/_feedback_wrapper.html' %}
 </div>
+
+<script>
+function sidebarMetadata(simulationId) {
+    return {
+        states: {
+            simMetadataOpen: JSON.parse(localStorage.getItem(`simMetadataOpen_${simulationId}`) ?? 'true'),
+            patientMetadataOpen: JSON.parse(localStorage.getItem(`patientMetadataOpen_${simulationId}`) ?? 'true'),
+            feedbackOpen: JSON.parse(localStorage.getItem(`simFeedbackOpen_${simulationId}`) ?? 'true'),
+        },
+        toggle(section) {
+            this.states[section] = !this.states[section];
+            localStorage.setItem(`${section}_${simulationId}`, JSON.stringify(this.states[section]));
+        },
+        isOpen(section) {
+            return this.states[section];
+        }
+    }
+}
+</script>

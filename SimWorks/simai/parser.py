@@ -8,6 +8,8 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 
+from django.db.models import QuerySet
+
 from .models import ResponseType
 from asgiref.sync import sync_to_async
 from chatlab.models import Message

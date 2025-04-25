@@ -1,0 +1,9 @@
+{% if patient_history %}
+  <ul id="patient-history" class="sim-metadata">
+    {% for metafield in patient_history %}
+      <li>{{ metafield.value }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="sim-metadata-empty">No known medical history available.</div>
+{% endif %}
