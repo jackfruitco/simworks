@@ -71,17 +71,17 @@ def run_simulation(request, simulation_id):
 
     maybe_start_simulation(simulation)
 
-    metadata = simulation.metadata.exclude(attribute="feedback").exclude(attribute="patient history")
+    simulation_metadata = simulation.metadata.exclude(attribute="feedback").exclude(attribute="patient history")
     feedback = simulation.metadata.filter(attribute="feedback")
-    patient_history = simulation.formatted_patient_history
+    patient_metadata = simulation.formatted_patient_history
 
     context = {
         "simulation": simulation,
-        "metadata": metadata,
+        "simulation_metadata": simulation_metadata,
+        "patient_metadata": patient_metadata,
         "sim_start_unix": int(simulation.start_timestamp.timestamp() * 1000),
         "simulation_locked": simulation.is_complete,
         "feedback": feedback,
-        "patient_history": patient_history,
     }
 
     return render(request, "chatlab/simulation.html", context)
