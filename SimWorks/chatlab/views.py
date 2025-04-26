@@ -4,7 +4,7 @@ import logging
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, HttpResponse
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
@@ -86,26 +86,46 @@ def run_simulation(request, simulation_id):
 
     return render(request, "chatlab/simulation.html", context)
 
+@require_GET
+def get_metadata_checksum(request, simulation_id):
+    """Return simulation metadata checksum."""
+    simulation = get_object_or_404(Simulation, id=simulation_id)
+    return JsonResponse({"checksum": simulation.metadata_checksum})
 
 @require_GET
-def refresh_metadata(request, simulation_id):
+def refresh_simulation_metadata(request, simulation_id):
+    """
+    Return simulation metadata.
+
+    :param request:
+    :param simulation_id:
+    :return:
+    """
     simulation = get_object_or_404(Simulation, id=simulation_id)
-
-    if request.GET.get("force") != "1":
-        new_checksum = simulation.calculate_metadata_checksum()
-        if new_checksum == simulation.metadata_checksum:
-            return JsonResponse({"changed": False})
-        simulation.metadata_checksum = new_checksum
-        simulation.save(update_fields=["metadata_checksum"])
-
-    context = {
-        "simulation": simulation,
-        "metadata": simulation.metadata.all(),
-    }
-    logger.debug(
-        f"[Sim#{simulation.pk}] refreshed metadata: {context.get('metadata')}"
+    metadata = simulation.metadata.exclude(attribute="patient history").exclude(attribute="feedback")
+    logger.debug(f"[Sim#{simulation.pk}] refreshed simulation metadata: {metadata}")
+    return render(
+        request,
+        "chatlab/partials/_metadata_simulation_inner.html",
+        context={"simulation_metadata": metadata}
     )
-    return render(request, "chatlab/partials/_metadata_inner.html", context)
+
+@require_GET
+def refresh_patient_metadata(request, simulation_id):
+    """
+    Return patient history metadata.
+    :param request:
+    :param simulation_id:
+    :return:
+    """
+    simulation = get_object_or_404(Simulation, id=simulation_id)
+    metadata = simulation.formatted_patient_history
+    logger.debug(f"[Sim#{simulation.pk}] refreshed patient metadata: {metadata}")
+    return render(
+        request,
+        "chatlab/partials/_metadata_patient_inner.html",
+        context={"patient_metadata": metadata}
+    )
 
 @require_GET
 def refresh_messages(request, simulation_id):

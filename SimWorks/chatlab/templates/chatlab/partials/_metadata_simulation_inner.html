@@ -1,6 +1,6 @@
-{% if metadata %}
+{% if simulation_metadata %}
   <ul id="simulation-metadata" class="sim-metadata">
-    {% for metafield in metadata %}
+    {% for metafield in simulation_metadata %}
       <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|title }}</li>
     {% endfor %}
   </ul>

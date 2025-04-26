@@ -1,3 +1,4 @@
+# chatlab/urls.py
 from django.urls import path
 
 from . import views
@@ -19,9 +20,19 @@ urlpatterns = [
         name="refresh_messages",
     ),
     path(
-        "simulation/<int:simulation_id>/refresh/metadata/",
-        views.refresh_metadata,
-        name="refresh_metadata",
+        "simulation/<int:simulation_id>/refresh/metadata/current-checksum/",
+        views.get_metadata_checksum,
+        name="current_metadata_checksum",
+    ),
+    path(
+        "simulation/<int:simulation_id>/refresh/metadata/patient/",
+        views.refresh_patient_metadata,
+        name="refresh_patient_metadata",
+    ),
+    path(
+        "simulation/<int:simulation_id>/refresh/metadata/simulation/",
+        views.refresh_simulation_metadata,
+        name="refresh_simulation_metadata",
     ),
     path(
         "simulation/<int:simulation_id>/refresh/older-messages/",

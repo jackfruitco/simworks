@@ -160,10 +160,13 @@ class Simulation(models.Model):
         async_to_sync(service.generate_simulation_feedback)(self)
 
     def calculate_metadata_checksum(self) -> str:
-        # Get sorted list of (key, value) pairs
-        data = list(self.metadata.values_list("key", "value").order_by("key"))
-        encoded = json.dumps(data)
-        return sha256(encoded.encode("utf-8")).hexdigest()
+        from hashlib import sha256
+        from django.db.models import QuerySet
+
+        # Always order by attribute and key for stable checksum
+        entries = self.metadata.order_by('attribute', 'key').values_list('attribute', 'key', 'value')
+        data = "|".join(f"{attr}:{key}:{value}" for attr, key, value in entries)
+        return sha256(data.encode('utf-8')).hexdigest()
 
     @classmethod
     def create_with_default_prompt(cls, user, app_label="chatlab", **kwargs):

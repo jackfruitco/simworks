@@ -1,6 +1,6 @@
-{% if patient_history %}
+{% if patient_metadata %}
   <ul id="patient-history" class="sim-metadata">
-    {% for metafield in patient_history %}
+    {% for metafield in patient_metadata %}
       <li>{{ metafield.value }}</li>
     {% endfor %}
   </ul>
