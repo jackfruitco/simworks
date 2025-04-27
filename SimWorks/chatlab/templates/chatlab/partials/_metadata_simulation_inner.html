@@ -1,5 +1,6 @@
+{# templates/chatlab/partials/_metadata_simulation_inner.html #}
 {% if simulation_metadata %}
-  <ul id="simulation-metadata" class="sim-metadata">
+  <ul class="sim-metadata">
     {% for metafield in simulation_metadata %}
       <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|title }}</li>
     {% endfor %}

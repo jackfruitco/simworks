@@ -1,29 +1,36 @@
+{# templates/chatlab/partials/_metadata_wrapper.html #}
 <div id="sim-metadata-header" class="metadata-header px-4">
     <h3 class="medium">Simulation Data</h3>
-    <button @click="toggle('simMetadataOpen')" class="button primary small hide-small my-4" x-text="isOpen('simMetadataOpen') ? 'Hide' : 'Show'"></button>
+    <button @click="toggle('simMetadata')"
+            class="button primary small hide-small my-4"
+            x-text="isOpen('simMetadata') ? 'Hide' : 'Show'">
+    </button>
 </div>
 <div id="simulation-metadata"
-    x-show="isOpen('simMetadataOpen')"
-    x-transition:enter="transition ease-out duration-300"
-    x-transition:enter-start="opacity-0 -translate-y-2"
-    x-transition:enter-end="opacity-100 translate-y-0"
-    x-transition:leave="transition ease-in duration-200"
-    x-transition:leave-start="opacity-100 translate-y-0"
-    x-transition:leave-end="opacity-0 -translate-y-2">
-{% include 'chatlab/partials/_metadata_simulation_inner.html' %}
+     x-show="isOpen('simMetadata')"
+     x-transition:enter="transition ease-out duration-300"
+     x-transition:enter-start="opacity-0 -translate-y-2"
+     x-transition:enter-end="opacity-100 translate-y-0"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="opacity-100 translate-y-0"
+     x-transition:leave-end="opacity-0 -translate-y-2">
+    {% include 'chatlab/partials/_metadata_simulation_inner.html' %}
 </div>
 
 <div id="patient-metadata-header" class="metadata-header px-4">
     <h3 class="medium">Patient History</h3>
-    <button @click="toggle('patientMetadataOpen')" class="button primary small hide-small my-4" x-text="isOpen('patientMetadataOpen') ? 'Hide' : 'Show'"></button>
+    <button @click="toggle('patientMetadata')"
+            class="button primary small hide-small my-4"
+            x-text="isOpen('patientMetadata') ? 'Hide' : 'Show'">
+    </button>
 </div>
 <div id="patient-metadata"
-    x-show="isOpen('patientMetadataOpen')"
-    x-transition:enter="transition ease-out duration-300"
-    x-transition:enter-start="opacity-0 -translate-y-2"
-    x-transition:enter-end="opacity-100 translate-y-0"
-    x-transition:leave="transition ease-in duration-200"
-    x-transition:leave-start="opacity-100 translate-y-0"
-    x-transition:leave-end="opacity-0 -translate-y-2">
-{% include 'chatlab/partials/_metadata_patient_inner.html' %}
+     x-show="isOpen('patientMetadata')"
+     x-transition:enter="transition ease-out duration-300"
+     x-transition:enter-start="opacity-0 -translate-y-2"
+     x-transition:enter-end="opacity-100 translate-y-0"
+     x-transition:leave="transition ease-in duration-200"
+     x-transition:leave-start="opacity-100 translate-y-0"
+     x-transition:leave-end="opacity-0 -translate-y-2">
+    {% include 'chatlab/partials/_metadata_patient_inner.html' %}
 </div>

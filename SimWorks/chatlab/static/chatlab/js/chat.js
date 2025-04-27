@@ -418,7 +418,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             if (this.simMetadataDiv) {
                 htmx.ajax('GET', `/chatlab/simulation/${this.simulation_id}/refresh/metadata/simulation/${urlSuffix}`, {
                     target: this.simMetadataDiv,
-                    swap: 'outerHTML'
+                    swap: 'innerHTML'
                 });
                 console.info("[refreshMetadata] refresh requested for simulation metadata");
             }
@@ -426,7 +426,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             if (this.patientMetadataDiv) {
                 htmx.ajax('GET', `/chatlab/simulation/${this.simulation_id}/refresh/metadata/patient/${urlSuffix}`, {
                     target: this.patientMetadataDiv,
-                    swap: 'outerHTML'
+                    swap: 'innerHTML'
                 });
                 console.info("[refreshMetadata] refresh requested for patient metadata");
             }
