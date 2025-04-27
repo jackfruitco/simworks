@@ -9,6 +9,7 @@ from django.db.models import QuerySet
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
+from core.utils.datetime_utils import to_ms
 from simai.models import Prompt
 from simai.prompts import get_or_create_prompt
 from simcore.utils import randomize_display_name
@@ -146,6 +147,24 @@ class Simulation(models.Model):
         if self.start_timestamp and self.end_timestamp:
             return self.end_timestamp - self.start_timestamp
         return None
+
+    @property
+    def start_timestamp_ms(self):
+        if self.start_timestamp:
+            return int(self.start_timestamp.timestamp() * 1000)
+        return 0
+
+    @property
+    def end_timestamp_ms(self):
+        if self.end_timestamp:
+            return int(self.end_timestamp.timestamp() * 1000)
+        return 0
+
+    @property
+    def time_limit_ms(self):
+        if self.time_limit:
+            return int(self.time_limit.total_seconds() * 1000)
+        return 0
 
     def end(self):
         self.end_timestamp = now()

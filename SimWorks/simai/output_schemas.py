@@ -1,3 +1,4 @@
+# simai/output_schemas.py
 """
 This module defines the various JSON output schemas for OpenAI's structured outputs.
 """

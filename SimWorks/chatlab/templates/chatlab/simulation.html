@@ -15,20 +15,19 @@
     <div id="simulation-container" class="sim-wrapper">
 
         <!-- Simulation header or status bar -->
-        <div class="sim-header" x-data="{ chatOpen: true }">
+        <div class="sim-header"
+             x-data="simTimer({{ sim_start_unix|default:'0'|safe }}, {{ sim_end_unix|default:'null'|safe }}, {{ time_limit_ms|default:'null'|safe }})"
+             x-init="start()">
             <h2>Simulation Running</h2>
-            <div x-data="simTimer({{ sim_start_unix }}, {{ time_limit_ms|default:'null' }})" x-init="start()" class="sim-timer">
+
+            <div class="sim-timer">
               Time Elapsed: <span x-text="formatted"></span>
             </div>
+
             <form method="POST" action="{% url 'chatlab:end_simulation' simulation.id %}" x-show="!{{ simulation.is_ended|yesno:'true,false' }}">
                 {% csrf_token %}
-                <button type="submit" class="end-sim-btn">End Simulation</button>
+                <button type="submit" class="button accent">End Simulation</button>
             </form>
-            {% comment %}
-            <button @click="chatOpen = !chatOpen" class="chat-toggle-btn">
-              <span x-text="chatOpen ? 'Hide Chat' : 'Show Chat'"></span>
-            </button>
-            {% endcomment %}
         </div>
 
         <!-- Simulation main layout -->
@@ -61,49 +60,88 @@
 
 {% block scripts %}
     {{ block.super }}
+
     <script src="{% static 'chatlab/js/chat.js' %}"></script>
+
     <script>
-    function simTimer(simStartTimestamp, simTimeLimit = null) {
-      return {
-        formatted: '00:00',
-        countdown: simTimeLimit !== null,
-        ended: false,
-        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value,
-        start() {
-          this.update(simStartTimestamp);
-          setInterval(() => this.update(simStartTimestamp), 1000);
-        },
-        autoEnd() {
-          if (!this.ended) {
-            fetch("{% url 'chatlab:end_simulation' simulation.id %}", {
-              method: "POST",
-              headers: {
-                "X-CSRFToken": this.csrfToken,
-              },
-            });
-            this.ended = true;
-          }
-        },
-        update(startTs) {
-          const now = Date.now();
-          let elapsedMs = now - startTs;
-          if (this.countdown) {
-            const remainingMs = simTimeLimit - elapsedMs;
-            const remainingSec = Math.max(Math.floor(remainingMs / 1000), 0);
-            const mins = String(Math.floor(remainingSec / 60)).padStart(2, '0');
-            const secs = String(remainingSec % 60).padStart(2, '0');
-            this.formatted = `${mins}:${secs}`;
-            if (remainingMs <= 0) this.autoEnd();
-          } else {
-            const elapsedSec = Math.floor(elapsedMs / 1000);
-            const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
-            const secs = String(elapsedSec % 60).padStart(2, '0');
-            this.formatted = `${mins}:${secs}`;
-          }
-        }
-      };
+    function simTimer(startTimestamp, endTimestamp = null, timeLimitMs = null) {
+        return {
+            startTimestamp,
+            endTimestamp,
+            timeLimitMs,
+
+            formatted: '00:00',
+            countdown: timeLimitMs !== null,
+            ended: endTimestamp !== null,
+            intervalId: null,
+            csrfToken: document.querySelector('[name=csrfmiddlewaretoken]')?.value ?? "",
+
+            start() {
+                if (this.ended) {
+                    this.updateStatic();
+                } else {
+                    this.updateLive();
+                    this.intervalId = setInterval(() => this.updateLive(), 1000);
+                }
+            },
+
+            updateStatic() {
+                if (this.startTimestamp && this.endTimestamp) {
+                    const elapsedMs = this.endTimestamp - this.startTimestamp;
+                    this.formatted = this.formatDuration(elapsedMs);
+                } else {
+                    this.formatted = "00:00";
+                }
+            },
+
+            updateLive() {
+                const now = Date.now();
+                const elapsedMs = now - this.startTimestamp;
+
+                if (this.countdown) {
+                    const remainingMs = this.timeLimitMs - elapsedMs;
+                    if (remainingMs <= 0) {
+                        this.autoEnd();
+                        this.formatted = '00:00';
+                    } else {
+                        this.formatted = this.formatDuration(remainingMs);
+                    }
+                } else {
+                    this.formatted = this.formatDuration(elapsedMs);
+                }
+            },
+
+            autoEnd() {
+                if (this.intervalId) {
+                    clearInterval(this.intervalId);
+                }
+                if (!this.ended) {
+                    fetch("{% url 'chatlab:end_simulation' simulation.id %}", {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": this.csrfToken,
+                        },
+                    });
+                    this.ended = true;
+                }
+            },
+
+            formatDuration(ms) {
+                const totalSeconds = Math.floor(ms / 1000);
+                const hours = Math.floor(totalSeconds / 3600);
+                const minutes = Math.floor((totalSeconds % 3600) / 60);
+                const seconds = totalSeconds % 60;
+
+                if (hours > 0) {
+                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                } else {
+                    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                }
+            }
+        };
     }
     </script>
+
     <script>
     function sidebarState(simulationId) {
         return {

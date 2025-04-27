@@ -107,7 +107,10 @@ class Feedback:
         improve, without discouragement. Be direct, concise, and encouraging.
         
         Where applicable, provide evidence-based medicine, related screening 
-        tools, and special tests or questionnaires the user could implement.\n\n
+        tools, and special tests or questionnaires the user could implement.
+        
+        Ensure feedback is accurate; do not give credit for a diagnosis or
+        treatment plan that does not deserve it. Feedback must be accurate.\n\n
         """
     )
 
@@ -135,7 +138,21 @@ class Feedback:
         Your feedback should make the correct diagnosis and treatment plan 
         clear and unambiguous, even if the user did not reach them. It is not
         only acceptable—but required—to inform the trainee when their diagnosis
-        or plan was incorrect, as long as it is done constructively.\n\n
+        or plan was incorrect, as long as it is done constructively.
+        
+        If the user did not propose a diagnosis, you must mark 
+        correct_diagnosis as "false". If user discussed multiple potential
+        diagnoses, but did not tell the patient which is most likely, mark
+        the diagnosis as "partial". If the diagnosis was not specific enough,
+        mark it as partial.
+        
+        If the user did not propose a treatment plan, you must mark
+        correct_treatment_plan as "false". If the user provided a treatment
+        plan that is partially correct, mark it as "partial".
+        
+        If no user messages exist, set correct_diagnosis and 
+        correct_treatment_plan to "false" and patient_experience to 0, and 
+        explain that no credit can be given.\n\n
         """
     )
 
