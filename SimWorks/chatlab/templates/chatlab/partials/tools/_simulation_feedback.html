@@ -1,9 +1,9 @@
-{# templates/chatlab/partials/_feedback_inner.html #}
+{# templates/chatlab/partials/_simulation_feedback.html #}
 {% load filters %}
 
-{% if feedback %}
+{% if tool.data %}
   <ul class="sim-metadata">
-    {% for metafield in feedback %}
+    {% for metafield in tool.data %}
         {% if metafield.key|lower == "feedback" %}
             <li><i style="color: var(--color-muted)">{{ metafield.value }}</i></li>
         {% else %}
