@@ -65,5 +65,5 @@ class GenericTool(BaseTool):
         if not hasattr(self.data, "__iter__"):
             raise ValueError(f"Data for {self.tool_name} must be iterable.")
 
-        formatted_data = [{"key": m.attribute, "value": m.value} for m in self.data]
+        formatted_data = [{"key": m.key, "value": m.value} for m in self.data]
         return self.default_dict(data=formatted_data)
