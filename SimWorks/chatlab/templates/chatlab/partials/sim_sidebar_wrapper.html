@@ -1,18 +1,5 @@
-<div class="sim-sidebar-wrapper" x-data="{
-  metadataKey: `simMetadataOpen_{{ simulation.id }}`,
-  metadataOpen: JSON.parse(localStorage.getItem(`simMetadataOpen_{{ simulation.id }}`) ?? 'true'),
-  toggleMetadata() {
-    this.metadataOpen = !this.metadataOpen;
-    localStorage.setItem(this.metadataKey, JSON.stringify(this.metadataOpen));
-  },
-
-  feedbackKey: `simFeedbackOpen_{{ simulation.id }}`,
-  feedbackOpen: JSON.parse(localStorage.getItem(`simFeedbackOpen_{{ simulation.id }}`) ?? 'true'),
-  toggleFeedback() {
-    this.feedbackOpen = !this.feedbackOpen;
-    localStorage.setItem(this.feedbackKey, JSON.stringify(this.feedbackOpen));
-  }
-}">
+{# templates/chatlab/partials/sim_sidebar_wrapper.html #}
+<div class="sim-sidebar-wrapper" x-data="sidebarState({{ simulation.id }})">
     {% include 'chatlab/partials/_metadata_wrapper.html' %}
     {% include 'chatlab/partials/_feedback_wrapper.html' %}
 </div>

@@ -104,4 +104,22 @@
       };
     }
     </script>
+    <script>
+    function sidebarState(simulationId) {
+        return {
+            sections: {
+                simMetadata: JSON.parse(localStorage.getItem(`simMetadataOpen_${simulationId}`) ?? 'true'),
+                patientMetadata: JSON.parse(localStorage.getItem(`patientMetadataOpen_${simulationId}`) ?? 'true'),
+                feedback: JSON.parse(localStorage.getItem(`simFeedbackOpen_${simulationId}`) ?? 'true'),
+            },
+            toggle(section) {
+                this.sections[section] = !this.sections[section];
+                localStorage.setItem(`${section}Open_${simulationId}`, JSON.stringify(this.sections[section]));
+            },
+            isOpen(section) {
+                return this.sections[section];
+            }
+        }
+    }
+    </script>
 {% endblock scripts %}

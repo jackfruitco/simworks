@@ -1,0 +1,10 @@
+{# templates/chatlab/partials/_metadata_patient_inner.html #}
+{% if patient_metadata %}
+  <ul class="sim-metadata">
+    {% for metafield in patient_metadata %}
+      <li>{{ metafield.value }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="sim-metadata-empty">No known medical history available.</div>
+{% endif %}
