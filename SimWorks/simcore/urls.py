@@ -11,4 +11,8 @@ urlpatterns = [
         views.download_simulation_transcript,
         name="download_simulation_transcript"
     ),
+    path('tools/<str:tool_name>/refresh/<int:simulation_id>/',
+         views.refresh_tool,
+         name='refresh_tool'
+         ),
 ]

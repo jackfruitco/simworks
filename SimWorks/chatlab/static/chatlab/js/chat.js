@@ -15,8 +15,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.messageInput = document.getElementById('chat-message-input');
             this.messageForm = document.getElementById('chat-form');
             this.messagesDiv = document.getElementById('chat-messages');
-            this.simMetadataDiv = document.getElementById('simulation-metadata');
-            this.patientMetadataDiv = document.getElementById('patient-metadata');
+            this.simMetadataDiv = document.getElementById('simulation_metadata_tool');
+            this.patientMetadataDiv = document.getElementById('patient_metadata_tool');
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             this.newMessageBtn = document.getElementById('new-message-btn');
 
@@ -412,24 +412,25 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     console.error("[checkChecksumChange] Failed to fetch checksum", err);
                 });
         },
+        refreshTool(toolName, targetDiv, force = false) {
+            if (!targetDiv) return;
+
+            const url = `/tools/${toolName}/refresh/${this.simulation_id}${force ? '?force=1' : ''}`;
+
+            htmx.ajax('GET', url, {
+                target: targetDiv,
+                swap: 'innerHTML'
+            });
+
+            console.info(`[refreshTool] Refresh requested for '${toolName}'`);
+        },
         refreshMetadata(force = false) {
-            const urlSuffix = force ? '?force=1' : '';
+            const tools = [
+                ['simulation_metadata', this.simMetadataDiv],
+                ['patient_metadata', this.patientMetadataDiv],
+            ];
 
-            if (this.simMetadataDiv) {
-                htmx.ajax('GET', `/chatlab/simulation/${this.simulation_id}/refresh/metadata/simulation/${urlSuffix}`, {
-                    target: this.simMetadataDiv,
-                    swap: 'innerHTML'
-                });
-                console.info("[refreshMetadata] refresh requested for simulation metadata");
-            }
-
-            if (this.patientMetadataDiv) {
-                htmx.ajax('GET', `/chatlab/simulation/${this.simulation_id}/refresh/metadata/patient/${urlSuffix}`, {
-                    target: this.patientMetadataDiv,
-                    swap: 'innerHTML'
-                });
-                console.info("[refreshMetadata] refresh requested for patient metadata");
-            }
+            tools.forEach(([toolName, div]) => this.refreshTool(toolName, div, force));
         }
     };
 }
