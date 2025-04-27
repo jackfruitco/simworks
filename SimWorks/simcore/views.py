@@ -26,7 +26,7 @@ def refresh_tool(request, tool_name, simulation_id):
     tool = tool_instance.to_dict()
 
     # Built partial template path:
-    custom_partial = f"chatlab/partials/tools/_{tool_name}.html"
+    custom_partial = f"simcore/partials/tools/_{tool_name}.html"
 
     try:
         # Try to load the custom partial
@@ -34,6 +34,6 @@ def refresh_tool(request, tool_name, simulation_id):
         template = custom_partial
     except TemplateDoesNotExist:
         # Fallback to generic
-        template = "chatlab/partials/tools/_generic.html"
+        template = "simcore/partials/tools/_generic.html"
 
     return render(request, template, {"tool": tool})

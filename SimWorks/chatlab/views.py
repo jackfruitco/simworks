@@ -109,38 +109,6 @@ def get_metadata_checksum(request, simulation_id):
 from simcore.tools import get_tool
 
 @require_GET
-def refresh_simulation_metadata(request, simulation_id):
-    simulation = get_object_or_404(Simulation, id=simulation_id)
-
-    tool_class = get_tool("simulation_metadata")
-    if not tool_class:
-        return HttpResponseNotFound("Simulation metadata tool not found.")
-
-    tool_instance = tool_class(simulation)
-    tool = tool_instance.to_dict()
-
-    return render(request, "chatlab/partials/tools/_generic.html", {"tool": tool})
-
-@require_GET
-def refresh_patient_metadata(request, simulation_id):
-    """
-    Return patient history metadata.
-    :param request:
-    :param simulation_id:
-    :return:
-    """
-    simulation = get_object_or_404(Simulation, id=simulation_id)
-
-    tool_class = get_tool("patient_metadata")
-    if not tool_class:
-        return HttpResponseNotFound("Simulation metadata tool not found.")
-
-    tool_instance = tool_class(simulation)
-    tool = tool_instance.to_dict()
-
-    return render(request, "chatlab/partials/tools/_patient_metadata.html", {"tool": tool})
-
-@require_GET
 def refresh_messages(request, simulation_id):
     messages = Message.objects.filter(simulation_id=simulation_id).order_by(
         "-timestamp"

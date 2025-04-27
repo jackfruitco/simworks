@@ -1,6 +1,6 @@
 {# templates/chatlab/partials/sidebar_wrapper.html #}
 <div class="sim-sidebar-wrapper" x-data="sidebarState({{ simulation.id }})">
     {% for tool in tools %}
-        {% include 'chatlab/partials/tools/_wrapper.html' with tool=tool %}
+        {% include 'simcore/partials/tools/_wrapper.html' with tool=tool %}
     {% endfor %}
 </div>
