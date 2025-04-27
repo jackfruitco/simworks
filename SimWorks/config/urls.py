@@ -1,4 +1,4 @@
-# SimWorks/urls.py
+# config/urls.py
 
 from core import views as CoreViews
 from django.contrib import admin

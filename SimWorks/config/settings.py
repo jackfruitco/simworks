@@ -74,7 +74,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = "SimWorks.urls"
+ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
     {
@@ -92,8 +92,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "SimWorks.wsgi.application"
-ASGI_APPLICATION = "SimWorks.asgi.application"
+WSGI_APPLICATION = "config.wsgi.application"
+ASGI_APPLICATION = "config.asgi.application"
 
 
 # Database
