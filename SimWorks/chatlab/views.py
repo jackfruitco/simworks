@@ -79,7 +79,9 @@ def run_simulation(request, simulation_id):
         "simulation": simulation,
         "simulation_metadata": simulation_metadata,
         "patient_metadata": patient_metadata,
-        "sim_start_unix": int(simulation.start_timestamp.timestamp() * 1000),
+        "sim_start_unix": simulation.start_timestamp_ms or 0,
+        "sim_end_unix": simulation.end_timestamp_ms or 0,
+        "time_limit_ms": simulation.time_limit_ms or 0,
         "simulation_locked": simulation.is_complete,
         "feedback": feedback,
     }
