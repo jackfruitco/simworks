@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set Django settings module
-export DJANGO_SETTINGS_MODULE=SimWorks.settings
+export DJANGO_SETTINGS_MODULE=config.settings
 
 # Collect static files
 echo
@@ -31,4 +31,4 @@ UserRole.objects.exists() or UserRole.objects.bulk_create([ \
 # Start server
 echo
 echo "Starting daphne server..."
-daphne -b 0.0.0.0 -p 8000 SimWorks.asgi:application
+daphne -b 0.0.0.0 -p 8000 config.asgi:application
