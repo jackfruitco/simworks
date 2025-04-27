@@ -4,16 +4,18 @@ import logging
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponseForbidden, HttpResponse, HttpResponseNotFound
+from django.http import HttpResponseForbidden
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
-from chatlab.utils import create_new_simulation, maybe_start_simulation
+from chatlab.utils import create_new_simulation
+from chatlab.utils import maybe_start_simulation
 from simcore.models import Simulation
-from simcore.tools import get_tool, list_tools
+from simcore.tools import get_tool
+from simcore.tools import list_tools
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -105,8 +107,6 @@ def get_metadata_checksum(request, simulation_id):
     """Return simulation metadata checksum."""
     simulation = get_object_or_404(Simulation, id=simulation_id)
     return JsonResponse({"checksum": simulation.metadata_checksum})
-
-from simcore.tools import get_tool
 
 @require_GET
 def refresh_messages(request, simulation_id):

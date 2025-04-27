@@ -15,4 +15,8 @@ urlpatterns = [
          views.refresh_tool,
          name='refresh_tool'
          ),
+    path('tools/<str:tool_name>/checksum/<int:simulation_id>/',
+         views.tool_checksum,
+         name='tool_checksum'
+         ),
 ]

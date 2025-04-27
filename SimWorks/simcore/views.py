@@ -1,4 +1,4 @@
-from django.http import HttpResponseNotFound
+from django.http import HttpResponseNotFound, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template
@@ -37,3 +37,13 @@ def refresh_tool(request, tool_name, simulation_id):
         template = "simcore/partials/tools/_generic.html"
 
     return render(request, template, {"tool": tool})
+
+def tool_checksum(request, tool_name, simulation_id):
+    simulation = get_object_or_404(Simulation, id=simulation_id)
+    tool_class = get_tool(tool_name)
+    if not tool_class:
+        return JsonResponse({"error": "Tool not found"}, status=404)
+
+    tool_instance = tool_class(simulation)
+    checksum = tool_instance.get_checksum()
+    return JsonResponse({"checksum": checksum})

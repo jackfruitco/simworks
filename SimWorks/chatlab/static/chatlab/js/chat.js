@@ -130,7 +130,12 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     const displayName = data.display_name || data.username || 'Unknown';
                     if (!isSender) {
                         this.simulateSystemTyping(false);
-                        this.checkChecksumChangeDebounced(() => this.refreshMetadata());
+                        if (window.window.simManager) {
+                            window.window.simManager.checkTools([
+                                'simulation_metadata',
+                                'patient_metadata'
+                            ]);
+                        }
 
                         // Sidebar pulse stuff
                         if (localStorage.getItem('seenSidebarTray') === 'true') {
@@ -376,62 +381,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         initScrollWatcher() {
             console.log("[ChatJS] initScrollWatcher() called");
         },
-        checkChecksumChangeDebounced(onChangeCallback = null) {
-            if (this.debouncedChecksumTimer) {
-                clearTimeout(this.debouncedChecksumTimer);
-            }
-            this.debouncedChecksumTimer = setTimeout(() => {
-                this.checkChecksumChange(onChangeCallback);
-                this.debouncedChecksumTimer = null;
-            }, 500); // Wait 500ms after last message
-        },
-        // Checks the server checksum and only triggers onChangeCallback if the checksum has changed
-        checkChecksumChange(onChangeCallback = null) {
-            fetch(`/chatlab/simulation/${this.simulation_id}/refresh/metadata/current-checksum/`)
-                .then(res => res.json())
-                .then(data => {
-                    const serverChecksum = data.checksum;
-
-                    if (this.checksum === null) {
-                        // First assignment: store checksum, do not trigger a refresh.
-                        console.info("[checkChecksumChange] No local checksum yet. Storing first server checksum.");
-                        this.checksum = serverChecksum;
-                        if (onChangeCallback) onChangeCallback();
-                        return;
-                    }
-
-                    if (serverChecksum !== this.checksum) {
-                        console.info("[checkChecksumChange] Checksum changed, refreshing...");
-                        this.checksum = serverChecksum;
-                        if (onChangeCallback) onChangeCallback();
-                    } else {
-                        console.info("[checkChecksumChange] Checksum unchanged, no refresh needed.");
-                    }
-                })
-                .catch(err => {
-                    console.error("[checkChecksumChange] Failed to fetch checksum", err);
-                });
-        },
-        refreshTool(toolName, targetDiv, force = false) {
-            if (!targetDiv) return;
-
-            const url = `/tools/${toolName}/refresh/${this.simulation_id}${force ? '?force=1' : ''}`;
-
-            htmx.ajax('GET', url, {
-                target: targetDiv,
-                swap: 'innerHTML'
-            });
-
-            console.info(`[refreshTool] Refresh requested for '${toolName}'`);
-        },
-        refreshMetadata(force = false) {
-            const tools = [
-                ['simulation_metadata', this.simMetadataDiv],
-                ['patient_metadata', this.patientMetadataDiv],
-            ];
-
-            tools.forEach(([toolName, div]) => this.refreshTool(toolName, div, force));
-        }
+        // Obsolete checksum and metadata refresh functions removed.
     };
 }
 

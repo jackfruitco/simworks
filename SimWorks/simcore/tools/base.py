@@ -1,6 +1,13 @@
 # simcore/tools/base.py
-
+import hashlib
+import json
 from simcore.tools.registry import register_tool
+
+def safe_json_checksum(data):
+    """Utility function to generate a SHA256 checksum from data."""
+    data_string = json.dumps(data, sort_keys=True, default=str)
+    return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
+
 
 class BaseTool:
     """
@@ -38,12 +45,22 @@ class BaseTool:
         """Subclasses must implement this to return a dictionary."""
         raise NotImplementedError
 
+    def get_checksum(self):
+        """Generate a checksum for the tool's data."""
+        try:
+            raw_data = self.get_data() or {}  # Treat None as {}
+            data_string = json.dumps(raw_data, sort_keys=True, default=str)
+            return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
+        except Exception as e:
+            raise ValueError(f"Failed to generate checksum for {self.tool_name}: {e}")
+
     def default_dict(self, data=None):
         return {
             "name": self.tool_name,
             "display_name": self.display_name,
             "data": data or [],
             "is_generic": self.is_generic,
+            "checksum": self.get_checksum(),
         }
 
 class GenericTool(BaseTool):
