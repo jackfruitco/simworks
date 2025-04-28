@@ -1,7 +1,7 @@
-{# templates/chatlab/partials/_metadata_patient_inner.html #}
-{% if patient_metadata %}
+{# templates/simcore/partials/_patient_metadata.html #}
+{% if tool.data %}
   <ul class="sim-metadata">
-    {% for metafield in patient_metadata %}
+    {% for metafield in tool.data %}
       <li>{{ metafield.value }}</li>
     {% endfor %}
   </ul>

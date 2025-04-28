@@ -11,4 +11,12 @@ urlpatterns = [
         views.download_simulation_transcript,
         name="download_simulation_transcript"
     ),
+    path('tools/<str:tool_name>/refresh/<int:simulation_id>/',
+         views.refresh_tool,
+         name='refresh_tool'
+         ),
+    path('tools/<str:tool_name>/checksum/<int:simulation_id>/',
+         views.tool_checksum,
+         name='tool_checksum'
+         ),
 ]

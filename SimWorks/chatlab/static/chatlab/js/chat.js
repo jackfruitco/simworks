@@ -15,8 +15,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.messageInput = document.getElementById('chat-message-input');
             this.messageForm = document.getElementById('chat-form');
             this.messagesDiv = document.getElementById('chat-messages');
-            this.simMetadataDiv = document.getElementById('simulation-metadata');
-            this.patientMetadataDiv = document.getElementById('patient-metadata');
+            this.simMetadataDiv = document.getElementById('simulation_metadata_tool');
+            this.patientMetadataDiv = document.getElementById('patient_metadata_tool');
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             this.newMessageBtn = document.getElementById('new-message-btn');
 
@@ -130,7 +130,12 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     const displayName = data.display_name || data.username || 'Unknown';
                     if (!isSender) {
                         this.simulateSystemTyping(false);
-                        this.checkChecksumChangeDebounced(() => this.refreshMetadata());
+                        if (window.window.simManager) {
+                            window.window.simManager.checkTools([
+                                'simulation_metadata',
+                                'patient_metadata'
+                            ]);
+                        }
 
                         // Sidebar pulse stuff
                         if (localStorage.getItem('seenSidebarTray') === 'true') {
@@ -376,61 +381,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         initScrollWatcher() {
             console.log("[ChatJS] initScrollWatcher() called");
         },
-        checkChecksumChangeDebounced(onChangeCallback = null) {
-            if (this.debouncedChecksumTimer) {
-                clearTimeout(this.debouncedChecksumTimer);
-            }
-            this.debouncedChecksumTimer = setTimeout(() => {
-                this.checkChecksumChange(onChangeCallback);
-                this.debouncedChecksumTimer = null;
-            }, 500); // Wait 500ms after last message
-        },
-        // Checks the server checksum and only triggers onChangeCallback if the checksum has changed
-        checkChecksumChange(onChangeCallback = null) {
-            fetch(`/chatlab/simulation/${this.simulation_id}/refresh/metadata/current-checksum/`)
-                .then(res => res.json())
-                .then(data => {
-                    const serverChecksum = data.checksum;
-
-                    if (this.checksum === null) {
-                        // First assignment: store checksum, do not trigger a refresh.
-                        console.info("[checkChecksumChange] No local checksum yet. Storing first server checksum.");
-                        this.checksum = serverChecksum;
-                        if (onChangeCallback) onChangeCallback();
-                        return;
-                    }
-
-                    if (serverChecksum !== this.checksum) {
-                        console.info("[checkChecksumChange] Checksum changed, refreshing...");
-                        this.checksum = serverChecksum;
-                        if (onChangeCallback) onChangeCallback();
-                    } else {
-                        console.info("[checkChecksumChange] Checksum unchanged, no refresh needed.");
-                    }
-                })
-                .catch(err => {
-                    console.error("[checkChecksumChange] Failed to fetch checksum", err);
-                });
-        },
-        refreshMetadata(force = false) {
-            const urlSuffix = force ? '?force=1' : '';
-
-            if (this.simMetadataDiv) {
-                htmx.ajax('GET', `/chatlab/simulation/${this.simulation_id}/refresh/metadata/simulation/${urlSuffix}`, {
-                    target: this.simMetadataDiv,
-                    swap: 'innerHTML'
-                });
-                console.info("[refreshMetadata] refresh requested for simulation metadata");
-            }
-
-            if (this.patientMetadataDiv) {
-                htmx.ajax('GET', `/chatlab/simulation/${this.simulation_id}/refresh/metadata/patient/${urlSuffix}`, {
-                    target: this.patientMetadataDiv,
-                    swap: 'innerHTML'
-                });
-                console.info("[refreshMetadata] refresh requested for patient metadata");
-            }
-        }
+        // Obsolete checksum and metadata refresh functions removed.
     };
 }
 

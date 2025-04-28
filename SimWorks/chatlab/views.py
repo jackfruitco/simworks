@@ -4,15 +4,18 @@ import logging
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponseForbidden, HttpResponse
+from django.http import HttpResponseForbidden
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
-from chatlab.utils import create_new_simulation, maybe_start_simulation
+from chatlab.utils import create_new_simulation
+from chatlab.utils import maybe_start_simulation
 from simcore.models import Simulation
+from simcore.tools import get_tool
+from simcore.tools import list_tools
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -61,29 +64,40 @@ def create_simulation(request):
     sim = create_new_simulation(request.user)
     return redirect("chatlab:run_simulation", simulation_id=sim.id)
 
-
 @login_required
-def run_simulation(request, simulation_id):
+def run_simulation(request, simulation_id, included_tools="__ALL__"):
     simulation = get_object_or_404(Simulation, id=simulation_id)
-
     if simulation.user != request.user:
         return HttpResponseForbidden("Waaaaaait a minute. This isn't your simulation!")
 
+    tools = []
+
+    if included_tools == "__ALL__":
+        # Load all registered tool classes
+        for tool_class in list_tools():
+            tools.append(tool_class(simulation).to_dict())
+    elif not included_tools:
+        tools = []
+    else:
+        for tool_name in included_tools.split(","):
+            tool_class = get_tool(tool_name)
+            if tool_class:
+                tools.append(tool_class(simulation).to_dict())
+
     maybe_start_simulation(simulation)
 
-    simulation_metadata = simulation.metadata.exclude(attribute="feedback").exclude(attribute="patient history")
-    feedback = simulation.metadata.filter(attribute="feedback")
-    patient_metadata = simulation.formatted_patient_history
+    logger.debug(
+        f"Sim{simulation_id} requested tools: {included_tools} "
+        f"(loaded: {[cls.__name__ for cls in list_tools()]})"
+    )
 
     context = {
         "simulation": simulation,
-        "simulation_metadata": simulation_metadata,
-        "patient_metadata": patient_metadata,
+        "tools": tools,
         "sim_start_unix": simulation.start_timestamp_ms or 0,
         "sim_end_unix": simulation.end_timestamp_ms or 0,
         "time_limit_ms": simulation.time_limit_ms or 0,
         "simulation_locked": simulation.is_complete,
-        "feedback": feedback,
     }
 
     return render(request, "chatlab/simulation.html", context)
@@ -93,41 +107,6 @@ def get_metadata_checksum(request, simulation_id):
     """Return simulation metadata checksum."""
     simulation = get_object_or_404(Simulation, id=simulation_id)
     return JsonResponse({"checksum": simulation.metadata_checksum})
-
-@require_GET
-def refresh_simulation_metadata(request, simulation_id):
-    """
-    Return simulation metadata.
-
-    :param request:
-    :param simulation_id:
-    :return:
-    """
-    simulation = get_object_or_404(Simulation, id=simulation_id)
-    metadata = simulation.metadata.exclude(attribute="patient history").exclude(attribute="feedback")
-    logger.debug(f"[Sim#{simulation.pk}] refreshed simulation metadata: {metadata}")
-    return render(
-        request,
-        "chatlab/partials/_metadata_simulation_inner.html",
-        context={"simulation_metadata": metadata}
-    )
-
-@require_GET
-def refresh_patient_metadata(request, simulation_id):
-    """
-    Return patient history metadata.
-    :param request:
-    :param simulation_id:
-    :return:
-    """
-    simulation = get_object_or_404(Simulation, id=simulation_id)
-    metadata = simulation.formatted_patient_history
-    logger.debug(f"[Sim#{simulation.pk}] refreshed patient metadata: {metadata}")
-    return render(
-        request,
-        "chatlab/partials/_metadata_patient_inner.html",
-        context={"patient_metadata": metadata}
-    )
 
 @require_GET
 def refresh_messages(request, simulation_id):

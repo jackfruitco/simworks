@@ -13,7 +13,7 @@ sitemaps = {
 urlpatterns = [
     path("", CoreViews.index, name="home"),
     path("admin/", admin.site.urls),
-    path("/", include("simcore.urls")),
+    path("", include("simcore.urls")),
     path("simai/", include("simai.urls")),
     path("accounts/", include("accounts.urls")),
     path("chatlab/", include("chatlab.urls")),

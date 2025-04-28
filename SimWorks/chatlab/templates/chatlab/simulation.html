@@ -48,7 +48,7 @@
             <div class="sim-sidebar"
                  :class="{ 'visible': sidebarOpen }"
                  @click.outside="maybeClose">
-              {% include 'chatlab/partials/sim_sidebar_wrapper.html' %}
+              {% include 'chatlab/partials/sidebar_wrapper.html' %}
             </div>
 
             <div class="sim-chat" :class="{ 'collapsed': sidebarOpen }">
@@ -60,7 +60,13 @@
 
 {% block scripts %}
     {{ block.super }}
-
+    <script src="{% static 'js/simulation.js' %}"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            window.simManager = SimulationManager({{ simulation.id }});
+            simManager.init();
+        });
+    </script>
     <script src="{% static 'chatlab/js/chat.js' %}"></script>
 
     <script>
