@@ -72,11 +72,13 @@
 .sim-sidebar-wrapper {
     width: 100%;
 }
-.metadata-header {
+.tool-header {
     display: flex;
     justify-content: space-between;
     gap: 0.5rem;
     align-items: center;
+    border-top: 1px solid var(--color-border);
+    cursor: pointer;
 }
 
 .sim-chat.collapsed {
