@@ -72,7 +72,7 @@
 .sim-sidebar-wrapper {
     width: 100%;
 }
-.metadata-header {
+.tool-header {
     display: flex;
     justify-content: space-between;
     gap: 0.5rem;
