@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "simcore",
     "simai",
     "chatlab",
+    "graphene_django",
 ]
 
 
@@ -155,6 +156,12 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+GRAPHENE = {
+    "SCHEMA": "config.schema.schema",
+    "MIDDLEWARE": [
+        "graphql_jwt.middleware.JSONWebTokenMiddleware",
+    ],
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
