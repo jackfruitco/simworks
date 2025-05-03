@@ -1,6 +1,7 @@
 import json
 
 from django.http import HttpResponse
+from graphql import GraphQLError
 
 
 class HealthCheckMiddleware:

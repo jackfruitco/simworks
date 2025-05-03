@@ -5,7 +5,7 @@ from accounts.models import CustomUser
 class UserType(DjangoObjectType):
     class Meta:
         model = CustomUser
-        fields = ("id", "username", "email", "date_joined")
+        fields = ("id", "username", "first_name", "last_name", "email", "date_joined")
 
 class Query(graphene.ObjectType):
     me = graphene.Field(UserType)
