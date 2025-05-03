@@ -31,6 +31,10 @@ class SimulationType(DjangoObjectType):
     messages = graphene.List(MessageType)
     user = graphene.Field(UserType)
     metadata = graphene.List(SimulationMetadataType)
+    feedback = graphene.List(SimulationMetadataType)
+    is_complete = graphene.Boolean()
+    is_in_progress = graphene.Boolean()
+    length = graphene.Int()
 
     class Meta:
         model = Simulation
@@ -44,13 +48,29 @@ class SimulationType(DjangoObjectType):
         )
 
     def resolve_messages(self, info):
-        return Message.objects.filter(simulation=self).order_by("-timestamp")[:10]
+        return Message.objects.filter(simulation=self).order_by("timestamp")
 
-    def resolve_user(self, info):
+    def resolve_user(self, info) -> graphene.Field:
         return self.user
 
     def resolve_metadata(self, info):
         return SimulationMetadata.objects.filter(simulation=self).order_by("-timestamp")
+
+    def resolve_feedback(self, info):
+        return (
+            SimulationMetadata.objects
+            .filter(simulation=self)
+            .filter(attribute="feedback")
+        )
+
+    def resolve_is_complete(self, info) -> graphene.Boolean:
+        return self.is_complete
+
+    def resolve_is_in_progress(self, info) -> graphene.Boolean:
+        return self.is_in_progress
+
+    def resolve_length(self, info) -> graphene.Int:
+        return self.length
 
 class Query(graphene.ObjectType):
     simulation = graphene.Field(SimulationType, id=graphene.Int(required=True))

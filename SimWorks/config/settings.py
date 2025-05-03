@@ -160,6 +160,7 @@ GRAPHENE = {
     "SCHEMA": "config.schema.schema",
     "MIDDLEWARE": [
         "graphql_jwt.middleware.JSONWebTokenMiddleware",
+        "config.middleware.RequireApiPermissionMiddleware",
     ],
 }
 

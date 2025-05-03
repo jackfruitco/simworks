@@ -5,8 +5,6 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import include
 from django.urls import path
 
-from graphene_django.views import GraphQLView
-
 sitemaps = {
     # "products": ProductSitemap,
 }
@@ -18,7 +16,7 @@ urlpatterns = [
     path("simai/", include("simai.urls")),
     path("accounts/", include("accounts.urls")),
     path("chatlab/", include("chatlab.urls")),
-    path("graphql/", GraphQLView.as_view(graphiql=True)),
+    path("graphql/", CoreViews.PrivateGraphQLView.as_view(graphiql=True)),
     path(
         "robots.txt",
         CoreViews.RobotsView.as_view(content_type="text/plain"),
