@@ -16,7 +16,7 @@ urlpatterns = [
     path("simai/", include("simai.urls")),
     path("accounts/", include("accounts.urls")),
     path("chatlab/", include("chatlab.urls")),
-    path("graphql/", CoreViews.PrivateGraphQLView.as_view(graphiql=True)),
+    path("graphql/", CoreViews.PrivateGraphQLView.as_view(graphiql=True), name="graphiql"),
     path(
         "robots.txt",
         CoreViews.RobotsView.as_view(content_type="text/plain"),
