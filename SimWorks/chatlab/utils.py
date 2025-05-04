@@ -16,13 +16,14 @@ from simcore.utils import generate_fake_name
 logger = logging.getLogger(__name__)
 
 
-def create_new_simulation(user):
+def create_new_simulation(user, modifiers: list=None):
     """Create a new Simulation and ChatSession, and trigger AI patient intro."""
     # Create base Simulation
     simulation = Simulation.objects.create(
         user=user,
         lab="chatlab",
         sim_patient_full_name=generate_fake_name(),
+        modifiers=modifiers
     )
 
     # Link ChatLab extension

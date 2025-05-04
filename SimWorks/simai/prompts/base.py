@@ -36,13 +36,14 @@ Do not exit the scenario.\n\n
 
 class BuildPrompt:
     def __init__(
-            *args,
+            self,
+            *modifiers,
             lab=None,
             user=None,
             role=None,
             include_default=True,
             include_history=True,
-            modifiers=None
+            modifiers_list=None
     ):
         logger.debug(f"initializing prompt builder: {self}")
         self.lab = lab
@@ -52,16 +53,16 @@ class BuildPrompt:
         self.include_default = include_default
         self._sections = []
         self._labels = []
-        self._modifiers = args or ()
-        if modifiers:
-            self._modifiers += tuple(modifiers)
+        self._modifiers = list(modifiers)
+        if modifiers_list:
+            self._modifiers += list(modifiers_list)
 
         #  Add default (includes base + role + user history + lab-specific default)
         if self.include_default:
             logger.debug(f"... including defaults")
             self.default()
 
-        logger.debug(f"... modifiers={modifiers}")
+        logger.debug(f"... modifiers={modifiers_list}")
         logger.debug(f"... _modifiers={self._modifiers}")
         # Apply any additional modifier constants or label keys
         for mod in self._modifiers:
@@ -126,7 +127,7 @@ class BuildPrompt:
 
     @classmethod
     def from_kwargs(cls, *args, **kwargs):
-        supported_keys = {"lab", "user", "role", "include_default", "include_history", "modifiers"}
+        supported_keys = {"lab", "user", "role", "include_default", "include_history", "modifiers_list"}
         init_kwargs = {key: kwargs.get(key) for key in supported_keys}
         return cls(*args, **init_kwargs)
 

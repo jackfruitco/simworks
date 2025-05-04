@@ -60,9 +60,12 @@ class SimulationManager(models.Manager):
         if not user and not is_template:
             raise ValueError("Simulation must have a user unless marked as template.")
 
+        # Extract modifiers if provided
+        modifiers = kwargs.pop("modifiers", [])
+
         if not prompt and user and lab:
             role = getattr(user, "role", None)
-            prompt = build_prompt(user=user, role=role, lab=lab)
+            prompt = build_prompt(user=user, role=role, lab=lab, modifiers=modifiers)
 
         if not prompt:
             raise ValueError("Prompt must be provided if no user/lab fallback is available.")
