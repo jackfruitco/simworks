@@ -1,6 +1,7 @@
 # SimWorks/simai/prompts/builtins/_chatlab.py
-from simai.prompts.registry import modifiers
+from simai.prompts.registry import register_modifier
 
+@register_modifier("ChatLab.default")
 def chatlab_modifier(user=None, role=None):
     return (
         """
@@ -14,5 +15,3 @@ def chatlab_modifier(user=None, role=None):
         typically be communicated via text.\n\n
         """
     )
-
-modifiers.register("ChatLab", chatlab_modifier)

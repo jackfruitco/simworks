@@ -1,16 +1,26 @@
 # SimWorks/simai/prompts/registry.py
 
-class ModifierRegistry:
-    def __init__(self):
-        self._modifiers = {}
+_registry = {}
 
-    def register(self, label, func):
-        key = label.lower()
-        if key in self._modifiers:
+def register_modifier(label):
+    """Decorator to register a prompt modifier function under a label."""
+    def decorator(func):
+        if label.lower() in _registry:
             raise ValueError(f"Modifier '{label}' is already registered.")
-        self._modifiers[key] = func
+        _registry[label.lower()] = func
+        return func
+    return decorator
 
-    def get(self, label):
-        return self._modifiers.get(label.lower())
+def get_modifier(label):
+    return _registry.get(label.lower())
 
-modifiers = ModifierRegistry()
+def list_modifiers():
+    """Returns a list of (label, function) tuples."""
+    return list(_registry.items())
+
+# Alias for external use
+PromptModifiers = {
+    "register": register_modifier,
+    "get": get_modifier,
+    "list": list_modifiers,
+}

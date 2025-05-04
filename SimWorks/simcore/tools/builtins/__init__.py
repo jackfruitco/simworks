@@ -1,17 +1,15 @@
-# simcore/tools/builtins/__init__.py
 """
-This module automatically imports all tools inside the simcore/tools/builtins/ subdirectory.
+Dynamically imports all Python modules in this directory (excluding __init__.py).
+Triggers decorator-based registration (e.g., for tools or prompt modifiers).
 """
 
 import importlib
-import os
 import pathlib
 
-# Automatically import all tool modules inside builtins/
-_builtin_tools_dir = pathlib.Path(__file__).parent
+current_dir = pathlib.Path(__file__).parent
 
-for path in _builtin_tools_dir.glob("*.py"):
+for path in current_dir.glob("*.py"):
     if path.name == "__init__.py":
-        continue  # skip __init__.py itself
-    module_name = f"simcore.tools.builtins.{path.stem}"
+        continue
+    module_name = f"{__name__}.{path.stem}"
     importlib.import_module(module_name)

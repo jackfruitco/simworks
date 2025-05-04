@@ -1,7 +1,8 @@
 # SimWorks/simai/prompts/builtins/_user.py
-from simai.prompts.registry import modifiers
+from simai.prompts.registry import register_modifier
 from core.utils import Formatter
 
+@register_modifier("UserRole")
 def user_role_modifier(user=None, role=None):
     _role = role or getattr(user, "role", None)
     if not _role:
@@ -14,6 +15,7 @@ def user_role_modifier(user=None, role=None):
         """
     )
 
+@register_modifier("UserHistory")
 def user_history_modifier(user=None, within_days=180):
     if not user:
         return ""
@@ -22,6 +24,3 @@ def user_history_modifier(user=None, within_days=180):
         return ""
     log = list(get_log(within_days=within_days))
     return Formatter(log).render("openai_prompt")
-
-modifiers.register("UserRole", user_role_modifier)
-modifiers.register("UserHistory", user_history_modifier)

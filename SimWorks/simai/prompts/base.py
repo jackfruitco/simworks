@@ -2,7 +2,7 @@
 import logging
 
 from simai.models import Prompt
-from simai.prompts.registry import modifiers
+from simai.prompts.registry import PromptModifiers
 
 logger = logging.getLogger(__name__)
 
@@ -76,21 +76,21 @@ class BuildPrompt:
 
         # Add user history if enabled and user exists
         if self.include_history and self.user:
-            history_modifier = modifiers.get("UserHistory")
+            history_modifier = PromptModifiers.get("UserHistory")
             if history_modifier:
                 logger.debug(f"... adding history prompt")
                 self._add_modifier(history_modifier(user=self.user, within_days=180), label="UserHistory")
 
         # Add default role prompt, if role provided
         if self.role or self.user:
-            role_modifier = modifiers.get("UserRole")
+            role_modifier = PromptModifiers.get("UserRole")
             if role_modifier:
                 logger.debug(f"... adding user role prompt")
                 self._add_modifier(role_modifier(self.user, self.role), label="UserRole")
 
         # Add default Lab prompt, if lab label provided
         if self.lab:
-            lab_modifier = modifiers.get(self.lab.lower())
+            lab_modifier = PromptModifiers.get(self.lab.lower())
             if lab_modifier:
                 logger.debug(f"... adding lab prompt")
                 self._add_modifier(lab_modifier(self.user, self.role), label=self.lab)
@@ -98,12 +98,12 @@ class BuildPrompt:
         return self
 
     def _add_modifier(self, label_or_content, label=None):
-        from simai.prompts.registry import modifiers
+        from simai.prompts.registry import PromptModifiers
 
         content = None
 
         if isinstance(label_or_content, str):
-            func = modifiers.get(label_or_content)
+            func = PromptModifiers.get(label_or_content)
             if func:
                 logger.debug(f"Resolved modifier '{label_or_content}' via registry")
                 content = func(self.user, self.role)
