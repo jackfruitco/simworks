@@ -1,4 +1,5 @@
 # SimWorks/simai/prompts/builtins/_feedback.py
+"""PromptModifiers that modify the feedback type for a simulation."""
 
 from simai.prompts.registry import register_modifier
 
@@ -19,6 +20,7 @@ treatment plan that does not deserve it. Feedback must be accurate.
 
 @register_modifier("Feedback.endex")
 def feedback_endex(user=None, role=None):
+    """Returns string for a(n) ENDEX feedback prompt modifier."""
     return _FEEDBACK_BASE + """
 Your feedback should aim to enhance the trainee's clinical reasoning,
 decision-making, and communication skills. Begin by clearly stating 
@@ -61,6 +63,7 @@ explain that no credit can be given.
 
 @register_modifier("Feedback.pausex")
 def feedback_pausex(user=None, role=None):
+    """Returns string for a(n) PAUSEX feedback prompt modifier."""
     return _FEEDBACK_BASE + """
 The simulation is paused, and the user is asking for assistance—
 probably because they are stuck or lost. Provide recommendations on
@@ -75,6 +78,7 @@ of the patient.
 
 @register_modifier("Feedback.azimuth")
 def feedback_azimuth(user=None, role=None):
+    """Returns string for a(n) Azimuth feedback prompt modifier."""
     return _FEEDBACK_BASE + """
 For this message only, you are acting as the simulation facilitator
 responding to a user seeking confirmation that they are on the right

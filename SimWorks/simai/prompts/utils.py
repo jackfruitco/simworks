@@ -25,6 +25,7 @@ def build_prompt(
     :return: str: prompt string.
     """
     from simai.prompts import BuildPrompt
+    from simai.prompts.registry import PromptModifiers
 
     all_modifiers = tuple(modifiers) if modifiers is not None else tuple(modifiers_or_list)
 

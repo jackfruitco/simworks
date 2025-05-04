@@ -1,9 +1,12 @@
 # SimWorks/simai/prompts/builtins/_user.py
+"""PromptModifiers that modify the user information for a simulation."""
+
 from simai.prompts.registry import register_modifier
 from core.utils import Formatter
 
-@register_modifier("UserRole")
+@register_modifier("User.role")
 def user_role_modifier(user=None, role=None):
+    """Returns string for a(n) User Role modifier."""
     _role = role or getattr(user, "role", None)
     if not _role:
         return "No User Role is assigned.\n"
@@ -15,8 +18,9 @@ def user_role_modifier(user=None, role=None):
         """
     )
 
-@register_modifier("UserHistory")
+@register_modifier("User.history")
 def user_history_modifier(user=None, within_days=180):
+    """Returns string for a(n) User History modifier."""
     if not user:
         return ""
     get_log = getattr(user, "get_scenario_log", None)
