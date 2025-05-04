@@ -11,6 +11,6 @@ def as_openai_prompt(self):
         return ""
     return (
         "This user has recently completed scenarios with the following "
-        "'chief complaint: diagnosis' pairs. Avoid repeating them excessively.\n\n"
-        f"{self.render('log_pairs')}"
+        "`(chief complaint, diagnosis)` pairs. Avoid repeating them excessively.\n\n"
+        f"{self.render('log_pairs')}\n\n"
     )

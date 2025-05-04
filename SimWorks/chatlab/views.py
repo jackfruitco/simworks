@@ -61,7 +61,7 @@ def index(request):
 
 @login_required
 def create_simulation(request):
-    sim = create_new_simulation(request.user)
+    sim = create_new_simulation(user=request.user)
     return redirect("chatlab:run_simulation", simulation_id=sim.id)
 
 @login_required

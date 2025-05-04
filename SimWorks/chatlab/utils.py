@@ -21,7 +21,7 @@ def create_new_simulation(user):
     # Create base Simulation
     simulation = Simulation.objects.create(
         user=user,
-        lab_label="chatlab",
+        lab="chatlab",
         sim_patient_full_name=generate_fake_name(),
     )
 

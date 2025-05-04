@@ -11,7 +11,8 @@ from django.utils.translation import gettext_lazy as _
 
 from core.utils.datetime_utils import to_ms
 from simai.models import Prompt
-from simai.prompts import get_or_create_prompt
+from simai.prompts_v1 import get_or_create_prompt
+from simai.prompts import build_prompt
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -55,17 +56,16 @@ class BaseSession(models.Model):
 
 
 class SimulationManager(models.Manager):
-    def create(self, *, user=None, prompt=None, lab_label=None, is_template=False, **kwargs):
+    def create(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
         if not user and not is_template:
             raise ValueError("Simulation must have a user unless marked as template.")
 
-        if not prompt and user and lab_label:
-            from simai.prompts import get_or_create_prompt
+        if not prompt and user and lab:
             role = getattr(user, "role", None)
-            prompt = get_or_create_prompt(app_label=lab_label, role=role, user=user)
+            prompt = build_prompt(user=user, role=role, lab=lab)
 
         if not prompt:
-            raise ValueError("Prompt must be provided if no user/lab_label fallback is available.")
+            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
 
         kwargs["user"] = user
         kwargs["prompt"] = prompt
@@ -83,6 +83,10 @@ class Simulation(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     openai_model = models.CharField(blank=True, null=True, max_length=128)
     metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
+    prompt = models.TextField(
+        help_text="The prompt to use as AI instructions",
+    )
+    """
     prompt = models.ForeignKey(
         Prompt,
         on_delete=models.RESTRICT,
@@ -90,6 +94,7 @@ class Simulation(models.Model):
         blank=False,
         help_text=_("The prompt to use as AI instructions."),
     )
+    """
 
     # description = models.TextField(blank=True, null=True)
     diagnosis = models.CharField(max_length=255, blank=True, null=True)
@@ -188,13 +193,14 @@ class Simulation(models.Model):
         return sha256(data.encode('utf-8')).hexdigest()
 
     @classmethod
-    def create_with_default_prompt(cls, user, app_label="chatlab", **kwargs):
+    def create_with_default_prompt(cls, user, lab="chatlab", **kwargs):
         """
-        Create a Simulation with a default prompt based on the user role and lab_label.
+        Create a Simulation with a default prompt based on the user role and lab.
         """
-        from simai.prompts import get_or_create_prompt
+        from simai.prompts import build_prompt
 
-        prompt = get_or_create_prompt(app_label=app_label, user=user, role=user.role)
+        prompt = build_prompt(user=user, role=user.role, lab=lab)
+
         return cls.objects.create(user=user, prompt=prompt, **kwargs)
 
     @property
@@ -207,7 +213,9 @@ class Simulation(models.Model):
         if not self.prompt:
             if not self.user:
                 raise ValueError("Cannot assign default prompt without a user.")
-            self.prompt = get_or_create_prompt(app_label="chatlab", user=self.user, role=getattr(self.user, "role", None))
+            # self.prompt = get_or_create_prompt(app_label="chatlab", user=self.user, role=getattr(self.user, "role", None))
+            # self.prompt = build_prompt(lab="chatlab", user=self.user, role=getattr(self.user, "role", None))
+            self.prompt = build_prompt(lab="chatlab", user=self.user)
 
         # Handle display name update if full name is changed
         updating_name = False

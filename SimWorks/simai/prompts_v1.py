@@ -399,7 +399,7 @@ def get_or_create_prompt(
 ) -> Prompt:
     """
     Build a Prompt instance using dynamic modifiers.
-    - `lab_label`: name of the app providing the simulation context
+    - `lab`: name of the app providing the simulation context
     - `role`: UserRole instance or ID
     - `include_feedback`: adds the feedback modifier (for facilitator guidance)
     - `environment`: optional string from EnvironmentModifiers (e.g., `TRAINING_AUSTERE`)
