@@ -52,7 +52,7 @@ class BuildPrompt:
         self.include_history = include_history
         self.include_default = include_default
         self._sections = []
-        self._labels = []
+        self._keys = []
         self._modifiers = list(modifiers)
         if modifiers_list:
             self._modifiers += list(modifiers_list)
@@ -63,71 +63,80 @@ class BuildPrompt:
             self.default()
 
         logger.debug(f"... _modifiers={self._modifiers}")
-        # Apply any additional modifier constants or label keys
+        # Apply any additional modifier constants or key keys
         for mod in self._modifiers:
             logger.debug(f"... adding {mod}")
-            self._add_modifier(mod)
+            self._add_modifier(mod, is_key=True)
 
     def default(self):
         # Add Base Prompt
         logger.debug(f"... adding default prompt")
-        self._add_modifier(DEFAULT_PROMPT_BASE, label="Base")
+        self._add_modifier(DEFAULT_PROMPT_BASE, key="Base", is_key=False)
 
         # Add user history if enabled and user exists
         if self.include_history and self.user:
             history_modifier = (PromptModifiers.get("UserHistory") or {}).get("value")
             if history_modifier:
                 logger.debug(f"... adding history prompt")
-                self._add_modifier(history_modifier(user=self.user, within_days=180), label="UserHistory")
+                self._add_modifier(history_modifier(user=self.user, within_days=180), key="UserHistory", is_key=False)
 
         # Add default role prompt, if role provided
         if self.role or self.user:
             role_modifier = (PromptModifiers.get("UserRole") or {}).get("value")
             if role_modifier:
                 logger.debug(f"... adding user role prompt")
-                self._add_modifier(role_modifier(self.user, self.role), label="UserRole")
+                self._add_modifier(role_modifier(self.user, self.role), key="UserRole", is_key=False)
 
-        # Add default Lab prompt, if lab label provided
+        # Add default Lab prompt, if lab key provided
         if self.lab:
-            lab_modifier = (PromptModifiers.get(self.lab.lower()) or {}).get("value")
+            logger.debug(f"... lab found: {self.lab} (type={type(self.lab)})")
+            lab_key = f"lab.{self.lab}.default"
+            lab_modifier = (PromptModifiers.get(lab_key.lower()) or {}).get("value")
             if lab_modifier:
                 logger.debug(f"... adding lab prompt")
-                self._add_modifier(lab_modifier(self.user, self.role), label=self.lab)
+                self._add_modifier(lab_modifier(self.user, self.role), key=self.lab, is_key=False)
 
         return self
 
-    def _add_modifier(self, label_or_content, label=None):
+    def _add_modifier(self, key_or_content, key=None, is_key=True):
+        """
+        Adds a modifier to the prompt.
+        If is_key=True, it looks up the modifier in the registry.
+        If is_key=False, it treats key_or_content as resolved content.
+        """
         from simai.prompts.registry import PromptModifiers
 
-        logger.debug(f"_add_modifier received: {label_or_content} (type={type(label_or_content)})")
+        logger.debug(f"_add_modifier received: `{str(key_or_content)[:60]}...` (type={type(key_or_content)}) is_key={is_key}")
         content = None
 
-        if isinstance(label_or_content, str):
-            entry = PromptModifiers.get(label_or_content)
+        if is_key:
+            entry = PromptModifiers.get(key_or_content)
+            logger.debug(f"Registry entry for '{str(key_or_content)[:60]}...': {entry}")
             func = entry.get("value") if entry else None
             if func:
-                logger.debug(f"...resolved modifier '{label_or_content}' via registry -> {func}")
+                logger.debug(f"Resolved function for '{str(key_or_content)[:60]}...': {func}")
                 content = func(self.user, self.role)
-                label = label or label_or_content
+                key = key or key_or_content
             else:
-                logger.warning(f"...modifier '{label_or_content}' not found in registry; treating as raw string")
-                content = label_or_content
-                label = label or content.strip().split("\n")[0][:32]
-        elif callable(label_or_content):
-            logger.debug(f"...received callable: {label_or_content}")
-            content = label_or_content(self.user, self.role)
-            label = label or label_or_content.__name__
+                logger.debug(f"No registry entry for '{str(key_or_content)[:60]}...', using as raw string.")
+                logger.warning(f"...modifier '{str(key_or_content)[:60]}...' not found in registry; treating as raw string")
+                content = key_or_content
+                key = key or content.strip().split("\n")[0][:32]
         else:
-            logger.debug(f"...treating as raw content string: {label_or_content}")
-            content = str(label_or_content)
-            label = label or content.strip().split("\n")[0][:32]
+            logger.debug(f"Skipping registry lookup; treating as resolved content")
+            content = key_or_content
+            key = key or str(content).strip().split("\n")[0][:32]
 
-        if label not in self._labels:
+        logger.debug(f"Final content to add: key='{key}', content='{content[:60]}...'")
+
+        if key not in self._keys:
+            logger.debug(f"Adding new key: '{key}'")
             self._sections.append(content)
-            self._labels.append(label)
-            logger.debug(f"... added '{label}' as:\n {content}\n")
+            self._keys.append(key)
+            logger.debug(f"... added '{key}' as:\n '{str(content)[:60]}...'\n")
         else:
-            logger.debug(f"... skipped duplicate label '{label}'")
+            logger.debug(f"Skipping duplicate key: '{key}'")
+            logger.debug(f"... skipped duplicate key '{key}'")
 
         return self
 
@@ -137,22 +146,22 @@ class BuildPrompt:
         init_kwargs = {key: kwargs.get(key) for key in supported_keys}
         return cls(*args, **init_kwargs)
 
-    def with_modifier(self, label):
-        return self._add_modifier(label)
+    def with_modifier(self, key):
+        return self._add_modifier(key, is_key=True)
 
     def finalize(self):
         logger.debug(f"finalizing prompt builder: {self}")
         return "\n\n".join(s.strip() for s in self._sections if s)
 
     @property
-    def labels(self):
-        return self._labels
+    def keys(self):
+        return self._keys
 
     @property
     def title(self):
         base = self.lab.capitalize() if self.lab else "Prompt"
-        if self._labels:
-            base += " - " + " + ".join(self._labels)
+        if self._keys:
+            base += " - " + " + ".join(self._keys)
         title = base
         version = 2
         while Prompt.objects.filter(title=title).exists():
