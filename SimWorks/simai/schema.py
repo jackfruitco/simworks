@@ -5,8 +5,9 @@ import importlib
 
 class Modifier(graphene.ObjectType):
     key = graphene.String()
+    name = graphene.String()
+    group = graphene.String()
     description = graphene.String()
-    value = graphene.String()
 
 
 class ModifierGroup(graphene.ObjectType):
@@ -20,11 +21,15 @@ def get_modifier_groups():
     grouped = {}
     docstrings = {}
 
-    for full_path, func in modifier_items:
-        group = full_path.split(".")[0]
-        description = func.__doc__.strip().split("\n")[0] if func.__doc__ else full_path
+    for item in modifier_items:
+        full_path = item["key"]
+        group = item["group"]
+        name = item["name"]
+        description = item["description"]
         grouped.setdefault(group, []).append({
             "key": full_path,
+            "name": name,
+            "group": group,
             "description": description,
         })
 
@@ -48,7 +53,6 @@ def get_modifier_groups():
     ]
 
 
-# 🔹 GraphQL Root Query
 class Query(graphene.ObjectType):
     modifier = graphene.Field(Modifier, key=graphene.String(required=True))
     all_modifiers = graphene.List(Modifier)
@@ -57,23 +61,38 @@ class Query(graphene.ObjectType):
     all_modifier_groups = graphene.List(ModifierGroup)
 
     def resolve_modifier(root, info, key):
-        func = PromptModifiers["get"](key)
-        if not func:
+        item = PromptModifiers["get"](key)
+        if not item:
             return None
-        description = func.__doc__.strip().split("\n")[0] if func.__doc__ else key
-        value = func()
-        return Modifier(key=key, description=description, value=value)
+        func = item["value"]
+        description = item["description"] or key
+        try:
+            value = func()
+        except Exception:
+            value = None
+        return Modifier(
+            key=item["key"],
+            name=item["name"],
+            group=item["group"],
+            description=description,
+        )
 
     def resolve_all_modifiers(root, info):
         modifier_items = PromptModifiers["list"]()
         result = []
-        for key, func in modifier_items:
-            description = func.__doc__.strip().split("\n")[0] if func.__doc__ else key
+        for item in modifier_items:
+            func = item["value"]
+            description = item["description"] or item["key"]
             try:
                 value = func()
             except Exception:
-                value = None  # Or a fallback string like "<requires user/role>"
-            result.append(Modifier(key=key, description=description, value=value))
+                value = None
+            result.append(Modifier(
+                key=item["key"],
+                name=item["name"],
+                group=item["group"],
+                description=description,
+            ))
         return result
 
     def resolve_modifier_group(root, info, group):
@@ -87,6 +106,7 @@ class Query(graphene.ObjectType):
     def resolve_all_modifier_groups(root, info):
         grouped = get_modifier_groups()
         return grouped
+
 
 class Mutation(graphene.ObjectType):
     pass
