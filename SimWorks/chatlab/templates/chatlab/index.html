@@ -6,9 +6,34 @@
 <header class="page-header">
     <h1>Welcome to ChatLab</h1>
     {% if user.is_authenticated %}
-        <form method="post" action="{% url 'chatlab:create_simulation' %}" class="start-form">
-            {% csrf_token %}
-            <button type="submit" class="button primary small">Begin New Simulation</button>
+        <form method="get" action="{% url 'chatlab:create_simulation' %}" class="start-form">
+            <div class="dropdown-wrapper" x-data="modifierSelector()" x-init="fetchModifierGroups()" @click.away="modifierTrayOpen = false">
+                <div class="button-group">
+                    <button type="submit" class="button primary small">Begin New Simulation</button>
+                    <button type="button" class="button small" @click="modifierTrayOpen = !modifierTrayOpen">▼</button>
+                </div>
+
+                <template x-if="modifierTrayOpen">
+                    <div class="modifier-tray"
+                         style="border: 1px solid #ccc; padding: 0.5em; background: white; position: absolute; z-index: 10; max-height: 300px; overflow-y: auto;">
+                        <template x-for="group in allModifierGroups" :key="group.group">
+                            <fieldset x-show="group.group !== 'Feedback'" style="margin-bottom: 1em;">
+                                <legend x-text="group.group" style="font-weight: bold;"></legend>
+                                <template x-for="mod in group.modifiers" :key="mod.key">
+                                    <label style="display: block;">
+                                        <input type="checkbox" :value="mod.key" x-model="selected">
+                                        <span x-text="mod.description"></span>
+                                    </label>
+                                </template>
+                            </fieldset>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-for="mod in selected" :key="mod">
+                    <input type="hidden" name="modifier" :value="mod">
+                </template>
+            </div>
         </form>
     {% endif %}
 </header>
@@ -24,3 +49,47 @@
     {% include 'chatlab/partials/simulation_history.html' %}
 {% endif %}
 {% endblock content %}
+
+
+{% block scripts %}
+{{ block.super }}
+<script>
+function modifierSelector() {
+    return {
+        modifierTrayOpen: false,
+        selected: [],
+        allModifierGroups: [],
+        async fetchModifierGroups() {
+            try {
+                const response = await fetch("{% url 'graphql' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content
+                    },
+                    body: JSON.stringify({
+                        query: `
+                            query {
+                                allModifierGroups {
+                                    group
+                                    description
+                                    modifiers {
+                                        key
+                                        description
+                                    }
+                                }
+                            }
+                        `
+                    })
+                });
+                const result = await response.json();
+                this.allModifierGroups = result?.data?.allModifierGroups || [];
+                console.log("Fetched allModifierGroups:", this.allModifierGroups)
+            } catch (error) {
+                console.error("Failed to load modifier groups", error);
+            }
+        }
+    }
+}
+</script>
+{% endblock scripts %}

@@ -75,17 +75,17 @@ class BuildPrompt:
 
         # Add user history if enabled and user exists
         if self.include_history and self.user:
-            history_modifier = (PromptModifiers.get("UserHistory") or {}).get("value")
+            history_modifier = (PromptModifiers.get("User.history") or {}).get("value")
             if history_modifier:
                 logger.debug(f"... adding history prompt")
-                self._add_modifier(history_modifier(user=self.user, within_days=180), key="UserHistory", is_key=False)
+                self._add_modifier(history_modifier(user=self.user, within_days=180), key="User.history", is_key=False)
 
         # Add default role prompt, if role provided
         if self.role or self.user:
-            role_modifier = (PromptModifiers.get("UserRole") or {}).get("value")
+            role_modifier = (PromptModifiers.get("User.role") or {}).get("value")
             if role_modifier:
                 logger.debug(f"... adding user role prompt")
-                self._add_modifier(role_modifier(self.user, self.role), key="UserRole", is_key=False)
+                self._add_modifier(role_modifier(self.user, self.role), key="User.role", is_key=False)
 
         # Add default Lab prompt, if lab key provided
         if self.lab:

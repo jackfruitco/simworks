@@ -12,8 +12,8 @@ def user_role_modifier(user=None, role=None):
         return "No User Role is assigned.\n"
     return (
         f"""
-        The person you are training is a {_role.title}.
-        The treatment plan should reflect training at that level.
+        The person you are training is a {_role.title}. \
+        The treatment plan should reflect training at that level. \
         Consider the following resources: {_role.resource_list()}.
         """
     )

@@ -17,7 +17,7 @@ class ModifierGroup(graphene.ObjectType):
 
 
 def get_modifier_groups():
-    modifier_items = PromptModifiers["list"]()
+    modifier_items = PromptModifiers.list()
     grouped = {}
     docstrings = {}
 
@@ -61,7 +61,7 @@ class Query(graphene.ObjectType):
     all_modifier_groups = graphene.List(ModifierGroup)
 
     def resolve_modifier(root, info, key):
-        item = PromptModifiers["get"](key)
+        item = PromptModifiers.get(key)
         if not item:
             return None
         func = item["value"]
@@ -78,7 +78,7 @@ class Query(graphene.ObjectType):
         )
 
     def resolve_all_modifiers(root, info):
-        modifier_items = PromptModifiers["list"]()
+        modifier_items = PromptModifiers.list()
         result = []
         for item in modifier_items:
             func = item["value"]
