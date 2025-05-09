@@ -41,5 +41,5 @@ def build_prompt(
     )
 
     prompt = builder.finalize()
-    logger.debug(f"finalized prompt: {prompt}")
+    logger.debug(f"...finalized prompt:\n {prompt}")
     return prompt

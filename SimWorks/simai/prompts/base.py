@@ -45,7 +45,7 @@ class BuildPrompt:
             include_history=True,
             modifiers_list=None
     ):
-        logger.debug(f"initializing prompt builder: {self}")
+        logger.debug(f"...initializing prompt builder: {self}")
         self.lab = lab
         self.role = role
         self.user = user
@@ -62,7 +62,6 @@ class BuildPrompt:
             logger.debug(f"... including defaults")
             self.default()
 
-        logger.debug(f"... modifiers={modifiers_list}")
         logger.debug(f"... _modifiers={self._modifiers}")
         # Apply any additional modifier constants or label keys
         for mod in self._modifiers:
@@ -76,21 +75,21 @@ class BuildPrompt:
 
         # Add user history if enabled and user exists
         if self.include_history and self.user:
-            history_modifier = PromptModifiers.get("UserHistory")
+            history_modifier = (PromptModifiers.get("UserHistory") or {}).get("value")
             if history_modifier:
                 logger.debug(f"... adding history prompt")
                 self._add_modifier(history_modifier(user=self.user, within_days=180), label="UserHistory")
 
         # Add default role prompt, if role provided
         if self.role or self.user:
-            role_modifier = PromptModifiers.get("UserRole")
+            role_modifier = (PromptModifiers.get("UserRole") or {}).get("value")
             if role_modifier:
                 logger.debug(f"... adding user role prompt")
                 self._add_modifier(role_modifier(self.user, self.role), label="UserRole")
 
         # Add default Lab prompt, if lab label provided
         if self.lab:
-            lab_modifier = PromptModifiers.get(self.lab.lower())
+            lab_modifier = (PromptModifiers.get(self.lab.lower()) or {}).get("value")
             if lab_modifier:
                 logger.debug(f"... adding lab prompt")
                 self._add_modifier(lab_modifier(self.user, self.role), label=self.lab)
@@ -100,28 +99,35 @@ class BuildPrompt:
     def _add_modifier(self, label_or_content, label=None):
         from simai.prompts.registry import PromptModifiers
 
+        logger.debug(f"_add_modifier received: {label_or_content} (type={type(label_or_content)})")
         content = None
 
         if isinstance(label_or_content, str):
-            func = PromptModifiers.get(label_or_content)
+            entry = PromptModifiers.get(label_or_content)
+            func = entry.get("value") if entry else None
             if func:
-                logger.debug(f"Resolved modifier '{label_or_content}' via registry")
+                logger.debug(f"...resolved modifier '{label_or_content}' via registry -> {func}")
                 content = func(self.user, self.role)
                 label = label or label_or_content
             else:
-                logger.warning(f"Modifier '{label_or_content}' not found in registry; treating as raw string")
+                logger.warning(f"...modifier '{label_or_content}' not found in registry; treating as raw string")
                 content = label_or_content
                 label = label or content.strip().split("\n")[0][:32]
         elif callable(label_or_content):
+            logger.debug(f"...received callable: {label_or_content}")
             content = label_or_content(self.user, self.role)
             label = label or label_or_content.__name__
         else:
+            logger.debug(f"...treating as raw content string: {label_or_content}")
             content = str(label_or_content)
             label = label or content.strip().split("\n")[0][:32]
 
         if label not in self._labels:
             self._sections.append(content)
             self._labels.append(label)
+            logger.debug(f"... added '{label}' as:\n {content}\n")
+        else:
+            logger.debug(f"... skipped duplicate label '{label}'")
 
         return self
 
