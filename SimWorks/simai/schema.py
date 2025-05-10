@@ -57,8 +57,8 @@ class Query(graphene.ObjectType):
     modifier = graphene.Field(Modifier, key=graphene.String(required=True))
     all_modifiers = graphene.List(Modifier)
 
-    modifier_group = graphene.Field(ModifierGroup, group=graphene.String())
-    all_modifier_groups = graphene.List(ModifierGroup)
+    modifier_group = graphene.Field(ModifierGroup, group=graphene.String(required=True))
+    modifier_groups = graphene.List(ModifierGroup, groups=graphene.List(graphene.String))
 
     def resolve_modifier(root, info, key):
         item = PromptModifiers.get(key)
@@ -77,7 +77,7 @@ class Query(graphene.ObjectType):
             description=description,
         )
 
-    def resolve_all_modifiers(root, info):
+    def resolve_all_modifiers(root, info, group=None):
         modifier_items = PromptModifiers.list()
         result = []
         for item in modifier_items:
@@ -87,6 +87,8 @@ class Query(graphene.ObjectType):
                 value = func()
             except Exception:
                 value = None
+            if group and item["group"] != group:
+                continue
             result.append(Modifier(
                 key=item["key"],
                 name=item["name"],
@@ -99,12 +101,15 @@ class Query(graphene.ObjectType):
         grouped = get_modifier_groups()
         normalized = group.lower()
         for g in grouped:
-            if g["group"] == normalized:
+            if g["group"].lower() == normalized:
                 return g
         return None
 
-    def resolve_all_modifier_groups(root, info):
+    def resolve_modifier_groups(root, info, groups=None):
         grouped = get_modifier_groups()
+        if groups:
+            normalized_groups = [g.lower() for g in groups]
+            grouped = [g for g in grouped if g["group"].lower() in normalized_groups]
         return grouped
 
 
