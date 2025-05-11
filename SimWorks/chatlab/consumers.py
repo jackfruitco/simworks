@@ -7,7 +7,7 @@ import time
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from simai.async_client import AsyncOpenAIChatService
+from simai.async_client import AsyncOpenAIService
 from simcore.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
@@ -17,7 +17,7 @@ from .models import RoleChoices
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
-ai = AsyncOpenAIChatService()
+ai = AsyncOpenAIService()
 
 
 class ChatConsumer(AsyncWebsocketConsumer):

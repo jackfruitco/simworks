@@ -7,12 +7,12 @@ from simai.prompts.registry import PromptModifiers
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROMPT_BASE = """
-You are simulating a standardized patient role player for medical training.
+You are simulating a standardized patient role player for medical training.\n\n
 
 Select a diagnosis and develop a corresponding clinical scenario script 
 using simple, everyday language that reflects the knowledge level of an
 average person. Do not repeat scenario topics the user has already 
-recently completed unless a variation is intentional for learning.
+recently completed unless a variation is intentional for learning.\n\n
 
 Avoid including narration, medical jargon, or any extraneous details that
 haven’t been explicitly requested. Adopt a natural texting style—using 
@@ -21,14 +21,14 @@ consistently throughout the conversation. Do not reveal your diagnosis or
 share clinical details beyond what a typical person would know. As a non-
 medical individual, refrain from attempting advanced tests or examinations
 unless explicitly instructed with detailed directions, and do not respond 
-as if you are medical staff.
+as if you are medical staff.\n\n
 
 Generate only the first line of dialogue from the simulated patient 
 initiating contact, using a tone that is appropriate to the scenario, and
 remain in character at all times. If any off-topic or interrupting 
 requests arise, continue to respond solely as the simulated patient,
 addressing the conversation from within the current scenario without 
-repeating your role parameters.
+repeating your role parameters.\n\n
 
 Do not exit the scenario.\n\n
 """
@@ -43,7 +43,9 @@ class BuildPrompt:
             role=None,
             include_default=True,
             include_history=True,
-            modifiers_list=None
+            modifiers_list=None,
+            simulation=None,
+            **extra_kwargs,
     ):
         logger.debug(f"...initializing prompt builder: {self}")
         self.lab = lab
@@ -54,6 +56,8 @@ class BuildPrompt:
         self._sections = []
         self._keys = []
         self._modifiers = list(modifiers)
+        self.simulation = simulation
+        self.extra_kwargs = extra_kwargs
         if modifiers_list:
             self._modifiers += list(modifiers_list)
 
@@ -90,7 +94,7 @@ class BuildPrompt:
         # Add default Lab prompt, if lab key provided
         if self.lab:
             logger.debug(f"... lab found: {self.lab} (type={type(self.lab)})")
-            lab_key = f"lab.{self.lab}.default"
+            lab_key = f"Lab.{self.lab}"
             lab_modifier = (PromptModifiers.get(lab_key.lower()) or {}).get("value")
             if lab_modifier:
                 logger.debug(f"... adding lab prompt")
@@ -109,13 +113,19 @@ class BuildPrompt:
         logger.debug(f"_add_modifier received: `{str(key_or_content)[:60]}...` (type={type(key_or_content)}) is_key={is_key}")
         content = None
 
+        payload = {
+            "user": self.user,
+            "role": self.role,
+            "simulation": getattr(self.simulation, "pk", self.simulation) if self.simulation else None,
+        }
+
         if is_key:
             entry = PromptModifiers.get(key_or_content)
             logger.debug(f"Registry entry for '{str(key_or_content)[:60]}...': {entry}")
             func = entry.get("value") if entry else None
             if func:
                 logger.debug(f"Resolved function for '{str(key_or_content)[:60]}...': {func}")
-                content = func(self.user, self.role)
+                content = func(**payload)
                 key = key or key_or_content
             else:
                 logger.debug(f"No registry entry for '{str(key_or_content)[:60]}...', using as raw string.")
@@ -151,7 +161,13 @@ class BuildPrompt:
 
     def finalize(self):
         logger.debug(f"finalizing prompt builder: {self}")
-        return "\n\n".join(s.strip() for s in self._sections if s)
+        lines = []
+        for section in self._sections:
+            if not section:
+                continue
+            for line in section.strip().splitlines():
+                lines.append(line.strip())  # Strip leading/trailing spaces from each line
+        return "\n".join(lines)
 
     @property
     def keys(self):

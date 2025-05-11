@@ -11,6 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Prompt(models.Model):
+    """TODO: DEPRECATED MODEL"""
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

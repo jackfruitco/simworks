@@ -3,8 +3,8 @@
 
 from simai.prompts.registry import register_modifier
 
-@register_modifier("Lab.ChatLab.default")
-def chatlab_modifier(user=None, role=None):
+@register_modifier("Lab.ChatLab")
+def chatlab_modifier(user=None, role=None, **extra_kwargs):
     """Returns string for ChatLab simulation prompt modifier."""
     return (
         """
@@ -19,7 +19,7 @@ def chatlab_modifier(user=None, role=None):
         """
     )
 
-@register_modifier("Lab.VoiceLab.default")
-def voicelab_modifier(user=None, role=None):
+@register_modifier("Lab.VoiceLab")
+def voicelab_modifier(user=None, role=None, **extra_kwargs):
     """Returns string for VoiceLab simulation prompt modifier."""
     pass

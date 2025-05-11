@@ -40,7 +40,7 @@ async def process_response(response, simulation, stream=False, response_type=Res
         type=response_type,
         simulation=simulation,
         user=user,
-        raw=json.dumps(response.model_dump(), indent=2),
+        raw=json.loads(response.model_dump_json()),
         id=response.id,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,

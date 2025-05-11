@@ -9,7 +9,7 @@ from django.utils.timezone import now
 
 from chatlab.models import ChatSession
 from core.utils import get_or_create_system_user
-from simai.async_client import AsyncOpenAIChatService
+from simai.async_client import AsyncOpenAIService
 from simcore.models import Simulation
 from simcore.utils import generate_fake_name
 
@@ -33,7 +33,7 @@ def create_new_simulation(user, modifiers: list=None):
     system_user = get_or_create_system_user()
 
     # Generate initial message in background
-    ai = AsyncOpenAIChatService()
+    ai = AsyncOpenAIService()
 
     def start_initial_response(sim):
         logger.debug(f"[chatlab] requesting initial SimMessage for Sim#{sim.id}")

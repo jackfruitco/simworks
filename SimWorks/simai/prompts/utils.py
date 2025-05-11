@@ -11,6 +11,7 @@ def build_prompt(
     include_default=True,
     include_history=True,
     modifiers=None,
+    **extra_kwargs,
 ) -> str:
     """
     Utility function to build and finalize Simulation prompts.
@@ -38,6 +39,7 @@ def build_prompt(
         lab=lab,
         include_default=include_default,
         include_history=include_history,
+        **extra_kwargs,
     )
 
     prompt = builder.finalize()
