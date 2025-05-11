@@ -1,5 +1,11 @@
 import graphene
+from django.core.exceptions import ObjectDoesNotExist
+from graphene_django.types import DjangoObjectType
+
+from core.utils import Formatter
 from simai.prompts import PromptModifiers
+from simcore.schema import SimulationType
+from .models import Response
 import importlib
 
 
@@ -15,6 +21,34 @@ class ModifierGroup(graphene.ObjectType):
     description = graphene.String()
     modifiers = graphene.List(Modifier)
 
+
+class ResponseType(DjangoObjectType):
+    """Response type for GraphQL"""
+    output_pretty = graphene.JSONString()
+
+    class Meta:
+        model = Response
+        interfaces = (graphene.relay.Node,)
+        fields = (
+            "id",
+            "created",
+            "modified",
+            "raw",
+            "input_tokens",
+            "output_tokens",
+            "reasoning_tokens",
+            "user",
+            "simulation",
+        )
+
+    def resolve_output_pretty(self, info):
+        if not getattr(self, 'raw', None):
+            return None
+        try:
+            formatter = Formatter(self.raw)
+            return formatter.render(format_type="json", indent=2)
+        except Exception:
+            return None
 
 def get_modifier_groups():
     modifier_items = PromptModifiers.list()
@@ -54,11 +88,53 @@ def get_modifier_groups():
 
 
 class Query(graphene.ObjectType):
-    modifier = graphene.Field(Modifier, key=graphene.String(required=True))
-    all_modifiers = graphene.List(Modifier)
 
-    modifier_group = graphene.Field(ModifierGroup, group=graphene.String(required=True))
-    modifier_groups = graphene.List(ModifierGroup, groups=graphene.List(graphene.String))
+    # Responses
+    response = graphene.Field(
+        ResponseType,
+        id=graphene.ID(required=True)
+    )
+    responses = graphene.List(
+        ResponseType,
+        limit=graphene.Int(),
+        simulation=graphene.ID(),
+        ids=graphene.List(graphene.ID)
+    )
+
+    # Modifiers
+    modifier = graphene.Field(
+        Modifier,
+        key=graphene.String(required=True)
+    )
+    modifiers = graphene.List(
+        Modifier
+    )
+
+    # Modifier Groups
+    modifier_group = graphene.Field(
+        ModifierGroup,
+        group=graphene.String(required=True)
+    )
+    modifier_groups = graphene.List(
+        ModifierGroup,
+        groups=graphene.List(graphene.String)
+    )
+
+    def resolve_response(root, info, id):
+        try:
+            return Response.objects.get(pk=id)
+        except ObjectDoesNotExist:
+            return None
+
+    def resolve_responses(root, info, ids=None, limit: int=None, simulation: int=None):
+        qs = Response.objects.all()
+        if ids:
+            qs = qs.filter(pk__in=ids)
+        if simulation:
+            qs = qs.filter(simulation=simulation)
+        if limit:
+            qs = qs[:limit]
+        return qs
 
     def resolve_modifier(root, info, key):
         item = PromptModifiers.get(key)
@@ -77,7 +153,7 @@ class Query(graphene.ObjectType):
             description=description,
         )
 
-    def resolve_all_modifiers(root, info, group=None):
+    def resolve_modifiers(root, info, group=None):
         modifier_items = PromptModifiers.list()
         result = []
         for item in modifier_items:

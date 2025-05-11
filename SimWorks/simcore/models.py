@@ -1,22 +1,29 @@
-import json
+# simcore/models.py
 import logging
+import os
+import uuid
 from datetime import timedelta
-from hashlib import sha256
 
+from autoslug import AutoSlugField
 from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
 from django.utils.timezone import now
-from django.utils.translation import gettext_lazy as _
+from imagekit.models import ImageSpecField
+from pilkit.processors import Thumbnail
 
-from core.utils.datetime_utils import to_ms
 from simai.models import Prompt
-from simai.prompts_v1 import get_or_create_prompt
-from simai.prompts import build_prompt
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
 
+def get_image_path(instance, filename):
+    ext = os.path.splitext(filename)[1] or ".webp"
+    unique_id = instance.uuid
+    return f"images/simulation/{instance.simulation.pk}/{unique_id}{ext}"
+
+def slug_source(instance):
+    return instance.description or str(instance.uuid)
 
 class BaseSession(models.Model):
     """
@@ -57,6 +64,7 @@ class BaseSession(models.Model):
 
 class SimulationManager(models.Manager):
     def create(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
+        from simai.prompts import build_prompt
         if not user and not is_template:
             raise ValueError("Simulation must have a user unless marked as template.")
 
@@ -86,18 +94,9 @@ class Simulation(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     openai_model = models.CharField(blank=True, null=True, max_length=128)
     metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
-    prompt = models.TextField(
+    prompt = models.JSONField(
         help_text="The prompt to use as AI instructions",
     )
-    """
-    prompt = models.ForeignKey(
-        Prompt,
-        on_delete=models.RESTRICT,
-        null=False,
-        blank=False,
-        help_text=_("The prompt to use as AI instructions."),
-    )
-    """
 
     # description = models.TextField(blank=True, null=True)
     diagnosis = models.CharField(max_length=255, blank=True, null=True)
@@ -106,7 +105,6 @@ class Simulation(models.Model):
     sim_patient_full_name = models.CharField(max_length=100, blank=True)
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
 
-    @property
     def history(self, _format=None) -> list:
         """
         Returns combined simulation history from all registered apps.
@@ -181,14 +179,13 @@ class Simulation(models.Model):
 
     def generate_feedback(self):
         from asgiref.sync import async_to_sync
-        from simai.async_client import AsyncOpenAIChatService
+        from simai.async_client import AsyncOpenAIService
 
-        service = AsyncOpenAIChatService()
+        service = AsyncOpenAIService()
         async_to_sync(service.generate_simulation_feedback)(self)
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256
-        from django.db.models import QuerySet
 
         # Always order by attribute and key for stable checksum
         entries = self.metadata.order_by('attribute', 'key').values_list('attribute', 'key', 'value')
@@ -212,6 +209,7 @@ class Simulation(models.Model):
         return SimulationMetadata.format_patient_history(raw)
 
     def save(self, *args, **kwargs):
+        from simai.prompts import build_prompt
         # Ensure prompt is set based on user.role if not already provided
         if not self.prompt:
             if not self.user:
@@ -289,3 +287,71 @@ class SimulationMetadata(models.Model):
             f"Sim#{self.simulation.id} Metadata ({self.attribute.lower()}): {self.key.title()} "
             f""
         )
+
+
+class SimulationImage(models.Model):
+    """Store image for specified simulation."""
+    created_at = models.DateTimeField(auto_now_add=True, editable=False)
+    modified_at = models.DateTimeField(auto_now=True, editable=False)
+
+    simulation = models.ForeignKey(
+        Simulation,
+        on_delete=models.CASCADE,
+        related_name="images"
+    )
+
+    uuid = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=True,
+        help_text="Unique identifier for this image"
+    )
+
+    description = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="3-5 words describing the image",
+    )
+
+    slug = AutoSlugField(
+        populate_from=slug_source,
+        unique_with="simulation",
+        always_update=True,
+    )
+
+    original = models.ImageField(
+        upload_to=get_image_path,
+        verbose_name="image",
+        height_field="original_height",
+        width_field="original_width",
+    )
+
+    original_height = models.PositiveIntegerField(
+        editable=False,
+        blank=True,
+        null=True,
+    )
+
+    original_width = models.PositiveIntegerField(
+        editable=False,
+        blank=True,
+        null=True,
+    )
+
+    thumbnail = ImageSpecField(
+        source="original",
+        processors=[Thumbnail(width=300, height=300, crop=False)],
+        format="WEBP",
+        options={"quality": 80},
+    )
+
+    logo = ImageSpecField(
+        source="original",
+        processors=[Thumbnail(width=600, height=600, crop=False)],
+        format="WEBP",
+        options={"quality": 80},
+    )
+
+    def __str__(self):
+        return f"Image for Sim#{self.simulation.pk} ({self.slug})"

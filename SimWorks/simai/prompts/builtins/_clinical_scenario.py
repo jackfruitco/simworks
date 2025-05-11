@@ -7,20 +7,25 @@ _BASE = "The patient's complaint and diagnosis should correlate to the following
 
 @register_modifier("ClinicalScenario.MSK")
 def clinical_scenario_msk(user=None, role=None, **extra_kwargs):
-    """Returns string for a(n) Musculoskeletal clinical scenario prompt modifier."""
+    """Returns string for a(n) Musculoskeletal clinical scenario modifier."""
     return f"{_BASE} MSK (musculoskeletal injuries)."
 
 @register_modifier("ClinicalScenario.RESP")
 def clinical_scenario_resp(user=None, role=None, **extra_kwargs):
-    """Returns string for a(n) Respiratory System clinical scenario prompt modifier."""
+    """Returns string for a(n) Respiratory System clinical scenario modifier."""
     return f"{_BASE} Respiratory System."
 
 @register_modifier("ClinicalScenario.VIRUS")
 def clinical_scenario_virus(user=None, role=None, **extra_kwargs):
-    """Returns string for a(n) Viral Infection clinical scenario prompt modifier."""
+    """Returns string for a(n) Viral Infection clinical scenario modifier."""
     return f"{_BASE} Viral infections."
 
 @register_modifier("ClinicalScenario.BACT")
 def clinical_scenario_bact(user=None, role=None, **extra_kwargs):
-    """Returns string for a(n) Bacterial Infection clinical scenario prompt modifier."""
+    """Returns string for a(n) Bacterial Infection clinical scenario modifier."""
     return f"{_BASE} Bacterial infections."
+
+@register_modifier("ClinicalScenario.DERM")
+def clinical_scenario_derm(**extra_kwargs):
+    """Returns string for a(n) Dermatology clinical scenario modifier."""
+    return f"{_BASE} Dermatology conditions, skin conditions, rashes, etc."

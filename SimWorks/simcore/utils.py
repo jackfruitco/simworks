@@ -1,7 +1,13 @@
+# simcore/utils.py
 import random
+from typing import Union
 
 from django.contrib.auth import get_user_model
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from faker import Faker
+
+# from simcore.models import Simulation
 
 fake = Faker()
 
@@ -56,3 +62,34 @@ def get_user_initials(user) -> str:
     elif hasattr(user, "username") and user.username and not user.username.isnumeric():
         return user.username[0].upper()
     return "Unk"
+
+# def resolve_simulation(simulation: Simulation | int) -> Simulation:
+def resolve_simulation(simulation):
+    """
+    Resolves a simulation object from either a Simulation instance or primary key.
+
+    Args:
+        simulation (Union[Simulation, int]): The simulation instance or its primary key ID.
+
+    Returns:
+        Simulation: The resolved Simulation instance.
+
+    Raises:
+        ValueError: If no simulation is provided.
+        Simulation.DoesNotExist: If the simulation with given primary key doesn't exist.
+        TypeError: If the simulation argument is neither a Simulation instance nor a valid primary key.
+    """
+    from .models import Simulation
+    if simulation is None:
+        raise ValueError("Simulation must be provided")
+
+    if isinstance(simulation, int):
+        try:
+            return get_object_or_404(Simulation, pk=simulation)
+        except Http404:
+            raise Simulation.DoesNotExist("Simulation with the given primary key does not exist")
+
+    if not isinstance(simulation, Simulation):
+        raise TypeError("Expected a Simulation instance or valid primary key")
+
+    return simulation

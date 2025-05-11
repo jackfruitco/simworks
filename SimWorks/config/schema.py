@@ -13,7 +13,7 @@ class Query(
     simai.schema.Query,
     graphene.ObjectType,
 ):
-    pass
+    node = graphene.relay.Node.Field()
 
 class Mutation(
     chatlab.schema.Mutation,

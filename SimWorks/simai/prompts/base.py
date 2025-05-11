@@ -30,6 +30,9 @@ requests arise, continue to respond solely as the simulated patient,
 addressing the conversation from within the current scenario without 
 repeating your role parameters.\n\n
 
+If the user requests an image in a message, you must mark 'image_requested'
+as True, otherwise, it should be False.
+
 Do not exit the scenario.\n\n
 """
 
@@ -116,7 +119,7 @@ class BuildPrompt:
         payload = {
             "user": self.user,
             "role": self.role,
-            "simulation": getattr(self.simulation, "pk", self.simulation) if self.simulation else None,
+            "simulation": self.simulation.pk if hasattr(self.simulation, "pk") else self.simulation
         }
 
         if is_key:

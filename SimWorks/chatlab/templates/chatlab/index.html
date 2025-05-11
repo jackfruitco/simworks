@@ -69,7 +69,7 @@ function modifierSelector() {
                     body: JSON.stringify({
                         query: `
                             query {
-                                modifierGroups(groups: ["ClinicalScenario"]) {
+                                modifierGroups(groups: ["ClinicalScenario", "ClinicalDuration"]) {
                                     group
                                     description
                                     modifiers {
