@@ -10,6 +10,7 @@ from typing import Tuple
 
 from django.db.models import QuerySet
 
+from core.utils.system import coerce_to_bool
 from .models import ResponseType
 from asgiref.sync import sync_to_async
 from chatlab.models import Message
@@ -80,6 +81,19 @@ class StructuredOutputParser:
         # Now handle normal parsing flow
         messages = output.get("messages") or []
         metadata = output.get("metadata") or {}
+
+        # Check if image was requested and trigger image generation
+        if image_requested := coerce_to_bool(output.get("image_requested", False)):
+            logger.debug(f"[parse_output]: image_requested={image_requested}")
+
+            # Lazy import to avoid circular dependency
+            from .async_client import AsyncOpenAIService
+
+            client = AsyncOpenAIService()
+            try:
+                await client.generate_patient_reply_image(simulation=self.simulation)
+            except Exception as e:
+                logger.warning(f"[{func_name}] Image generation failed: {e}")
 
         # Gracefully handle missing or null metadata blocks
         patient_data = metadata.get("patient_metadata") or {}

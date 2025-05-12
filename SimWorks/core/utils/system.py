@@ -25,3 +25,19 @@ def check_env(var_name, default=_SENTINEL):
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
         raise ImproperlyConfigured(error_msg)
+
+def coerce_to_bool(value: str | bool | int) -> bool:
+    """
+    Converts a value to a boolean. Interprets common string representations
+    of falsy values ('false', '0', 'no', etc.) as False.
+
+    :param value: Input to coerce (str, bool, or int)
+    :return: Boolean value
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() not in ('false', '0', 'no', '')
+    return bool(value)

@@ -4,23 +4,28 @@ to facilitate patient simulations in a chat environment. It includes functions
 to build payloads for patient replies and introductions, and a service class
 to generate responses using the OpenAI model.
 """
-
+import base64
 import inspect
 import logging
+import uuid
 from typing import List
 from typing import Optional
 
 from asgiref.sync import sync_to_async
-from chatlab.models import Message
-from simcore.models import Simulation
-from . import prompts_v1
-from .models import ResponseType
-from .output_schemas import message_schema, feedback_schema
-from .openai_gateway import process_response
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from openai import AsyncOpenAI
 
-from .prompts import BuildPrompt, build_prompt
+from chatlab.models import Message
+from simcore.models import Simulation
+from simcore.models import SimulationImage
+from simcore.utils import resolve_simulation
+from .models import ResponseType
+from .openai_gateway import process_response
+from .output_schemas import message_schema, feedback_schema
+from .prompts import build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +99,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     }
 
 
-class AsyncOpenAIChatService:
+class AsyncOpenAIService:
     """
     A service class to interact with the OpenAI API for generating patient replies
     and introductions in the context of simulations.
@@ -109,6 +114,12 @@ class AsyncOpenAIChatService:
         """
         self.model = model or getattr(settings, "OPENAI_MODEL", "gpt-4")
         self.client = AsyncOpenAI()  # Initialize the OpenAI client
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
 
     @staticmethod
     async def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
@@ -163,7 +174,7 @@ class AsyncOpenAIChatService:
             level=logging.INFO,
         )
 
-        # Build payload (prompt, instructions), then get response from OpenAI
+        # Build payload (prompt, instructions), then get the response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
         text = await message_schema()
         response = await self.client.responses.create(
@@ -199,3 +210,69 @@ class AsyncOpenAIChatService:
         )
 
         return await process_response(response, simulation, stream, response_type=ResponseType.FEEDBACK)
+
+    async def generate_patient_reply_image(
+            self,
+            *modifiers,
+            simulation: Simulation | int = None,
+            output_format="webp",
+            include_default=False,
+            **kwargs
+    ) -> SimulationImage | Exception:
+        """
+        Generate a patient image for a given simulation using OpenAI Image API.
+        """
+        func_name = inspect.currentframe().f_code.co_name
+        logger.debug(f"[{func_name}] starting image generation...")
+
+        # Resolve simulation to ensure object is available, but PK can be provided
+        simulation = await sync_to_async(resolve_simulation)(simulation)
+
+        logger.debug(f"Generating image for Sim{simulation.pk}...")
+
+        prompt = await sync_to_async(build_prompt)(
+            "Image.PatientImage",
+            *modifiers,
+            simulation=simulation,
+            include_default=include_default,
+            **kwargs
+        )
+
+        # Call OpenAI API
+        # See https://platform.openai.com/docs/api-reference/images
+        try:
+            response = await self.client.images.generate(
+                model="gpt-image-1",
+                prompt=prompt,
+                n=1,
+                size="1024x1024",
+                output_format=output_format,
+                output_compression=70
+            )
+        except Exception as e:
+            logger.error(f"[{func_name}] OpenAI image generation failed: {e}")
+            return e
+
+        try:
+            # Decode base64 image
+            image_base64 = response.data[0].b64_json
+            image_bytes = base64.b64decode(image_base64)
+
+            # Prepare file in-memory
+            image_uuid = uuid.uuid4()
+            image_file = ContentFile(image_bytes, name=f"temp_{image_uuid}.{output_format}")
+
+            # Create SimulationImage instance
+            sim_image = await sync_to_async(SimulationImage.objects.create)(
+                simulation=simulation,
+                uuid=image_uuid,
+                original=image_file,
+            )
+
+        except Exception as e:
+            logger.error(f"[{func_name}] Failed to save SimulationImage: {e}")
+            return e
+
+        logger.debug(f"Image saved to DB for Sim#{simulation.pk}")
+        return sim_image
+

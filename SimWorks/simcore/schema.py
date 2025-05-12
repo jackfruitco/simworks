@@ -73,6 +73,11 @@ class SimulationType(DjangoObjectType):
     def resolve_length(self, info) -> graphene.Int:
         return self.length
 
+class SimulationImageType(DjangoObjectType):
+    class Meta:
+        model = Simulation
+        fields = ("id", "original")
+
 class Query(graphene.ObjectType):
     simulation = graphene.Field(SimulationType, id=graphene.Int(required=True))
     all_simulations = graphene.List(SimulationType)
