@@ -7,8 +7,11 @@ from .querysets.response_queryset import ResponseQuerySet
 
 from django.utils.translation import gettext_lazy as _
 
+import logging
+logger = logging.getLogger(__name__)
 
 class Prompt(models.Model):
+    """TODO: DEPRECATED MODEL"""
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -46,6 +49,13 @@ class Prompt(models.Model):
 
     def save(self, *args, **kwargs):
         """Update modification fields if object already exists."""
+        logging.warning(
+            """
+            [DEPRECATED] The `Prompt` model is deprecated and will no longer be used. 
+            Prompts will instead be saved to `Simulation.prompt` text field since Prompts
+            are no longer likely to be reused when using user's simulation history.
+            """
+        )
         if self.pk is not None:
             self.modified_at = now()
             if hasattr(self, "_modified_by"):

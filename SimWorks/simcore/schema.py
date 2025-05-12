@@ -44,7 +44,8 @@ class SimulationType(DjangoObjectType):
             "end_timestamp",
             "time_limit",
             "diagnosis",
-            "chief_complaint"
+            "chief_complaint",
+            "prompt",
         )
 
     def resolve_messages(self, info):

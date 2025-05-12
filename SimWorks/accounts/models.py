@@ -46,6 +46,18 @@ class UserRole(models.Model):
         unique=True,
     )
 
+    def resource_list(self, format_as="list") -> list or str:
+        _list = []
+        for item in RoleResource.objects.filter(role=self):
+            _list.append(item.resource)
+
+        if format_as == "list":
+            return _list
+        elif format_as == "str":
+            return ", ".join(_list)
+        else:
+            raise ValidationError("Invalid format. Must be `list` or `str`.")
+
     def __str__(self):
         return self.title
 

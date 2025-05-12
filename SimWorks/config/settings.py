@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "simai",
     "chatlab",
     "graphene_django",
+    "imagekit",
 ]
 
 

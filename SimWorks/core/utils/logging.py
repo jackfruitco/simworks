@@ -3,10 +3,12 @@ import logging
 
 class AppColorFormatter(logging.Formatter):
     COLORS = {
-        "chatlab": "\033[94m",       # Blue
-        "simai": "\033[92m",      # Green
-        "accounts": "\033[95m",      # Magenta
-        "notifications": "\033[93m", # Yellow
+        "chatlab": "\033[34m",          # Dark Blue
+        "simai": "\033[32m",            # Dark Green
+        "accounts": "\033[35m",         # Dark Magenta
+        "notifications": "\033[33m",    # Dark Yellow/Brown
+        "simcore": "\033[36m",          # Dark Cyan
+        # "core": "\033[30m",             # Black
     }
     RESET = "\033[0m"
 

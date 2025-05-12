@@ -13,12 +13,14 @@ from typing import Optional
 from asgiref.sync import sync_to_async
 from chatlab.models import Message
 from simcore.models import Simulation
-from . import prompts
+from . import prompts_v1
 from .models import ResponseType
 from .output_schemas import message_schema, feedback_schema
 from .openai_gateway import process_response
 from django.conf import settings
 from openai import AsyncOpenAI
+
+from .prompts import BuildPrompt, build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,8 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
     Returns:
         List[dict]: A list of dictionaries representing the role and content for the introduction.
     """
-    instruction = simulation.prompt.content.strip()
+
+    instruction = simulation.prompt
     instruction += (
         f"\n\nYour name is {simulation.sim_patient_full_name}. "
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
@@ -80,10 +83,12 @@ def build_feedback_payload(simulation: Simulation) -> dict:
         .order_by("-timestamp")
         .first()
     )
+    instructions = build_prompt("Feedback.endex", include_default=False)
+
     return {
         "previous_response_id": last_ai_msg.openai_id if last_ai_msg else None,
         "input": [
-            {"role": "developer", "content": prompts.Feedback.default()},
+            {"role": "developer", "content": instructions},
             {"role": "user", "content": "Provide feedback to the user"},
         ],
     }

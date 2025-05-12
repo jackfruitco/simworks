@@ -8,3 +8,4 @@ class SimManAIConfig(AppConfig):
 
     def ready(self):
         import simai.signals
+        import simai.prompts.builtins

@@ -45,6 +45,16 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        "core": {
+            "handlers": ["console"],
+            "level": check_env("CORE_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "core.utils.formatters": {
+            "handlers": ["console"],
+            "level": check_env("CORE_FORMATTER_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
         "chatlab": {
             "handlers": ["console"],
             "level": check_env("CHATLAB_LOG_LEVEL", None) or LOG_LEVEL,
@@ -63,6 +73,11 @@ LOGGING = {
         "simai": {
             "handlers": ["console"],
             "level": check_env("SIMAI_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "simai.prompts": {
+            "handlers": ["console"],
+            "level": check_env("SIMAI_PROMPTS_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
         "simcore": {

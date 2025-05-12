@@ -90,6 +90,8 @@ class Formatter:
         Returns:
             str: The rendered output string.
         """
+        logger.debug(f"[Formatter] Preparing render as '{format_type}'")
+
         format_type = format_type.strip().lower().lstrip(".")
         format_key = registry.extension_map.get(format_type, format_type)
 
@@ -116,6 +118,8 @@ class Formatter:
         Returns:
             str: The path written to.
         """
+        logger.debug(f"[Formatter] Preparing save as '{format_type}'")
+
         if not path:
             basename = f"formatted_output_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type}"
             path = os.path.join(os.getcwd(), basename)
@@ -141,6 +145,7 @@ class Formatter:
         Returns:
             HttpResponse: A response that triggers a browser download.
         """
+        logger.debug(f"[Formatter] Preparing download as '{format_type}'")
         output = self.render(format_type, **kwargs)
         format_type = format_type.strip().lower().lstrip(".")
         format_key = registry.extension_map.get(format_type, format_type)
@@ -175,6 +180,7 @@ class Formatter:
             indent (int): Indentation level for pretty-printing.
             output (str, optional): If provided, writes the output to this file path instead of printing.
         """
+        logger.debug(f"[Formatter] Preparing pretty print")
         if output:
             self.save("json", path=output, indent=indent)
         else:
