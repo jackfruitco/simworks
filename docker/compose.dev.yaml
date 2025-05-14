@@ -1,8 +1,9 @@
 services:
-  sim-works:
+  server:
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
+      target: web
     env_file:
       - .env
     expose:
@@ -22,10 +23,10 @@ services:
     networks:
       - SimWorksNet
     depends_on:
-      sim-works-db:
+      db:
         condition: service_healthy
 
-  sim-works-db:
+  db:
     image: postgres:${DB_IMAGE_TAG:-17.2-alpine}
     restart: always
     user: postgres
@@ -50,7 +51,7 @@ services:
       timeout: 5s
       retries: 5
 
-  sim-works-nginx:
+  nginx:
     image: nginx:${PROXY_IMAGE_TAG:-latest}
     # user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
     ports:
@@ -64,20 +65,78 @@ services:
       - static-vol:/app/static
       - media-vol:/app/media
     depends_on:
-      - sim-works
+      - server
     networks:
       - SimWorksNet
     entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
-  sim-works-redis:
+  redis:
     image: redis:${REDIS_IMAGE_TAG:-7.4.2-alpine}
     command: redis-server --requirepass ${REDIS_PASSWORD:?password not set!}
+    entrypoint: []
     container_name: ${REDIS_HOSTNAME:-redis}
     hostname: ${REDIS_HOSTNAME:-redis}
     networks:
       - SimWorksNet
     expose:
       - '${REDIS_PORT:-6379}'
+
+  celery:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: celery
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app/SimWorks
+    user: appuser
+    # command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    volumes:
+      - static-vol:/app/static
+      - media-vol:/app/media
+    restart: unless-stopped
+    networks:
+      - SimWorksNet
+    hostname: 'celery-worker'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  celerybeat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: beat
+    user: appuser
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app/SimWorks
+    # command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
+    volumes:
+      - static-vol:/app/static
+      - media-vol:/app/media
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    networks:
+      - SimWorksNet
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   db-data:
