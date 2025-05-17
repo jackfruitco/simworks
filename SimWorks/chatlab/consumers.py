@@ -138,8 +138,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         func_name = inspect.currentframe().f_code.co_name
 
-        # simulation = await sync_to_async(Simulation.objects.get)(id=self.simulation_id)
-
         # Check if simulation has ended or timed out
         if await self.is_simulation_ended(self.simulation):
             return
@@ -173,20 +171,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 display_initials = await sync_to_async(
                     lambda: first_msg.simulation.sim_patient_initials
                 )()
-                """
-                await self.channel_layer.group_send(
-                    self.room_group_name,
-                    {
-                        "type": "chat_message",
-                        "content": first_msg.content,
-                        "sender": sender_username,
-                        "display_name": display_name,
-                        "display_initials": display_initials,
-                        "status": "delivered",
-                        "id": str(first_msg.id),
-                    },
-                )
-                """
 
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
