@@ -1,10 +1,12 @@
 # core/utils/system.py
 import os
+import logging
 
 from django.core.exceptions import ImproperlyConfigured
 
-_SENTINEL = object()
+from logging import getLogger
 
+_SENTINEL = object()
 
 def check_env(var_name, default=_SENTINEL):
     """
@@ -24,7 +26,7 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = (
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
-        raise ImproperlyConfigured(error_msg)
+        # raise ImproperlyConfigured(error_msg)
 
 def coerce_to_bool(value: str | bool | int) -> bool:
     """
@@ -41,3 +43,21 @@ def coerce_to_bool(value: str | bool | int) -> bool:
     if isinstance(value, str):
         return value.strip().lower() not in ('false', '0', 'no', '')
     return bool(value)
+
+import logging
+from typing import Any
+
+def remove_null_keys(_dict: Any) -> dict[Any, Any]:
+    """
+    Removes keys from a dictionary whose values are None or empty strings.
+
+    If the input is not a dictionary, attempts to coerce it into one.
+    """
+    if not isinstance(_dict, dict):
+        try:
+            _dict = dict(_dict)
+        except (ValueError, TypeError) as e:
+            logging.error(f"Failed to convert {type(_dict)} to dict: {e}")
+            return _dict
+
+    return {k: v for k, v in _dict.items() if v not in (None, "")}

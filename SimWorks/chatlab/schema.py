@@ -1,4 +1,5 @@
 import graphene
+from django.shortcuts import get_object_or_404
 from graphene_django.types import DjangoObjectType
 
 from accounts.models import CustomUser
@@ -12,17 +13,94 @@ class UserType(DjangoObjectType):
 
 
 class MessageType(DjangoObjectType):
-    sender = graphene.Field(UserType)
+    sender = graphene.Field(
+        UserType
+    )
 
     class Meta:
         model = Message
-        fields = ("id", "simulation", "content", "sender", "timestamp", "role")
+        fields = (
+            "id",
+            "simulation",
+            "message_type",
+            "media",
+            "is_from_ai",
+            "is_deleted",
+            "content",
+            "sender",
+            "timestamp",
+            "role"
+        )
 
 
 class Query(graphene.ObjectType):
-    message = graphene.Field(MessageType, id=graphene.Int(required=True))
-    all_message = graphene.List(MessageType)
 
+    message = graphene.Field(
+        MessageType,
+        id=graphene.Int(required=True)
+    )
+
+    messages = graphene.List(
+        MessageType,
+        ids=graphene.List(graphene.Int),
+        simulation=graphene.List(graphene.Int),
+        message_type=graphene.List(graphene.String),
+        limit=graphene.Int(),
+    )
+
+    def resolve_message(
+            self,
+            info,
+            id
+    ):
+        """Return a message by id."""
+        return get_object_or_404(Message, id=id)
+
+    def resolve_messages(
+            self,
+            info,
+            ids=None,
+            simulation=None,
+            message_type=None,
+            limit=None
+    ):
+        """
+        Return messages, optionally filtered by message IDs and simulation(s).
+
+        Args:
+            ids: Optional list of message IDs to include.
+            simulation: A single simulation ID or list of IDs.
+            message_type: A single message type or list of message types.
+            limit: Max number of messages to return.
+
+        Returns:
+            QuerySet of Message objects.
+        """
+        qs = Message.objects.all()
+
+        # Filter by message IDs, if provided.
+        if ids:
+            if not isinstance(ids, list):
+                ids = [ids]
+            qs = qs.filter(id__in=ids)
+
+        # Filter by simulation(s), if provided.
+        if simulation is not None:
+            if isinstance(simulation, int):
+                simulation = [simulation]
+            qs = qs.filter(simulation__id__in=simulation)
+
+        # Filter by message type(s), if provided.
+        if message_type:
+            if not isinstance(message_type, list):
+                message_type = [message_type]
+            qs = qs.filter(message_type__in=message_type)
+
+        # Limit the number of messages returned, if provided.
+        if limit:
+            qs = qs[:limit]
+
+        return qs
 
 class Mutation(graphene.ObjectType):
     pass

@@ -75,6 +75,7 @@ class ResponseType(models.TextChoices):
     INITIAL = ("I", _("initial"))
     REPLY = ("R", _("reply"))
     FEEDBACK = ("F", _("feedback"))
+    MEDIA = ("M", _("media"))
 
 
 class Response(models.Model):

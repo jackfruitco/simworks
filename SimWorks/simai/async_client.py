@@ -7,6 +7,7 @@ to generate responses using the OpenAI model.
 import base64
 import inspect
 import logging
+import mimetypes
 import uuid
 from typing import List
 from typing import Optional
@@ -211,6 +212,7 @@ class AsyncOpenAIService:
 
         return await process_response(response, simulation, stream, response_type=ResponseType.FEEDBACK)
 
+    # noinspection PyTypeChecker
     async def generate_patient_reply_image(
             self,
             *modifiers,
@@ -218,27 +220,38 @@ class AsyncOpenAIService:
             output_format="webp",
             include_default=False,
             **kwargs
-    ) -> SimulationImage | Exception:
+    ) -> SimulationImage:
         """
         Generate a patient image for a given simulation using OpenAI Image API.
         """
         func_name = inspect.currentframe().f_code.co_name
         logger.debug(f"[{func_name}] starting image generation...")
 
-        # Resolve simulation to ensure object is available, but PK can be provided
+        # Resolve simulation instance
+        # Allows for sim to be passed as int or Simulation object
         simulation = await sync_to_async(resolve_simulation)(simulation)
-
         logger.debug(f"Generating image for Sim{simulation.pk}...")
 
+        # Clean & validate output format
+        # See https://platform.openai.com/docs/api-reference/images/create#images-create-output_format
+        OPENAI_VALID_FORMATS = {"png", "jpeg", "webp"}
+        output_format = output_format.lower().strip()
+        if output_format not in OPENAI_VALID_FORMATS:
+            raise ValueError(
+                f"Unsupported output_format: {output_format} "
+                f"(must be one of {OPENAI_VALID_FORMATS})"
+            )
+
+        # Build prompt
         prompt = await sync_to_async(build_prompt)(
             "Image.PatientImage",
             *modifiers,
             simulation=simulation,
             include_default=include_default,
-            **kwargs
+            **kwargs,
         )
 
-        # Call OpenAI API
+        # Call OpenAI API Images API
         # See https://platform.openai.com/docs/api-reference/images
         try:
             response = await self.client.images.generate(
@@ -247,32 +260,17 @@ class AsyncOpenAIService:
                 n=1,
                 size="1024x1024",
                 output_format=output_format,
-                output_compression=70
+                output_compression=70,
             )
         except Exception as e:
             logger.error(f"[{func_name}] OpenAI image generation failed: {e}")
             return e
 
-        try:
-            # Decode base64 image
-            image_base64 = response.data[0].b64_json
-            image_bytes = base64.b64decode(image_base64)
-
-            # Prepare file in-memory
-            image_uuid = uuid.uuid4()
-            image_file = ContentFile(image_bytes, name=f"temp_{image_uuid}.{output_format}")
-
-            # Create SimulationImage instance
-            sim_image = await sync_to_async(SimulationImage.objects.create)(
-                simulation=simulation,
-                uuid=image_uuid,
-                original=image_file,
-            )
-
-        except Exception as e:
-            logger.error(f"[{func_name}] Failed to save SimulationImage: {e}")
-            return e
-
-        logger.debug(f"Image saved to DB for Sim#{simulation.pk}")
-        return sim_image
+        return await process_response(
+            response=response,
+            simulation=simulation,
+            stream=False,
+            response_type=ResponseType.MEDIA,
+            mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0] or "image/webp"
+        )
 

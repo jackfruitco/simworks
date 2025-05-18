@@ -4,13 +4,14 @@ import logging
 import threading
 
 from asgiref.sync import async_to_sync
+from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
 from django.utils.timezone import now
 
-from chatlab.models import ChatSession
+from chatlab.models import ChatSession, Message, MessageMediaLink
 from core.utils import get_or_create_system_user
 from simai.async_client import AsyncOpenAIService
-from simcore.models import Simulation
+from simcore.models import Simulation, SimulationImage
 from simcore.utils import generate_fake_name
 
 logger = logging.getLogger(__name__)
@@ -62,3 +63,11 @@ def maybe_start_simulation(simulation):
     if simulation.start_timestamp is None:
         simulation.start_timestamp = now()
         simulation.save(update_fields=["start_timestamp"])
+
+@database_sync_to_async
+def add_message_media(message_id, media_id):
+    """Adds a media object to a message."""
+    return MessageMediaLink.objects.get_or_create(
+        message_id=message_id,
+        media_id=media_id
+    )

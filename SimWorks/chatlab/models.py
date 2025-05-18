@@ -1,11 +1,12 @@
 import logging
 
+from channels.db import database_sync_to_async
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from simai.models import Response, Prompt
-from simcore.models import Simulation, BaseSession
+from simcore.models import Simulation, BaseSession, SimulationImage
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,17 @@ class ChatSession(BaseSession):
 
 
 class Message(models.Model):
+
+
+    class MessageType(models.TextChoices):
+        TEXT = "text", "Text"
+        IMAGE = "image", "Image"
+        VIDEO = "video", "Video"
+        AUDIO = "audio", "Audio"
+        FILE = "file", "File"
+        SYSTEM = "system", "System"
+
+
     timestamp = models.DateTimeField(auto_now_add=True)
 
     simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE)
@@ -34,6 +46,24 @@ class Message(models.Model):
         choices=RoleChoices.choices,
         default=RoleChoices.USER,
     )
+
+    message_type = models.CharField(
+        max_length=16,
+        choices=MessageType.choices,
+        default=MessageType.TEXT,
+    )
+
+    # Media
+    media = models.ManyToManyField(
+        SimulationImage,
+        through='MessageMediaLink',
+        related_name="messages",
+        blank=True
+    )
+
+    # UX/Status enhancements
+    is_from_ai = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
 
     is_read = models.BooleanField(default=False)
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
@@ -73,6 +103,17 @@ class Message(models.Model):
             "content": self.content,
         }
 
+    def is_media(self):
+        return self.message_type in {
+            self.MessageType.IMAGE,
+            self.MessageType.VIDEO,
+            self.MessageType.AUDIO,
+            self.MessageType.FILE,
+        }
+
+    def has_media(self):
+        return self.media.exists()
+
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         if self.order is None:
@@ -92,6 +133,15 @@ class Message(models.Model):
         unique_together = ("simulation", "order")
         ordering = ["timestamp"]
 
-    def __str__(self) -> str:
-        role_label = dict(RoleChoices.choices).get(self.role, self.role)
-        return f"ChatLab Sim#{self.simulation.pk} Message #{self.order} ({role_label})"
+    def __str__(self):
+        return f"ChatLab Sim#{self.simulation.pk} {self.get_message_type_display()} by {self.sender} at {self.timestamp:%H:%M:%S}"
+
+class MessageMediaLink(models.Model):
+    created = models.DateTimeField(auto_now_add=True)
+    modified = models.DateTimeField(auto_now=True)
+
+    message = models.ForeignKey("chatlab.Message", on_delete=models.CASCADE)
+    media = models.ForeignKey("simcore.SimulationImage", on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("message", "media")
