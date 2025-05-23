@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "daphne",
     "channels",
     "accounts",
+    "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -127,16 +128,32 @@ else:
 OPENAI_API_KEY = check_env("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", 'gpt-4o-mini')
 
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = os.getenv("REDIS_PORT", 6379)
+REDIS_PASSWORD = check_env("REDIS_PASSWORD")
+REDIS_BASE = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
+
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [
-                f"redis://:{check_env('REDIS_PASSWORD')}@{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', 6379)}"
+                f"{REDIS_BASE}/0"
             ],
         },
     }
 }
+
+# Celery config
+CELERY_BROKER_URL = f"{REDIS_BASE}/1"
+CELERY_RESULT_BACKEND = f"{REDIS_BASE}/2"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_TASK_TIME_LIMIT = 30         # seconds
+CELERY_TASK_SOFT_TIME_LIMIT = 25    # seconds
+
+# Celery Beat config
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 
 # Password validation

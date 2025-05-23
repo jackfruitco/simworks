@@ -40,9 +40,13 @@ async def message_schema(initial: bool = False) -> dict:
             "strict": True,
             "schema": {
                 "type": dynamic_type(base="object", initial=True, only=False),
-                "required": ["messages", "metadata"],
+                "required": ["image_requested", "messages", "metadata"],
                 "additionalProperties": False,
                 "properties": {
+                    "image_requested": {
+                        "type": dynamic_type("boolean", initial, only=False),
+                        "description": "Whether an image was requested by the patient. If true, the patient should provide an image.",
+                    },
                     "messages": {
                         "type": dynamic_type("array", True, only=False),
                         "description": "Simulated SMS messages from the patient.",

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
+from chatlab.models import Message, MessageMediaLink
 from .models import *
 
 
@@ -14,6 +15,22 @@ class MetadataInline(admin.TabularInline):
     def has_change_permission(self, request, obj=None):
         return False
 
+
+class MediaMessageInLine(admin.TabularInline):
+    model = MessageMediaLink
+    fk_name = "media"
+    extra = 0
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+class MessageInline(admin.TabularInline):
+    model = Message
+    extra = 0
+    fieldsets = [
+        (None, {"fields": ("sender", "role", "content")}),
+    ]
 
 @admin.register(Simulation)
 class SimulationAdmin(admin.ModelAdmin):
@@ -70,6 +87,12 @@ class SimulationAdmin(admin.ModelAdmin):
 
 @admin.register(SimulationMetadata)
 class SimulationMetadataAdmin(admin.ModelAdmin):
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+@admin.register(SimulationImage)
+class SimulationImageAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False

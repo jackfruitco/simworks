@@ -3,8 +3,10 @@
 ARG UV_VERSION=0.6.16
 ARG PYTHON_VERSION=3.13
 
-# === Builder Stage ===
+# === UV Stage ===
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+# === Builder Stage ===
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
 
 COPY --from=uv /uv /uvx /bin/
@@ -16,56 +18,60 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_SYSTEM_PYTHON=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local
 
-# Install project dependencies globally into image Python
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-project --compile-bytecode && \
     uv pip list
 
-# === Runtime Stage ===
-FROM python:${PYTHON_VERSION}-slim-bookworm AS run
+# === Runtime Base Stage ===
+FROM python:${PYTHON_VERSION}-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Copy dependencies and app source
+# Copy Python deps from builder
 COPY --from=builder /usr/local /usr/local
+
+# Create user and folders
+ARG UID=10001
+RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
+    --shell "/sbin/nologin" --no-create-home --uid "${UID}" appuser && \
+    mkdir -p /app/static /app/media /app/logs && \
+    chown -R appuser:appuser /app/static /app/media /app/logs
+
+# === Web Stage (default) ===
+FROM base AS web
 
 COPY SimWorks /app/SimWorks
 COPY docker/entrypoint.dev.sh /app/docker/entrypoint.dev.sh
 COPY docker/healthcheck.sh /app/docker/healthcheck.sh
 
-RUN chmod +x /app/docker/entrypoint.dev.sh /app/docker/healthcheck.sh
-
-# Create non-privileged user
-ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/nonexistent" \
-    --shell "/sbin/nologin" \
-    --no-create-home \
-    --uid "${UID}" \
-    appuser
-
-# Static/media/logs setup
-RUN mkdir -p /app/static /app/media /app/logs && \
-    chown -R appuser:appuser /app/static /app/media /app/logs
-
-# (Optional for dev): Install handy tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nano \
-    curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN chmod +x /app/docker/*.sh
 
-# Healthcheck
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app/docker/healthcheck.sh
 
-# USER appuser  # Enable when ready
-
 WORKDIR /app/SimWorks
-
 ENTRYPOINT ["/app/docker/entrypoint.dev.sh"]
+
+# === Celery Worker Stage ===
+FROM base AS celery
+
+COPY SimWorks /app/SimWorks
+WORKDIR /app/SimWorks
+CMD ["celery", "-A", "config", "worker", "--loglevel=info"]
+
+# === Celery Beat Stage ===
+FROM base AS beat
+
+COPY SimWorks /app/SimWorks
+WORKDIR /app/SimWorks
+CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
