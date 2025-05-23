@@ -90,7 +90,8 @@ services:
       - .env
     environment:
       - PYTHONPATH=/app/SimWorks
-    user: appuser
+    # user: appuser
+    user: root
     # command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
     depends_on:
       redis:

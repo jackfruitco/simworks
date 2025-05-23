@@ -5,6 +5,7 @@ import logging
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 
+from chatlab.utils import broadcast_message
 from simai.async_client import AsyncOpenAIService
 from simcore.models import Simulation
 
@@ -35,7 +36,10 @@ def generate_patient_reply_image_task(simulation_id):
 
     async def run():
         service = AsyncOpenAIService()
-        await service.generate_patient_reply_image(simulation=simulation)
+        messages = await service.generate_patient_reply_image(simulation=simulation)
+        for message in messages:
+            await broadcast_message(message)
+        return messages
 
     try:
         asyncio.run(run())

@@ -157,6 +157,28 @@ class Simulation(models.Model):
         return None
 
     @property
+    def previous_response_id(self, exclude_type: list[str] | str="M"):
+        """
+        Returns the id of the previous OpenAI response for this simulation.
+
+        :param exclude_type: String or List of ResponseType enums to exclude from the query.
+
+        :return:
+        """
+        qs =  self.responses.all()
+        if exclude_type is not None:
+            if not isinstance(exclude_type, list):
+                try:
+                    exclude_type = [exclude_type]
+                except TypeError as e:
+                    logger.error(f"Unable to coerce 'exclude_type' to list: '{exclude_type}'")
+                    exclude_type = []
+            for t in exclude_type:
+                qs = qs.exclude(type=t)
+        response = qs.order_by("-created").first()
+        return response.id if response else None
+
+    @property
     def start_timestamp_ms(self):
         if self.start_timestamp:
             return int(self.start_timestamp.timestamp() * 1000)

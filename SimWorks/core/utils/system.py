@@ -49,10 +49,13 @@ from typing import Any
 
 def remove_null_keys(_dict: Any) -> dict[Any, Any]:
     """
-    Removes keys from a dictionary whose values are None or empty strings.
+    Recursively removes keys from a dictionary (or nested dictionaries/lists)
+    whose values are None or empty strings.
 
     If the input is not a dictionary, attempts to coerce it into one.
     """
+    import logging
+
     if not isinstance(_dict, dict):
         try:
             _dict = dict(_dict)
@@ -60,4 +63,20 @@ def remove_null_keys(_dict: Any) -> dict[Any, Any]:
             logging.error(f"Failed to convert {type(_dict)} to dict: {e}")
             return _dict
 
-    return {k: v for k, v in _dict.items() if v not in (None, "")}
+    def _clean(value):
+        if isinstance(value, dict):
+            return {
+                k: _clean(v)
+                for k, v in value.items()
+                if v not in (None, "") and _clean(v) not in (None, {}, [])
+            }
+        elif isinstance(value, list):
+            return [
+                _clean(item)
+                for item in value
+                if item not in (None, "") and _clean(item) not in (None, {}, [])
+            ]
+        else:
+            return value
+
+    return _clean(_dict)

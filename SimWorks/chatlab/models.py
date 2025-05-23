@@ -64,8 +64,8 @@ class Message(models.Model):
     # UX/Status enhancements
     is_from_ai = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
-
     is_read = models.BooleanField(default=False)
+
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
     response = models.ForeignKey(
         "simai.Response",
@@ -77,6 +77,10 @@ class Message(models.Model):
     )
     openai_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
+
+    @property
+    def has_media(self):
+        return self.media.exists()
 
     def set_openai_id(self, openai_id):
         self.openai_id = openai_id

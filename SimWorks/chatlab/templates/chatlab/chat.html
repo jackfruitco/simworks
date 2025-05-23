@@ -9,7 +9,7 @@
   <button
     id="load-older-btn"
     class="old message-btn"
-    @click="loadOlderMessages()"
+    {%  comment %}@click="loadOlderMessages()"{% endcomment %}
     x-show="hasMoreMessages"
   >
     Load Older Messages
@@ -23,7 +23,7 @@
     hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
     hx-trigger="load"
     hx-swap="innerHTML"
-    @scroll.passive="handleScroll"
+    {# @scroll.passive="handleScroll" TODO deprecated- scroll handling moved to ChatManager #}
   >
     <div id="message-load-anchor"></div>
     <!-- Messages will be swapped here by HTMX -->

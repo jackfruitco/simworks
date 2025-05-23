@@ -4,6 +4,7 @@ import json
 import logging
 import random
 import time
+import warnings
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -147,7 +148,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         event_type = data.get("type")  # Identify the type of event
         ChatConsumer.log(self, func_name, f"{event_type} event received: {data}")
 
-        if event_type == "message":
+        if event_type in {"message", "chat.message"}:
             await self.handle_message(data)
         elif event_type == "typing":
             await self.handle_typing(data)
@@ -214,6 +215,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name)
 
+        # TODO deprecation warning
+        if data.get('event_type') == "message":
+            warnings.warn(
+                "'message' event_type is deprecated. Use 'chat.message' instead.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+
         is_from_user = data.get("role", "").upper() == "USER"
         content = data["content"]
         sender = self.scope["user"]
@@ -246,6 +255,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Convert sim_responses to a list in a synchronous thread
             sim_responses_list = await sync_to_async(list)(sim_responses)
+
             # Broadcast each system-generated message
             for message in sim_responses_list:
                 await self.broadcast_message(message, status="delivered")
@@ -307,6 +317,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name)
 
+        # TODO deprecated
+        warnings.warn(
+            f"'{func_name}' is deprecated. Use 'utils.broadcast_message' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         has_sender = await sync_to_async(lambda: bool(message.sender_id))()
         if has_sender:
             sender_username = await sync_to_async(lambda: message.sender.username)()
@@ -345,6 +362,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name, f"message #{message_id} to {status}")
+
 
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -443,32 +461,66 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def chat_message(self, event: dict) -> None:
         """
-        Send a chat message to the WebSocket from the room group.
+        Handles incoming message events.
 
-        :param event: Dict with message metadata and content
+        This method is triggered when a message event occurs and can be
+        used to process or respond to the incoming event. It is an asynchronous
+        method and does not return any value. The event parameter provides the
+        details of the message event being handled.
+
+        :param event: A dictionary containing information about the message
+            event. It may include various keys relevant to the message, such as
+            sender details, message content, timestamps, etc.
+        :type event: dict
+        :return: None
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(self, func_name)
 
-        # Check if 'content' exists in the event
-        content = event.get("content", None)
-        if content is None:
-            ChatConsumer.log(self, func_name, "Error! chat_message content is None")
+        # Check if 'content' or `media` exists in the event
+        content = event.get("content")
+        media = event.get("media")
+        if content is None and media is None:
+            ChatConsumer.log(
+                self,
+                func_name,
+                msg="at least one of the following must provided, but was not found: `content`, `media`",
+                level=logging.ERROR,
+            )
             return
 
         # Proceed to send the message if 'content' exists
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "id": event.get("id"),
-                    "type": "chat_message",
-                    "status": event.get("status"),
-                    "content": content,
-                    "display_name": event.get("display_name"),
-                    "sender": event.get("sender") or "System",
-                }
-            )
-        )
+        await self.send(text_data=json.dumps(event))
+
+
+    # async def chat_messageV1(self, event: dict) -> None:
+    #     """
+    #     Send a chat message to the WebSocket from the room group.
+    #
+    #     :param event: Dict with message metadata and content
+    #     """
+    #     func_name = inspect.currentframe().f_code.co_name
+    #     ChatConsumer.log(self, func_name)
+    #
+    #     # Check if 'content' exists in the event
+    #     content = event.get("content", None)
+    #     if content is None:
+    #         ChatConsumer.log(self, func_name, "Error! chat_messageV1 content is None")
+    #         return
+    #
+    #     # Proceed to send the message if 'content' exists
+    #     await self.send(
+    #         text_data=json.dumps(
+    #             {
+    #                 "id": event.get("id"),
+    #                 "type": "chat_message",
+    #                 "status": event.get("status"),
+    #                 "content": content,
+    #                 "display_name": event.get("display_name"),
+    #                 "sender": event.get("sender") or "System",
+    #             }
+    #         )
+    #     )
 
     async def message_status_update(self, event: dict) -> None:
         """

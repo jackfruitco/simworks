@@ -19,7 +19,6 @@
     </content>
     <orderEntry type="jdk" jdkName="uv (SimWorks)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="@alpinejs/intersect" level="application" />
   </component>
   <component name="TemplatesService">
     <option name="TEMPLATE_CONFIGURATION" value="Django" />

@@ -4,19 +4,14 @@ to facilitate patient simulations in a chat environment. It includes functions
 to build payloads for patient replies and introductions, and a service class
 to generate responses using the OpenAI model.
 """
-import base64
 import inspect
 import logging
 import mimetypes
-import uuid
 from typing import List
 from typing import Optional
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.core.files.base import ContentFile
-from django.http import Http404
-from django.shortcuts import get_object_or_404
 from openai import AsyncOpenAI
 
 from chatlab.models import Message
@@ -65,7 +60,7 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         dict: A dictionary containing the previous response ID and user input.
     """
     return {
-        "previous_response_id": user_msg.get_previous_openai_id(),
+        "previous_response_id": user_msg.simulation.previous_response_id or None,
         "input": [
             user_msg.get_openai_input(),
             # {"role": "user", "content": "content"},
@@ -84,15 +79,16 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     Returns:
         dict: A dictionary containing the previous response ID and developer/user input.
     """
-    last_ai_msg = (
-        simulation.message_set.filter(openai_id__isnull=False)
-        .order_by("-timestamp")
-        .first()
-    )
+    # last_ai_msg = (
+    #     simulation.message_set.filter(openai_id__isnull=False)
+    #     .order_by("-timestamp")
+    #     .first()
+    # )
+
     instructions = build_prompt("Feedback.endex", include_default=False)
 
     return {
-        "previous_response_id": last_ai_msg.openai_id if last_ai_msg else None,
+        "previous_response_id": simulation.previous_response_id or None,
         "input": [
             {"role": "developer", "content": instructions},
             {"role": "user", "content": "Provide feedback to the user"},
@@ -220,17 +216,17 @@ class AsyncOpenAIService:
             output_format="webp",
             include_default=False,
             **kwargs
-    ) -> SimulationImage:
+    ) -> List[Message]:
         """
         Generate a patient image for a given simulation using OpenAI Image API.
         """
         func_name = inspect.currentframe().f_code.co_name
-        logger.debug(f"[{func_name}] starting image generation...")
+        logger.debug(f"[{func_name}] triggered...")
 
         # Resolve simulation instance
         # Allows for sim to be passed as int or Simulation object
         simulation = await sync_to_async(resolve_simulation)(simulation)
-        logger.debug(f"Generating image for Sim{simulation.pk}...")
+        logger.info(f"starting image generation image for Sim{simulation.pk}...")
 
         # Clean & validate output format
         # See https://platform.openai.com/docs/api-reference/images/create#images-create-output_format
