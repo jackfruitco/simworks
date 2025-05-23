@@ -1,11 +1,13 @@
 # simcore/models.py
 import logging
+import mimetypes
 import os
 import uuid
 from datetime import timedelta
 
 from autoslug import AutoSlugField
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import QuerySet
 from django.utils.timezone import now
@@ -155,6 +157,28 @@ class Simulation(models.Model):
         return None
 
     @property
+    def previous_response_id(self, exclude_type: list[str] | str="M"):
+        """
+        Returns the id of the previous OpenAI response for this simulation.
+
+        :param exclude_type: String or List of ResponseType enums to exclude from the query.
+
+        :return:
+        """
+        qs =  self.responses.all()
+        if exclude_type is not None:
+            if not isinstance(exclude_type, list):
+                try:
+                    exclude_type = [exclude_type]
+                except TypeError as e:
+                    logger.error(f"Unable to coerce 'exclude_type' to list: '{exclude_type}'")
+                    exclude_type = []
+            for t in exclude_type:
+                qs = qs.exclude(type=t)
+        response = qs.order_by("-created").first()
+        return response.id if response else None
+
+    @property
     def start_timestamp_ms(self):
         if self.start_timestamp:
             return int(self.start_timestamp.timestamp() * 1000)
@@ -210,7 +234,7 @@ class Simulation(models.Model):
 
     def save(self, *args, **kwargs):
         from simai.prompts import build_prompt
-        # Ensure prompt is set based on user.role if not already provided
+        # Ensure the prompt is set based on user.role if not already provided
         if not self.prompt:
             if not self.user:
                 raise ValueError("Cannot assign default prompt without a user.")
@@ -218,7 +242,7 @@ class Simulation(models.Model):
             # self.prompt = build_prompt(lab="chatlab", user=self.user, role=getattr(self.user, "role", None))
             self.prompt = build_prompt(lab="chatlab", user=self.user)
 
-        # Handle display name update if full name is changed
+        # Handle display name update if the full name is changed
         updating_name = False
         if self.pk:
             old = Simulation.objects.get(pk=self.pk)
@@ -290,9 +314,11 @@ class SimulationMetadata(models.Model):
 
 
 class SimulationImage(models.Model):
-    """Store image for specified simulation."""
+    """Store image for the specified simulation."""
     created_at = models.DateTimeField(auto_now_add=True, editable=False)
     modified_at = models.DateTimeField(auto_now=True, editable=False)
+
+    mime_type = models.CharField(max_length=100, blank=True, null=True)
 
     simulation = models.ForeignKey(
         Simulation,
@@ -355,3 +381,25 @@ class SimulationImage(models.Model):
 
     def __str__(self):
         return f"Image for Sim#{self.simulation.pk} ({self.slug})"
+
+    def save(self, *args, **kwargs):
+        # Guess MIME type from file name (fallback approach)
+        guessed_mime, _ = mimetypes.guess_type(self.original.name)
+
+        if guessed_mime:
+            if self.mime_type:
+                if self.mime_type != guessed_mime:
+                    logger.warning(
+                        f"Mismatch in MIME type for {self.original.name}: "
+                        f"declared={self.mime_type}, guessed={guessed_mime}"
+                    )
+                    raise ValidationError(
+                        f"MIME type mismatch: {self.mime_type} != {guessed_mime}"
+                    )
+            else:
+                self.mime_type = guessed_mime
+        else:
+            logger.warning(f"Could not guess MIME type for {self.original.name}")
+            self.mime_type = "application/octet-stream"
+
+        super().save(*args, **kwargs)

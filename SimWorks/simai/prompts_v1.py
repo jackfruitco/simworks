@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from accounts.models import CustomUser, UserRole
 
 
+
 DEFAULT_PROMPT_BASE = (
     """
     You are simulating a standardized patient role player for medical training.

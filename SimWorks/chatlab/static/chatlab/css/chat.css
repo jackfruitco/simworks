@@ -72,6 +72,26 @@
   white-space: nowrap;
 }
 
+/* Chat Bubble Media */
+.media-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.media-wrapper {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.media-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
 /* Typing indicator animation */
 .typing-indicator {
   display: flex;
@@ -310,6 +330,9 @@
     padding: 0.5rem 0.5rem;
   }
   .chat-container {
+  }
+  .media-container {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
 }
 

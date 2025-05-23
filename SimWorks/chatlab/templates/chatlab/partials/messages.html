@@ -1,10 +1,20 @@
 {% comment %} Renders a list of chat messages {% endcomment %}
 {% for message in messages %}
   <div class="chat-bubble {% if message.sender.username == user.username %}outgoing{% else %}incoming{% endif %}"
-       data-message-id="{{ message.id }}">
+       data-message-id="{{ message.id }}"
+        data-has-media="{{ message.has_media }}">
     <strong class="sender-name">
       {{ message.display_name|default:message.sender.get_full_name|default:message.sender.username }}
     </strong>
+    {% if message.has_media %}
+      <div class="media-container">
+        {% for media in message.media.all %}
+          <div id="media_{{ media.uuid }}" class="media-wrapper">
+            <img src="{{ media.thumbnail.url }}" alt="{{ media.description }}" class="media-image">
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
     {{ message.content|linebreaksbr }}
     <div class="timestamp">
         <span

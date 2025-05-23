@@ -4,23 +4,24 @@ to facilitate patient simulations in a chat environment. It includes functions
 to build payloads for patient replies and introductions, and a service class
 to generate responses using the OpenAI model.
 """
-
 import inspect
 import logging
+import mimetypes
 from typing import List
 from typing import Optional
 
 from asgiref.sync import sync_to_async
-from chatlab.models import Message
-from simcore.models import Simulation
-from . import prompts_v1
-from .models import ResponseType
-from .output_schemas import message_schema, feedback_schema
-from .openai_gateway import process_response
 from django.conf import settings
 from openai import AsyncOpenAI
 
-from .prompts import BuildPrompt, build_prompt
+from chatlab.models import Message
+from simcore.models import Simulation
+from simcore.models import SimulationImage
+from simcore.utils import resolve_simulation
+from .models import ResponseType
+from .openai_gateway import process_response
+from .output_schemas import message_schema, feedback_schema
+from .prompts import build_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         dict: A dictionary containing the previous response ID and user input.
     """
     return {
-        "previous_response_id": user_msg.get_previous_openai_id(),
+        "previous_response_id": user_msg.simulation.previous_response_id or None,
         "input": [
             user_msg.get_openai_input(),
             # {"role": "user", "content": "content"},
@@ -78,15 +79,16 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     Returns:
         dict: A dictionary containing the previous response ID and developer/user input.
     """
-    last_ai_msg = (
-        simulation.message_set.filter(openai_id__isnull=False)
-        .order_by("-timestamp")
-        .first()
-    )
+    # last_ai_msg = (
+    #     simulation.message_set.filter(openai_id__isnull=False)
+    #     .order_by("-timestamp")
+    #     .first()
+    # )
+
     instructions = build_prompt("Feedback.endex", include_default=False)
 
     return {
-        "previous_response_id": last_ai_msg.openai_id if last_ai_msg else None,
+        "previous_response_id": simulation.previous_response_id or None,
         "input": [
             {"role": "developer", "content": instructions},
             {"role": "user", "content": "Provide feedback to the user"},
@@ -94,7 +96,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     }
 
 
-class AsyncOpenAIChatService:
+class AsyncOpenAIService:
     """
     A service class to interact with the OpenAI API for generating patient replies
     and introductions in the context of simulations.
@@ -109,6 +111,12 @@ class AsyncOpenAIChatService:
         """
         self.model = model or getattr(settings, "OPENAI_MODEL", "gpt-4")
         self.client = AsyncOpenAI()  # Initialize the OpenAI client
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
 
     @staticmethod
     async def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
@@ -163,7 +171,7 @@ class AsyncOpenAIChatService:
             level=logging.INFO,
         )
 
-        # Build payload (prompt, instructions), then get response from OpenAI
+        # Build payload (prompt, instructions), then get the response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
         text = await message_schema()
         response = await self.client.responses.create(
@@ -199,3 +207,66 @@ class AsyncOpenAIChatService:
         )
 
         return await process_response(response, simulation, stream, response_type=ResponseType.FEEDBACK)
+
+    # noinspection PyTypeChecker
+    async def generate_patient_reply_image(
+            self,
+            *modifiers,
+            simulation: Simulation | int = None,
+            output_format="webp",
+            include_default=False,
+            **kwargs
+    ) -> List[Message]:
+        """
+        Generate a patient image for a given simulation using OpenAI Image API.
+        """
+        func_name = inspect.currentframe().f_code.co_name
+        logger.debug(f"[{func_name}] triggered...")
+
+        # Resolve simulation instance
+        # Allows for sim to be passed as int or Simulation object
+        simulation = await sync_to_async(resolve_simulation)(simulation)
+        logger.info(f"starting image generation image for Sim{simulation.pk}...")
+
+        # Clean & validate output format
+        # See https://platform.openai.com/docs/api-reference/images/create#images-create-output_format
+        OPENAI_VALID_FORMATS = {"png", "jpeg", "webp"}
+        output_format = output_format.lower().strip()
+        if output_format not in OPENAI_VALID_FORMATS:
+            raise ValueError(
+                f"Unsupported output_format: {output_format} "
+                f"(must be one of {OPENAI_VALID_FORMATS})"
+            )
+
+        # Build prompt
+        prompt = await sync_to_async(build_prompt)(
+            "Image.PatientImage",
+            *modifiers,
+            simulation=simulation,
+            include_default=include_default,
+            **kwargs,
+        )
+
+        # Call OpenAI API Images API
+        # See https://platform.openai.com/docs/api-reference/images
+        try:
+            response = await self.client.images.generate(
+                model="gpt-image-1",
+                prompt=prompt,
+                n=1,
+                size="1024x1024",
+                output_format=output_format,
+                output_compression=70,
+            )
+        except Exception as e:
+            logger.error(f"[{func_name}] OpenAI image generation failed: {e}")
+            return e
+
+        return await process_response(
+            response=response,
+            simulation=simulation,
+            stream=False,
+            response_type=ResponseType.MEDIA,
+            mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0] or "image/webp"
+        )
+

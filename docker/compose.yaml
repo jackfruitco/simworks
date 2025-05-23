@@ -82,6 +82,68 @@ services:
     expose:
       - '${REDIS_PORT:-6379}'
 
+  celery:
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    env_file:
+      - stack.env
+    environment:
+      - PYTHONPATH=/app/SimWorks
+    user: appuser
+    command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
+    entrypoint: [ ]
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    volumes:
+      - static-vol:/app/static
+      - media-vol:/app/media
+    restart: unless-stopped
+    networks:
+      - SimWorksNet
+    hostname: 'celery-worker'
+    healthcheck:
+      test: [ "CMD", "celery", "-A", "config", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  celerybeat:
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    env_file:
+      - stack.env
+    user: appuser
+    environment:
+      - PYTHONPATH=/app/SimWorks
+    command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
+    volumes:
+      - static-vol:/app/static
+      - media-vol:/app/media
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    networks:
+      - SimWorksNet
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "celery", "-A", "config", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   db-data:
   static-vol:

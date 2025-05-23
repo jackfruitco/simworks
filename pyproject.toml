@@ -4,10 +4,13 @@ version = "0.5.21"
 description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
+    "celery>=5.5.2",
     "channels>=4.2.2",
     "channels-redis>=4.2.1",
     "daphne>=4.1.2",
     "django>=5.2",
+    "django-autoslug>=1.9.9",
+    "django-celery-beat>=2.8.1",
     "django-graphql-jwt>=0.4.0",
     "django-htmx>=1.23.0",
     "django-imagekit>=5.0.0",

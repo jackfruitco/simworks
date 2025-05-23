@@ -36,7 +36,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     this.newMessageBtn.classList.add('hidden');
                     this.newMessageBtn.classList.remove('bounce');
                 }
-                // Auto-load older messages when at top
+                // Autoload older messages when at the top
                 if (this.messagesDiv.scrollTop === 0 && this.hasMoreMessages) {
                     this.loadOlderMessages();
                 }
@@ -124,10 +124,66 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
                 } else if (data.type === 'stopped_typing') {
                     this.updateTypingUsers(data, false)
-                } else if (data.type === 'chat_message' || data.type === 'message') {
+                } else if (data.type === 'chat.message' || data.type === 'message') {
+                    // TODO add new chat.message handling here
+                    const isFromSelf = data.senderId === this.currentUser;
+                    const isFromSimulatedUser = data.isFromAi;
+                    const status = isFromSelf ? data.status || 'delivered' : null;
+                    const displayName = data.display_name || data.username || 'Unknown';
+
+                    // If not from the current user, stop simulated system typing and refresh tools
+                    if (isFromSimulatedUser) {
+                        this.simulateSystemTyping(false);
+
+                        // Check if tools new current, and refresh if not
+                        if (window.window.simManager) {
+                            window.window.simManager.checkTools([
+                                'simulation_metadata',
+                                'patient_metadata'
+                            ]);
+                        }
+
+                        // Sidebar pulse stuff
+                        if (localStorage.getItem('seenSidebarTray') === 'true') {
+                          localStorage.removeItem('seenSidebarTray');
+                          if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
+                        }
+                    }
+
+                    // Parse the message content
+                    let content = data.content;
+                    if (typeof content === 'string' && content.startsWith('"') && content.endsWith('"')) {
+                        try {
+                            content = JSON.parse(content);
+                        } catch (e) {
+                            console.warn("Failed to parse message content", e);
+                        }
+                    }
+
+                    // Play new-incoming-message sound
+                    const receiveSound = document.getElementById("receive-sound");
+                    if (!isFromSelf && receiveSound) {
+                        receiveSound.currentTime = 0;
+                        receiveSound.play().catch(() => {});
+                    }
+
+                    // Append message to chat-panel
+                    console.log("[appendMessage]", { content, isFromSelf, status, displayName });
+                    this.appendMessage(content, isFromSelf, status, displayName, data.id, data.mediaList ?? []);
+                    if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
+                        this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+                    }
+
+                } else if (data.type === 'chat_message') {
+                    console.warn(
+                        "[ChatManager] DEPRECATED",
+                        "Received deprecated event type 'chat_message'.",
+                        "Use 'message' instead."
+                    );
                     const isSender = data.sender === this.currentUser;
                     const status = isSender ? data.status || 'delivered' : null;
                     const displayName = data.display_name || data.username || 'Unknown';
+
                     if (!isSender) {
                         this.simulateSystemTyping(false);
                         if (window.window.simManager) {
@@ -158,15 +214,18 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                             console.warn("Failed to parse message content", e);
                         }
                     }
-                    console.log("[appendMessage]", { content, isSender, status, displayName });
-                    this.appendMessage(content, isSender, status, displayName, data.id);
-                    if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
-                        this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
-                    }
+
+                    // Play sound
                     const receiveSound = document.getElementById("receive-sound");
                     if (!isSender && receiveSound) {
                         receiveSound.currentTime = 0;
                         receiveSound.play().catch(() => {});
+                    }
+
+                    // Append message to chat-panel
+                    this.appendMessageV1(content, isSender, status, displayName, data.id);
+                    if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
+                        this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
                     }
                 }
             };
@@ -180,7 +239,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             return this.messagesDiv.scrollHeight - this.messagesDiv.scrollTop <= this.messagesDiv.clientHeight + 50;
         },
         setupEventListeners() {
-            // Removed the submit event listener
+            // no event listeners currently
         },
         sendMessage() {
             const message = this.messageText.trim();
@@ -194,7 +253,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     status: 'sent'
                 }));
 
-                this.appendMessage(
+                this.appendMessageV1(
                     message,
                     true,
                     null, // no initial status
@@ -213,7 +272,118 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 alert('WebSocket is not connected. Please wait and try again.');
             }
         },
-        appendMessage(content, isSender, status = "", displayName = "", messageId = null) {
+        appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
+            console.log("[appendMessage] Message received:", { content, isFromSelf, status, displayName });
+
+            content = this._coerceContent(content);
+            status = status || "";
+
+            if (this._isDuplicateMessage(content, messageId)) return;
+
+            if (!isFromSelf) displayName = this.systemDisplayName;
+
+            const bubble = this._buildMessageBubble(content, isFromSelf, displayName, status, mediaList);
+            if (messageId) bubble.dataset.messageId = messageId;
+
+            this.messagesDiv.appendChild(bubble);
+            this._handleScrollBehavior(isFromSelf);
+        },
+        _coerceContent(content) {
+            if (typeof content === 'string') {
+                try {
+                    if (content.startsWith('"') && content.endsWith('"')) {
+                        return JSON.parse(content);
+                    }
+                } catch (e) {
+                    console.warn("Failed to parse message content", e);
+                }
+            }
+            if (typeof content !== 'string') {
+                return '';
+            }
+            return this.escapeHtml(content);
+        },
+        _isDuplicateMessage(content, messageId) {
+            let existing = null;
+
+            if (messageId) {
+                existing = this.messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+            }
+
+            if (!existing && content) {
+                existing = Array.from(this.messagesDiv.children).find(div =>
+                    div.textContent.includes(content)
+                );
+                if (existing && messageId) {
+                    existing.dataset.messageId = messageId;
+                }
+            }
+
+            if (existing) {
+                console.log("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
+                return true;
+            }
+
+            return false;
+        },
+        _buildMessageBubble(content, isFromSelf, displayName, status, mediaList) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-bubble ${isFromSelf ? 'outgoing' : 'incoming'}`;
+
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+            const mediaHtml = this._renderMediaHtml(mediaList);
+
+            messageDiv.innerHTML = `
+                ${!isFromSelf ? `<strong class="sender-name">${this.escapeHtml(displayName)}</strong>` : ''}
+                ${mediaHtml}
+                ${content}
+                <div class="timestamp">
+                    <span class="bubble-time">${timestamp}</span>
+                    ${isFromSelf ? this._renderStatusIcons(status) : ''}
+                </div>
+            `;
+            return messageDiv;
+        },
+        _renderMediaHtml(mediaList) {
+            if (!Array.isArray(mediaList) || mediaList.length === 0) return '';
+            return `
+                <div class="media-container">
+                    ${mediaList.map(media => `
+                        <img src="${media.url}" class="media-image" alt="media-${media.id}">
+                    `).join('')}
+                </div>
+            `;
+        },
+        _renderStatusIcons(status) {
+            const delivered = !!status;
+            const read = status === 'read';
+            return `
+                <span class="status-icons" x-data="{ delivered: ${delivered}, read: ${read} }">
+                    <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" x-show="delivered"></span>
+                    <span class="iconify status-icon read-icon" data-icon="fa6-regular:circle-check" x-show="read"></span>
+                </span>
+            `;
+        },
+        _handleScrollBehavior(isSender) {
+            const wasAtBottom = this.isScrolledToBottom();
+
+            if (isSender || wasAtBottom) {
+                this.messagesDiv.scrollTo({ top: this.messagesDiv.scrollHeight, behavior: 'smooth' });
+            } else {
+                this.newMessageBtn.classList.remove('hidden', 'bounce');
+                this.newMessageBtn.classList.add('bounce');
+                setTimeout(() => this.newMessageBtn.classList.remove('bounce'), 1000);
+            }
+        },
+        appendMessageV1(
+            content, 
+            isSender,
+            status = "",
+            displayName = "",
+            messageId = null
+        ) {
+            console.warn("[appendMessageV1] DEPRECATED", "Use appendMessage instead.");
+
             if (typeof content === 'string') {
                 try {
                     if (content.startsWith('"') && content.endsWith('"')) {
@@ -243,11 +413,11 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             if (existing) {
-                console.log("[appendMessage] Skipping duplicate message", messageId || "(no id)");
+                console.log("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
                 return;
             }
 
-            // Ensure standardized displayName for the Sim System User
+            // Ensure a standardized displayName for the Sim System User
             if (!isSender) { displayName = this.systemDisplayName; }
 
             const wasAtBottom = this.isScrolledToBottom();
@@ -304,6 +474,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 .replace(/'/g, "&#039;");
         },
         loadOlderMessages() {
+            console.log("[ChatManager] loadOlderMessages() called");
             const container = document.getElementById('chat-messages');
             const firstMessage = container.firstElementChild;
             const messageId = firstMessage?.dataset?.messageId || null;
