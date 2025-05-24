@@ -1,6 +1,6 @@
 services:
   server:
-    image: ghcr.io/jackfruitco/simworks:web-${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
     env_file:
       - stack.env
     expose:
