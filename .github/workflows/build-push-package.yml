@@ -49,6 +49,39 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
+    - name: Build and push web image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: docker/Dockerfile.prod
+        target: web
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:web-${{ github.ref_name }}
+          ghcr.io/${{ github.repository }}:web-latest
+
+    - name: Build and push celery image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: docker/Dockerfile.prod
+        target: celery
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:celery-${{ github.ref_name }}
+          ghcr.io/${{ github.repository }}:celery-latest
+
+    - name: Build and push beat image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: docker/Dockerfile.prod
+        target: beat
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:beat-${{ github.ref_name }}
+          ghcr.io/${{ github.repository }}:beat-latest
+
     - name: Generate artifact attestation
       uses: actions/attest-build-provenance@v2
       with:
