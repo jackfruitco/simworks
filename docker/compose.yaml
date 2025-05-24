@@ -11,7 +11,7 @@ services:
       - media-vol:/app/media
       # - nginx-conf:/app/nginx
       - /opt/www/logs:/app/logs
-    command: ["/app/docker/entrypoint.prod.sh"]
+    # command: ["/app/docker/entrypoint.prod.sh"]
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -88,9 +88,9 @@ services:
       - stack.env
     environment:
       - PYTHONPATH=/app/SimWorks
-    user: appuser
-    command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
-    entrypoint: [ ]
+    # user: appuser
+    user: root
+    # command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
     depends_on:
       redis:
         condition: service_started
@@ -118,10 +118,10 @@ services:
     image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
     env_file:
       - stack.env
-    user: appuser
+    # user: appuser
     environment:
       - PYTHONPATH=/app/SimWorks
-    command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
+    # command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
     volumes:
       - static-vol:/app/static
       - media-vol:/app/media

@@ -105,6 +105,11 @@ services:
     networks:
       - SimWorksNet
     hostname: 'celery-worker'
+    healthcheck:
+      test: [ "CMD", "celery", "-A", "config", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     logging:
       driver: "json-file"
       options:
@@ -133,6 +138,11 @@ services:
     networks:
       - SimWorksNet
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "celery", "-A", "config", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     logging:
       driver: "json-file"
       options:
