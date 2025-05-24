@@ -6,7 +6,7 @@ from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 
 from chatlab.utils import broadcast_message
-from simai.async_client import AsyncOpenAIService
+from simai.client import SimAIService
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ def generate_patient_reply_image_task(simulation_id):
     """
     Celery task to asynchronously generate a patient reply image for a given simulation.
 
-    This task retrieves the simulation object, initializes the AsyncOpenAIService,
+    This task retrieves the simulation object, initializes the SimAIService,
     and uses it to generate an image representation of the patient associated
     with the simulation.
 
@@ -35,7 +35,7 @@ def generate_patient_reply_image_task(simulation_id):
         return f"Simulation {simulation_id} not found (404)"
 
     async def run():
-        service = AsyncOpenAIService()
+        service = SimAIService()
         messages = await service.generate_patient_reply_image(simulation=simulation)
         for message in messages:
             await broadcast_message(message)

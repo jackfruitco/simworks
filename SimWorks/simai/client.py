@@ -96,7 +96,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     }
 
 
-class AsyncOpenAIService:
+class SimAIService:
     """
     A service class to interact with the OpenAI API for generating patient replies
     and introductions in the context of simulations.

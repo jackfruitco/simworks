@@ -203,9 +203,9 @@ class Simulation(models.Model):
 
     def generate_feedback(self):
         from asgiref.sync import async_to_sync
-        from simai.async_client import AsyncOpenAIService
+        from simai.client import SimAIService
 
-        service = AsyncOpenAIService()
+        service = SimAIService()
         async_to_sync(service.generate_simulation_feedback)(self)
 
     def calculate_metadata_checksum(self) -> str:
