@@ -46,6 +46,20 @@ RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
     mkdir -p /app/static /app/media /app/logs && \
     chown -R appuser:appuser /app/static /app/media /app/logs
 
+# === Celery Worker Stage ===
+FROM base AS celery
+
+COPY SimWorks /app/SimWorks
+WORKDIR /app/SimWorks
+CMD ["celery", "-A", "config", "worker", "--loglevel=info"]
+
+# === Celery Beat Stage ===
+FROM base AS beat
+
+COPY SimWorks /app/SimWorks
+WORKDIR /app/SimWorks
+CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
+
 # === Web Stage (default) ===
 FROM base AS web
 
@@ -61,17 +75,3 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app
 
 WORKDIR /app/SimWorks
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-
-# === Celery Worker Stage ===
-FROM base AS celery
-
-COPY SimWorks /app/SimWorks
-WORKDIR /app/SimWorks
-CMD ["celery", "-A", "config", "worker", "--loglevel=info"]
-
-# === Celery Beat Stage ===
-FROM base AS beat
-
-COPY SimWorks /app/SimWorks
-WORKDIR /app/SimWorks
-CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]

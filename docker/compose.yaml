@@ -1,6 +1,6 @@
 services:
   server:
-    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:web-${SERVER_IMAGE_TAG:-latest}
     env_file:
       - stack.env
     expose:
@@ -11,7 +11,6 @@ services:
       - media-vol:/app/media
       # - nginx-conf:/app/nginx
       - /opt/www/logs:/app/logs
-    # command: ["/app/docker/entrypoint.prod.sh"]
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -83,7 +82,7 @@ services:
       - '${REDIS_PORT:-6379}'
 
   celery:
-    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:celery-${SERVER_IMAGE_TAG:-latest}
     env_file:
       - stack.env
     environment:
@@ -115,7 +114,7 @@ services:
         max-file: "3"
 
   celerybeat:
-    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:beat-${SERVER_IMAGE_TAG:-latest}
     env_file:
       - stack.env
     # user: appuser
