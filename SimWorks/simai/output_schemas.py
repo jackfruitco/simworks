@@ -74,7 +74,7 @@ async def message_schema(initial: bool = False) -> dict:
                         "additionalProperties": False,
                         "properties": {
                             "patient_metadata": {
-                                "description": "Patient metadata.",
+                                "description": "Patient metadata",
                                 "type": dynamic_type("object", initial, only=True),
                                 "required": [
                                     "name",
@@ -120,7 +120,7 @@ async def message_schema(initial: bool = False) -> dict:
                                             "additionalProperties": False,
                                             "required": [
                                                 "diagnosis",
-                                                "resolved",
+                                                "is_resolved",
                                                 "duration",
                                             ],
                                             "properties": {
@@ -130,17 +130,11 @@ async def message_schema(initial: bool = False) -> dict:
                                                     ),
                                                     "description": "The diagnosis or description of problem.",
                                                 },
-                                                "resolved": {
+                                                "is_resolved": {
                                                     "type": dynamic_type(
-                                                        "string", False, only=False
+                                                        "boolean", False, only=False
                                                     ),
-                                                    "description": "The diagnosis or description of problem.",
-                                                    "enum": [
-                                                        "resolved",
-                                                        "ongoing",
-                                                        "unsure",
-                                                        "unknown",
-                                                    ],
+                                                    "description": "If the condition is resolved or unresolved/ongoing.",
                                                 },
                                                 "duration": {
                                                     "type": dynamic_type(
@@ -263,6 +257,60 @@ async def feedback_schema() -> dict:
                         "items": {
                             "type": "string",
                             "description": "The topics that the user should study or research to further development and understanding.",
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+async def patient_results_schema(initial: bool = False) -> dict:
+    """Return dict with JSON Schema for OpenAI Response Output."""
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": "patient_results",
+            "strict": True,
+            "schema": {
+                "type": dynamic_type(base="array", initial=True, only=False),
+                "description": "Patient results from the simulation.",
+                "items": {
+                    "type": dynamic_type(base="object", initial=True, only=False),
+                    "required": [
+                        "attribute",
+                        "order_name",
+                        "order_reference_range",
+                        "result_value",
+                        "result_flag",
+                        "result_comment"
+                    ],
+                    "additionalProperties": False,
+                    "properties": {
+                        "order_name": {
+                            "type": dynamic_type("string", initial, only=False),
+                            "description": "The name of a lab or radiology order.",
+                        },
+                        "attribute": {
+                            "type": dynamic_type("string", initial, only=False),
+                            "description": "The type of lab or radiology order.",
+                            "enum": ["RadResult", "LabResult"]
+                        },
+                        "order_reference_range": {
+                            "type": dynamic_type("string", initial, only=False),
+                            "description": "The reference range (or normal range) of a lab or radiology order, including unit.",
+                        },
+                        "result_value": {
+                            "type": dynamic_type("string", initial, only=False),
+                            "description": "The result value of a lab or radiology order.",
+                        },
+                        "result_flag": {
+                            "type": dynamic_type("string", initial, only=False),
+                            "description": "The result flag.",
+                            "enum": ["HIGH", "LOW", "POS", "NEG", "UNK"]
+                        },
+                        "result_comment": {
+                            "type": dynamic_type("string", initial, only=False),
+                            "description": "The result comment, if applicable.",
                         }
                     }
                 }

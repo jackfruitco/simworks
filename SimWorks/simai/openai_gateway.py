@@ -57,7 +57,7 @@ async def process_response(
         "input_tokens": usage.input_tokens or None,
         "output_tokens": usage.output_tokens or None,
     }
-    if response_type == ResponseType.REPLY:
+    if response_type in (ResponseType.REPLY, ResponseType.PATIENT_RESULTS):
         payload['reasoning_tokens'] = usage.output_tokens_details.reasoning_tokens or None
 
     payload = remove_null_keys(payload)

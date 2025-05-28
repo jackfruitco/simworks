@@ -76,6 +76,7 @@ class ResponseType(models.TextChoices):
     REPLY = ("R", _("reply"))
     FEEDBACK = ("F", _("feedback"))
     MEDIA = ("M", _("media"))
+    PATIENT_RESULTS = ("TR", _("patient results"))
 
 
 class Response(models.Model):

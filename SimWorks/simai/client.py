@@ -20,7 +20,7 @@ from simcore.models import SimulationImage
 from simcore.utils import resolve_simulation
 from .models import ResponseType
 from .openai_gateway import process_response
-from .output_schemas import message_schema, feedback_schema
+from .output_schemas import message_schema, feedback_schema, patient_results_schema
 from .prompts import build_prompt
 
 logger = logging.getLogger(__name__)
@@ -79,12 +79,6 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     Returns:
         dict: A dictionary containing the previous response ID and developer/user input.
     """
-    # last_ai_msg = (
-    #     simulation.message_set.filter(openai_id__isnull=False)
-    #     .order_by("-timestamp")
-    #     .first()
-    # )
-
     instructions = build_prompt("Feedback.endex", include_default=False)
 
     return {
@@ -95,6 +89,27 @@ def build_feedback_payload(simulation: Simulation) -> dict:
         ],
     }
 
+def build_patient_results_payload(simulation: Simulation | int, lab_order: str | list[str]) -> dict:
+    """
+    Build the payload for AI-determined patient results.
+
+    :param simulation: Simulation object or int (simulation pk)
+    :param lab_order: str or list[str]
+    :return: dict: A dictionary containing the previous response ID and developer/user input.
+    """
+    instructions = build_prompt(
+        "ClinicalTools.PatientScenarioData",
+        "ClinicalTools.GenericLab",
+        include_default=False,
+        lab_order=lab_order,
+    )
+    return {
+        "previous_response_id": simulation.previous_response_id or None,
+        "input": [
+            {"role": "developer", "content": instructions},
+            {"role": "user", "content": f"New Patient Orders: {lab_order}"},
+        ],
+    }
 
 class SimAIService:
     """
@@ -270,3 +285,38 @@ class SimAIService:
             mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0] or "image/webp"
         )
 
+    async def generate_patient_results(
+            self,
+            *modifiers,
+            simulation: Simulation | int = None,
+            lab_orders: str | list[str] = None,
+            include_default=False,
+            stream: bool = False,
+            **kwargs
+    ) -> List[Message]:
+        """
+        Generate patient results for requested labs or radiology using OpenAI Image API.
+        """
+        func_name = inspect.currentframe().f_code.co_name
+        logger.debug(f"[{func_name}] triggered...")
+
+        # Resolve simulation instance
+        # Allows for sim to be passed as int or Simulation object
+        simulation = await sync_to_async(resolve_simulation)(simulation)
+        logger.info(f"starting lab result generation for Sim{simulation.pk}...")
+
+        text = await patient_results_schema()
+        payload = build_patient_results_payload(simulation, lab_orders)
+        response = await self.client.responses.create(
+            model=self.model,
+            text=text,
+            stream=stream,
+            **payload,
+        )
+
+        return await process_response(
+            response,
+            simulation,
+            stream,
+            response_type=ResponseType.PATIENT_RESULTS,
+        )

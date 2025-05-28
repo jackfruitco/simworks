@@ -59,10 +59,15 @@ class StructuredOutputParser:
 
         if self.response_type is ResponseType.FEEDBACK:
             await self.log(func_name, f"Feedback Output: {output}")
-            await self._parse_metadata(output, self.response_type.label)
+            await self._parse_metadata(output, "SimulationFeedback")
             return []
+        if self.response_type is ResponseType.PATIENT_RESULTS:
+            results = output.get("patient_results") or []
+            results_tasks = []
+            for result in results:
+                results_tasks.append(self._parse_metadata(result, "patient results"))
+            await asyncio.gather(*results_tasks)
 
-        # TODO fix this
         # If it's a media response, parse each media item and return the results
         if self.response_type is ResponseType.MEDIA:
             media_tasks = [
@@ -149,11 +154,11 @@ class StructuredOutputParser:
 
         metadata_tasks = []
         if patient_metadata:
-            metadata_tasks.append(self._parse_metadata(patient_metadata, "patient metadata"))
+            metadata_tasks.append(self._parse_metadata(patient_metadata, "PatientDemographics"))
         if patient_history:
-            metadata_tasks.append(self._parse_metadata(patient_history, "patient history"))
+            metadata_tasks.append(self._parse_metadata(patient_history, "PatientHistory"))
         if simulation_data:
-            metadata_tasks.append(self._parse_metadata(simulation_data, "simulation metadata"))
+            metadata_tasks.append(self._parse_metadata(simulation_data, "SimulationMetadata"))
         if scenario_data:
             await self._parse_scenario_attribute(scenario_data)
 
@@ -192,71 +197,60 @@ class StructuredOutputParser:
 
         return msg
 
-    async def _parse_metadata(self, metadata: dict, attribute: str) -> None:
-        """
-        Processes a metadata structure and creates SimulationMetadata objects.
-
-        If metadata is a dict, it iterates over its key/value pairs.
-        If it is a list, it iterates over each element (which should be dicts) and
-        then over each key/value pair inside them.
-
-        :param metadata: A dict or list containing the metadata.
-        :param attribute: A string describing the type of metadata (e.g., "patient history").
-        """
+    async def _parse_metadata(self, metadata: dict | list, attribute: str) -> None:
+        import importlib
         func_name = inspect.currentframe().f_code.co_name
-        logger.debug(f"[{func_name}] received input ({type(metadata)}): {metadata}")
+        logger.debug(f"[{func_name}] received {attribute} input ({type(metadata)}): {metadata}")
+
+        try:
+            module = importlib.import_module("simcore.models")
+            Subclass = getattr(module, attribute)
+        except (ModuleNotFoundError, AttributeError) as e:
+            logger.error(f"[{func_name}] Invalid attribute '{attribute}': {e}")
+            return
+
+        if attribute.casefold() == "patienthistory":
+            for entry in metadata:
+                if not isinstance(entry, dict):
+                    await self.log(func_name, f"Expected dict, got {type(entry)}", WARNING)
+                    continue
+                metafield = await sync_to_async(Subclass.objects.create)(
+                    simulation=self.simulation,
+                    key=entry.get("diagnosis"),
+                    is_resolved=entry.get("is_resolved"),
+                    duration=entry.get("duration"),
+                    value=f"{entry.get('diagnosis')} ({'resolved' if entry.get('is_resolved') else 'ongoing'})"
+                )
+                await self.log(func_name, f"... new {attribute} created: {metafield.key}", DEBUG)
+            return
 
         if isinstance(metadata, dict):
-            # Process key-value pairs from the dict
             for key, value in metadata.items():
-                if isinstance(value, (dict, list)):
-                    value_str = json.dumps(value)
-                else:
-                    value_str = str(value)
-                metafield = await sync_to_async(SimulationMetadata.objects.create)(
+                value_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                metafield = await sync_to_async(Subclass.objects.create)(
                     simulation=self.simulation,
                     key=key.lower().replace("_", " "),
                     value=value_str,
-                    attribute=attribute,
                 )
-                await self.log(
-                    func_name, f"... new metafield created: {metafield.key}", DEBUG
-                )
-        elif isinstance(metadata, list):
-            # Process each dictionary in the list
+                await self.log(func_name, f"... new {attribute} created: {metafield.key}", DEBUG)
+            return
+
+        if isinstance(metadata, list):
             for index, item in enumerate(metadata):
                 if isinstance(item, dict):
                     for key, value in item.items():
-                        if isinstance(value, (dict, list)):
-                            value_str = json.dumps(value)
-                        else:
-                            value_str = str(value)
-                        # Append index to the key for uniqueness if needed
-                        metafield = await sync_to_async(
-                            SimulationMetadata.objects.create
-                        )(
+                        value_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                        metafield = await sync_to_async(Subclass.objects.create)(
                             simulation=self.simulation,
-                            key=f"Condition #{index} {key.lower().replace("_", " ")}",
+                            key=f"Condition #{index} {key.lower().replace('_', ' ')}",
                             value=value_str,
-                            attribute=attribute,
                         )
-                        await self.log(
-                            func_name,
-                            f"... new metafield created: {metafield.key}",
-                            DEBUG,
-                        )
+                        await self.log(func_name, f"... new {attribute} created: {metafield.key}", DEBUG)
                 else:
-                    await self.log(
-                        func_name,
-                        f"Expected a dict in metadata list, but got {type(item)}",
-                        WARNING,
-                    )
-        else:
-            logger.warning(
-                func_name,
-                f"Expected metadata to be a dict or list, but got {type(metadata)}",
-                WARNING,
-            )
+                    await self.log(func_name, f"Expected a dict in metadata list, but got {type(item)}", WARNING)
+            return
+
+        logger.warning(f"[{func_name}] Expected metadata to be a dict or list, but got {type(metadata)}")
 
     async def _parse_scenario_attribute(self, attributes: dict) -> None:
         """

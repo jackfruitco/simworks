@@ -16,7 +16,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.messageForm = document.getElementById('chat-form');
             this.messagesDiv = document.getElementById('chat-messages');
             this.simMetadataDiv = document.getElementById('simulation_metadata_tool');
-            this.patientMetadataDiv = document.getElementById('patient_metadata_tool');
+            this.patientMetadataDiv = document.getElementById('patient_history_tool');
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             this.newMessageBtn = document.getElementById('new-message-btn');
 
@@ -139,7 +139,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         if (window.window.simManager) {
                             window.window.simManager.checkTools([
                                 'simulation_metadata',
-                                'patient_metadata'
+                                'patient_history'
                             ]);
                         }
 
@@ -189,7 +189,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         if (window.window.simManager) {
                             window.window.simManager.checkTools([
                                 'simulation_metadata',
-                                'patient_metadata'
+                                'patient_history'
                             ]);
                         }
 

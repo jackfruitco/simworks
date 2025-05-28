@@ -26,6 +26,7 @@ def check_env(var_name, default=_SENTINEL):
         error_msg = (
             f"{var_name} not found! Did you set the environment variable {var_name}?"
         )
+        # TODO re-enable check_env error
         # raise ImproperlyConfigured(error_msg)
 
 def coerce_to_bool(value: str | bool | int) -> bool:

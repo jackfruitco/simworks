@@ -20,7 +20,7 @@ def register_modifier(k):
             "value": func,
             "description": func.__doc__ or "",
         }
-        logger.info(f"Modifier registered: '{k}'")
+        logger.debug(f"Modifier registered: '{k}'")
         return func
     return decorator
 

@@ -3,6 +3,8 @@ import logging
 import mimetypes
 import os
 import uuid
+import warnings
+from abc import abstractmethod, ABCMeta, ABC
 from datetime import timedelta
 
 from autoslug import AutoSlugField
@@ -13,6 +15,7 @@ from django.db.models import QuerySet
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
+from polymorphic.models import PolymorphicModel
 
 from simai.models import Prompt
 from simcore.utils import randomize_display_name
@@ -211,9 +214,16 @@ class Simulation(models.Model):
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256
 
-        # Always order by attribute and key for stable checksum
-        entries = self.metadata.order_by('attribute', 'key').values_list('attribute', 'key', 'value')
-        data = "|".join(f"{attr}:{key}:{value}" for attr, key, value in entries)
+        # Order by Metadata type (formerly known as attribute), then
+        # Order by key for stable checksum
+        entries = (
+            self.metadata
+            .select_related('polymorphic_ctype')
+            .order_by('polymorphic_ctype__model', 'key', 'value')
+            .values_list('polymorphic_ctype__model', 'key', 'value')
+        )
+        data = "|".join(f"{polymorphic_ctype__model}:{key}:{value}" for
+                        polymorphic_ctype__model, key, value in entries)
         return sha256(data.encode('utf-8')).hexdigest()
 
     @classmethod
@@ -262,19 +272,34 @@ class Simulation(models.Model):
         return base
 
 
-class SimulationMetadata(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+class SimulationMetadata(PolymorphicModel):
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
 
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
+
     key = models.CharField(blank=False, null=False, max_length=255)
-    attribute = models.CharField(blank=False, null=False, max_length=64)
     value = models.CharField(blank=False, null=False, max_length=2000)
+
+    # @property
+    # @abstractmethod
+    # def attribute(self) -> str:
+    #     """Subclasses must implement this to define the attribute category."""
+    #     pass
+    #
+    # @abstractmethod
+    # def __str__(self):
+    #     """Subclasses must implement this to define the name string."""
+    #     pass
 
     @classmethod
     def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
+        warnings.warn(
+            "`cls.format_patient_history` is deprecated. Use 'PatientHistory.to_dict()' instead.",
+            DeprecationWarning,
+        )
         from collections import defaultdict
 
         grouped = defaultdict(dict)
@@ -286,9 +311,9 @@ class SimulationMetadata(models.Model):
         logger.debug(f"grouped: {grouped}")
 
         formatted = [
-            {"key": prefix, "value": "{diagnosis} ({resolved}, {duration})".format(
+            {"key": prefix, "value": "{diagnosis} ({is_resolved}, {duration})".format(
                 diagnosis=data.get("diagnosis", "Unknown").title(),
-                resolved=data.get("resolved", "Unknown"),
+                is_resolved=data.get("is_resolved", "Unknown"),
                 duration=data.get("duration", "Unknown")
             )}
             for prefix, data in grouped.items()
@@ -306,12 +331,94 @@ class SimulationMetadata(models.Model):
         )
         self.simulation.save(update_fields=["metadata_checksum"])
 
-    def __str__(self):
-        return (
-            f"Sim#{self.simulation.id} Metadata ({self.attribute.lower()}): {self.key.title()} "
-            f""
-        )
 
+class LabResult(SimulationMetadata):
+    """Store a lab result for the specified simulation."""
+
+    reference_range = models.CharField(max_length=100)
+    result_flag = models.CharField(max_length=10)
+
+    @property
+    def order_name(self) -> str:
+        return self.key
+
+    @property
+    def result(self) -> str:
+        return self.value
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+
+class RadResult(SimulationMetadata):
+    """Store a rad result for the specified simulation."""
+
+    result_flag = models.CharField(max_length=10)
+
+    @property
+    def order_name(self) -> str:
+        return self.key
+
+    @property
+    def result(self) -> str:
+        return self.value
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+class PatientDemographics(SimulationMetadata):
+    """Store patient demographics for the specified simulation."""
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+
+class PatientHistory(SimulationMetadata):
+    """Store patient demographics for the specified simulation."""
+
+    is_resolved = models.BooleanField(default=False)
+    duration = models.CharField(max_length=100)
+
+    @property
+    def diagnosis(self) -> str:
+        return self.key
+
+    def to_dict(self):
+        return {
+            "diagnosis": self.diagnosis,
+            "is_resolved": self.is_resolved,
+            "duration": self.duration,
+            "value": self.value,
+            "summary": f"History of {self.diagnosis} ({"now resolved" if self.is_resolved else "ongoing"}, for {self.duration})"
+        }
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+class SimulationFeedback(SimulationMetadata):
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
 
 class SimulationImage(models.Model):
     """Store image for the specified simulation."""
