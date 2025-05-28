@@ -9,7 +9,7 @@
         {% if metafield.key|lower == "feedback" %}
             <li><i style="color: var(--color-muted)">{{ metafield.value }}</i></li>
         {% elif metafield.key|lower == "topics" %}
-          <li><strong>Topics to consider researching:</strong></li>
+          <strong>Topics to consider researching:</strong>
           {% for topic in metafield.value|as_list %}
             <li>{{ topic }}</li>
           {% endfor %}
