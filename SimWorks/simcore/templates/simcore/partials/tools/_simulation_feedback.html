@@ -1,11 +1,18 @@
 {# templates/simcore/partials/_simulation_feedback.html #}
-{% load filters %}
+{% load core_filters %}
+{% load core_tags %}
+{% load chatlab_filters %}
 
 {% if tool.data %}
   <ul class="sim-metadata">
     {% for metafield in tool.data %}
         {% if metafield.key|lower == "feedback" %}
             <li><i style="color: var(--color-muted)">{{ metafield.value }}</i></li>
+        {% elif metafield.key|lower == "topics" %}
+          <li><strong>Topics to consider researching:</strong></li>
+          {% for topic in metafield.value|as_list %}
+            <li>{{ topic }}</li>
+          {% endfor %}
         {% else %}
             <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|feedback }}</li>
         {% endif %}
