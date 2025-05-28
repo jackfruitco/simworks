@@ -80,6 +80,11 @@ LOGGING = {
             "level": check_env("SIMAI_PROMPTS_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
+        "simai.parser": {
+            "handlers": ["console"],
+            "level": check_env("SIMAI_PARSER_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
         "simcore": {
             "handlers": ["console"],
             "level": check_env("SIMCORE_LOG_LEVEL", None) or LOG_LEVEL,
