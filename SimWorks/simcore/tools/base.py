@@ -1,7 +1,13 @@
 # simcore/tools/base.py
 import hashlib
 import json
+import logging
+import pprint
+
 from simcore.tools.registry import register_tool
+import builtins
+
+logger = logging.getLogger(__name__)
 
 def safe_json_checksum(data):
     """Utility function to generate a SHA256 checksum from data."""
@@ -49,7 +55,8 @@ class BaseTool:
         """Generate a checksum for the tool's data."""
         try:
             raw_data = self.get_data() or {}  # Treat None as {}
-            data_string = json.dumps(raw_data, sort_keys=True, default=str)
+            logger.debug("[get_checksum] raw_data =", pprint.pformat(raw_data))
+            data_string = json.dumps(raw_data, sort_keys=True, default=builtins.str)
             return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
         except Exception as e:
             raise ValueError(f"Failed to generate checksum for {self.tool_name}: {e}")

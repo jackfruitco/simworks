@@ -8,4 +8,9 @@ class SimulationFeedbackTool(GenericTool):
     tool_name = "simulation_feedback"
 
     def get_data(self):
-        return self.simulation.metadata.filter(attribute="feedback")
+        from simcore.models import SimulationFeedback
+        return self.simulation.metadata.instance_of(SimulationFeedback)
+
+    def to_dict(self):
+        data = self.get_data()
+        return self.default_dict(data=data)
