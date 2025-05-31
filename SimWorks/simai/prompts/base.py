@@ -53,7 +53,7 @@ class BuildPrompt:
             include_history=True,
             modifiers_list=None,
             simulation=None,
-            **extra_kwargs,
+            **kwargs,
     ):
         logger.debug(f"...initializing prompt builder: {self}")
         self.lab = lab
@@ -65,7 +65,7 @@ class BuildPrompt:
         self._keys = []
         self._modifiers = list(modifiers)
         self.simulation = simulation
-        self.extra_kwargs = extra_kwargs
+        self.kwargs = kwargs
         if modifiers_list:
             self._modifiers += list(modifiers_list)
 
@@ -80,7 +80,7 @@ class BuildPrompt:
             logger.debug(f"... adding {mod}")
             self._add_modifier(mod, is_key=True)
 
-    def default(self):
+    async def default(self):
         # Add Base Prompt
         logger.debug(f"... adding default prompt")
         self._add_modifier(DEFAULT_PROMPT_BASE, key="Base", is_key=False)
@@ -124,7 +124,7 @@ class BuildPrompt:
         payload = {
             "user": self.user,
             "role": self.role,
-            "simulation": self.simulation.pk if hasattr(self.simulation, "pk") else self.simulation
+            "simulation": self.simulation
         }
 
         if is_key:
