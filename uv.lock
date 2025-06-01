@@ -447,6 +447,15 @@ wheels = [
 ]
 
 [[package]]
+name = "djantic"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/81/4578201857a070dba7adbd7a306784a58562220e86e3ba220d5bd77307ac/djantic-0.7.0.tar.gz", hash = "sha256:1b074b595879145582a726d9e6491b9c72e53e98efdfd445420c6b12ddfe5a85", size = 25063 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/51/3c/d261d929fab71ffc95cd874934e26053d0ecddcca325f3cb7fddfc4e27de/djantic-0.7.0-py3-none-any.whl", hash = "sha256:1ea0e6560d41e2d2350d8bb6a173ed8b1bcdd86fa8af5d0b7748e3609a8d5924", size = 28785 },
+]
+
+[[package]]
 name = "faker"
 version = "37.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -902,6 +911,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-django"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "djantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/22/141f177cbec1815d883e962a628dc6d300d7615a628123c8ffbbfd919f08/pydantic-django-0.1.1.tar.gz", hash = "sha256:212e4ad9e4507a9a585c4a834203ff153f9d5c85077c445af9c4327de01f7972", size = 1168 }
+
+[[package]]
 name = "pyjwt"
 version = "2.10.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1037,6 +1055,7 @@ dependencies = [
     { name = "psycopg" },
     { name = "psycopg-binary" },
     { name = "pydantic" },
+    { name = "pydantic-django" },
     { name = "pytest" },
     { name = "redis" },
     { name = "typing-extensions" },
@@ -1066,6 +1085,7 @@ requires-dist = [
     { name = "psycopg", specifier = ">=3.2.9" },
     { name = "psycopg-binary", specifier = ">=3.2.9" },
     { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "pydantic-django", specifier = ">=0.1.1" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "redis", specifier = ">=6.1.0" },
     { name = "typing-extensions", specifier = ">=4.13.2" },
