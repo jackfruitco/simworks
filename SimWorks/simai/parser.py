@@ -21,7 +21,7 @@ from .models import ResponseType, Response
 from asgiref.sync import sync_to_async
 from chatlab.models import Message
 from chatlab.models import RoleChoices
-from simcore.models import Simulation, SimulationMetadata, SimulationImage
+from simcore.models import Simulation, SimulationMetadata, SimulationImage, LabResult
 from django.contrib.auth import get_user_model
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ class StructuredOutputParser:
             self,
             output: dict or str,
             **kwargs,
-    ) -> List[Message]:
+    ) -> List[Message] | List[LabResult]:
         func_name = inspect.currentframe().f_code.co_name
 
         logger.debug(f"response output: {output}")
@@ -61,12 +61,33 @@ class StructuredOutputParser:
             await self.log(func_name, f"Feedback Output: {output}")
             await self._parse_metadata(output, "SimulationFeedback")
             return []
+
         if self.response_type is ResponseType.PATIENT_RESULTS:
-            results = output.get("patient_results") or []
+            results = output.get("patient_results") or {}
+            lab_results = results.get("lab_results") or []
+            rad_results = results.get("radiology_results") or []
+
             results_tasks = []
-            for result in results:
-                results_tasks.append(self._parse_metadata(result, "patient results"))
-            await asyncio.gather(*results_tasks)
+            if lab_results:
+                results_tasks.append(self._parse_metadata(
+                    lab_results,
+                    attribute="LabResults",
+                    field_map={
+                        "key": "order_name",
+                        "value": "result_value",
+                    }
+                ))
+            if rad_results:
+                results_tasks.append(self._parse_metadata(
+                    rad_results,
+                    attribute="RadResults",
+                    field_map={
+                        "key": "order_name",
+                        "value": "result_value",
+                    }
+                ))
+
+            return await asyncio.gather(*results_tasks)
 
         # If it's a media response, parse each media item and return the results
         if self.response_type is ResponseType.MEDIA:
@@ -196,6 +217,67 @@ class StructuredOutputParser:
             await add_message_media(msg.id, media.id)
 
         return msg
+
+    async def _parse_metadatav2(
+            self,
+            metadata: dict | list,
+            attribute: str,
+            field_map: dict[str, str] | None = None,
+    ) -> None:
+        import importlib
+        import inspect
+        from django.db.models import Model
+
+        func_name = inspect.currentframe().f_code.co_name
+        logger.debug(f"[{func_name}] received {attribute} input ({type(metadata)}): {metadata}")
+
+        try:
+            module = importlib.import_module("simcore.models")
+            Subclass: type[Model] = getattr(module, attribute)
+        except (ModuleNotFoundError, AttributeError) as e:
+            logger.error(f"[{func_name}] Invalid attribute '{attribute}': {e}")
+            return
+
+        if not isinstance(metadata, list):
+            metadata = [metadata]
+
+        field_map = field_map or {}
+        model_fields = {f.name for f in Subclass._meta.fields}
+
+        for entry in metadata:
+            if not isinstance(entry, dict):
+                await self.log(func_name, f"Expected dict, got {type(entry)}", WARNING)
+                continue
+
+            try:
+                init_kwargs = {"simulation": self.simulation}
+
+                for input_key, value in entry.items():
+                    model_key = field_map.get(input_key, input_key)
+                    if model_key in model_fields:
+                        init_kwargs[model_key] = value
+                    else:
+                        await self.log(
+                            func_name,
+                            f"Unrecognized key '{input_key}' not in field_map or model fields.",
+                            WARNING,
+                        )
+
+                # Optional fallback for `value` field
+                if "value" in model_fields and "value" not in init_kwargs:
+                    fallback_keys = ["result_value", "diagnosis", "order_name"]
+                    for fk in fallback_keys:
+                        if fk in entry:
+                            init_kwargs["value"] = str(entry[fk])
+                            break
+                    else:
+                        init_kwargs["value"] = str(entry)
+
+                instance = await sync_to_async(Subclass.objects.create)(**init_kwargs)
+                await self.log(func_name, f"... new {attribute} created: {instance}", DEBUG)
+
+            except Exception as e:
+                await self.log(func_name, f"Error creating {attribute}: {e}", WARNING)
 
     async def _parse_metadata(self, metadata: dict | list, attribute: str) -> None:
         import importlib

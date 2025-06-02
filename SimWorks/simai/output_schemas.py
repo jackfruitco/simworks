@@ -272,45 +272,84 @@ async def patient_results_schema(initial: bool = False) -> dict:
             "name": "patient_results",
             "strict": True,
             "schema": {
-                "type": dynamic_type(base="array", initial=True, only=False),
-                "description": "Patient results from the simulation.",
-                "items": {
-                    "type": dynamic_type(base="object", initial=True, only=False),
-                    "required": [
-                        "attribute",
-                        "order_name",
-                        "order_reference_range",
-                        "result_value",
-                        "result_flag",
-                        "result_comment"
-                    ],
-                    "additionalProperties": False,
-                    "properties": {
-                        "order_name": {
-                            "type": dynamic_type("string", initial, only=False),
-                            "description": "The name of a lab or radiology order.",
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["lab_results", "radiology_results"],
+                "properties": {
+                    "lab_results": {
+                        "type": ["array", "null"],
+                        "description": "The lab results of the patient. Each item is a lab result object.",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "order_name",
+                                "result_value",
+                                "result_unit",
+                                "reference_range_low",
+                                "reference_range_high",
+                                "result_flag",
+                                "result_comment"
+                            ],
+                            "properties": {
+                                "order_name": {
+                                    "type": "string",
+                                    "description": "The name of the order using standardized terminology.",
+                                },
+                                "result_value": {
+                                    "type": "number",
+                                    "description": "The result value of the test, without the unit.",
+                                },
+                                "result_unit": {
+                                    "type": "string",
+                                    "description": "The unit of the result value.",
+                                },
+                                "reference_range_low": {
+                                    "type": "number",
+                                    "description": "The lower limit of the reference range, without the unit.",
+                                },
+                                "reference_range_high": {
+                                    "type": "number",
+                                    "description": "the upper limit of the reference range, without the unit.",
+                                },
+                                "result_flag": {
+                                    "type": "string",
+                                    "description": "The result flag.",
+                                    "enum": ["HIGH", "LOW", "POS", "NEG", "UNK", "NORMAL", "ABNORMAL", "CRITICAL" ]
+                                },
+                                "result_comment": {
+                                    "type": ["string", "null"],
+                                    "description": "The result comment, if applicable, or null.",
+                                },
+                            },
                         },
-                        "attribute": {
-                            "type": dynamic_type("string", initial, only=False),
-                            "description": "The type of lab or radiology order.",
-                            "enum": ["RadResult", "LabResult"]
-                        },
-                        "order_reference_range": {
-                            "type": dynamic_type("string", initial, only=False),
-                            "description": "The reference range (or normal range) of a lab or radiology order, including unit.",
-                        },
-                        "result_value": {
-                            "type": dynamic_type("string", initial, only=False),
-                            "description": "The result value of a lab or radiology order.",
-                        },
-                        "result_flag": {
-                            "type": dynamic_type("string", initial, only=False),
-                            "description": "The result flag.",
-                            "enum": ["HIGH", "LOW", "POS", "NEG", "UNK"]
-                        },
-                        "result_comment": {
-                            "type": dynamic_type("string", initial, only=False),
-                            "description": "The result comment, if applicable.",
+                    },
+                    "radiology_results": {
+                        "type": ["array", "null"],
+                        "description": "The radiology results of the patient. Each item is a radiology result object.",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "order_name",
+                                "result_value",
+                                "result_flag",
+                            ],
+                            "properties": {
+                                "order_name": {
+                                    "type": "string",
+                                    "description": "The name of the order using standardized terminology.",
+                                },
+                                "result_value": {
+                                    "type": "string",
+                                    "description": "The result of the order.",
+                                },
+                                "result_flag": {
+                                    "type": "string",
+                                    "description": "The result flag.",
+                                    "enum": ["UNK", "NORMAL", "ABNORMAL", "CRITICAL"]
+                                },
+                            }
                         }
                     }
                 }

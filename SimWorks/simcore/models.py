@@ -17,7 +17,7 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
-from simai.models import Prompt
+from simai.prompts.base import Prompt
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -69,16 +69,16 @@ class BaseSession(models.Model):
 
 class SimulationManager(models.Manager):
     def create(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
-        from simai.prompts import build_prompt
+        from simai.prompts import Prompt  # assuming Prompt is the prompt builder
+
         if not user and not is_template:
             raise ValueError("Simulation must have a user unless marked as template.")
 
-        # Extract modifiers if provided
         modifiers = kwargs.pop("modifiers", [])
 
         if not prompt and user and lab:
             role = getattr(user, "role", None)
-            prompt = build_prompt(user=user, role=role, lab=lab, modifiers=modifiers)
+            prompt = Prompt.build(user=user, role=role, lab=lab, modifiers=modifiers)
 
         if not prompt:
             raise ValueError("Prompt must be provided if no user/lab fallback is available.")
@@ -87,11 +87,35 @@ class SimulationManager(models.Manager):
         kwargs["prompt"] = prompt
         return super().create(**kwargs)
 
+    async def acreate(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
+        from simai.prompts import Prompt
+        from asgiref.sync import sync_to_async
+
+        if not user and not is_template:
+            raise ValueError("Simulation must have a user unless marked as template.")
+
+        modifiers = kwargs.pop("modifiers", [])
+
+        if not prompt and user and lab:
+            role = getattr(user, "role", None)
+            if callable(role):  # if it's a property or method
+                role = await sync_to_async(role)()
+            prompt = await Prompt.abuild(user=user, role=role, lab=lab, modifiers=modifiers)
+
+        if not prompt:
+            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
+
+        kwargs["user"] = user
+        kwargs["prompt"] = prompt
+
+        return await self.model.objects.acreate(**kwargs)
 
 class Simulation(models.Model):
+    objects = SimulationManager()
+
     start_timestamp = models.DateTimeField(auto_now_add=True)
     end_timestamp = models.DateTimeField(blank=True, null=True)
-    objects = SimulationManager()
+
     time_limit = models.DurationField(
         blank=True, null=True, help_text="Optional max duration for this simulation"
     )
@@ -206,9 +230,9 @@ class Simulation(models.Model):
 
     def generate_feedback(self):
         from asgiref.sync import async_to_sync
-        from simai.client import SimAIService
+        from simai.client import SimAIClient
 
-        service = SimAIService()
+        service = SimAIClient()
         async_to_sync(service.generate_simulation_feedback)(self)
 
     def calculate_metadata_checksum(self) -> str:
@@ -335,8 +359,11 @@ class SimulationMetadata(PolymorphicModel):
 class LabResult(SimulationMetadata):
     """Store a lab result for the specified simulation."""
 
-    reference_range = models.CharField(max_length=100)
-    result_flag = models.CharField(max_length=10)
+    result_unit = models.CharField(max_length=20)
+    reference_range_low = models.CharField(max_length=20)
+    reference_range_high = models.CharField(max_length=20)
+    result_flag = models.CharField(max_length=20)
+    result_comment = models.TextField(blank=True, null=True)
 
     @property
     def order_name(self) -> str:
@@ -349,6 +376,17 @@ class LabResult(SimulationMetadata):
     @property
     def attribute(self) -> str:
         return self.__class__.__name__
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "order_name": self.key,
+            "result": self.value,
+            "reference_range": self.reference_range,
+            "result_flag": self.result_flag,
+            "attribute": self.attribute,
+            "type": self.attribute,
+        }
 
     def __str__(self) -> str:
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
@@ -370,6 +408,16 @@ class RadResult(SimulationMetadata):
     @property
     def attribute(self) -> str:
         return self.__class__.__name__
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "order_name": self.key,
+            "result": self.value,
+            "result_flag": self.result_flag,
+            "attribute": self.attribute,
+            "type": self.attribute,
+        }
 
     def __str__(self) -> str:
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"

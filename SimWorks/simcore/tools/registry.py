@@ -1,4 +1,5 @@
 # simcore/tools/registry.py
+from asgiref.sync import sync_to_async
 
 _registry = {}
 
@@ -16,6 +17,7 @@ def register_tool(cls):
     _registry[cls.tool_name.lower()] = cls
     return cls
 
+@sync_to_async
 def get_tool(name):
     """Fetch a tool class by name (case insensitive)."""
     tool_class = _registry.get(name.lower())

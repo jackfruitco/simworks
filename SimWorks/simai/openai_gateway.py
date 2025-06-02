@@ -10,15 +10,16 @@ from django.core.files.base import ContentFile
 
 from chatlab.models import Message
 from core.utils import get_system_user, remove_null_keys
-from simai.models import Response
+from simai.models import Response as ResponseModel
 from simai.models import ResponseType
 from simai.parser import StructuredOutputParser
 from simcore.models import SimulationImage
+from openai.types.responses import Response as OpenAIResponse
 
 logger = logging.getLogger(__name__)
 
 async def process_response(
-        response,
+        response: OpenAIResponse,
         simulation,
         stream=False,
         response_type=ResponseType.REPLY,
@@ -61,9 +62,7 @@ async def process_response(
         payload['reasoning_tokens'] = usage.output_tokens_details.reasoning_tokens or None
 
     payload = remove_null_keys(payload)
-    response_obj = await sync_to_async(Response.objects.create)(
-        **payload
-    )
+    response_obj = await ResponseModel.objects.acreate(**payload)
 
     # Some Debug Logging
     if logger.isEnabledFor(logging.DEBUG):

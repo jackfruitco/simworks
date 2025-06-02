@@ -10,18 +10,20 @@ import mimetypes
 from typing import List
 from typing import Optional
 
-from asgiref.sync import sync_to_async
+from asgiref.sync import sync_to_async, async_to_sync
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from openai import AsyncOpenAI
+from openai.types.responses import Response
 
 from chatlab.models import Message
 from simcore.models import Simulation
 from simcore.models import SimulationImage
-from simcore.utils import resolve_simulation
 from .models import ResponseType
 from .openai_gateway import process_response
 from .output_schemas import message_schema, feedback_schema, patient_results_schema
 from .prompts import build_prompt
+from .structured_output import InitialPatientResponse, PatientResponse, PatientResults
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +91,8 @@ def build_feedback_payload(simulation: Simulation) -> dict:
         ],
     }
 
-def build_patient_results_payload(simulation: Simulation | int, lab_order: str | list[str]) -> dict:
+@sync_to_async
+def build_patient_results_payload(simulation: Simulation, lab_order: str | list[str]) -> dict:
     """
     Build the payload for AI-determined patient results.
 
@@ -98,10 +101,11 @@ def build_patient_results_payload(simulation: Simulation | int, lab_order: str |
     :return: dict: A dictionary containing the previous response ID and developer/user input.
     """
     instructions = build_prompt(
-        "ClinicalTools.PatientScenarioData",
-        "ClinicalTools.GenericLab",
+        "ClinicalResults.PatientScenarioData",
+        "ClinicalResults.GenericLab",
         include_default=False,
         lab_order=lab_order,
+        simulation=simulation,
     )
     return {
         "previous_response_id": simulation.previous_response_id or None,
@@ -111,7 +115,7 @@ def build_patient_results_payload(simulation: Simulation | int, lab_order: str |
         ],
     }
 
-class SimAIService:
+class SimAIClient:
     """
     A service class to interact with the OpenAI API for generating patient replies
     and introductions in the context of simulations.
@@ -238,9 +242,10 @@ class SimAIService:
         func_name = inspect.currentframe().f_code.co_name
         logger.debug(f"[{func_name}] triggered...")
 
-        # Resolve simulation instance
-        # Allows for sim to be passed as int or Simulation object
-        simulation = await sync_to_async(resolve_simulation)(simulation)
+        # Get simulation instance if provided as int
+        if isinstance(simulation, int):
+            simulation = await Simulation.objects.aget(id=simulation)
+
         logger.info(f"starting image generation image for Sim{simulation.pk}...")
 
         # Clean & validate output format
@@ -302,7 +307,9 @@ class SimAIService:
 
         # Resolve simulation instance
         # Allows for sim to be passed as int or Simulation object
-        simulation = await sync_to_async(resolve_simulation)(simulation)
+        if isinstance(simulation, int):
+            simulation = await Simulation.objects.aget(id=simulation)
+
         logger.info(f"starting lab result generation for Sim{simulation.pk}...")
 
         text = await patient_results_schema()

@@ -1,27 +1,28 @@
-# SimWorks/simai/prompts/builtins/_clinical_scenario.py
-"""PromptModifiers that enable users to order clinical tools (e.g., labs) for a simulation."""
+# SimWorks/simai/prompts/builtins/_clinical_results.py
+"""PromptModifiers that enable users to request clinical results (e.g., labs) for a simulation."""
+from asgiref.sync import sync_to_async
 
 from simai.prompts.registry import register_modifier
-from simcore.models import Simulation
+from simcore.models import Simulation, SimulationMetadata
 
 _BASE = f"""
 For this prompt only, you are acting as the simulation facilitator.
 
-The user has requested requested clinical tools, such as labs and radiology.
-For each tool requested, you should provide the standardized name using lab 
+The user has requested requested clinical orders, such as labs and radiology.
+For each order requested, you should provide the standardized name using lab 
 and radiology standard abbreviations or order sentences. You should provide the
 standard reference range for all labs, and include a flag for normal or abnormal 
 values. 
 """
 
-@register_modifier("ClinicalTools.PatientScenarioData")
-def patient_scenario_data(simulation: Simulation | int) -> str:
+@register_modifier("ClinicalResults.PatientScenarioData")
+async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
     """
     Returns string for a(n) Patient Scenario Data modifier.
 
-    This is used to prep the AI model to return clinically relevant results."
+    This is used to prep the AI model to return clinically relevant results.
 
-    :param simulation: The Simulation object or primary key (int) for which to generate the patient scenario data.
+    :param simulation: The Simulation object for which to generate the patient scenario data.
 
     :raises ValueError: If the provided simulation is not a Simulation instance or does not exist.
     :raises TypeError: If the provided simulation is not an int or Simulation instance.
@@ -30,14 +31,7 @@ def patient_scenario_data(simulation: Simulation | int) -> str:
     :return: A string containing the patient scenario data.
     """
     if not isinstance(simulation, Simulation):
-        try:
-            simulation = Simulation.objects.get(pk=simulation)
-        except ValueError:
-            raise ValueError(
-                f"simulation must be a Simulation instance or a valid primary key (was provided: {simulation})."
-            )
-        except Simulation.DoesNotExist:
-            raise ValueError(f"Simulation with pk {simulation} not found.")
+        raise TypeError("simulation must be a Simulation instance.")
 
     _base = (
         "Ensure the values are in the correct units, and clinically "
@@ -52,15 +46,15 @@ def patient_scenario_data(simulation: Simulation | int) -> str:
     age = ""
 
     try:
-        gender_meta = simulation.metadata.get(key="gender")
+        gender_meta = await sync_to_async(simulation.metadata.get)(key="gender")
         sex = f"The patient's sex is {gender_meta.value}."
-    except Simulation.metadata.model.DoesNotExist:
+    except SimulationMetadata.DoesNotExist:
         pass
 
     try:
-        age_meta = simulation.metadata.get(key="age")
+        age_meta = await sync_to_async(simulation.metadata.get)(key="age")
         age = f"The patient's age is {age_meta.value}."
-    except Simulation.metadata.model.DoesNotExist:
+    except SimulationMetadata.DoesNotExist:
         pass
 
     info_parts = [dx, cc, sex, age]
@@ -68,8 +62,8 @@ def patient_scenario_data(simulation: Simulation | int) -> str:
 
     return f"{info_string} {_base}"
 
-@register_modifier("ClinicalTools.GenericLab")
-def clinical_tools_generic_lab(lab_order: str | list[str], **extra_kwargs):
+@register_modifier("ClinicalResults.GenericLab")
+async def generic_lab(lab_order: str | list[str], **kwargs):
     """Returns string for a(n) Lab clinical scenario modifier."""
     if not isinstance(lab_order, list):
         lab_order = [lab_order]
@@ -77,4 +71,4 @@ def clinical_tools_generic_lab(lab_order: str | list[str], **extra_kwargs):
     if not all(isinstance(item, str) for item in lab_order):
         raise ValueError("lab_order must be a string or a list of strings.")
 
-    return f"{_BASE} The user has requested the following labs: {', '.join(lab_order.upper())}."
+    return f"{_BASE} The user has requested the following labs: {', '.join(lab_order).upper()}."

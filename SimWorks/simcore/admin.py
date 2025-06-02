@@ -9,7 +9,7 @@ class MetadataInline(admin.TabularInline):
     model = SimulationMetadata
     extra = 0
     fieldsets = [
-        (None, {"fields": ("attribute", "key", "value",)}),
+        (None, {"fields": ("key", "value",)}),
     ]
 
     def has_change_permission(self, request, obj=None):
@@ -70,14 +70,16 @@ class SimulationAdmin(admin.ModelAdmin):
 
     list_display = ("id", "user", "is_complete_display", "correct_diagnosis", "correct_treatment_plan", "start_timestamp")
     fieldsets = [
-        (None, {"fields": ("user", ("start_timestamp", "end_timestamp", "time_limit"), "prompt")}),
+        (None, {
+            "fields": ("user", ("start_timestamp", "end_timestamp", "time_limit"), "prompt")
+        }),
         ("SCENARIO ATTRIBUTES", {
             "classes": ("collapse",),
             "fields": (("diagnosis", "chief_complaint"), ("correct_diagnosis","correct_treatment_plan"))
         }),
     ]
     list_filter = ("user",)
-    search_fields = ("user__username", "prompt__title", "diagnosis", "chief_complaint")
+    search_fields = ("user__username", "diagnosis", "chief_complaint")
     ordering = ("-id",)
 
     inlines = [MetadataInline]
