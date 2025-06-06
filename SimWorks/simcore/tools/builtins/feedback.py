@@ -1,4 +1,4 @@
-# simcore/tools/simulation_feedback_tool.py
+# simcore/tools/feedback.py
 
 from simcore.tools import GenericTool
 from simcore.tools import register_tool

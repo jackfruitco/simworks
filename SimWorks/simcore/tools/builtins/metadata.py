@@ -1,4 +1,4 @@
-# simcore/tools/simulation_metadata_tool.py
+# simcore/tools/metadata.py
 
 from simcore.tools import GenericTool
 from simcore.tools import register_tool

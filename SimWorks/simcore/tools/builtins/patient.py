@@ -1,4 +1,4 @@
-# simcore/tools/patient_history_tool.py
+# simcore/tools/patient.py
 
 from simcore.tools import BaseTool
 from simcore.tools import register_tool
