@@ -67,51 +67,8 @@ class BaseSession(models.Model):
         abstract = True
 
 
-class SimulationManager(models.Manager):
-    def create(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
-        from simai.prompts import Prompt  # assuming Prompt is the prompt builder
-
-        if not user and not is_template:
-            raise ValueError("Simulation must have a user unless marked as template.")
-
-        modifiers = kwargs.pop("modifiers", [])
-
-        if not prompt and user and lab:
-            role = getattr(user, "role", None)
-            prompt = Prompt.build(user=user, role=role, lab=lab, modifiers=modifiers)
-
-        if not prompt:
-            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
-
-        kwargs["user"] = user
-        kwargs["prompt"] = prompt
-        return super().create(**kwargs)
-
-    async def acreate(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
-        from simai.prompts import Prompt
-        from asgiref.sync import sync_to_async
-
-        if not user and not is_template:
-            raise ValueError("Simulation must have a user unless marked as template.")
-
-        modifiers = kwargs.pop("modifiers", [])
-
-        if not prompt and user and lab:
-            role = getattr(user, "role", None)
-            if callable(role):  # if it's a property or method
-                role = await sync_to_async(role)()
-            prompt = await Prompt.abuild(user=user, role=role, lab=lab, modifiers=modifiers)
-
-        if not prompt:
-            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
-
-        kwargs["user"] = user
-        kwargs["prompt"] = prompt
-
-        return await self.model.objects.acreate(**kwargs)
-
 class Simulation(models.Model):
-    objects = SimulationManager()
+    # objects = SimulationManager()
 
     start_timestamp = models.DateTimeField(auto_now_add=True)
     end_timestamp = models.DateTimeField(blank=True, null=True)
@@ -250,21 +207,52 @@ class Simulation(models.Model):
                         polymorphic_ctype__model, key, value in entries)
         return sha256(data.encode('utf-8')).hexdigest()
 
-    @classmethod
-    def create_with_default_prompt(cls, user, lab="chatlab", **kwargs):
-        """
-        Create a Simulation with a default prompt based on the user role and lab.
-        """
-        from simai.prompts import build_prompt
-
-        prompt = build_prompt(user=user, role=user.role, lab=lab)
-
-        return cls.objects.create(user=user, prompt=prompt, **kwargs)
-
     @property
     def formatted_patient_history(self):
         raw = self.metadata.filter(attribute="patient history")
         return SimulationMetadata.format_patient_history(raw)
+
+    class Simulation(models.Model):
+        objects = models.Manager.from_queryset(models.QuerySet)()  # Use default manager
+
+    @classmethod
+    def build(cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
+        from simai.prompts import Prompt  # assuming Prompt is the prompt builder
+
+        if not user and not is_template:
+            raise ValueError("Simulation must have a user unless marked as template.")
+
+        modifiers = kwargs.pop("modifiers", [])
+
+        if not prompt and user and lab:
+            role = getattr(user, "role", None)
+            prompt = Prompt.build(user=user, role=role, lab=lab, modifiers=modifiers)
+
+        if not prompt:
+            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
+
+        kwargs["user"] = user
+        kwargs["prompt"] = prompt
+        return cls.objects.create(user=user, prompt=prompt, **kwargs)
+
+    @classmethod
+    async def abuild(cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
+        """Class method factory for creating simulations"""
+        from simai.prompts import Prompt
+
+        if not user and not is_template:
+            raise ValueError("Simulation must have a user unless marked as template.")
+
+        modifiers = kwargs.pop("modifiers", [])
+
+        if not prompt and user and lab:
+            role = user.role
+            prompt = await Prompt.abuild(user=user, role=role, lab=lab, modifiers=modifiers)
+
+        if not prompt:
+            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
+
+        return await cls.objects.acreate(user=user, prompt=prompt, **kwargs)
 
     def save(self, *args, **kwargs):
         from simai.prompts import build_prompt
