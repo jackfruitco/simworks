@@ -4,6 +4,8 @@ import json
 import logging
 import pprint
 
+from asgiref.sync import async_to_sync, sync_to_async
+
 from simcore.tools.registry import register_tool
 import builtins
 
@@ -47,9 +49,19 @@ class BaseTool:
         """Subclasses override this to provide data."""
         raise NotImplementedError
 
+    @sync_to_async
+    def aget_data(self):
+        """Return data for the tool."""
+        return self.get_data()
+
     def to_dict(self):
         """Subclasses must implement this to return a dictionary."""
         raise NotImplementedError
+
+    @sync_to_async
+    def ato_dict(self):
+        """Return a dictionary representation of the tool."""
+        return self.to_dict()
 
     def get_checksum(self):
         """Generate a checksum for the tool's data."""
@@ -60,6 +72,10 @@ class BaseTool:
             return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
         except Exception as e:
             raise ValueError(f"Failed to generate checksum for {self.tool_name}: {e}")
+
+    @sync_to_async
+    def aget_checksum(self):
+        return self.get_checksum()
 
     def default_dict(self, data=None):
         return {
@@ -78,7 +94,8 @@ class GenericTool(BaseTool):
 
     def __init__(self, simulation):
         super().__init__(simulation)
-        self.data = self.get_data()
+        # self.data = self.get_data()
+        self.data = None
 
     def get_data(self):
         """Return raw data (queryset, iterable) to be formatted into k:v."""
@@ -86,6 +103,9 @@ class GenericTool(BaseTool):
 
     def to_dict(self):
         """Convert data into standard dictionary form."""
+        if not self.data:
+            self.data = self.get_data()
+
         if not hasattr(self.data, "__iter__"):
             raise ValueError(f"Data for {self.tool_name} must be iterable.")
 
