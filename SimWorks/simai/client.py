@@ -22,7 +22,7 @@ from simcore.models import SimulationImage
 from .models import ResponseType
 from .openai_gateway import process_response
 from .output_schemas import message_schema, feedback_schema, patient_results_schema
-from .prompts import build_prompt
+from .prompts import build_prompt, Prompt
 from .structured_output import InitialPatientResponse, PatientResponse, PatientResults
 
 logger = logging.getLogger(__name__)
@@ -259,7 +259,7 @@ class SimAIClient:
             )
 
         # Build prompt
-        prompt = await sync_to_async(build_prompt)(
+        prompt = await Prompt.abuild(
             "Image.PatientImage",
             *modifiers,
             simulation=simulation,
