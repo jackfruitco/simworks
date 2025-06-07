@@ -67,7 +67,7 @@ class BaseTool:
         """Generate a checksum for the tool's data."""
         try:
             raw_data = self.get_data() or {}  # Treat None as {}
-            logger.debug("[get_checksum] raw_data =", pprint.pformat(raw_data))
+            logger.debug("[get_checksum] raw_data = %s", pprint.pformat(raw_data))
             data_string = json.dumps(raw_data, sort_keys=True, default=builtins.str)
             return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
         except Exception as e:
