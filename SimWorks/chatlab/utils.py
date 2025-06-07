@@ -25,7 +25,7 @@ async def create_new_simulation(user, modifiers: list=None):
     sim_patient_full_name = await generate_fake_name()
 
     # Create base Simulation
-    simulation = await Simulation.objects.acreate(
+    simulation = await Simulation.abuild(
         user=user,
         lab="chatlab",
         sim_patient_full_name=sim_patient_full_name,

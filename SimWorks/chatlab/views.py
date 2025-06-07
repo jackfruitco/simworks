@@ -16,8 +16,8 @@ from chatlab.utils import create_new_simulation
 from chatlab.utils import maybe_start_simulation
 from core.decorators import resolve_user
 from simcore.models import Simulation
-from simcore.tools import get_tool
-from simcore.tools import list_tools
+from simcore.tools import aget_tool
+from simcore.tools import alist_tools
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -69,9 +69,10 @@ async def create_simulation(request):
     return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 @login_required
+@resolve_user
 async def run_simulation(request, simulation_id, included_tools="__ALL__"):
     try:
-        simulation = await Simulation.objects.aget(id=simulation_id)
+        simulation = await Simulation.objects.select_related("user").aget(id=simulation_id)
     except Simulation.DoesNotExist:
         return Http404("Simulation not found.")
 
@@ -82,22 +83,24 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
 
     if included_tools == "__ALL__":
         # Load all registered tool classes
-        for tool_class in list_tools():
-            # TODO make to_dict async-safe
-            tools.append(await sync_to_async(tool_class(simulation).to_dict)())
+        for tool_class in await alist_tools():
+            tool = tool_class(simulation)
+            tool_data = await tool.ato_dict()
+            tools.append(tool_data)
     elif not included_tools:
         tools = []
     else:
         for tool_name in included_tools.split(","):
-            tool_class = await get_tool(tool_name)
+            tool_class = await aget_tool(tool_name)
             if tool_class:
-                tools.append(tool_class(simulation).to_dict())
+                tool = tool_class(simulation)
+                tool_data = await tool.ato_dict()
+                tools.append(tool_data)
 
     await maybe_start_simulation(simulation)
 
     logger.debug(
         f"Sim{simulation_id} requested tools: {included_tools} "
-        f"(loaded: {[cls.__name__ for cls in list_tools()]})"
     )
 
     context = {

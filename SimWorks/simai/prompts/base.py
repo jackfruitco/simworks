@@ -125,9 +125,11 @@ class Prompt:
 
         return self
 
-    def finalize(self):
+    async def finalize(self):
         lines = []
         for section in self._sections:
+            if asyncio.iscoroutine(section):
+                section = await section
             if not section:
                 continue
             for line in section.strip().splitlines():
@@ -165,7 +167,7 @@ class Prompt:
         if include_default:
             await instance._add_defaults()
 
-        return instance.finalize()
+        return await instance.finalize()
 
     @classmethod
     def build(
