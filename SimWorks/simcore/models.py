@@ -212,9 +212,6 @@ class Simulation(models.Model):
         raw = self.metadata.filter(attribute="patient history")
         return SimulationMetadata.format_patient_history(raw)
 
-    class Simulation(models.Model):
-        objects = models.Manager.from_queryset(models.QuerySet)()  # Use default manager
-
     @classmethod
     def build(cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
         from simai.prompts import Prompt  # assuming Prompt is the prompt builder
