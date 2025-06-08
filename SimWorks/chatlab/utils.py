@@ -90,8 +90,7 @@ async def socket_send(
     :param status: Optional status string for logging/debugging purposes.
     """
     logger.debug(
-        f"`socket_send` received a {type} payload for a(n) {event} "
-        f"event to {group} group. Payload preview: {payload[:20] if payload else "None" }..."
+        f"`socket_send` received a {type} payload for a(n) {event} event to {group} group."
     )
 
     channel_layer = get_channel_layer()
