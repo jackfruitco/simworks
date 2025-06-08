@@ -89,9 +89,10 @@ async def socket_send(
     :param event: Custom event type name for front-end handling (e.g., 'message', 'patient_result').
     :param status: Optional status string for logging/debugging purposes.
     """
+    payload_preview = payload[:20] if payload is not None else "Not found."
     logger.debug(
         f"`socket_send` received a {type} payload for a(n) {event} "
-        f"event to {group} group. Payload preview: {payload[:20] if payload else "None" }..."
+        f"event to {group} group. Payload preview: {payload_preview}..."
     )
 
     channel_layer = get_channel_layer()
