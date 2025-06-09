@@ -10,20 +10,16 @@ import mimetypes
 from typing import List
 from typing import Optional
 
-from asgiref.sync import sync_to_async, async_to_sync
+from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
 from openai import AsyncOpenAI
-from openai.types.responses import Response
 
 from chatlab.models import Message
 from simcore.models import Simulation
-from simcore.models import SimulationImage
 from .models import ResponseType
 from .openai_gateway import process_response
 from .output_schemas import message_schema, feedback_schema, patient_results_schema
-from .prompts import build_prompt, Prompt
-from .structured_output import InitialPatientResponse, PatientResponse, PatientResults
+from .prompts import Prompt
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +65,6 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         ],
     }
 
-
 @sync_to_async
 def build_feedback_payload(simulation: Simulation) -> dict:
     """
@@ -81,7 +76,14 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     Returns:
         dict: A dictionary containing the previous response ID and developer/user input.
     """
-    instructions = build_prompt("Feedback.endex", include_default=False)
+    # instructions = build_prompt("Feedback.endex", include_default=False)
+
+    # Build prompt
+    instructions = Prompt.build(
+        "Feedback.endex",
+        simulation=simulation,
+        include_default=False,
+    )
 
     return {
         "previous_response_id": simulation.previous_response_id or None,
@@ -100,7 +102,7 @@ def build_patient_results_payload(simulation: Simulation, lab_order: str | list[
     :param lab_order: str or list[str]
     :return: dict: A dictionary containing the previous response ID and developer/user input.
     """
-    instructions = build_prompt(
+    instructions = Prompt.build(
         "ClinicalResults.PatientScenarioData",
         "ClinicalResults.GenericLab",
         include_default=False,
@@ -115,6 +117,8 @@ def build_patient_results_payload(simulation: Simulation, lab_order: str | list[
         ],
     }
 
+
+# noinspection PyTypeChecker
 class SimAIClient:
     """
     A service class to interact with the OpenAI API for generating patient replies
@@ -313,7 +317,7 @@ class SimAIClient:
         logger.info(f"starting lab result generation for Sim{simulation.pk}...")
 
         text = await patient_results_schema()
-        payload = build_patient_results_payload(simulation, lab_orders)
+        payload = await build_patient_results_payload(simulation, lab_orders)
         response = await self.client.responses.create(
             model=self.model,
             text=text,

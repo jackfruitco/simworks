@@ -7,6 +7,7 @@ import warnings
 from asgiref.sync import async_to_sync, sync_to_async
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
 
@@ -14,7 +15,7 @@ from chatlab.models import ChatSession, MessageMediaLink, Message
 from core.utils import get_or_create_system_user, remove_null_keys
 from simai.client import SimAIClient
 from simcore.models import Simulation, SimulationImage, RadResult, LabResult, SimulationMetadata
-from simcore.utils import generate_fake_name, get_user_initials
+from simcore.utils import generate_fake_name, get_user_initials, aresolve_simulation
 
 logger = logging.getLogger(__name__)
 
@@ -73,43 +74,109 @@ def add_message_media(message_id, media_id):
         message_id=message_id,
         media_id=media_id
     )
+
 async def socket_send(
-        payload: dict,
-        group: str,
-        type: str,
-        event: str,
-        status: str = None
+        __type: str,
+        __group: str = None,
+        __simulation_id: int = None,
+        __payload: dict = None,
+        __status: str = None,
+        **kwargs,
 ) -> None:
     """
     Sends an arbitrary payload to the specified WebSocket group.
 
-    :param payload: Dict payload to send over the socket.
-    :param group: The socket group name (typically tied to the simulation ID).
-    :param type: The type of payload to send.
-    :param event: Custom event type name for front-end handling (e.g., 'message', 'patient_result').
-    :param status: Optional status string for logging/debugging purposes.
+    :param __payload: Dict payload to send over the socket.
+    :param __group: The socket group name (typically tied to the simulation ID).
+    :param __type: The type of payload to send.
+    :param __status: Optional status string for logging/debugging purposes.
+    :param __simulation_id: Optional simulation ID to use for group generation
+    :param kwargs: Additional keyword arguments to pass to the `group_send` method.
     """
-    logger.debug(
-        f"`socket_send` received a {type} payload for a(n) {event} event to {group} group."
+    logger.info(
+        f"[socket_send] new event '{__type}' on group '{__group}'."
     )
+
+    # Remove deprecated `__event` kwarg if present
+    # TODO deprecation
+    if "__event" in kwargs:
+        __event = kwargs.pop("__event")
+        warnings.warn(DeprecationWarning("`__event` is no longer used. Use explicit `__type` instead."))
+
+    # Build group name from simulation ID if group not provided
+    if __group is None:
+        logger.debug(f"Group not provided. Attempting to use simulation ID (provided '{__simulation_id}').")
+        if await Simulation.objects.filter(id=__simulation_id).aexists():
+            __group = f"simulation_{__simulation_id}"
+            logger.debug(f"Simulation found. Using '{__group}' as group name.")
+        else:
+            raise ObjectDoesNotExist(
+                f"No group provided and Simulation with ID '{__simulation_id}' was not found."
+            )
 
     channel_layer = get_channel_layer()
 
-    # Add type, event, and status to the payload
-    payload.update({
-        "type": type,
-        "event": event,
-        "status": status,
-    })
+    # Add type, event, and status add'l kwargs to the payload
+    # __payload.update({
+    #     "type": __type,
+    #     "status": __status,
+    #     **kwargs,
+    # })
+
+    event = {
+        "type": __type,
+        "status": __status,
+        **__payload,
+    }
 
     try:
-        await channel_layer.group_send(group, payload)
+        await channel_layer.group_send(__group, event)
     except Exception as e:
         logger.error(msg=f"socket_send failed: {e}")
 
 
-    logger.info(f"'{type}':'{event}' broadcasted to group '{group}'")
-    logger.debug(f"Event payload: {payload}")
+    logger.debug(f"'{__type}': broadcasted to group '{__group}'")
+    logger.debug(f"Event payload: {__payload}")
+    return
+
+async def broadcast_event(
+        __type: str,
+        __simulation: Simulation | int,
+        __payload: dict = {},
+        __status: str = None,
+        **kwargs,
+) -> None:
+    """
+    Broadcasts an event by sending its details to a socket. This function is
+    asynchronous and facilitates communication between different components
+    or systems by transmitting payload data, event type, and other contextual
+    information. It can also include simulation and status details
+    in the transmission.
+
+    :param __payload: The data to be sent within the event.
+    :type __payload: dict
+    :param __type: The type of the event.
+    :type __type: str
+    :param __simulation: An instance of `Simulation` or its identifier, which
+        determines the group to broadcast to.
+    :type __simulation: Simulation | int, optional
+    :param __status: The status associated with the event. Defaults to None.
+    :type __status: str, optional
+    :param kwargs: Additional keyword arguments that might be required by
+        `socket_send`.
+    :return: None
+    :rtype: None
+    """
+    if isinstance(__simulation, Simulation):
+        __simulation = __simulation.id
+
+    await socket_send(
+        __payload=__payload,
+        __type=__type,
+        __simulation_id=__simulation,
+        __status=__status,
+        **kwargs,
+    )
     return
 
 async def broadcast_patient_results(
@@ -144,14 +211,30 @@ async def broadcast_patient_results(
         await socket_send(
             payload=payload,
             group=group,
-            type="sim.metadata",
-            event="patient_result",
+            type="metadata.created",
             status=__status
         )
     return
 
 async def broadcast_message(message: Message or int, status: str=None) -> None:
-    """Broadcast a message to all connected client via `socket_send`."""
+    """
+    Broadcasts a message to a specific group layer using WebSocket and channels. The message
+    can originate either from a system or a user. If a message ID is provided instead of a
+    Message instance, the function retrieves the corresponding Message object from the database.
+    Similarly, the associated Simulation object is retrieved to enrich the payload with
+    additional details like sender information and simulation-specific identifiers.
+
+    The payload generated contains relevant metadata about the message, such as the sender's
+    information, display details, media attachments, and the message type. The data is then
+    cleaned of null values before being broadcast to the specified group.
+
+    :param message: Message instance or ID of the message to be broadcast.
+    :type message: Message or int
+    :param status: Status associated with the message being broadcast, optional.
+    :type status: str, optional
+    :return: None
+    :rtype: None
+    """
     # Get Message instance if provided ID
     if not isinstance(message, Message):
         try:
@@ -210,7 +293,7 @@ async def broadcast_message(message: Message or int, status: str=None) -> None:
     }
     payload = await sync_to_async(remove_null_keys)(payload)
 
-    return await socket_send(payload=payload, group=group, type="chat.message", event="message")
+    return await socket_send(__payload=payload, __group=group, __type="message.created")
 
 async def broadcast_chat_message(message: Message or int, status: str=None):
     """Broadcasts a message to all connected clients."""

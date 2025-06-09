@@ -92,10 +92,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Check if the simulation is new (i.e., no messages already exist), then
         # Send connect an init message, then, if new simulation,
-        # Simulate System User typing.
-        new_simulation = not await sync_to_async(
-            Message.objects.filter(simulation=self.simulation_id).exists
-        )()
+        # Simulate System User typing
+        is_new_simulation = not await Message.objects.filter(simulation=self.simulation_id).aexists()
+
         ChatConsumer.log(
             func_name=func_name,
             msg=f"sending connect init message for {'new' if is_new_simulation else 'existing'} simulation (#{self.simulation_id})",
@@ -108,13 +107,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "type": "init_message",
                     "sim_display_name": self.simulation.sim_patient_display_name,
                     "sim_display_initials": self.simulation.sim_patient_initials,
-                    "new_simulation": new_simulation,
+                    "new_simulation": is_new_simulation,
                 }
             )
         )
 
         # Simulate sim patient typing to the client
-        if new_simulation:
+        if is_new_simulation:
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -165,14 +164,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ChatConsumer.log( func_name, f"{event_type} event received: {data}")
 
         # Select handler for eventy type
-        if event_type == "client_ready":
-            await self.handle_client_ready(data)
-        elif event_type in {"message", "chat.message", "message.created"}:
-            await self.handle_message(data)
-        elif event_type == "typing":
-            await self.handle_typing(data)
-        elif event_type == "stopped_typing":
-            await self.handle_stopped_typing(data)
+        match event_type:
+
+            case "client_ready":
+                await self.handle_client_ready(data)
+
+            case "message" | "chat.message" | "message.created":
+                await self.handle_message(data)
+
+            case "feedback.created":
+                await self.handle_generic_event(data)
+
+            case "typing":
+                await self.handle_typing(data)
+
+            case "stopped_typing":
+                await self.handle_stopped_typing(data)
+            case _:
+                warnings.warn("Not found")
 
     async def handle_client_ready(self, data) -> None:
         """
@@ -260,7 +269,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ChatConsumer.log( func_name)
 
         # TODO deprecation warning
-        if data.get('event_type') == "message":
+        if data.get('event_type') in {"message", "chat.message"}:
             warnings.warn(
                 "'message' event_type is deprecated. Use 'chat.message' instead.",
                 DeprecationWarning,
@@ -284,7 +293,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
             # Simulate the user message as delivered once saved to the database
-            await self.broadcast_message_status(user_msg.id, "delivered")
+            # TODO
+            # await self.broadcast_message_status(user_msg.id, "delivered")
 
             # Record start_timestamp time for typing indicator
             start_time = time.monotonic()
@@ -302,7 +312,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Broadcast each system-generated message
             for message in sim_responses_list:
-                await self.broadcast_message(message, status="delivered")
+                await broadcast_message(message, status="delivered")
 
     async def handle_typing(self, data: dict) -> None:
         """
@@ -329,6 +339,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "username": username,
                 "display_initials": display_initials,
             },
+        )
+
+    async def handle_generic_event(self, data: dict) -> None:
+        """
+        Handles a system event by sending the provided data to a specific group in the channel layer.
+
+        This method is intended to be used for broadcasting system events to all members of a
+        designated group. The provided data dictionary is sent to the `room_group_name` associated
+        with the instance.
+
+        :param data: The dictionary containing event data to be sent to the group.
+        :type data: dict
+        :return: None
+        :rtype: None
+        """
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                **data
+            }
         )
 
     async def handle_stopped_typing(self, data: dict) -> None:
@@ -453,7 +483,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
-    async def chat_message(self, event: dict) -> None:
+    async def message_created(self, event: dict) -> None:
         """
         Handles incoming message events.
 

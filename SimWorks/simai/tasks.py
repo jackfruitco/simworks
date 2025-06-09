@@ -6,14 +6,16 @@ import warnings
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 
-from chatlab.utils import broadcast_chat_message, broadcast_message, broadcast_patient_results
+from chatlab.utils import broadcast_chat_message, broadcast_message, broadcast_patient_results, broadcast_event
 from simai.client import SimAIClient
 from simcore.models import Simulation, LabResult, RadResult
 
 logger = logging.getLogger(__name__)
 
 @shared_task(time_limit=120, soft_time_limit=110)
-def generate_patient_reply_image_task(simulation_id):
+def generate_patient_reply_image_task(
+        simulation_id: int
+) -> None:
     """
     Celery task to asynchronously generate a patient reply image for a given simulation.
 
@@ -21,23 +23,20 @@ def generate_patient_reply_image_task(simulation_id):
     and uses it to generate an image representation of the patient associated
     with the simulation.
 
-    Args:
-        simulation_id: The primary key (ID) of the Simulation object for which
-                      to generate the patient image.
+    :param int simulation_id: The primary key (ID) of the Simulation instance.
 
-    Returns:
-        None: The task processes the image generation asynchronously and stores
-              the result in the database through the service method.
+    :return: None
+    :rtype: None
     """
     try:
         simulation = Simulation.objects.get(pk=simulation_id)
     except Simulation.DoesNotExist:
         logger.warning(f"Simulation ID {simulation_id} not found. Skipping image generation.")
-        return f"Simulation {simulation_id} not found (404)"
+        return
 
     async def run():
-        service = SimAIClient()
-        messages = await service.generate_patient_reply_image(simulation=simulation)
+        client = SimAIClient()
+        messages = await client.generate_patient_reply_image(simulation=simulation)
         for message in messages:
             await broadcast_message(message)
         return messages
@@ -65,10 +64,14 @@ def generate_patient_results(
     This task retrieves the simulation object, initializes the SimAIClient,
     and uses it to generate lab and/or radiology results.
 
-    Args:
-        __simulation_id: ID of the Simulation object.
-        __lab_orders: Optional list or comma-separated string of lab orders.
-        __rad_orders: Optional list or comma-separated string of radiology orders.
+    :param int __simulation_id: simulation id
+    :param __lab_orders: comma-separated lab orders
+    :type __lab_orders: str or list[str]
+    :param __rad_orders: comma-separated radiology orders
+    :type __rad_orders: str or list[str]
+
+    :return: None: the task processes the results generation asynchronously and stores it in the database.
+    :rtype: None
     """
     try:
         simulation = Simulation.objects.get(pk=__simulation_id)
@@ -87,8 +90,8 @@ def generate_patient_results(
         __rad_orders = [o.strip() for o in __rad_orders.split(",")]
 
     async def run():
-        service = SimAIClient()
-        results = await service.generate_patient_results(
+        client = SimAIClient()
+        results = await client.generate_patient_results(
             simulation=simulation,
             lab_orders=__lab_orders,
             rad_orders=__rad_orders
@@ -100,6 +103,55 @@ def generate_patient_results(
         except Exception as e:
             logger.error(f"[generate_patient_results] Failed to broadcast: {e}")
         return results
+
+    try:
+        asyncio.run(run())
+    except SoftTimeLimitExceeded:
+        logger.warning(f"[generate_patient_results] Soft time limit exceeded for Sim {__simulation_id}")
+    except Exception as e:
+        logger.error(f"[generate_patient_results] Task failed: {e}")
+        raise
+
+@shared_task(time_limit=30, soft_time_limit=20)
+def generate_feedback(
+        __simulation_id: int,
+        __feedback_type: str = None,
+) -> None:
+    """
+    Celery task to asynchronously generate feedback a given simulation.
+
+    This task retrieves the simulation object, initializes the SimAIClient,
+    and uses it to generate requested feedback.
+
+    :param int __simulation_id: simulation id
+    :param str __feedback_type: feedback type
+
+    :return: None: the task processes the feedback generation asynchronously and stores it in the database.
+    :rtype: None
+    """
+    try:
+        simulation = Simulation.objects.get(pk=__simulation_id)
+    except Simulation.DoesNotExist as e:
+        logger.error(f"Simulation ID {__simulation_id} not found!")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve simulation (provided {type(__simulation_id)} `{__simulation_id}`: {e}")
+        raise
+
+    async def run():
+        client = SimAIClient()
+        feedback = await client.generate_simulation_feedback(simulation)
+
+        logger.debug(f"[generate_feedback] Generated feedback: {feedback}")
+
+        try:
+            await broadcast_event(
+                __type="feedback.created",
+                __simulation=simulation,
+            )
+        except Exception as e:
+            logger.error(f"Failed to broadcast: {e}")
+        return
 
     try:
         asyncio.run(run())

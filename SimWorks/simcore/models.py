@@ -8,6 +8,7 @@ from abc import abstractmethod, ABCMeta, ABC
 from datetime import timedelta
 
 from autoslug import AutoSlugField
+from channels.db import database_sync_to_async
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -186,11 +187,13 @@ class Simulation(models.Model):
         self.generate_feedback()
 
     def generate_feedback(self):
-        from asgiref.sync import async_to_sync
-        from simai.client import SimAIClient
+        from simai.tasks import generate_feedback as generate_feedback_task
+        func_name = "generate_feedback"
 
-        service = SimAIClient()
-        async_to_sync(service.generate_simulation_feedback)(self)
+        try:
+            generate_feedback_task.delay(__simulation_id=self.pk)
+        except Exception as e:
+            logger.warning(f"[{func_name}] Celery task failed to enqueue: {e}")
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256

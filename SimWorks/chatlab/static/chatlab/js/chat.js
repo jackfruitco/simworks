@@ -20,6 +20,11 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             this.newMessageBtn = document.getElementById('new-message-btn');
 
+            // Determines whether to request full HTML, raw text, or notification
+            this.contentMode = 'fullHtml';
+            // this.content_mode = 'rawText';
+            // this.content_mode = 'trigger';
+
             this.initializeWebSocket();
             this.setupEventListeners();
             this.loadOlderMessages();
@@ -85,8 +90,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.chatSocket = new WebSocket(wsUrl);
 
             this.chatSocket.onopen = () => {
+                const contentMode = this.contentMode || 'fullHtml';
                 console.log('WebSocket connection established');
-                this.chatSocket.send(JSON.stringify({ type: 'client_ready' }));
+                this.chatSocket.send(JSON.stringify({ type: 'client_ready', 'contentMode': contentMode }));
             };
 
             this.chatSocket.onmessage = (event) => {
@@ -103,6 +109,17 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 } else if (data.type === 'error') {
                     alert(data.message);
                     window.location.href = data.redirect || "/";
+                } else if (data.type === 'feedback.created') {
+                    const html = data?.html;
+                    const tool = data?.tool || 'simulation_feedback';
+                    const elementId = `${tool.replaceAll('_', '-')}-tool`;
+                    const simManager = window.simManager;
+
+                    if (html) {
+                        simManager.refreshToolFromHTML(tool, html);
+                    } else {
+                        simManager.checkTools([tool], true);
+                    }
                 } else if (data.type === 'message_status_update') {
                     const existing = this.messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
                     if (existing) {
@@ -124,7 +141,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
                 } else if (data.type === 'stopped_typing') {
                     this.updateTypingUsers(data, false)
-                } else if (data.type === 'chat.message' || data.type === 'message') {
+                } else if (data.type === 'chat.message' || data.type === 'message' || data.type === 'message.created') {
                     // TODO add new chat.message handling here
                     const isFromSelf = data.senderId === this.currentUser;
                     const isFromSimulatedUser = data.isFromAi;

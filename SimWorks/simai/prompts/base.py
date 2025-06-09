@@ -85,7 +85,7 @@ class Prompt:
                 if asyncio.iscoroutinefunction(func):
                     content = await func(**payload)
                 else:
-                    content = await sync_to_async(func)(**payload)
+                    content = await sync_to_async(func, thread_sensitive=False)(**payload)
                 key = key or key_or_content
             else:
                 logger.warning(f"...modifier '{str(key_or_content)[:60]}...' not found in registry; treating as raw string")
