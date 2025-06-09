@@ -5,6 +5,7 @@ import logging
 import random
 import time
 import warnings
+from enum import Enum
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -16,9 +17,16 @@ from django.utils import timezone
 from .models import Message
 from .models import RoleChoices
 from simcore.models import Simulation
+from .utils import broadcast_message
 
 logger = logging.getLogger(__name__)
 ai = SimAIClient()
+
+
+class ContentMode(str, Enum):
+    HTML = "fullHtml"
+    RAW = "rawOutput"
+    TRIGGER = "trigger"
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -153,8 +161,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Parse the incoming data
         data = json.loads(text_data)
-        event_type = data.get("type")  # Identify the type of event
-        ChatConsumer.log(self, func_name, f"{event_type} event received: {data}")
+        event_type = data.get("type")
         ChatConsumer.log( func_name, f"{event_type} event received: {data}")
 
         # Select handler for eventy type
