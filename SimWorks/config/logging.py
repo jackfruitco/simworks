@@ -45,12 +45,10 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
-        "loggers": {
-            "py.warnings": {
-                "handlers": ["console"],
-                "level": "WARNING",
-                "propagate": False,
-            },
+        "py.warnings": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
         },
         "core": {
             "handlers": ["console"],
