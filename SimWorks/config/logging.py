@@ -45,6 +45,13 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        "loggers": {
+            "py.warnings": {
+                "handlers": ["console"],
+                "level": "WARNING",
+                "propagate": False,
+            },
+        },
         "core": {
             "handlers": ["console"],
             "level": check_env("CORE_LOG_LEVEL", None) or LOG_LEVEL,
