@@ -51,7 +51,7 @@ FROM base AS celery
 
 COPY SimWorks /app/SimWorks
 WORKDIR /app/SimWorks
-CMD ["celery", "-A", "config", "worker", "--loglevel=info"]
+CMD ["celery", "-A", "config", "worker", "--pool=threads", "--loglevel=info"]
 
 # === Celery Beat Stage ===
 FROM base AS beat
