@@ -141,8 +141,12 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
                 } else if (data.type === 'stopped_typing') {
                     this.updateTypingUsers(data, false)
-                } else if (data.type === 'chat.message' || data.type === 'message' || data.type === 'message.created') {
-                    // TODO add new chat.message handling here
+                } else if (
+                    data.type === 'chat.message'
+                    || data.type === 'message'
+                    || data.type === 'message.created'
+                    || data.type === 'chat.message_created'
+                ) {
                     const isFromSelf = data.senderId === this.currentUser;
                     const isFromSimulatedUser = data.isFromAi;
                     const status = isFromSelf ? data.status || 'delivered' : null;

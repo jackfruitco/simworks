@@ -93,8 +93,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
         ],
     }
 
-@sync_to_async
-def build_patient_results_payload(simulation: Simulation, lab_order: str | list[str]) -> dict:
+async def build_patient_results_payload(simulation: Simulation, lab_order: str | list[str]) -> dict:
     """
     Build the payload for AI-determined patient results.
 
@@ -102,7 +101,7 @@ def build_patient_results_payload(simulation: Simulation, lab_order: str | list[
     :param lab_order: str or list[str]
     :return: dict: A dictionary containing the previous response ID and developer/user input.
     """
-    instructions = Prompt.build(
+    instructions = await Prompt.abuild(
         "ClinicalResults.PatientScenarioData",
         "ClinicalResults.GenericLab",
         include_default=False,

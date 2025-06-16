@@ -1,10 +1,12 @@
 import asyncio
 import base64
+import importlib
 import inspect
 import json
 import logging
 import mimetypes
 import uuid
+import warnings
 from logging import DEBUG
 from logging import WARNING
 from typing import List
@@ -49,7 +51,7 @@ class StructuredOutputParser:
             self,
             output: dict or str,
             **kwargs,
-    ) -> List[Message] | List[LabResult]:
+    ) -> List[Message] | List[SimulationMetadata] :
         func_name = inspect.currentframe().f_code.co_name
 
         logger.debug(f"response output: {output}")
@@ -59,7 +61,7 @@ class StructuredOutputParser:
 
         if self.response_type is ResponseType.FEEDBACK:
             await self.log(func_name, f"Feedback Output: {output}")
-            await self._parse_metadata(output, "SimulationFeedback")
+            await self._parse_metadataV1(output, "SimulationFeedback")
             return []
 
         if self.response_type is ResponseType.PATIENT_RESULTS:
@@ -87,7 +89,7 @@ class StructuredOutputParser:
                     }
                 ))
 
-            return await asyncio.gather(*results_tasks)
+            return [item for sublist in await asyncio.gather(*results_tasks) for item in sublist]
 
         # If it's a media response, parse each media item and return the results
         if self.response_type is ResponseType.MEDIA:
@@ -175,11 +177,11 @@ class StructuredOutputParser:
 
         metadata_tasks = []
         if patient_metadata:
-            metadata_tasks.append(self._parse_metadata(patient_metadata, "PatientDemographics"))
+            metadata_tasks.append(self._parse_metadataV1(patient_metadata, "PatientDemographics"))
         if patient_history:
-            metadata_tasks.append(self._parse_metadata(patient_history, "PatientHistory"))
+            metadata_tasks.append(self._parse_metadataV1(patient_history, "PatientHistory"))
         if simulation_data:
-            metadata_tasks.append(self._parse_metadata(simulation_data, "SimulationMetadata"))
+            metadata_tasks.append(self._parse_metadataV1(simulation_data, "SimulationMetadata"))
         if scenario_data:
             await self._parse_scenario_attribute(scenario_data)
 
@@ -218,12 +220,12 @@ class StructuredOutputParser:
 
         return msg
 
-    async def _parse_metadatav2(
+    async def _parse_metadata(
             self,
             metadata: dict | list,
             attribute: str,
             field_map: dict[str, str] | None = None,
-    ) -> None:
+    ) -> SimulationMetadata | list[SimulationMetadata]:
         import importlib
         import inspect
         from django.db.models import Model
@@ -231,24 +233,33 @@ class StructuredOutputParser:
         func_name = inspect.currentframe().f_code.co_name
         logger.debug(f"[{func_name}] received {attribute} input ({type(metadata)}): {metadata}")
 
+        # List to store created instances
+        instances = []
+
+        # Dynamically import the model class based on the provided attribute
         try:
             module = importlib.import_module("simcore.models")
             Subclass: type[Model] = getattr(module, attribute)
         except (ModuleNotFoundError, AttributeError) as e:
             logger.error(f"[{func_name}] Invalid attribute '{attribute}': {e}")
-            return
+            return []
 
+        # Convert to list if necessary to handle single-entry metadata
         if not isinstance(metadata, list):
             metadata = [metadata]
 
+        # Map field names to database model fields, if provided
         field_map = field_map or {}
         model_fields = {f.name for f in Subclass._meta.fields}
 
+        # Iterate over metadata entries and create database objects
         for entry in metadata:
             if not isinstance(entry, dict):
                 await self.log(func_name, f"Expected dict, got {type(entry)}", WARNING)
                 continue
 
+            # Prepare initialization kwargs for the new object,
+            # then create the object and append it to `instances`
             try:
                 init_kwargs = {"simulation": self.simulation}
 
@@ -273,66 +284,105 @@ class StructuredOutputParser:
                     else:
                         init_kwargs["value"] = str(entry)
 
-                instance = await sync_to_async(Subclass.objects.create)(**init_kwargs)
+                # Create the object, then append it to `instances` and log it (DEBUG only)
+                instance = await Subclass.objects.acreate(**init_kwargs)
+                instances.append(instance)
                 await self.log(func_name, f"... new {attribute} created: {instance}", DEBUG)
 
             except Exception as e:
                 await self.log(func_name, f"Error creating {attribute}: {e}", WARNING)
 
-    async def _parse_metadata(self, metadata: dict | list, attribute: str) -> None:
-        import importlib
+        return instances
+
+    async def _parse_metadataV1(
+            self,
+            metadata: dict | list,
+            attribute: str
+    ) -> list[SimulationMetadata]:
+        """
+        Parses simulation metadata and creates corresponding database objects based on the
+        provided attribute type. This function handles both dictionary and list types of
+        metadata, determines the appropriate model class dynamically, and logs actions
+        performed during metadata processing.
+
+        :param metadata: Simulation metadata to be processed. Can be a dictionary or a list containing
+                         metadata entries. Each entry within metadata should match the expected format
+                         required to create a database object for the specific attribute.
+        :type metadata: dict | list
+        :param attribute: The name of the model class corresponding to the metadata being processed.
+                          The function uses this attribute to dynamically find and import the class.
+        :type attribute: str
+        :return: A list of successfully created database objects corresponding to the given metadata.
+        :rtype: list[SimulationMetadata]
+        :raises ModuleNotFoundError: If the specified model module cannot be found.
+        :raises AttributeError: If the specified attribute cannot be located in the module.
+        """
+        warnings.warn(
+            "deprecated. Use newer `_parse_metadata` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         func_name = inspect.currentframe().f_code.co_name
         logger.debug(f"[{func_name}] received {attribute} input ({type(metadata)}): {metadata}")
+
+        instances = []
 
         try:
             module = importlib.import_module("simcore.models")
             Subclass = getattr(module, attribute)
         except (ModuleNotFoundError, AttributeError) as e:
             logger.error(f"[{func_name}] Invalid attribute '{attribute}': {e}")
-            return
+            return []
+
+        def clean_key(k: str) -> str:
+            return k.lower().replace("_", " ").strip()
+
+        async def create_field(**kwargs):
+            obj = await Subclass.objects.acreate(**kwargs)
+            instances.append(obj)
+            await self.log(func_name, f"... new {attribute} created: {obj.key}", DEBUG)
 
         if attribute.casefold() == "patienthistory":
             for entry in metadata:
                 if not isinstance(entry, dict):
                     await self.log(func_name, f"Expected dict, got {type(entry)}", WARNING)
                     continue
-                metafield = await sync_to_async(Subclass.objects.create)(
+                await create_field(
                     simulation=self.simulation,
                     key=entry.get("diagnosis"),
                     is_resolved=entry.get("is_resolved"),
                     duration=entry.get("duration"),
                     value=f"{entry.get('diagnosis')} ({'resolved' if entry.get('is_resolved') else 'ongoing'})"
                 )
-                await self.log(func_name, f"... new {attribute} created: {metafield.key}", DEBUG)
-            return
+            return instances
 
         if isinstance(metadata, dict):
             for key, value in metadata.items():
                 value_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-                metafield = await sync_to_async(Subclass.objects.create)(
+                await create_field(
                     simulation=self.simulation,
-                    key=key.lower().replace("_", " "),
+                    key=clean_key(key),
                     value=value_str,
                 )
-                await self.log(func_name, f"... new {attribute} created: {metafield.key}", DEBUG)
-            return
+            return instances
 
         if isinstance(metadata, list):
             for index, item in enumerate(metadata):
                 if isinstance(item, dict):
                     for key, value in item.items():
                         value_str = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-                        metafield = await sync_to_async(Subclass.objects.create)(
+                        await create_field(
                             simulation=self.simulation,
-                            key=f"Condition #{index} {key.lower().replace('_', ' ')}",
+                            key=f"Condition #{index} {clean_key(key)}",
                             value=value_str,
                         )
-                        await self.log(func_name, f"... new {attribute} created: {metafield.key}", DEBUG)
                 else:
                     await self.log(func_name, f"Expected a dict in metadata list, but got {type(item)}", WARNING)
-            return
+            return instances
 
-        logger.warning(f"[{func_name}] Expected metadata to be a dict or list, but got {type(metadata)}")
+        await self.log(func_name, f"Unhandled metadata type: {type(metadata)}", WARNING)
+        return []
 
     async def _parse_scenario_attribute(self, attributes: dict) -> None:
         """
