@@ -58,7 +58,7 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         dict: A dictionary containing the previous response ID and user input.
     """
     return {
-        "previous_response_id": user_msg.simulation.previous_response_id or None,
+        "previous_response_id": user_msg.simulation.get_previous_response_id() or None,
         "input": [
             user_msg.get_openai_input(),
             # {"role": "user", "content": "content"},
@@ -86,7 +86,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     )
 
     return {
-        "previous_response_id": simulation.previous_response_id or None,
+        "previous_response_id": simulation.get_previous_response_id() or None,
         "input": [
             {"role": "developer", "content": instructions},
             {"role": "user", "content": "Provide feedback to the user"},
@@ -101,6 +101,7 @@ async def build_patient_results_payload(simulation: Simulation, lab_order: str |
     :param lab_order: str or list[str]
     :return: dict: A dictionary containing the previous response ID and developer/user input.
     """
+    previous_response_id = await simulation.aget_previous_response_id() or None
     instructions = await Prompt.abuild(
         "ClinicalResults.PatientScenarioData",
         "ClinicalResults.GenericLab",
@@ -109,7 +110,7 @@ async def build_patient_results_payload(simulation: Simulation, lab_order: str |
         simulation=simulation,
     )
     return {
-        "previous_response_id": simulation.previous_response_id or None,
+        "previous_response_id": previous_response_id,
         "input": [
             {"role": "developer", "content": instructions},
             {"role": "user", "content": f"New Patient Orders: {lab_order}"},

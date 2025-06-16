@@ -7,6 +7,7 @@ import warnings
 from abc import abstractmethod, ABCMeta, ABC
 from datetime import timedelta
 
+from asgiref.sync import async_to_sync, sync_to_async
 from autoslug import AutoSlugField
 from channels.db import database_sync_to_async
 from django.conf import settings
@@ -141,8 +142,7 @@ class Simulation(models.Model):
             return self.end_timestamp - self.start_timestamp
         return None
 
-    @property
-    def previous_response_id(self, exclude_type: list[str] | str="M"):
+    def get_previous_response_id(self, exclude_type: list[str] | str= "M"):
         """
         Returns the id of the previous OpenAI response for this simulation.
 
@@ -162,6 +162,10 @@ class Simulation(models.Model):
                 qs = qs.exclude(type=t)
         response = qs.order_by("-created").first()
         return response.id if response else None
+
+    @sync_to_async
+    def aget_previous_response_id(self, exclude_type: list[str] | str="M"):
+        return self.get_previous_response_id(exclude_type)
 
     @property
     def start_timestamp_ms(self):
