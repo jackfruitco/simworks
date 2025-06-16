@@ -51,7 +51,7 @@ class StructuredOutputParser:
             self,
             output: dict or str,
             **kwargs,
-    ) -> List[Message] | List[SimulationMetadata] :
+    ) -> list[Message] | list[SimulationMetadata] :
         func_name = inspect.currentframe().f_code.co_name
 
         logger.debug(f"response output: {output}")
@@ -59,62 +59,61 @@ class StructuredOutputParser:
         if isinstance(output, str):
             output = json.loads(output)
 
-        if self.response_type is ResponseType.FEEDBACK:
-            await self.log(func_name, f"Feedback Output: {output}")
-            await self._parse_metadataV1(output, "SimulationFeedback")
-            return []
+        match self.response_type:
 
-        if self.response_type is ResponseType.PATIENT_RESULTS:
-            results = output.get("patient_results") or {}
-            lab_results = results.get("lab_results") or []
-            rad_results = results.get("radiology_results") or []
+            case ResponseType.FEEDBACK:
+                await self.log(func_name, f"Feedback Output: {output}")
+                await self._parse_metadataV1(output, "SimulationFeedback")
+                return []
 
-            results_tasks = []
-            if lab_results:
-                results_tasks.append(self._parse_metadata(
-                    lab_results,
-                    attribute="LabResults",
-                    field_map={
-                        "key": "order_name",
-                        "value": "result_value",
-                    }
-                ))
-            if rad_results:
-                results_tasks.append(self._parse_metadata(
-                    rad_results,
-                    attribute="RadResults",
-                    field_map={
-                        "key": "order_name",
-                        "value": "result_value",
-                    }
-                ))
+            case ResponseType.PATIENT_RESULTS:
+                _results = {
+                    "LabResult": output.get("lab_results") or [],
+                    "RadResult": output.get("radiology_results") or []
+                }
 
-            return [item for sublist in await asyncio.gather(*results_tasks) for item in sublist]
+                results_tasks = []
+                for attribute, data in _results.items():
+                    logger.debug(f"[{func_name}] parsing {attribute} (data: {data})...")
+                    if data:
+                        results_tasks.append(self._parse_metadata(
+                            data,
+                            attribute=attribute,
+                            field_map={
+                                # "key": "order_name",
+                                # "value": "result_value",
+                                "order_name": "key",
+                                "result_value": "value"
+                            }
+                        ))
+                logger.debug(f"[{func_name}] parsed {len(results_tasks)} results tasks...")
+                return [item for sublist in await asyncio.gather(*results_tasks) for item in sublist]
 
-        # If it's a media response, parse each media item and return the results
-        if self.response_type is ResponseType.MEDIA:
-            media_tasks = [
-                self._parse_media(
-                    media_b64=media.b64_json,
-                    mime_type=kwargs.get("mime_type")
-                )
-                for media in output
-            ]
-            # Create SimulationImage objects (and ignore errors)
-            media_list = await asyncio.gather(*media_tasks, return_exceptions=True)
-            media_list = [m for m in media_list if not isinstance(m, Exception)]
-            logger.debug(f"[{func_name}] parsed {len(media_list)} media items... \n\nstarting message creation...\n")
+            case ResponseType.MEDIA:
+                media_tasks = [
+                    self._parse_media(
+                        media_b64=media.b64_json,
+                        mime_type=kwargs.get("mime_type")
+                    )
+                    for media in output
+                ]
 
-            # Create Message objects for each SimulationImage, then
-            # return a list of messages
-            message_tasks = [
-                self._parse_message(
-                    message=None,
-                    media=media
-                )
-                for media in media_list
-            ]
-            return await asyncio.gather(*message_tasks)
+                # Create SimulationImage objects (and ignore errors)
+                media_list = await asyncio.gather(*media_tasks, return_exceptions=True)
+                media_list = [m for m in media_list if not isinstance(m, Exception)]
+                logger.debug(f"[{func_name}] parsed {len(media_list)} media items... \n\nstarting message creation...\n")
+
+                # Create Message objects for each SimulationImage, then
+                # return a list of messages
+                message_tasks = [
+                    self._parse_message(
+                        message=None,
+                        media=media
+                    )
+                    for media in media_list
+                ]
+                return await asyncio.gather(*message_tasks)
+
 
         # Check if an image was requested and trigger image generation
         if image_requested := coerce_to_bool(output.get("image_requested", False)):
