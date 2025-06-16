@@ -7,7 +7,7 @@ to generate responses using the OpenAI model.
 import inspect
 import logging
 import mimetypes
-from typing import List
+from typing import List, Union
 from typing import Optional
 
 from asgiref.sync import sync_to_async
@@ -15,7 +15,7 @@ from django.conf import settings
 from openai import AsyncOpenAI
 
 from chatlab.models import Message
-from simcore.models import Simulation
+from simcore.models import Simulation, SimulationMetadata, LabResult, RadResult
 from .models import ResponseType
 from .openai_gateway import process_response
 from .output_schemas import message_schema, feedback_schema, patient_results_schema
@@ -302,7 +302,7 @@ class SimAIClient:
             include_default=False,
             stream: bool = False,
             **kwargs
-    ) -> List[Message]:
+    ) -> list[LabResult] | list[RadResult]:
         """
         Generate patient results for requested labs or radiology using OpenAI Image API.
         """

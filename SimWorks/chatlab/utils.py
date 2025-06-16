@@ -20,7 +20,7 @@ from simcore.utils import generate_fake_name, get_user_initials, aresolve_simula
 logger = logging.getLogger(__name__)
 
 
-async def create_new_simulation(user, modifiers: list=None):
+async def create_new_simulation(user, modifiers: list = None):
     """Create a new Simulation and ChatSession, and trigger AI patient intro."""
 
     sim_patient_full_name = await generate_fake_name()
@@ -59,6 +59,7 @@ async def create_new_simulation(user, modifiers: list=None):
 
     return simulation
 
+
 @database_sync_to_async
 def maybe_start_simulation(simulation):
     """Starts the simulation if not already started."""
@@ -67,6 +68,7 @@ def maybe_start_simulation(simulation):
         simulation.start_timestamp = now()
         simulation.save(update_fields=["start_timestamp"])
 
+
 @database_sync_to_async
 def add_message_media(message_id, media_id):
     """Adds a media object to a message."""
@@ -74,6 +76,7 @@ def add_message_media(message_id, media_id):
         message_id=message_id,
         media_id=media_id
     )
+
 
 async def socket_send(
         __type: str,
@@ -134,10 +137,10 @@ async def socket_send(
     except Exception as e:
         logger.error(msg=f"socket_send failed: {e}")
 
-
     logger.debug(f"'{__type}': broadcasted to group '{__group}'")
     logger.debug(f"Event payload: {__payload}")
     return
+
 
 async def broadcast_event(
         __type: str,
@@ -179,9 +182,10 @@ async def broadcast_event(
     )
     return
 
+
 async def broadcast_patient_results(
         __source: QuerySet | list | LabResult | RadResult or int,
-        __status: str=None) -> None:
+        __status: str = None) -> None:
     """
     Broadcast patient results to all connected clients using `socket_send`.
 
@@ -239,7 +243,8 @@ async def broadcast_patient_results(
         )
     return
 
-async def broadcast_message(message: Message or int, status: str=None) -> None:
+
+async def broadcast_message(message: Message or int, status: str = None) -> None:
     """
     Broadcasts a message to a specific group layer using WebSocket and channels. The message
     can originate either from a system or a user. If a message ID is provided instead of a
@@ -296,7 +301,7 @@ async def broadcast_message(message: Message or int, status: str=None) -> None:
         {
             "id": media.id,
             "url": media.thumbnail.url,
-         }
+        }
         for media in media_list
     ]
 
@@ -318,7 +323,8 @@ async def broadcast_message(message: Message or int, status: str=None) -> None:
 
     return await socket_send(__payload=payload, __group=group, __type="chat.message_created")
 
-async def broadcast_chat_message(message: Message or int, status: str=None):
+
+async def broadcast_chat_message(message: Message or int, status: str = None):
     """Broadcasts a message to all connected clients."""
     warnings.warn(DeprecationWarning("Use `broadcast_message` instead."))
 
@@ -369,7 +375,7 @@ async def broadcast_chat_message(message: Message or int, status: str=None):
         {
             "id": media.id,
             "url": media.thumbnail.url,
-         }
+        }
         for media in media_list
     ]
 
