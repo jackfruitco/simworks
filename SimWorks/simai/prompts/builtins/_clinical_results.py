@@ -4,6 +4,9 @@ from asgiref.sync import sync_to_async
 
 from simai.prompts.registry import register_modifier
 from simcore.models import Simulation, SimulationMetadata
+import logging
+
+logger = logging.getLogger(__name__)
 
 _BASE = f"""
 For this prompt only, you are acting as the simulation facilitator.
@@ -46,13 +49,13 @@ async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
     age = ""
 
     try:
-        gender_meta = await sync_to_async(simulation.metadata.get)(key="gender")
+        gender_meta = await simulation.metadata.aget(key="gender")
         sex = f"The patient's sex is {gender_meta.value}."
     except SimulationMetadata.DoesNotExist:
         pass
 
     try:
-        age_meta = await sync_to_async(simulation.metadata.get)(key="age")
+        age_meta = await simulation.metadata.aget(key="age")
         age = f"The patient's age is {age_meta.value}."
     except SimulationMetadata.DoesNotExist:
         pass
@@ -63,8 +66,12 @@ async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
     return f"{info_string} {_base}"
 
 @register_modifier("ClinicalResults.GenericLab")
-async def generic_lab(lab_order: str | list[str], **kwargs):
+async def generic_lab(lab_order: str | list[str] = None, **kwargs) -> str:
     """Returns string for a(n) Lab clinical scenario modifier."""
+    if not lab_order:
+        logging.warning("No lab order provided.")
+        return ""
+
     if not isinstance(lab_order, list):
         lab_order = [lab_order]
 

@@ -66,14 +66,42 @@ class Prompt:
 
         logger.debug(f"... _modifiers={self._modifiers}")
 
-    async def _add_modifier(self, key_or_content, key=None, is_key=True):
+    async def _add_modifier(
+            self,
+            key_or_content,
+            key=None,
+            is_key=True,
+            **kwargs,
+    ) -> "Prompt":
+        """
+        Asynchronously adds a modifier to a prompt.
+
+        This method processes a given modifier, either identified securely through a key
+        or provided directly as content. It supports both synchronous and asynchronous
+        resolution of functions and ensures that duplicate keys are not added. The resolved
+        modifier content is appended to internal storage and linked with a unique key.
+
+        :param key_or_content: Input representing either a key to resolve a modifier or the content
+            of the modifier itself.
+        :type key_or_content: Union[str, Callable]
+        :param key: Optional explicit key to associate with the modifier. If not specified,
+            it will attempt to infer or generate one.
+        :type key: Optional[str]
+        :param is_key: Indicates whether `key_or_content` is a key to resolve a modifier,
+            or direct content. Defaults to True, treating the input as a key.
+        :type is_key: bool
+        :param kwargs: Additional payload parameters to be used when resolving the modifier function.
+        :return: Returns a modified `Prompt` instance after adding the new modifier.
+        :rtype: Prompt
+        """
         logger.debug(f"_add_modifier received: `{str(key_or_content)[:60]}...` (type={type(key_or_content)}) is_key={is_key}")
         content = None
 
         payload = {
             "user": self.user,
             "role": self.role,
-            "simulation": self.simulation
+            "simulation": self.simulation,
+            **kwargs,
         }
 
         if is_key:
@@ -149,6 +177,22 @@ class Prompt:
         modifiers=None,
         **kwargs,
     ) -> str:
+        """
+        Builds an instance of the class asynchronously with specified modifiers, user, role, lab, and other optional
+        parameters. This method allows customization through provided modifiers or a pre-defined list. Optionally,
+        default settings can be included, and a final simulation instance is generated with processed modifiers.
+
+        :param modifiers_or_list: A variable-length list of modifiers or a single iterable containing them.
+        :param user: Optional user object or identifier for whom the instance is being built.
+        :param role: Optional role specification to associate with the created instance.
+        :param lab: Optional lab data or object to be included in the instance creation.
+        :param include_default: A boolean flag indicating whether default settings should be added (default: True).
+        :param include_history: A boolean flag determining if the history should be included in the instance (default: True).
+        :param simulation: An optional simulation object or data related to the instance building process.
+        :param modifiers: An optional iterable of modifiers to directly use, overriding `modifiers_or_list`.
+        :param kwargs: Additional keyword arguments to customize instance creation.
+        :return: A string representation of the finalized instance built from the provided and default data.
+        """
         all_modifiers = tuple(modifiers) if modifiers is not None else tuple(modifiers_or_list)
         instance = cls(
             *all_modifiers,
@@ -162,7 +206,7 @@ class Prompt:
         )
 
         for mod in instance._modifiers:
-            await instance._add_modifier(mod, is_key=True)
+            await instance._add_modifier(mod, is_key=True, **kwargs)
 
         if include_default:
             await instance._add_defaults()
@@ -182,6 +226,35 @@ class Prompt:
         modifiers=None,
         **kwargs,
     ) -> str:
+        """
+        Builds and initiates an asynchronous operation through an event loop to
+        generate a result based on provided modifiers or a collection of
+        parameters. The method ensures that it does not conflict with an already
+        running async event loop by checking and creating a new event loop when
+        necessary. Calls the asynchronous ``abuild`` method and synchronously
+        returns its output.
+
+        :param modifiers_or_list: Positional arguments representing the modifiers
+            or a list of modifier items to be processed.
+        :param user: Optional parameter to specify the user associated with the
+            operation.
+        :param role: Optional setting to determine the role context under which
+            the operation is performed.
+        :param lab: Optional argument specifying the lab configuration or
+            environment required for the process.
+        :param include_default: Boolean flag indicating whether default
+            configurations should be included in the operation. Defaults to True.
+        :param include_history: Boolean flag determining whether the history
+            of operations should be included in the result. Defaults to True.
+        :param simulation: Optional parameter to specify data for simulation
+            purposes, if any.
+        :param modifiers: Dictionary or data structure containing additional
+            modifiers to be applied to the process.
+        :param kwargs: Additional keyword arguments for extended customization
+            or parameters needed in the operation.
+        :return: A string containing the result produced by the asynchronous
+            ``abuild`` implementation.
+        """
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
