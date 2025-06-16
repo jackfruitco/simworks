@@ -189,30 +189,53 @@ async def broadcast_patient_results(
     :param __status:
     :return:
     """
-    if isinstance(__source, int):
-        __source = await sync_to_async(SimulationMetadata.objects.get)(id=__source)
+    if not __source:
+        logger.warning("No source instances provided. Skipping broadcast...")
+        return
 
-    if not isinstance(__source, (QuerySet, list)):
+    # Get the instance if provided ID as the source
+    if isinstance(__source, int):
+        __source = await SimulationMetadata.objects.aget(id=__source)
+
+    # Convert to list if not already a list, tuple, or QuerySet
+    if not isinstance(__source, (list, tuple, QuerySet)):
         __source = [__source]
 
+    # Debug logging
+    logger.debug(f"Received {len(__source)} patient results to broadcast to all connected clients.")
+
+    # Group results by simulation ID and serialize them before broadcasting
     grouped_results = {}
+    skipped = 0
+
     for result in list(__source):
         sim_id = result.simulation_id
-        grouped_results.setdefault(sim_id, []).append(result.serialize())
 
+        # Serialize the result object and add it to the group layer results list
+        try:
+            serialized = result.serialize()
+        except AttributeError as e:
+            logger.error(f"{type(result).__name__} object has no .serialize() method: {e}")
+            skipped += 1
+            continue
+
+        grouped_results.setdefault(sim_id, []).append(serialized)
+
+    logger.warning(f"Skipped {skipped} results due to missing .serialize() method.")
+
+    # Broadcast results to each simulation group layer
     for sim_id in grouped_results:
         payload = {
             "results": grouped_results[sim_id]
         }
 
-        # Set channel and group layers to broadcast to
-        group = f"simulation_{sim_id}"
-
+        # Send event to the group layer
+        logger.debug(f"Broadcasting {len(grouped_results[sim_id])} results to simulation_{sim_id}")
         await socket_send(
-            payload=payload,
-            group=group,
-            type="metadata.created",
-            status=__status
+            __type="simulation.metadata.results_created",
+            __payload=payload,
+            __status=__status,
+            __simulation_id=sim_id,
         )
     return
 
@@ -293,7 +316,7 @@ async def broadcast_message(message: Message or int, status: str=None) -> None:
     }
     payload = await sync_to_async(remove_null_keys)(payload)
 
-    return await socket_send(__payload=payload, __group=group, __type="message.created")
+    return await socket_send(__payload=payload, __group=group, __type="chat.message_created")
 
 async def broadcast_chat_message(message: Message or int, status: str=None):
     """Broadcasts a message to all connected clients."""
