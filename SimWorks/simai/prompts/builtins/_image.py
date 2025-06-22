@@ -13,9 +13,14 @@ _BASE = (
 )
 
 @register_modifier("Image.PatientImage")
-def image_patient_image(simulation, **extra_kwargs):
+def image_patient_image(simulation: Simulation | int, **kwargs):
     """Returns string for a(n) Musculoskeletal clinical scenario prompt modifier."""
-    simulation = Simulation.objects.get(pk=simulation)
+    if isinstance(simulation, int):
+        try:
+            simulation = Simulation.objects.get(pk=simulation)
+        except Simulation.DoesNotExist:
+            raise ValueError(f"Simulation with ID {simulation} not found.")
+
     return (
         f"""
         {_BASE} 

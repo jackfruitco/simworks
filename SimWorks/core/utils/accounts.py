@@ -1,8 +1,9 @@
 # core/utils/accounts.py
-
+from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 
 
+@sync_to_async
 def get_or_create_system_user():
     """
     Returns the singleton System user for AI or system-generated actions.

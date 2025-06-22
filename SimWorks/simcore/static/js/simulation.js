@@ -57,10 +57,15 @@ window.SimulationManager = function(simulation_id) {
             });
         },
 
-        checkTools(toolNames) {
+        checkTools(toolNames, forceRefresh = false) {
             console.log(`[SimulationManager] Checking selected tools: ${toolNames.join(', ')}`);
             toolNames.forEach(toolName => {
-                this.checkToolChecksum(toolName);
+                if (forceRefresh) {
+                    this.refreshTool(toolName);
+                    console.log(`[SimulationManager] Refresh force-triggered for ${toolName}`);
+                } else {
+                    this.checkToolChecksum(toolName);
+                }
             });
         },
 
@@ -76,6 +81,17 @@ window.SimulationManager = function(simulation_id) {
                 swap: 'innerHTML'
             });
             console.info(`[refreshTool] Refresh requested for '${toolName}'`);
-        }
+        },
+
+        refreshToolFromHTML(tool, html) {
+            const id = `${tool.replaceAll('_', '-')}-tool`;
+            const el = document.getElementById(id);
+            if (el) {
+                el.innerHTML = html;
+                console.info(`[WebSocket] HTML pushed into '${id}'`);
+            } else {
+                console.warn(`[WebSocket] Could not find element '${id}'`);
+            }
+        },
     };
 };

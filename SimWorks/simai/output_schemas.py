@@ -74,7 +74,7 @@ async def message_schema(initial: bool = False) -> dict:
                         "additionalProperties": False,
                         "properties": {
                             "patient_metadata": {
-                                "description": "Patient metadata.",
+                                "description": "Patient metadata",
                                 "type": dynamic_type("object", initial, only=True),
                                 "required": [
                                     "name",
@@ -120,7 +120,7 @@ async def message_schema(initial: bool = False) -> dict:
                                             "additionalProperties": False,
                                             "required": [
                                                 "diagnosis",
-                                                "resolved",
+                                                "is_resolved",
                                                 "duration",
                                             ],
                                             "properties": {
@@ -130,17 +130,11 @@ async def message_schema(initial: bool = False) -> dict:
                                                     ),
                                                     "description": "The diagnosis or description of problem.",
                                                 },
-                                                "resolved": {
+                                                "is_resolved": {
                                                     "type": dynamic_type(
-                                                        "string", False, only=False
+                                                        "boolean", False, only=False
                                                     ),
-                                                    "description": "The diagnosis or description of problem.",
-                                                    "enum": [
-                                                        "resolved",
-                                                        "ongoing",
-                                                        "unsure",
-                                                        "unknown",
-                                                    ],
+                                                    "description": "If the condition is resolved or unresolved/ongoing.",
                                                 },
                                                 "duration": {
                                                     "type": dynamic_type(
@@ -263,6 +257,104 @@ async def feedback_schema() -> dict:
                         "items": {
                             "type": "string",
                             "description": "The topics that the user should study or research to further development and understanding.",
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+async def patient_results_schema(initial: bool = False) -> dict:
+    """Return dict with JSON Schema for OpenAI Response Output."""
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": "patient_results",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["lab_results", "radiology_results"],
+                "properties": {
+                    "lab_results": {
+                        "type": ["array", "null"],
+                        "description": "The lab results of the patient. Each item is a lab result object.",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "order_name",
+                                "panel_name",
+                                "result_value",
+                                "result_unit",
+                                "reference_range_low",
+                                "reference_range_high",
+                                "result_flag",
+                                "result_comment"
+                            ],
+                            "properties": {
+                                "order_name": {
+                                    "type": "string",
+                                    "description": "The name of the order using standardized terminology.",
+                                },
+                                "panel_name": {
+                                    "type": ["string", "null"],
+                                    "description": "The name of the lab panel the test is included in.",
+                                },
+                                "result_value": {
+                                    "type": "number",
+                                    "description": "The result value of the test, without the unit.",
+                                },
+                                "result_unit": {
+                                    "type": "string",
+                                    "description": "The unit of the result value.",
+                                },
+                                "reference_range_low": {
+                                    "type": "number",
+                                    "description": "The lower limit of the reference range, without the unit.",
+                                },
+                                "reference_range_high": {
+                                    "type": "number",
+                                    "description": "the upper limit of the reference range, without the unit.",
+                                },
+                                "result_flag": {
+                                    "type": "string",
+                                    "description": "The result flag.",
+                                    "enum": ["HIGH", "LOW", "POS", "NEG", "UNK", "NORMAL", "ABNORMAL", "CRITICAL" ]
+                                },
+                                "result_comment": {
+                                    "type": ["string", "null"],
+                                    "description": "The result comment, if applicable, or null.",
+                                },
+                            },
+                        },
+                    },
+                    "radiology_results": {
+                        "type": ["array", "null"],
+                        "description": "The radiology results of the patient. Each item is a radiology result object.",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "order_name",
+                                "result_value",
+                                "result_flag",
+                            ],
+                            "properties": {
+                                "order_name": {
+                                    "type": "string",
+                                    "description": "The name of the order using standardized terminology.",
+                                },
+                                "result_value": {
+                                    "type": "string",
+                                    "description": "The result of the order.",
+                                },
+                                "result_flag": {
+                                    "type": "string",
+                                    "description": "The result flag.",
+                                    "enum": ["UNK", "NORMAL", "ABNORMAL", "CRITICAL"]
+                                },
+                            }
                         }
                     }
                 }

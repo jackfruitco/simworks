@@ -1,6 +1,7 @@
 # accounts/models.py
 from datetime import timedelta
 
+from asgiref.sync import async_to_sync, sync_to_async
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
@@ -46,6 +47,7 @@ class UserRole(models.Model):
         unique=True,
     )
 
+    @sync_to_async
     def resource_list(self, format_as="list") -> list or str:
         _list = []
         for item in RoleResource.objects.filter(role=self):

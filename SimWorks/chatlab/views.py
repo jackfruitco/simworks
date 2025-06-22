@@ -2,20 +2,23 @@
 
 import logging
 
+from asgiref.sync import sync_to_async, async_to_sync
+from channels.db import database_sync_to_async
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, Http404
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, aget_object_or_404
 from django.shortcuts import redirect
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from chatlab.utils import create_new_simulation
 from chatlab.utils import maybe_start_simulation
+from core.decorators import resolve_user
 from simcore.models import Simulation
-from simcore.tools import get_tool
-from simcore.tools import list_tools
+from simcore.tools import aget_tool
+from simcore.tools import alist_tools
 from .models import Message
 
 logger = logging.getLogger(__name__)
@@ -60,14 +63,20 @@ def index(request):
     )
 
 @login_required
-def create_simulation(request):
+@resolve_user
+async def create_simulation(request):
     modifiers = request.GET.getlist("modifier")
-    sim = create_new_simulation(user=request.user, modifiers=modifiers)
-    return redirect("chatlab:run_simulation", simulation_id=sim.id)
+    simulation = await create_new_simulation(user=request.user, modifiers=modifiers)
+    return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 @login_required
-def run_simulation(request, simulation_id, included_tools="__ALL__"):
-    simulation = get_object_or_404(Simulation, id=simulation_id)
+@resolve_user
+async def run_simulation(request, simulation_id, included_tools="__ALL__"):
+    try:
+        simulation = await Simulation.objects.select_related("user").aget(id=simulation_id)
+    except Simulation.DoesNotExist:
+        return Http404("Simulation not found.")
+
     if simulation.user != request.user:
         return HttpResponseForbidden("Waaaaaait a minute. This isn't your simulation!")
 
@@ -75,21 +84,24 @@ def run_simulation(request, simulation_id, included_tools="__ALL__"):
 
     if included_tools == "__ALL__":
         # Load all registered tool classes
-        for tool_class in list_tools():
-            tools.append(tool_class(simulation).to_dict())
+        for tool_class in await alist_tools():
+            tool = tool_class(simulation)
+            tool_data = await tool.ato_dict()
+            tools.append(tool_data)
     elif not included_tools:
         tools = []
     else:
         for tool_name in included_tools.split(","):
-            tool_class = get_tool(tool_name)
+            tool_class = await aget_tool(tool_name)
             if tool_class:
-                tools.append(tool_class(simulation).to_dict())
+                tool = tool_class(simulation)
+                tool_data = await tool.ato_dict()
+                tools.append(tool_data)
 
-    maybe_start_simulation(simulation)
+    await maybe_start_simulation(simulation)
 
     logger.debug(
         f"Sim{simulation_id} requested tools: {included_tools} "
-        f"(loaded: {[cls.__name__ for cls in list_tools()]})"
     )
 
     context = {
@@ -101,7 +113,7 @@ def run_simulation(request, simulation_id, included_tools="__ALL__"):
         "simulation_locked": simulation.is_complete,
     }
 
-    return render(request, "chatlab/simulation.html", context)
+    return await sync_to_async(render)(request, "chatlab/simulation.html", context)
 
 @require_GET
 def get_metadata_checksum(request, simulation_id):

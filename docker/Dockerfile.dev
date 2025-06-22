@@ -51,7 +51,7 @@ FROM base AS celery
 
 COPY SimWorks /app/SimWorks
 WORKDIR /app/SimWorks
-CMD ["celery", "-A", "config", "worker", "--loglevel=info"]
+CMD ["celery", "-A", "config", "worker", "--pool=threads", "--loglevel=info"]
 
 # === Celery Beat Stage ===
 FROM base AS beat
@@ -64,7 +64,7 @@ CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django
 FROM base AS web
 
 COPY SimWorks /app/SimWorks
-COPY docker/entrypoint.dev.sh /app/docker/entrypoint.dev.sh
+COPY docker/entrypoint.dev.sh /app/docker/entrypoint.sh
 COPY docker/healthcheck.sh /app/docker/healthcheck.sh
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
@@ -74,4 +74,4 @@ RUN chmod +x /app/docker/*.sh
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app/docker/healthcheck.sh
 
 WORKDIR /app/SimWorks
-ENTRYPOINT ["/app/docker/entrypoint.dev.sh"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]

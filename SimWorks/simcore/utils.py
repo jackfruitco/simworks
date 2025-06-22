@@ -1,17 +1,19 @@
 # simcore/utils.py
+import logging
 import random
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
+from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
-from django.http import Http404
-from django.shortcuts import get_object_or_404
+from django.core.exceptions import ObjectDoesNotExist
 from faker import Faker
 
-# from simcore.models import Simulation
+if TYPE_CHECKING:
+    from simcore.models import Simulation
 
 fake = Faker()
 
-
+@sync_to_async
 def generate_fake_name() -> str:
     return fake.name()
 
@@ -63,33 +65,65 @@ def get_user_initials(user) -> str:
         return user.username[0].upper()
     return "Unk"
 
-# def resolve_simulation(simulation: Simulation | int) -> Simulation:
-def resolve_simulation(simulation):
+def resolve_simulation(__target: Union[int, str, "Simulation"], __logger=None) -> "Simulation":
+    from simcore.models import Simulation
+    ...
     """
-    Resolves a simulation object from either a Simulation instance or primary key.
+    Resolves a simulation instance by its ID. This function attempts to fetch
+    a simulation object from the database using the provided ID. If a logger
+    object is not provided, it initializes a default logger. Upon successful
+    retrieval, it returns the simulation instance. If the simulation with the
+    given ID does not exist, an exception is raised.
 
-    Args:
-        simulation (Union[Simulation, int]): The simulation instance or its primary key ID.
+    :param __target: The ID of the simulation to resolve. Can be an integer or a string.
+    :param __logger: Optional. Logger instance that will log the debug messages. If
+        not provided, a default logger will be used.
+    :return: The resolved simulation instance.
 
-    Returns:
-        Simulation: The resolved Simulation instance.
-
-    Raises:
-        ValueError: If no simulation is provided.
-        Simulation.DoesNotExist: If the simulation with given primary key doesn't exist.
-        TypeError: If the simulation argument is neither a Simulation instance nor a valid primary key.
+    :raises ObjectDoesNotExist: If the simulation with the specified ID does not exist.
     """
-    from .models import Simulation
-    if simulation is None:
-        raise ValueError("Simulation must be provided")
+    from simcore.models import Simulation
+    logger = __logger or logging.getLogger(__name__)
 
-    if isinstance(simulation, int):
-        try:
-            return get_object_or_404(Simulation, pk=simulation)
-        except Http404:
-            raise Simulation.DoesNotExist("Simulation with the given primary key does not exist")
+    if isinstance(__target, Simulation):
+        logger.debug(f"[resolve_simulation] Provided already resolved simulation {__target.id}")
+        return __target
+    else:
+        __target = int(__target)
+    try:
+        instance = Simulation.objects.get(id=__target)
+        logger.debug(f"[resolve_simulation] Resolved simulation {instance.id}")
+        return instance
+    except Simulation.DoesNotExist as e:
+        raise ObjectDoesNotExist(f"Simulation with ID {__target} not found.") from e
 
-    if not isinstance(simulation, Simulation):
-        raise TypeError("Expected a Simulation instance or valid primary key")
+async def aresolve_simulation(__target: Union[int, str, "Simulation"], __logger=None) -> "Simulation":
+    """
+    Resolves and retrieves a `Simulation` instance asynchronously by its ID.
+    The function logs the resolution process for debugging purposes and raises
+    an exception if the simulation instance is not found.
 
-    return simulation
+    :param __target: ID of the simulation instance to resolve. Can be an integer or string.
+    :type __target: int | str
+    :param __logger: Optional logger instance for logging the resolution process. If not provided,
+        a default logger is used.
+    :type __logger: logging.Logger, optional
+    :return: The resolved `Simulation` instance.
+    :rtype: Simulation
+    :raises ObjectDoesNotExist: If no `Simulation` instance is found with the given ID.
+    """
+    from simcore.models import Simulation
+    logger = __logger or logging.getLogger(__name__)
+
+    if isinstance(__target, Simulation):
+        logger.debug(f"[resolve_simulation] Provided already resolved simulation {__target.id}")
+        return __target
+    else:
+        __target = int(__target)
+
+    try:
+        instance = await Simulation.objects.aget(id=__target)
+        logger.debug(f"[resolve_simulation] Resolved simulation {instance.id}")
+        return instance
+    except Simulation.DoesNotExist as e:
+        raise ObjectDoesNotExist(f"Simulation with ID {__target} not found.") from e

@@ -3,9 +3,13 @@ import logging
 import mimetypes
 import os
 import uuid
+import warnings
+from abc import abstractmethod, ABCMeta, ABC
 from datetime import timedelta
 
+from asgiref.sync import async_to_sync, sync_to_async
 from autoslug import AutoSlugField
+from channels.db import database_sync_to_async
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -13,8 +17,9 @@ from django.db.models import QuerySet
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
+from polymorphic.models import PolymorphicModel
 
-from simai.models import Prompt
+from simai.prompts.base import Prompt
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -64,31 +69,12 @@ class BaseSession(models.Model):
         abstract = True
 
 
-class SimulationManager(models.Manager):
-    def create(self, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
-        from simai.prompts import build_prompt
-        if not user and not is_template:
-            raise ValueError("Simulation must have a user unless marked as template.")
-
-        # Extract modifiers if provided
-        modifiers = kwargs.pop("modifiers", [])
-
-        if not prompt and user and lab:
-            role = getattr(user, "role", None)
-            prompt = build_prompt(user=user, role=role, lab=lab, modifiers=modifiers)
-
-        if not prompt:
-            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
-
-        kwargs["user"] = user
-        kwargs["prompt"] = prompt
-        return super().create(**kwargs)
-
-
 class Simulation(models.Model):
+    # objects = SimulationManager()
+
     start_timestamp = models.DateTimeField(auto_now_add=True)
     end_timestamp = models.DateTimeField(blank=True, null=True)
-    objects = SimulationManager()
+
     time_limit = models.DurationField(
         blank=True, null=True, help_text="Optional max duration for this simulation"
     )
@@ -156,8 +142,7 @@ class Simulation(models.Model):
             return self.end_timestamp - self.start_timestamp
         return None
 
-    @property
-    def previous_response_id(self, exclude_type: list[str] | str="M"):
+    def get_previous_response_id(self, exclude_type: list[str] | str= "M"):
         """
         Returns the id of the previous OpenAI response for this simulation.
 
@@ -177,6 +162,10 @@ class Simulation(models.Model):
                 qs = qs.exclude(type=t)
         response = qs.order_by("-created").first()
         return response.id if response else None
+
+    @sync_to_async
+    def aget_previous_response_id(self, exclude_type: list[str] | str="M"):
+        return self.get_previous_response_id(exclude_type)
 
     @property
     def start_timestamp_ms(self):
@@ -202,35 +191,72 @@ class Simulation(models.Model):
         self.generate_feedback()
 
     def generate_feedback(self):
-        from asgiref.sync import async_to_sync
-        from simai.async_client import AsyncOpenAIService
+        from simai.tasks import generate_feedback as generate_feedback_task
+        func_name = "generate_feedback"
 
-        service = AsyncOpenAIService()
-        async_to_sync(service.generate_simulation_feedback)(self)
+        try:
+            generate_feedback_task.delay(__simulation_id=self.pk)
+        except Exception as e:
+            logger.warning(f"[{func_name}] Celery task failed to enqueue: {e}")
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256
 
-        # Always order by attribute and key for stable checksum
-        entries = self.metadata.order_by('attribute', 'key').values_list('attribute', 'key', 'value')
-        data = "|".join(f"{attr}:{key}:{value}" for attr, key, value in entries)
+        # Order by Metadata type (formerly known as attribute), then
+        # Order by key for stable checksum
+        entries = (
+            self.metadata
+            .select_related('polymorphic_ctype')
+            .order_by('polymorphic_ctype__model', 'key', 'value')
+            .values_list('polymorphic_ctype__model', 'key', 'value')
+        )
+        data = "|".join(f"{polymorphic_ctype__model}:{key}:{value}" for
+                        polymorphic_ctype__model, key, value in entries)
         return sha256(data.encode('utf-8')).hexdigest()
-
-    @classmethod
-    def create_with_default_prompt(cls, user, lab="chatlab", **kwargs):
-        """
-        Create a Simulation with a default prompt based on the user role and lab.
-        """
-        from simai.prompts import build_prompt
-
-        prompt = build_prompt(user=user, role=user.role, lab=lab)
-
-        return cls.objects.create(user=user, prompt=prompt, **kwargs)
 
     @property
     def formatted_patient_history(self):
         raw = self.metadata.filter(attribute="patient history")
         return SimulationMetadata.format_patient_history(raw)
+
+    @classmethod
+    def build(cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
+        from simai.prompts import Prompt  # assuming Prompt is the prompt builder
+
+        if not user and not is_template:
+            raise ValueError("Simulation must have a user unless marked as template.")
+
+        modifiers = kwargs.pop("modifiers", [])
+
+        if not prompt and user and lab:
+            role = getattr(user, "role", None)
+            prompt = Prompt.build(user=user, role=role, lab=lab, modifiers=modifiers)
+
+        if not prompt:
+            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
+
+        kwargs["user"] = user
+        kwargs["prompt"] = prompt
+        return cls.objects.create(user=user, prompt=prompt, **kwargs)
+
+    @classmethod
+    async def abuild(cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
+        """Class method factory for creating simulations"""
+        from simai.prompts import Prompt
+
+        if not user and not is_template:
+            raise ValueError("Simulation must have a user unless marked as template.")
+
+        modifiers = kwargs.pop("modifiers", [])
+
+        if not prompt and user and lab:
+            role = user.role
+            prompt = await Prompt.abuild(user=user, role=role, lab=lab, modifiers=modifiers)
+
+        if not prompt:
+            raise ValueError("Prompt must be provided if no user/lab fallback is available.")
+
+        return await cls.objects.acreate(user=user, prompt=prompt, **kwargs)
 
     def save(self, *args, **kwargs):
         from simai.prompts import build_prompt
@@ -262,19 +288,34 @@ class Simulation(models.Model):
         return base
 
 
-class SimulationMetadata(models.Model):
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
+class SimulationMetadata(PolymorphicModel):
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
 
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
+
     key = models.CharField(blank=False, null=False, max_length=255)
-    attribute = models.CharField(blank=False, null=False, max_length=64)
     value = models.CharField(blank=False, null=False, max_length=2000)
+
+    # @property
+    # @abstractmethod
+    # def attribute(self) -> str:
+    #     """Subclasses must implement this to define the attribute category."""
+    #     pass
+    #
+    # @abstractmethod
+    # def __str__(self):
+    #     """Subclasses must implement this to define the name string."""
+    #     pass
 
     @classmethod
     def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
+        warnings.warn(
+            "`cls.format_patient_history` is deprecated. Use 'PatientHistory.to_dict()' instead.",
+            DeprecationWarning,
+        )
         from collections import defaultdict
 
         grouped = defaultdict(dict)
@@ -286,9 +327,9 @@ class SimulationMetadata(models.Model):
         logger.debug(f"grouped: {grouped}")
 
         formatted = [
-            {"key": prefix, "value": "{diagnosis} ({resolved}, {duration})".format(
+            {"key": prefix, "value": "{diagnosis} ({is_resolved}, {duration})".format(
                 diagnosis=data.get("diagnosis", "Unknown").title(),
-                resolved=data.get("resolved", "Unknown"),
+                is_resolved=data.get("is_resolved", "Unknown"),
                 duration=data.get("duration", "Unknown")
             )}
             for prefix, data in grouped.items()
@@ -306,12 +347,122 @@ class SimulationMetadata(models.Model):
         )
         self.simulation.save(update_fields=["metadata_checksum"])
 
-    def __str__(self):
-        return (
-            f"Sim#{self.simulation.id} Metadata ({self.attribute.lower()}): {self.key.title()} "
-            f""
-        )
 
+class LabResult(SimulationMetadata):
+    """Store a lab result for the specified simulation."""
+
+    panel_name = models.CharField(max_length=100, null=True, blank=True)
+    result_unit = models.CharField(max_length=20)
+    reference_range_low = models.CharField(max_length=20)
+    reference_range_high = models.CharField(max_length=20)
+    result_flag = models.CharField(max_length=20)
+    result_comment = models.TextField(blank=True, null=True)
+
+    @property
+    def order_name(self) -> str:
+        return self.key
+
+    @property
+    def result(self) -> str:
+        return self.value
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "order_name": self.key,
+            "panel_name": self.panel_name or None,
+            "value": self.value,
+            "unit": self.result_unit,
+            "reference_range_high": self.reference_range_high,
+            "reference_range_low": self.reference_range_low,
+            "flag": self.result_flag,
+            "attribute": self.attribute,
+            "type": self.attribute,
+        }
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+
+class RadResult(SimulationMetadata):
+    """Store a rad result for the specified simulation."""
+
+    result_flag = models.CharField(max_length=10)
+
+    @property
+    def order_name(self) -> str:
+        return self.key
+
+    @property
+    def result(self) -> str:
+        return self.value
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def serialize(self) -> dict:
+        return {
+            "id": self.id,
+            "order_name": self.key,
+            "result": self.value,
+            "result_flag": self.result_flag,
+            "attribute": self.attribute,
+            "type": self.attribute,
+        }
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+class PatientDemographics(SimulationMetadata):
+    """Store patient demographics for the specified simulation."""
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+
+class PatientHistory(SimulationMetadata):
+    """Store patient demographics for the specified simulation."""
+
+    is_resolved = models.BooleanField(default=False)
+    duration = models.CharField(max_length=100)
+
+    @property
+    def diagnosis(self) -> str:
+        return self.key
+
+    def to_dict(self):
+        return {
+            "diagnosis": self.diagnosis,
+            "is_resolved": self.is_resolved,
+            "duration": self.duration,
+            "value": self.value,
+            "summary": f"History of {self.diagnosis} ({"now resolved" if self.is_resolved else "ongoing"}, for {self.duration})"
+        }
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
+class SimulationFeedback(SimulationMetadata):
+
+    @property
+    def attribute(self) -> str:
+        return self.__class__.__name__
+
+    def __str__(self) -> str:
+        return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
 
 class SimulationImage(models.Model):
     """Store image for the specified simulation."""

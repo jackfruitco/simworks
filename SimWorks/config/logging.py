@@ -45,6 +45,11 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        "py.warnings": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        },
         "core": {
             "handlers": ["console"],
             "level": check_env("CORE_LOG_LEVEL", None) or LOG_LEVEL,
@@ -78,6 +83,11 @@ LOGGING = {
         "simai.prompts": {
             "handlers": ["console"],
             "level": check_env("SIMAI_PROMPTS_LOG_LEVEL", None) or LOG_LEVEL,
+            "propagate": False,
+        },
+        "simai.parser": {
+            "handlers": ["console"],
+            "level": check_env("SIMAI_PARSER_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
         "simcore": {

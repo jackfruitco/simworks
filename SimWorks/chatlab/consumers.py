@@ -5,10 +5,11 @@ import logging
 import random
 import time
 import warnings
+from enum import Enum
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from simai.async_client import AsyncOpenAIService
+from simai.client import SimAIClient
 from simcore.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
@@ -16,9 +17,16 @@ from django.utils import timezone
 from .models import Message
 from .models import RoleChoices
 from simcore.models import Simulation
+from .utils import broadcast_message
 
 logger = logging.getLogger(__name__)
-ai = AsyncOpenAIService()
+ai = SimAIClient()
+
+
+class ContentMode(str, Enum):
+    HTML = "fullHtml"
+    RAW = "rawOutput"
+    TRIGGER = "trigger"
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -29,7 +37,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_group_name = None
         self.simulation = None
 
-    def log(self, func_name, msg="triggered", level=logging.DEBUG) -> None:
+        self.content_mode = None
+
+    @staticmethod
+    def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
         return logger.log(level, f"{func_name}: {msg}")
 
     async def connect(self) -> None:
@@ -40,7 +51,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         - Notify client of simulation status.
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         """Connect to room group based on simulation ID."""
         # Get simulation_id from URL parameters, then
@@ -52,7 +63,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         except Simulation.DoesNotExist:
             error_message = f"Simulation with id {self.simulation_id} does not exist."
-            ChatConsumer.log(self, func_name, error_message, level=logging.ERROR)
+            ChatConsumer.log( func_name, error_message, level=logging.ERROR)
             logger.exception("Failed to connect: Simulation ID not found")
             await self.accept()  # Accept before sending
             await self.send(
@@ -75,21 +86,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
         ChatConsumer.log(
-            self=self,
             func_name=func_name,
             msg=f"User {func_name}ed to room {self.room_group_name} (channel: {self.channel_name})",
         )
 
         # Check if the simulation is new (i.e., no messages already exist), then
         # Send connect an init message, then, if new simulation,
-        # Simulate System User typing.
-        new_simulation = not await sync_to_async(
-            Message.objects.filter(simulation=self.simulation_id).exists
-        )()
+        # Simulate System User typing
+        is_new_simulation = not await Message.objects.filter(simulation=self.simulation_id).aexists()
+
         ChatConsumer.log(
-            self=self,
             func_name=func_name,
-            msg=f"sending connect init message for {'new' if new_simulation else 'existing'} simulation (SIM:{self.simulation_id})",
+            msg=f"sending connect init message for {'new' if is_new_simulation else 'existing'} simulation (#{self.simulation_id})",
         )
 
         # Send the client a message with initial setup information
@@ -99,13 +107,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "type": "init_message",
                     "sim_display_name": self.simulation.sim_patient_display_name,
                     "sim_display_initials": self.simulation.sim_patient_initials,
-                    "new_simulation": new_simulation,
+                    "new_simulation": is_new_simulation,
                 }
             )
         )
 
         # Simulate sim patient typing to the client
-        if new_simulation:
+        if is_new_simulation:
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -122,20 +130,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param close_code: The WebSocket close code
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
         ChatConsumer.log(
-            self=self,
             func_name=func_name,
             msg=f"User {func_name}ed to room {self.room_group_name} (channel: {self.channel_name})",
         )
 
-    async def receive(self, text_data: str) -> None:
+    async def receive(self, text_data: str = None, bytes_data=None) -> None:
         """
-        Receive a message from the WebSocket and dispatch based on an event type.
+        Handles incoming WebSocket messages by parsing the data and routing it to the appropriate
+        handler based on the event type.
 
-        :param text_data: Raw JSON string sent from the client
+        This method receives data in either textual or byte format and determines the event type
+        represented within the data. Depending on the detected event type, it invokes the corresponding
+        handler method to process the event. The method ensures to perform a simulation end check at the
+        very beginning to avoid any operations if the simulation has already ended or expired.
+
+        :param text_data: The incoming data in textual format. If provided, it must be a JSON-encoded string.
+        :param bytes_data: The incoming data in byte format. This will not be processed in the current implementation.
+        :return: None
         """
         func_name = inspect.currentframe().f_code.co_name
 
@@ -145,33 +160,70 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Parse the incoming data
         data = json.loads(text_data)
-        event_type = data.get("type")  # Identify the type of event
-        ChatConsumer.log(self, func_name, f"{event_type} event received: {data}")
+        event_type = data.get("type")
+        ChatConsumer.log( func_name, f"{event_type} event received: {data}")
 
-        if event_type in {"message", "chat.message"}:
-            await self.handle_message(data)
-        elif event_type == "typing":
-            await self.handle_typing(data)
-        elif event_type == "stopped_typing":
-            await self.handle_stopped_typing(data)
-        elif event_type == "client_ready":
-            first_msg = await sync_to_async(
-                lambda: Message.objects.filter(simulation=self.simulation)
-                .order_by("timestamp")
-                .first()
-            )()
-            if first_msg:
-                print("[WebSocket] Received client_ready event")
-                print(f"[WebSocket] Sending message to group: {first_msg.content}")
-                sender_username = await sync_to_async(
-                    lambda: first_msg.sender.username
-                )()
-                display_name = await sync_to_async(
-                    lambda: first_msg.display_name or first_msg.sender.username
-                )()
-                display_initials = await sync_to_async(
-                    lambda: first_msg.simulation.sim_patient_initials
-                )()
+        event_dispatch = {
+            "client_ready": self.handle_client_ready,
+            "message": self.handle_message,                             # Deprecated, use `chat.message_created` instead
+            "chat.message": self.handle_message,                        # Deprecated, use `chat.message_created` instead
+            "message.created": self.handle_message,                     # Deprecated, use `chat.message_created` instead
+            "chat.message_created": self.handle_message,
+            "feedback.created": self.handle_generic_event,              # Deprecated, use `simulation.feedback_created` instead
+            "simulation.feedback_created": self.handle_generic_event,
+            "typing": self.handle_typing,
+            "stopped_typing": self.handle_stopped_typing,
+            "simulation.metadata.result_created": self.handle_generic_event,
+        }
+
+        handler = event_dispatch.get(event_type)
+        if handler:
+            await handler(data)
+        else:
+            warnings.warn(f"Unrecognized event type: {event_type} – {data}")
+
+    async def handle_client_ready(self, data) -> None:
+        """
+        Handles the "client_ready" event triggered by the WebSocket client.
+
+        This function is responsible for processing the associated data, including
+        handling the preferred content mode and sending the first message in the
+        simulation to the WebSocket group, along with relevant metadata like sender's
+        username, display name, and patient initials.
+
+        :param data: The data associated with the "client_ready" event. It contains the
+            configuration and state details needed to process the event.
+        :type data: dict
+
+        :return: This function does not return a value. The results of its execution
+            are the side effects of interacting with the WebSocket group and sending
+            the appropriate message.
+
+        """
+        # Set preferred content mode
+        await self.handle_content_mode(data.get("content_mode"))
+
+        # TODO remove if not broken
+        # is_new_simulation = await Message.objects.filter(simulation=self.simulation).aexists()
+        # 
+        # first_msg = await sync_to_async(
+        #     lambda: Message.objects.filter(simulation=self.simulation)
+        #     .order_by("timestamp")
+        #     .first()
+        # )()
+        # 
+        # if first_msg:
+        #     print("[WebSocket] Received client_ready event")
+        #     print(f"[WebSocket] Sending message to group: {first_msg.content}")
+        #     sender_username = await sync_to_async(
+        #         lambda: first_msg.sender.username
+        #     )()
+        #     display_name = await sync_to_async(
+        #         lambda: first_msg.display_name or first_msg.sender.username
+        #     )()
+        #     display_initials = await sync_to_async(
+        #         lambda: first_msg.simulation.sim_patient_initials
+        #     )()
 
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
@@ -181,7 +233,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :return: True if the simulation has ended, False otherwise
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         if simulation.end_timestamp:
             return True
@@ -213,10 +265,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param data: A dict containing at least 'content' and 'role'
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         # TODO deprecation warning
-        if data.get('event_type') == "message":
+        if data.get('event_type') in {"message", "chat.message"}:
             warnings.warn(
                 "'message' event_type is deprecated. Use 'chat.message' instead.",
                 DeprecationWarning,
@@ -240,7 +292,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
             # Simulate the user message as delivered once saved to the database
-            await self.broadcast_message_status(user_msg.id, "delivered")
+            # TODO
+            # await self.broadcast_message_status(user_msg.id, "delivered")
 
             # Record start_timestamp time for typing indicator
             start_time = time.monotonic()
@@ -248,17 +301,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Send user's input to OpenAI to generate a response, then
             # Wait until the minimum delay time is met
-            sim_responses = await ai.generate_patient_reply(user_msg)
+            generated_responses = await ai.generate_patient_reply(user_msg)
             elapsed = time.monotonic() - start_time
             if elapsed < min_delay_time:
                 await asyncio.sleep(min_delay_time - elapsed)
 
-            # Convert sim_responses to a list in a synchronous thread
-            sim_responses_list = await sync_to_async(list)(sim_responses)
+            # Convert generated_responses to a list in a synchronous thread
+            sim_responses_list = await sync_to_async(list)(generated_responses)
 
             # Broadcast each system-generated message
             for message in sim_responses_list:
-                await self.broadcast_message(message, status="delivered")
+                await broadcast_message(message, status="delivered")
 
     async def handle_typing(self, data: dict) -> None:
         """
@@ -267,7 +320,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param data: Should include 'username' and/or 'display_initials'
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         # Notify others in the room that a user is typing
         username = data.get("username") or self.scope.get("user") or "System"
@@ -287,6 +340,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
+    async def handle_generic_event(self, data: dict) -> None:
+        """
+        Handles a system event by sending the provided data to a specific group in the channel layer.
+
+        This method is intended to be used for broadcasting system events to all members of a
+        designated group. The provided data dictionary is sent to the `room_group_name` associated
+        with the instance.
+
+        :param data: The dictionary containing event data to be sent to the group.
+        :type data: dict
+        :return: None
+        :rtype: None
+        """
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                **data
+            }
+        )
+
     async def handle_stopped_typing(self, data: dict) -> None:
         """
         Broadcast to the group that a user has stopped typing.
@@ -294,7 +367,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param data: Should include 'username'
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         # Notify others in the room that a user has stopped typing
         username = data.get("username") or self.scope.get("user") or "System"
@@ -307,71 +380,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
-    async def broadcast_message(self, message: Message, status: str = None) -> None:
+    async def handle_content_mode(self, content_mode: str = None) -> None:
         """
-        Broadcast a message to the room group, handling both user and system messages.
+        Handles the mode of content presentation by setting it to the provided value
+        or falling back to a default value. This function ensures the provided content
+        mode is valid, otherwise defaults to `ContentMode.HTML`.
 
-        :param message: Message instance to broadcast
-        :param status: Optional message status (e.g., "delivered", "read")
+        :param content_mode: The mode of content presentation, provided as a string.
+            Defaults to `None`, which will result in using `ContentMode.HTML`.
+        :type content_mode: str, optional
+
+        :return: None
         """
-        func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
-
-        # TODO deprecated
-        warnings.warn(
-            f"'{func_name}' is deprecated. Use 'utils.broadcast_message' instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-
-        has_sender = await sync_to_async(lambda: bool(message.sender_id))()
-        if has_sender:
-            sender_username = await sync_to_async(lambda: message.sender.username)()
-            display_name = await sync_to_async(
-                lambda: message.display_name or message.sender.username
-            )()
-            display_initials = await sync_to_async(
-                lambda: get_user_initials(message.sender)
-            )()
-        else:
-            sender_username = "System"
-            display_name = self.simulation.sim_patient_display_name
-            display_initials = self.simulation.sim_patient_initials
-
-        event = {
-            "type": "chat_message",
-            "id": str(message.id),
-            "sender": sender_username,
-            "content": message.content,
-            "display_name": display_name,
-            "display_initials": display_initials,
-        }
-        if status:
-            event["status"] = status
-
-        await self.channel_layer.group_send(self.room_group_name, event)
-
-    async def broadcast_message_status(
-        self, message_id: str | int, status: str
-    ) -> None:
-        """
-        Broadcast a message status change to the room group.
-
-        :param message_id: ID of the message
-        :param status: Status to broadcast, e.g., "delivered"
-        """
-        func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name, f"message #{message_id} to {status}")
-
-
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "message_status_update",
-                "id": str(message_id),
-                "status": status,
-            },
-        )
+        try:
+            self.content_mode = ContentMode(content_mode or ContentMode.HTML)
+        except ValueError:
+            self.content_mode = ContentMode.HTML
 
     async def simulate_system_typing(
         self, display_initials: str, started: bool = True
@@ -384,7 +408,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(
-            self,
             func_name,
             f"user {display_initials} to {'typing' if started else 'stopped_typing'}",
         )
@@ -412,7 +435,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :return: The created Message instance
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         return Message.objects.create(
             simulation=simulation,
@@ -428,7 +451,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param event: Dict with 'username', 'display_initials', etc.
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         await self.send(
             text_data=json.dumps(
@@ -448,7 +471,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param event: Dict with 'username'
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         await self.send(
             text_data=json.dumps(
@@ -459,7 +482,33 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
-    async def chat_message(self, event: dict) -> None:
+    async def feedback_created(self, event: dict) -> None:
+        """
+        Handles the creation of feedback by processing the given event data asynchronously.
+        The function logs the name of the current function for debugging and monitoring purposes,
+        then sends the feedback event data to a specified recipient.
+
+        :param event: A dictionary containing event data related to feedback creation.
+        :type event: dict
+        :return: None
+        :rtype: None
+        """
+        # TODO deprecation warning; remove in 0.6.5
+        warnings.warn(
+            "'feedback_created' event.type is deprecated. Use 'simulation.feedback_created' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return await self.simulation_feedback_created(event)
+
+    async def simulation_feedback_created(self, event: dict) -> None:
+        func_name = inspect.currentframe().f_code.co_name
+        ChatConsumer.log(func_name)
+
+        await self.send(text_data=json.dumps(event))
+
+
+    async def chat_message_created(self, event: dict) -> None:
         """
         Handles incoming message events.
 
@@ -475,14 +524,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :return: None
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         # Check if 'content' or `media` exists in the event
         content = event.get("content")
         media = event.get("media")
         if content is None and media is None:
             ChatConsumer.log(
-                self,
                 func_name,
                 msg="at least one of the following must provided, but was not found: `content`, `media`",
                 level=logging.ERROR,
@@ -492,35 +540,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Proceed to send the message if 'content' exists
         await self.send(text_data=json.dumps(event))
 
-
-    # async def chat_messageV1(self, event: dict) -> None:
-    #     """
-    #     Send a chat message to the WebSocket from the room group.
-    #
-    #     :param event: Dict with message metadata and content
-    #     """
-    #     func_name = inspect.currentframe().f_code.co_name
-    #     ChatConsumer.log(self, func_name)
-    #
-    #     # Check if 'content' exists in the event
-    #     content = event.get("content", None)
-    #     if content is None:
-    #         ChatConsumer.log(self, func_name, "Error! chat_messageV1 content is None")
-    #         return
-    #
-    #     # Proceed to send the message if 'content' exists
-    #     await self.send(
-    #         text_data=json.dumps(
-    #             {
-    #                 "id": event.get("id"),
-    #                 "type": "chat_message",
-    #                 "status": event.get("status"),
-    #                 "content": content,
-    #                 "display_name": event.get("display_name"),
-    #                 "sender": event.get("sender") or "System",
-    #             }
-    #         )
-    #     )
+    async def message_created(self, event):
+        warnings.warn(
+            "'message_created' event.type is deprecated. Use 'chat.message_created' instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return await self.chat_message_created(event)
 
     async def message_status_update(self, event: dict) -> None:
         """
@@ -529,7 +555,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :param event: Dict with message ID and new status
         """
         func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(self, func_name)
+        ChatConsumer.log(func_name)
 
         await self.send(
             text_data=json.dumps(
@@ -540,3 +566,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+
+    async def simulation_metadata_results_created(self, event: dict) -> None:
+        """Receive simulation metadata results created event and send to client."""
+        await self.send(text_data=json.dumps(event))
+

@@ -16,9 +16,14 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.messageForm = document.getElementById('chat-form');
             this.messagesDiv = document.getElementById('chat-messages');
             this.simMetadataDiv = document.getElementById('simulation_metadata_tool');
-            this.patientMetadataDiv = document.getElementById('patient_metadata_tool');
+            this.patientMetadataDiv = document.getElementById('patient_history_tool');
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             this.newMessageBtn = document.getElementById('new-message-btn');
+
+            // Determines whether to request full HTML, raw text, or notification
+            this.contentMode = 'fullHtml';
+            // this.content_mode = 'rawText';
+            // this.content_mode = 'trigger';
 
             this.initializeWebSocket();
             this.setupEventListeners();
@@ -85,8 +90,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.chatSocket = new WebSocket(wsUrl);
 
             this.chatSocket.onopen = () => {
+                const contentMode = this.contentMode || 'fullHtml';
                 console.log('WebSocket connection established');
-                this.chatSocket.send(JSON.stringify({ type: 'client_ready' }));
+                this.chatSocket.send(JSON.stringify({ type: 'client_ready', 'contentMode': contentMode }));
             };
 
             this.chatSocket.onmessage = (event) => {
@@ -103,6 +109,17 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 } else if (data.type === 'error') {
                     alert(data.message);
                     window.location.href = data.redirect || "/";
+                } else if (data.type === 'feedback.created') {
+                    const html = data?.html;
+                    const tool = data?.tool || 'simulation_feedback';
+                    const elementId = `${tool.replaceAll('_', '-')}-tool`;
+                    const simManager = window.simManager;
+
+                    if (html) {
+                        simManager.refreshToolFromHTML(tool, html);
+                    } else {
+                        simManager.checkTools([tool], true);
+                    }
                 } else if (data.type === 'message_status_update') {
                     const existing = this.messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
                     if (existing) {
@@ -124,8 +141,12 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
                 } else if (data.type === 'stopped_typing') {
                     this.updateTypingUsers(data, false)
-                } else if (data.type === 'chat.message' || data.type === 'message') {
-                    // TODO add new chat.message handling here
+                } else if (
+                    data.type === 'chat.message'
+                    || data.type === 'message'
+                    || data.type === 'message.created'
+                    || data.type === 'chat.message_created'
+                ) {
                     const isFromSelf = data.senderId === this.currentUser;
                     const isFromSimulatedUser = data.isFromAi;
                     const status = isFromSelf ? data.status || 'delivered' : null;
@@ -139,7 +160,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         if (window.window.simManager) {
                             window.window.simManager.checkTools([
                                 'simulation_metadata',
-                                'patient_metadata'
+                                'patient_history'
                             ]);
                         }
 
@@ -189,7 +210,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         if (window.window.simManager) {
                             window.window.simManager.checkTools([
                                 'simulation_metadata',
-                                'patient_metadata'
+                                'patient_history'
                             ]);
                         }
 

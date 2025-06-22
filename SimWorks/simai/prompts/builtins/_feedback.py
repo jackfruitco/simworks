@@ -19,7 +19,7 @@ treatment plan that does not deserve it. Feedback must be accurate.
 """
 
 @register_modifier("Feedback.endex")
-def feedback_endex(user=None, role=None, **extra_kwargs):
+def feedback_endex(user=None, role=None, **kwargs):
     """Returns string for a(n) ENDEX feedback prompt modifier."""
     return _FEEDBACK_BASE + """
 Your feedback should aim to enhance the trainee's clinical reasoning,
@@ -62,7 +62,7 @@ explain that no credit can be given.
 """
 
 @register_modifier("Feedback.pausex")
-def feedback_pausex(user=None, role=None, **extra_kwargs):
+def feedback_pausex(user=None, role=None, **kwargs):
     """Returns string for a(n) PAUSEX feedback prompt modifier."""
     return _FEEDBACK_BASE + """
 The simulation is paused, and the user is asking for assistance—
@@ -77,7 +77,7 @@ of the patient.
 """
 
 @register_modifier("Feedback.azimuth")
-def feedback_azimuth(user=None, role=None, **extra_kwargs):
+def feedback_azimuth(user=None, role=None, **kwargs):
     """Returns string for a(n) Azimuth feedback prompt modifier."""
     return _FEEDBACK_BASE + """
 For this message only, you are acting as the simulation facilitator

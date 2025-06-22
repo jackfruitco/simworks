@@ -1,4 +1,5 @@
 # simcore/tools/registry.py
+from asgiref.sync import sync_to_async
 
 _registry = {}
 
@@ -21,6 +22,14 @@ def get_tool(name):
     tool_class = _registry.get(name.lower())
     return tool_class
 
+@sync_to_async()
+def aget_tool(name):
+    return get_tool(name)
+
 def list_tools():
     """List all registered tool names."""
     return list(_registry.values())
+
+@sync_to_async()
+def alist_tools():
+    return list_tools()
