@@ -286,7 +286,7 @@ class StructuredOutputParser:
                 # Create the object, then append it to `instances` and log it (DEBUG only)
                 instance = await Subclass.objects.acreate(**init_kwargs)
                 instances.append(instance)
-                await self.log(func_name, f"... new {attribute} created: {instance}", DEBUG)
+                logger.debug(f"new {attribute} created for Sim#{instance.simulation or "UNK"}: {instance.key or "UNK"}")
 
             except Exception as e:
                 await self.log(func_name, f"Error creating {attribute}: {e}", WARNING)

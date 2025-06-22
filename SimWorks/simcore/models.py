@@ -351,6 +351,7 @@ class SimulationMetadata(PolymorphicModel):
 class LabResult(SimulationMetadata):
     """Store a lab result for the specified simulation."""
 
+    panel_name = models.CharField(max_length=100, null=True, blank=True)
     result_unit = models.CharField(max_length=20)
     reference_range_low = models.CharField(max_length=20)
     reference_range_high = models.CharField(max_length=20)
@@ -373,10 +374,12 @@ class LabResult(SimulationMetadata):
         return {
             "id": self.id,
             "order_name": self.key,
-            "result": self.value,
+            "panel_name": self.panel_name or None,
+            "value": self.value,
+            "unit": self.result_unit,
             "reference_range_high": self.reference_range_high,
             "reference_range_low": self.reference_range_low,
-            "result_flag": self.result_flag,
+            "flag": self.result_flag,
             "attribute": self.attribute,
             "type": self.attribute,
         }

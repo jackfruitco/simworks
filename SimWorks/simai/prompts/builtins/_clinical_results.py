@@ -37,8 +37,15 @@ async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
         raise TypeError("simulation must be a Simulation instance.")
 
     _base = (
-        "Ensure the values are in the correct units, and clinically "
-        "correlate with the clinical scenario, diagnosis, and complaints."
+        "Ensure the values are in the correct units, and clinically"
+        " correlate with the clinical scenario, diagnosis, and complaints."
+        " If the requested item is normally ordered as a lab panel, include all "
+        " individual individual lab tests normally associated with this panel"
+        " individually, and specify the `panel_name` key for grouping purposes."
+        " Reference LabCorp's Test Menu for a list of individual tests associated"
+        " with a given lab panel. For example, a `CBC` is a lab panel that"
+        " contains multiple lab tests. Each test should be its own object,"
+        " with a reference to the panel name."
     )
 
     dx = f"The patient's diagnosis is {simulation.diagnosis}." if simulation.diagnosis else ""
@@ -78,4 +85,4 @@ async def generic_lab(lab_order: str | list[str] = None, **kwargs) -> str:
     if not all(isinstance(item, str) for item in lab_order):
         raise ValueError("lab_order must be a string or a list of strings.")
 
-    return f"{_BASE} The user has requested the following labs: {', '.join(lab_order).upper()}."
+    return f"{_BASE} The user has requested the following lab(s) and/or panel(s): {', '.join(lab_order).upper()}."

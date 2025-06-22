@@ -96,9 +96,6 @@ async def socket_send(
     :param __simulation_id: Optional simulation ID to use for group generation
     :param kwargs: Additional keyword arguments to pass to the `group_send` method.
     """
-    logger.info(
-        f"[socket_send] new event '{__type}' on group '{__group}'."
-    )
 
     # Remove deprecated `__event` kwarg if present
     # TODO deprecation
@@ -116,6 +113,10 @@ async def socket_send(
             raise ObjectDoesNotExist(
                 f"No group provided and Simulation with ID '{__simulation_id}' was not found."
             )
+
+    logger.info(
+        f"[socket_send] new '{__type}' event for group '{__group}'."
+    )
 
     channel_layer = get_channel_layer()
 
@@ -225,7 +226,8 @@ async def broadcast_patient_results(
 
         grouped_results.setdefault(sim_id, []).append(serialized)
 
-    logger.warning(f"Skipped {skipped} results due to missing .serialize() method.")
+    if skipped:
+        logger.warning(f"Skipped {skipped} results due to missing .serialize() method.")
 
     # Broadcast results to each simulation group layer
     for sim_id in grouped_results:

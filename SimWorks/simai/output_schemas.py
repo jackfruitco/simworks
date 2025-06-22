@@ -284,6 +284,7 @@ async def patient_results_schema(initial: bool = False) -> dict:
                             "additionalProperties": False,
                             "required": [
                                 "order_name",
+                                "panel_name",
                                 "result_value",
                                 "result_unit",
                                 "reference_range_low",
@@ -295,6 +296,10 @@ async def patient_results_schema(initial: bool = False) -> dict:
                                 "order_name": {
                                     "type": "string",
                                     "description": "The name of the order using standardized terminology.",
+                                },
+                                "panel_name": {
+                                    "type": ["string", "null"],
+                                    "description": "The name of the lab panel the test is included in.",
                                 },
                                 "result_value": {
                                     "type": "number",
