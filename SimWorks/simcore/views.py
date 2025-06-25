@@ -1,7 +1,10 @@
+import json
+
 from django.http import HttpResponseNotFound, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from core.utils import Formatter
@@ -47,3 +50,20 @@ def tool_checksum(request, tool_name, simulation_id):
     tool_instance = tool_class(simulation)
     checksum = tool_instance.get_checksum()
     return JsonResponse({"checksum": checksum})
+
+@csrf_exempt
+def sign_orders(request, simulation_id):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            lab_orders = data.get("lab_orders", [])
+
+            from simai.tasks import generate_patient_results as g
+            g.delay(
+                simulation_id=simulation_id,
+                lab_orders=lab_orders
+            )
+            return JsonResponse({"status": "ok", "orders": lab_orders})
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+    return JsonResponse({"error": "Method not allowed"}, status=405)

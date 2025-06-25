@@ -109,11 +109,19 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 } else if (data.type === 'error') {
                     alert(data.message);
                     window.location.href = data.redirect || "/";
-                } else if (data.type === 'feedback.created') {
+                } else if (data.type === 'feedback.created' || data.type === 'simulation.feedback_created') {
                     const html = data?.html;
                     const tool = data?.tool || 'simulation_feedback';
                     const elementId = `${tool.replaceAll('_', '-')}-tool`;
                     const simManager = window.simManager;
+
+                    if (data.type === 'feedback.created') {
+                        console.warn(
+                            "[ChatManager] DEPRECATED",
+                            "Received deprecated event type 'feedback.created'.",
+                            "Use 'simulation.feedback_created' instead."
+                        );
+                    }
 
                     if (html) {
                         simManager.refreshToolFromHTML(tool, html);
