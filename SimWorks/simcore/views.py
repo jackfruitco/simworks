@@ -60,8 +60,8 @@ def sign_orders(request, simulation_id):
 
             from simai.tasks import generate_patient_results as g
             g.delay(
-                simulation_id=simulation_id,
-                lab_orders=lab_orders
+                _simulation_id=simulation_id,
+                _lab_orders=lab_orders
             )
             return JsonResponse({"status": "ok", "orders": lab_orders})
         except json.JSONDecodeError:
