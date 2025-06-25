@@ -19,4 +19,8 @@ urlpatterns = [
          views.tool_checksum,
          name='tool_checksum'
          ),
+    path('simulation/<int:simulation_id>/orders/sign-orders/',
+         views.sign_orders,
+         name='sign_orders'
+         ),
 ]

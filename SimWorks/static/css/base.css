@@ -1,4 +1,5 @@
 @import url("animations.css");
+@import url("spinner.css");
 @import url("theme.css");
 @import url("button.css");
 @import url("header.css");
@@ -238,6 +239,40 @@ a { color: inherit; }
 .xxlarge { font-size:36px !important }
 .xxxlarge { font-size:48px !important }
 .jumbo { font-size: 64px !important }
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(128, 128, 128, 0.8);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay-content {
+  background: var(--color-bg-alt);
+  margin: 30vh auto;
+  padding: 2rem;
+  border-radius: 6px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.3);
+  position: relative;
+  max-width: 600px;
+  width: 90%;
+}
+
+.close-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
 
 /* START MEDIUM screen media query */
 @media only screen and (min-device-width: 768px) {
@@ -524,4 +559,15 @@ a { color: inherit; }
   border: 1px solid #c3e6cb;
   border-radius: 4px;
   animation: fadeInUpAndOut 1.5s ease-out forwards;
+}
+
+/* ───────────────────────────────────────────────
+   Visibility Utilities: .visible and .hidden
+────────────────────────────────────────────────── */
+.hidden {
+  display: none !important;
+}
+
+.visible {
+  display: block !important;
 }

@@ -1,7 +1,9 @@
 /* notification.css */
 
 /* Container for notifications */
-#notifications-container {
+#notifications-container, /* DEPRECATED- use toast-container instead */
+#toast-container,
+.toast-container {
     position: fixed;
     top: 1rem;
     right: 1rem;

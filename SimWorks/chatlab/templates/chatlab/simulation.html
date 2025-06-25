@@ -63,8 +63,8 @@
     <script src="{% static 'js/simulation.js' %}"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            window.simManager = SimulationManager({{ simulation.id }});
-            simManager.init();
+            window.simulationManager = SimulationManager({{ simulation.id }});
+            simulationManager.init();
         });
     </script>
     <script src="{% static 'chatlab/js/chat.js' %}"></script>

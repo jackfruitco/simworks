@@ -1,56 +1,55 @@
-{# templates/simcore/partials/_simulation_feedback.html #}
+{% load static %}
 {% load core_filters %}
 {% load core_tags %}
 {% load chatlab_filters %}
 
-<button type="button" class="button small acct" disabled>Order Lab</button>
+<div>
+    <button id="toggle-order-request-form"
+            type="button"
+            class="button small acct">
+        Request Labs
+    </button>
 
-{% if tool.data %}
-    <table class="sim-metadata small">
-        <thead>
-            <tr>
-                <th>Panel Name</th>
-                <th>Order Name</th>
-                <th>Value</th>
-                <th>Unit</th>
-                <th>Reference Range</th>
-            </tr>
-        </thead>
-
-        <tbody>
-            {% for result in tool.data %}
+    {% if tool.data %}
+        <table class="sim-metadata small">
+            <thead>
                 <tr>
-                    <td>{{ result.panel_name }}</td>
-                    <td>{{ result.order_name }}</td>
-                    <td>
-                        {{ result.value }}
-                        {% if result.flag|upper != "NORMAL" %}
-                            <span style="color: red">!! </span>
-                        {% endif %}
-                    </td>
-                    <td>{{ result.unit }}</td>
-                    <td>({{ result.reference_range_low }} - {{ result.reference_range_high }})</td>
+                    <th>Panel Name</th>
+                    <th>Order Name</th>
+                    <th>Value</th>
+                    <th>Unit</th>
+                    <th>Reference Range</th>
                 </tr>
-            {% endfor %}
-        </tbody>
+            </thead>
 
-    </table>
+            <tbody>
+                {% for result in tool.data %}
+                    <tr>
+                        <td>{{ result.panel_name }}</td>
+                        <td>{{ result.order_name }}</td>
+                        <td>
+                            {{ result.value }}
+                            {% if result.flag|upper != "NORMAL" %}
+                                <span style="color: red">!! </span>
+                            {% endif %}
+                        </td>
+                        <td>{{ result.unit }}</td>
+                        <td>({{ result.reference_range_low }} - {{ result.reference_range_high }})</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
 
+        </table>
+    {% else %}
+      <div class="sim-metadata-empty">No results available yet.</div>
+    {% endif %}
 
-{% comment %}
-  <ul class="sim-metadata">
-    {% for result in tool.data %}
-      <li>
-        <strong>{{ result.order_name|title }} ({{ result.panel_name|title }})</strong>:
-        {{ result.value }} {{ result.unit }}
-        {% if result.flag|upper != "NORMAL" %}
-          <i style="color: red">!! {{ result.result_flag }}</i>
-        {% endif %}
-        | ({{ result.reference_range_low }} - {{ result.reference_range_high }})
-      </li>
-    {% endfor %}
-  </ul>
-{% endcomment %}
-{% else %}
-  <div class="sim-metadata-empty">No results available yet.</div>
-{% endif %}
+    <!-- Order Request Form -->
+    <div id="order-request-form"
+         class="overlay"
+         data-simulation-id="{{ simulation.id }}"
+         style="display: none;">
+        {% include "simcore/partials/order-request-form.html" %}
+    </div>
+</div>
+<script src="{% static 'js/patient_orders.js' %}"></script>
