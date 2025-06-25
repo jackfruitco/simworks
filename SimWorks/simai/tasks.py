@@ -47,46 +47,46 @@ def generate_patient_reply_image_task(
 
 @shared_task(time_limit=120, soft_time_limit=110)
 def generate_patient_results(
-        __simulation_id: int,
-        __lab_orders: str | list[str] = None,
-        __rad_orders: str | list[str] = None,
+        _simulation_id: int,
+        _lab_orders: str | list[str] = None,
+        _rad_orders: str | list[str] = None,
 ) -> None:
     async def _run(
-            __simulation_id: int,
-            __lab_orders: str | list[str] = None,
-            __rad_orders: str | list[str] = None,
+            _simulation_id: int,
+            _lab_orders: str | list[str] = None,
+            _rad_orders: str | list[str] = None,
     ) -> None:
         """
         Generate patient results for a given simulation by interfacing with an AI client and optionally broadcasting the
         results. This function handles parsing of lab and radiology orders, manages errors during retrieval or processing,
         and enforces task time limits.
 
-        :param __simulation_id: The unique identifier for the simulation in the database.
-        :param __lab_orders: A string of comma-separated lab orders or a list of lab orders. If not provided, defaults to None.
-        :param __rad_orders: A string of comma-separated radiology orders or a list of radiology orders. If not provided, defaults to None.
+        :param _simulation_id: The unique identifier for the simulation in the database.
+        :param _lab_orders: A string of comma-separated lab orders or a list of lab orders. If not provided, defaults to None.
+        :param _rad_orders: A string of comma-separated radiology orders or a list of radiology orders. If not provided, defaults to None.
         :return: This function does not return a value.
         """
         try:
-            simulation = await Simulation.objects.aget(id=__simulation_id)
+            simulation = await Simulation.objects.aget(id=_simulation_id)
         except Simulation.DoesNotExist:
-            logger.warning(f"Simulation ID {__simulation_id} not found. Skipping patient result(s) generation.")
+            logger.warning(f"Simulation ID {_simulation_id} not found. Skipping patient result(s) generation.")
             raise
         except Exception as e:
-            logger.error(f"Failed to retrieve simulation {__simulation_id}: {e}")
+            logger.error(f"Failed to retrieve simulation {_simulation_id}: {e}")
             raise
 
-        if isinstance(__lab_orders, str):
-            __lab_orders = [o.strip() for o in __lab_orders.split(",")]
+        if isinstance(_lab_orders, str):
+            _lab_orders = [o.strip() for o in _lab_orders.split(",")]
 
-        if isinstance(__rad_orders, str):
-            __rad_orders = [o.strip() for o in __rad_orders.split(",")]
+        if isinstance(_rad_orders, str):
+            _rad_orders = [o.strip() for o in _rad_orders.split(",")]
 
         try:
             client = SimAIClient()
             results = await client.generate_patient_results(
                 simulation=simulation,
-                lab_orders=__lab_orders,
-                rad_orders=__rad_orders
+                lab_orders=_lab_orders,
+                rad_orders=_rad_orders
             )
             logger.debug(f"[generate_patient_results] Generated results: {results}")
 
@@ -95,12 +95,12 @@ def generate_patient_results(
             except Exception as e:
                 logger.error(f"[generate_patient_results] Failed to broadcast: {e}")
         except SoftTimeLimitExceeded:
-            logger.warning(f"[generate_patient_results] Soft time limit exceeded for Sim {__simulation_id}")
+            logger.warning(f"[generate_patient_results] Soft time limit exceeded for Sim {_simulation_id}")
         except Exception as e:
             logger.error(f"[generate_patient_results] Task failed: {e}")
             raise
 
-    asyncio.run(_run(__simulation_id, __lab_orders, __rad_orders))
+    asyncio.run(_run(_simulation_id, _lab_orders, _rad_orders))
 
 @shared_task(time_limit=30, soft_time_limit=20)
 def generate_feedback(
