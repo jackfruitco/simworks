@@ -113,7 +113,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     const html = data?.html;
                     const tool = data?.tool || 'simulation_feedback';
                     const elementId = `${tool.replaceAll('_', '-')}-tool`;
-                    const simManager = window.simManager;
+                    const simulationManager = window.simulationManager;
 
                     if (data.type === 'feedback.created') {
                         console.warn(
@@ -124,9 +124,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
 
                     if (html) {
-                        simManager.refreshToolFromHTML(tool, html);
+                        simulationManager.refreshToolFromHTML(tool, html);
                     } else {
-                        simManager.checkTools([tool], true);
+                        simulationManager.checkTools([tool], true);
                     }
                 } else if (data.type === 'message_status_update') {
                     const existing = this.messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
@@ -166,8 +166,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         this.simulateSystemTyping(false);
 
                         // Check if tools new current, and refresh if not
-                        if (window.window.simManager) {
-                            window.window.simManager.checkTools([
+                        if (window.window.simulationManager) {
+                            window.window.simulationManager.checkTools([
                                 'simulation_metadata',
                                 'patient_history'
                             ]);
@@ -199,7 +199,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
 
                     // Append message to chat-panel
-                    console.debug("[appendMessage]", {content, isFromSelf, status, displayName});
+                    console.debug("[ChatManager]", {content, isFromSelf, status, displayName});
                     this.appendMessage(content, isFromSelf, status, displayName, data.id, data.mediaList ?? []);
                     if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
                         this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
@@ -213,59 +213,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         simulationManager.refreshToolFromHTML(tool, html);
                     } else {
                         simulationManager.checkTools([tool], true);
-                    }
-                } else if (data.type === 'chat_message') {
-                    console.warn(
-                        "[ChatManager] DEPRECATED",
-                        "Received deprecated event type 'chat_message'.",
-                        "Use 'chat.message_created' instead."
-                    );
-                    const isSender = data.sender === this.currentUser;
-                    const status = isSender ? data.status || 'delivered' : null;
-                    const displayName = data.display_name || data.username || 'Unknown';
-
-                    if (!isSender) {
-                        this.simulateSystemTyping(false);
-                        if (window.window.simManager) {
-                            window.window.simManager.checkTools([
-                                'simulation_metadata',
-                                'patient_history'
-                            ]);
-                        }
-
-                        // Sidebar pulse stuff
-                        if (localStorage.getItem('seenSidebarTray') === 'true') {
-                          localStorage.removeItem('seenSidebarTray');
-                          if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
-                        }
-                    } else if (data.changed === false) {
-                        // fallback: metadata div is empty → force refresh
-                        if (!this.simMetadataDiv.querySelector('ul.sim-metadata')) {
-                            console.warn("[metadata] Forcing fallback render...");
-                            // Refresh simulation metadata
-                            this.refreshMetadata(true);
-                        }
-                    }
-                    let content = data.content;
-                    if (typeof content === 'string' && content.startsWith('"') && content.endsWith('"')) {
-                        try {
-                            content = JSON.parse(content);
-                        } catch (e) {
-                            console.warn("Failed to parse message content", e);
-                        }
-                    }
-
-                    // Play sound
-                    const receiveSound = document.getElementById("receive-sound");
-                    if (!isSender && receiveSound) {
-                        receiveSound.currentTime = 0;
-                        receiveSound.play().catch(() => {});
-                    }
-
-                    // Append message to chat-panel
-                    this.appendMessageV1(content, isSender, status, displayName, data.id);
-                    if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
-                        this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
                     }
                 }
             };
@@ -313,7 +260,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
         appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
-            console.debug("[appendMessage] Message received:", { content, isFromSelf, status, displayName });
+            console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName });
 
             content = this._coerceContent(content);
             status = status || "";
@@ -360,7 +307,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             if (existing) {
-                console.debug("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
+                console.debug("[ChatManager] Skipping duplicate message", messageId || "(no id)");
                 return true;
             }
 
@@ -575,7 +522,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 }
             }
             console.debug(
-                '[typingUsers]',
+                '[ChatManager]',
                 data.username,
                 (started ? 'started' : 'stopped'), 'typing.',
                 this.typingUsers.length, 'users typing:',
@@ -590,7 +537,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.updateTypingUsers(dataSim, started);
         },
         initScrollWatcher() {
-            console.debug("[ChatJS] initScrollWatcher() called");
+            console.debug("[ChatManager] initScrollWatcher() called");
         },
     };
 }

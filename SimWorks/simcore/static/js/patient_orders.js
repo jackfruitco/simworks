@@ -58,7 +58,7 @@
     ) {
       pendingOrders.push(trimmed);
       renderOrders();
-      console.log("Added", trimmed, "to pending orders:", pendingOrders);
+      console.debug("Added", trimmed, "to pending orders:", pendingOrders);
     }
     orderInput.value = "";
   }
@@ -87,21 +87,20 @@
         },
         body: JSON.stringify({ lab_orders: pendingOrders }),
       });
-      console.log("Submitting lab orders:", pendingOrders);
+      console.debug("Submitting orders:", pendingOrders);
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Unknown error");
 
-      showToast("Orders submitted successfully.", true);
-      console.log("Lab orders successfully submitted:", data);
+      showToast("Orders signed.", true);
+      console.info("[Orders] Success! Orders successfully submitted:", data);
       pendingOrders = [];
       renderOrders();
       hideOverlay();
     } catch (err) {
-      console.error("Failed to submit lab orders:", err);
+      console.error("Failed to submit orders:", err);
       showToast(`Error: ${err.message}`, false);
     } finally {
-      // spinner.classList.add("hidden");
       spinner.classList.remove("active");
     }
   }
