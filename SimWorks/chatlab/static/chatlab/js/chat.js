@@ -143,12 +143,13 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         }
                     }
                     return;
-                } else if (data.type === 'typing') {
+                } else if (data.type === 'typing' || data.type === 'stopped_typing') {
+                    const startedTyping = data.type === 'typing';
                     if (data.username !== this.currentUser) {
-                        this.updateTypingUsers(data)
+                        this.updateTypingUsers(data, startedTyping)
                     }
-                } else if (data.type === 'stopped_typing') {
-                    this.updateTypingUsers(data, false)
+                // } else if (data.type === 'stopped_typing') {
+                //    this.updateTypingUsers(data, false)
                 } else if (
                     data.type === 'chat.message'
                     || data.type === 'message'
@@ -174,8 +175,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
                         // Sidebar pulse stuff
                         if (localStorage.getItem('seenSidebarTray') === 'true') {
-                          localStorage.removeItem('seenSidebarTray');
-                          if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
+                            localStorage.removeItem('seenSidebarTray');
+                            if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
                         }
                     }
 
@@ -193,21 +194,31 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     const receiveSound = document.getElementById("receive-sound");
                     if (!isFromSelf && receiveSound) {
                         receiveSound.currentTime = 0;
-                        receiveSound.play().catch(() => {});
+                        receiveSound.play().catch(() => {
+                        });
                     }
 
                     // Append message to chat-panel
-                    console.log("[appendMessage]", { content, isFromSelf, status, displayName });
+                    console.log("[appendMessage]", {content, isFromSelf, status, displayName});
                     this.appendMessage(content, isFromSelf, status, displayName, data.id, data.mediaList ?? []);
                     if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
                         this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
                     }
+                } else if (data.type === 'simulation.metadata.results_created') {
+                    const html = data?.html || null;
+                    const tool = data?.tool || 'patient_results';
+                    const simulationManager = window.simulationManager;
 
+                    if (html) {
+                        simulationManager.refreshToolFromHTML(tool, html);
+                    } else {
+                        simulationManager.checkTools([tool], true);
+                    }
                 } else if (data.type === 'chat_message') {
                     console.warn(
                         "[ChatManager] DEPRECATED",
                         "Received deprecated event type 'chat_message'.",
-                        "Use 'message' instead."
+                        "Use 'chat.message_created' instead."
                     );
                     const isSender = data.sender === this.currentUser;
                     const status = isSender ? data.status || 'delivered' : null;
