@@ -9,8 +9,8 @@
             <form method="get" action="{% url 'chatlab:create_simulation' %}" class="start-form">
                 <div class="dropdown-wrapper" x-data="modifierSelector()" x-init="fetchModifierGroups()" @click.away="modifierTrayOpen = false">
                     <div class="button-group">
-                        <button type="submit" class="button primary small">Begin New Simulation</button>
-                        <button type="button" class="button small" @click="modifierTrayOpen = !modifierTrayOpen">▼</button>
+                        <button type="submit" class="btn pri sm">Begin New Simulation</button>
+                        <button type="button" class="btn sm" @click="modifierTrayOpen = !modifierTrayOpen">▼</button>
                     </div>
 
                     <template x-if="modifierTrayOpen">

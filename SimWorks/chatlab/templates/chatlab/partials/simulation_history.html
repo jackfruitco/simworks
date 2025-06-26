@@ -11,7 +11,7 @@
                     <input type="checkbox" name="search_messages" value="1" {% if search_messages %}checked{% endif %}>
                     Look in simulation messages also
                 </label>
-                <button class="button ghost" type="submit" class="btn-primary">Search</button>
+                <button class="btn ghost" type="submit">Search</button>
             </form>
             <div id="simulation-history"
                  x-data="{ scroll: 0 }"
@@ -59,6 +59,6 @@
             </div>
         {% else %}
             <p class="no-simulations-msg">You haven't started any simulations... <a
-                    href="{% url 'chatlab:create_simulation' %}" class="button small">start one now</a> and let the chaos begin 🩺💥</p>
+                    href="{% url 'chatlab:create_simulation' %}" class="btn sm">start one now</a> and let the chaos begin 🩺💥</p>
         {% endif %}
     </section>

@@ -5,6 +5,6 @@
   {% include "accounts/partials/invite_single.html" with invite=invite only %}
 
   <div class="mt-16 mx-auto center">
-    <a href="{% url 'accounts:list-invites' %}" class="button" hx-get="{% url 'accounts:list-invites' %}" hx-target="#invite-content" hx-swap="innerHTML transition:true">Return to All Invitations</a>
+    <a href="{% url 'accounts:list-invites' %}" class="btn" hx-get="{% url 'accounts:list-invites' %}" hx-target="#invite-content" hx-swap="innerHTML transition:true">Return to All Invitations</a>
   </div>
 </div>

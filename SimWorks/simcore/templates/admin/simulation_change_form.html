@@ -4,17 +4,17 @@
   {{ block.super }}
   <li>
     <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk "sim_transcript_txt" %}">
-      <button type="submit" class="button">Download Transcript (.txt)</button>
+      <button type="submit" class="btn">Download Transcript (.txt)</button>
     </form>
   </li>
   <li>
     <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk "sim_transcript_md" %}">
-      <button type="submit" class="button">Download Transcript (.md)</button>
+      <button type="submit" class="btn">Download Transcript (.md)</button>
     </form>
   </li>
   <li>
     <form method="get" action="{% url 'simcore:download_simulation_transcript' original.pk "sim_transcript_csv" %}">
-      <button type="submit" class="button">Download Transcript (.csv)</button>
+      <button type="submit" class="btn">Download Transcript (.csv)</button>
     </form>
   </li>
 {% comment %}
@@ -30,7 +30,7 @@
         <option value="csv">CSV (.csv)</option>
         <option value="txt">Plain Text (.txt)</option>
       </select>
-      <button type="submit" class="button" style="vertical-align: middle;">⬇️ Download</button>
+      <button type="submit" class="btn" style="vertical-align: middle;">⬇️ Download</button>
     </form>
   </li>
 {% endcomment %}

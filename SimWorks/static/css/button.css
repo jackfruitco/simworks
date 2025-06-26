@@ -1,4 +1,4 @@
-#button, .button {
+#button, .button, .btn {
   display: inline-block;
   background-color: var(--jckfrt-btn-alt)!important;
   color: var(--color-text-light)!important;
@@ -14,36 +14,37 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.button.primary {
+.button.primary,      /* TODO DEPRECATED - use .btn.pri */
+.btn.primary,         /* TODO DEPRECATED - use .btn.sim */
+.btn.pri {
   background-color: var(--color-bg-outgoing);
   color: var(--color-text-light);
 }
 
-.button.secondary {
+.button.secondary,      /* TODO DEPRECATED - use .btn.alt */
+.btn.secondary,
+.btn.alt {
   background-color: var(--jckfrt-olive);
   color: var(--color-text-light);
 }
 
-.button.sim {
+.button.sim,            /* TODO DEPRECATED - use .btn.sim */
+.btn.sim
+{
   background-color: var(--color-bg-incoming);
   color: var(--color-text-light);
 }
 
-.button.ghost {
+.button.ghost,  /* TODO DEPRECATED - use .btn.ghost */
+.btn.ghost {
   background-color: var(--color-border);
   color: var(--color-text-dark);
 }
 
-.button.accent {
-  background-color: var(--jckfrt-yellow);
-  color: var(--jckfrt-olive);
-}
-
-.button.alt {
-  background-color: var(--jckfrt-olive)!important;
-}
-
-.button.acct {
+.button.acct,     /* TODO DEPRECATED - use .btn.accent */
+.button.acct,   /* TODO DEPRECATED - use .btn.accent */
+.btn.accent,      /* TODO DEPRECATED - use .btn.accent */
+.btn.accent {
   background-color: var(--jckfrt-yellow)!important;
   color: var(--jckfrt-olive)!important;
   padding: 3px 10px;
@@ -69,32 +70,46 @@
 }
 
 /* Responsive size variants */
-.button.small,
-.button.sm {
+.btn.xs {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+
+.button.small,    /* TODO DEPRECATED - use .btn.sm */
+.button.sm,       /* TODO DEPRECATED - use .btn.sm */
+.btn.small,       /* TODO DEPRECATED - use .btn.sm */
+.btn.sm {
   font-size: 0.875rem;
   padding: 0.4rem 0.9rem;
 }
 
-.button.medium,
-.button.md {
+.button.medium,   /* TODO DEPRECATED - use .btn.md */
+.button.md,       /* TODO DEPRECATED - use .btn.md */
+.btn.medium,      /* TODO DEPRECATED - use .btn.md */
+.btn.md {
   font-size: 1rem;
   padding: 0.5rem 1.25rem;
 }
 
-.button.large,
-.button.lg {
+.button.large,    /* TODO DEPRECATED - use .btn.lg */
+.button.lg,       /* TODO DEPRECATED - use .btn.lg */
+.btn.large,       /* TODO DEPRECATED - use .btn.lg */
+.btn.lg {
   font-size: 1.125rem;
   padding: 0.75rem 1.5rem;
 }
 
 @media only screen and (min-width: 768px) {
-  .button.small { font-size: 0.9rem; }
-  .button.medium { font-size: 1.05rem; }
-  .button.large { font-size: 1.25rem; }
+  .button.xsmall, .btn.xs { font-size: 0.8rem; }
+  .button.small, .btn.sm { font-size: 0.9rem; }
+  .button.medium, .btn.md { font-size: 1.05rem; }
+  .button.large, .btn.lg { font-size: 1.25rem; }
 }
 
 @media only screen and (min-width: 1024px) {
-  .button.small { font-size: 1rem; }
-  .button.medium { font-size: 1.15rem; }
-  .button.large { font-size: 1.35rem; }
+  .button.xsmall, .btn.xs { font-size: 0.95rem; }
+  .button.small, .btn.sm { font-size: 1rem; }
+  .button.medium, .btn.md { font-size: 1.15rem; }
+  .button.large, .btn.lg { font-size: 1.35rem; }
 }

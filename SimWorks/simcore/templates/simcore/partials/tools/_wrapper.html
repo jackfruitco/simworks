@@ -9,7 +9,7 @@
         {{ tool.display_name }}
     </h3>
     <button @click.stop="toggle('{{ tool.name|lower }}')"
-            class="button primary small hide-small my-4"
+            class="btn pri sm hide-small my-4"
             x-text="isOpen('{{ tool.name|lower }}') ? 'Hide' : 'Show'">
     </button>
 </div>

@@ -7,7 +7,7 @@
             <p><strong>Expires:</strong> {{ invite.expires_at }}</p>
             <p><strong>Invited By:</strong> {{ invite.invited_by }}</p>
             <div x-data="{ open: false, copied: false }" class="invite-settings">
-                <button @click="open = !open" class="settings-button">
+                <button @click="open = !open" class="btn">
                     <span class="iconify" data-icon="mdi:cog-outline"></span>
                 </button>
                 <div x-show="open" class="settings-menu" @click.outside="open = false">
