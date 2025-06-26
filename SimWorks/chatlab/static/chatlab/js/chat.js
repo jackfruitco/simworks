@@ -97,7 +97,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
             this.chatSocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log('[ChatManager]', data);
+                console.debug('[ChatManager]', data);
                 if (data.type === 'init_message') {
                     // Update systemDisplayName and systemDisplayInitials only not already set to a meaningful value.
                     if (!this.systemDisplayName || this.systemDisplayName === "Unknown") {
@@ -199,7 +199,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
 
                     // Append message to chat-panel
-                    console.log("[appendMessage]", {content, isFromSelf, status, displayName});
+                    console.debug("[appendMessage]", {content, isFromSelf, status, displayName});
                     this.appendMessage(content, isFromSelf, status, displayName, data.id, data.mediaList ?? []);
                     if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
                         this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
@@ -313,7 +313,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
         appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
-            console.log("[appendMessage] Message received:", { content, isFromSelf, status, displayName });
+            console.debug("[appendMessage] Message received:", { content, isFromSelf, status, displayName });
 
             content = this._coerceContent(content);
             status = status || "";
@@ -360,7 +360,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             if (existing) {
-                console.log("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
+                console.debug("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
                 return true;
             }
 
@@ -453,7 +453,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             if (existing) {
-                console.log("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
+                console.debug("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
                 return;
             }
 
@@ -514,7 +514,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 .replace(/'/g, "&#039;");
         },
         loadOlderMessages() {
-            console.log("[ChatManager] loadOlderMessages() called");
+            console.debug("[ChatManager] loadOlderMessages() called");
             const container = document.getElementById('chat-messages');
             const firstMessage = container.firstElementChild;
             const messageId = firstMessage?.dataset?.messageId || null;
@@ -574,7 +574,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     this.typingUsers.push({username: data.username, displayInitials})
                 }
             }
-            console.log(
+            console.debug(
                 '[typingUsers]',
                 data.username,
                 (started ? 'started' : 'stopped'), 'typing.',
@@ -590,9 +590,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.updateTypingUsers(dataSim, started);
         },
         initScrollWatcher() {
-            console.log("[ChatJS] initScrollWatcher() called");
+            console.debug("[ChatJS] initScrollWatcher() called");
         },
-        // Obsolete checksum and metadata refresh functions removed.
     };
 }
 
