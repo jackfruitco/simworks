@@ -293,10 +293,10 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     status: 'sent'
                 }));
 
-                this.appendMessageV1(
+                this.appendMessage(
                     message,
                     true,
-                    null, // no initial status
+                    '', // no initial status
                     this.currentUser
                 );
 
