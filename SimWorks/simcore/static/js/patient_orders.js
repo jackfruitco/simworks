@@ -30,11 +30,7 @@
     orderList.innerHTML = "";
     pendingOrders.forEach((order, index) => {
       const li = document.createElement("li");
-      li.className = "order-item";
-
-      const span = document.createElement("span");
-      span.textContent = order;
-      li.appendChild(span);
+      li.className = "staged-item";
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-order";
@@ -44,6 +40,10 @@
         renderOrders();
       });
       li.appendChild(removeBtn);
+
+      const span = document.createElement("span");
+      span.textContent = order;
+      li.appendChild(span);
 
       orderList.appendChild(li);
     });
