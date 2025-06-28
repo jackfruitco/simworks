@@ -76,7 +76,9 @@ async def process_response(
         )
 
     # Get System User & create Parser
-    system_user = await sync_to_async(get_system_user)()
+    from core.utils import get_or_create_system_user
+    system_user = await get_or_create_system_user()
+
     parser = StructuredOutputParser(
         simulation=simulation,
         system_user=system_user,
