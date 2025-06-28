@@ -4,13 +4,12 @@ import logging
 from asgiref.sync import async_to_sync
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
-from django.db.models import Q
-
 from chatlab.utils import create_new_simulation
 from chatlab.utils import maybe_start_simulation
 from core.decorators import resolve_user
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import Http404
 from django.http import HttpResponseForbidden
 from django.http import JsonResponse
@@ -43,16 +42,13 @@ def index(request):
         from functools import reduce
         from operator import or_
 
-        fields = ['diagnosis', 'chief_complaint', 'prompt']
+        fields = ["diagnosis", "chief_complaint", "prompt"]
 
         # Add messages field if search_messages is True
         if search_messages:
-            fields.append('messages__content')
+            fields.append("messages__content")
 
-        qs = reduce(
-            or_,
-            (Q(**{f'{f}__icontains': search_query}) for f in fields)
-        )
+        qs = reduce(or_, (Q(**{f"{f}__icontains": search_query}) for f in fields))
 
         simulations = simulations.filter(qs).distinct()
 
