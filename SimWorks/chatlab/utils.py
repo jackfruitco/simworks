@@ -120,13 +120,6 @@ async def socket_send(
 
     channel_layer = get_channel_layer()
 
-    # Add type, event, and status add'l kwargs to the payload
-    # __payload.update({
-    #     "type": __type,
-    #     "status": __status,
-    #     **kwargs,
-    # })
-
     event = {
         "type": __type,
         "status": __status,
@@ -232,6 +225,7 @@ async def broadcast_patient_results(
     # Broadcast results to each simulation group layer
     for sim_id in grouped_results:
         payload = {
+            "tool": "patient_results",
             "results": grouped_results[sim_id]
         }
 

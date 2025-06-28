@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 _registry = {}
 
-def register_modifier(k):
+def register_modifier(k, friendly_name: str = ""):
     """Decorator to register a prompt modifier function under a key."""
     def decorator(func):
         key = k.casefold()
@@ -13,12 +13,15 @@ def register_modifier(k):
         parts = k.split(".")
         group = parts[0] if len(parts) > 1 else "default"
         name = parts[1] if len(parts) > 1 else parts[0]
+        description = friendly_name.title() if friendly_name else func.__doc__.splitlines()[0]
+        
         _registry[key] = {
             "key": k,
             "group": group,
             "name": name,
             "value": func,
-            "description": func.__doc__ or "",
+            "description": description,
+            "__doc__": func.__doc__.splitlines()[0] or "",
         }
         logger.debug(f"Modifier registered: '{k}'")
         return func

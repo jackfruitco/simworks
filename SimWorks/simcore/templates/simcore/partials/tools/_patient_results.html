@@ -3,10 +3,11 @@
 {% load core_tags %}
 {% load chatlab_filters %}
 
-<div>
+<div x-data="{ shouldDisable: {{ simulation.is_complete|yesno:'true,false' }} }">
     <button id="toggle-order-request-form"
             type="button"
-            class="button small acct">
+            :disabled="shouldDisable"
+            class="btn sm accent">
         Request Labs
     </button>
 

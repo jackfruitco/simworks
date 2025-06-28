@@ -97,7 +97,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
             this.chatSocket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log('[ChatManager]', data);
+                console.debug('[ChatManager]', data);
                 if (data.type === 'init_message') {
                     // Update systemDisplayName and systemDisplayInitials only not already set to a meaningful value.
                     if (!this.systemDisplayName || this.systemDisplayName === "Unknown") {
@@ -113,7 +113,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     const html = data?.html;
                     const tool = data?.tool || 'simulation_feedback';
                     const elementId = `${tool.replaceAll('_', '-')}-tool`;
-                    const simManager = window.simManager;
+                    const simulationManager = window.simulationManager;
 
                     if (data.type === 'feedback.created') {
                         console.warn(
@@ -124,9 +124,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
 
                     if (html) {
-                        simManager.refreshToolFromHTML(tool, html);
+                        simulationManager.refreshToolFromHTML(tool, html);
                     } else {
-                        simManager.checkTools([tool], true);
+                        simulationManager.checkTools([tool], true);
                     }
                 } else if (data.type === 'message_status_update') {
                     const existing = this.messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
@@ -143,12 +143,13 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         }
                     }
                     return;
-                } else if (data.type === 'typing') {
+                } else if (data.type === 'typing' || data.type === 'stopped_typing') {
+                    const startedTyping = data.type === 'typing';
                     if (data.username !== this.currentUser) {
-                        this.updateTypingUsers(data)
+                        this.updateTypingUsers(data, startedTyping)
                     }
-                } else if (data.type === 'stopped_typing') {
-                    this.updateTypingUsers(data, false)
+                // } else if (data.type === 'stopped_typing') {
+                //    this.updateTypingUsers(data, false)
                 } else if (
                     data.type === 'chat.message'
                     || data.type === 'message'
@@ -165,8 +166,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                         this.simulateSystemTyping(false);
 
                         // Check if tools new current, and refresh if not
-                        if (window.window.simManager) {
-                            window.window.simManager.checkTools([
+                        if (window.window.simulationManager) {
+                            window.window.simulationManager.checkTools([
                                 'simulation_metadata',
                                 'patient_history'
                             ]);
@@ -174,8 +175,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
                         // Sidebar pulse stuff
                         if (localStorage.getItem('seenSidebarTray') === 'true') {
-                          localStorage.removeItem('seenSidebarTray');
-                          if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
+                            localStorage.removeItem('seenSidebarTray');
+                            if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
                         }
                     }
 
@@ -193,68 +194,25 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     const receiveSound = document.getElementById("receive-sound");
                     if (!isFromSelf && receiveSound) {
                         receiveSound.currentTime = 0;
-                        receiveSound.play().catch(() => {});
+                        receiveSound.play().catch(() => {
+                        });
                     }
 
                     // Append message to chat-panel
-                    console.log("[appendMessage]", { content, isFromSelf, status, displayName });
+                    console.debug("[ChatManager]", {content, isFromSelf, status, displayName});
                     this.appendMessage(content, isFromSelf, status, displayName, data.id, data.mediaList ?? []);
                     if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
                         this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
                     }
+                } else if (data.type === 'simulation.metadata.results_created') {
+                    const html = data?.html || null;
+                    const tool = data?.tool || 'patient_results';
+                    const simulationManager = window.simulationManager;
 
-                } else if (data.type === 'chat_message') {
-                    console.warn(
-                        "[ChatManager] DEPRECATED",
-                        "Received deprecated event type 'chat_message'.",
-                        "Use 'message' instead."
-                    );
-                    const isSender = data.sender === this.currentUser;
-                    const status = isSender ? data.status || 'delivered' : null;
-                    const displayName = data.display_name || data.username || 'Unknown';
-
-                    if (!isSender) {
-                        this.simulateSystemTyping(false);
-                        if (window.window.simManager) {
-                            window.window.simManager.checkTools([
-                                'simulation_metadata',
-                                'patient_history'
-                            ]);
-                        }
-
-                        // Sidebar pulse stuff
-                        if (localStorage.getItem('seenSidebarTray') === 'true') {
-                          localStorage.removeItem('seenSidebarTray');
-                          if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
-                        }
-                    } else if (data.changed === false) {
-                        // fallback: metadata div is empty → force refresh
-                        if (!this.simMetadataDiv.querySelector('ul.sim-metadata')) {
-                            console.warn("[metadata] Forcing fallback render...");
-                            // Refresh simulation metadata
-                            this.refreshMetadata(true);
-                        }
-                    }
-                    let content = data.content;
-                    if (typeof content === 'string' && content.startsWith('"') && content.endsWith('"')) {
-                        try {
-                            content = JSON.parse(content);
-                        } catch (e) {
-                            console.warn("Failed to parse message content", e);
-                        }
-                    }
-
-                    // Play sound
-                    const receiveSound = document.getElementById("receive-sound");
-                    if (!isSender && receiveSound) {
-                        receiveSound.currentTime = 0;
-                        receiveSound.play().catch(() => {});
-                    }
-
-                    // Append message to chat-panel
-                    this.appendMessageV1(content, isSender, status, displayName, data.id);
-                    if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
-                        this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+                    if (html) {
+                        simulationManager.refreshToolFromHTML(tool, html);
+                    } else {
+                        simulationManager.checkTools([tool], true);
                     }
                 }
             };
@@ -282,10 +240,10 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     status: 'sent'
                 }));
 
-                this.appendMessageV1(
+                this.appendMessage(
                     message,
                     true,
-                    null, // no initial status
+                    '', // no initial status
                     this.currentUser
                 );
 
@@ -302,7 +260,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
         appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
-            console.log("[appendMessage] Message received:", { content, isFromSelf, status, displayName });
+            console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName });
 
             content = this._coerceContent(content);
             status = status || "";
@@ -349,7 +307,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             if (existing) {
-                console.log("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
+                console.debug("[ChatManager] Skipping duplicate message", messageId || "(no id)");
                 return true;
             }
 
@@ -442,7 +400,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             if (existing) {
-                console.log("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
+                console.debug("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
                 return;
             }
 
@@ -503,7 +461,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 .replace(/'/g, "&#039;");
         },
         loadOlderMessages() {
-            console.log("[ChatManager] loadOlderMessages() called");
+            console.debug("[ChatManager] loadOlderMessages() called");
             const container = document.getElementById('chat-messages');
             const firstMessage = container.firstElementChild;
             const messageId = firstMessage?.dataset?.messageId || null;
@@ -563,8 +521,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     this.typingUsers.push({username: data.username, displayInitials})
                 }
             }
-            console.log(
-                '[typingUsers]',
+            console.debug(
+                '[ChatManager]',
                 data.username,
                 (started ? 'started' : 'stopped'), 'typing.',
                 this.typingUsers.length, 'users typing:',
@@ -579,9 +537,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.updateTypingUsers(dataSim, started);
         },
         initScrollWatcher() {
-            console.log("[ChatJS] initScrollWatcher() called");
+            console.debug("[ChatManager] initScrollWatcher() called");
         },
-        // Obsolete checksum and metadata refresh functions removed.
     };
 }
 

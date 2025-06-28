@@ -39,7 +39,7 @@ def refresh_tool(request, tool_name, simulation_id):
         # Fallback to generic
         template = "simcore/partials/tools/_generic.html"
 
-    return render(request, template, {"tool": tool})
+    return render(request, template, {"tool": tool, "simulation": simulation})
 
 def tool_checksum(request, tool_name, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id)

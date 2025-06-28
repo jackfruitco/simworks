@@ -9,7 +9,7 @@
         <div class="simulation-buttons">
             <form method="post" action="{% url 'chatlab:create_simulation' %}" class="start-form">
                 {% csrf_token %}
-                <button type="submit" class="button primary medium" style="margin: auto">New ChatLab Sim</button>
+                <button type="submit" class="btn pri md" style="margin: auto">New ChatLab Sim</button>
             </form>
         </div>
     </section>
@@ -19,19 +19,19 @@
         {% comment %}
         <div class="filter-bar">
             <input type="text" placeholder="Filter simulations..." class="filter-input">
-            <button type="button" class="button">Filter</button>
+            <button type="button" class="btn">Filter</button>
         </div>
         {% endcomment %}
         {% include 'chatlab/partials/simulation_history.html' %}
     </section>
 </div>
 <section id="profile-links" class="profile-link-grid profile-container center">
-    <a href="{% url 'admin:index' %}" class="button small">Admin Login</a>
+    <a href="{% url 'admin:index' %}" class="btn sm">Admin Login</a>
     {% if user.is_staff %}
-    <a href="{% url 'accounts:new-invite' %}" class="button small">New Invitation</a>
-    <a href="{% url 'accounts:list-invites' %}" class="button small">View Invitations</a>
-    <a href="{% url 'simai:usage-report' %}" class="button small">View Usage Analytics</a>
-    <a href="{% url 'graphql' %}" class="button small">GraphiQL</a>
+    <a href="{% url 'accounts:new-invite' %}" class="btn sm">New Invitation</a>
+    <a href="{% url 'accounts:list-invites' %}" class="btn sm">View Invitations</a>
+    <a href="{% url 'simai:usage-report' %}" class="btn sm">View Usage Analytics</a>
+    <a href="{% url 'graphql' %}" class="btn sm">GraphiQL</a>
     {% endif %}
 </section>
 {% endblock content %}

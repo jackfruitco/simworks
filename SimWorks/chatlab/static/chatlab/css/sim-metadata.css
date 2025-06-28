@@ -6,9 +6,13 @@
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   max-width: 90%;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+  display: block;
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: 10px 10px 10px var(--color-border);
 }
+
 .sim-metadata li {
   opacity: 0;
   transform: translateY(10px);
@@ -57,6 +61,56 @@
   color: var(--color-muted);
   padding: 0.5rem 1rem;
   text-align: center;
+}
+
+table.sim-metadata {
+  text-align: left;
+  th, td {
+    text-align: left;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  th {
+    border-bottom-width: 2px;
+  }
+}
+
+.staged-item {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.2rem;
+}
+
+.staged-item .remove-order,
+.staged-item span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+/* Left half: the red “✕” pill edge */
+.staged-item .remove-order {
+  background: var(--jckfrt-red)!important;
+  color: white;
+  cursor: pointer;
+  border: 1px solid var(--color-text-dark);
+  border-right: none;
+  border-radius: 0.75rem 0 0 0.75rem;
+  /* IMPORTANT: use identical top/bottom padding to the span below */
+  padding: 0.25rem 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Right half: the label */
+.staged-item span {
+  background: var(--color-border);
+  color: var(--color-text-dark);
+  border: 1px solid var(--color-text-dark);
+  border-left: none;
+  border-radius: 0 0.75rem 0.75rem 0;
+  /* MATCH the same vertical padding as the button above */
+  padding: 0.25rem 0.5rem;
+  margin: 0;
 }
 
 /* ───────────────────────────────────────────────

@@ -1,5 +1,5 @@
 window.SimulationManager = function(simulation_id) {
-    console.log("[SimulationManager] Script loaded");
+    console.debug("[SimulationManager] Script loaded");
     return {
         simulation_id,
         tools: {}, // { toolName: { checksum, elementId } }
@@ -16,13 +16,13 @@ window.SimulationManager = function(simulation_id) {
                     checksum: initialChecksum,
                     elementId: div.id,
                 };
-                console.log(`[SimulationManager] Registered tool:`, {
+                console.debug(`[SimulationManager] Registered tool:`, {
                     toolName,
                     checksum: initialChecksum,
                     elementId: div.id,
                 });
 
-                console.log(`[SimulationManager] Found tool: ${toolName}, checksum: ${initialChecksum}`);
+                console.debug(`[SimulationManager] Found tool: ${toolName}, checksum: ${initialChecksum}`);
             });
         },
 
@@ -39,10 +39,10 @@ window.SimulationManager = function(simulation_id) {
                     if (data.checksum !== tool.checksum) {
                         console.info(`[SimulationManager] Checksum changed for ${toolName}, refreshing...`);
                         this.refreshTool(toolName);
-                        console.log(`[SimulationManager] Refresh triggered for ${toolName}`);
+                        console.debug(`[SimulationManager] Refresh triggered for ${toolName}`);
                         tool.checksum = data.checksum; // update after refresh
                     } else {
-                        console.info(`[SimulationManager] Checksum unchanged for ${toolName}`);
+                        console.debug(`[SimulationManager] Checksum unchanged for ${toolName}`);
                     }
                 })
                 .catch(error => {
@@ -51,18 +51,18 @@ window.SimulationManager = function(simulation_id) {
         },
 
         checkAllTools() {
-            console.log("[SimulationManager] Checking all tools for checksum updates...");
+            console.debug("[ToolManager] Checking all tools for checksum updates...");
             Object.keys(this.tools).forEach(toolName => {
                 this.checkToolChecksum(toolName);
             });
         },
 
         checkTools(toolNames, forceRefresh = false) {
-            console.log(`[SimulationManager] Checking selected tools: ${toolNames.join(', ')}`);
+            console.debug(`[ToolManager] Checking selected tools: ${toolNames.join(', ')}`);
             toolNames.forEach(toolName => {
                 if (forceRefresh) {
+                    console.info(`[ToolManager] Forcing refresh for ${toolName}`);
                     this.refreshTool(toolName);
-                    console.log(`[SimulationManager] Refresh force-triggered for ${toolName}`);
                 } else {
                     this.checkToolChecksum(toolName);
                 }
@@ -80,7 +80,7 @@ window.SimulationManager = function(simulation_id) {
                 target: targetDiv,
                 swap: 'innerHTML'
             });
-            console.info(`[refreshTool] Refresh requested for '${toolName}'`);
+            console.info(`[ToolManager] Refresh requested '${toolName}' via HTMX request`);
         },
 
         refreshToolFromHTML(tool, html) {
@@ -88,9 +88,9 @@ window.SimulationManager = function(simulation_id) {
             const el = document.getElementById(id);
             if (el) {
                 el.innerHTML = html;
-                console.info(`[WebSocket] HTML pushed into '${id}'`);
+                console.info(`[ToolManager] Refreshed '${tool}' via HTML inject`);
             } else {
-                console.warn(`[WebSocket] Could not find element '${id}'`);
+                console.warn(`[ToolManager] Could not find element '${id}'`);
             }
         },
     };
