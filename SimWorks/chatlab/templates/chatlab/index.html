@@ -38,15 +38,9 @@
     </header>
 
     {% if user.is_authenticated %}
-        <h2>
-        {% if user.first_name %}
-            {{ user.first_name }}'s Simulation History
-        {% else %}
-            Your Simulation History
-        {% endif %}
-        </h2>
-        {% include 'chatlab/partials/simulation_history.html' %}
+        {% include 'chatlab/partials/simulation_history_base.html' %}
     {% endif %}
+
     {% endblock content %}
 </section>
 

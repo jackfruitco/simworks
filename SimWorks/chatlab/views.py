@@ -50,7 +50,7 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "chatlab/partials/simulation_history.html"
+        "chatlab/partials/simulation_history_list.html"
         if request.htmx
         else "chatlab/index.html"
     )
