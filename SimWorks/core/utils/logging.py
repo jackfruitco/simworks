@@ -1,13 +1,14 @@
 # core/utils/logging.py
 import logging
 
+
 class AppColorFormatter(logging.Formatter):
     COLORS = {
-        "chatlab": "\033[34m",          # Dark Blue
-        "simai": "\033[32m",            # Dark Green
-        "accounts": "\033[35m",         # Dark Magenta
-        "notifications": "\033[33m",    # Dark Yellow/Brown
-        "simcore": "\033[36m",          # Dark Cyan
+        "chatlab": "\033[34m",  # Dark Blue
+        "simai": "\033[32m",  # Dark Green
+        "accounts": "\033[35m",  # Dark Magenta
+        "notifications": "\033[33m",  # Dark Yellow/Brown
+        "simcore": "\033[36m",  # Dark Cyan
         # "core": "\033[30m",             # Black
     }
     RESET = "\033[0m"
@@ -17,6 +18,7 @@ class AppColorFormatter(logging.Formatter):
         color = self.COLORS.get(app, "")
         record.name = f"{color}{record.name}{self.RESET}" if color else record.name
         return super().format(record)
+
 
 def log_model_save(instance, created: bool, model_name: str = None, extra: dict = None):
     """
@@ -38,7 +40,11 @@ def log_model_save(instance, created: bool, model_name: str = None, extra: dict 
 
     # Only show full debug info if app-level logger is set to DEBUG
     if model_logger.isEnabledFor(logging.DEBUG):
-        extra_data = f" | DEBUG: Full object data: {instance.__dict__}" if extra is None else f" | Extra: {extra}"
+        extra_data = (
+            f" | DEBUG: Full object data: {instance.__dict__}"
+            if extra is None
+            else f" | Extra: {extra}"
+        )
     else:
         extra_data = ""
 

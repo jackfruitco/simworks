@@ -22,7 +22,7 @@ SimWorks is a Django-based web app simulating real-time military medical scenari
 #### SimManAI/
 - OpenAI Async client to build, generate, process, and parse AI responses
 - Flow: client --> gateway --> parser -> client --> (ChatConsumer)
-- Includes OpenAI Token analyics to track and manage usage 
+- Includes OpenAI Token analyics to track and manage usage
 
 #### Frontend Technologies
 - **HTMX** for partial loading and refreshes (message history, search)

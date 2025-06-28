@@ -1,6 +1,6 @@
 # core/utils/formatters/builtins/log_pairs_formatter.py
-
 from core.utils.formatters.registry import register_formatter
+
 
 @register_formatter("log_pairs")
 def as_log_pairs(formatter):

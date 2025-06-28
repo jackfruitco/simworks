@@ -4,9 +4,10 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-
 from simai.models import Response
-from simcore.models import Simulation, BaseSession, SimulationImage
+from simcore.models import BaseSession
+from simcore.models import Simulation
+from simcore.models import SimulationImage
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,11 @@ class ChatSession(BaseSession):
     Represents a session within ChatLab that extends a shared Simulation instance.
     Additional chat-specific behaviors or fields can be added here.
     """
+
     pass
 
 
 class Message(models.Model):
-
 
     class MessageType(models.TextChoices):
         TEXT = "text", "Text"
@@ -34,7 +35,6 @@ class Message(models.Model):
         AUDIO = "audio", "Audio"
         FILE = "file", "File"
         SYSTEM = "system", "System"
-
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -55,10 +55,7 @@ class Message(models.Model):
 
     # Media
     media = models.ManyToManyField(
-        SimulationImage,
-        through='MessageMediaLink',
-        related_name="messages",
-        blank=True
+        SimulationImage, through="MessageMediaLink", related_name="messages", blank=True
     )
 
     # UX/Status enhancements
@@ -139,6 +136,7 @@ class Message(models.Model):
 
     def __str__(self):
         return f"ChatLab Sim#{self.simulation.pk} {self.get_message_type_display()} by {self.sender} at {self.timestamp:%H:%M:%S}"
+
 
 class MessageMediaLink(models.Model):
     created = models.DateTimeField(auto_now_add=True)

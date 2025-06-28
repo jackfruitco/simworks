@@ -1,20 +1,21 @@
 # simcore/tools/base.py
+import builtins
 import hashlib
 import json
 import logging
 import pprint
 
-from asgiref.sync import async_to_sync, sync_to_async
-
+from asgiref.sync import async_to_sync
+from asgiref.sync import sync_to_async
 from simcore.tools.registry import register_tool
-import builtins
 
 logger = logging.getLogger(__name__)
+
 
 def safe_json_checksum(data):
     """Utility function to generate a SHA256 checksum from data."""
     data_string = json.dumps(data, sort_keys=True, default=str)
-    return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
+    return hashlib.sha256(data_string.encode("utf-8")).hexdigest()
 
 
 class BaseTool:
@@ -29,7 +30,7 @@ class BaseTool:
     def __init__(self, simulation):
         self.simulation = simulation
         if self.display_name is None and self.tool_name:
-            self.display_name = self.tool_name.replace('_', ' ').title()
+            self.display_name = self.tool_name.replace("_", " ").title()
 
     @classmethod
     def register(cls):
@@ -41,6 +42,7 @@ class BaseTool:
         def fetch_wrapper():
             def fetch(simulation):
                 return cls(simulation).to_dict()
+
             return fetch
 
         return fetch_wrapper()
@@ -69,7 +71,7 @@ class BaseTool:
             raw_data = self.get_data() or {}  # Treat None as {}
             logger.debug("[get_checksum] raw_data = %s", pprint.pformat(raw_data))
             data_string = json.dumps(raw_data, sort_keys=True, default=builtins.str)
-            return hashlib.sha256(data_string.encode('utf-8')).hexdigest()
+            return hashlib.sha256(data_string.encode("utf-8")).hexdigest()
         except Exception as e:
             raise ValueError(f"Failed to generate checksum for {self.tool_name}: {e}")
 
@@ -86,10 +88,12 @@ class BaseTool:
             "checksum": self.get_checksum(),
         }
 
+
 class GenericTool(BaseTool):
     """
     Generic simple metadata tool (k:v pairs).
     """
+
     is_generic = True
 
     def __init__(self, simulation):

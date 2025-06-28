@@ -4,24 +4,32 @@ to facilitate patient simulations in a chat environment. It includes functions
 to build payloads for patient replies and introductions, and a service class
 to generate responses using the OpenAI model.
 """
+
 import inspect
 import logging
 import mimetypes
-from typing import List, Union
+from typing import List
 from typing import Optional
+from typing import Union
 
 from asgiref.sync import sync_to_async
+from chatlab.models import Message
 from django.conf import settings
 from openai import AsyncOpenAI
+from simcore.models import LabResult
+from simcore.models import RadResult
+from simcore.models import Simulation
+from simcore.models import SimulationMetadata
 
-from chatlab.models import Message
-from simcore.models import Simulation, SimulationMetadata, LabResult, RadResult
 from .models import ResponseType
 from .openai_gateway import process_response
-from .output_schemas import message_schema, feedback_schema, patient_results_schema
+from .output_schemas import feedback_schema
+from .output_schemas import message_schema
+from .output_schemas import patient_results_schema
 from .prompts import Prompt
 
 logger = logging.getLogger(__name__)
+
 
 @sync_to_async
 def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
@@ -65,6 +73,7 @@ def build_patient_reply_payload(user_msg: Message) -> dict:
         ],
     }
 
+
 @sync_to_async
 def build_feedback_payload(simulation: Simulation) -> dict:
     """
@@ -93,7 +102,10 @@ def build_feedback_payload(simulation: Simulation) -> dict:
         ],
     }
 
-async def build_patient_results_payload(simulation: Simulation, lab_order: str | list[str]) -> dict:
+
+async def build_patient_results_payload(
+    simulation: Simulation, lab_order: str | list[str]
+) -> dict:
     """
     Build the payload for AI-determined patient results.
 
@@ -229,16 +241,18 @@ class SimAIClient:
             **payload,
         )
 
-        return await process_response(response, simulation, stream, response_type=ResponseType.FEEDBACK)
+        return await process_response(
+            response, simulation, stream, response_type=ResponseType.FEEDBACK
+        )
 
     # noinspection PyTypeChecker
     async def generate_patient_reply_image(
-            self,
-            *modifiers,
-            simulation: Simulation | int = None,
-            output_format="webp",
-            include_default=False,
-            **kwargs
+        self,
+        *modifiers,
+        simulation: Simulation | int = None,
+        output_format="webp",
+        include_default=False,
+        **kwargs,
     ) -> List[Message]:
         """
         Generate a patient image for a given simulation using OpenAI Image API.
@@ -291,17 +305,18 @@ class SimAIClient:
             simulation=simulation,
             stream=False,
             response_type=ResponseType.MEDIA,
-            mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0] or "image/webp"
+            mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0]
+            or "image/webp",
         )
 
     async def generate_patient_results(
-            self,
-            *modifiers,
-            simulation: Simulation | int = None,
-            lab_orders: str | list[str] = None,
-            include_default=False,
-            stream: bool = False,
-            **kwargs
+        self,
+        *modifiers,
+        simulation: Simulation | int = None,
+        lab_orders: str | list[str] = None,
+        include_default=False,
+        stream: bool = False,
+        **kwargs,
     ) -> list[LabResult] | list[RadResult]:
         """
         Generate patient results for requested labs or radiology using OpenAI Image API.

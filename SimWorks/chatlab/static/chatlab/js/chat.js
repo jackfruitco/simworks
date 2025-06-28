@@ -363,7 +363,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
         appendMessageV1(
-            content, 
+            content,
             isSender,
             status = "",
             displayName = "",

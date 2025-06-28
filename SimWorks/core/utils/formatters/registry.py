@@ -26,6 +26,7 @@ class FormatterRegistry:
             if extension:
                 self._extension_map[extension.lower()] = name.lower()
             return func
+
         return decorator
 
     def get(self, name: str):

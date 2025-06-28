@@ -23,8 +23,13 @@ Example:
 
 Author: Jackfruit SimWorks
 """
-from typing import List, Optional, Literal
-from pydantic import BaseModel, Field
+
+from typing import List
+from typing import Literal
+from typing import Optional
+
+from pydantic import BaseModel
+from pydantic import Field
 
 
 class MedicalHistoryItem(BaseModel):
@@ -80,28 +85,52 @@ class PatientResponse(BaseModel):
 
 
 class LabResult(BaseModel):
-    order_name: str = Field(..., description="The name of the order using standardized terminology.")
-    result_value: float = Field(..., description="The result value of the test, without the unit.")
+    order_name: str = Field(
+        ..., description="The name of the order using standardized terminology."
+    )
+    result_value: float = Field(
+        ..., description="The result value of the test, without the unit."
+    )
     result_unit: str = Field(..., description="The unit of the result value.")
-    reference_range_low: float = Field(..., description="The lower limit of the reference range, without the unit.")
-    reference_range_high: float = Field(..., description="The upper limit of the reference range, without the unit.")
-    result_flag: Literal["HIGH", "LOW", "POS", "NEG", "UNK", "NORMAL", "ABNORMAL", "CRITICAL"] = Field(..., description="The result flag.")
-    result_comment: Optional[str] = Field(None, description="The result comment, if applicable, or null.")
+    reference_range_low: float = Field(
+        ..., description="The lower limit of the reference range, without the unit."
+    )
+    reference_range_high: float = Field(
+        ..., description="The upper limit of the reference range, without the unit."
+    )
+    result_flag: Literal[
+        "HIGH", "LOW", "POS", "NEG", "UNK", "NORMAL", "ABNORMAL", "CRITICAL"
+    ] = Field(..., description="The result flag.")
+    result_comment: Optional[str] = Field(
+        None, description="The result comment, if applicable, or null."
+    )
 
     class Config:
         extra = "forbid"
+
 
 class RadResult(BaseModel):
-    order_name: str = Field(..., description="The name of the order using standardized terminology.")
+    order_name: str = Field(
+        ..., description="The name of the order using standardized terminology."
+    )
     result_value: str = Field(..., description="The result of the order.")
-    result_flag: Literal["UNK", "NORMAL", "ABNORMAL", "CRITICAL"] = Field(..., description="The result flag.")
+    result_flag: Literal["UNK", "NORMAL", "ABNORMAL", "CRITICAL"] = Field(
+        ..., description="The result flag."
+    )
 
     class Config:
         extra = "forbid"
 
+
 class PatientResults(BaseModel):
-    lab_results: Optional[List[LabResult]] = Field(None, description="The lab results of the patient. Each item is a lab result object.")
-    radiology_results: Optional[List[RadResult]] = Field(None, description="The radiology results of the patient. Each item is a radiology result object.")
+    lab_results: Optional[List[LabResult]] = Field(
+        None,
+        description="The lab results of the patient. Each item is a lab result object.",
+    )
+    radiology_results: Optional[List[RadResult]] = Field(
+        None,
+        description="The radiology results of the patient. Each item is a radiology result object.",
+    )
 
     class Config:
         extra = "forbid"

@@ -1,12 +1,13 @@
+import importlib
+
 import graphene
+from core.utils import Formatter
 from django.core.exceptions import ObjectDoesNotExist
 from graphene_django.types import DjangoObjectType
-
-from core.utils import Formatter
 from simai.prompts import PromptModifiers
 from simcore.schema import SimulationType
+
 from .models import Response
-import importlib
 
 
 class Modifier(graphene.ObjectType):
@@ -24,6 +25,7 @@ class ModifierGroup(graphene.ObjectType):
 
 class ResponseType(DjangoObjectType):
     """Response type for GraphQL"""
+
     output_pretty = graphene.JSONString()
 
     class Meta:
@@ -42,13 +44,14 @@ class ResponseType(DjangoObjectType):
         )
 
     def resolve_output_pretty(self, info):
-        if not getattr(self, 'raw', None):
+        if not getattr(self, "raw", None):
             return None
         try:
             formatter = Formatter(self.raw)
             return formatter.render(format_type="json", indent=2)
         except Exception:
             return None
+
 
 def get_modifier_groups():
     modifier_items = PromptModifiers.list()
@@ -60,12 +63,14 @@ def get_modifier_groups():
         group = item["group"]
         name = item["name"]
         description = item["description"]
-        grouped.setdefault(group, []).append({
-            "key": full_path,
-            "name": name,
-            "group": group,
-            "description": description,
-        })
+        grouped.setdefault(group, []).append(
+            {
+                "key": full_path,
+                "name": name,
+                "group": group,
+                "description": description,
+            }
+        )
 
     for group in grouped:
         try:
@@ -78,11 +83,7 @@ def get_modifier_groups():
         mods.sort(key=lambda m: m["description"].lower())
 
     return [
-        {
-            "group": group,
-            "description": docstrings[group],
-            "modifiers": mods
-        }
+        {"group": group, "description": docstrings[group], "modifiers": mods}
         for group, mods in sorted(grouped.items(), key=lambda item: item[0].lower())
     ]
 
@@ -90,34 +91,22 @@ def get_modifier_groups():
 class Query(graphene.ObjectType):
 
     # Responses
-    response = graphene.Field(
-        ResponseType,
-        id=graphene.ID(required=True)
-    )
+    response = graphene.Field(ResponseType, id=graphene.ID(required=True))
     responses = graphene.List(
         ResponseType,
         limit=graphene.Int(),
         simulation=graphene.ID(),
-        ids=graphene.List(graphene.ID)
+        ids=graphene.List(graphene.ID),
     )
 
     # Modifiers
-    modifier = graphene.Field(
-        Modifier,
-        key=graphene.String(required=True)
-    )
-    modifiers = graphene.List(
-        Modifier
-    )
+    modifier = graphene.Field(Modifier, key=graphene.String(required=True))
+    modifiers = graphene.List(Modifier)
 
     # Modifier Groups
-    modifier_group = graphene.Field(
-        ModifierGroup,
-        group=graphene.String(required=True)
-    )
+    modifier_group = graphene.Field(ModifierGroup, group=graphene.String(required=True))
     modifier_groups = graphene.List(
-        ModifierGroup,
-        groups=graphene.List(graphene.String)
+        ModifierGroup, groups=graphene.List(graphene.String)
     )
 
     def resolve_response(root, info, id):
@@ -126,7 +115,9 @@ class Query(graphene.ObjectType):
         except ObjectDoesNotExist:
             return None
 
-    def resolve_responses(root, info, ids=None, limit: int=None, simulation: int=None):
+    def resolve_responses(
+        root, info, ids=None, limit: int = None, simulation: int = None
+    ):
         qs = Response.objects.all()
         if ids:
             qs = qs.filter(pk__in=ids)
@@ -165,12 +156,14 @@ class Query(graphene.ObjectType):
                 value = None
             if group and item["group"] != group:
                 continue
-            result.append(Modifier(
-                key=item["key"],
-                name=item["name"],
-                group=item["group"],
-                description=description,
-            ))
+            result.append(
+                Modifier(
+                    key=item["key"],
+                    name=item["name"],
+                    group=item["group"],
+                    description=description,
+                )
+            )
         return result
 
     def resolve_modifier_group(root, info, group):

@@ -1,5 +1,6 @@
 from django.apps import AppConfig
 
+
 class ChatLabConfig(AppConfig):
     name = "chatlab"
 
@@ -17,8 +18,9 @@ class ChatLabConfig(AppConfig):
                     "sender": msg.display_name or str(msg.sender),
                     "content": msg.content,
                 }
-                for msg in Message.objects.filter(simulation=simulation).order_by("timestamp")
+                for msg in Message.objects.filter(simulation=simulation).order_by(
+                    "timestamp"
+                )
             ]
 
         register_history_provider("chatlab", chatlab_history)
-

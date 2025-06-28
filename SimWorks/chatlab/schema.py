@@ -1,9 +1,8 @@
 import graphene
-from django.shortcuts import get_object_or_404
-from graphene_django.types import DjangoObjectType
-
 from accounts.models import CustomUser
 from chatlab.models import Message
+from django.shortcuts import get_object_or_404
+from graphene_django.types import DjangoObjectType
 
 
 class UserType(DjangoObjectType):
@@ -13,9 +12,7 @@ class UserType(DjangoObjectType):
 
 
 class MessageType(DjangoObjectType):
-    sender = graphene.Field(
-        UserType
-    )
+    sender = graphene.Field(UserType)
 
     class Meta:
         model = Message
@@ -29,16 +26,13 @@ class MessageType(DjangoObjectType):
             "content",
             "sender",
             "timestamp",
-            "role"
+            "role",
         )
 
 
 class Query(graphene.ObjectType):
 
-    message = graphene.Field(
-        MessageType,
-        id=graphene.Int(required=True)
-    )
+    message = graphene.Field(MessageType, id=graphene.Int(required=True))
 
     messages = graphene.List(
         MessageType,
@@ -48,21 +42,12 @@ class Query(graphene.ObjectType):
         limit=graphene.Int(),
     )
 
-    def resolve_message(
-            self,
-            info,
-            id
-    ):
+    def resolve_message(self, info, id):
         """Return a message by id."""
         return get_object_or_404(Message, id=id)
 
     def resolve_messages(
-            self,
-            info,
-            ids=None,
-            simulation=None,
-            message_type=None,
-            limit=None
+        self, info, ids=None, simulation=None, message_type=None, limit=None
     ):
         """
         Return messages, optionally filtered by message IDs and simulation(s).
@@ -101,6 +86,7 @@ class Query(graphene.ObjectType):
             qs = qs[:limit]
 
         return qs
+
 
 class Mutation(graphene.ObjectType):
     pass

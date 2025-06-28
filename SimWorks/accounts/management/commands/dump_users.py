@@ -1,6 +1,7 @@
 import json
-from django.core.management.base import BaseCommand
+
 from accounts.models import CustomUser
+from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
@@ -47,7 +48,9 @@ class Command(BaseCommand):
                     "is_active": user.is_active,
                     "is_staff": user.is_staff,
                     "is_superuser": user.is_superuser,
-                    "last_login": user.last_login.isoformat() if user.last_login else None,
+                    "last_login": (
+                        user.last_login.isoformat() if user.last_login else None
+                    ),
                     "date_joined": user.date_joined.isoformat(),
                     "role": user.role.id if user.role else None,
                 },
@@ -57,4 +60,6 @@ class Command(BaseCommand):
         with open(output_file, "w") as f:
             json.dump(user_data, f, indent=2)
 
-        self.stdout.write(self.style.SUCCESS(f"{len(user_data)} user(s) dumped to {output_file}"))
+        self.stdout.write(
+            self.style.SUCCESS(f"{len(user_data)} user(s) dumped to {output_file}")
+        )

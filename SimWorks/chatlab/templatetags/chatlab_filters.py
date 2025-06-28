@@ -20,7 +20,15 @@ def feedback(value: object) -> str:
         pass
 
     # Try boolean-ish (e.g. ✅ ❌ 🟡)
-    if isinstance(value, bool) or str(value).strip().lower() in ("true", "false", "yes", "no", "0", "1", "partial"):
+    if isinstance(value, bool) or str(value).strip().lower() in (
+        "true",
+        "false",
+        "yes",
+        "no",
+        "0",
+        "1",
+        "partial",
+    ):
         return display_success(value)
 
     # Fallback: title-case string

@@ -1,21 +1,27 @@
 import json
 
-from django.http import HttpResponseNotFound, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from core.utils import Formatter
+from django.http import HttpResponseNotFound
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
-
-from core.utils import Formatter
 from simcore.models import Simulation
 from simcore.tools import get_tool
 
 
-def download_simulation_transcript(request, simulation_id, format_type="sim_transcript_txt"):
+def download_simulation_transcript(
+    request, simulation_id, format_type="sim_transcript_txt"
+):
     sim = get_object_or_404(Simulation, id=simulation_id)
     formatter = Formatter(sim.history)
-    return formatter.download(format_type=format_type, filename=f"Sim{sim.pk}_transcript")
+    return formatter.download(
+        format_type=format_type, filename=f"Sim{sim.pk}_transcript"
+    )
+
 
 @require_GET
 def refresh_tool(request, tool_name, simulation_id):
@@ -41,6 +47,7 @@ def refresh_tool(request, tool_name, simulation_id):
 
     return render(request, template, {"tool": tool, "simulation": simulation})
 
+
 def tool_checksum(request, tool_name, simulation_id):
     simulation = get_object_or_404(Simulation, id=simulation_id)
     tool_class = get_tool(tool_name)
@@ -51,6 +58,7 @@ def tool_checksum(request, tool_name, simulation_id):
     checksum = tool_instance.get_checksum()
     return JsonResponse({"checksum": checksum})
 
+
 @csrf_exempt
 def sign_orders(request, simulation_id):
     if request.method == "POST":
@@ -59,10 +67,8 @@ def sign_orders(request, simulation_id):
             lab_orders = data.get("lab_orders", [])
 
             from simai.tasks import generate_patient_results as g
-            g.delay(
-                _simulation_id=simulation_id,
-                _lab_orders=lab_orders
-            )
+
+            g.delay(_simulation_id=simulation_id, _lab_orders=lab_orders)
             return JsonResponse({"status": "ok", "orders": lab_orders})
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)

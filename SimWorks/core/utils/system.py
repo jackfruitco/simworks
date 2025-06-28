@@ -1,12 +1,12 @@
 # core/utils/system.py
-import os
 import logging
+import os
+from logging import getLogger
 
 from django.core.exceptions import ImproperlyConfigured
 
-from logging import getLogger
-
 _SENTINEL = object()
+
 
 def check_env(var_name, default=_SENTINEL):
     """
@@ -29,6 +29,7 @@ def check_env(var_name, default=_SENTINEL):
         # TODO re-enable check_env error
         # raise ImproperlyConfigured(error_msg)
 
+
 def coerce_to_bool(value: str | bool | int) -> bool:
     """
     Converts a value to a boolean. Interprets common string representations
@@ -42,11 +43,13 @@ def coerce_to_bool(value: str | bool | int) -> bool:
     if isinstance(value, int):
         return value != 0
     if isinstance(value, str):
-        return value.strip().lower() not in ('false', '0', 'no', '')
+        return value.strip().lower() not in ("false", "0", "no", "")
     return bool(value)
+
 
 import logging
 from typing import Any
+
 
 def remove_null_keys(_dict: Any) -> dict[Any, Any]:
     """

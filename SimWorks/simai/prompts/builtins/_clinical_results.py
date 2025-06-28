@@ -1,10 +1,11 @@
 # SimWorks/simai/prompts/builtins/_clinical_results.py
 """PromptModifiers that enable users to request clinical results (e.g., labs) for a simulation."""
-from asgiref.sync import sync_to_async
-
-from simai.prompts.registry import register_modifier
-from simcore.models import Simulation, SimulationMetadata
 import logging
+
+from asgiref.sync import sync_to_async
+from simai.prompts.registry import register_modifier
+from simcore.models import Simulation
+from simcore.models import SimulationMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,12 @@ _BASE = f"""
 For this prompt only, you are acting as the simulation facilitator.
 
 The user has requested requested clinical orders, such as labs and radiology.
-For each order requested, you should provide the standardized name using lab 
+For each order requested, you should provide the standardized name using lab
 and radiology standard abbreviations or order sentences. You should provide the
-standard reference range for all labs, and include a flag for normal or abnormal 
-values. 
+standard reference range for all labs, and include a flag for normal or abnormal
+values.
 """
+
 
 @register_modifier("ClinicalResults.PatientScenarioData")
 async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
@@ -48,8 +50,16 @@ async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
         " with a reference to the panel name."
     )
 
-    dx = f"The patient's diagnosis is {simulation.diagnosis}." if simulation.diagnosis else ""
-    cc = f"The patient's chief complaint is {simulation.chief_complaint}." if simulation.chief_complaint else ""
+    dx = (
+        f"The patient's diagnosis is {simulation.diagnosis}."
+        if simulation.diagnosis
+        else ""
+    )
+    cc = (
+        f"The patient's chief complaint is {simulation.chief_complaint}."
+        if simulation.chief_complaint
+        else ""
+    )
 
     # Default to empty strings in case metadata is missing
     sex = ""
@@ -71,6 +81,7 @@ async def patient_scenario_data(simulation: Simulation, **kwargs) -> str:
     info_string = " ".join(filter(None, info_parts))
 
     return f"{info_string} {_base}"
+
 
 @register_modifier("ClinicalResults.GenericLab")
 async def generic_lab(lab_order: str | list[str] = None, **kwargs) -> str:

@@ -1,6 +1,7 @@
 from graphql import GraphQLError
 from graphql import GraphQLResolveInfo as ResolveInfo
 
+
 class RequireApiPermissionMiddleware:
     def resolve(self, next, root, info: ResolveInfo, **kwargs):
         # Whitelist any queries/mutations that don't require auth

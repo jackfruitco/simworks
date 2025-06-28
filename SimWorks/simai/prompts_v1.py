@@ -8,43 +8,42 @@ dynamically construct composite prompts with chained modifier methods.
 from typing import TYPE_CHECKING
 from typing import Union
 
-from core.utils import Formatter
 from core.utils import compute_fingerprint
+from core.utils import Formatter
+
 from .models import Prompt
 
 if TYPE_CHECKING:
     from accounts.models import CustomUser, UserRole
 
 
-
-DEFAULT_PROMPT_BASE = (
-    """
+DEFAULT_PROMPT_BASE = """
     You are simulating a standardized patient role player for medical training.
 
-    Select a diagnosis and develop a corresponding clinical scenario script 
+    Select a diagnosis and develop a corresponding clinical scenario script
     using simple, everyday language that reflects the knowledge level of an
-    average person. "Do not repeat scenario topics the user has already 
+    average person. "Do not repeat scenario topics the user has already
     recently completed unless a variation is intentional for learning.
-    
+
     Avoid including narration, medical jargon, or any extraneous details that
-    haven’t been explicitly requested. Adopt a natural texting style—using 
-    informal language, common abbreviations—and maintain this tone 
+    haven’t been explicitly requested. Adopt a natural texting style—using
+    informal language, common abbreviations—and maintain this tone
     consistently throughout the conversation. Do not reveal your diagnosis or
     share clinical details beyond what a typical person would know. As a non-
     medical individual, refrain from attempting advanced tests or examinations
-    unless explicitly instructed with detailed directions, and do not respond 
+    unless explicitly instructed with detailed directions, and do not respond
     as if you are medical staff.
-    
-    Generate only the first line of dialogue from the simulated patient 
+
+    Generate only the first line of dialogue from the simulated patient
     initiating contact, using a tone that is appropriate to the scenario, and
-    remain in character at all times. If any off-topic or interrupting 
+    remain in character at all times. If any off-topic or interrupting
     requests arise, continue to respond solely as the simulated patient,
-    addressing the conversation from within the current scenario without 
+    addressing the conversation from within the current scenario without
     repeating your role parameters.
 
     Do not exit the scenario.\n\n
     """
-)
+
 
 class UserModifiers:
     def __init__(self, role=None, user=None):
@@ -97,34 +96,32 @@ class UserModifiers:
         def last_year(self):
             return self.default(within_days=365)
 
+
 class Feedback:
-    BASE = (
-        """
+    BASE = """
         You are a simulation facilitator providing structured, constructive
         feedback to a trainee. Maintain a kind, respectful, and supportive
         tone—this is a developmental exercise, not an evaluation. Your goal is
         to help the user grow through clear, actionable insights. If the user
-        is incorrect, ensure they understand what went wrong and how to 
+        is incorrect, ensure they understand what went wrong and how to
         improve, without discouragement. Be direct, concise, and encouraging.
-        
-        Where applicable, provide evidence-based medicine, related screening 
+
+        Where applicable, provide evidence-based medicine, related screening
         tools, and special tests or questionnaires the user could implement.
-        
+
         Ensure feedback is accurate; do not give credit for a diagnosis or
         treatment plan that does not deserve it. Feedback must be accurate.\n\n
         """
-    )
 
-    ENDEX = (
-        """
+    ENDEX = """
         Your feedback should aim to enhance the trainee's clinical reasoning,
-        decision-making, and communication skills. Begin by clearly stating 
+        decision-making, and communication skills. Begin by clearly stating
         the correct diagnosis from the simulation scenario and confirm whether
-        the trainee correctly identified it. If they missed it, explain why 
+        the trainee correctly identified it. If they missed it, explain why
         and guide them toward the correct diagnostic reasoning.
-        
+
         Next, evaluate their recommended treatment plan. Indicate whether it
-        was appropriate, and if not, describe what the correct plan would have 
+        was appropriate, and if not, describe what the correct plan would have
         been and why.
 
         Offer practical suggestions to strengthen their diagnostic approach,
@@ -136,29 +133,27 @@ class Feedback:
         diagnosis, treatment, communication), explain why in detail, and
         provide targeted advice for improving that score in future simulations.
 
-        Your feedback should make the correct diagnosis and treatment plan 
+        Your feedback should make the correct diagnosis and treatment plan
         clear and unambiguous, even if the user did not reach them. It is not
         only acceptable—but required—to inform the trainee when their diagnosis
         or plan was incorrect, as long as it is done constructively.
-        
-        If the user did not propose a diagnosis, you must mark 
+
+        If the user did not propose a diagnosis, you must mark
         correct_diagnosis as "false". If user discussed multiple potential
         diagnoses, but did not tell the patient which is most likely, mark
         the diagnosis as "partial". If the diagnosis was not specific enough,
         mark it as partial.
-        
+
         If the user did not propose a treatment plan, you must mark
         correct_treatment_plan as "false". If the user provided a treatment
         plan that is partially correct, mark it as "partial".
-        
-        If no user messages exist, set correct_diagnosis and 
-        correct_treatment_plan to "false" and patient_experience to 0, and 
+
+        If no user messages exist, set correct_diagnosis and
+        correct_treatment_plan to "false" and patient_experience to 0, and
         explain that no credit can be given.\n\n
         """
-    )
 
-    PAUSEX = (
-        """
+    PAUSEX = """
         The simulation is paused, and the user is asking for assistance—
         probably because they are stuck or lost. Provide recommendations on
         next steps that the user should take to advance their differential
@@ -169,25 +164,22 @@ class Feedback:
         you are the simulation facilitator. After this message, resume the role
         of the patient.\n\n
         """
-    )
 
-    AZIMUTH = (
-        """
+    AZIMUTH = """
         For this message only, you are acting as the simulation facilitator
         responding to a user seeking confirmation that they are on the right
         track. You are not the patient and must not provide new scenario
         information.
-        
-        If the user appears to be asking irrelevant or misguided questions, 
-        gently redirect them. Let them know they may be off course and suggest 
-        a more productive line of questioning or an aspect of the patient’s 
+
+        If the user appears to be asking irrelevant or misguided questions,
+        gently redirect them. Let them know they may be off course and suggest
+        a more productive line of questioning or an aspect of the patient’s
         provided script they should revisit.
-        
+
         Be supportive and constructive—your role is to coach, not to give
-        answers. Encourage their clinical reasoning by guiding them toward 
+        answers. Encourage their clinical reasoning by guiding them toward
         the correct approach rather than revealing it directly.\n\n
         """
-    )
 
     @classmethod
     def default(cls):
@@ -198,18 +190,16 @@ class Feedback:
 class ChatLabModifiers:
     """Modifiers for chat interactions in the simulated patient scenarios."""
 
-    BASE = (
-        """
+    BASE = """
         Adopt an SMS-like conversational tone from your very first message and
         maintain this informal style consistently throughout the conversation—
         without using slang or clinical language.
 
-        Choose a diagnosis that a non-medical person might realistically text 
-        about, and avoid conditions that clearly represent immediate 
+        Choose a diagnosis that a non-medical person might realistically text
+        about, and avoid conditions that clearly represent immediate
         emergencies (such as massive trauma or a heart attack), which would not
         typically be communicated via text.\n\n
         """
-    )
 
     @classmethod
     def default(cls):
@@ -227,12 +217,10 @@ class EnvironmentModifiers:
         GARRISON_ONDUTY = "You are in a garrison environment, on duty.\n\n"
         GARRISON_OFFDUTY = "You are in a garrison environment, off duty.\n\n"
         TRAINING = "You are at a training event in the field on a military base.\n\n"
-        TRAINING_AUSTERE = (
-            """
-            You are at a training event not on a military installation, and 
+        TRAINING_AUSTERE = """
+            You are at a training event not on a military installation, and
             are more than 3 hours from any medical care, including hospitals and EMS.\n\n
             """
-        )
 
         @classmethod
         def default(cls):
@@ -246,6 +234,7 @@ class EnvironmentModifiers:
 
 class PromptModifiers:
     """Container for different types of prompt modifiers."""
+
     ChatLab = ChatLabModifiers
     Environ = EnvironmentModifiers
     Feedback = Feedback
@@ -262,13 +251,15 @@ class PromptTemplate:
         prompt_text = prompt.default().with_chatlab().finalize()
         prompt_title = prompt.title
     """
+
     def __init__(
-            self,
-            role: Union["UserRole", int, None] = None,
-            user: Union["CustomUser", int, None] = None,
-            lab_label: str = "chatlab"
+        self,
+        role: Union["UserRole", int, None] = None,
+        user: Union["CustomUser", int, None] = None,
+        lab_label: str = "chatlab",
     ):
         from accounts.models import UserRole, CustomUser
+
         self.app_label = lab_label
         self._cached_modifiers = None
         self._sections = []
@@ -314,7 +305,20 @@ class PromptTemplate:
     def summary(self) -> str:
         """Return a structured summary of the prompt configuration."""
         role_title = self.role.title if self.role else "Unassigned"
-        env_labels = [label for label in self._modifiers_used if label not in ("Base", "UserRole", "chatlab", "Feedback", "PauseX", "Azimuth", "Summary")]
+        env_labels = [
+            label
+            for label in self._modifiers_used
+            if label
+            not in (
+                "Base",
+                "UserRole",
+                "chatlab",
+                "Feedback",
+                "PauseX",
+                "Azimuth",
+                "Summary",
+            )
+        ]
         return (
             f"Simulation Type: chatlab\n"
             f"Training Role: {role_title}\n"
@@ -329,11 +333,13 @@ class PromptTemplate:
     @property
     def modifiers(self):
         if not self._cached_modifiers:
+
             class Modifiers:
                 ChatLab = ChatLabModifiers()
                 Feedback = Feedback()
                 Environ = EnvironmentModifiers()
                 User = UserModifiers(role=self.role, user=self.user)
+
             self._cached_modifiers = Modifiers()
         return self._cached_modifiers
 
@@ -383,12 +389,16 @@ class PromptTemplate:
         return self
 
     def with_user_history(self, within_days: int = 180):
-        return self._add_modifier(self.modifiers.User.Log.default(within_days), "UserHistory")
+        return self._add_modifier(
+            self.modifiers.User.Log.default(within_days), "UserHistory"
+        )
 
     def without_user_history(self):
         return self
 
+
 modifiers = PromptModifiers()
+
 
 def get_or_create_prompt(
     app_label: str = "chatlab",

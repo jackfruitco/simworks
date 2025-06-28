@@ -1,9 +1,9 @@
 # SimWorks/simai/prompts/builtins/_user.py
 """PromptModifiers that modify the user information for a simulation."""
 from asgiref.sync import sync_to_async
-
-from simai.prompts.registry import register_modifier
 from core.utils import Formatter
+from simai.prompts.registry import register_modifier
+
 
 @register_modifier("User.role")
 def user_role_modifier(user=None, role=None, **kwargs):
@@ -11,13 +11,11 @@ def user_role_modifier(user=None, role=None, **kwargs):
     _role = role or getattr(user, "role", None)
     if not _role:
         return "No User Role is assigned.\n"
-    return (
-        f"""
+    return f"""
         The person you are training is a {_role.title}. \
         The treatment plan should reflect training at that level. \
         Consider the following resources: {_role.resource_list()}.
         """
-    )
 
 
 @register_modifier("User.history")

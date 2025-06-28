@@ -1,8 +1,9 @@
 from django import forms
-
-from .models import Invitation
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
+
+from .models import Invitation
+
 
 class InvitationForm(forms.ModelForm):
     class Meta:
@@ -23,15 +24,20 @@ from .models import Invitation
 class CustomUserCreationForm(UserCreationForm):
     # Extra field to capture the invitation token
     invitation_token = forms.CharField(
-        max_length=64,
-        required=True,
-        help_text="Enter your invitation token."
+        max_length=64, required=True, help_text="Enter your invitation token."
     )
 
     class Meta(UserCreationForm.Meta):
         model = get_user_model()  # This references your 'accounts.CustomUser'
         # Add invitation_token so it appears on the form
-        fields = ("username", "email", "role", "first_name", "last_name", "invitation_token")
+        fields = (
+            "username",
+            "email",
+            "role",
+            "first_name",
+            "last_name",
+            "invitation_token",
+        )
 
     def clean_invitation_token(self):
         """Validate the invitation token is correct, unclaimed, and not expired."""

@@ -1,7 +1,8 @@
 # simcore/utils.py
 import logging
 import random
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
+from typing import Union
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
@@ -13,9 +14,11 @@ if TYPE_CHECKING:
 
 fake = Faker()
 
+
 @sync_to_async
 def generate_fake_name() -> str:
     return fake.name()
+
 
 def randomize_display_name(full_name: str) -> str:
     parts = full_name.strip().split()
@@ -65,8 +68,12 @@ def get_user_initials(user) -> str:
         return user.username[0].upper()
     return "Unk"
 
-def resolve_simulation(__target: Union[int, str, "Simulation"], __logger=None) -> "Simulation":
+
+def resolve_simulation(
+    __target: Union[int, str, "Simulation"], __logger=None
+) -> "Simulation":
     from simcore.models import Simulation
+
     ...
     """
     Resolves a simulation instance by its ID. This function attempts to fetch
@@ -83,10 +90,13 @@ def resolve_simulation(__target: Union[int, str, "Simulation"], __logger=None) -
     :raises ObjectDoesNotExist: If the simulation with the specified ID does not exist.
     """
     from simcore.models import Simulation
+
     logger = __logger or logging.getLogger(__name__)
 
     if isinstance(__target, Simulation):
-        logger.debug(f"[resolve_simulation] Provided already resolved simulation {__target.id}")
+        logger.debug(
+            f"[resolve_simulation] Provided already resolved simulation {__target.id}"
+        )
         return __target
     else:
         __target = int(__target)
@@ -97,7 +107,10 @@ def resolve_simulation(__target: Union[int, str, "Simulation"], __logger=None) -
     except Simulation.DoesNotExist as e:
         raise ObjectDoesNotExist(f"Simulation with ID {__target} not found.") from e
 
-async def aresolve_simulation(__target: Union[int, str, "Simulation"], __logger=None) -> "Simulation":
+
+async def aresolve_simulation(
+    __target: Union[int, str, "Simulation"], __logger=None
+) -> "Simulation":
     """
     Resolves and retrieves a `Simulation` instance asynchronously by its ID.
     The function logs the resolution process for debugging purposes and raises
@@ -113,10 +126,13 @@ async def aresolve_simulation(__target: Union[int, str, "Simulation"], __logger=
     :raises ObjectDoesNotExist: If no `Simulation` instance is found with the given ID.
     """
     from simcore.models import Simulation
+
     logger = __logger or logging.getLogger(__name__)
 
     if isinstance(__target, Simulation):
-        logger.debug(f"[resolve_simulation] Provided already resolved simulation {__target.id}")
+        logger.debug(
+            f"[resolve_simulation] Provided already resolved simulation {__target.id}"
+        )
         return __target
     else:
         __target = int(__target)

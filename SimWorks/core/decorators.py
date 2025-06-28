@@ -1,12 +1,13 @@
 # core/decorators.py
+from functools import wraps
 
+from asgiref.sync import sync_to_async
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.utils.functional import SimpleLazyObject
-from asgiref.sync import sync_to_async
-from functools import wraps
-from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
 
 def resolve_user(view_func):
     @wraps(view_func)
@@ -24,4 +25,5 @@ def resolve_user(view_func):
         )()
 
         return await view_func(request, *args, **kwargs)
+
     return _wrapped_view
