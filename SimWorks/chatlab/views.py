@@ -9,6 +9,7 @@ from chatlab.utils import maybe_start_simulation
 from core.decorators import resolve_user
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import Http404
 from django.http import HttpResponseForbidden
 from django.http import JsonResponse
@@ -36,13 +37,20 @@ def index(request):
     search_query = request.GET.get("q", "").strip()
     search_messages = request.GET.get("search_messages") == "1"
 
+    # Set simulation query filters if provided search_query
     if search_query:
+        from functools import reduce
+        from operator import or_
+
+        fields = ["diagnosis", "chief_complaint", "prompt"]
+
+        # Add messages field if search_messages is True
         if search_messages:
-            simulations = simulations.filter(
-                message__content__icontains=search_query
-            ).distinct()
-        else:
-            simulations = simulations.filter(description__icontains=search_query)
+            fields.append("messages__content")
+
+        qs = reduce(or_, (Q(**{f"{f}__icontains": search_query}) for f in fields))
+
+        simulations = simulations.filter(qs).distinct()
 
     simulations = simulations.order_by("-start_timestamp")
     paginator = Paginator(simulations, 10)
@@ -50,7 +58,7 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "chatlab/partials/simulation_history.html"
+        "chatlab/partials/simulation_history_list.html"
         if request.htmx
         else "chatlab/index.html"
     )

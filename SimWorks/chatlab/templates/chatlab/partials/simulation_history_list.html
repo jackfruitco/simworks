@@ -1,0 +1,47 @@
+{% load static %}
+
+<div id="simulation-history-list"
+     x-data="{ scroll: 0 }"
+     x-init="
+         setInterval(() => {
+             scroll = $el.scrollTop;
+             $el.dispatchEvent(new CustomEvent('refresh'));
+         }, 10000);
+     "
+     @htmx:after-swap.window="
+         $nextTick(() => {
+             $el.scrollTop = scroll;
+         })
+     ">
+    <ul hx-get="{% url 'chatlab:index' %}"
+        hx-trigger="refresh from:closest div"
+        hx-target="#simulation-history-list"
+        hx-swap="outerHTML">
+        {% for sim in simulations %}
+            <li>
+                <a href="{% url 'chatlab:run_simulation' sim.id %}">{{ sim }}</a>
+                – {% if sim.is_complete %}✅ Complete{% else %}🟢 In Progress{% endif %}
+            </li>
+        {% empty %}
+            <li>No simulations yet.</li>
+        {% endfor %}
+    </ul>
+    <div class="pagination">
+        {% if simulations.has_previous %}
+            <a hx-get="?page={{ simulations.previous_page_number }}"
+               hx-target="#simulation-history"
+               hx-swap="innerHTML"
+               href="?page={{ simulations.previous_page_number }}">« Previous</a>
+        {% endif %}
+
+        <span>Page {{ simulations.number }} of {{ simulations.paginator.num_pages }}</span>
+
+        {% if simulations.has_next %}
+            <a hx-get="?page={{ simulations.next_page_number }}"
+               hx-target="#simulation-history"
+               hx-swap="innerHTML"
+               href="?page={{ simulations.next_page_number }}">Next »</a>
+        {% endif %}
+    </div>
+</div>
+

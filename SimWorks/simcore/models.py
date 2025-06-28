@@ -89,7 +89,6 @@ class Simulation(models.Model):
         help_text="The prompt to use as AI instructions",
     )
 
-    # description = models.TextField(blank=True, null=True)
     diagnosis = models.CharField(max_length=255, blank=True, null=True)
     chief_complaint = models.CharField(max_length=255, blank=True, null=True)
 

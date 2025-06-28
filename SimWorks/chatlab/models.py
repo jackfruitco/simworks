@@ -38,7 +38,9 @@ class Message(models.Model):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE)
+    simulation = models.ForeignKey(
+        Simulation, on_delete=models.CASCADE, related_name="messages"
+    )
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     content = models.TextField(blank=True, null=True)
     role = models.CharField(
