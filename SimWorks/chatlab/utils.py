@@ -1,28 +1,32 @@
 # chatlab/utils.py
 import inspect
 import logging
-import threading
 import warnings
 
-from asgiref.sync import async_to_sync, sync_to_async
+from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
+from chatlab.models import ChatSession
+from chatlab.models import Message
+from chatlab.models import MessageMediaLink
+from core.utils import remove_null_keys
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
-
-from chatlab.models import ChatSession, MessageMediaLink, Message
-from core.utils import get_or_create_system_user, remove_null_keys
-from simai.client import SimAIClient
-from simcore.models import Simulation, SimulationImage, RadResult, LabResult, SimulationMetadata
-from simcore.utils import generate_fake_name, get_user_initials, aresolve_simulation
+from simcore.models import LabResult
+from simcore.models import RadResult
+from simcore.models import Simulation
+from simcore.models import SimulationMetadata
+from simcore.utils import generate_fake_name
+from simcore.utils import get_user_initials
 
 logger = logging.getLogger(__name__)
 
 
-async def create_new_simulation(user, modifiers: list = None):
-    """Create a new Simulation and ChatSession, and trigger AI patient intro."""
-
+async def create_new_simulation(
+    user, modifiers: list = None, force: bool = False
+) -> Simulation:
+    """Create a new Simulation and ChatSession, and trigger celery task to get initial message(s)."""
     sim_patient_full_name = await generate_fake_name()
 
     # Create base Simulation
@@ -30,32 +34,19 @@ async def create_new_simulation(user, modifiers: list = None):
         user=user,
         lab="chatlab",
         sim_patient_full_name=sim_patient_full_name,
-        modifiers=modifiers
+        modifiers=modifiers,
     )
 
     # Link ChatLab extension
     await ChatSession.objects.acreate(simulation=simulation)
 
-    # Get System user
-    system_user = await get_or_create_system_user()
-
     # Generate an initial message
-    logger.debug(f"[chatlab] requesting initial SimMessage for Sim#{simulation.id}")
-    try:
-        client = SimAIClient()
-        sim_responses = await client.generate_patient_initial(simulation, False)
-        channel_layer = get_channel_layer()
-        for message in sim_responses:
-            await channel_layer.group_send(
-                f"simulation_{simulation.id}",
-                {
-                    "type": "chat_message",
-                    "content": message.content,
-                    "display_name": simulation.sim_patient_display_name,
-                },
-            )
-    except Exception as e:
-        logger.exception(f"Initial message generation failed for Sim#{simulation.id}: {e}")
+    logger.debug(
+        f"Starting celery task to generate initial SimMessage for Sim#{simulation.id}"
+    )
+    from simai.tasks import generate_patient_initial as task
+
+    task.delay(simulation.id, force)
 
     return simulation
 
@@ -73,18 +64,17 @@ def maybe_start_simulation(simulation):
 def add_message_media(message_id, media_id):
     """Adds a media object to a message."""
     return MessageMediaLink.objects.get_or_create(
-        message_id=message_id,
-        media_id=media_id
+        message_id=message_id, media_id=media_id
     )
 
 
 async def socket_send(
-        __type: str,
-        __group: str = None,
-        __simulation_id: int = None,
-        __payload: dict = None,
-        __status: str = None,
-        **kwargs,
+    __type: str,
+    __group: str = None,
+    __simulation_id: int = None,
+    __payload: dict = None,
+    __status: str = None,
+    **kwargs,
 ) -> None:
     """
     Sends an arbitrary payload to the specified WebSocket group.
@@ -101,11 +91,17 @@ async def socket_send(
     # TODO deprecation
     if "__event" in kwargs:
         __event = kwargs.pop("__event")
-        warnings.warn(DeprecationWarning("`__event` is no longer used. Use explicit `__type` instead."))
+        warnings.warn(
+            DeprecationWarning(
+                "`__event` is no longer used. Use explicit `__type` instead."
+            )
+        )
 
     # Build group name from simulation ID if group not provided
     if __group is None:
-        logger.debug(f"Group not provided. Attempting to use simulation ID (provided '{__simulation_id}').")
+        logger.debug(
+            f"Group not provided. Attempting to use simulation ID (provided '{__simulation_id}')."
+        )
         if await Simulation.objects.filter(id=__simulation_id).aexists():
             __group = f"simulation_{__simulation_id}"
             logger.debug(f"Simulation found. Using '{__group}' as group name.")
@@ -114,9 +110,7 @@ async def socket_send(
                 f"No group provided and Simulation with ID '{__simulation_id}' was not found."
             )
 
-    logger.info(
-        f"[socket_send] new '{__type}' event for group '{__group}'."
-    )
+    logger.info(f"[socket_send] new '{__type}' event for group '{__group}'.")
 
     channel_layer = get_channel_layer()
 
@@ -137,11 +131,11 @@ async def socket_send(
 
 
 async def broadcast_event(
-        __type: str,
-        __simulation: Simulation | int,
-        __payload: dict = {},
-        __status: str = None,
-        **kwargs,
+    __type: str,
+    __simulation: Simulation | int,
+    __payload: dict = {},
+    __status: str = None,
+    **kwargs,
 ) -> None:
     """
     Broadcasts an event by sending its details to a socket. This function is
@@ -178,8 +172,8 @@ async def broadcast_event(
 
 
 async def broadcast_patient_results(
-        __source: QuerySet | list | LabResult | RadResult or int,
-        __status: str = None) -> None:
+    __source: QuerySet | list | LabResult | RadResult or int, __status: str = None
+) -> None:
     """
     Broadcast patient results to all connected clients using `socket_send`.
 
@@ -200,7 +194,9 @@ async def broadcast_patient_results(
         __source = [__source]
 
     # Debug logging
-    logger.debug(f"Received {len(__source)} patient results to broadcast to all connected clients.")
+    logger.debug(
+        f"Received {len(__source)} patient results to broadcast to all connected clients."
+    )
 
     # Group results by simulation ID and serialize them before broadcasting
     grouped_results = {}
@@ -213,7 +209,9 @@ async def broadcast_patient_results(
         try:
             serialized = result.serialize()
         except AttributeError as e:
-            logger.error(f"{type(result).__name__} object has no .serialize() method: {e}")
+            logger.error(
+                f"{type(result).__name__} object has no .serialize() method: {e}"
+            )
             skipped += 1
             continue
 
@@ -224,13 +222,12 @@ async def broadcast_patient_results(
 
     # Broadcast results to each simulation group layer
     for sim_id in grouped_results:
-        payload = {
-            "tool": "patient_results",
-            "results": grouped_results[sim_id]
-        }
+        payload = {"tool": "patient_results", "results": grouped_results[sim_id]}
 
         # Send event to the group layer
-        logger.debug(f"Broadcasting {len(grouped_results[sim_id])} results to simulation_{sim_id}")
+        logger.debug(
+            f"Broadcasting {len(grouped_results[sim_id])} results to simulation_{sim_id}"
+        )
         await socket_send(
             __type="simulation.metadata.results_created",
             __payload=payload,
@@ -269,9 +266,13 @@ async def broadcast_message(message: Message or int, status: str = None) -> None
 
     # Get Simulation instance from Message FK
     try:
-        simulation = await sync_to_async(Simulation.objects.get)(id=message.simulation_id)
+        simulation = await sync_to_async(Simulation.objects.get)(
+            id=message.simulation_id
+        )
     except Simulation.DoesNotExist:
-        logger.error(msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast.")
+        logger.error(
+            msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast."
+        )
         return
 
     # Set channel and group layers to broadcast to
@@ -317,7 +318,9 @@ async def broadcast_message(message: Message or int, status: str = None) -> None
     }
     payload = await sync_to_async(remove_null_keys)(payload)
 
-    return await socket_send(__payload=payload, __group=group, __type="chat.message_created")
+    return await socket_send(
+        __payload=payload, __group=group, __type="chat.message_created"
+    )
 
 
 async def broadcast_chat_message(message: Message or int, status: str = None):
@@ -326,7 +329,7 @@ async def broadcast_chat_message(message: Message or int, status: str = None):
 
     func_name = inspect.currentframe().f_code.co_name
 
-    async def _log(level=logging.DEBUG, msg=''):
+    async def _log(level=logging.DEBUG, msg=""):
         logger.log(level=level, msg=f"[{func_name}]: {msg}")
 
     # Get Message instance if provided ID
@@ -334,14 +337,22 @@ async def broadcast_chat_message(message: Message or int, status: str = None):
         try:
             message = await sync_to_async(Message.objects.get)(id=message)
         except Message.DoesNotExist:
-            await _log(level=logging.ERROR, msg=f"Message ID {message} not found. Skipping broadcast.")
+            await _log(
+                level=logging.ERROR,
+                msg=f"Message ID {message} not found. Skipping broadcast.",
+            )
             return
 
     # Get Simulation instance from Message FK
     try:
-        simulation = await sync_to_async(Simulation.objects.get)(id=message.simulation_id)
+        simulation = await sync_to_async(Simulation.objects.get)(
+            id=message.simulation_id
+        )
     except Simulation.DoesNotExist:
-        await _log(level=logging.ERROR, msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast.")
+        await _log(
+            level=logging.ERROR,
+            msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast.",
+        )
         return
 
     await _log(

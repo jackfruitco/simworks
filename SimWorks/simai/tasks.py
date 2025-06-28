@@ -1,23 +1,69 @@
 # simai/tasks.py
-import logging
 import asyncio
+import logging
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-
-from chatlab.utils import broadcast_message, broadcast_patient_results, broadcast_event
+from chatlab.utils import broadcast_event
+from chatlab.utils import broadcast_message
+from chatlab.utils import broadcast_patient_results
 from simai.client import SimAIClient
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
 
-@shared_task(time_limit=120, soft_time_limit=110)
-def generate_patient_reply_image_task(
-        simulation_id: int
+
+@shared_task(time_limit=30, soft_time_limit=20)
+def generate_patient_initial(
+    _simulation_id: int,
+    _force: bool = False,
 ) -> None:
+    """
+    Task to asynchronously generate and broadcast initial patient messages to connected clients.
+
+    :param _simulation_id: The unique identifier of the simulation to initialize.
+    :type _simulation_id: int
+    :param _force: A flag indicating whether to forcibly reinitialize the simulation.
+    :type _force: bool, optional
+    :return: None
+
+    :raises Simulation.DoesNotExist: If the _simulation_id does not exist in the database.
+    :raises Exception: If an error occurs during the initialization process.
+    """
+
+    async def _run(_simulation_id: int, _force: bool = False) -> None:
+        """Run the task in an event loop."""
+        # Coerce simulation to Simulation instance
+        try:
+            _simulation = await Simulation.objects.aget(id=_simulation_id)
+        except Simulation.DoesNotExist:
+            logger.warning(
+                f"Simulation ID {_simulation_id} not found. Skipping image generation."
+            )
+            return
+
+        # Generate initial message(s), and broadcast them to all connected clients
+        try:
+            client = SimAIClient()
+            messages = await client.generate_patient_initial(_simulation, False)
+
+            for message in messages:
+                await broadcast_message(message)
+
+        except Exception as e:
+            logger.exception(
+                f"Initial message generation failed for Sim#{_simulation.id}: {e}"
+            )
+
+    # Run the task in an event loop
+    asyncio.run(_run(_simulation_id, _force))
+
+
+@shared_task(time_limit=120, soft_time_limit=110)
+def generate_patient_reply_image_task(simulation_id: int) -> None:
     async def _run(simulation_id: int) -> None:
         """
-        Celery task to asynchronously generate a patient reply image for a given simulation.
+        Task to asynchronously generate a patient reply image for a given simulation.
 
         This task retrieves the simulation object, initializes the SimAIClient,
         and uses it to generate an image representation of the patient associated
@@ -29,7 +75,9 @@ def generate_patient_reply_image_task(
         try:
             simulation = await Simulation.objects.aget(id=simulation_id)
         except Simulation.DoesNotExist:
-            logger.warning(f"Simulation ID {simulation_id} not found. Skipping image generation.")
+            logger.warning(
+                f"Simulation ID {simulation_id} not found. Skipping image generation."
+            )
             return
 
         try:
@@ -38,23 +86,26 @@ def generate_patient_reply_image_task(
             for message in messages:
                 await broadcast_message(message)
         except SoftTimeLimitExceeded:
-            logger.warning(f"[generate_patient_reply_image_task] Soft time limit exceeded for Sim {simulation_id}")
+            logger.warning(
+                f"[generate_patient_reply_image_task] Soft time limit exceeded for Sim {simulation_id}"
+            )
         except Exception as e:
             logger.error(f"Image generation failed: {e}")
             raise
 
     asyncio.run(_run(simulation_id))
 
+
 @shared_task(time_limit=120, soft_time_limit=110)
 def generate_patient_results(
+    _simulation_id: int,
+    _lab_orders: str | list[str] = None,
+    _rad_orders: str | list[str] = None,
+) -> None:
+    async def _run(
         _simulation_id: int,
         _lab_orders: str | list[str] = None,
         _rad_orders: str | list[str] = None,
-) -> None:
-    async def _run(
-            _simulation_id: int,
-            _lab_orders: str | list[str] = None,
-            _rad_orders: str | list[str] = None,
     ) -> None:
         """
         Generate patient results for a given simulation by interfacing with an AI client and optionally broadcasting the
@@ -69,7 +120,9 @@ def generate_patient_results(
         try:
             simulation = await Simulation.objects.aget(id=_simulation_id)
         except Simulation.DoesNotExist:
-            logger.warning(f"Simulation ID {_simulation_id} not found. Skipping patient result(s) generation.")
+            logger.warning(
+                f"Simulation ID {_simulation_id} not found. Skipping patient result(s) generation."
+            )
             raise
         except Exception as e:
             logger.error(f"Failed to retrieve simulation {_simulation_id}: {e}")
@@ -84,9 +137,7 @@ def generate_patient_results(
         try:
             client = SimAIClient()
             results = await client.generate_patient_results(
-                simulation=simulation,
-                lab_orders=_lab_orders,
-                rad_orders=_rad_orders
+                simulation=simulation, lab_orders=_lab_orders, rad_orders=_rad_orders
             )
             logger.debug(f"[generate_patient_results] Generated results: {results}")
 
@@ -95,21 +146,24 @@ def generate_patient_results(
             except Exception as e:
                 logger.error(f"[generate_patient_results] Failed to broadcast: {e}")
         except SoftTimeLimitExceeded:
-            logger.warning(f"[generate_patient_results] Soft time limit exceeded for Sim {_simulation_id}")
+            logger.warning(
+                f"[generate_patient_results] Soft time limit exceeded for Sim {_simulation_id}"
+            )
         except Exception as e:
             logger.error(f"[generate_patient_results] Task failed: {e}")
             raise
 
     asyncio.run(_run(_simulation_id, _lab_orders, _rad_orders))
 
+
 @shared_task(time_limit=30, soft_time_limit=20)
 def generate_feedback(
-        __simulation_id: int,
-        __feedback_type: str = None,
+    __simulation_id: int,
+    __feedback_type: str = None,
 ) -> None:
     async def _run(
-            __simulation_id: int,
-            __feedback_type: str = None,
+        __simulation_id: int,
+        __feedback_type: str = None,
     ) -> None:
         """
         Celery task to asynchronously generate feedback a given simulation.
@@ -129,7 +183,9 @@ def generate_feedback(
             logger.error(f"Simulation ID {__simulation_id} not found!")
             raise
         except Exception as e:
-            logger.error(f"Failed to retrieve simulation (provided {type(__simulation_id)} `{__simulation_id}`: {e}")
+            logger.error(
+                f"Failed to retrieve simulation (provided {type(__simulation_id)} `{__simulation_id}`: {e}"
+            )
             raise
 
         try:
@@ -146,7 +202,9 @@ def generate_feedback(
             except Exception as e:
                 logger.error(f"Failed to broadcast: {e}")
         except SoftTimeLimitExceeded:
-            logger.warning(f"[generate_patient_results] Soft time limit exceeded for Sim {__simulation_id}")
+            logger.warning(
+                f"[generate_patient_results] Soft time limit exceeded for Sim {__simulation_id}"
+            )
         except Exception as e:
             logger.error(f"[generate_patient_results] Task failed: {e}")
             raise
