@@ -4,6 +4,7 @@ import warnings
 
 logger = logging.getLogger(__name__)
 
+
 def build_prompt(
     *modifiers_or_list,
     user=None,
@@ -34,14 +35,18 @@ def build_prompt(
     warnings.warn(
         "build_prompt() is deprecated. Use Prompt.build() or Prompt.abuild() instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
 
     logger.debug(f"...building prompt with modifiers={modifiers_or_list}")
 
-    all_modifiers = tuple(modifiers) if modifiers is not None else tuple(modifiers_or_list)
+    all_modifiers = (
+        tuple(modifiers) if modifiers is not None else tuple(modifiers_or_list)
+    )
 
-    logger.debug(f"Building prompt with lab='{lab}', user={user}, role={role}, modifiers={all_modifiers}")
+    logger.debug(
+        f"Building prompt with lab='{lab}', user={user}, role={role}, modifiers={all_modifiers}"
+    )
 
     builder = Prompt(
         *all_modifiers,

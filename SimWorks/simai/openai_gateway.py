@@ -5,24 +5,27 @@ import logging
 import uuid
 
 from asgiref.sync import sync_to_async
-from django.core.files.base import ContentFile
-
 from chatlab.models import Message
-from core.utils import get_system_user, remove_null_keys
+from core.utils import get_system_user
+from core.utils import remove_null_keys
+from django.core.files.base import ContentFile
+from openai.types.responses import Response as OpenAIResponse
 from simai.models import Response as ResponseModel
 from simai.models import ResponseType
 from simai.parser import StructuredOutputParser
-from simcore.models import SimulationImage, LabResult, RadResult
-from openai.types.responses import Response as OpenAIResponse
+from simcore.models import LabResult
+from simcore.models import RadResult
+from simcore.models import SimulationImage
 
 logger = logging.getLogger(__name__)
 
+
 async def process_response(
-        response: OpenAIResponse,
-        simulation,
-        stream=False,
-        response_type=ResponseType.REPLY,
-        **kwargs,
+    response: OpenAIResponse,
+    simulation,
+    stream=False,
+    response_type=ResponseType.REPLY,
+    **kwargs,
 ) -> list[Message] | list[LabResult] | list[RadResult] | None:
     """
     Unified entry point for handling an OpenAI response within a simulation.
@@ -58,7 +61,9 @@ async def process_response(
         "output_tokens": usage.output_tokens or None,
     }
     if response_type in (ResponseType.REPLY, ResponseType.PATIENT_RESULTS):
-        payload['reasoning_tokens'] = usage.output_tokens_details.reasoning_tokens or None
+        payload["reasoning_tokens"] = (
+            usage.output_tokens_details.reasoning_tokens or None
+        )
 
     payload = remove_null_keys(payload)
     response_obj = await ResponseModel.objects.acreate(**payload)
@@ -66,7 +71,9 @@ async def process_response(
     # Some Debug Logging
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"[Sim#{simulation.pk}] raw OpenAI output: {response}")
-        logger.debug(f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}")
+        logger.debug(
+            f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}"
+        )
 
     # Get System User & create Parser
     system_user = await sync_to_async(get_system_user)()
@@ -80,13 +87,18 @@ async def process_response(
     # Build payload to send it to parser
     payload = {}
     if response_type == ResponseType.MEDIA:
-        payload['output'] = response.data
-        payload['mime_type'] = kwargs.get('mime_type')
+        payload["output"] = response.data
+        payload["mime_type"] = kwargs.get("mime_type")
     else:
-        payload['output'] = response.output_text
+        payload["output"] = response.output_text
 
     return await parser.parse_output(**payload)
 
-async def consume_response(response, simulation, stream=False, response_type=None) -> list[Message] | None:
-    logger.error("simai.consume_response called, but not implemented. Switching to simai.process_response")
+
+async def consume_response(
+    response, simulation, stream=False, response_type=None
+) -> list[Message] | None:
+    logger.error(
+        "simai.consume_response called, but not implemented. Switching to simai.process_response"
+    )
     return await process_response(response, simulation, stream=False)

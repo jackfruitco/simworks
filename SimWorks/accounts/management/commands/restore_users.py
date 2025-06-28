@@ -1,6 +1,8 @@
 import json
+
+from accounts.models import CustomUser
+from accounts.models import UserRole
 from django.core.management.base import BaseCommand
-from accounts.models import CustomUser, UserRole
 
 
 class Command(BaseCommand):
@@ -22,19 +24,28 @@ class Command(BaseCommand):
             username = fields["username"]
 
             if CustomUser.objects.filter(username=username).exists():
-                self.stdout.write(self.style.WARNING(f"User '{username}' already exists. Skipping."))
+                self.stdout.write(
+                    self.style.WARNING(f"User '{username}' already exists. Skipping.")
+                )
                 continue
 
             role_id = fields.get("role")
             if not role_id:
                 self.stdout.write(
-                    self.style.WARNING(f"User '{username}' missing role. Assigning default role ID 1."))
+                    self.style.WARNING(
+                        f"User '{username}' missing role. Assigning default role ID 1."
+                    )
+                )
                 role_id = 1  # fallback; replace with a sensible default ID or logic
 
             try:
                 role = UserRole.objects.get(id=role_id)
             except UserRole.DoesNotExist:
-                self.stdout.write(self.style.ERROR(f"Role ID {role_id} not found for '{username}', skipping user."))
+                self.stdout.write(
+                    self.style.ERROR(
+                        f"Role ID {role_id} not found for '{username}', skipping user."
+                    )
+                )
                 continue
 
             user = CustomUser(
@@ -49,4 +60,6 @@ class Command(BaseCommand):
                 role=role,  # required!
             )
             user.save()
-            self.stdout.write(self.style.SUCCESS(f"Created user: {username} with role '{role}'"))
+            self.stdout.write(
+                self.style.SUCCESS(f"Created user: {username} with role '{role}'")
+            )

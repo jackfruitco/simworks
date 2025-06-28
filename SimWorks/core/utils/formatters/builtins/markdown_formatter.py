@@ -1,6 +1,6 @@
 # core/utils/formatters/builtins/markdown_formatter.py
-
 from core.utils.formatters.registry import register_formatter
+
 
 @register_formatter("markdown")
 def as_markdown(self):

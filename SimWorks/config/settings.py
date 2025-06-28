@@ -1,11 +1,10 @@
 import os
-import os
 import re
 from pathlib import Path
 
+from core.utils.system import check_env
 from django.core.exceptions import ImproperlyConfigured
 
-from core.utils.system import check_env
 from .logging import LOGGING
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -126,7 +125,7 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 OPENAI_API_KEY = check_env("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", 'gpt-4o-mini')
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)
@@ -137,9 +136,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [
-                f"{REDIS_BASE}/0"
-            ],
+            "hosts": [f"{REDIS_BASE}/0"],
         },
     }
 }
@@ -149,11 +146,11 @@ CELERY_BROKER_URL = f"{REDIS_BASE}/1"
 CELERY_RESULT_BACKEND = f"{REDIS_BASE}/2"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
-CELERY_TASK_TIME_LIMIT = 30         # seconds
-CELERY_TASK_SOFT_TIME_LIMIT = 25    # seconds
+CELERY_TASK_TIME_LIMIT = 30  # seconds
+CELERY_TASK_SOFT_TIME_LIMIT = 25  # seconds
 
 # Celery Beat config
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 
 # Password validation

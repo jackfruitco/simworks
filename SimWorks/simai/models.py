@@ -1,13 +1,13 @@
-from django.db import models
-from django.conf import settings
-from django.utils.timezone import now
+import logging
 
 from core.utils.hash import compute_fingerprint
-from .querysets.response_queryset import ResponseQuerySet
-
+from django.conf import settings
+from django.db import models
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
-import logging
+from .querysets.response_queryset import ResponseQuerySet
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,18 +26,22 @@ class Response(models.Model):
     modified = models.DateTimeField(auto_now=True)
     objects = ResponseQuerySet.as_manager()
 
-    simulation = models.ForeignKey("simcore.Simulation", related_name="responses", on_delete=models.CASCADE)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="responses", on_delete=models.CASCADE)
+    simulation = models.ForeignKey(
+        "simcore.Simulation", related_name="responses", on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name="responses", on_delete=models.CASCADE
+    )
     raw = models.TextField(verbose_name="OpenAI Raw Response")
     id = models.CharField("OpenAI Response ID", max_length=255, primary_key=True)
     order = models.PositiveIntegerField(editable=False)
-    type = models.CharField(choices=ResponseType, default=ResponseType.REPLY, max_length=2)
-
+    type = models.CharField(
+        choices=ResponseType, default=ResponseType.REPLY, max_length=2
+    )
 
     input_tokens = models.PositiveIntegerField(default=0)
     output_tokens = models.PositiveIntegerField(default=0)
     reasoning_tokens = models.PositiveIntegerField(default=0)
-
 
     class Meta:
         ordering = ("simulation", "order")

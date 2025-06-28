@@ -1,7 +1,9 @@
 # accounts/models.py
 from datetime import timedelta
 
-from asgiref.sync import async_to_sync, sync_to_async
+from asgiref.sync import async_to_sync
+from asgiref.sync import sync_to_async
+from core.utils.formatters import Formatter
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
@@ -9,8 +11,6 @@ from django.db import models
 from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
-from core.utils.formatters import Formatter
-
 from simcore.models import Simulation
 
 
@@ -36,6 +36,7 @@ class CustomUser(AbstractUser):
             qs = qs.filter(start_timestamp__gte=cutoff)
 
         return qs.values("id", "start_timestamp", "diagnosis", "chief_complaint")
+
 
 class UserRole(models.Model):
     title = models.CharField(
@@ -68,11 +69,14 @@ class RoleResource(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
-    role = models.ForeignKey("UserRole", on_delete=models.PROTECT, related_name="resources")
+    role = models.ForeignKey(
+        "UserRole", on_delete=models.PROTECT, related_name="resources"
+    )
     resource = models.CharField(max_length=100, blank=False, null=False, default="")
 
     def __str__(self):
         return self.resource
+
 
 class Invitation(models.Model):
     token = models.CharField(max_length=64, unique=True, editable=False)
@@ -80,7 +84,10 @@ class Invitation(models.Model):
         blank=True, null=True, help_text="Optional: email address of the invitee"
     )
     first_name = models.CharField(
-        blank=True, null=True, help_text="Optional: first name of the invitee", max_length=100
+        blank=True,
+        null=True,
+        help_text="Optional: first name of the invitee",
+        max_length=100,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(blank=True, null=True)
@@ -134,4 +141,6 @@ class Invitation(models.Model):
         self.save()
 
     def __str__(self):
-        return f"Invitation {self.token} ({'claimed' if self.is_claimed else 'unclaimed'})"
+        return (
+            f"Invitation {self.token} ({'claimed' if self.is_claimed else 'unclaimed'})"
+        )

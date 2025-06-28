@@ -1,10 +1,13 @@
+import csv
+from datetime import date
+
 from django.contrib.admin.views.decorators import staff_member_required
+from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.timezone import now
-from django.http import HttpResponse
+
 from .models import Response
-from datetime import date
-import csv
+
 
 @staff_member_required
 def usage_report(request):
@@ -16,7 +19,11 @@ def usage_report(request):
     start = request.GET.get("start_date") or session.get("start_date")
     end = request.GET.get("end_date") or session.get("end_date")
     group_by_sim = request.GET.get("group_by_sim")
-    group_by_sim = group_by_sim == "1" if group_by_sim is not None else session.get("group_by_sim", False)
+    group_by_sim = (
+        group_by_sim == "1"
+        if group_by_sim is not None
+        else session.get("group_by_sim", False)
+    )
 
     # Handle preset overrides
     if preset == "this_month":
@@ -37,7 +44,11 @@ def usage_report(request):
         if start and not end:
             end = today
         elif end and not start:
-            earliest = Response.objects.order_by("created").values_list("created", flat=True).first()
+            earliest = (
+                Response.objects.order_by("created")
+                .values_list("created", flat=True)
+                .first()
+            )
             start = earliest.date() if earliest else today.replace(month=1, day=1)
         elif not start and not end:
             start = today.replace(day=1)

@@ -1,5 +1,7 @@
 from datetime import datetime
+
 from core.utils.formatters.registry import register_formatter
+
 
 @register_formatter("sim_transcript_md", extension="md")
 def sim_transcript_as_markdown(self):

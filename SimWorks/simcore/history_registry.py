@@ -1,11 +1,12 @@
 # simcore/history_registry.py
-
-import json
 import csv
 import io
+import json
+
 from core.utils import Formatter
 
 _registry = {}
+
 
 def register_history_provider(app_label, func):
     """
@@ -13,6 +14,7 @@ def register_history_provider(app_label, func):
     Each function must accept a Simulation and return a list of history records (dicts).
     """
     _registry[app_label] = func
+
 
 def get_sim_history(simulation, format: str = None):
     """
@@ -25,8 +27,10 @@ def get_sim_history(simulation, format: str = None):
             history.extend(func(simulation))
         except Exception as e:
             from django.conf import settings
+
             if settings.DEBUG:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(f"[get_sim_history] Failed for {app_label}: {e}")
 

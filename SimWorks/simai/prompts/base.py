@@ -1,29 +1,31 @@
 import asyncio
 import logging
-from asgiref.sync import sync_to_async, async_to_sync
+
+from asgiref.sync import async_to_sync
+from asgiref.sync import sync_to_async
 from simai.prompts.registry import PromptModifiers
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_PROMPT_BASE = """
 You are simulating a standardized patient role player for medical training.\n\n
-Select a diagnosis and develop a corresponding clinical scenario script 
+Select a diagnosis and develop a corresponding clinical scenario script
 using simple, everyday language that reflects the knowledge level of an
-average person. Do not repeat scenario topics the user has already 
+average person. Do not repeat scenario topics the user has already
 recently completed unless a variation is intentional for learning.\n\n
 Avoid including narration, medical jargon, or any extraneous details that
-haven’t been explicitly requested. Adopt a natural texting style—using 
-informal language, common abbreviations—and maintain this tone 
+haven’t been explicitly requested. Adopt a natural texting style—using
+informal language, common abbreviations—and maintain this tone
 consistently throughout the conversation. Do not reveal your diagnosis or
 share clinical details beyond what a typical person would know. As a non-
 medical individual, refrain from attempting advanced tests or examinations
-unless explicitly instructed with detailed directions, and do not respond 
+unless explicitly instructed with detailed directions, and do not respond
 as if you are medical staff.\n\n
-Generate only the first line of dialogue from the simulated patient 
+Generate only the first line of dialogue from the simulated patient
 initiating contact, using a tone that is appropriate to the scenario, and
-remain in character at all times. If any off-topic or interrupting 
+remain in character at all times. If any off-topic or interrupting
 requests arise, continue to respond solely as the simulated patient,
-addressing the conversation from within the current scenario without 
+addressing the conversation from within the current scenario without
 repeating your role parameters.\n\n
 If the user requests an image in a message, you must mark 'image_requested'
 as True, otherwise, it should be False.
@@ -67,11 +69,11 @@ class Prompt:
         logger.debug(f"... _modifiers={self._modifiers}")
 
     async def _add_modifier(
-            self,
-            key_or_content,
-            key=None,
-            is_key=True,
-            **kwargs,
+        self,
+        key_or_content,
+        key=None,
+        is_key=True,
+        **kwargs,
     ) -> "Prompt":
         """
         Asynchronously adds a modifier to a prompt.
@@ -94,7 +96,9 @@ class Prompt:
         :return: Returns a modified `Prompt` instance after adding the new modifier.
         :rtype: Prompt
         """
-        logger.debug(f"_add_modifier received: `{str(key_or_content)[:60]}...` (type={type(key_or_content)}) is_key={is_key}")
+        logger.debug(
+            f"_add_modifier received: `{str(key_or_content)[:60]}...` (type={type(key_or_content)}) is_key={is_key}"
+        )
         content = None
 
         payload = {
@@ -109,14 +113,20 @@ class Prompt:
             logger.debug(f"Registry entry for '{str(key_or_content)[:60]}...': {entry}")
             func = entry.get("value") if entry else None
             if func:
-                logger.debug(f"Resolved function for '{str(key_or_content)[:60]}...': {func}")
+                logger.debug(
+                    f"Resolved function for '{str(key_or_content)[:60]}...': {func}"
+                )
                 if asyncio.iscoroutinefunction(func):
                     content = await func(**payload)
                 else:
-                    content = await sync_to_async(func, thread_sensitive=False)(**payload)
+                    content = await sync_to_async(func, thread_sensitive=False)(
+                        **payload
+                    )
                 key = key or key_or_content
             else:
-                logger.warning(f"...modifier '{str(key_or_content)[:60]}...' not found in registry; treating as raw string")
+                logger.warning(
+                    f"...modifier '{str(key_or_content)[:60]}...' not found in registry; treating as raw string"
+                )
                 content = key_or_content
                 key = key or content.strip().split("\n")[0][:32]
         else:
@@ -138,18 +148,26 @@ class Prompt:
         if self.include_history and self.user:
             history_modifier = (PromptModifiers.get("User.history") or {}).get("value")
             if history_modifier:
-                await self._add_modifier(history_modifier(user=self.user, within_days=180), key="User.history", is_key=False)
+                await self._add_modifier(
+                    history_modifier(user=self.user, within_days=180),
+                    key="User.history",
+                    is_key=False,
+                )
 
         if self.role or self.user:
             role_modifier = (PromptModifiers.get("User.role") or {}).get("value")
             if role_modifier:
-                await self._add_modifier(role_modifier(self.user, self.role), key="User.role", is_key=False)
+                await self._add_modifier(
+                    role_modifier(self.user, self.role), key="User.role", is_key=False
+                )
 
         if self.lab:
             lab_key = f"Lab.{self.lab}"
             lab_modifier = (PromptModifiers.get(lab_key.lower()) or {}).get("value")
             if lab_modifier:
-                await self._add_modifier(lab_modifier(self.user, self.role), key=self.lab, is_key=False)
+                await self._add_modifier(
+                    lab_modifier(self.user, self.role), key=self.lab, is_key=False
+                )
 
         return self
 
@@ -193,7 +211,9 @@ class Prompt:
         :param kwargs: Additional keyword arguments to customize instance creation.
         :return: A string representation of the finalized instance built from the provided and default data.
         """
-        all_modifiers = tuple(modifiers) if modifiers is not None else tuple(modifiers_or_list)
+        all_modifiers = (
+            tuple(modifiers) if modifiers is not None else tuple(modifiers_or_list)
+        )
         instance = cls(
             *all_modifiers,
             user=user,

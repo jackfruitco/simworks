@@ -1,6 +1,6 @@
 # core/utils/formatters/builtins/openai_prompt.py
-
 from core.utils.formatters.registry import register_formatter
+
 
 @register_formatter("openai_prompt", extension="txt")
 def as_openai_prompt(self) -> str:
@@ -35,7 +35,9 @@ def as_openai_sim_transcript(self) -> str:
         return msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None)
 
     def get_content(msg):
-        return msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+        return (
+            msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", "")
+        )
 
     lines = []
     for message in self.data:

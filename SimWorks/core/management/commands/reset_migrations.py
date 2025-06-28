@@ -1,17 +1,20 @@
 import os
 import sys
 from pathlib import Path
-from django.core.management.base import BaseCommand
+
 from django.core.management import call_command
+from django.core.management.base import BaseCommand
+
 
 class Command(BaseCommand):
     help = "Deletes all migration files except __init__.py in all apps."
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--makemigrations", "-m",
+            "--makemigrations",
+            "-m",
             action="store_true",
-            help="Also run makemigrations after deleting migration files."
+            help="Also run makemigrations after deleting migration files.",
         )
 
     def handle(self, *args, **kwargs):
@@ -27,7 +30,11 @@ class Command(BaseCommand):
                         deleted_files.append(str(file))
 
         if deleted_files:
-            self.stdout.write(self.style.SUCCESS("Deleted migration files:\n" + "\n".join(deleted_files)))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "Deleted migration files:\n" + "\n".join(deleted_files)
+                )
+            )
         else:
             self.stdout.write(self.style.WARNING("No migration files found to delete."))
 

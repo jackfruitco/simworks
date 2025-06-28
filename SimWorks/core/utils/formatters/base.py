@@ -5,11 +5,11 @@ import os
 import uuid
 from datetime import datetime
 
+from core.utils.formatters.registry import registry
 from django.http import HttpResponse
 
-from core.utils.formatters.registry import registry
-
 logger = logging.getLogger(__name__)
+
 
 class Formatter:
     """
@@ -18,6 +18,7 @@ class Formatter:
     Wraps data from querysets, lists of dicts, or single dicts and
     serializes them into different textual formats for display, export, or AI use.
     """
+
     def __init__(self, data):
         self.data = data
 
@@ -40,9 +41,10 @@ class Formatter:
         Returns a list of dicts with all values safely serialized.
         Ensures the data is JSON/CSV-safe by applying _safe_serialize and Unicode normalization to every value.
         """
+
         def decode_unicode_escapes(text):
             try:
-                return text.encode('utf-8').decode('unicode_escape')
+                return text.encode("utf-8").decode("unicode_escape")
             except Exception:
                 return text
 
@@ -74,6 +76,7 @@ class Formatter:
         Normalize internal data to a list of dictionaries for processing.
         """
         from collections.abc import Iterable
+
         if isinstance(self.data, dict):
             return [self.data]
         if isinstance(self.data, Iterable) and not isinstance(self.data, str):
@@ -97,7 +100,9 @@ class Formatter:
 
         formatter = registry.get_with_fallback(format_key)
         if not formatter:
-            logger.warning(f"[Formatter] Unknown format type requested: '{format_type}'")
+            logger.warning(
+                f"[Formatter] Unknown format type requested: '{format_type}'"
+            )
             return registry.get_with_fallback("json")(self)
 
         try:
@@ -151,7 +156,10 @@ class Formatter:
         format_key = registry.extension_map.get(format_type, format_type)
 
         # Attempt to infer file extension from the format key
-        ext = next((k for k, v in registry.extension_map.items() if v == format_key), format_key)
+        ext = next(
+            (k for k, v in registry.extension_map.items() if v == format_key),
+            format_key,
+        )
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if not filename:

@@ -1,8 +1,13 @@
-from django.db.models import Sum, F
-from django.db.models.functions import TruncMonth, TruncDay
-from django.utils.dateparse import parse_datetime, parse_date
 import csv
 from io import StringIO
+
+from django.db.models import F
+from django.db.models import Sum
+from django.db.models.functions import TruncDay
+from django.db.models.functions import TruncMonth
+from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_datetime
+
 
 class ResponseAnalytics:
     def __init__(self, queryset):
@@ -53,16 +58,13 @@ class ResponseAnalytics:
 
     def tally(self):
         return (
-            self.queryset
-            .values(*self.grouping)
+            self.queryset.values(*self.grouping)
             .annotate(
                 input=Sum("input_tokens"),
                 output=Sum("output_tokens"),
                 reasoning=Sum("reasoning_tokens"),
             )
-            .annotate(
-                total=F("input") + F("output") + F("reasoning")
-            )
+            .annotate(total=F("input") + F("output") + F("reasoning"))
             .order_by(*self.grouping)
         )
 
@@ -71,7 +73,7 @@ class ResponseAnalytics:
             input=Sum("input_tokens"),
             output=Sum("output_tokens"),
             reasoning=Sum("reasoning_tokens"),
-            total=Sum(F("input_tokens") + F("output_tokens") + F("reasoning_tokens"))
+            total=Sum(F("input_tokens") + F("output_tokens") + F("reasoning_tokens")),
         )
 
     def as_list(self):

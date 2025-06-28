@@ -4,8 +4,10 @@ import logging
 logger = logging.getLogger(__name__)
 _registry = {}
 
+
 def register_modifier(k, friendly_name: str = ""):
     """Decorator to register a prompt modifier function under a key."""
+
     def decorator(func):
         key = k.casefold()
         if key in _registry:
@@ -13,8 +15,10 @@ def register_modifier(k, friendly_name: str = ""):
         parts = k.split(".")
         group = parts[0] if len(parts) > 1 else "default"
         name = parts[1] if len(parts) > 1 else parts[0]
-        description = friendly_name.title() if friendly_name else func.__doc__.splitlines()[0]
-        
+        description = (
+            friendly_name.title() if friendly_name else func.__doc__.splitlines()[0]
+        )
+
         _registry[key] = {
             "key": k,
             "group": group,
@@ -25,7 +29,9 @@ def register_modifier(k, friendly_name: str = ""):
         }
         logger.debug(f"Modifier registered: '{k}'")
         return func
+
     return decorator
+
 
 def get_modifier(k):
     logger.debug(f"Looking up modifier: '{k}'")
@@ -42,9 +48,11 @@ def get_modifier(k):
     logger.debug(f"No modifier found for key: '{k}'")
     return None
 
+
 def list_modifiers():
     """Returns a list of modifier metadata dicts."""
     return list(_registry.values())
+
 
 # Alias for external use
 class PromptModifiers:

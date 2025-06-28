@@ -10,7 +10,9 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         try:
             if self.scope["user"].is_anonymous:
-                logger.warning("Anonymous user attempted to connect to NotificationsConsumer.")
+                logger.warning(
+                    "Anonymous user attempted to connect to NotificationsConsumer."
+                )
                 await self.close(code=4001)
             else:
                 self.user = self.scope["user"]

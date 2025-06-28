@@ -1,5 +1,4 @@
 # core/context_processors.py
-
 from django.conf import settings
 
 

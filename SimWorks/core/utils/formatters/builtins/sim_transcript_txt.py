@@ -1,5 +1,7 @@
 from datetime import datetime
+
 from core.utils.formatters.registry import register_formatter
+
 
 @register_formatter("sim_transcript_txt", extension="txt")
 def sim_transcript_as_text(self):

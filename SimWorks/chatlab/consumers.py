@@ -9,14 +9,14 @@ from enum import Enum
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from simai.client import SimAIClient
-from simcore.utils import get_user_initials
 from django.urls import reverse
 from django.utils import timezone
+from simai.client import SimAIClient
+from simcore.models import Simulation
+from simcore.utils import get_user_initials
 
 from .models import Message
 from .models import RoleChoices
-from simcore.models import Simulation
 from .utils import broadcast_message
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         except Simulation.DoesNotExist:
             error_message = f"Simulation with id {self.simulation_id} does not exist."
-            ChatConsumer.log( func_name, error_message, level=logging.ERROR)
+            ChatConsumer.log(func_name, error_message, level=logging.ERROR)
             logger.exception("Failed to connect: Simulation ID not found")
             await self.accept()  # Accept before sending
             await self.send(
@@ -93,7 +93,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Check if the simulation is new (i.e., no messages already exist), then
         # Send connect an init message, then, if new simulation,
         # Simulate System User typing
-        is_new_simulation = not await Message.objects.filter(simulation=self.simulation_id).aexists()
+        is_new_simulation = not await Message.objects.filter(
+            simulation=self.simulation_id
+        ).aexists()
 
         ChatConsumer.log(
             func_name=func_name,
@@ -161,15 +163,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Parse the incoming data
         data = json.loads(text_data)
         event_type = data.get("type")
-        ChatConsumer.log( func_name, f"{event_type} event received: {data}")
+        ChatConsumer.log(func_name, f"{event_type} event received: {data}")
 
         event_dispatch = {
             "client_ready": self.handle_client_ready,
-            "message": self.handle_message,                             # Deprecated, use `chat.message_created` instead
-            "chat.message": self.handle_message,                        # Deprecated, use `chat.message_created` instead
-            "message.created": self.handle_message,                     # Deprecated, use `chat.message_created` instead
+            "message": self.handle_message,  # Deprecated, use `chat.message_created` instead
+            "chat.message": self.handle_message,  # Deprecated, use `chat.message_created` instead
+            "message.created": self.handle_message,  # Deprecated, use `chat.message_created` instead
             "chat.message_created": self.handle_message,
-            "feedback.created": self.handle_generic_event,              # Deprecated, use `simulation.feedback_created` instead
+            "feedback.created": self.handle_generic_event,  # Deprecated, use `simulation.feedback_created` instead
             "simulation.feedback_created": self.handle_generic_event,
             "typing": self.handle_typing,
             "stopped_typing": self.handle_stopped_typing,
@@ -205,13 +207,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # TODO remove if not broken
         # is_new_simulation = await Message.objects.filter(simulation=self.simulation).aexists()
-        # 
+        #
         # first_msg = await sync_to_async(
         #     lambda: Message.objects.filter(simulation=self.simulation)
         #     .order_by("timestamp")
         #     .first()
         # )()
-        # 
+        #
         # if first_msg:
         #     print("[WebSocket] Received client_ready event")
         #     print(f"[WebSocket] Sending message to group: {first_msg.content}")
@@ -268,11 +270,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ChatConsumer.log(func_name)
 
         # TODO deprecation warning
-        if data.get('event_type') in {"message", "chat.message"}:
+        if data.get("event_type") in {"message", "chat.message"}:
             warnings.warn(
                 "'message' event_type is deprecated. Use 'chat.message' instead.",
                 DeprecationWarning,
-                stacklevel=2
+                stacklevel=2,
             )
 
         is_from_user = data.get("role", "").upper() == "USER"
@@ -353,12 +355,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :return: None
         :rtype: None
         """
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                **data
-            }
-        )
+        await self.channel_layer.group_send(self.room_group_name, {**data})
 
     async def handle_stopped_typing(self, data: dict) -> None:
         """
@@ -497,7 +494,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         warnings.warn(
             "'feedback_created' event.type is deprecated. Use 'simulation.feedback_created' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         return await self.simulation_feedback_created(event)
 
@@ -506,7 +503,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ChatConsumer.log(func_name)
 
         await self.send(text_data=json.dumps(event))
-
 
     async def chat_message_created(self, event: dict) -> None:
         """
@@ -544,7 +540,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         warnings.warn(
             "'message_created' event.type is deprecated. Use 'chat.message_created' instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         return await self.chat_message_created(event)
 
@@ -570,4 +566,3 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def simulation_metadata_results_created(self, event: dict) -> None:
         """Receive simulation metadata results created event and send to client."""
         await self.send(text_data=json.dumps(event))
-

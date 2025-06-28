@@ -19,7 +19,7 @@ def get_or_create_system_user():
             "first_name": "System",
             "is_active": False,
             "role": role,
-        }
+        },
     )
     return system_user
 

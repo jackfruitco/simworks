@@ -58,7 +58,7 @@ async def message_schema(initial: bool = False) -> dict:
                                 "sender": {
                                     "type": dynamic_type("string", True, only=False),
                                     "description": "The role of the sender, e.g., patient.",
-                                    "enum": ["patient"]
+                                    "enum": ["patient"],
                                 },
                                 "content": {
                                     "type": dynamic_type("string", True, only=False),
@@ -70,7 +70,11 @@ async def message_schema(initial: bool = False) -> dict:
                     "metadata": {
                         "type": dynamic_type("object", initial, only=False),
                         "description": "Metadata about the patient.",
-                        "required": ["patient_metadata", "simulation_metadata", "scenario_metadata"],
+                        "required": [
+                            "patient_metadata",
+                            "simulation_metadata",
+                            "scenario_metadata",
+                        ],
                         "additionalProperties": False,
                         "properties": {
                             "patient_metadata": {
@@ -87,9 +91,7 @@ async def message_schema(initial: bool = False) -> dict:
                                 "additionalProperties": False,
                                 "properties": {
                                     "name": {
-                                        "type": dynamic_type(
-                                            "string", True, only=True
-                                        ),
+                                        "type": dynamic_type("string", True, only=True),
                                         "description": "The name of the patient.",
                                     },
                                     "age": {
@@ -112,11 +114,15 @@ async def message_schema(initial: bool = False) -> dict:
                                         "description": "The current location of the patient. Can include all or part of City, State/Province, Country.",
                                     },
                                     "medical_history": {
-                                        "type": dynamic_type("array", False, only=False),
+                                        "type": dynamic_type(
+                                            "array", False, only=False
+                                        ),
                                         "description": "Known medical history for the patient. Does not need to be relevant.",
                                         "additionalProperties": False,
                                         "items": {
-                                            "type": dynamic_type("object", False, only=False),
+                                            "type": dynamic_type(
+                                                "object", False, only=False
+                                            ),
                                             "additionalProperties": False,
                                             "required": [
                                                 "diagnosis",
@@ -147,10 +153,14 @@ async def message_schema(initial: bool = False) -> dict:
                                     },
                                     "additional": {
                                         "description": "Additional patient metadata as key:value pairs.",
-                                        "type": dynamic_type("array", False, only=False),
+                                        "type": dynamic_type(
+                                            "array", False, only=False
+                                        ),
                                         "additionalProperties": False,
                                         "items": {
-                                            "type": dynamic_type("object", True, only=False),
+                                            "type": dynamic_type(
+                                                "object", True, only=False
+                                            ),
                                             "required": ["key", "value"],
                                             "additionalProperties": False,
                                             "properties": {
@@ -209,15 +219,16 @@ async def message_schema(initial: bool = False) -> dict:
                                     "chief_complaint": {
                                         "description": "The patient's initial or chief complaint for the scenario script.",
                                         "type": "string",
-                                    }
-                                }
-                            }
+                                    },
+                                },
+                            },
                         },
                     },
                 },
             },
         }
     }
+
 
 async def feedback_schema() -> dict:
     """Return dict with JSON Schema for OpenAI Feedback Output."""
@@ -228,7 +239,13 @@ async def feedback_schema() -> dict:
             "strict": True,
             "schema": {
                 "type": "object",
-                "required": ["correct_diagnosis", "correct_treatment_plan", "patient_experience", "feedback", "topics"],
+                "required": [
+                    "correct_diagnosis",
+                    "correct_treatment_plan",
+                    "patient_experience",
+                    "feedback",
+                    "topics",
+                ],
                 "additionalProperties": False,
                 "properties": {
                     "correct_diagnosis": {
@@ -257,12 +274,13 @@ async def feedback_schema() -> dict:
                         "items": {
                             "type": "string",
                             "description": "The topics that the user should study or research to further development and understanding.",
-                        }
-                    }
-                }
-            }
+                        },
+                    },
+                },
+            },
         }
     }
+
 
 async def patient_results_schema(initial: bool = False) -> dict:
     """Return dict with JSON Schema for OpenAI Response Output."""
@@ -290,7 +308,7 @@ async def patient_results_schema(initial: bool = False) -> dict:
                                 "reference_range_low",
                                 "reference_range_high",
                                 "result_flag",
-                                "result_comment"
+                                "result_comment",
                             ],
                             "properties": {
                                 "order_name": {
@@ -320,7 +338,16 @@ async def patient_results_schema(initial: bool = False) -> dict:
                                 "result_flag": {
                                     "type": "string",
                                     "description": "The result flag.",
-                                    "enum": ["HIGH", "LOW", "POS", "NEG", "UNK", "NORMAL", "ABNORMAL", "CRITICAL" ]
+                                    "enum": [
+                                        "HIGH",
+                                        "LOW",
+                                        "POS",
+                                        "NEG",
+                                        "UNK",
+                                        "NORMAL",
+                                        "ABNORMAL",
+                                        "CRITICAL",
+                                    ],
                                 },
                                 "result_comment": {
                                     "type": ["string", "null"],
@@ -352,12 +379,12 @@ async def patient_results_schema(initial: bool = False) -> dict:
                                 "result_flag": {
                                     "type": "string",
                                     "description": "The result flag.",
-                                    "enum": ["UNK", "NORMAL", "ABNORMAL", "CRITICAL"]
+                                    "enum": ["UNK", "NORMAL", "ABNORMAL", "CRITICAL"],
                                 },
-                            }
-                        }
-                    }
-                }
-            }
+                            },
+                        },
+                    },
+                },
+            },
         }
     }

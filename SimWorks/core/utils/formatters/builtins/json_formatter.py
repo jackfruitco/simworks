@@ -1,7 +1,8 @@
 # core/utils/formatters/builtins/json_formatter.py
-
 import json
+
 from core.utils.formatters.registry import register_formatter
+
 
 @register_formatter("json")
 def as_json(formatter, indent=None):

@@ -10,7 +10,8 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import InvitationForm, CustomUserCreationForm
+from .forms import CustomUserCreationForm
+from .forms import InvitationForm
 from .models import Invitation
 
 
@@ -24,7 +25,9 @@ def register(request, token=None):
             return redirect("accounts:profile")
     else:
         # Pre-populate the invitation_token field if a token exists
-        form = CustomUserCreationForm(initial={"invitation_token": token} if token else None)
+        form = CustomUserCreationForm(
+            initial={"invitation_token": token} if token else None
+        )
 
     return render(request, "accounts/signup.html", {"form": form, "token": token})
 
