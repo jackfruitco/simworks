@@ -274,7 +274,7 @@ class Simulation(models.Model):
         return await cls.objects.acreate(user=user, prompt=prompt, **kwargs)
 
     @classmethod
-    def coerce(cls, _simulation: "Simulation | int") -> "Simulation":
+    def resolve(cls, _simulation: "Simulation | int") -> "Simulation":
         """
         Accept either a Simulation instance or its primary-key integer,
         and return the corresponding Simulation instance.
@@ -291,7 +291,7 @@ class Simulation(models.Model):
             raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
 
     @classmethod
-    async def acoerce(cls, _simulation: "Simulation | int") -> "Simulation":
+    async def aresolve(cls, _simulation: "Simulation | int") -> "Simulation":
         """
         Async accept either a Simulation instance or its primary-key integer,
         and return the corresponding Simulation instance.

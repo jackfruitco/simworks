@@ -173,7 +173,7 @@ class SimAIClient:
         func_name = inspect.currentframe().f_code.co_name
 
         # Get the simulation instance if provided as int
-        simulation = await Simulation.acoerce(simulation)
+        simulation = await Simulation.aresolve(simulation)
 
         # Get output schema as `content`, and input_payload (prompt, message)
         text = await message_schema(initial=True)
@@ -236,7 +236,7 @@ class SimAIClient:
             List[Message]: A list of Message objects representing the AI-generated feedback.
         """
         # Get the simulation instance if provided an int
-        simulation = await Simulation.acoerce(simulation)
+        simulation = await Simulation.aresolve(simulation)
 
         payload = await build_feedback_payload(simulation)
         text = await feedback_schema()
@@ -267,7 +267,7 @@ class SimAIClient:
         logger.debug(f"[{func_name}] triggered...")
 
         # Get the simulation instance if provided as int
-        simulation = await Simulation.acoerce(simulation)
+        simulation = await Simulation.aresolve(simulation)
 
         logger.info(f"starting image generation image for Sim{simulation.pk}...")
 
