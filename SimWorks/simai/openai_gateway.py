@@ -10,7 +10,7 @@ from core.utils import get_system_user
 from core.utils import remove_null_keys
 from django.core.files.base import ContentFile
 from openai.types.responses import Response as OpenAIResponse
-from simai.models import Response as ResponseModel
+from simai.models import Response as SimCoreResponse
 from simai.models import ResponseType
 from simai.parser import StructuredOutputParser
 from simcore.models import LabResult
@@ -55,7 +55,7 @@ async def process_response(
         "type": response_type,
         "simulation": simulation,
         "user": user,
-        "raw": json.loads(response.model_dump_json()),
+        "raw": response.model_dump(),
         "id": getattr(response, "id", str(uuid.uuid4())),
         "input_tokens": usage.input_tokens or None,
         "output_tokens": usage.output_tokens or None,
@@ -66,7 +66,7 @@ async def process_response(
         )
 
     payload = remove_null_keys(payload)
-    response_obj = await ResponseModel.objects.acreate(**payload)
+    response_obj = await SimCoreResponse.objects.acreate(**payload)
 
     # Some Debug Logging
     if logger.isEnabledFor(logging.DEBUG):
