@@ -158,7 +158,7 @@ class SimAIClient:
         return logger.log(level, f"[{func_name}]: {msg}")
 
     async def generate_patient_initial(
-        self, simulation: Simulation, stream: bool = False
+        self, simulation: Simulation | int, stream: bool = False
     ) -> List[Message]:
         """
         Generate the initial introduction message for the patient in the simulation.
@@ -171,6 +171,9 @@ class SimAIClient:
             List[Message]: A list of Message objects representing the initial introduction.
         """
         func_name = inspect.currentframe().f_code.co_name
+
+        # Get the simulation instance if provided as int
+        simulation = await Simulation.acoerce(simulation)
 
         # Get output schema as `content`, and input_payload (prompt, message)
         text = await message_schema(initial=True)
@@ -220,7 +223,7 @@ class SimAIClient:
         return await process_response(response, simulation, stream)
 
     async def generate_simulation_feedback(
-        self, simulation: Simulation, stream: bool = False
+        self, simulation: Simulation | int, stream: bool = False
     ) -> List[Message]:
         """
         Generate feedback for the user at the completion of the simulation.
@@ -232,6 +235,9 @@ class SimAIClient:
         Returns:
             List[Message]: A list of Message objects representing the AI-generated feedback.
         """
+        # Get the simulation instance if provided an int
+        simulation = await Simulation.acoerce(simulation)
+
         payload = await build_feedback_payload(simulation)
         text = await feedback_schema()
         response = await self.client.responses.create(
@@ -260,9 +266,8 @@ class SimAIClient:
         func_name = inspect.currentframe().f_code.co_name
         logger.debug(f"[{func_name}] triggered...")
 
-        # Get simulation instance if provided as int
-        if isinstance(simulation, int):
-            simulation = await Simulation.objects.aget(id=simulation)
+        # Get the simulation instance if provided as int
+        simulation = await Simulation.acoerce(simulation)
 
         logger.info(f"starting image generation image for Sim{simulation.pk}...")
 

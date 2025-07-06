@@ -14,7 +14,7 @@ from asgiref.sync import sync_to_async
 from autoslug import AutoSlugField
 from channels.db import database_sync_to_async
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
 from django.utils.timezone import now
@@ -272,6 +272,40 @@ class Simulation(models.Model):
             )
 
         return await cls.objects.acreate(user=user, prompt=prompt, **kwargs)
+
+    @classmethod
+    def coerce(cls, _simulation: "Simulation | int") -> "Simulation":
+        """
+        Accept either a Simulation instance or its primary-key integer,
+        and return the corresponding Simulation instance.
+
+        :param _simulation: Simulation instance or primary-key integer
+        :type _simulation: Simulation | int
+        :return: Simulation instance
+        """
+        if isinstance(_simulation, cls):
+            return _simulation
+        try:
+            return cls.objects.get(pk=_simulation)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
+
+    @classmethod
+    async def acoerce(cls, _simulation: "Simulation | int") -> "Simulation":
+        """
+        Async accept either a Simulation instance or its primary-key integer,
+        and return the corresponding Simulation instance.
+
+        :param _simulation: Simulation instance or primary-key integer
+        :type _simulation: Simulation | int
+        :return: Simulation instance
+        """
+        if isinstance(_simulation, cls):
+            return _simulation
+        try:
+            return await cls.objects.aget(pk=_simulation)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
 
     def save(self, *args, **kwargs):
         from simai.prompts import build_prompt
