@@ -55,7 +55,7 @@ async def process_response(
         "type": response_type,
         "simulation": simulation,
         "user": user,
-        "raw": response.model_dump(),
+        "raw": response.model_dump_json(),
         "id": getattr(response, "id", str(uuid.uuid4())),
         "input_tokens": usage.input_tokens or None,
         "output_tokens": usage.output_tokens or None,
@@ -67,13 +67,6 @@ async def process_response(
 
     payload = remove_null_keys(payload)
     response_obj = await SimCoreResponse.objects.acreate(**payload)
-
-    # Some Debug Logging
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"[Sim#{simulation.pk}] raw OpenAI output: {response}")
-        logger.debug(
-            f"Tokens: input={response_obj.input_tokens}, output={response_obj.output_tokens}"
-        )
 
     # Get System User & create Parser
     from core.utils import get_or_create_system_user

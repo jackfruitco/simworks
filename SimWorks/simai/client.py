@@ -43,34 +43,52 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
         List[dict]: A list of dictionaries representing the role and content for the introduction.
     """
 
-    instruction = simulation.prompt
-    instruction += (
+    prompt = simulation.prompt
+    prompt += (
         f"\n\nYour name is {simulation.sim_patient_full_name}. "
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
     )
     return [
-        {"role": "developer", "content": instruction},
-        {"role": "user", "content": "Begin."},
+        {"role": "developer", "content": prompt},
+        {"role": "user", "content": ""},
     ]
 
 
 @sync_to_async
-def build_patient_reply_payload(user_msg: Message) -> dict:
+def build_patient_reply_payload(user_msg: Message, image_generation: bool = False) -> dict:
     """
     Build the payload for the patient's reply to be sent to OpenAI.
 
-    Args:
-        user_msg (Message): The user's message object containing the previous response ID and input.
+    :param user_msg: The user's content object containing the previous response ID and input.
+    :type user_msg: Message
 
-    Returns:
-        dict: A dictionary containing the previous response ID and user input.
+    :param image_generation: Whether to generate an image or not. Defaults to False.
+    :type image_generation: bool, optional
+
+    :return: A dictionary containing the previous response ID and user input.
+    :rtype: dict
     """
+    _previous_response_id = user_msg.simulation.get_previous_response_id() or None
+    _input = [user_msg.get_openai_input() or None]
+
+    # Add developer prompt if image generation is enabled
+    if image_generation:
+        _prompt = Prompt.build(
+            "Image.PatientImage",
+            simulation=user_msg.simulation,
+            include_default=False,
+        )
+
+        _input.append(
+            {
+                "role": "developer",
+                "content": _prompt,
+            }
+        )
+
     return {
-        "previous_response_id": user_msg.simulation.get_previous_response_id() or None,
-        "input": [
-            user_msg.get_openai_input(),
-            # {"role": "user", "content": "content"},
-        ],
+        "previous_response_id": _previous_response_id,
+        "input": _input,
     }
 
 
@@ -80,7 +98,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     Build the payload for AI feedback after the simulation has ended.
 
     Args:
-        simulation (Simulation): The simulation object to reference the last AI message from.
+        simulation (Simulation): The simulation object to reference the last AI content from.
 
     Returns:
         dict: A dictionary containing the previous response ID and developer/user input.
@@ -251,11 +269,80 @@ class SimAIClient:
             response, simulation, stream, response_type=ResponseType.FEEDBACK
         )
 
+    async def generate_patient_image(
+        self,
+        *modifiers,
+        simulation: Simulation | int = None,
+        user_msg: Message = None,
+        _stream: bool = False,
+        _format="webp",
+        _include_default=False,
+        **kwargs,
+    ) -> List[Message]:
+        """
+        Generate a patient image for a given simulation using OpenAI Response API with Image Generation.
+        :param modifiers:
+        :param simulation: The Simulation instance or int (pk)
+        :param user_msg: The Message instance for the user's input (optional)
+        :param _stream: Whether to stream the OpenAI Response or not
+        :param _format: The format of the image to generate. Defaults to "webp"
+        :param _include_default: Whether to include the default prompt or not. Defaults to False.
+        :param kwargs:
+        :return:
+        """
+        # Ensure either user_msg or simulation is provided
+        if user_msg is None and simulation is None:
+            raise ValueError("Must provide either user_msg or simulation")
+
+        # Get the simulation instance if provided as int
+        simulation = await Simulation.aresolve(
+            simulation if simulation is not None else user_msg.simulation
+        )
+
+        # Get the last content from the simulation if user_msg is not provided
+        if user_msg is None:
+            user_msg = await simulation.messages.alast()
+
+        logger.info(f"starting image generation image (simulation id: {simulation.pk})...")
+
+        # Validate the provided image format
+        # See https://platform.openai.com/docs/api-reference/images/create#images-create-output_format
+        try:
+            _format = validate_image_format(_format)
+        except ValueError as e:
+            from django.conf import settings
+            _default_format = settings.DEFAULT_IMAGE_FORMAT
+            logger.warning(f"Invalid image format: `{_format}`. Using default instead: `{_default_format}`")
+            _format = _default_format
+
+        # Build payload including previous_response_id and input
+        payload = await build_patient_reply_payload(user_msg, image_generation=True)
+
+
+        try:
+            response = await self.client.responses.create(
+                model=self.model,
+                stream=_stream,
+                tools=[{"type": "image_generation"}],
+                **payload
+            )
+        except Exception as e:
+            raise f"Image Generation failed: {e}"
+
+        return await process_response(
+            response=response,
+            simulation=simulation,
+            stream=_stream,
+            response_type=ResponseType.MEDIA,
+        )
+
     # noinspection PyTypeChecker
     async def generate_patient_reply_image(
         self,
         *modifiers,
         simulation: Simulation | int = None,
+        model: str = "gpt-image-1",
+        stream: bool = False,
         output_format="webp",
         include_default=False,
         **kwargs,
@@ -289,12 +376,13 @@ class SimAIClient:
             include_default=include_default,
             **kwargs,
         )
+        _input = build_patient_reply_payload()
 
         # Call OpenAI API Images API
         # See https://platform.openai.com/docs/api-reference/images
         try:
             response = await self.client.images.generate(
-                model="gpt-image-1",
+                model=model,
                 prompt=prompt,
                 n=1,
                 size="1024x1024",

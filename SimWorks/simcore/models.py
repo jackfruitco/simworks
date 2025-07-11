@@ -534,6 +534,13 @@ class SimulationImage(models.Model):
         Simulation, on_delete=models.CASCADE, related_name="images"
     )
 
+    openai_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="OpenAI image ID (if applicable)",
+    )
+
     uuid = models.UUIDField(
         default=uuid.uuid4,
         unique=True,

@@ -73,7 +73,7 @@ def generate_patient_reply_image_task(simulation_id: int) -> None:
         :return: None
         """
         try:
-            simulation = await Simulation.objects.aget(id=simulation_id)
+            simulation = await Simulation.aresolve(simulation_id)
         except Simulation.DoesNotExist:
             logger.warning(
                 f"Simulation ID {simulation_id} not found. Skipping image generation."
@@ -82,7 +82,7 @@ def generate_patient_reply_image_task(simulation_id: int) -> None:
 
         try:
             client = SimAIClient()
-            messages = await client.generate_patient_reply_image(simulation=simulation)
+            messages = await client.generate_patient_image(simulation=simulation)
             for message in messages:
                 await broadcast_message(message)
         except SoftTimeLimitExceeded:
