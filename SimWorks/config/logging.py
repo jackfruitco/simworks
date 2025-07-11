@@ -34,9 +34,13 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
+        "logfire": {
+            "class": "logfire.LogfireLoggingHandler",
+            "level": "INFO"
+        },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "logfire"],
         "level": LOG_LEVEL,
     },
     "loggers": {
