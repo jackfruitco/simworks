@@ -905,6 +905,22 @@ wheels = [
 ]
 
 [[package]]
+name = "opentelemetry-instrumentation-httpx"
+version = "0.55b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "opentelemetry-util-http" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/7d/3fe981e7ee6655406aef2ff391a8192c1d3934f5990603af4ce1a8689a8e/opentelemetry_instrumentation_httpx-0.55b1.tar.gz", hash = "sha256:3121a9196a25a72b65cb16188a1b09f61e365694c75534b306d09088e5f90041", size = 19268 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/70/a4bd4b7b5c601573975e33e276b0c2eb7635ae4d752359d49b68a8547414/opentelemetry_instrumentation_httpx-0.55b1-py3-none-any.whl", hash = "sha256:5fe22fcc3ad78a1da85cbd5d35d6acfb208521c164ad1dd75594230a266c6811", size = 15124 },
+]
+
+[[package]]
 name = "opentelemetry-instrumentation-wsgi"
 version = "0.55b1"
 source = { registry = "https://pypi.org/simple" }
@@ -1394,6 +1410,7 @@ dependencies = [
     { name = "httpcore" },
     { name = "logfire", extra = ["django"] },
     { name = "openai" },
+    { name = "opentelemetry-instrumentation-httpx" },
     { name = "pillow" },
     { name = "pre-commit" },
     { name = "psycopg" },
@@ -1425,6 +1442,7 @@ requires-dist = [
     { name = "httpcore", specifier = ">=1.0.9" },
     { name = "logfire", extras = ["django"], specifier = ">=3.24.0" },
     { name = "openai", specifier = ">=1.82.0" },
+    { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.55b1" },
     { name = "pillow", specifier = ">=11.2.1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "psycopg", specifier = ">=3.2.9" },
