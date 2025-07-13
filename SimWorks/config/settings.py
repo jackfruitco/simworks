@@ -217,5 +217,11 @@ SITE_ADMIN = {
 }
 
 logfire.configure(token=os.getenv("LOGFIRE_TOKEN"))
+logfire.instrument_httpx(
+    capture_all=True
+    # capture_response_body=True,
+    # capture_request_body=True,
+    # capture_headers=True,
+)
 logfire.instrument_django(excluded_urls="/health(?:/|$)")
-logfire.instrument_openai()
+logfire.instrument_openai(suppress_other_instrumentation=False)
