@@ -4,11 +4,13 @@ import logging
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
+
+from chatlab.models import Message
 from chatlab.utils import broadcast_event
 from chatlab.utils import broadcast_message
 from chatlab.utils import broadcast_patient_results
 from simai.client import SimAIClient
-from simcore.models import Simulation
+from simcore.models import Simulation, SimulationMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +47,11 @@ def generate_patient_initial(
         # Generate initial message(s), and broadcast them to all connected clients
         try:
             client = SimAIClient()
-            messages = await client.generate_patient_initial(_simulation, False)
+            _messages: list[Message]
+            _messages, _ = await client.generate_patient_initial(_simulation, False)
 
-            for message in messages:
-                await broadcast_message(message)
+            for m in _messages:
+                await broadcast_message(m)
 
         except Exception as e:
             logger.exception(
@@ -80,11 +83,15 @@ def generate_patient_reply_image_task(simulation_id: int) -> None:
             )
             return
 
+        # Initiate client to generate image using Images API, then
         try:
             client = SimAIClient()
-            messages = await client.generate_patient_image(simulation=simulation)
-            for message in messages:
-                await broadcast_message(message)
+            _messages: list[Message]
+            _messages, _ = await client.generate_patient_image(simulation=simulation)
+
+            # Broadcast each message
+            for m in _messages:
+                await broadcast_message(m)
         except SoftTimeLimitExceeded:
             logger.warning(
                 f"[generate_patient_reply_image_task] Soft time limit exceeded for Sim {simulation_id}"
@@ -136,13 +143,16 @@ def generate_patient_results(
 
         try:
             client = SimAIClient()
-            results = await client.generate_patient_results(
+            _results: list[SimulationMetadata]
+
+            _, _results = await client.generate_patient_results(
                 simulation=simulation, lab_orders=_lab_orders, rad_orders=_rad_orders
             )
-            logger.debug(f"[generate_patient_results] Generated results: {results}")
+            logger.debug(f"[generate_patient_results] Generated results: {_results}")
 
+            # Attempt to broadcast results
             try:
-                await broadcast_patient_results(results)
+                await broadcast_patient_results(_results)
             except Exception as e:
                 logger.error(f"[generate_patient_results] Failed to broadcast: {e}")
         except SoftTimeLimitExceeded:
@@ -190,9 +200,10 @@ def generate_feedback(
 
         try:
             client = SimAIClient()
-            feedback = await client.generate_simulation_feedback(simulation)
+            _feedback: list[SimulationMetadata]
+            _, _feedback = await client.generate_simulation_feedback(simulation)
 
-            logger.debug(f"[generate_feedback] Generated feedback: {feedback}")
+            logger.debug(f"[generate_feedback] Generated feedback: {_feedback}")
 
             try:
                 await broadcast_event(
