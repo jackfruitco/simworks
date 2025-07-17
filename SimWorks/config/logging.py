@@ -14,6 +14,7 @@ Usage:
 from core.utils.system import check_env
 
 LOG_LEVEL = check_env("DJANGO_LOG_LEVEL", "INFO").upper()
+LOGFIRE_LOG_LEVEL = check_env("LOGFIRE_LOG_LEVEL", "INFO").upper()
 
 LOGGING = {
     "version": 1,
@@ -36,7 +37,7 @@ LOGGING = {
         },
         "logfire": {
             "class": "logfire.LogfireLoggingHandler",
-            "level": "INFO"
+            "level": LOGFIRE_LOG_LEVEL
         },
     },
     "root": {
@@ -50,12 +51,12 @@ LOGGING = {
             "propagate": False,
         },
         "py.warnings": {
-            "handlers": ["console"],
+            "handlers": ["console", "logfire"],
             "level": "WARNING",
             "propagate": False,
         },
         "core": {
-            "handlers": ["console"],
+            "handlers": ["console", "logfire"],
             "level": check_env("CORE_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
@@ -80,7 +81,7 @@ LOGGING = {
             "propagate": False,
         },
         "simai": {
-            "handlers": ["console"],
+            "handlers": ["console", "logfire"],
             "level": check_env("SIMAI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
@@ -90,12 +91,12 @@ LOGGING = {
             "propagate": False,
         },
         "simai.parser": {
-            "handlers": ["console"],
+            "handlers": ["console", "logfire"],
             "level": check_env("SIMAI_PARSER_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
         "simcore": {
-            "handlers": ["console"],
+            "handlers": ["console", "logfire"],
             "level": check_env("SIMCORE_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
