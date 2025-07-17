@@ -17,7 +17,7 @@ Example:
     response = client.responses.parse(
         model="gpt-4o",
         input=[...],
-        text_format=PatientResponse,
+        text_format=PatientReplySchema,
     )
     parsed = response.output_parsed
 
@@ -29,64 +29,103 @@ from typing import Literal
 from typing import Optional
 
 from pydantic import BaseModel
+from pydantic import Extra
 from pydantic import Field
 
 
-class MedicalHistoryItem(BaseModel):
-    diagnosis: str
+class StrictBaseModel(BaseModel):
+    class Config:
+        extra = "forbid"
+
+
+class StrictSchema(StrictBaseModel):
+    pass
+
+
+class ABCMetadataItem(StrictBaseModel):
+    key: str = Field(..., description="The key of the metadata item.")
+    value: str = Field(..., description="The value of the metadata item.")
+    # attribute: Literal[
+    #     "PatientDemographics",
+    #     "PatientHistory",
+    #     "SimulationMetadata",
+    #     "ScenarioMetadata"
+    # ] = Field(..., description="The attribute of the metadata item.")
+
+
+class PatientHistoryMetafield(ABCMetadataItem):
+    key: str = Field(..., description="The diagnosis for this history item.")
+    value: None = Field(..., description="This field is not used.")
+    # attribute: Literal["PatientHistory"]
+
     is_resolved: bool
     duration: str
 
 
-class AdditionalMetadataItem(BaseModel):
-    key: str
-    value: str
+class PatientDemographicsMetafield(ABCMetadataItem):
+    pass
+    # attribute: Literal["PatientDemographics"]
 
 
-class PatientDemographics(BaseModel):
-    name: str
-    age: int
-    gender: Literal["male", "female"]
-    location: str
-    medical_history: List[MedicalHistoryItem]
-    additional: Optional[List[AdditionalMetadataItem]] = []
+# class PatientDemographics(StrictBaseModel):
+#     name: str
+#     age: int
+#     gender: Literal["male", "female"]
+#     location: str
+#     medical_history: List[MedicalHistoryItem]
+#     additional: Optional[List[AdditionalMetadataItem]] = []
 
 
-class SimulationMetadataItem(BaseModel):
-    key: str
-    value: str
+class SimulationDataMetafield(ABCMetadataItem):
+    pass
+    # attribute: Literal["SimulationMetadata"]
 
 
-class ScenarioMetadata(BaseModel):
-    diagnosis: str
-    chief_complaint: str
+class ScenarioMetadata(StrictBaseModel):
+    diagnosis: str = Field(
+        ..., description="The diagnosis of the patient."
+    )
+    chief_complaint: str = Field(
+        ..., description="The chief complaint of the patient."
+    )
+    # treatment: str = Field(..., description="The treatment of the patient.")
+    # outcome: str = Field(..., description="The outcome of the patient.")
+    # treatment_plan: str = Field(..., description="The treatment plan of the patient.")
+    # treatment_plan_summary: str = Field(
+    #     ..., description="The treatment plan summary of the patient."
+    # )
 
 
-class Metadata(BaseModel):
-    patient_metadata: PatientDemographics
-    simulation_metadata: Optional[List[SimulationMetadataItem]] = []
-    scenario_metadata: ScenarioMetadata
+class Metadata(StrictBaseModel):
+    patient_demographics: List[PatientDemographicsMetafield]
+    patient_history: List[PatientHistoryMetafield]
+    simulation_metadata: List[SimulationDataMetafield]
+    scenario_data: ScenarioMetadata
 
 
-class MessageItem(BaseModel):
+class MessageItem(StrictBaseModel):
     sender: Literal["patient"]
     content: str
 
 
-class InitialPatientResponse(BaseModel):
+class PatientInitialSchema(StrictSchema):
     image_requested: bool
     messages: List[MessageItem]
     metadata: Metadata
 
 
-class PatientResponse(BaseModel):
+class PatientReplySchema(StrictSchema):
     image_requested: bool
     messages: List[MessageItem]
+    metadata: Metadata
 
 
-class LabResult(BaseModel):
+class LabResult(StrictBaseModel):
     order_name: str = Field(
         ..., description="The name of the order using standardized terminology."
+    )
+    panel_name: str = Field(
+        ..., description="The name of the lab panel  that the test is included in using standardized terminology."
     )
     result_value: float = Field(
         ..., description="The result value of the test, without the unit."
@@ -102,14 +141,11 @@ class LabResult(BaseModel):
         "HIGH", "LOW", "POS", "NEG", "UNK", "NORMAL", "ABNORMAL", "CRITICAL"
     ] = Field(..., description="The result flag.")
     result_comment: Optional[str] = Field(
-        None, description="The result comment, if applicable, or null."
+        ..., description="The result comment, if applicable, or null."
     )
 
-    class Config:
-        extra = "forbid"
 
-
-class RadResult(BaseModel):
+class RadResult(StrictBaseModel):
     order_name: str = Field(
         ..., description="The name of the order using standardized terminology."
     )
@@ -118,19 +154,13 @@ class RadResult(BaseModel):
         ..., description="The result flag."
     )
 
-    class Config:
-        extra = "forbid"
 
-
-class PatientResults(BaseModel):
-    lab_results: Optional[List[LabResult]] = Field(
-        None,
+class PatientResultsSchema(StrictSchema):
+    lab_results: List[LabResult] = Field(
+        ...,
         description="The lab results of the patient. Each item is a lab result object.",
     )
-    radiology_results: Optional[List[RadResult]] = Field(
-        None,
+    radiology_results: List[RadResult] = Field(
+        ...,
         description="The radiology results of the patient. Each item is a radiology result object.",
     )
-
-    class Config:
-        extra = "forbid"

@@ -13,9 +13,15 @@ from typing import Optional
 from typing import Union
 
 from asgiref.sync import sync_to_async
+from openai.types.responses import (Response as OpenAIResponse,
+                                    ResponseTextConfigParam)
+
 from chatlab.models import Message
 from django.conf import settings
 from openai import AsyncOpenAI
+
+from simcore.ai.utils.helpers import build_response_text_param
+from simcore.ai.utils.validation import validate_image_format
 from simcore.models import LabResult
 from simcore.models import RadResult
 from simcore.models import Simulation
@@ -24,8 +30,9 @@ from simcore.models import SimulationMetadata
 from .models import ResponseType
 from .openai_gateway import process_response
 from .output_schemas import feedback_schema
-from .output_schemas import message_schema
-from .output_schemas import patient_results_schema
+from .structured_output import PatientInitialSchema
+from .structured_output import PatientReplySchema
+from .structured_output import PatientResultsSchema
 from .prompts import Prompt
 
 logger = logging.getLogger(__name__)
@@ -177,7 +184,7 @@ class SimAIClient:
 
     async def generate_patient_initial(
         self, simulation: Simulation | int, stream: bool = False
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate the initial introduction message for the patient in the simulation.
 
@@ -186,29 +193,32 @@ class SimAIClient:
             stream (bool): If the feedback should be streamed.
 
         Returns:
-            List[Message]: A list of Message objects representing the initial introduction.
+            tuple: A tuple containing a list of Message objects representing
+            the patient's introduction and a list of SimulationMetadata objects.
         """
         func_name = inspect.currentframe().f_code.co_name
 
-        # Get the simulation instance if provided as int
+        # Resolve Simulation instance to allow int to be passed
         simulation = await Simulation.aresolve(simulation)
 
-        # Get output schema as `content`, and input_payload (prompt, message)
-        text = await message_schema(initial=True)
+        # Build output schema (`text` param) and input_payload (`input` param)
+        text: ResponseTextConfigParam = build_response_text_param(PatientInitialSchema)
         input_payload = await build_patient_initial_payload(simulation)
 
-        response = await self.client.responses.create(
+        response: OpenAIResponse = await self.client.responses.create(
             model=self.model,
             input=input_payload,
             text=text,
             stream=stream,
         )
 
-        return await process_response(response, simulation, stream)
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(response, simulation, stream)
+        return _messages, _metadata
 
     async def generate_patient_reply(
         self, user_msg: Message, stream: bool = False
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate a reply from the patient based on the user's message.
 
@@ -229,7 +239,7 @@ class SimAIClient:
 
         # Build payload (prompt, instructions), then get the response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
-        text = await message_schema()
+        text: ResponseTextConfigParam = build_response_text_param(PatientReplySchema)
         response = await self.client.responses.create(
             model=self.model,
             text=text,
@@ -238,11 +248,14 @@ class SimAIClient:
         )
 
         simulation = user_msg.simulation
-        return await process_response(response, simulation, stream)
+
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(response, simulation, stream)
+        return _messages, _metadata
 
     async def generate_simulation_feedback(
         self, simulation: Simulation | int, stream: bool = False
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate feedback for the user at the completion of the simulation.
 
@@ -265,9 +278,11 @@ class SimAIClient:
             **payload,
         )
 
-        return await process_response(
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response, simulation, stream, response_type=ResponseType.FEEDBACK
         )
+        return _messages, _metadata
 
     async def generate_patient_image(
         self,
@@ -278,7 +293,7 @@ class SimAIClient:
         _format="webp",
         _include_default=False,
         **kwargs,
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate a patient image for a given simulation using OpenAI Response API with Image Generation.
         :param modifiers:
@@ -329,12 +344,14 @@ class SimAIClient:
         except Exception as e:
             raise f"Image Generation failed: {e}"
 
-        return await process_response(
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response=response,
             simulation=simulation,
             stream=_stream,
             response_type=ResponseType.MEDIA,
         )
+        return _messages, _metadata
 
     # noinspection PyTypeChecker
     async def generate_patient_reply_image(
@@ -346,7 +363,7 @@ class SimAIClient:
         output_format="webp",
         include_default=False,
         **kwargs,
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate a patient image for a given simulation using OpenAI Image API.
         """
@@ -393,7 +410,8 @@ class SimAIClient:
             logger.error(f"[{func_name}] OpenAI image generation failed: {e}")
             return e
 
-        return await process_response(
+        # Process Response and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response=response,
             simulation=simulation,
             stream=False,
@@ -401,6 +419,7 @@ class SimAIClient:
             mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0]
             or "image/webp",
         )
+        return _messages, _metadata
 
     async def generate_patient_results(
         self,
@@ -410,7 +429,7 @@ class SimAIClient:
         include_default=False,
         stream: bool = False,
         **kwargs,
-    ) -> list[LabResult] | list[RadResult]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate patient results for requested labs or radiology using OpenAI Image API.
         """
@@ -424,7 +443,7 @@ class SimAIClient:
 
         logger.info(f"starting lab result generation for Sim{simulation.pk}...")
 
-        text = await patient_results_schema()
+        text: ResponseTextConfigParam = build_response_text_param(PatientResultsSchema)
         payload = await build_patient_results_payload(simulation, lab_orders)
         response = await self.client.responses.create(
             model=self.model,
@@ -433,9 +452,11 @@ class SimAIClient:
             **payload,
         )
 
-        return await process_response(
+        # Process Response and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response,
             simulation,
             stream,
             response_type=ResponseType.PATIENT_RESULTS,
         )
+        return _messages, _metadata
