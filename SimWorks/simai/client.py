@@ -3,11 +3,16 @@ This module provides an asynchronous client for interacting with the OpenAI API
 to facilitate patient simulations in a chat environment. It includes functions
 to build payloads for patient replies and introductions, and a service class
 to generate responses using the OpenAI model.
+
+TODO: Remove deprecated `self.log(...)` usages
+TODO: Implement `_get_raw_response` and `get_response` methods
+TODO: Move custom methods other than those above out of the client
 """
 
 import inspect
 import logging
 import mimetypes
+import warnings
 from typing import List
 from typing import Optional
 from typing import Union
@@ -180,7 +185,22 @@ class SimAIClient:
 
     @staticmethod
     async def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
+        warnings.warn(
+            "this logger util is deprecated. Use direct logging instead.",
+            PendingDeprecationWarning,
+            stacklevel=2,
+        )
         return logger.log(level, f"[{func_name}]: {msg}")
+
+    async def _get_raw_response(
+            self,
+    ) -> OpenAIResponse:
+        pass
+
+    async def get_response(
+            self,
+    ) -> OpenAIResponse:
+        pass
 
     async def generate_patient_initial(
         self, simulation: Simulation | int, stream: bool = False
