@@ -7,8 +7,8 @@ from openai.types.responses.response_text_config_param import ResponseTextConfig
 from pydantic import BaseModel, ValidationError
 
 from simai.models import ResponseType
-from simai.structured_output import PatientInitialSchema, PatientResultsSchema
-from simai.structured_output import PatientReplySchema
+from simai.response_schema import PatientInitialSchema, PatientResultsSchema
+from simai.response_schema import PatientReplySchema
 
 logger = logging.getLogger(__name__)
 

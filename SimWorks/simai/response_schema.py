@@ -1,5 +1,5 @@
 """
-structured_output.py
+response_schema.py
 
 This module defines Pydantic models used to parse and validate structured responses
 from OpenAI's Responses API. These models correspond to patient-facing simulation outputs
@@ -121,14 +121,14 @@ class PatientReplySchema(StrictSchema):
 
 
 class LabResult(StrictBaseModel):
-    order_name: str = Field(
-        ..., description="The name of the order using standardized terminology."
+    result_name: str = Field(
+        ..., description="The name of the specific lab test using standardized terminology. For example, 'Hematocrit' or 'LDL-Cholesterol'.'"
     )
     panel_name: str = Field(
-        ..., description="The name of the lab panel  that the test is included in using standardized terminology."
+        ..., description="The name of the lab panel that the test result is included in using standardized terminology. For example, 'Complete Blood Count' or 'Lipid Panel'."
     )
     result_value: float = Field(
-        ..., description="The result value of the test, without the unit."
+        ..., description="The result value of the specific lab test, without the unit."
     )
     result_unit: str = Field(..., description="The unit of the result value.")
     reference_range_low: float = Field(
@@ -146,7 +146,7 @@ class LabResult(StrictBaseModel):
 
 
 class RadResult(StrictBaseModel):
-    order_name: str = Field(
+    result_name: str = Field(
         ..., description="The name of the order using standardized terminology."
     )
     result_value: str = Field(..., description="The result of the order.")

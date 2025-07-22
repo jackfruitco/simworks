@@ -15,7 +15,7 @@ from openai.types.responses import Response as OpenAIResponse
 from simai.models import Response as SimCoreResponse
 from simai.models import ResponseType
 from simai.parser import StructuredOutputParser
-from simai.structured_output import PatientInitialSchema, PatientReplySchema
+from simai.response_schema import PatientInitialSchema, PatientReplySchema
 from simcore.ai.utils.helpers import maybe_coerce_to_schema
 from simcore.models import LabResult, Simulation, SimulationMetadata
 from simcore.models import RadResult

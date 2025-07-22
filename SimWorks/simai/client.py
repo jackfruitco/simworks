@@ -35,9 +35,9 @@ from simcore.models import SimulationMetadata
 from .models import ResponseType
 from .openai_gateway import process_response
 from .output_schemas import feedback_schema
-from .structured_output import PatientInitialSchema
-from .structured_output import PatientReplySchema
-from .structured_output import PatientResultsSchema
+from .response_schema import PatientInitialSchema
+from .response_schema import PatientReplySchema
+from .response_schema import PatientResultsSchema
 from .prompts import Prompt
 
 logger = logging.getLogger(__name__)

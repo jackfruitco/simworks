@@ -348,19 +348,8 @@ class SimulationMetadata(PolymorphicModel):
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
 
-    key = models.CharField(blank=False, null=False, max_length=255)
-    value = models.CharField(blank=False, null=False, max_length=2000)
-
-    # @property
-    # @abstractmethod
-    # def attribute(self) -> str:
-    #     """Subclasses must implement this to define the attribute category."""
-    #     pass
-    #
-    # @abstractmethod
-    # def __str__(self):
-    #     """Subclasses must implement this to define the name string."""
-    #     pass
+    key = models.CharField(max_length=255)
+    value = models.CharField(max_length=2000)
 
     @classmethod
     def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
@@ -414,7 +403,7 @@ class LabResult(SimulationMetadata):
     result_comment = models.TextField(blank=True, null=True)
 
     @property
-    def order_name(self) -> str:
+    def result_name(self) -> str:
         return self.key
 
     @property
@@ -428,7 +417,7 @@ class LabResult(SimulationMetadata):
     def serialize(self) -> dict:
         return {
             "id": self.id,
-            "order_name": self.key,
+            "result_name": self.key,
             "panel_name": self.panel_name or None,
             "value": self.value,
             "unit": self.result_unit,
@@ -449,7 +438,7 @@ class RadResult(SimulationMetadata):
     result_flag = models.CharField(max_length=10)
 
     @property
-    def order_name(self) -> str:
+    def result_name(self) -> str:
         return self.key
 
     @property
@@ -463,7 +452,7 @@ class RadResult(SimulationMetadata):
     def serialize(self) -> dict:
         return {
             "id": self.id,
-            "order_name": self.key,
+            "result_name": self.key,
             "result": self.value,
             "result_flag": self.result_flag,
             "attribute": self.attribute,
