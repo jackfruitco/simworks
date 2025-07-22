@@ -7,15 +7,15 @@ from openai.types.responses.response_text_config_param import ResponseTextConfig
 from pydantic import BaseModel, ValidationError
 
 from simai.models import ResponseType
-from simai.structured_output import PatientInitialSchema
+from simai.structured_output import PatientInitialSchema, PatientResultsSchema
 from simai.structured_output import PatientReplySchema
-from simai.structured_output import StrictBaseModel
 
 logger = logging.getLogger(__name__)
 
 MODEL_MAP: dict[ResponseType, type[PatientReplySchema | PatientInitialSchema]] = {
     ResponseType.INITIAL: PatientInitialSchema,
     ResponseType.REPLY:  PatientReplySchema,
+    ResponseType.PATIENT_RESULTS: PatientResultsSchema,
 }
 
 
