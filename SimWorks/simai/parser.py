@@ -815,8 +815,7 @@ class StructuredOutputParser:
                     attribute="RadResult",
                     field_map={
                         "result_value": "value",
-                        "diagnosis": "diagnosis",
-                        "order_name": "order_name",
+                        "order_name": "key",
                     },
                 )
                 for rr in results.radiology_results or []
