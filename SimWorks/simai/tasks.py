@@ -142,7 +142,7 @@ def generate_patient_results(
             _rad_orders = [o.strip() for o in _rad_orders.split(",")]
 
         try:
-            client = SimAIClient()
+            client: SimAIClient = SimAIClient()
             _results: list[SimulationMetadata]
 
             _, _results = await client.generate_patient_results(
