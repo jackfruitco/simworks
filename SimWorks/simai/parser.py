@@ -16,7 +16,6 @@ from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from openai.types.responses.response_output_item import ImageGenerationCall
-from twisted.python.compat import items
 
 from chatlab.models import Message
 from chatlab.models import RoleChoices
@@ -28,12 +27,16 @@ from simcore.models import SimulationImage
 from simcore.models import SimulationMetadata
 from .models import Response
 from .models import ResponseType
-from .structured_output import PatientInitialSchema, PatientResultsSchema
-from .structured_output import PatientReplySchema
+from .response_schema import PatientInitialSchema, PatientResultsSchema
+from .response_schema import PatientReplySchema
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+DEFAULT_FIELD_MAP: dict[str, str] = {
+    "result_name": "key",
+    "result_value": "value",
+}
 
 class StructuredOutputParser:
     """
@@ -493,7 +496,7 @@ class StructuredOutputParser:
             metadata = [metadata]
 
         # Map field names to database model fields, if provided
-        field_map = field_map or {}
+        field_map = field_map or DEFAULT_FIELD_MAP
         model_fields = {f.name for f in Subclass._meta.fields}
 
         # Iterate over metadata entries and create database objects
@@ -520,7 +523,7 @@ class StructuredOutputParser:
 
                 # Optional fallback for `value` field
                 if "value" in model_fields and "value" not in init_kwargs:
-                    fallback_keys = ["result_value", "diagnosis", "order_name"]
+                    fallback_keys = ["result_value", "diagnosis", "result_name"]
                     for fk in fallback_keys:
                         if fk in entry:
                             init_kwargs["value"] = str(entry[fk])
@@ -800,7 +803,7 @@ class StructuredOutputParser:
                     field_map={
                         "result_value": "value",
                         "diagnosis": "diagnosis",
-                        "order_name": "order_name",
+                        "result_name": "key",
                     },
                 )
                 for lr in results.lab_results or []
@@ -815,7 +818,7 @@ class StructuredOutputParser:
                     attribute="RadResult",
                     field_map={
                         "result_value": "value",
-                        "order_name": "key",
+                        "result_name": "key",
                     },
                 )
                 for rr in results.radiology_results or []
