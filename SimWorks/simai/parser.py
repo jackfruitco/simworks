@@ -15,6 +15,7 @@ from typing import Optional
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.db import IntegrityError
 from openai.types.responses.response_output_item import ImageGenerationCall
 
 from chatlab.models import Message
@@ -27,7 +28,7 @@ from simcore.models import SimulationImage
 from simcore.models import SimulationMetadata
 from .models import Response
 from .models import ResponseType
-from .response_schema import PatientInitialSchema, PatientResultsSchema
+from .response_schema import PatientInitialSchema, PatientResultsSchema, SimulationFeedbackSchema
 from .response_schema import PatientReplySchema
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class StructuredOutputParser:
              one with SimulationMetadata objects.
         """
         _created_messages = []
+
         match output:
 
             case PatientInitialSchema() | PatientReplySchema():
@@ -140,6 +142,12 @@ class StructuredOutputParser:
                 _created_results: list[LabResult | RadResult] = await self._parse_results(output)
                 return [], _created_results
 
+            case SimulationFeedbackSchema():
+
+                attribute = "SimulationFeedback"
+                _created_metadata: list[SimulationMetadata] = await self._parse_metadata(output, attribute)
+                return [], _created_metadata
+
             case str():
 
                 # Create a new Message instance from the output and
@@ -191,173 +199,6 @@ class StructuredOutputParser:
 
         return _message_tasks, _metadata_tasks
 
-    async def parse_output_v1(
-        self,
-        output: dict or str,
-        **kwargs,
-    ) -> list[Message] | list[SimulationMetadata]:
-        warnings.warn(
-            message="`function is deprecated. Use `_parse_output` instead.",
-            category=PendingDeprecationWarning,
-            stacklevel=2
-        )
-
-        func_name = inspect.currentframe().f_code.co_name
-
-        logger.debug(f"response output: {output}")
-
-        if isinstance(output, str):
-            output = json.loads(output)
-
-        match self.response_type:
-
-            case ResponseType.FEEDBACK:
-                await self.log(func_name, f"Feedback Output: {output}")
-                await self._parse_metadataV1(output, "SimulationFeedback")
-                return []
-
-            case ResponseType.PATIENT_RESULTS:
-                _results = {
-                    "LabResult": output.get("lab_results") or [],
-                    "RadResult": output.get("radiology_results") or [],
-                }
-
-                results_tasks = []
-                for attribute, data in _results.items():
-                    logger.debug(f"[{func_name}] parsing {attribute} (data: {data})...")
-                    if data:
-                        results_tasks.append(
-                            self._parse_metadata(
-                                data,
-                                attribute=attribute,
-                                field_map={
-                                    "order_name": "key",
-                                    "result_value": "value",
-                                },
-                            )
-                        )
-                logger.debug(
-                    f"[{func_name}] parsed {len(results_tasks)} results tasks..."
-                )
-                return [
-                    item
-                    for sublist in await asyncio.gather(*results_tasks)
-                    for item in sublist
-                ]
-
-            case ResponseType.MEDIA:
-                media_tasks = [
-                    self._parse_media(
-                        media_b64=media.b64_json, mime_type=kwargs.get("mime_type")
-                    )
-                    for media in output
-                ]
-
-                # Create SimulationImage objects (and ignore errors)
-                media_list = await asyncio.gather(*media_tasks, return_exceptions=True)
-                media_list = [m for m in media_list if not isinstance(m, Exception)]
-                logger.debug(
-                    f"[{func_name}] parsed {len(media_list)} media items... \n\nstarting content creation...\n"
-                )
-
-                # Create Message objects for each SimulationImage, then
-                # return a list of messages
-                message_tasks = [
-                    self._parse_message(message_string=None, media=media)
-                    for media in media_list
-                ]
-                return await asyncio.gather(*message_tasks)
-
-        # Check if an image was requested and trigger image generation
-        if image_requested := coerce_to_bool(output.get("image_requested", False)):
-            # Lazy import to avoid circular dependency
-            from simai.tasks import generate_patient_reply_image_task as new_image_task
-
-            logger.debug(f"[{func_name}]: image_requested={image_requested}")
-            try:
-                new_image_task.delay(simulation_id=self.simulation.pk)
-            except Exception as e:
-                logger.warning(
-                    f"[{func_name}] Celery image task failed to enqueue: {e}"
-                )
-
-        # If it's a full OpenAI response, merge all assistant content outputs
-        if isinstance(output, dict) and "output" in output:
-            assistant_messages = output["output"]
-            output_chunks = []
-
-            for msg in assistant_messages:
-                for part in msg.get("content") or []:
-                    if part.get("type") == "output_text":
-                        try:
-                            parsed = json.loads(part["content"])
-                            output_chunks.append(parsed)
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"[{func_name}] Failed to parse part: {e}")
-
-            # Merge messages and metadata
-            merged_output = {
-                "messages": [],
-                "metadata": {"patient_metadata": {}, "simulation_metadata": []},
-            }
-            for chunk in output_chunks:
-                merged_output["messages"].extend(chunk.get("messages") or [])
-                metadata = chunk.get("metadata") or {}
-
-                # Merge patient_metadata
-                if "patient_metadata" in metadata:
-                    merged_output["metadata"]["patient_metadata"].update(
-                        metadata["patient_metadata"]
-                    )
-
-                # Extend simulation_metadata list
-                if "simulation_metadata" in metadata:
-                    merged_output["metadata"]["simulation_metadata"].extend(
-                        metadata["simulation_metadata"]
-                    )
-
-            output = merged_output
-
-        # Now handle the normal parsing flow
-        messages = output.get("messages") or []
-        metadata = output.get("metadata") or {}
-
-        # Gracefully handle missing or null metadata blocks
-        patient_data = metadata.get("patient_metadata") or {}
-        simulation_data = metadata.get("simulation_metadata") or {}
-        scenario_data = metadata.get("scenario_metadata") or {}
-        patient_history = patient_data.get("medical_history") or {}
-        patient_metadata = {
-            k: v
-            for k, v in patient_data.items()
-            if k not in ("medical_history", "additional")
-        }
-        patient_metadata.update(patient_data.get("additional_metadata") or {})
-
-        logger.debug(f"{func_name} parsed {len(messages)} messages")
-        logger.debug(
-            f"{func_name} simulation_data {type(simulation_data)}: {simulation_data}"
-        )
-
-        metadata_tasks = []
-        if patient_metadata:
-            metadata_tasks.append(
-                self._parse_metadataV1(patient_metadata, "PatientDemographics")
-            )
-        if patient_history:
-            metadata_tasks.append(
-                self._parse_metadataV1(patient_history, "PatientHistory")
-            )
-        if simulation_data:
-            metadata_tasks.append(
-                self._parse_metadataV1(simulation_data, "SimulationMetadata")
-            )
-        if scenario_data:
-            await self._parse_scenario_attribute(scenario_data)
-
-        await asyncio.gather(*metadata_tasks)
-        message_tasks = [self._parse_message(m) for m in messages]
-        return await asyncio.gather(*message_tasks)
 
     async def _parse_message(self, message_string: str | None, **kwargs) -> Message:
         """
@@ -532,8 +373,19 @@ class StructuredOutputParser:
                         init_kwargs["value"] = str(entry)
 
                 # Create the object, then append it to `instances` and log it (DEBUG only)
-                instance = await Subclass.objects.acreate(**init_kwargs)
-                instances.append(instance)
+                _created: bool
+                try:
+                    instance = await Subclass.objects.acreate(**init_kwargs)
+                    _created = True
+                except IntegrityError:
+                    instance = await Subclass.objects.aget(
+                        simulation=init_kwargs["simulation"],
+                        key=init_kwargs["key"]
+                    )
+                    _created = False
+
+                instances.append(instance) if _created else None
+
                 logger.debug(
                     f"new {attribute} created for Sim#{instance.simulation or "UNK"}: {instance.key or "UNK"}"
                 )
@@ -542,108 +394,6 @@ class StructuredOutputParser:
                 await self.log(func_name, f"Error creating {attribute}: {e}", WARNING)
 
         return instances
-
-    async def _parse_metadataV1(
-        self, metadata: dict | list, attribute: str
-    ) -> list[SimulationMetadata]:
-        """
-        Parses simulation metadata and creates corresponding database objects based on the
-        provided attribute type. This function handles both dictionary and list types of
-        metadata, determines the appropriate model class dynamically, and logs actions
-        performed during metadata processing.
-
-        :param metadata: Simulation metadata to be processed. Can be a dictionary or a list containing
-                         metadata entries. Each entry within metadata should match the expected format
-                         required to create a database object for the specific attribute.
-        :type metadata: dict | list
-        :param attribute: The name of the model class corresponding to the metadata being processed.
-                          The function uses this attribute to dynamically find and import the class.
-        :type attribute: str
-        :return: A list of successfully created database objects corresponding to the given metadata.
-        :rtype: list[SimulationMetadata]
-        :raises ModuleNotFoundError: If the specified model module cannot be found.
-        :raises AttributeError: If the specified attribute cannot be located in the module.
-        """
-        warnings.warn(
-            message="`deprecated. Use `_parse_metadata` instead.",
-            category=PendingDeprecationWarning,
-            stacklevel=2
-        )
-
-        func_name = inspect.currentframe().f_code.co_name
-        logger.debug(
-            f"[{func_name}] received {attribute} input ({type(metadata)}): {metadata}"
-        )
-
-        instances = []
-
-        try:
-            module = importlib.import_module("simcore.models")
-            Subclass = getattr(module, attribute)
-        except (ModuleNotFoundError, AttributeError) as e:
-            logger.error(f"[{func_name}] Invalid attribute '{attribute}': {e}")
-            return []
-
-        def clean_key(k: str) -> str:
-            return k.lower().replace("_", " ").strip()
-
-        async def create_field(**kwargs):
-            obj = await Subclass.objects.acreate(**kwargs)
-            instances.append(obj)
-            await self.log(func_name, f"... new {attribute} created: {obj.key}", DEBUG)
-
-        if attribute.casefold() == "patienthistory":
-            for entry in metadata:
-                if not isinstance(entry, dict):
-                    await self.log(
-                        func_name, f"Expected dict, got {type(entry)}", WARNING
-                    )
-                    continue
-                await create_field(
-                    simulation=self.simulation,
-                    key=entry.get("diagnosis"),
-                    is_resolved=entry.get("is_resolved"),
-                    duration=entry.get("duration"),
-                    value=f"{entry.get('diagnosis')} ({'resolved' if entry.get('is_resolved') else 'ongoing'})",
-                )
-            return instances
-
-        if isinstance(metadata, dict):
-            for key, value in metadata.items():
-                value_str = (
-                    json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-                )
-                await create_field(
-                    simulation=self.simulation,
-                    key=clean_key(key),
-                    value=value_str,
-                )
-            return instances
-
-        if isinstance(metadata, list):
-            for index, item in enumerate(metadata):
-                if isinstance(item, dict):
-                    for key, value in item.items():
-                        value_str = (
-                            json.dumps(value)
-                            if isinstance(value, (dict, list))
-                            else str(value)
-                        )
-                        await create_field(
-                            simulation=self.simulation,
-                            key=f"Condition #{index} {clean_key(key)}",
-                            value=value_str,
-                        )
-                else:
-                    await self.log(
-                        func_name,
-                        f"Expected a dict in metadata list, but got {type(item)}",
-                        WARNING,
-                    )
-            return instances
-
-        await self.log(func_name, f"Unhandled metadata type: {type(metadata)}", WARNING)
-        return []
 
     async def _parse_scenario_attribute(self, attributes: dict) -> None:
         """

@@ -23,8 +23,8 @@ Example:
 
 Author: Jackfruit SimWorks
 """
-
-from typing import List
+from enum import Enum
+from typing import List, Annotated
 from typing import Literal
 from typing import Optional
 
@@ -163,4 +163,20 @@ class PatientResultsSchema(StrictSchema):
     radiology_results: List[RadResult] = Field(
         ...,
         description="The radiology results of the patient. Each item is a radiology result object.",
+    )
+
+Boolish = Literal["true", "false", "partial"]
+
+class SimulationFeedbackSchema(StrictSchema):
+    correct_diagnosis: Boolish = Field(
+        ..., description="Whether the user provided the correct diagnosis."
+    )
+    correct_treatment_plan: Boolish = Field(
+        ..., description="Whether the user provided the correct treatment plan."
+    )
+    patient_experience: Annotated[int, Field(ge=0, le=5)] = Field(
+        ..., description="The patient's experience with the encounter rated 0-5.."
+    )
+    overall_feedback: str = Field(
+        ..., description="The feedback text from the simulation."
     )

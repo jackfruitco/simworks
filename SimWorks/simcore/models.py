@@ -351,6 +351,14 @@ class SimulationMetadata(PolymorphicModel):
     key = models.CharField(max_length=255)
     value = models.CharField(max_length=2000)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["simulation", "key"],
+                name="uniq_simulation_key",
+            )
+        ]
+
     @classmethod
     def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
         warnings.warn(
@@ -472,6 +480,7 @@ class PatientDemographics(SimulationMetadata):
 
     def __str__(self) -> str:
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
 
 
 class PatientHistory(SimulationMetadata):

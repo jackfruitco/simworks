@@ -6,7 +6,7 @@
 {% if tool.data %}
   <ul class="sim-metadata">
     {% for metafield in tool.data %}
-        {% if metafield.key|lower == "feedback" %}
+        {% if metafield.key|lower == "overall_feedback" %}
             <li><i style="color: var(--color-muted)">{{ metafield.value }}</i></li>
         {% elif metafield.key|lower == "topics" %}
           <strong>Topics to consider researching:</strong>

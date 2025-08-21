@@ -34,10 +34,10 @@ from simcore.models import SimulationMetadata
 
 from .models import ResponseType
 from .openai_gateway import process_response
-from .output_schemas import feedback_schema
 from .response_schema import PatientInitialSchema
 from .response_schema import PatientReplySchema
 from .response_schema import PatientResultsSchema
+from .response_schema import SimulationFeedbackSchema
 from .prompts import Prompt
 
 logger = logging.getLogger(__name__)
@@ -290,7 +290,7 @@ class SimAIClient:
         simulation = await Simulation.aresolve(simulation)
 
         payload = await build_feedback_payload(simulation)
-        text = await feedback_schema()
+        text: ResponseTextConfigParam = build_response_text_param(SimulationFeedbackSchema)
         response = await self.client.responses.create(
             model=self.model,
             text=text,
