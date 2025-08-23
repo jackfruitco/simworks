@@ -32,7 +32,8 @@ class Response(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, related_name="responses", on_delete=models.CASCADE
     )
-    raw = models.TextField(verbose_name="OpenAI Raw Response")
+
+    raw = models.JSONField(verbose_name="OpenAI Raw Response")
     id = models.CharField("OpenAI Response ID", max_length=255, primary_key=True)
     order = models.PositiveIntegerField(editable=False)
     type = models.CharField(

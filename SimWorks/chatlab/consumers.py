@@ -20,7 +20,7 @@ from .models import RoleChoices
 from .utils import broadcast_message
 
 logger = logging.getLogger(__name__)
-ai = SimAIClient()
+ai: SimAIClient = SimAIClient()
 
 
 class ContentMode(str, Enum):
@@ -303,17 +303,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             # Send user's input to OpenAI to generate a response, then
             # Wait until the minimum delay time is met
-            generated_responses = await ai.generate_patient_reply(user_msg)
+            _generated_messages: list[Message]
+            _generated_messages, _ = await ai.generate_patient_reply(user_msg)
             elapsed = time.monotonic() - start_time
             if elapsed < min_delay_time:
                 await asyncio.sleep(min_delay_time - elapsed)
 
-            # Convert generated_responses to a list in a synchronous thread
-            sim_responses_list = await sync_to_async(list)(generated_responses)
+            # Convert _generated_messages to a list in a synchronous thread
+            # sim_responses_list = await sync_to_async(list)(_generated_messages)
 
             # Broadcast each system-generated message
-            for message in sim_responses_list:
-                await broadcast_message(message, status="delivered")
+            for m in _generated_messages:
+                await broadcast_message(m, status="delivered")
 
     async def handle_typing(self, data: dict) -> None:
         """

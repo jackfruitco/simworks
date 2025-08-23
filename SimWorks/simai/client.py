@@ -3,19 +3,30 @@ This module provides an asynchronous client for interacting with the OpenAI API
 to facilitate patient simulations in a chat environment. It includes functions
 to build payloads for patient replies and introductions, and a service class
 to generate responses using the OpenAI model.
+
+TODO: Remove deprecated `self.log(...)` usages
+TODO: Implement `_get_raw_response` and `get_response` methods
+TODO: Move custom methods other than those above out of the client
 """
 
 import inspect
 import logging
 import mimetypes
+import warnings
 from typing import List
 from typing import Optional
 from typing import Union
 
 from asgiref.sync import sync_to_async
+from openai.types.responses import (Response as OpenAIResponse,
+                                    ResponseTextConfigParam)
+
 from chatlab.models import Message
 from django.conf import settings
 from openai import AsyncOpenAI
+
+from simcore.ai.utils.helpers import build_response_text_param
+from simcore.ai.utils.validation import validate_image_format
 from simcore.models import LabResult
 from simcore.models import RadResult
 from simcore.models import Simulation
@@ -23,9 +34,10 @@ from simcore.models import SimulationMetadata
 
 from .models import ResponseType
 from .openai_gateway import process_response
-from .output_schemas import feedback_schema
-from .output_schemas import message_schema
-from .output_schemas import patient_results_schema
+from .response_schema import PatientInitialSchema
+from .response_schema import PatientReplySchema
+from .response_schema import PatientResultsSchema
+from .response_schema import SimulationFeedbackSchema
 from .prompts import Prompt
 
 logger = logging.getLogger(__name__)
@@ -43,34 +55,52 @@ def build_patient_initial_payload(simulation: Simulation) -> List[dict]:
         List[dict]: A list of dictionaries representing the role and content for the introduction.
     """
 
-    instruction = simulation.prompt
-    instruction += (
+    prompt = simulation.prompt
+    prompt += (
         f"\n\nYour name is {simulation.sim_patient_full_name}. "
         f"Stay in character as {simulation.sim_patient_full_name} and respond accordingly."
     )
     return [
-        {"role": "developer", "content": instruction},
-        {"role": "user", "content": "Begin."},
+        {"role": "developer", "content": prompt},
+        {"role": "user", "content": ""},
     ]
 
 
 @sync_to_async
-def build_patient_reply_payload(user_msg: Message) -> dict:
+def build_patient_reply_payload(user_msg: Message, image_generation: bool = False) -> dict:
     """
     Build the payload for the patient's reply to be sent to OpenAI.
 
-    Args:
-        user_msg (Message): The user's message object containing the previous response ID and input.
+    :param user_msg: The user's content object containing the previous response ID and input.
+    :type user_msg: Message
 
-    Returns:
-        dict: A dictionary containing the previous response ID and user input.
+    :param image_generation: Whether to generate an image or not. Defaults to False.
+    :type image_generation: bool, optional
+
+    :return: A dictionary containing the previous response ID and user input.
+    :rtype: dict
     """
+    _previous_response_id = user_msg.simulation.get_previous_response_id() or None
+    _input = [user_msg.get_openai_input() or None]
+
+    # Add developer prompt if image generation is enabled
+    if image_generation:
+        _prompt = Prompt.build(
+            "Image.PatientImage",
+            simulation=user_msg.simulation,
+            include_default=False,
+        )
+
+        _input.append(
+            {
+                "role": "developer",
+                "content": _prompt,
+            }
+        )
+
     return {
-        "previous_response_id": user_msg.simulation.get_previous_response_id() or None,
-        "input": [
-            user_msg.get_openai_input(),
-            # {"role": "user", "content": "content"},
-        ],
+        "previous_response_id": _previous_response_id,
+        "input": _input,
     }
 
 
@@ -80,7 +110,7 @@ def build_feedback_payload(simulation: Simulation) -> dict:
     Build the payload for AI feedback after the simulation has ended.
 
     Args:
-        simulation (Simulation): The simulation object to reference the last AI message from.
+        simulation (Simulation): The simulation object to reference the last AI content from.
 
     Returns:
         dict: A dictionary containing the previous response ID and developer/user input.
@@ -155,11 +185,26 @@ class SimAIClient:
 
     @staticmethod
     async def log(func_name, msg="triggered", level=logging.DEBUG) -> None:
+        warnings.warn(
+            "this logger util is deprecated. Use direct logging instead.",
+            PendingDeprecationWarning,
+            stacklevel=2,
+        )
         return logger.log(level, f"[{func_name}]: {msg}")
 
+    async def _get_raw_response(
+            self,
+    ) -> OpenAIResponse:
+        pass
+
+    async def get_response(
+            self,
+    ) -> OpenAIResponse:
+        pass
+
     async def generate_patient_initial(
-        self, simulation: Simulation, stream: bool = False
-    ) -> List[Message]:
+        self, simulation: Simulation | int, stream: bool = False
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate the initial introduction message for the patient in the simulation.
 
@@ -168,26 +213,32 @@ class SimAIClient:
             stream (bool): If the feedback should be streamed.
 
         Returns:
-            List[Message]: A list of Message objects representing the initial introduction.
+            tuple: A tuple containing a list of Message objects representing
+            the patient's introduction and a list of SimulationMetadata objects.
         """
         func_name = inspect.currentframe().f_code.co_name
 
-        # Get output schema as `content`, and input_payload (prompt, message)
-        text = await message_schema(initial=True)
+        # Resolve Simulation instance to allow int to be passed
+        simulation = await Simulation.aresolve(simulation)
+
+        # Build output schema (`text` param) and input_payload (`input` param)
+        text: ResponseTextConfigParam = build_response_text_param(PatientInitialSchema)
         input_payload = await build_patient_initial_payload(simulation)
 
-        response = await self.client.responses.create(
+        response: OpenAIResponse = await self.client.responses.create(
             model=self.model,
             input=input_payload,
             text=text,
             stream=stream,
         )
 
-        return await process_response(response, simulation, stream)
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(response, simulation, stream)
+        return _messages, _metadata
 
     async def generate_patient_reply(
         self, user_msg: Message, stream: bool = False
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate a reply from the patient based on the user's message.
 
@@ -208,7 +259,7 @@ class SimAIClient:
 
         # Build payload (prompt, instructions), then get the response from OpenAI
         payload = await build_patient_reply_payload(user_msg)
-        text = await message_schema()
+        text: ResponseTextConfigParam = build_response_text_param(PatientReplySchema)
         response = await self.client.responses.create(
             model=self.model,
             text=text,
@@ -217,11 +268,14 @@ class SimAIClient:
         )
 
         simulation = user_msg.simulation
-        return await process_response(response, simulation, stream)
+
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(response, simulation, stream)
+        return _messages, _metadata
 
     async def generate_simulation_feedback(
-        self, simulation: Simulation, stream: bool = False
-    ) -> List[Message]:
+        self, simulation: Simulation | int, stream: bool = False
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate feedback for the user at the completion of the simulation.
 
@@ -232,8 +286,11 @@ class SimAIClient:
         Returns:
             List[Message]: A list of Message objects representing the AI-generated feedback.
         """
+        # Get the simulation instance if provided an int
+        simulation = await Simulation.aresolve(simulation)
+
         payload = await build_feedback_payload(simulation)
-        text = await feedback_schema()
+        text: ResponseTextConfigParam = build_response_text_param(SimulationFeedbackSchema)
         response = await self.client.responses.create(
             model=self.model,
             text=text,
@@ -241,28 +298,100 @@ class SimAIClient:
             **payload,
         )
 
-        return await process_response(
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response, simulation, stream, response_type=ResponseType.FEEDBACK
         )
+        return _messages, _metadata
+
+    async def generate_patient_image(
+        self,
+        *modifiers,
+        simulation: Simulation | int = None,
+        user_msg: Message = None,
+        _stream: bool = False,
+        _format="webp",
+        _include_default=False,
+        **kwargs,
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
+        """
+        Generate a patient image for a given simulation using OpenAI Response API with Image Generation.
+        :param modifiers:
+        :param simulation: The Simulation instance or int (pk)
+        :param user_msg: The Message instance for the user's input (optional)
+        :param _stream: Whether to stream the OpenAI Response or not
+        :param _format: The format of the image to generate. Defaults to "webp"
+        :param _include_default: Whether to include the default prompt or not. Defaults to False.
+        :param kwargs:
+        :return:
+        """
+        # Ensure either user_msg or simulation is provided
+        if user_msg is None and simulation is None:
+            raise ValueError("Must provide either user_msg or simulation")
+
+        # Get the simulation instance if provided as int
+        simulation = await Simulation.aresolve(
+            simulation if simulation is not None else user_msg.simulation
+        )
+
+        # Get the last content from the simulation if user_msg is not provided
+        if user_msg is None:
+            user_msg = await simulation.messages.alast()
+
+        logger.info(f"starting image generation image (simulation id: {simulation.pk})...")
+
+        # Validate the provided image format
+        # See https://platform.openai.com/docs/api-reference/images/create#images-create-output_format
+        try:
+            _format = validate_image_format(_format)
+        except ValueError as e:
+            from django.conf import settings
+            _default_format = settings.DEFAULT_IMAGE_FORMAT
+            logger.warning(f"Invalid image format: `{_format}`. Using default instead: `{_default_format}`")
+            _format = _default_format
+
+        # Build payload including previous_response_id and input
+        payload = await build_patient_reply_payload(user_msg, image_generation=True)
+
+
+        try:
+            response = await self.client.responses.create(
+                model=self.model,
+                stream=_stream,
+                tools=[{"type": "image_generation"}],
+                **payload
+            )
+        except Exception as e:
+            raise f"Image Generation failed: {e}"
+
+        # Process Response, and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
+            response=response,
+            simulation=simulation,
+            stream=_stream,
+            response_type=ResponseType.MEDIA,
+        )
+        return _messages, _metadata
 
     # noinspection PyTypeChecker
     async def generate_patient_reply_image(
         self,
         *modifiers,
         simulation: Simulation | int = None,
+        model: str = "gpt-image-1",
+        stream: bool = False,
         output_format="webp",
         include_default=False,
         **kwargs,
-    ) -> List[Message]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate a patient image for a given simulation using OpenAI Image API.
         """
         func_name = inspect.currentframe().f_code.co_name
         logger.debug(f"[{func_name}] triggered...")
 
-        # Get simulation instance if provided as int
-        if isinstance(simulation, int):
-            simulation = await Simulation.objects.aget(id=simulation)
+        # Get the simulation instance if provided as int
+        simulation = await Simulation.aresolve(simulation)
 
         logger.info(f"starting image generation image for Sim{simulation.pk}...")
 
@@ -284,12 +413,13 @@ class SimAIClient:
             include_default=include_default,
             **kwargs,
         )
+        _input = build_patient_reply_payload()
 
         # Call OpenAI API Images API
         # See https://platform.openai.com/docs/api-reference/images
         try:
             response = await self.client.images.generate(
-                model="gpt-image-1",
+                model=model,
                 prompt=prompt,
                 n=1,
                 size="1024x1024",
@@ -300,7 +430,8 @@ class SimAIClient:
             logger.error(f"[{func_name}] OpenAI image generation failed: {e}")
             return e
 
-        return await process_response(
+        # Process Response and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response=response,
             simulation=simulation,
             stream=False,
@@ -308,6 +439,7 @@ class SimAIClient:
             mime_type=mimetypes.guess_file_type(f"image.{output_format}")[0]
             or "image/webp",
         )
+        return _messages, _metadata
 
     async def generate_patient_results(
         self,
@@ -317,7 +449,7 @@ class SimAIClient:
         include_default=False,
         stream: bool = False,
         **kwargs,
-    ) -> list[LabResult] | list[RadResult]:
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
         """
         Generate patient results for requested labs or radiology using OpenAI Image API.
         """
@@ -331,7 +463,7 @@ class SimAIClient:
 
         logger.info(f"starting lab result generation for Sim{simulation.pk}...")
 
-        text = await patient_results_schema()
+        text: ResponseTextConfigParam = build_response_text_param(PatientResultsSchema)
         payload = await build_patient_results_payload(simulation, lab_orders)
         response = await self.client.responses.create(
             model=self.model,
@@ -340,9 +472,11 @@ class SimAIClient:
             **payload,
         )
 
-        return await process_response(
+        # Process Response and return a tuple with a list of Messages and Metadata
+        _messages, _metadata = await process_response(
             response,
             simulation,
             stream,
             response_type=ResponseType.PATIENT_RESULTS,
         )
+        return _messages, _metadata
