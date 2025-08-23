@@ -9,7 +9,7 @@ import uuid
 import warnings
 from logging import DEBUG
 from logging import WARNING
-from typing import Coroutine
+from typing import Coroutine, Any
 from typing import Optional
 
 from asgiref.sync import sync_to_async
@@ -59,7 +59,8 @@ class StructuredOutputParser:
     async def parse_output(
             self,
             output: PatientInitialSchema | PatientReplySchema |
-                    PatientResultsSchema | ImageGenerationCall | str,
+                    PatientResultsSchema | ImageGenerationCall |
+                    SimulationFeedbackSchema | str,
             response_type: ResponseType = ResponseType.REPLY,
             **kwargs,
     ) -> tuple[list[Message], list[SimulationMetadata]]:
@@ -145,7 +146,14 @@ class StructuredOutputParser:
             case SimulationFeedbackSchema():
 
                 attribute = "SimulationFeedback"
-                _created_metadata: list[SimulationMetadata] = await self._parse_metadata(output, attribute)
+
+                _output_dict: dict[str, Any] = output.model_dump()
+                metadata_tasks = [
+                    self._parse_metadata({"key": k, "value": v}, attribute)
+                    for k, v in _output_dict.items()
+                ]
+
+                _created_metadata: list[SimulationMetadata] = await asyncio.gather(*metadata_tasks)
                 return [], _created_metadata
 
             case str():

@@ -7,7 +7,7 @@ from openai.types.responses.response_text_config_param import ResponseTextConfig
 from pydantic import BaseModel, ValidationError
 
 from simai.models import ResponseType
-from simai.response_schema import PatientInitialSchema, PatientResultsSchema
+from simai.response_schema import PatientInitialSchema, PatientResultsSchema, SimulationFeedbackSchema
 from simai.response_schema import PatientReplySchema
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ MODEL_MAP: dict[ResponseType, type[PatientReplySchema | PatientInitialSchema]] =
     ResponseType.INITIAL: PatientInitialSchema,
     ResponseType.REPLY:  PatientReplySchema,
     ResponseType.PATIENT_RESULTS: PatientResultsSchema,
+    ResponseType.FEEDBACK: SimulationFeedbackSchema,
 }
 
 
@@ -42,7 +43,7 @@ def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam
 def maybe_coerce_to_schema(
     response: OpenAIResponse,
     response_type: ResponseType
-) -> PatientInitialSchema | PatientReplySchema | str:
+) -> PatientInitialSchema | PatientReplySchema | SimulationFeedbackSchema | str:
     """
     Convert `response.output_text` into a Pydantic model for INITIAL/REPLY types.
 
