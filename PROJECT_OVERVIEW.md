@@ -1,92 +1,99 @@
+# SimWorks / ChatLab – Project Overview
 
-## SimWorks / ChatLab – Project Overview
-
-### 🔧 Project Summary
-SimWorks is a Django-based web app simulating real-time military medical scenarios for U.S. Army SOF medics. It features a secure, Signal-inspired chat interface to deliver immersive, AI-powered TeleMed interactions. The platform supports live message delivery, toast notifications, dark/light themes, and mobile-first responsiveness.
-
----
-
-### 📦 App Structure
-
-#### chatlab/
-- `models.py`: Simulation, Message
-- `views.py`: simulation launch, chat UI, lazy loading, search
-- `templates/chatlab/`: includes `index.html`, `chat.html`, `simulation.html`, and `partials/`
-- `static/chatlab/`: `chat.css`, `style.css`, `sounds/`
-
-#### core/
-- WebSocket consumer for notifications
-- Toast logic (`notifications.js`), audio (`alert.wav`, `simulation_ended.wav`)
-- Notification display and persistent session storage
-
-#### SimManAI/
-- OpenAI Async client to build, generate, process, and parse AI responses
-- Flow: client --> gateway --> parser -> client --> (ChatConsumer)
-- Includes OpenAI Token analyics to track and manage usage
-
-#### Frontend Technologies
-- **HTMX** for partial loading and refreshes (message history, search)
-- **Alpine.js** for theme toggle, auto-refresh, typing behavior
-- **Custom CSS** for Signal-style chat and base branding
+## Project summary
+SimWorks is a Django-based training platform that delivers chat-driven clinical simulations. Users conduct scenario sessions, exchange messages (with media), and receive AI-assisted responses. The system records patient data, simulation artifacts, and feedback for review and assessment.
 
 ---
 
-### ⚙️ Core Features
-- Signal-style **real-time chat**
-- OpenAI-generated AI responses with simulated delays
-- Message `Delivered` + `Read` indicators
-- Role-based WebSocket handling (USER vs SIM)
-- WebSocket notifications with toast display and alert sounds
-- **Dark/light theme** with Alpine-based toggle and persistence
-- Fully mobile-responsive layout
+## App map
+
+- accounts
+  - Custom user model, invitations, and role/resource authorization.
+- core
+  - Shared utilities and API access control for external integrations.
+- simcore
+  - Domain models for simulations, metadata, patient demographics/history, lab/radiology results, feedback, and simulation media.
+- chatlab
+  - Chat sessions, messages, and message media links for conversation flows inside a simulation.
+- simai
+  - Storage and lifecycle for AI responses associated with simulations, including response types and token accounting.
 
 ---
 
-### 🔌 Infrastructure & Integration
-- **Django Channels** (ASGI via Daphne)
-- **Redis** for Channels backing layer
-- **Docker** with .env configuration for local development
-- **PostgreSQL** for persistent simulation/message storage
-- **Cloudflare R2** integration (for media, TTS planned)
+## Domain model highlights
+
+- Simulation-centric design
+  - simcore.Simulation is the anchor for session state, metadata, results, and artifacts.
+  - Patient data: demographics, history, lab and radiology results.
+  - Media: simulation-level images and per-message media links.
+
+- Chat workflow
+  - chatlab.ChatSession groups user interaction; chatlab.Message represents each utterance.
+  - Media attachments are tracked via chatlab.MessageMediaLink.
+
+- AI responses
+  - simai.Response persists provider payloads and metadata.
+  - Response types include initial, reply, feedback, media, and patient-results variants.
+  - Ordered per simulation with unique sequence constraints; token usage (input/output/reasoning) is tallied for analytics.
+
+- Feedback and evaluation
+  - simcore.SimulationFeedback captures user or instructor assessments tied to a simulation.
+
+- Access and authorization
+  - accounts.CustomUser with role/resource mapping for fine-grained permissions.
+  - core.ApiAccessControl provides per-key enablement/limitations for API-facing features.
 
 ---
 
-### ✅ Standards & Conventions
-- **WebSocket Endpoints**:
-  - `/ws/sim/<simulation_id>/` (chat)
-  - `/ws/notifications/` (toast system)
-- **Prompt model**:
-  - Staff-editable via admin or UI
-  - `get_default_prompt()` ensures default exists and is linked
-- **Static Assets**:
-  - Chat sounds in `static/chatlab/sounds/`
-  - Theme and chat styles in `base.css`, `chat.css`, `style.css`
+## Core features
+
+- Chat-driven simulation sessions with message history and media.
+- AI-assisted replies persisted with raw payloads and token metrics.
+- Patient context (demographics/history) and clinical data (lab/rad results) embedded into scenarios.
+- Role- and resource-aware access controls across apps.
+- Simulation feedback capture and audit-friendly metadata.
 
 ---
 
-### 🧪 Testing & Validation
-- Unit tests for all models: `Prompt`, `Simulation`, `Message`
-- Tests ensure:
-  - Message ordering and OpenAI ID handling
-  - Simulation completeness and timeout
-  - Prompt assignment and `modified_by`/`created_by` tracking
-- HTMX and WebSocket integration tested via browser + test client
+## Tech stack and services
+
+- Python 3.13, Django
+- Celery + Redis for background jobs and task orchestration
+- Pillow for image handling
+- pytest for testing
+- HTTP integrations via requests
+
+Package management: uv (use uv commands for dependency operations and scripted runs).
 
 ---
 
-### 🌟 Current Priorities
-- Maintain Signal-style UX across chat and message flow
-- Complete dark/light mode parity site-wide
-- Real-time status updates (typing, delivered, read, end-state)
-- Lazy loading + HTMX-driven simulation history and message panels
+## Conventions and notes
+
+- Simulations own most related records (messages, AI responses, results, images) for straightforward querying and cleanup.
+- AI responses store the provider’s response identifier as the primary key and the raw payload for traceability.
+- Responses are strictly ordered per simulation and indexed by creation time for efficient retrieval.
+- Related names are defined to make reverse lookups explicit (e.g., simulation.responses, user.responses).
 
 ---
 
-### ⚠️ Troubleshooting Protocol
-When errors occur:
-1. **Models/Migrations** — run `makemigrations` + `migrate` to sync schema
-2. **Templates** — ensure `hx-target` IDs and `{% include %}`s match expected content
-3. **WebSockets** — verify `routing.py`, `consumers.py`, and frontend scripts align
-4. **HTMX Logic** — confirm `request.htmx` returns the correct partial
+## Development quickstart
+
+- Install and run migrations:
+  - uv run python manage.py migrate
+- Start the development server:
+  - uv run python manage.py runserver
+- Run tests:
+  - uv run pytest
+
+Configure environment variables and credentials via your local .env or settings overrides. Use placeholders rather than real secrets in shared materials.
+
+---
+
+## Troubleshooting
+
+1. Migrations: If models change, run makemigrations and migrate to keep the schema synced.
+2. Data integrity: Watch for ordering and uniqueness constraints on AI responses when seeding or replaying events.
+3. Media handling: Ensure Pillow and storage settings are configured for image fields.
+4. Background tasks: Verify Redis connectivity and Celery worker availability for any queued operations.
 
 ---
