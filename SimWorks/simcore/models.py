@@ -14,7 +14,7 @@ from asgiref.sync import sync_to_async
 from autoslug import AutoSlugField
 from channels.db import database_sync_to_async
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
 from django.utils.timezone import now
@@ -273,6 +273,40 @@ class Simulation(models.Model):
 
         return await cls.objects.acreate(user=user, prompt=prompt, **kwargs)
 
+    @classmethod
+    def resolve(cls, _simulation: "Simulation | int") -> "Simulation":
+        """
+        Accept either a Simulation instance or its primary-key integer,
+        and return the corresponding Simulation instance.
+
+        :param _simulation: Simulation instance or primary-key integer
+        :type _simulation: Simulation | int
+        :return: Simulation instance
+        """
+        if isinstance(_simulation, cls):
+            return _simulation
+        try:
+            return cls.objects.get(pk=_simulation)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
+
+    @classmethod
+    async def aresolve(cls, _simulation: "Simulation | int") -> "Simulation":
+        """
+        Async accept either a Simulation instance or its primary-key integer,
+        and return the corresponding Simulation instance.
+
+        :param _simulation: Simulation instance or primary-key integer
+        :type _simulation: Simulation | int
+        :return: Simulation instance
+        """
+        if isinstance(_simulation, cls):
+            return _simulation
+        try:
+            return await cls.objects.aget(pk=_simulation)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
+
     def save(self, *args, **kwargs):
         from simai.prompts import build_prompt
 
@@ -314,19 +348,16 @@ class SimulationMetadata(PolymorphicModel):
         Simulation, on_delete=models.CASCADE, related_name="metadata"
     )
 
-    key = models.CharField(blank=False, null=False, max_length=255)
-    value = models.CharField(blank=False, null=False, max_length=2000)
+    key = models.CharField(max_length=255)
+    value = models.CharField(max_length=2000)
 
-    # @property
-    # @abstractmethod
-    # def attribute(self) -> str:
-    #     """Subclasses must implement this to define the attribute category."""
-    #     pass
-    #
-    # @abstractmethod
-    # def __str__(self):
-    #     """Subclasses must implement this to define the name string."""
-    #     pass
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["simulation", "key"],
+                name="uniq_simulation_key",
+            )
+        ]
 
     @classmethod
     def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
@@ -380,7 +411,7 @@ class LabResult(SimulationMetadata):
     result_comment = models.TextField(blank=True, null=True)
 
     @property
-    def order_name(self) -> str:
+    def result_name(self) -> str:
         return self.key
 
     @property
@@ -394,7 +425,7 @@ class LabResult(SimulationMetadata):
     def serialize(self) -> dict:
         return {
             "id": self.id,
-            "order_name": self.key,
+            "result_name": self.key,
             "panel_name": self.panel_name or None,
             "value": self.value,
             "unit": self.result_unit,
@@ -415,7 +446,7 @@ class RadResult(SimulationMetadata):
     result_flag = models.CharField(max_length=10)
 
     @property
-    def order_name(self) -> str:
+    def result_name(self) -> str:
         return self.key
 
     @property
@@ -429,7 +460,7 @@ class RadResult(SimulationMetadata):
     def serialize(self) -> dict:
         return {
             "id": self.id,
-            "order_name": self.key,
+            "result_name": self.key,
             "result": self.value,
             "result_flag": self.result_flag,
             "attribute": self.attribute,
@@ -449,6 +480,7 @@ class PatientDemographics(SimulationMetadata):
 
     def __str__(self) -> str:
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
+
 
 
 class PatientHistory(SimulationMetadata):
@@ -498,6 +530,13 @@ class SimulationImage(models.Model):
 
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="images"
+    )
+
+    openai_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="OpenAI image ID (if applicable)",
     )
 
     uuid = models.UUIDField(

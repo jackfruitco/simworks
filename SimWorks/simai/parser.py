@@ -9,30 +9,35 @@ import uuid
 import warnings
 from logging import DEBUG
 from logging import WARNING
-from typing import List
+from typing import Coroutine, Any
 from typing import Optional
-from typing import Tuple
 
 from asgiref.sync import sync_to_async
-from channels.db import database_sync_to_async
-from chatlab.models import Message
-from chatlab.models import RoleChoices
-from core.utils import remove_null_keys
-from core.utils.system import coerce_to_bool
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
-from django.db.models import QuerySet
-from simcore.models import LabResult
-from simcore.models import Simulation
+from django.db import IntegrityError
+from openai.types.responses.response_output_item import ImageGenerationCall
+
+from chatlab.models import Message
+from chatlab.models import RoleChoices
+from core.utils import coerce_to_bool
+from core.utils import remove_null_keys
+from core.utils import to_pascal_case
+from simcore.models import Simulation, RadResult, LabResult
 from simcore.models import SimulationImage
 from simcore.models import SimulationMetadata
-
 from .models import Response
 from .models import ResponseType
+from .response_schema import PatientInitialSchema, PatientResultsSchema, SimulationFeedbackSchema
+from .response_schema import PatientReplySchema
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
+DEFAULT_FIELD_MAP: dict[str, str] = {
+    "result_name": "key",
+    "result_value": "value",
+}
 
 class StructuredOutputParser:
     """
@@ -52,178 +57,240 @@ class StructuredOutputParser:
         self.response_type = response_type
 
     async def parse_output(
-        self,
-        output: dict or str,
-        **kwargs,
-    ) -> list[Message] | list[SimulationMetadata]:
-        func_name = inspect.currentframe().f_code.co_name
+            self,
+            output: PatientInitialSchema | PatientReplySchema |
+                    PatientResultsSchema | ImageGenerationCall |
+                    SimulationFeedbackSchema | str,
+            response_type: ResponseType = ResponseType.REPLY,
+            **kwargs,
+    ) -> tuple[list[Message], list[SimulationMetadata]]:
+        """
+        Parses the given output, instantiates it, and returns a tuple
+        containing a list of created Message instances and a list
+        of created SimulationMetadata instances.
 
-        logger.debug(f"response output: {output}")
+        This method handles different types of output, including PatientInitialSchema,
+        PatientReplySchema, ImageGenerationCall, and str by performing specific
+        processing logic for each type. It also manages tasks associated with image
+        generation for PatientReplySchema when required.
 
-        if isinstance(output, str):
-            output = json.loads(output)
+        Args:
+            output: The output to be parsed; can be PatientInitialSchema,
+              PatientReplySchema, ImageGenerationCall, or str.
+            response_type (ResponseType): The type of response to handle,
+              defaulting to ResponseType.REPLY.
+            kwargs: Additional keyword arguments for custom behavior or configuration.
 
-        match self.response_type:
+        Returns:
+            tuple: A tuple containing two lists: one with Message objects and
+             one with SimulationMetadata objects.
+        """
+        _created_messages = []
 
-            case ResponseType.FEEDBACK:
-                await self.log(func_name, f"Feedback Output: {output}")
-                await self._parse_metadataV1(output, "SimulationFeedback")
-                return []
+        match output:
 
-            case ResponseType.PATIENT_RESULTS:
-                _results = {
-                    "LabResult": output.get("lab_results") or [],
-                    "RadResult": output.get("radiology_results") or [],
-                }
+            case PatientInitialSchema() | PatientReplySchema():
 
-                results_tasks = []
-                for attribute, data in _results.items():
-                    logger.debug(f"[{func_name}] parsing {attribute} (data: {data})...")
-                    if data:
-                        results_tasks.append(
-                            self._parse_metadata(
-                                data,
-                                attribute=attribute,
-                                field_map={
-                                    # "key": "order_name",
-                                    # "value": "result_value",
-                                    "order_name": "key",
-                                    "result_value": "value",
-                                },
-                            )
-                        )
-                logger.debug(
-                    f"[{func_name}] parsed {len(results_tasks)} results tasks..."
-                )
-                return [
-                    item
-                    for sublist in await asyncio.gather(*results_tasks)
-                    for item in sublist
-                ]
+                # Build tasks by extracting each message text and metadata
+                # NOTE: `build_schema_tasks` also automatically updates
+                # `scenario_data` on the Simulation instance if provided
+                message_tasks, metadata_tasks = await self.build_schema_tasks(output)
 
-            case ResponseType.MEDIA:
-                media_tasks = [
-                    self._parse_media(
-                        media_b64=media.b64_json, mime_type=kwargs.get("mime_type")
-                    )
-                    for media in output
-                ]
-
-                # Create SimulationImage objects (and ignore errors)
-                media_list = await asyncio.gather(*media_tasks, return_exceptions=True)
-                media_list = [m for m in media_list if not isinstance(m, Exception)]
-                logger.debug(
-                    f"[{func_name}] parsed {len(media_list)} media items... \n\nstarting message creation...\n"
+                # Concurrently run installation of Message and SimulationMetadata objects
+                all_message_results, all_metadata_results = await asyncio.gather(
+                    asyncio.gather(*message_tasks),
+                    asyncio.gather(*metadata_tasks),
                 )
 
-                # Create Message objects for each SimulationImage, then
-                # return a list of messages
-                message_tasks = [
-                    self._parse_message(message=None, media=media)
-                    for media in media_list
+                # Flatten Lists
+                created_messages = [
+                    msg for msgs in all_message_results for msg in msgs
                 ]
-                return await asyncio.gather(*message_tasks)
+                created_metadata = [
+                    md for mds in all_metadata_results for md in mds
+                ]
 
-        # Check if an image was requested and trigger image generation
-        if image_requested := coerce_to_bool(output.get("image_requested", False)):
-            # Lazy import to avoid circular dependency
-            from simai.tasks import generate_patient_reply_image_task as new_image_task
+                if isinstance(output, PatientReplySchema):
+                    # Check if an image was requested and trigger image generation
+                    if image_requested := coerce_to_bool(output.image_requested):
+                        # Lazy import to avoid circular dependency
+                        from simai.tasks import generate_patient_reply_image_task as new_image_task
 
-            logger.debug(f"[{func_name}]: image_requested={image_requested}")
-            try:
-                new_image_task.delay(simulation_id=self.simulation.pk)
-            except Exception as e:
-                logger.warning(
-                    f"[{func_name}] Celery image task failed to enqueue: {e}"
-                )
-
-        # If it's a full OpenAI response, merge all assistant message outputs
-        if isinstance(output, dict) and "output" in output:
-            assistant_messages = output["output"]
-            output_chunks = []
-
-            for msg in assistant_messages:
-                for part in msg.get("content") or []:
-                    if part.get("type") == "output_text":
+                        logger.debug(f"image_requested={image_requested}")
                         try:
-                            parsed = json.loads(part["content"])
-                            output_chunks.append(parsed)
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"[{func_name}] Failed to parse part: {e}")
+                            new_image_task.delay(simulation_id=self.simulation.pk)
+                        except Exception as e:
+                            logger.warning(
+                                f"[_parse_output] Celery image task failed to enqueue: {e}"
+                            )
 
-            # Merge messages and metadata
-            merged_output = {
-                "messages": [],
-                "metadata": {"patient_metadata": {}, "simulation_metadata": []},
-            }
-            for chunk in output_chunks:
-                merged_output["messages"].extend(chunk.get("messages") or [])
-                metadata = chunk.get("metadata") or {}
+                return created_messages, created_metadata
 
-                # Merge patient_metadata
-                if "patient_metadata" in metadata:
-                    merged_output["metadata"]["patient_metadata"].update(
-                        metadata["patient_metadata"]
-                    )
+            case ImageGenerationCall():
 
-                # Extend simulation_metadata list
-                if "simulation_metadata" in metadata:
-                    merged_output["metadata"]["simulation_metadata"].extend(
-                        metadata["simulation_metadata"]
-                    )
+                # Create a new SimulationImage instance from the output, then
+                # Create a new Message instance with the media attached and
+                # Return it in a single-item list and an empty metadata list
+                _image_instance = await self._parse_image_generation(output)
+                _created_message = await self._parse_message(
+                    message_string=None,
+                    media=_image_instance
+                )
+                return [_created_message], []
 
-            output = merged_output
+            case PatientResultsSchema():
 
-        # Now handle the normal parsing flow
-        messages = output.get("messages") or []
-        metadata = output.get("metadata") or {}
+                _created_results: list[LabResult | RadResult] = await self._parse_results(output)
+                return [], _created_results
 
-        # Gracefully handle missing or null metadata blocks
-        patient_data = metadata.get("patient_metadata") or {}
-        simulation_data = metadata.get("simulation_metadata") or {}
-        scenario_data = metadata.get("scenario_metadata") or {}
-        patient_history = patient_data.get("medical_history") or {}
-        patient_metadata = {
-            k: v
-            for k, v in patient_data.items()
-            if k not in ("medical_history", "additional")
-        }
-        patient_metadata.update(patient_data.get("additional_metadata") or {})
+            case SimulationFeedbackSchema():
 
-        logger.debug(f"{func_name} parsed {len(messages)} messages")
-        logger.debug(
-            f"{func_name} simulation_data {type(simulation_data)}: {simulation_data}"
+                attribute = "SimulationFeedback"
+
+                _output_dict: dict[str, Any] = output.model_dump()
+                metadata_tasks = [
+                    self._parse_metadata({"key": k, "value": v}, attribute)
+                    for k, v in _output_dict.items()
+                ]
+
+                _created_metadata: list[SimulationMetadata] = await asyncio.gather(*metadata_tasks)
+                return [], _created_metadata
+
+            case str():
+
+                # Create a new Message instance from the output and
+                # Return it in a single-item list and an empty metadata list
+                return [await self._parse_message(output)], []
+
+            case _:
+
+                raise ValueError(f"Unknown output type: {type(output)}")
+
+    async def build_schema_tasks(
+            self,
+            schema: PatientInitialSchema | PatientReplySchema
+    ) -> (list[Coroutine], list[Coroutine]):
+        # Create new Message instances for each text string and
+        # Add each to the `_created_messages` list
+        _message_tasks: list[Coroutine] = []
+        _metadata_tasks: list[Coroutine] = []
+
+        # Stage Message creation tasks for each message in the schema
+        _message_tasks.append(
+            self._parse_messages(
+                [m.content for m in schema.messages]
+            )
         )
 
-        metadata_tasks = []
-        if patient_metadata:
-            metadata_tasks.append(
-                self._parse_metadataV1(patient_metadata, "PatientDemographics")
-            )
-        if patient_history:
-            metadata_tasks.append(
-                self._parse_metadataV1(patient_history, "PatientHistory")
-            )
-        if simulation_data:
-            metadata_tasks.append(
-                self._parse_metadataV1(simulation_data, "SimulationMetadata")
-            )
-        if scenario_data:
-            await self._parse_scenario_attribute(scenario_data)
+        # Dump Pydantic model to dict for metadata parsing
+        metadata_dict: dict[str: str] = schema.metadata.model_dump()
 
-        await asyncio.gather(*metadata_tasks)
-        message_tasks = [self._parse_message(m) for m in messages]
-        return await asyncio.gather(*message_tasks)
+        # Update the Simulation instance with scenario_data if provided
+        # Then, remove the key so it isn't treated as metadata
+        _scenario_data: dict[str: str] = metadata_dict.pop("scenario_data", {})
+        await self._parse_scenario_attribute(_scenario_data)
 
-    async def _parse_message(self, message: dict | None, **kwargs) -> Optional[Message]:
+        # Pop `patient_history` from dict for special parsing
+        _patient_history = metadata_dict.pop("patient_history", {})
+        # TODO: add `patient_history` tasks to `_metadata_tasks` here
+
+        # Stage tasks to create each metafield, then
+        # Create the metadata instances
+        _metadata_tasks.extend([
+            self._parse_metadata(
+                entry,
+                attribute=to_pascal_case(attribute),
+            )
+            for attribute, entries in metadata_dict.items()
+            for entry in (entries if isinstance(entries, list) else [entries])
+        ])
+
+        return _message_tasks, _metadata_tasks
+
+
+    async def _parse_message(self, message_string: str | None, **kwargs) -> Message:
+        """
+        Returns a single Message instance for the given text (or media).
+
+
+        Args:
+            message_string: The raw text content to wrap into a Message.
+            media: Optional keyword arg; if provided, the media object.
+
+        Returns:
+            A newly created Message instance.
+        """
+        display_name = getattr(self.simulation, "sim_patient_display_name", "Unknown")
+        content = message_string or None
+        media = kwargs.get("media") or None
+
+        # Build the payload to create a new Message instance, then
+        payload = {
+            "simulation": self.simulation,
+            "sender": self.system_user,
+            "display_name": display_name,
+            "role": RoleChoices.ASSISTANT,
+            "openai_id": self.response.id,
+            "response": self.response,
+            "content": content,
+            "is_from_ai": True,
+            "message_type": "image" if media is not None else None,
+        }
+
+        # Remove null values from the payload to avoid database errors, then,
+        # Create the Message instance and add media if provided
+        payload = remove_null_keys(payload)
+        msg = await Message.objects.acreate(**payload)
+
+        # Add media relation if media exists in kwargs
+        if media is not None:
+            from chatlab.utils import add_message_media
+            await add_message_media(msg.id, media.id)
+
+        return msg
+
+    async def _parse_messages(
+            self, message_strings: list[str]
+    ) -> list[Message]:
+        """
+        Persist a Message for each text string provided, in parallel.
+
+        Args:
+            message_strings: List of raw text messages to parse and persist.
+
+        Returns:
+            A list of the created Message instances.
+        """
+        tasks = (
+            self._parse_message(m) for m in message_strings
+        )
+        return list(await asyncio.gather(
+            *(self._parse_message(m) for m in message_strings)
+        ))
+
+    async def _parse_text(self, content: dict | str | None, **kwargs) -> Optional[Message]:
+        warnings.warn(
+            message="`_parse_text` is deprecated. Use `_parse_message` instead.",
+            category=PendingDeprecationWarning,
+            stacklevel=2
+        )
+
         func_name = inspect.currentframe().f_code.co_name
-        await self.log(func_name, f"received input: {message or kwargs.get('media')}")
+        await self.log(func_name, f"received input: {content or kwargs.get('media')}")
 
         display_name = getattr(self.simulation, "sim_patient_display_name", "Unknown")
         media = kwargs.get("media")
 
+        # Try to convert to dict, otherwise assume it's a string'
+        # If it's a string, convert it to a dict with the "content" key
+        try:
+            content = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            logger.debug(f"Unable to convert to dict. Assuming content is a string.")
+            content = { "content": content }
+
         # Build the payload to create a new Message instance, then
-        # Remove null values from payload to avoid database errors, and
+        # Remove null values from the payload to avoid database errors, and
         # Create the Message instance and add media if provided
         payload = {
             "simulation": self.simulation,
@@ -232,12 +299,12 @@ class StructuredOutputParser:
             "role": RoleChoices.ASSISTANT,
             "openai_id": self.response.id,
             "response": self.response,
-            "content": message.get("content") if message else None,
+            "content": content.get("content") if content else None,
             "is_from_ai": True,
             "message_type": "image" if media is not None else None,
         }
         payload = remove_null_keys(payload)
-        msg = await sync_to_async(Message.objects.create)(**payload)
+        msg = await Message.objects.acreate(**payload)
 
         # Add media relation if media exists
         if media is not None:
@@ -278,7 +345,7 @@ class StructuredOutputParser:
             metadata = [metadata]
 
         # Map field names to database model fields, if provided
-        field_map = field_map or {}
+        field_map = field_map or DEFAULT_FIELD_MAP
         model_fields = {f.name for f in Subclass._meta.fields}
 
         # Iterate over metadata entries and create database objects
@@ -305,7 +372,7 @@ class StructuredOutputParser:
 
                 # Optional fallback for `value` field
                 if "value" in model_fields and "value" not in init_kwargs:
-                    fallback_keys = ["result_value", "diagnosis", "order_name"]
+                    fallback_keys = ["result_value", "diagnosis", "result_name"]
                     for fk in fallback_keys:
                         if fk in entry:
                             init_kwargs["value"] = str(entry[fk])
@@ -314,8 +381,19 @@ class StructuredOutputParser:
                         init_kwargs["value"] = str(entry)
 
                 # Create the object, then append it to `instances` and log it (DEBUG only)
-                instance = await Subclass.objects.acreate(**init_kwargs)
-                instances.append(instance)
+                _created: bool
+                try:
+                    instance = await Subclass.objects.acreate(**init_kwargs)
+                    _created = True
+                except IntegrityError:
+                    instance = await Subclass.objects.aget(
+                        simulation=init_kwargs["simulation"],
+                        key=init_kwargs["key"]
+                    )
+                    _created = False
+
+                instances.append(instance) if _created else None
+
                 logger.debug(
                     f"new {attribute} created for Sim#{instance.simulation or "UNK"}: {instance.key or "UNK"}"
                 )
@@ -324,108 +402,6 @@ class StructuredOutputParser:
                 await self.log(func_name, f"Error creating {attribute}: {e}", WARNING)
 
         return instances
-
-    async def _parse_metadataV1(
-        self, metadata: dict | list, attribute: str
-    ) -> list[SimulationMetadata]:
-        """
-        Parses simulation metadata and creates corresponding database objects based on the
-        provided attribute type. This function handles both dictionary and list types of
-        metadata, determines the appropriate model class dynamically, and logs actions
-        performed during metadata processing.
-
-        :param metadata: Simulation metadata to be processed. Can be a dictionary or a list containing
-                         metadata entries. Each entry within metadata should match the expected format
-                         required to create a database object for the specific attribute.
-        :type metadata: dict | list
-        :param attribute: The name of the model class corresponding to the metadata being processed.
-                          The function uses this attribute to dynamically find and import the class.
-        :type attribute: str
-        :return: A list of successfully created database objects corresponding to the given metadata.
-        :rtype: list[SimulationMetadata]
-        :raises ModuleNotFoundError: If the specified model module cannot be found.
-        :raises AttributeError: If the specified attribute cannot be located in the module.
-        """
-        warnings.warn(
-            "deprecated. Use newer `_parse_metadata` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        func_name = inspect.currentframe().f_code.co_name
-        logger.debug(
-            f"[{func_name}] received {attribute} input ({type(metadata)}): {metadata}"
-        )
-
-        instances = []
-
-        try:
-            module = importlib.import_module("simcore.models")
-            Subclass = getattr(module, attribute)
-        except (ModuleNotFoundError, AttributeError) as e:
-            logger.error(f"[{func_name}] Invalid attribute '{attribute}': {e}")
-            return []
-
-        def clean_key(k: str) -> str:
-            return k.lower().replace("_", " ").strip()
-
-        async def create_field(**kwargs):
-            obj = await Subclass.objects.acreate(**kwargs)
-            instances.append(obj)
-            await self.log(func_name, f"... new {attribute} created: {obj.key}", DEBUG)
-
-        if attribute.casefold() == "patienthistory":
-            for entry in metadata:
-                if not isinstance(entry, dict):
-                    await self.log(
-                        func_name, f"Expected dict, got {type(entry)}", WARNING
-                    )
-                    continue
-                await create_field(
-                    simulation=self.simulation,
-                    key=entry.get("diagnosis"),
-                    is_resolved=entry.get("is_resolved"),
-                    duration=entry.get("duration"),
-                    value=f"{entry.get('diagnosis')} ({'resolved' if entry.get('is_resolved') else 'ongoing'})",
-                )
-            return instances
-
-        if isinstance(metadata, dict):
-            for key, value in metadata.items():
-                value_str = (
-                    json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-                )
-                await create_field(
-                    simulation=self.simulation,
-                    key=clean_key(key),
-                    value=value_str,
-                )
-            return instances
-
-        if isinstance(metadata, list):
-            for index, item in enumerate(metadata):
-                if isinstance(item, dict):
-                    for key, value in item.items():
-                        value_str = (
-                            json.dumps(value)
-                            if isinstance(value, (dict, list))
-                            else str(value)
-                        )
-                        await create_field(
-                            simulation=self.simulation,
-                            key=f"Condition #{index} {clean_key(key)}",
-                            value=value_str,
-                        )
-                else:
-                    await self.log(
-                        func_name,
-                        f"Expected a dict in metadata list, but got {type(item)}",
-                        WARNING,
-                    )
-            return instances
-
-        await self.log(func_name, f"Unhandled metadata type: {type(metadata)}", WARNING)
-        return []
 
     async def _parse_scenario_attribute(self, attributes: dict) -> None:
         """
@@ -463,6 +439,47 @@ class StructuredOutputParser:
         if updated_fields:
             await sync_to_async(self.simulation.save)(update_fields=updated_fields)
 
+    async def _parse_image_generation(self, output: ImageGenerationCall) -> SimulationImage:
+        """
+        Returns a single SimulationImage instance for the given image generation output.
+
+        Args:
+            output (ImageGenerationCall): An OpenAI ImageGenerationCall instance.
+
+        Returns:
+            The created SimulationImage instance.
+        """
+        func_name = inspect.currentframe().f_code.co_name
+
+        _result = output.result
+        _image_id = output.id
+        _output_format = output.output_format
+        _mime_type = mimetypes.guess_type(f"temp.{_output_format}")[0]
+
+
+        # Try to decode the base64 image, then prepare the file in-memory
+        try:
+            image_bytes = base64.b64decode(_result)
+            image_file = ContentFile(
+                image_bytes, name=f"temp_{_image_id}.{_output_format}"
+            )
+        except Exception as e:
+            raise Exception(f"[{func_name}] Failed to parse image generation call: {e}")
+
+        # Build the payload to create a new SimulationImage object
+        # Remove null values from the payload to avoid database errors, and
+        # Create SimulationImage object
+        payload = {
+            "simulation": self.simulation,
+            "openai_id": _image_id,
+            "original": image_file,
+            "mime_type": _mime_type,
+        }
+        payload = remove_null_keys(payload)
+        image_instance = await SimulationImage.objects.acreate(**payload)
+
+        return image_instance
+
     async def _parse_media(
         self, media_b64, mime_type, **kwargs
     ) -> SimulationImage | Exception:
@@ -475,12 +492,13 @@ class StructuredOutputParser:
             **kwargs: Additional fields (ignored for now).
 
         Returns:
-            TODO Message: A new Message instance containing the parsed media content
+            SimulationImage: The created SimulationImage object.
 
         Raises:
             ValueError: If media content or mime_type is invalid
 
         """
+        warnings.warn("Use `parse_image_generation` instead.", PendingDeprecationWarning, stacklevel=2)
         func_name = inspect.currentframe().f_code.co_name
 
         if not media_b64:
@@ -489,10 +507,10 @@ class StructuredOutputParser:
         if not mime_type:
             raise ValueError("MIME type is required, but was not provided.")
 
-        # Prepare image to save to database
+        # Prepare the image to save it to the database
         output_format = mimetypes.guess_extension(mime_type) or ".webp"
         try:
-            # Decode base64 image, then prepare file in-memory
+            # Decode base64 image, then prepare the file in-memory
             image_bytes = base64.b64decode(media_b64)
             image_uuid = uuid.uuid4()
             image_file = ContentFile(
@@ -516,6 +534,59 @@ class StructuredOutputParser:
         image_instance = await sync_to_async(SimulationImage.objects.create)(**payload)
 
         return image_instance
+
+    async def _parse_results(
+            self,
+            results: PatientResultsSchema
+    ) -> list[LabResult | RadResult]:
+        """
+        Persist a LabResult or RadResult for each text string provided, in parallel.
+
+        Args:
+            results (list[LabResult | RadResult): List of LabResult or
+              RadResult objects to parse and persist.
+
+        Returns:
+            list[LabResult | RadResult]: List of the created LabResult or
+              RadResult instances.
+        """
+        _tasks: list[Coroutine] = []
+
+        # Stage Lab Result(s) task(s)
+        _tasks.extend(
+            [
+                self._parse_metadata(
+                    metadata=lr.model_dump(),
+                    attribute="LabResult",
+                    field_map={
+                        "result_value": "value",
+                        "diagnosis": "diagnosis",
+                        "result_name": "key",
+                    },
+                )
+                for lr in results.lab_results or []
+            ]
+        )
+
+        # Stage Radiology Result(s) task(s)
+        _tasks.extend(
+            [
+                self._parse_metadata(
+                    metadata=rr.model_dump(),
+                    attribute="RadResult",
+                    field_map={
+                        "result_value": "value",
+                        "result_name": "key",
+                    },
+                )
+                for rr in results.radiology_results or []
+            ]
+        )
+
+        # Create instances concurrently via `_parse_metadata`, then
+        # flatten the results and return the list of instances
+        raw_lists = await asyncio.gather(*_tasks)
+        return [item for sublist in raw_lists for item in sublist]
 
     @staticmethod
     async def log(func_name, msg="triggered", level=DEBUG) -> None:

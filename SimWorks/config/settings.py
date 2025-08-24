@@ -6,6 +6,7 @@ from core.utils.system import check_env
 from django.core.exceptions import ImproperlyConfigured
 
 from .logging import LOGGING
+import logfire
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -126,6 +127,7 @@ else:
 
 OPENAI_API_KEY = check_env("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_DEFAULT_IMAGE_FORMAT = check_env("OPENAI_DEFAULT_IMAGE_FORMAT", default="webp")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)
@@ -213,3 +215,13 @@ SITE_ADMIN = {
     "NAME": check_env("SITE_ADMIN_NAME", default="SimWorks"),
     "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
 }
+
+logfire.configure(token=os.getenv("LOGFIRE_TOKEN"))
+logfire.instrument_httpx(
+    capture_all=True
+    # capture_response_body=True,
+    # capture_request_body=True,
+    # capture_headers=True,
+)
+logfire.instrument_django(excluded_urls="/health(?:/|$)")
+logfire.instrument_openai(suppress_other_instrumentation=False)

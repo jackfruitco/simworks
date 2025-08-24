@@ -49,7 +49,7 @@ only acceptable—but required—to inform the trainee when their diagnosis
 or plan was incorrect, as long as it is done constructively.
 
 If the user did not propose a diagnosis, you must mark
-correct_diagnosis as "false". If user discussed multiple potential
+is_correct_diagnosis as "false". If user discussed multiple potential
 diagnoses, but did not tell the patient which is most likely, mark
 the diagnosis as "partial". If the diagnosis was not specific enough,
 mark it as partial.

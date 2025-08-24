@@ -172,7 +172,8 @@ async def broadcast_event(
 
 
 async def broadcast_patient_results(
-    __source: QuerySet | list | LabResult | RadResult or int, __status: str = None
+    __source:  list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult or int,
+    __status: str = None
 ) -> None:
     """
     Broadcast patient results to all connected clients using `socket_send`.
