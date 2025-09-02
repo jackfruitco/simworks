@@ -349,7 +349,7 @@ class SimulationMetadata(PolymorphicModel):
     )
 
     key = models.CharField(max_length=255)
-    value = models.CharField(max_length=2000)
+    value = models.TextField()
 
     class Meta:
         constraints = [
