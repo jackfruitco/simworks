@@ -126,7 +126,7 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 OPENAI_API_KEY = check_env("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 OPENAI_DEFAULT_IMAGE_FORMAT = check_env("OPENAI_DEFAULT_IMAGE_FORMAT", default="webp")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
