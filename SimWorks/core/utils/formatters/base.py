@@ -136,6 +136,7 @@ class Formatter:
         except IOError as e:
             logger.error(f"[Formatter] Failed to write to {path}: {e}")
             raise
+        return path
 
     def download(self, format_type, filename=None, content_type=None, **kwargs):
         """
