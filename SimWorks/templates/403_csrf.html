@@ -4,6 +4,11 @@
     <div style="margin: 15vh 5vw;">
         <h1>Hmm... you aren't supposed to be here.</h1>
         <h3>Ready to head <a href="{% url 'home' %}">back home</a>?</h3>
-        <p>{{ reason }}</p>
+        {% if reason and debug %}
+            <p>{{ reason }}</p>
+        {% endif %}
+        {% if trace_id %}
+          <p>Reference ID <code>{{ trace_id|slice:":8" }}</code>.</p>
+        {% endif %}
     </div>
 {% endblock content %}
