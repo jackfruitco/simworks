@@ -90,6 +90,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.debug_flag",
             ],
         },
     },
@@ -225,3 +226,5 @@ logfire.instrument_httpx(
 )
 logfire.instrument_django(excluded_urls="/health(?:/|$)")
 logfire.instrument_openai(suppress_other_instrumentation=False)
+
+CSRF_FAILURE_VIEW = "core.views.csrf_failure"

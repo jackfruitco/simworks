@@ -4,7 +4,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 from graphene_django.views import GraphQLView
-
+from opentelemetry import trace
 
 def index(request):
     # Number of visits to this view, as counted in the session variable.
@@ -35,6 +35,16 @@ class PrivateGraphQLView(GraphQLView):
             )
 
         return super().dispatch(request, *args, **kwargs)
+
+def csrf_failure(request, reason=""):
+    trace_id = None
+    span = trace.get_current_span()
+    if span and span.is_recording():
+        ctx = span.get_span_context()
+        trace_id = f"{ctx.trace_id:032x}"
+        span.set_attribute("django.csrf.reason", reason)
+
+    return render(request, "403_csrf.html", {"reason": reason, "trace_id": trace_id}, status=403)
 
 
 class RobotsView(TemplateView):
