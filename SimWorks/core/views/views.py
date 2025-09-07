@@ -1,9 +1,13 @@
+# core/views/views.py
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
 from graphene_django.views import GraphQLView
+
+
+__all__ = ["index", "PrivateGraphQLView", "RobotsView"]
 
 
 def index(request):
@@ -35,6 +39,7 @@ class PrivateGraphQLView(GraphQLView):
             )
 
         return super().dispatch(request, *args, **kwargs)
+
 
 
 class RobotsView(TemplateView):
