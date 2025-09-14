@@ -1,92 +1,68 @@
-import graphene
+import strawberry
+from strawberry import auto
+from strawberry.django import type
+from strawberry.types import Info
+from django.shortcuts import get_object_or_404
+
 from accounts.models import CustomUser
 from chatlab.models import Message
-from django.shortcuts import get_object_or_404
-from graphene_django.types import DjangoObjectType
 
 
-class UserType(DjangoObjectType):
-    class Meta:
-        model = CustomUser
-        fields = ("id", "username", "email", "first_name", "last_name")
+@type(CustomUser)
+class UserType:
+    id: auto
+    username: auto
+    email: auto
+    first_name: auto
+    last_name: auto
 
 
-class MessageType(DjangoObjectType):
-    sender = graphene.Field(UserType)
-
-    class Meta:
-        model = Message
-        fields = (
-            "id",
-            "simulation",
-            "message_type",
-            "media",
-            "is_from_ai",
-            "is_deleted",
-            "content",
-            "sender",
-            "timestamp",
-            "role",
-        )
+@type(Message)
+class MessageType:
+    id: auto
+    simulation: auto
+    message_type: auto
+    media: auto
+    is_from_ai: auto
+    is_deleted: auto
+    content: auto
+    sender: UserType
+    timestamp: auto
+    role: auto
 
 
-class Query(graphene.ObjectType):
-
-    message = graphene.Field(MessageType, id=graphene.Int(required=True))
-
-    messages = graphene.List(
-        MessageType,
-        ids=graphene.List(graphene.Int),
-        simulation=graphene.List(graphene.Int),
-        message_type=graphene.List(graphene.String),
-        limit=graphene.Int(),
-    )
-
-    def resolve_message(self, info, id):
-        """Return a message by id."""
+@strawberry.type
+class Query:
+    @strawberry.field
+    def message(self, info: Info, id: int) -> MessageType:
         return get_object_or_404(Message, id=id)
 
-    def resolve_messages(
-        self, info, ids=None, simulation=None, message_type=None, limit=None
-    ):
-        """
-        Return messages, optionally filtered by message IDs and simulation(s).
-
-        Args:
-            ids: Optional list of message IDs to include.
-            simulation: A single simulation ID or list of IDs.
-            message_type: A single message type or list of message types.
-            limit: Max number of messages to return.
-
-        Returns:
-            QuerySet of Message objects.
-        """
+    @strawberry.field
+    def messages(
+        self,
+        info: Info,
+        ids: list[int] | None = None,
+        simulation: list[int] | None = None,
+        message_type: list[str] | None = None,
+        limit: int | None = None,
+    ) -> list[MessageType]:
         qs = Message.objects.all()
-
-        # Filter by message IDs, if provided.
         if ids:
-            if not isinstance(ids, list):
-                ids = [ids]
             qs = qs.filter(id__in=ids)
-
-        # Filter by simulation(s), if provided.
         if simulation is not None:
             if isinstance(simulation, int):
                 simulation = [simulation]
             qs = qs.filter(simulation__id__in=simulation)
-
-        # Filter by message type(s), if provided.
         if message_type:
             if not isinstance(message_type, list):
                 message_type = [message_type]
             qs = qs.filter(message_type__in=message_type)
-
-        # Limit the number of messages returned, if provided.
         if limit:
             qs = qs[:limit]
+        return list(qs)
 
-        return qs
 
-
-class Mutation(graphene.ObjectType):
+@strawberry.type
+class Mutation:
     pass
+

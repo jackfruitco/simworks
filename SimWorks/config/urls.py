@@ -5,6 +5,9 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import include
 from django.urls import path
 
+from config.middleware import RequireApiPermissionMiddleware
+from config.schema import schema
+
 sitemaps = {
     # "products": ProductSitemap,
 }
@@ -17,7 +20,13 @@ urlpatterns = [
     path("accounts/", include("accounts.urls")),
     path("chatlab/", include("chatlab.urls")),
     path(
-        "graphql/", CoreViews.PrivateGraphQLView.as_view(graphiql=True), name="graphql"
+        "graphql/",
+        CoreViews.PrivateGraphQLView.as_view(
+            schema=schema,
+            graphiql=True,
+            middleware=[RequireApiPermissionMiddleware()],
+        ),
+        name="graphql",
     ),
     path(
         "robots.txt",
