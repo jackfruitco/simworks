@@ -52,24 +52,21 @@ class ResponseType:
             return None
 
 
-def get_modifier_groups():
+def get_modifier_groups() -> list[ModifierGroup]:
+    """Return all modifier groups with their modifiers."""
     modifier_items = PromptModifiers.list()
-    grouped = {}
-    docstrings = {}
+    grouped: dict[str, list[Modifier]] = {}
+    docstrings: dict[str, str] = {}
 
     for item in modifier_items:
-        full_path = item["key"]
         group = item["group"]
-        name = item["name"]
-        description = item["description"]
-        grouped.setdefault(group, []).append(
-            {
-                "key": full_path,
-                "name": name,
-                "group": group,
-                "description": description,
-            }
+        modifier = Modifier(
+            key=item["key"],
+            name=item["name"],
+            group=group,
+            description=item["description"],
         )
+        grouped.setdefault(group, []).append(modifier)
 
     for group in grouped:
         try:
@@ -79,10 +76,10 @@ def get_modifier_groups():
             docstrings[group] = ""
 
     for mods in grouped.values():
-        mods.sort(key=lambda m: m["description"].lower())
+        mods.sort(key=lambda m: m.description.lower())
 
     return [
-        {"group": group, "description": docstrings[group], "modifiers": mods}
+        ModifierGroup(group=group, description=docstrings[group], modifiers=mods)
         for group, mods in sorted(grouped.items(), key=lambda item: item[0].lower())
     ]
 
@@ -115,6 +112,7 @@ class Query:
 
     @strawberry.field
     def modifier(self, info: Info, key: str) -> Modifier | None:
+      codex/migrate-to-strawberry-graphql-django
         item = PromptModifiers.get(key)
         if not item:
             return None
@@ -127,6 +125,7 @@ class Query:
 
     @strawberry.field
     def modifiers(self, info: Info, group: str | None = None) -> list[Modifier]:
+      codex/migrate-to-strawberry-graphql-django
         modifier_items = PromptModifiers.list()
         result: list[Modifier] = []
         for item in modifier_items:
@@ -144,10 +143,11 @@ class Query:
 
     @strawberry.field
     def modifier_group(self, info: Info, group: str) -> dict | None:
+      codex/migrate-to-strawberry-graphql-django
         grouped = get_modifier_groups()
         normalized = group.lower()
         for g in grouped:
-            if g["group"].lower() == normalized:
+            if g.group.lower() == normalized:
                 return g
         return None
 
@@ -155,10 +155,11 @@ class Query:
     def modifier_groups(
         self, info: Info, groups: list[str] | None = None
     ) -> list[dict]:
+      codex/migrate-to-strawberry-graphql-django
         grouped = get_modifier_groups()
         if groups:
             normalized_groups = [g.lower() for g in groups]
-            grouped = [g for g in grouped if g["group"].lower() in normalized_groups]
+            grouped = [g for g in grouped if g.group.lower() in normalized_groups]
         return grouped
 
 
