@@ -50,12 +50,12 @@ class Query(graphene.ObjectType):
         self, info, ids=None, simulation=None, message_type=None, limit=None
     ):
         """
-        Return messages, optionally filtered by message IDs and simulation(s).
+        Return messages, optionally filtered by message IDs, simulations, and message types.
 
         Args:
             ids: Optional list of message IDs to include.
-            simulation: A single simulation ID or list of IDs.
-            message_type: A single message type or list of message types.
+            simulation: Optional list of simulation IDs.
+            message_type: Optional list of message types.
             limit: Max number of messages to return.
 
         Returns:
@@ -69,16 +69,12 @@ class Query(graphene.ObjectType):
                 ids = [ids]
             qs = qs.filter(id__in=ids)
 
-        # Filter by simulation(s), if provided.
+        # Filter by simulation IDs, if provided.
         if simulation is not None:
-            if isinstance(simulation, int):
-                simulation = [simulation]
             qs = qs.filter(simulation__id__in=simulation)
 
-        # Filter by message type(s), if provided.
+        # Filter by message types, if provided.
         if message_type:
-            if not isinstance(message_type, list):
-                message_type = [message_type]
             qs = qs.filter(message_type__in=message_type)
 
         # Limit the number of messages returned, if provided.
