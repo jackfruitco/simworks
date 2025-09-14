@@ -5,7 +5,7 @@ from graphql import GraphQLResolveInfo as ResolveInfo
 class RequireApiPermissionMiddleware:
     def resolve(self, next, root, info: ResolveInfo, **kwargs):
         # Whitelist any queries/mutations that don't require auth
-        open_operations = {"tokenAuth", "verifyToken", "refreshToken"}
+        open_operations = set()
 
         if info.field_name in open_operations:
             return next(root, info, **kwargs)

@@ -1,145 +1,120 @@
-# simcore/schema.py
 import logging
 
-import graphene
-from accounts.models import CustomUser
-from chatlab.models import Message
-from chatlab.models import Simulation
-from chatlab.schema import MessageType
+import strawberry
+from strawberry import auto
+from strawberry.django import type
+from strawberry.types import Info
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
-from graphene_django.types import DjangoObjectType
-from simcore.models import SimulationImage
-from simcore.models import SimulationMetadata
+
+from accounts.models import CustomUser
+from chatlab.models import Message, Simulation
+from chatlab.schema import MessageType
+from simcore.models import SimulationImage, SimulationMetadata
 
 logger = logging.getLogger(__name__)
 
 
-class UserType(DjangoObjectType):
-    class Meta:
-        model = CustomUser
-        fields = ("id", "username")
+@type(CustomUser)
+class UserType:
+    id: auto
+    username: auto
 
 
-class SimulationMetadataType(DjangoObjectType):
-    class Meta:
-        model = SimulationMetadata
-        fields = ["id", "simulation", "attribute", "key", "value"]
+@type(SimulationMetadata)
+class SimulationMetadataType:
+    id: auto
+    simulation: auto
+    attribute: auto
+    key: auto
+    value: auto
 
 
-class SimulationType(DjangoObjectType):
-    messages = graphene.List(MessageType)
-    user = graphene.Field(UserType)
-    metadata = graphene.List(SimulationMetadataType)
-    feedback = graphene.List(SimulationMetadataType)
-    is_complete = graphene.Boolean()
-    is_in_progress = graphene.Boolean()
-    length = graphene.Int()
+@type(Simulation)
+class SimulationType:
+    id: auto
+    start_timestamp: auto
+    end_timestamp: auto
+    time_limit: auto
+    diagnosis: auto
+    chief_complaint: auto
+    prompt: auto
 
-    class Meta:
-        model = Simulation
-        fields = (
-            "id",
-            "start_timestamp",
-            "end_timestamp",
-            "time_limit",
-            "diagnosis",
-            "chief_complaint",
-            "prompt",
+    @strawberry.field
+    def messages(self) -> list[MessageType]:
+        return list(Message.objects.filter(simulation=self).order_by("timestamp"))
+
+    @strawberry.field
+    def user(self) -> UserType:
+        return self.user  # type: ignore[attr-defined]
+
+    @strawberry.field
+    def metadata(self) -> list[SimulationMetadataType]:
+        return list(
+            SimulationMetadata.objects.filter(simulation=self).order_by("-timestamp")
         )
 
-    def resolve_messages(self, info):
-        return Message.objects.filter(simulation=self).order_by("timestamp")
-
-    def resolve_user(self, info) -> graphene.Field:
-        return self.user
-
-    def resolve_metadata(self, info):
-        return SimulationMetadata.objects.filter(simulation=self).order_by("-timestamp")
-
-    def resolve_feedback(self, info):
-        return SimulationMetadata.objects.filter(simulation=self).filter(
-            attribute="feedback"
+    @strawberry.field
+    def feedback(self) -> list[SimulationMetadataType]:
+        return list(
+            SimulationMetadata.objects.filter(simulation=self, attribute="feedback")
         )
 
-    def resolve_is_complete(self, info) -> graphene.Boolean:
-        return self.is_complete
+    @strawberry.field
+    def is_complete(self) -> bool:
+        return self.is_complete  # type: ignore[attr-defined]
 
-    def resolve_is_in_progress(self, info) -> graphene.Boolean:
-        return self.is_in_progress
+    @strawberry.field
+    def is_in_progress(self) -> bool:
+        return self.is_in_progress  # type: ignore[attr-defined]
 
-    def resolve_length(self, info) -> graphene.Int:
-        return self.length
-
-
-class ImageVariantType(graphene.ObjectType):
-    name = graphene.String()
-    url = graphene.String()
-    width = graphene.Int()
-    height = graphene.Int()
+    @strawberry.field
+    def length(self) -> int:
+        return self.length  # type: ignore[attr-defined]
 
 
-class SimulationImageType(DjangoObjectType):
-    """
-    GraphQL type for handling simulation images with variant generation capabilities.
-    Supports both named variants and dynamic image resizing.
-    """
+@strawberry.type
+class ImageVariantType:
+    name: str
+    url: str
+    width: int
+    height: int
 
-    # Default settings for image processing
-    DEFAULT_IMAGE_FORMAT = "WEBP"  # Format used for generated image variants
-    DEFAULT_IMAGE_QUALITY = 85  # Quality setting for image compression (0-100)
 
-    variant = graphene.Field(
-        ImageVariantType,
-        name=graphene.String(required=False),
-        width=graphene.Int(required=False),
-        height=graphene.Int(required=False),
-    )
+@type(SimulationImage)
+class SimulationImageType:
+    id: auto
+    simulation: auto
+    mime_type: auto
+    original: auto
+    description: auto
 
-    class Meta:
-        model = SimulationImage
-        fields = ("id", "simulation", "mime_type", "original", "description")
+    DEFAULT_IMAGE_FORMAT = "WEBP"
+    DEFAULT_IMAGE_QUALITY = 85
 
-    def resolve_variant(self, info, name=None, width=None, height=None):
-        """
-        Resolves an image variant based on provided parameters.
-
-        Args:
-            info: GraphQL resolve info
-            name: Optional name of the predefined variant
-            width: Optional desired width of the image
-            height: Optional desired height of the image
-
-        Returns:
-            dict: Image variant data including name, URL, width, and height
-
-        Raises:
-            ValueError: If invalid parameters are provided
-        """
+    @strawberry.field
+    def variant(
+        self,
+        info: Info,
+        name: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> ImageVariantType | None:
         self._validate_input_parameters(name, width, height)
 
         if name:
-            return self._get_named_variant(name, width, height)
+            variant = self._get_named_variant(name, width, height)
+            if variant:
+                return ImageVariantType(**variant)
 
-        return self._generate_dynamic_variant(width, height)
+        generated = self._generate_dynamic_variant(width, height)
+        if generated:
+            return ImageVariantType(**generated)
+        return None
 
     def _validate_input_parameters(self, name, width, height):
-        """
-        Validates the input parameters for variant generation.
-
-        Args:
-            name: Variant name to validate
-            width: Image width to validate
-            height: Image height to validate
-
-        Raises:
-            ValueError: If parameters are missing or invalid
-        """
-        # At least one parameter must be provided
         if not (name or width or height):
             raise ValueError("Must specify either 'name', 'width', or 'height'")
-
-        # Validate dimensions if provided
         if width or height:
             width = width or height
             height = height or width
@@ -147,21 +122,6 @@ class SimulationImageType(DjangoObjectType):
                 raise ValueError("Width and height must be positive integers.")
 
     def _get_named_variant(self, name, width, height):
-        """
-        Retrieves a predefined named variant of the image.
-
-        Args:
-            name: Name of the variant to retrieve
-            width: Fallback width if variant not found
-            height: Fallback height if variant not found
-
-        Returns:
-            dict: Variant information if found
-            None: If variant is not found and fallback to dynamic generation is possible
-
-        Raises:
-            ValueError: If a variant is not found, and no fallback dimensions are provided
-        """
         try:
             spec_file = getattr(self, name)
             return {
@@ -181,30 +141,18 @@ class SimulationImageType(DjangoObjectType):
             return None
 
     def _generate_dynamic_variant(self, width, height):
-        """
-        Generates a dynamic variant of the image with specified dimensions.
+        if not (width or height):
+            return None
 
-        Args:
-            width: Desired width of the variant
-            height: Desired height of the variant
-
-        Returns:
-            dict: Generated variant information including name, URL, width, and height
-        """
         from imagekit.specs import ImageSpec
         from pilkit.processors import ResizeToFill
 
-        # Ensure both dimensions are set
         width = width or height
         height = height or width
 
-        # Generate unique names for the variant
         variant_name = f"variant_{width}x{height}"
-        cache_filename = (
-            f"{self.uuid}_{variant_name}.{self.DEFAULT_IMAGE_FORMAT.lower()}"
-        )
+        cache_filename = f"{self.uuid}_{variant_name}.{self.DEFAULT_IMAGE_FORMAT.lower()}"
 
-        # Create and configure the image specification
         spec = ImageSpec(
             source=self.original,
             processors=[ResizeToFill(width, height)],
@@ -222,64 +170,43 @@ class SimulationImageType(DjangoObjectType):
         }
 
 
-class Query(graphene.ObjectType):
-
-    simulation = graphene.Field(SimulationType, id=graphene.Int(required=True))
-    simulations = graphene.List(SimulationType)
-
-    simulation_image = graphene.Field(
-        SimulationImageType, id=graphene.Int(required=True)
-    )
-
-    simulation_images = graphene.List(
-        SimulationImageType,
-        ids=graphene.List(graphene.Int),
-        simulation=graphene.Int(),
-        limit=graphene.Int(),
-    )
-
-    def resolve_simulation(self, info, id):
+@strawberry.type
+class Query:
+    @strawberry.field
+    def simulation(self, info: Info, id: int) -> SimulationType:
         return get_object_or_404(Simulation, id=id)
 
-    def resolve_simulations(self, info):
-        return Simulation.objects.all()
+    @strawberry.field
+    def simulations(self, info: Info) -> list[SimulationType]:
+        return list(Simulation.objects.all())
 
-    def resolve_simulation_image(self, info, id):
+    @strawberry.field
+    def simulation_image(self, info: Info, id: int) -> SimulationImageType:
         return get_object_or_404(SimulationImage, id=id)
 
-    def resolve_simulation_images(
-        self, info, ids=None, simulation=None, limit=None
-    ) -> QuerySet[SimulationImage]:
-        """
-        Return simulation images, optionally filtered by image IDs and simulation(s).
-
-        Args:
-            ids: Optional list of SimulationImage IDs to include.
-            simulation: A single simulation ID or list of IDs.
-            limit: Max number of messages to return.
-
-        Returns:
-            QuerySet of SimulationImage objects.
-        """
-        qs = SimulationImage.objects.all()
-
-        # Filter by image IDs, if provided.
+    @strawberry.field
+    def simulation_images(
+        self,
+        info: Info,
+        ids: list[int] | None = None,
+        simulation: list[int] | None = None,
+        limit: int | None = None,
+    ) -> list[SimulationImageType]:
+        qs: QuerySet[SimulationImage] = SimulationImage.objects.all()
         if ids:
             if not isinstance(ids, list):
                 ids = [ids]
             qs = qs.filter(id__in=ids)
-
-        # Filter by simulation(s), if provided.
         if simulation:
             if not isinstance(simulation, list):
                 simulation = [simulation]
             qs = qs.filter(simulation_id__in=simulation)
-
-        # Limit the number of messages returned, if provided.
         if limit:
             qs = qs[:limit]
-        return qs
+        return list(qs)
 
 
-class Mutation(graphene.ObjectType):
+@strawberry.type
+class Mutation:
     pass
+

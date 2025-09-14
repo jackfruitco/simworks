@@ -60,7 +60,7 @@ INSTALLED_APPS = [
     "simcore",
     "simai",
     "chatlab",
-    "graphene_django",
+    "strawberry.django",
     "imagekit",
 ]
 
@@ -173,14 +173,6 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
-
-GRAPHENE = {
-    "SCHEMA": "config.schema.schema",
-    "MIDDLEWARE": [
-        "graphql_jwt.middleware.JSONWebTokenMiddleware",
-        "config.middleware.RequireApiPermissionMiddleware",
-    ],
-}
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/

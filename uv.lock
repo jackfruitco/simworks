@@ -400,21 +400,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-graphql-jwt"
-version = "0.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "graphene" },
-    { name = "graphene-django" },
-    { name = "pyjwt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/a8/44/6781e0ef4438f9f8b8b0fc39d4e874659b555bc57159243faee99c66483e/django_graphql_jwt-0.4.0.tar.gz", hash = "sha256:537972519f0deeec7a0e4a306ddfed1fe385266ef61c9f78c54cd04ac01a171e", size = 20668 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/82/9b6e9425515ccec08894f3dbdd2b439244859c5516777a576b929eb6f854/django_graphql_jwt-0.4.0-py3-none-any.whl", hash = "sha256:5823aa8ac9bf0b7a6e3b2febd029598b332c41fe9043d89900c116fcecd23f5e", size = 47080 },
-]
-
-[[package]]
 name = "django-htmx"
 version = "1.23.2"
 source = { registry = "https://pypi.org/simple" }
@@ -526,38 +511,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/39/24/33db22342cf4a2ea27c9955e6713140fedd51e8b141b5ce5260897020f1a/googleapis_common_protos-1.70.0.tar.gz", hash = "sha256:0e1b44e0ea153e6594f9f394fef15193a68aaaea2d843f83e2742717ca753257", size = 145903 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/86/f1/62a193f0227cf15a920390abe675f386dec35f7ae3ffe6da582d3ade42c7/googleapis_common_protos-1.70.0-py3-none-any.whl", hash = "sha256:b8bfcca8c25a2bb253e0e0b0adaf8c00773e5e6af6fd92397576680b807e0fd8", size = 294530 },
-]
-
-[[package]]
-name = "graphene"
-version = "3.4.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "graphql-core" },
-    { name = "graphql-relay" },
-    { name = "python-dateutil" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cc/f6/bf62ff950c317ed03e77f3f6ddd7e34aaa98fe89d79ebd660c55343d8054/graphene-3.4.3.tar.gz", hash = "sha256:2a3786948ce75fe7e078443d37f609cbe5bb36ad8d6b828740ad3b95ed1a0aaa", size = 44739 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/e0/61d8e98007182e6b2aca7cf65904721fb2e4bce0192272ab9cb6f69d8812/graphene-3.4.3-py2.py3-none-any.whl", hash = "sha256:820db6289754c181007a150db1f7fff544b94142b556d12e3ebc777a7bf36c71", size = 114894 },
-]
-
-[[package]]
-name = "graphene-django"
-version = "3.2.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "graphene" },
-    { name = "graphql-core" },
-    { name = "graphql-relay" },
-    { name = "promise" },
-    { name = "text-unidecode" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/7a/8aef131349329dcd167578720f6364412f1728bfda14bba22c1e7b5d8365/graphene-django-3.2.3.tar.gz", hash = "sha256:d831bfe8e9a6e77e477b7854faef4addb318f386119a69ee4c57b74560f3e07d", size = 88393 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/35/ab9c668222f6271a0b71efb147c46816229dbb9fa5d15ee6b025eb08d4b2/graphene_django-3.2.3-py2.py3-none-any.whl", hash = "sha256:0c673a4dad315b26b4d18eb379ad0c7027fd6a36d23a1848b7c7c09a14a9271e", size = 114959 },
 ]
 
 [[package]]
@@ -1395,6 +1348,11 @@ wheels = [
 ]
 
 [[package]]
+name = "strawberry-graphql-django"
+version = "0.39.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
 name = "simworks"
 version = "0.5.21"
 source = { virtual = "." }
@@ -1406,13 +1364,12 @@ dependencies = [
     { name = "django" },
     { name = "django-autoslug" },
     { name = "django-celery-beat" },
-    { name = "django-graphql-jwt" },
     { name = "django-htmx" },
     { name = "django-imagekit" },
     { name = "django-polymorphic" },
     { name = "django-redis" },
     { name = "faker" },
-    { name = "graphene-django" },
+    { name = "strawberry-graphql-django" },
     { name = "httpcore" },
     { name = "logfire", extra = ["django"] },
     { name = "openai" },
@@ -1438,13 +1395,12 @@ requires-dist = [
     { name = "django", specifier = ">=5.2.1" },
     { name = "django-autoslug", specifier = ">=1.9.9" },
     { name = "django-celery-beat", specifier = ">=2.8.1" },
-    { name = "django-graphql-jwt", specifier = ">=0.4.0" },
     { name = "django-htmx", specifier = ">=1.23.0" },
     { name = "django-imagekit", specifier = ">=5.0.0" },
     { name = "django-polymorphic", specifier = ">=4.1.0" },
     { name = "django-redis", specifier = ">=5.4.0" },
     { name = "faker", specifier = ">=37.3.0" },
-    { name = "graphene-django", specifier = ">=3.2.3" },
+    { name = "strawberry-graphql-django", specifier = ">=0.39.0" },
     { name = "httpcore", specifier = ">=1.0.9" },
     { name = "logfire", extras = ["django"], specifier = ">=3.24.0" },
     { name = "openai", specifier = ">=1.82.0" },
