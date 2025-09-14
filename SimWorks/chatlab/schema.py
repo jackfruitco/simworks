@@ -49,13 +49,11 @@ class Query:
         qs = Message.objects.all()
         if ids:
             qs = qs.filter(id__in=ids)
+
         if simulation is not None:
-            if isinstance(simulation, int):
-                simulation = [simulation]
             qs = qs.filter(simulation__id__in=simulation)
+
         if message_type:
-            if not isinstance(message_type, list):
-                message_type = [message_type]
             qs = qs.filter(message_type__in=message_type)
         if limit:
             qs = qs[:limit]
