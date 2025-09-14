@@ -111,7 +111,7 @@ class Query:
         return list(qs)
 
     @strawberry.field
-    def modifier(self, info: Info, key: str) -> Modifier | None:
+    def modifier(self, info: Info, key: str) -> ModifierGroup | None:
         item = PromptModifiers.get(key)
         if not item:
             return None
@@ -123,7 +123,7 @@ class Query:
         )
 
     @strawberry.field
-    def modifiers(self, info: Info, group: str | None = None) -> list[Modifier]:
+    def modifiers(self, info: Info, group: str | None = None) -> list[ModifierGroup]:
         modifier_items = PromptModifiers.list()
         result: list[Modifier] = []
         for item in modifier_items:
