@@ -53,24 +53,21 @@ class ResponseType(DjangoObjectType):
             return None
 
 
-def get_modifier_groups():
+def get_modifier_groups() -> list[ModifierGroup]:
+    """Return all modifier groups with their modifiers."""
     modifier_items = PromptModifiers.list()
-    grouped = {}
-    docstrings = {}
+    grouped: dict[str, list[Modifier]] = {}
+    docstrings: dict[str, str] = {}
 
     for item in modifier_items:
-        full_path = item["key"]
         group = item["group"]
-        name = item["name"]
-        description = item["description"]
-        grouped.setdefault(group, []).append(
-            {
-                "key": full_path,
-                "name": name,
-                "group": group,
-                "description": description,
-            }
+        modifier = Modifier(
+            key=item["key"],
+            name=item["name"],
+            group=group,
+            description=item["description"],
         )
+        grouped.setdefault(group, []).append(modifier)
 
     for group in grouped:
         try:
@@ -80,10 +77,10 @@ def get_modifier_groups():
             docstrings[group] = ""
 
     for mods in grouped.values():
-        mods.sort(key=lambda m: m["description"].lower())
+        mods.sort(key=lambda m: m.description.lower())
 
     return [
-        {"group": group, "description": docstrings[group], "modifiers": mods}
+        ModifierGroup(group=group, description=docstrings[group], modifiers=mods)
         for group, mods in sorted(grouped.items(), key=lambda item: item[0].lower())
     ]
 
@@ -127,7 +124,7 @@ class Query(graphene.ObjectType):
             qs = qs[:limit]
         return qs
 
-    def resolve_modifier(root, info, key):
+    def resolve_modifier(root, info, key: str) -> Modifier | None:
         item = PromptModifiers.get(key)
         if not item:
             return None
@@ -144,9 +141,9 @@ class Query(graphene.ObjectType):
             description=description,
         )
 
-    def resolve_modifiers(root, info, group=None):
+    def resolve_modifiers(root, info, group: str | None = None) -> list[Modifier]:
         modifier_items = PromptModifiers.list()
-        result = []
+        result: list[Modifier] = []
         for item in modifier_items:
             func = item["value"]
             description = item["description"] or item["key"]
@@ -166,19 +163,21 @@ class Query(graphene.ObjectType):
             )
         return result
 
-    def resolve_modifier_group(root, info, group):
+    def resolve_modifier_group(root, info, group: str) -> ModifierGroup | None:
         grouped = get_modifier_groups()
         normalized = group.lower()
         for g in grouped:
-            if g["group"].lower() == normalized:
+            if g.group.lower() == normalized:
                 return g
         return None
 
-    def resolve_modifier_groups(root, info, groups=None):
+    def resolve_modifier_groups(
+        root, info, groups: list[str] | None = None
+    ) -> list[ModifierGroup]:
         grouped = get_modifier_groups()
         if groups:
             normalized_groups = [g.lower() for g in groups]
-            grouped = [g for g in grouped if g["group"].lower() in normalized_groups]
+            grouped = [g for g in grouped if g.group.lower() in normalized_groups]
         return grouped
 
 
