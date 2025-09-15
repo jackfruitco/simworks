@@ -195,6 +195,9 @@ class Simulation(models.Model):
         self.save()
         self.generate_feedback()
 
+    async def aend(self):
+        await sync_to_async(self.end)()
+
     def generate_feedback(self):
         from simai.tasks import generate_feedback as generate_feedback_task
 

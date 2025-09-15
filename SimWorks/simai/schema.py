@@ -1,17 +1,16 @@
 import importlib
 
 import strawberry
-from strawberry import auto
-from strawberry.django import type
+from strawberry import auto, LazyType
 from strawberry.scalars import JSON
 from strawberry.types import Info
-from django.core.exceptions import ObjectDoesNotExist
+from strawberry_django import type, field
 
 from core.utils import Formatter
 from simai.prompts import PromptModifiers
-from simcore.schema import SimulationType
 from .models import Response
 
+SimulationType = LazyType("SimulationType", "simcore.schema")
 
 @strawberry.type
 class Modifier:
@@ -39,7 +38,6 @@ class ResponseType:
     reasoning_tokens: auto
     user: auto
     simulation: SimulationType
-    output_pretty: JSON | None = None
 
     @strawberry.field
     def output_pretty(self) -> JSON | None:  # type: ignore[override]
@@ -85,33 +83,30 @@ def get_modifier_groups() -> list[ModifierGroup]:
 
 
 @strawberry.type
-class Query:
-    @strawberry.field
-    def response(self, info: Info, id: strawberry.ID) -> ResponseType | None:
-        try:
-            return Response.objects.get(pk=id)
-        except ObjectDoesNotExist:
-            return None
+class SimAiQuery:
+    @field
+    def response(self, info: Info, _id: strawberry.ID) -> ResponseType:
+        return Response.objects.select_related("simulation").get(id=_id)
 
-    @strawberry.field
+    @field
     def responses(
         self,
         info: Info,
-        ids: list[strawberry.ID] | None = None,
+        _ids: list[strawberry.ID] | None = None,
         limit: int | None = None,
         simulation: strawberry.ID | None = None,
     ) -> list[ResponseType]:
-        qs = Response.objects.all()
-        if ids:
-            qs = qs.filter(pk__in=ids)
+        qs = Response.objects.select_related("simulation").all()
+        if _ids:
+            qs = qs.filter(pk__in=_ids)
         if simulation:
             qs = qs.filter(simulation=simulation)
         if limit:
             qs = qs[:limit]
-        return list(qs)
+        return qs
 
     @strawberry.field
-    def modifier(self, info: Info, key: str) -> ModifierGroup | None:
+    def modifier(self, info: Info, key: str) -> Modifier | None:
         item = PromptModifiers.get(key)
         if not item:
             return None
@@ -123,7 +118,7 @@ class Query:
         )
 
     @strawberry.field
-    def modifiers(self, info: Info, group: str | None = None) -> list[ModifierGroup]:
+    def modifiers(self, info: Info, group: str | None = None) -> list[Modifier]:
         modifier_items = PromptModifiers.list()
         result: list[Modifier] = []
         for item in modifier_items:
@@ -140,7 +135,7 @@ class Query:
         return result
 
     @strawberry.field
-    def modifier_group(self, info: Info, group: str) -> dict | None:
+    def modifier_group(self, info: Info, group: str) -> ModifierGroup | None:
         grouped = get_modifier_groups()
         normalized = group.lower()
         for g in grouped:
@@ -151,7 +146,7 @@ class Query:
     @strawberry.field
     def modifier_groups(
         self, info: Info, groups: list[str] | None = None
-    ) -> list[dict]:
+    ) -> list[ModifierGroup]:
         grouped = get_modifier_groups()
         if groups:
             normalized_groups = [g.lower() for g in groups]
@@ -160,6 +155,6 @@ class Query:
 
 
 @strawberry.type
-class Mutation:
+class SimAiMutation:
     pass
 

@@ -1,31 +1,35 @@
 import strawberry
-from strawberry.tools import merge_types
+from strawberry_django.optimizer import DjangoOptimizerExtension
 
-import accounts.schema
-import chatlab.schema
-import simai.schema
-import simcore.schema
+from accounts.schema import AccountsQuery, AccountsMutation
+from chatlab.schema import ChatLabQuery, ChatLabMutation
+from simai.schema import SimAiQuery, SimAiMutation
+from simcore.schema import SimCoreQuery, SimCoreMutation
 
 
-Query = merge_types(
-    "Query",
-    (
-        accounts.schema.Query,
-        chatlab.schema.Query,
-        simcore.schema.Query,
-        simai.schema.Query,
-    ),
-)
+@strawberry.type
+class MergedQuery(
+    AccountsQuery,
+    ChatLabQuery,
+    SimCoreQuery,
+    SimAiQuery,
+):
+    """Merged AccountsQuery root from all apps."""
+    pass
 
-Mutation = merge_types(
-    "Mutation",
-    (
-        accounts.schema.Mutation,
-        chatlab.schema.Mutation,
-        simcore.schema.Mutation,
-        simai.schema.Mutation,
-    ),
-)
 
-schema = strawberry.Schema(query=Query, mutation=Mutation)
+@strawberry.type
+class MergedMutation(
+    AccountsMutation,
+    ChatLabMutation,
+    SimCoreMutation,
+    SimAiMutation,
+):
+    """Merged AccountsMutation root from all apps."""
+    pass
 
+
+schema = strawberry.Schema(
+    query=MergedQuery,
+    mutation=MergedMutation,
+    extensions=[DjangoOptimizerExtension()],)

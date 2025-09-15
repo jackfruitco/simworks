@@ -17,7 +17,7 @@ class UserType:
 
 
 @strawberry.type
-class Query:
+class AccountsQuery:
     @strawberry.field
     def me(self, info: Info) -> UserType:
         user = info.context.user
@@ -27,6 +27,6 @@ class Query:
 
 
 @strawberry.type
-class Mutation:
+class AccountsMutation:
     pass
 

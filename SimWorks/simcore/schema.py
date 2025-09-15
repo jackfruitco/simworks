@@ -1,76 +1,71 @@
 import logging
 
 import strawberry
-from strawberry import auto
-from strawberry.django import type
-from strawberry.types import Info
 from django.db.models import QuerySet
-from django.shortcuts import get_object_or_404
+from strawberry import auto
+from strawberry.types import Info
+from strawberry_django import (
+    type,
+    field,
+    mutation
+)
 
-from accounts.models import CustomUser
-from chatlab.models import Message, Simulation
+from accounts.schema import UserType
 from chatlab.schema import MessageType
-from simcore.models import SimulationImage, SimulationMetadata
+from simcore.models import Simulation
+from simcore.models import (
+    SimulationImage,
+    SimulationMetadata
+)
 
 logger = logging.getLogger(__name__)
-
-
-@type(CustomUser)
-class UserType:
-    id: auto
-    username: auto
 
 
 @type(SimulationMetadata)
 class SimulationMetadataType:
     id: auto
     simulation: auto
-    attribute: auto
     key: auto
     value: auto
+
+    created_at: auto
+    modified_at: auto
 
 
 @type(Simulation)
 class SimulationType:
     id: auto
-    start_timestamp: auto
-    end_timestamp: auto
-    time_limit: auto
+    openai_model: auto
     diagnosis: auto
+
     chief_complaint: auto
+    metadata_checksum: auto
+    sim_patient_full_name: auto
+    sim_patient_display_name: auto
+
     prompt: auto
+    user: list[UserType]
+    messages: list[MessageType]
+    metadata: list[SimulationMetadataType]
+    is_complete: auto
+    is_in_progress: auto
 
     @strawberry.field
-    def messages(self) -> list[MessageType]:
-        return list(Message.objects.filter(simulation=self).order_by("timestamp"))
+    def start_timestamp_ms(self) -> int:
+        return int(getattr(self, "start_timestamp_ms", 0))
 
     @strawberry.field
-    def user(self) -> UserType:
-        return self.user  # type: ignore[attr-defined]
+    def end_timestamp_ms(self) -> int:
+        return int(getattr(self, "end_timestamp_ms", 0))
 
     @strawberry.field
-    def metadata(self) -> list[SimulationMetadataType]:
-        return list(
-            SimulationMetadata.objects.filter(simulation=self).order_by("-timestamp")
-        )
-
-    @strawberry.field
-    def feedback(self) -> list[SimulationMetadataType]:
-        return list(
-            SimulationMetadata.objects.filter(simulation=self, attribute="feedback")
-        )
-
-    @strawberry.field
-    def is_complete(self) -> bool:
-        return self.is_complete  # type: ignore[attr-defined]
-
-    @strawberry.field
-    def is_in_progress(self) -> bool:
-        return self.is_in_progress  # type: ignore[attr-defined]
+    def time_limit_ms(self) -> int:
+        return int(getattr(self, "time_limit_ms", 0))
 
     @strawberry.field
     def length(self) -> int:
-        return self.length  # type: ignore[attr-defined]
+        delta = getattr(self, "length", None)
+        return int(delta.total_seconds() * 1000) if delta else 0
 
 
 @strawberry.type
@@ -171,20 +166,36 @@ class SimulationImageType:
 
 
 @strawberry.type
-class Query:
-    @strawberry.field
-    def simulation(self, info: Info, id: int) -> SimulationType:
-        return get_object_or_404(Simulation, id=id)
+class SuccessPayload:
+    success: bool
+    message: str
 
-    @strawberry.field
-    def simulations(self, info: Info) -> list[SimulationType]:
-        return list(Simulation.objects.all())
 
-    @strawberry.field
-    def simulation_image(self, info: Info, id: int) -> SimulationImageType:
-        return get_object_or_404(SimulationImage, id=id)
+@strawberry.type
+class SimCoreQuery:
+    @field
+    def simulation(self, info: Info, _id: strawberry.ID) -> SimulationType or Simulation:
+        return (
+            Simulation.objects
+            .select_related("user")
+            .get(id=_id)
+        )
 
-    @strawberry.field
+    @field
+    def simulations(self, info: Info, _ids: list[strawberry.ID] | None = None) -> list[SimulationType]:
+        qs = Simulation.objects.select_related("user").all()
+        if _ids:
+            qs = qs.filter(id__in=_ids)
+        return qs
+
+    @field
+    def simulation_image(self, info: Info, _id: strawberry.ID) -> SimulationImageType | None:
+        try:
+            return SimulationImage.objects.select_related("simulation").get(id=_id)
+        except SimulationImage.DoesNotExist:
+            return None
+
+    @field
     def simulation_images(
         self,
         info: Info,
@@ -192,21 +203,25 @@ class Query:
         simulation: list[int] | None = None,
         limit: int | None = None,
     ) -> list[SimulationImageType]:
-        qs: QuerySet[SimulationImage] = SimulationImage.objects.all()
+        qs: QuerySet[SimulationImage] = SimulationImage.objects.select_related("simulation").all()
         if ids:
-            if not isinstance(ids, list):
-                ids = [ids]
             qs = qs.filter(id__in=ids)
         if simulation:
-            if not isinstance(simulation, list):
-                simulation = [simulation]
             qs = qs.filter(simulation_id__in=simulation)
         if limit:
             qs = qs[:limit]
-        return list(qs)
+        return qs
 
 
 @strawberry.type
-class Mutation:
-    pass
-
+class SimCoreMutation:
+    @mutation
+    def end_simulation(self, _id: strawberry.ID) -> SuccessPayload:
+        try:
+            s = Simulation.objects.get(id=_id)
+            if s.is_in_progress:
+                s.end()
+                return SuccessPayload(success=True, message="Simulation ended")
+            return SuccessPayload(success=False, message="Simulation was not in progress")
+        except Simulation.DoesNotExist:
+            return SuccessPayload(success=False, message=f"No simulation with id {_id}")

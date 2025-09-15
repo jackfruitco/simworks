@@ -220,3 +220,9 @@ logfire.instrument_django(excluded_urls="/health(?:/|$)")
 logfire.instrument_openai(suppress_other_instrumentation=False)
 
 CSRF_FAILURE_VIEW = "core.views.csrf_failure"
+
+STRAWBERRY_DJANGO = {
+    "FIELD_DESCRIPTION_FROM_HELP_TEXT": True,
+    "TYPE_DESCRIPTION_FROM_MODEL_DOCSTRING": True,
+    "MUTATIONS_DEFAULT_HANDLE_ERRORS":  True,
+}

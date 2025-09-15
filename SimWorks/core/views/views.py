@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import TemplateView
-from strawberry.django.views import GraphQLView
+from strawberry.django.views import AsyncGraphQLView
 
 
 __all__ = ["index", "PrivateGraphQLView", "RobotsView"]
@@ -23,7 +23,7 @@ def index(request):
     )
 
 
-class PrivateGraphQLView(GraphQLView):
+class PrivateGraphQLView(AsyncGraphQLView):
     def get_context(self, request, response):
         return request
     @method_decorator(csrf_exempt)
