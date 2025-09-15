@@ -1,23 +1,32 @@
-import graphene
+import strawberry
+from strawberry import auto
+from strawberry.django import type
+from strawberry.types import Info
+
 from accounts.models import CustomUser
-from graphene_django.types import DjangoObjectType
 
 
-class UserType(DjangoObjectType):
-    class Meta:
-        model = CustomUser
-        fields = ("id", "username", "first_name", "last_name", "email", "date_joined")
+@type(CustomUser)
+class UserType:
+    id: auto
+    username: auto
+    first_name: auto
+    last_name: auto
+    email: auto
+    date_joined: auto
 
 
-class Query(graphene.ObjectType):
-    me = graphene.Field(UserType)
-
-    def resolve_me(self, info):
-        user = info.context.user
+@strawberry.type
+class AccountsQuery:
+    @strawberry.field
+    def me(self, info: Info) -> UserType:
+        user = info.context.request.user
         if user.is_anonymous:
             raise Exception("Not logged in!")
         return user
 
 
-class Mutation(graphene.ObjectType):
+@strawberry.type
+class AccountsMutation:
     pass
+

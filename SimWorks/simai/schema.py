@@ -1,49 +1,46 @@
 import importlib
 
-import graphene
-from core.utils import Formatter
-from django.core.exceptions import ObjectDoesNotExist
-from graphene_django.types import DjangoObjectType
-from simai.prompts import PromptModifiers
-from simcore.schema import SimulationType
+import strawberry
+from strawberry import auto, LazyType
+from strawberry.scalars import JSON
+from strawberry.types import Info
+from strawberry_django import type, field
 
+from core.utils import Formatter
+from simai.prompts import PromptModifiers
 from .models import Response
 
+SimulationType = LazyType("SimulationType", "simcore.schema")
 
-class Modifier(graphene.ObjectType):
-    key = graphene.String()
-    name = graphene.String()
-    group = graphene.String()
-    description = graphene.String()
-
-
-class ModifierGroup(graphene.ObjectType):
-    group = graphene.String()
-    description = graphene.String()
-    modifiers = graphene.List(Modifier)
+@strawberry.type
+class Modifier:
+    key: str
+    name: str
+    group: str
+    description: str
 
 
-class ResponseType(DjangoObjectType):
-    """Response type for GraphQL"""
+@strawberry.type
+class ModifierGroup:
+    group: str
+    description: str
+    modifiers: list[Modifier]
 
-    output_pretty = graphene.JSONString()
 
-    class Meta:
-        model = Response
-        interfaces = (graphene.relay.Node,)
-        fields = (
-            "id",
-            "created",
-            "modified",
-            "raw",
-            "input_tokens",
-            "output_tokens",
-            "reasoning_tokens",
-            "user",
-            "simulation",
-        )
+@type(Response)
+class ResponseType:
+    id: auto
+    created: auto
+    modified: auto
+    raw: auto
+    input_tokens: auto
+    output_tokens: auto
+    reasoning_tokens: auto
+    user: auto
+    simulation: SimulationType
 
-    def resolve_output_pretty(self, info):
+    @strawberry.field
+    def output_pretty(self) -> JSON | None:  # type: ignore[override]
         if not getattr(self, "raw", None):
             return None
         try:
@@ -53,24 +50,21 @@ class ResponseType(DjangoObjectType):
             return None
 
 
-def get_modifier_groups():
+def get_modifier_groups() -> list[ModifierGroup]:
+    """Return all modifier groups with their modifiers."""
     modifier_items = PromptModifiers.list()
-    grouped = {}
-    docstrings = {}
+    grouped: dict[str, list[Modifier]] = {}
+    docstrings: dict[str, str] = {}
 
     for item in modifier_items:
-        full_path = item["key"]
         group = item["group"]
-        name = item["name"]
-        description = item["description"]
-        grouped.setdefault(group, []).append(
-            {
-                "key": full_path,
-                "name": name,
-                "group": group,
-                "description": description,
-            }
+        modifier = Modifier(
+            key=item["key"],
+            name=item["name"],
+            group=group,
+            description=item["description"],
         )
+        grouped.setdefault(group, []).append(modifier)
 
     for group in grouped:
         try:
@@ -80,80 +74,54 @@ def get_modifier_groups():
             docstrings[group] = ""
 
     for mods in grouped.values():
-        mods.sort(key=lambda m: m["description"].lower())
+        mods.sort(key=lambda m: m.description.lower())
 
     return [
-        {"group": group, "description": docstrings[group], "modifiers": mods}
+        ModifierGroup(group=group, description=docstrings[group], modifiers=mods)
         for group, mods in sorted(grouped.items(), key=lambda item: item[0].lower())
     ]
 
 
-class Query(graphene.ObjectType):
+@strawberry.type
+class SimAiQuery:
+    @field
+    def response(self, info: Info, _id: strawberry.ID) -> ResponseType:
+        return Response.objects.select_related("simulation").get(id=_id)
 
-    # Responses
-    response = graphene.Field(ResponseType, id=graphene.ID(required=True))
-    responses = graphene.List(
-        ResponseType,
-        limit=graphene.Int(),
-        simulation=graphene.ID(),
-        ids=graphene.List(graphene.ID),
-    )
-
-    # Modifiers
-    modifier = graphene.Field(Modifier, key=graphene.String(required=True))
-    modifiers = graphene.List(Modifier)
-
-    # Modifier Groups
-    modifier_group = graphene.Field(ModifierGroup, group=graphene.String(required=True))
-    modifier_groups = graphene.List(
-        ModifierGroup, groups=graphene.List(graphene.String)
-    )
-
-    def resolve_response(root, info, id):
-        try:
-            return Response.objects.get(pk=id)
-        except ObjectDoesNotExist:
-            return None
-
-    def resolve_responses(
-        root, info, ids=None, limit: int = None, simulation: int = None
-    ):
-        qs = Response.objects.all()
-        if ids:
-            qs = qs.filter(pk__in=ids)
+    @field
+    def responses(
+        self,
+        info: Info,
+        _ids: list[strawberry.ID] | None = None,
+        limit: int | None = None,
+        simulation: strawberry.ID | None = None,
+    ) -> list[ResponseType]:
+        qs = Response.objects.select_related("simulation").all()
+        if _ids:
+            qs = qs.filter(pk__in=_ids)
         if simulation:
             qs = qs.filter(simulation=simulation)
         if limit:
             qs = qs[:limit]
         return qs
 
-    def resolve_modifier(root, info, key):
+    @strawberry.field
+    def modifier(self, info: Info, key: str) -> Modifier | None:
         item = PromptModifiers.get(key)
         if not item:
             return None
-        func = item["value"]
-        description = item["description"] or key
-        try:
-            value = func()
-        except Exception:
-            value = None
         return Modifier(
             key=item["key"],
             name=item["name"],
             group=item["group"],
-            description=description,
+            description=item["description"] or key,
         )
 
-    def resolve_modifiers(root, info, group=None):
+    @strawberry.field
+    def modifiers(self, info: Info, group: str | None = None) -> list[Modifier]:
         modifier_items = PromptModifiers.list()
-        result = []
+        result: list[Modifier] = []
         for item in modifier_items:
-            func = item["value"]
-            description = item["description"] or item["key"]
-            try:
-                value = func()
-            except Exception:
-                value = None
             if group and item["group"] != group:
                 continue
             result.append(
@@ -161,26 +129,32 @@ class Query(graphene.ObjectType):
                     key=item["key"],
                     name=item["name"],
                     group=item["group"],
-                    description=description,
+                    description=item["description"] or item["key"],
                 )
             )
         return result
 
-    def resolve_modifier_group(root, info, group):
+    @strawberry.field
+    def modifier_group(self, info: Info, group: str) -> ModifierGroup | None:
         grouped = get_modifier_groups()
         normalized = group.lower()
         for g in grouped:
-            if g["group"].lower() == normalized:
+            if g.group.lower() == normalized:
                 return g
         return None
 
-    def resolve_modifier_groups(root, info, groups=None):
+    @strawberry.field
+    def modifier_groups(
+        self, info: Info, groups: list[str] | None = None
+    ) -> list[ModifierGroup]:
         grouped = get_modifier_groups()
         if groups:
             normalized_groups = [g.lower() for g in groups]
-            grouped = [g for g in grouped if g["group"].lower() in normalized_groups]
+            grouped = [g for g in grouped if g.group.lower() in normalized_groups]
         return grouped
 
 
-class Mutation(graphene.ObjectType):
+@strawberry.type
+class SimAiMutation:
     pass
+

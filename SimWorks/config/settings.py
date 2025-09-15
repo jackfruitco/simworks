@@ -60,7 +60,7 @@ INSTALLED_APPS = [
     "simcore",
     "simai",
     "chatlab",
-    "graphene_django",
+    "strawberry.django",
     "imagekit",
 ]
 
@@ -174,14 +174,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-GRAPHENE = {
-    "SCHEMA": "config.schema.schema",
-    "MIDDLEWARE": [
-        "graphql_jwt.middleware.JSONWebTokenMiddleware",
-        "config.middleware.RequireApiPermissionMiddleware",
-    ],
-}
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
@@ -228,3 +220,9 @@ logfire.instrument_django(excluded_urls="/health(?:/|$)")
 logfire.instrument_openai(suppress_other_instrumentation=False)
 
 CSRF_FAILURE_VIEW = "core.views.csrf_failure"
+
+STRAWBERRY_DJANGO = {
+    "FIELD_DESCRIPTION_FROM_HELP_TEXT": True,
+    "TYPE_DESCRIPTION_FROM_MODEL_DOCSTRING": True,
+    "MUTATIONS_DEFAULT_HANDLE_ERRORS":  True,
+}

@@ -1,31 +1,35 @@
-import accounts.schema
-import chatlab.schema
-import graphene
-import graphql_jwt
-import simai.schema
-import simcore.schema
+import strawberry
+from strawberry_django.optimizer import DjangoOptimizerExtension
+
+from accounts.schema import AccountsQuery, AccountsMutation
+from chatlab.schema import ChatLabQuery, ChatLabMutation
+from simai.schema import SimAiQuery, SimAiMutation
+from simcore.schema import SimCoreQuery, SimCoreMutation
 
 
-class Query(
-    chatlab.schema.Query,
-    accounts.schema.Query,
-    simcore.schema.Query,
-    simai.schema.Query,
-    graphene.ObjectType,
+@strawberry.type
+class MergedQuery(
+    AccountsQuery,
+    ChatLabQuery,
+    SimCoreQuery,
+    SimAiQuery,
 ):
-    node = graphene.relay.Node.Field()
+    """Merged AccountsQuery root from all apps."""
+    pass
 
 
-class Mutation(
-    chatlab.schema.Mutation,
-    accounts.schema.Mutation,
-    simcore.schema.Mutation,
-    simai.schema.Mutation,
-    graphene.ObjectType,
+@strawberry.type
+class MergedMutation(
+    AccountsMutation,
+    ChatLabMutation,
+    SimCoreMutation,
+    SimAiMutation,
 ):
-    token_auth = graphql_jwt.ObtainJSONWebToken.Field()
-    verify_token = graphql_jwt.Verify.Field()
-    refresh_token = graphql_jwt.Refresh.Field()
+    """Merged AccountsMutation root from all apps."""
+    pass
 
 
-schema = graphene.Schema(query=Query, mutation=Mutation)
+schema = strawberry.Schema(
+    query=MergedQuery,
+    mutation=MergedMutation,
+    extensions=[DjangoOptimizerExtension()],)
