@@ -20,7 +20,7 @@ class UserType:
 class AccountsQuery:
     @strawberry.field
     def me(self, info: Info) -> UserType:
-        user = info.context.user
+        user = info.context.request.user
         if user.is_anonymous:
             raise Exception("Not logged in!")
         return user

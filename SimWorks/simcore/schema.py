@@ -44,7 +44,7 @@ class SimulationType:
     sim_patient_display_name: auto
 
     prompt: auto
-    user: list[UserType]
+    user: UserType
     messages: list[MessageType]
     metadata: list[SimulationMetadataType]
     is_complete: auto

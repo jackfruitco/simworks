@@ -41,7 +41,7 @@ class ChatLabQuery:
             qs = qs.filter(id__in=_ids)
 
         if _simulation_id is not None:
-            qs = qs.filter(simulation__id__in=_simulation_id)
+            qs = qs.filter(simulation__id=_simulation_id)
 
         if message_type:
             qs = qs.filter(message_type__in=message_type)
