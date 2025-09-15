@@ -1390,8 +1390,8 @@ requires-dist = [
     { name = "pydantic-django", specifier = ">=0.1.1" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "redis", specifier = ">=6.1.0" },
-    { name = "strawberry-graphql", specifier = "==0.282.0" },
-    { name = "strawberry-graphql-django", specifier = "==0.65.1" },
+    { name = "strawberry-graphql", specifier = ">=0.282.0" },
+    { name = "strawberry-graphql-django", specifier = ">=0.65.1" },
     { name = "typing-extensions", specifier = ">=4.13.2" },
     { name = "zope-interface", specifier = ">=7.2" },
 ]

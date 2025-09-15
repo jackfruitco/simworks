@@ -16,7 +16,6 @@ dependencies = [
     "django-polymorphic>=4.1.0",
     "django-redis>=5.4.0",
     "faker>=37.3.0",
-    "strawberry-graphql-django==0.65.1",
     "httpcore>=1.0.9",
     "logfire[django]>=3.24.0",
     "openai>=1.82.0",
@@ -29,7 +28,8 @@ dependencies = [
     "pydantic-django>=0.1.1",
     "pytest>=8.3.5",
     "redis>=6.1.0",
+    "strawberry-graphql>=0.282.0",
+    "strawberry-graphql-django>=0.65.1",
     "typing-extensions>=4.13.2",
     "zope-interface>=7.2",
-    "strawberry-graphql==0.282.0",
 ]
