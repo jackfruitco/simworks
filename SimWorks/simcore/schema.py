@@ -1,14 +1,9 @@
 import logging
 
 import strawberry
+import strawberry_django
 from django.db.models import QuerySet
 from strawberry import auto
-from strawberry.types import Info
-from strawberry_django import (
-    type,
-    field,
-    mutation
-)
 
 from accounts.schema import UserType
 from chatlab.schema import MessageType
@@ -21,7 +16,7 @@ from simcore.models import (
 logger = logging.getLogger(__name__)
 
 
-@type(SimulationMetadata)
+@strawberry_django.type(SimulationMetadata)
 class SimulationMetadataType:
     id: auto
     simulation: auto
@@ -32,7 +27,7 @@ class SimulationMetadataType:
     modified_at: auto
 
 
-@type(Simulation)
+@strawberry_django.type(Simulation)
 class SimulationType:
     id: auto
     openai_model: auto
@@ -76,7 +71,7 @@ class ImageVariantType:
     height: int
 
 
-@type(SimulationImage)
+@strawberry_django.type(SimulationImage)
 class SimulationImageType:
     id: auto
     simulation: auto
@@ -90,7 +85,7 @@ class SimulationImageType:
     @strawberry.field
     def variant(
         self,
-        info: Info,
+        info: strawberry.Info,
         name: str | None = None,
         width: int | None = None,
         height: int | None = None,
@@ -173,32 +168,32 @@ class SuccessPayload:
 
 @strawberry.type
 class SimCoreQuery:
-    @field
-    def simulation(self, info: Info, _id: strawberry.ID) -> SimulationType or Simulation:
+    @strawberry_django.field
+    def simulation(self, info: strawberry.Info, _id: strawberry.ID) -> SimulationType or Simulation:
         return (
             Simulation.objects
             .select_related("user")
             .get(id=_id)
         )
 
-    @field
-    def simulations(self, info: Info, _ids: list[strawberry.ID] | None = None) -> list[SimulationType]:
+    @strawberry_django.field
+    def simulations(self, info: strawberry.Info, _ids: list[strawberry.ID] | None = None) -> list[SimulationType]:
         qs = Simulation.objects.select_related("user").all()
         if _ids:
             qs = qs.filter(id__in=_ids)
         return qs
 
-    @field
-    def simulation_image(self, info: Info, _id: strawberry.ID) -> SimulationImageType | None:
+    @strawberry_django.field
+    def simulation_image(self, info: strawberry.Info, _id: strawberry.ID) -> SimulationImageType | None:
         try:
             return SimulationImage.objects.select_related("simulation").get(id=_id)
         except SimulationImage.DoesNotExist:
             return None
 
-    @field
+    @strawberry_django.field
     def simulation_images(
         self,
-        info: Info,
+        info: strawberry.Info,
         ids: list[int] | None = None,
         simulation: list[int] | None = None,
         limit: int | None = None,
@@ -215,7 +210,7 @@ class SimCoreQuery:
 
 @strawberry.type
 class SimCoreMutation:
-    @mutation
+    @strawberry_django.mutation(permission_classes=[])
     def end_simulation(self, _id: strawberry.ID) -> SuccessPayload:
         try:
             s = Simulation.objects.get(id=_id)

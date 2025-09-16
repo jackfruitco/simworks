@@ -1,10 +1,9 @@
 import importlib
 
 import strawberry
+import strawberry_django
 from strawberry import auto, LazyType
 from strawberry.scalars import JSON
-from strawberry.types import Info
-from strawberry_django import type, field
 
 from core.utils import Formatter
 from simai.prompts import PromptModifiers
@@ -27,7 +26,7 @@ class ModifierGroup:
     modifiers: list[Modifier]
 
 
-@type(Response)
+@strawberry_django.type(Response)
 class ResponseType:
     id: auto
     created: auto
@@ -84,14 +83,14 @@ def get_modifier_groups() -> list[ModifierGroup]:
 
 @strawberry.type
 class SimAiQuery:
-    @field
-    def response(self, info: Info, _id: strawberry.ID) -> ResponseType:
+    @strawberry_django.field
+    def response(self, info: strawberry.Info, _id: strawberry.ID) -> ResponseType:
         return Response.objects.select_related("simulation").get(id=_id)
 
-    @field
+    @strawberry_django.field
     def responses(
         self,
-        info: Info,
+        info: strawberry.Info,
         _ids: list[strawberry.ID] | None = None,
         limit: int | None = None,
         simulation: strawberry.ID | None = None,
@@ -106,7 +105,7 @@ class SimAiQuery:
         return qs
 
     @strawberry.field
-    def modifier(self, info: Info, key: str) -> Modifier | None:
+    def modifier(self, info: strawberry.Info, key: str) -> Modifier | None:
         item = PromptModifiers.get(key)
         if not item:
             return None
@@ -118,7 +117,7 @@ class SimAiQuery:
         )
 
     @strawberry.field
-    def modifiers(self, info: Info, group: str | None = None) -> list[Modifier]:
+    def modifiers(self, info: strawberry.Info, group: str | None = None) -> list[Modifier]:
         modifier_items = PromptModifiers.list()
         result: list[Modifier] = []
         for item in modifier_items:
@@ -135,7 +134,7 @@ class SimAiQuery:
         return result
 
     @strawberry.field
-    def modifier_group(self, info: Info, group: str) -> ModifierGroup | None:
+    def modifier_group(self, info: strawberry.Info, group: str) -> ModifierGroup | None:
         grouped = get_modifier_groups()
         normalized = group.lower()
         for g in grouped:
@@ -145,7 +144,7 @@ class SimAiQuery:
 
     @strawberry.field
     def modifier_groups(
-        self, info: Info, groups: list[str] | None = None
+        self, info: strawberry.Info, groups: list[str] | None = None
     ) -> list[ModifierGroup]:
         grouped = get_modifier_groups()
         if groups:
