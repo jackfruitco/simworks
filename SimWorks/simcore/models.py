@@ -263,10 +263,16 @@ class Simulation(models.Model):
 
         modifiers = kwargs.pop("modifiers", [])
 
+        include_default = kwargs.pop("include_default", False)
+
         if not prompt and user and lab:
             role = user.role
             prompt = await Prompt.abuild(
-                user=user, role=role, lab=lab, modifiers=modifiers
+                user=user,
+                role=role,
+                lab=lab,
+                modifiers=modifiers,
+                include_default=include_default,
             )
 
         if not prompt:

@@ -35,6 +35,7 @@ async def create_new_simulation(
         lab="chatlab",
         sim_patient_full_name=sim_patient_full_name,
         modifiers=modifiers,
+        include_default=True,
     )
 
     # Link ChatLab extension
