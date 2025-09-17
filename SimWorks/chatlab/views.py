@@ -6,7 +6,7 @@ from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from chatlab.utils import create_new_simulation
 from chatlab.utils import maybe_start_simulation
-from core.decorators import resolve_user
+from core.decorators import resolve_user, simulation_required
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
@@ -85,6 +85,7 @@ async def create_simulation(request):
 
 @login_required
 @resolve_user
+@simulation_required("simulation_id", owner_required=True)
 async def run_simulation(request, simulation_id, included_tools="__ALL__"):
     try:
         simulation = await Simulation.objects.select_related("user").aget(

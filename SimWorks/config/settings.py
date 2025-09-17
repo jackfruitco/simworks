@@ -60,7 +60,8 @@ INSTALLED_APPS = [
     "simcore",
     "simai",
     "chatlab",
-    "strawberry.django",
+    "trainerlab",
+    "strawberry_django",
     "imagekit",
 ]
 
