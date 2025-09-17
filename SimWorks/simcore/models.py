@@ -4,16 +4,12 @@ import mimetypes
 import os
 import uuid
 import warnings
-from abc import ABC
-from abc import ABCMeta
-from abc import abstractmethod
 from datetime import timedelta
 
-from asgiref.sync import async_to_sync
 from asgiref.sync import sync_to_async
 from autoslug import AutoSlugField
-from channels.db import database_sync_to_async
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
@@ -21,7 +17,8 @@ from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
-from simai.prompts.base import Prompt
+from polymorphic.models import PolymorphicModel
+
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -62,7 +59,10 @@ class BaseSession(models.Model):
     """
 
     simulation = models.OneToOneField(
-        "simcore.Simulation", on_delete=models.CASCADE, related_name="session"
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="%(app_label)s_session",
+        related_query_name="%(app_label)s_session",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
