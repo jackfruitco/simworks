@@ -261,19 +261,24 @@ class Simulation(models.Model):
         if not user and not is_template:
             raise ValueError("Simulation must have a user unless marked as template.")
 
-        modifiers = kwargs.pop("modifiers", [])
-
-        include_default = kwargs.pop("include_default", False)
+        if isinstance(user, (str, int)):
+            try:
+                pk = int(user)
+            except (TypeError, ValueError):
+                raise ValueError("`user` must be a User instance or an integer primary key")
+            User = get_user_model()
+            user = await User.objects.select_related("role").aget(pk=pk)
 
         if not prompt and user and lab:
-            role = user.role
-            prompt = await Prompt.abuild(
-                user=user,
-                role=role,
-                lab=lab,
-                modifiers=modifiers,
-                include_default=include_default,
-            )
+            prompt_kwargs = {
+                "user": user,
+                "role": user.role,
+                "lab": lab,
+                "modifiers": kwargs.pop("modifiers", []),
+                "include_default": kwargs.pop("include_default", False),
+                "include_history": kwargs.pop("include_history", False),
+            }
+            prompt = await Prompt.abuild(**prompt_kwargs)
 
         if not prompt:
             raise ValueError(
