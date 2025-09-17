@@ -189,8 +189,8 @@ class Prompt:
         user=None,
         role=None,
         lab=None,
-        include_default=True,
-        include_history=True,
+        include_default=False,
+        include_history=False,
         simulation=None,
         modifiers=None,
         **kwargs,
@@ -225,11 +225,14 @@ class Prompt:
             **kwargs,
         )
 
+        if lab.lower() == "trainerlab":
+            await instance._add_modifier("Lab.TrainerLab", key=True)
+
+        if include_default or lab.lower() == "chatlab":
+            await instance._add_defaults()
+
         for mod in instance._modifiers:
             await instance._add_modifier(mod, is_key=True, **kwargs)
-
-        if include_default:
-            await instance._add_defaults()
 
         return await instance.finalize()
 
