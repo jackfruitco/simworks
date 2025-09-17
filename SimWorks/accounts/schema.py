@@ -1,4 +1,8 @@
 import strawberry
+from asgiref.sync import sync_to_async
+from django.contrib.auth import get_user
+from graphql import GraphQLError
+
 from strawberry import auto
 from strawberry.django import type
 from strawberry.types import Info
@@ -19,11 +23,14 @@ class UserType:
 @strawberry.type
 class AccountsQuery:
     @strawberry.field
-    def me(self, info: Info) -> UserType:
-        user = info.context.request.user
-        if user.is_anonymous:
-            raise Exception("Not logged in!")
-        return user
+    async def me(self, info: Info) -> "UserType":
+        """Return the current user."""
+
+        request = info.context.request
+        user = await sync_to_async(get_user)(request)
+        if not user.is_authenticated:
+            raise GraphQLError("Not logged in!")
+        return user     # type: ignore
 
 
 @strawberry.type

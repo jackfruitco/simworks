@@ -5,6 +5,7 @@ from accounts.schema import AccountsQuery, AccountsMutation
 from chatlab.schema import ChatLabQuery, ChatLabMutation
 from simai.schema import SimAiQuery, SimAiMutation
 from simcore.schema import SimCoreQuery, SimCoreMutation
+from trainerlab.schema import TrainerLabQuery, TrainerLabMutation
 
 
 @strawberry.type
@@ -13,6 +14,7 @@ class MergedQuery(
     ChatLabQuery,
     SimCoreQuery,
     SimAiQuery,
+    TrainerLabQuery
 ):
     """Merged AccountsQuery root from all apps."""
     pass
@@ -24,6 +26,7 @@ class MergedMutation(
     ChatLabMutation,
     SimCoreMutation,
     SimAiMutation,
+    TrainerLabMutation
 ):
     """Merged AccountsMutation root from all apps."""
     pass
