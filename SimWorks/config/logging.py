@@ -85,7 +85,7 @@ LOGGING = {
             "level": check_env("SIMAI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "simai.prompts": {
+        "simai.promptkit": {
             "handlers": ["console"],
             "level": check_env("SIMAI_PROMPTS_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
