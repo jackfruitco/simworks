@@ -5,7 +5,9 @@ import logging
 class AppColorFormatter(logging.Formatter):
     COLORS = {
         "chatlab": "\033[34m",  # Dark Blue
-        "simai": "\033[32m",  # Dark Green
+        "simcore.ai": "\033[32m",  # Dark Green
+        "trainerlab.ai": "\033[32m",  # Dark Green
+        "chatlab.ai": "\033[32m",  # Dark Green
         "accounts": "\033[35m",  # Dark Magenta
         "notifications": "\033[33m",  # Dark Yellow/Brown
         "simcore": "\033[36m",  # Dark Cyan
@@ -14,8 +16,13 @@ class AppColorFormatter(logging.Formatter):
     RESET = "\033[0m"
 
     def format(self, record):
-        app = record.name.split(".")[0]
-        color = self.COLORS.get(app, "")
+        parts = record.name.split(".")
+        color = ""
+        for i in range(len(parts), 0, -1):
+            prefix = ".".join(parts[:i])
+            if prefix in self.COLORS:
+                color = self.COLORS[prefix]
+                break
         record.name = f"{color}{record.name}{self.RESET}" if color else record.name
         return super().format(record)
 

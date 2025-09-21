@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/builtins/_clinical_results.py
+# SimWorks/simai/promptkit/builtins/_clinical_results.py
 """PromptModifiers that enable users to request clinical results (e.g., labs) for a simulation."""
 import logging
 

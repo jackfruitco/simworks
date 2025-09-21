@@ -1,12 +1,14 @@
 # simcore/models.py
+import asyncio
 import logging
 import mimetypes
 import os
 import uuid
 import warnings
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
-from asgiref.sync import sync_to_async
+from asgiref.sync import sync_to_async, async_to_sync
 from autoslug import AutoSlugField
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -17,9 +19,9 @@ from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
-from polymorphic.models import PolymorphicModel
 
 from simcore.utils import randomize_display_name
+from simcore.ai.promptkit import Prompt as PromptDTO
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +87,27 @@ class Simulation(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     openai_model = models.CharField(blank=True, null=True, max_length=128)
     metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
+
+    # `prompt` is used for backwards compatibility with older simulations
+    # that used prompt_v1 or prompt_v2 (simai.promptkit)
     prompt = models.JSONField(
         help_text="The prompt to use as AI instructions",
+    )
+
+    # used for new simulations that use prompt_v3 (simcore.ai.promptkit)
+    prompt_instruction = models.TextField(
+        help_text="The prompt to use as AI instructions",
+        default="",
+    )
+    prompt_message = models.TextField(
+        help_text="The prompt to use as AI message",
+        blank=True,
+        null=True,
+    )
+    prompt_meta = models.JSONField(
+        help_text="The prompt metadata to use as AI message",
+        blank=True,
+        null=True,
     )
 
     diagnosis = models.CharField(max_length=255, blank=True, null=True)
@@ -230,37 +251,39 @@ class Simulation(models.Model):
         return SimulationMetadata.format_patient_history(raw)
 
     @classmethod
-    def build(cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs):
-        from simai.prompts import Prompt  # assuming Prompt is the prompt builder
-
-        if not user and not is_template:
-            raise ValueError("Simulation must have a user unless marked as template.")
-
-        modifiers = kwargs.pop("modifiers", [])
-
-        if not prompt and user and lab:
-            role = getattr(user, "role", None)
-            prompt = Prompt.build(user=user, role=role, lab=lab, modifiers=modifiers)
-
-        if not prompt:
-            raise ValueError(
-                "Prompt must be provided if no user/lab fallback is available."
-            )
-
-        kwargs["user"] = user
-        kwargs["prompt"] = prompt
-        return cls.objects.create(user=user, prompt=prompt, **kwargs)
+    def build(cls, **kwargs):
+        """Class method factory for creating simulations"""
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError("Simulation.build() called in async context; use abuild()")
+        except RuntimeError:
+            return async_to_sync(cls.abuild)(**kwargs)
 
     @classmethod
     async def abuild(
-        cls, *, user=None, prompt=None, lab=None, is_template=False, **kwargs
+            cls,
+            *,
+            user=None,
+            prompt: PromptDTO = None,
+            lab=None,
+            is_template=False,
+            use_prompt_v2=False,
+            **kwargs
     ):
         """Class method factory for creating simulations"""
-        from simai.prompts import Prompt
-
         if not user and not is_template:
             raise ValueError("Simulation must have a user unless marked as template.")
 
+        logger.info(f"starting Simulation build for {lab} (user={user})")
+        logger.debug("... abuild(%s, %s, %s, %s, %s)", user, prompt, lab, is_template, kwargs)
+
+        lab = str(lab).lower().strip() if lab else None
+
+        # Collect valid concrete field names to avoid passing stray kwargs to .acreate()
+        model_field_names = {f.name for f in cls._meta.get_fields() if
+                             getattr(f, "concrete", False) and not getattr(f, "auto_created", False)}
+
+        # Normalize user to instance
         if isinstance(user, (str, int)):
             try:
                 pk = int(user)
@@ -269,23 +292,96 @@ class Simulation(models.Model):
             User = get_user_model()
             user = await User.objects.select_related("role").aget(pk=pk)
 
-        if not prompt and user and lab:
-            prompt_kwargs = {
+        # ---- Legacy (prompt_v2) path -------------------------------------------------
+        if use_prompt_v2:
+            import warnings
+            warnings.warn("Using deprecated prompt_v2 (simai.promptkit)", DeprecationWarning)
+            if not prompt and user and lab:
+                from simai.prompts import Prompt as LegacyPrompt  # legacy builder
+
+                prompt_kwargs = {
+                    "user": user,
+                    "role": getattr(user, "role", None),
+                    "lab": lab,
+                    "modifiers": kwargs.pop("modifiers", []),
+                    "include_default": kwargs.pop("include_default", False),
+                    "include_history": kwargs.pop("include_history", False),
+                }
+                prompt = await LegacyPrompt.abuild(**prompt_kwargs)
+
+                # Prevent the save() hook from generating another legacy prompt
+                create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
+                return await cls.objects.acreate(
+                    user=user,
+                    prompt=prompt,
+                    prompt_meta={"version": 2},
+                    **create_kwargs,
+                )
+
+        # ---- New engine (prompt_v3) path --------------------------------------------
+        logger.debug(f"... using PromptEngine (v3)")
+        p: PromptDTO
+        if not prompt and lab:
+            from simcore.ai.promptkit import PromptEngine
+
+            try:
+                from simcore.ai.utils.imports import resolve_initial_section
+                init_cls = resolve_initial_section(lab)
+            except Exception as e:
+                raise ValueError(
+                    f"Unable to resolve initial prompt section for lab={lab!r}"
+                ) from e
+
+            # Pass context so sections can render
+            prompt_context = {
                 "user": user,
-                "role": user.role,
+                "role": getattr(user, "role", None),
                 "lab": lab,
-                "modifiers": kwargs.pop("modifiers", []),
-                "include_default": kwargs.pop("include_default", False),
-                "include_history": kwargs.pop("include_history", False),
             }
-            prompt = await Prompt.abuild(**prompt_kwargs)
 
-        if not prompt:
-            raise ValueError(
-                "Prompt must be provided if no user/lab fallback is available."
-            )
+            logger.debug(f"...... starting PromptEngine\n(engine context:\t{prompt_context})")
+            ctx = {**prompt_context, **kwargs}
+            p = await PromptEngine.abuild_from(init_cls, **ctx)
 
-        return await cls.objects.acreate(user=user, prompt=prompt, **kwargs)
+        else:
+            # Coerce/validate provided prompt
+            if isinstance(prompt, dict):
+                p = PromptDTO(
+                    instruction=(prompt.get("instruction") or ""),
+                    message=prompt.get("message"),
+                    meta=prompt.get("meta") or {},
+                )
+            else:
+                # Expect a Prompt-like object with `.instruction` and `.message`
+                if not hasattr(prompt, "instruction"):
+                    raise ValueError(
+                        "Provided prompt must have an 'instruction' attribute or be a dict with 'instruction'.")
+                p = prompt
+
+        if not p:
+            raise ValueError("Prompt or Lab must be provided to build a Simulation.")
+
+        if not p.instruction:
+            raise ValueError("Prompt instruction must be provided to build a Simulation.")
+
+        # Enrich prompt metadata
+        p.meta.update({
+            "lab": lab,
+            # "sections": [...],        # TODO add when the engine exposes used labels
+        })
+
+        logger.debug(f"...... PromptEngine complete: {p}")
+
+        logger.debug(f"... creating Simulation")
+        create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
+        return await cls.objects.acreate(
+            user=user,
+            prompt=p.to_dict(),  # TODO prompt_json is deprecated, remove in future
+            prompt_instruction=p.instruction,
+            prompt_message=p.message or "",
+            prompt_meta=p.meta,
+            **create_kwargs,
+        )
 
     @classmethod
     def resolve(cls, _simulation: "Simulation | int") -> "Simulation":
@@ -302,7 +398,7 @@ class Simulation(models.Model):
         try:
             return cls.objects.get(pk=_simulation)
         except (TypeError, ValueError, ObjectDoesNotExist):
-            raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
+            raise ValueError(f"Cannot resolve {cls.__name__} with input {_simulation!r}")
 
     @classmethod
     async def aresolve(cls, _simulation: "Simulation | int") -> "Simulation":
@@ -312,14 +408,18 @@ class Simulation(models.Model):
 
         :param _simulation: Simulation instance or primary-key integer
         :type _simulation: Simulation | int
+
         :return: Simulation instance
+        :rtype: Simulation
+
+        :raises ValueError: If the provided value is not a Simulation instance or an integer.
         """
         if isinstance(_simulation, cls):
             return _simulation
         try:
             return await cls.objects.aget(pk=_simulation)
         except (TypeError, ValueError, ObjectDoesNotExist):
-            raise ValueError(f"Cannot coerce {_simulation!r} into a {cls.__name__}")
+            raise ValueError(f"Cannot resolve {cls.__name__} with input {_simulation!r}")
 
     def save(self, *args, **kwargs):
         from simai.prompts import build_prompt
@@ -494,7 +594,6 @@ class PatientDemographics(SimulationMetadata):
 
     def __str__(self) -> str:
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
-
 
 
 class PatientHistory(SimulationMetadata):

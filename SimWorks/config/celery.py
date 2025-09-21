@@ -8,9 +8,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 app = Celery("simworks")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
-# Load task modules from all registered Django apps.
+# Load task modules from all registered Django apps, then
+# Load task modules from simcore.ai
 app.autodiscover_tasks()
-
+app.autodiscover_tasks(packages=["simcore"], related_name="ai.tasks.executors")
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):

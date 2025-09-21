@@ -174,7 +174,7 @@ class SimAIClient:
         Args:
             model (Optional[str]): The OpenAI model to use; defaults to the model specified in settings.
         """
-        self.model = model or getattr(settings, "OPENAI_MODEL", "gpt-4")
+        self.model = model or getattr(settings, "AI_DEFAULT_MODEL", "gpt-4")
         self.client = AsyncOpenAI()  # Initialize the OpenAI client
 
     async def __aenter__(self):

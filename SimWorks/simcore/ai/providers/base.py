@@ -1,7 +1,7 @@
 # simcore/ai/providers/base.py
 from abc import ABC, abstractmethod
 from typing import AsyncIterator
-from simcore.ai.schemas.base import NormalizedAIRequest, NormalizedAIResponse, NormalizedStreamChunk
+from simcore.ai.schemas.normalized_types import NormalizedAIRequest, NormalizedAIResponse, NormalizedStreamChunk
 
 
 class ProviderError(Exception):

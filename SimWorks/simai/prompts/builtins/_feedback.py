@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/builtins/_feedback.py
+# SimWorks/simai/promptkit/builtins/_feedback.py
 """PromptModifiers that modify the feedback type for a simulation."""
 from simai.prompts.registry import register_modifier
 

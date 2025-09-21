@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 from typing import Type
 
@@ -19,8 +20,7 @@ MODEL_MAP: dict[ResponseType, type[PatientReplySchema | PatientInitialSchema]] =
     ResponseType.FEEDBACK: SimulationFeedbackSchema,
 }
 
-
-def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam:
+def build_output_schema(model: Type[BaseModel]) -> ResponseTextConfigParam:
     """
     Build the `text` param for openai.responses.create() that
     tells the API to emit JSON matching `model`’s schema.
@@ -31,6 +31,8 @@ def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam
     :return: The `text` param for openai.responses.create().
     :rtype: ResponseTextConfigParam
     """
+    # TODO consider if this is OpenAI Provider-specific or agnostic
+    # TODO consider if the schemas themselves should be OpenAI Provider-specific
     return {
         "format": {
             "type": "json_schema",
@@ -38,6 +40,13 @@ def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam
             "schema": model.model_json_schema(),
         }
     }
+
+def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam:
+    """Alias for build_output_schema() backwards compatibility."""
+    warnings.warn(
+        "build_response_text_param() is deprecated, use build_output_schema() instead",
+        DeprecationWarning)
+    return build_output_schema(model)
 
 
 def maybe_coerce_to_schema(
@@ -52,9 +61,15 @@ def maybe_coerce_to_schema(
         response_type: One of ResponseType.INITIAL or REPLY to pick parsing.
 
     Returns:
-        A PatientInitialSchema or PatientReplySchema instance if parsed;
+        A PatientInitialOutputSchema or PatientReplyOutputSchema instance if parsed;
         otherwise the raw `output_text` string.
     """
+    warnings.warn(
+        "maybe_coerce_to_schema() is deprecated, "
+        "use simcore.ai.parsers.output_parser instead",
+        DeprecationWarning
+    )
+
     ModelClass = MODEL_MAP.get(response_type)
     if not ModelClass:
         logger.debug(f"No pydantic schema found for {response_type.label} output, "

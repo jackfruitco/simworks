@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/registry.py
+# SimWorks/simai/promptkit/registry.py
 import logging
 
 logger = logging.getLogger(__name__)

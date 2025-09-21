@@ -27,6 +27,11 @@ async def create_new_simulation(
     user, modifiers: list = None, force: bool = False
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(s)."""
+    logger.debug(
+        f"received request to create new simulation for {user.username!r} "
+        f"with modifiers {modifiers!r} (force {force!r})"
+    )
+
     sim_patient_full_name = await generate_fake_name()
 
     # Create base Simulation
@@ -37,17 +42,20 @@ async def create_new_simulation(
         modifiers=modifiers,
         include_default=True,
     )
+    logger.debug(f"simulation #{simulation.id} created")
 
     # Link ChatLab extension
-    await ChatSession.objects.acreate(simulation=simulation)
+    session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
+    logger.debug(f"chatlab session #{session.id} linked simulatio #{simulation.id}")
 
     # Generate an initial message
-    logger.debug(
-        f"Starting celery task to generate initial SimMessage for Sim#{simulation.id}"
-    )
-    from simai.tasks import generate_patient_initial as task
+    from simcore.ai.tasks.dispatch import call_connector
+    from chatlab.ai.connectors import generate_patient_initial
 
-    task.delay(simulation.id, force)
+    call_connector(
+        generate_patient_initial,
+        simulation.id,
+    )
 
     return simulation
 
@@ -134,7 +142,7 @@ async def socket_send(
 async def broadcast_event(
     __type: str,
     __simulation: Simulation | int,
-    __payload: dict = {},
+    __payload: dict | None = None,
     __status: str = None,
     **kwargs,
 ) -> None:
@@ -159,6 +167,9 @@ async def broadcast_event(
     :return: None
     :rtype: None
     """
+    if __payload is None:
+        __payload = {}
+
     if isinstance(__simulation, Simulation):
         __simulation = __simulation.id
 
@@ -173,7 +184,7 @@ async def broadcast_event(
 
 
 async def broadcast_patient_results(
-    __source:  list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult or int,
+    __source:  list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
     __status: str = None
 ) -> None:
     """
@@ -239,7 +250,7 @@ async def broadcast_patient_results(
     return
 
 
-async def broadcast_message(message: Message or int, status: str = None) -> None:
+async def broadcast_message(message: Message | int, status: str = None) -> None:
     """
     Broadcasts a message to a specific group layer using WebSocket and channels. The message
     can originate either from a system or a user. If a message ID is provided instead of a
@@ -261,14 +272,14 @@ async def broadcast_message(message: Message or int, status: str = None) -> None
     # Get Message instance if provided ID
     if not isinstance(message, Message):
         try:
-            message = await sync_to_async(Message.objects.get)(id=message)
+            message = await Message.objects.select_related("sender").prefetch_related("media").aget(id=message)
         except Message.DoesNotExist:
             logger.error(msg=f"Message ID {message} not found. Skipping broadcast.")
             return
 
     # Get Simulation instance from Message FK
     try:
-        simulation = await sync_to_async(Simulation.objects.get)(
+        simulation = await Simulation.objects.aget(
             id=message.simulation_id
         )
     except Simulation.DoesNotExist:
@@ -283,19 +294,16 @@ async def broadcast_message(message: Message or int, status: str = None) -> None
 
     has_sender = message.sender is not None
     if has_sender:
-        sender_username = await sync_to_async(lambda: message.sender.username)()
-        display_name = await sync_to_async(
-            lambda: message.display_name or message.sender.username
-        )()
-        display_initials = await sync_to_async(
-            lambda: get_user_initials(message.sender)
-        )()
+        # `sender` was loaded via select_related; safe to access directly without extra queries
+        sender_username = message.sender.username
+        display_name = message.display_name or message.sender.username
+        display_initials = get_user_initials(message.sender)
     else:
         sender_username = "System"
         display_name = simulation.sim_patient_display_name
         display_initials = simulation.sim_patient_initials
 
-    media_list = await sync_to_async(lambda: list(message.media.all()))()
+    media_list = message.media.all()
     _media = [
         {
             "id": media.id,
@@ -337,7 +345,7 @@ async def broadcast_chat_message(message: Message or int, status: str = None):
     # Get Message instance if provided ID
     if not isinstance(message, Message):
         try:
-            message = await sync_to_async(Message.objects.get)(id=message)
+            message = await Message.objects.select_related("sender").prefetch_related("media").aget(id=message)
         except Message.DoesNotExist:
             await _log(
                 level=logging.ERROR,
@@ -367,13 +375,9 @@ async def broadcast_chat_message(message: Message or int, status: str = None):
 
     has_sender = message.sender is not None
     if has_sender:
-        sender_username = await sync_to_async(lambda: message.sender.username)()
-        display_name = await sync_to_async(
-            lambda: message.display_name or message.sender.username
-        )()
-        display_initials = await sync_to_async(
-            lambda: get_user_initials(message.sender)
-        )()
+        sender_username = message.sender.username
+        display_name = message.display_name or message.sender.username
+        display_initials = get_user_initials(message.sender)
     else:
         sender_username = "System"
         display_name = simulation.sim_patient_display_name

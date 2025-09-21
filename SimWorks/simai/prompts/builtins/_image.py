@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/builtins/_image.py
+# SimWorks/simai/promptkit/builtins/_image.py
 """PromptModifiers that modify the request image generation for a simulation."""
 from core.utils import Formatter
 from simai.prompts.registry import register_modifier

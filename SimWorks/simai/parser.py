@@ -69,14 +69,14 @@ class StructuredOutputParser:
         containing a list of created Message instances and a list
         of created SimulationMetadata instances.
 
-        This method handles different types of output, including PatientInitialSchema,
-        PatientReplySchema, ImageGenerationCall, and str by performing specific
+        This method handles different types of output, including PatientInitialOutputSchema,
+        PatientReplyOutputSchema, ImageGenerationCall, and str by performing specific
         processing logic for each type. It also manages tasks associated with image
-        generation for PatientReplySchema when required.
+        generation for PatientReplyOutputSchema when required.
 
         Args:
-            output: The output to be parsed; can be PatientInitialSchema,
-              PatientReplySchema, ImageGenerationCall, or str.
+            output: The output to be parsed; can be PatientInitialOutputSchema,
+              PatientReplyOutputSchema, ImageGenerationCall, or str.
             response_type (ResponseType): The type of response to handle,
               defaulting to ResponseType.REPLY.
             kwargs: Additional keyword arguments for custom behavior or configuration.

@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/utils.py
+# SimWorks/simai/promptkit/utils.py
 import logging
 import warnings
 
@@ -17,7 +17,7 @@ def build_prompt(
     **kwargs,
 ) -> str:
     """
-    Utility function to build and finalize Simulation prompts.
+    Utility function to build and finalize Simulation promptkit.
 
     :param modifiers_or_list: variadic modifiers passed positionally
     :param user: the User associated with the simulation prompt.

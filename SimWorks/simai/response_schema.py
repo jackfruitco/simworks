@@ -17,12 +17,13 @@ Example:
     response = client.responses.parse(
         model="gpt-4o",
         input=[...],
-        text_format=PatientReplySchema,
+        text_format=PatientReplyOutputSchema,
     )
     parsed = response.output_parsed
 
 Author: Jackfruit SimWorks
 """
+import warnings
 from enum import Enum
 from typing import List, Annotated
 from typing import Literal
@@ -32,6 +33,7 @@ from pydantic import BaseModel
 from pydantic import Extra
 from pydantic import Field
 
+warnings.warn("Module is deprecated. Use app-specific schemas in [app_name].ai.schemas` instead.", DeprecationWarning, stacklevel=2)
 
 class StrictBaseModel(BaseModel):
     class Config:

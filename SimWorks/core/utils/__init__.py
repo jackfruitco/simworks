@@ -5,6 +5,7 @@ This module exposes a curated set of utility functions and classes used across t
 Each utility is grouped by domain (e.g., accounts, logging, formatters) and implemented in its own module.
 """
 from .accounts import get_or_create_system_user
+from .accounts import aget_or_create_system_user
 from .accounts import get_system_user
 from .formatters import Formatter
 from .hash import compute_fingerprint

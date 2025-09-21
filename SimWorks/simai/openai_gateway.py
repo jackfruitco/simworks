@@ -77,8 +77,8 @@ async def process_response(
     response_log_instance = await SimCoreResponse.objects.acreate(**payload)
 
     # Get System User & create Parser
-    from core.utils import get_or_create_system_user
-    system_user = await get_or_create_system_user()
+    from core.utils import aget_or_create_system_user
+    system_user = await aget_or_create_system_user()
 
     parser = StructuredOutputParser(
         simulation=simulation,

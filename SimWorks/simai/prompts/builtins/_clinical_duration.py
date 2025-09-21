@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/builtins/_clinical_scenario.py
+# SimWorks/simai/promptkit/builtins/_clinical_scenario.py
 """PromptModifiers that modify the clinical duration of a simulation (i.e. Acute, Chronic, etc.)."""
 from simai.prompts.registry import register_modifier
 

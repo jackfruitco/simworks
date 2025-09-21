@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/builtins/_lab.py
+# SimWorks/simai/promptkit/builtins/_lab.py
 """PromptModifiers that modify the Lab modality of a simulation."""
 from simai.prompts.registry import register_modifier
 

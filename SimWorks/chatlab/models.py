@@ -1,3 +1,4 @@
+# chatlab/models.py
 import logging
 
 from channels.db import database_sync_to_async

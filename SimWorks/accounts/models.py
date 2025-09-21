@@ -1,9 +1,7 @@
 # accounts/models.py
 from datetime import timedelta
 
-from asgiref.sync import async_to_sync
 from asgiref.sync import sync_to_async
-from core.utils.formatters import Formatter
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
@@ -11,7 +9,6 @@ from django.db import models
 from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
-from simcore.models import Simulation
 
 
 class CustomUser(AbstractUser):
@@ -22,6 +19,8 @@ class CustomUser(AbstractUser):
         Return a queryset of scenario data (diagnosis and chief complaint) filtered by time.
         Priority of filters: days > weeks > months.
         """
+        from simcore.models import Simulation
+
         # Prioritize the most specific time range
         if within_days is None:
             if within_weeks is not None:
@@ -49,7 +48,7 @@ class UserRole(models.Model):
     )
 
     @sync_to_async
-    def resource_list(self, format_as="list") -> list or str:
+    def resource_list(self, format_as="list") -> list | str:
         _list = []
         for item in RoleResource.objects.filter(role=self):
             _list.append(item.resource)

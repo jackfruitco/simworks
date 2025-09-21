@@ -5,7 +5,6 @@ class ChatLabConfig(AppConfig):
     name = "chatlab"
 
     def ready(self):
-        import chatlab.signals
         from simcore.history_registry import register_history_provider
         from .models import Message
 
@@ -24,3 +23,8 @@ class ChatLabConfig(AppConfig):
             ]
 
         register_history_provider("chatlab", chatlab_history)
+
+        try:
+            import chatlab.ai.prompts  # noqa: F401
+        except ImportError:
+            pass

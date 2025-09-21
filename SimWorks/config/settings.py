@@ -127,8 +127,15 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-OPENAI_API_KEY = check_env("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
+
+AI_API_KEY = check_env("AI_API_KEY")
+if AI_API_KEY is None and AI_PROVIDER == "openai":
+    AI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+AI_DEFAULT_MODEL = os.getenv("AI_DEFAULT_MODEL", "gpt-5-mini")
+AI_CUSTOM_PROMPT_PATH = os.getenv("AI_CUSTOM_PROMPT_PATH")
+
 OPENAI_DEFAULT_IMAGE_FORMAT = check_env("OPENAI_DEFAULT_IMAGE_FORMAT", default="webp")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")

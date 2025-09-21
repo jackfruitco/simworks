@@ -1,4 +1,4 @@
-# SimWorks/simai/prompts/builtins/_user.py
+# SimWorks/simai/promptkit/builtins/_user.py
 """PromptModifiers that modify the user information for a simulation."""
 from asgiref.sync import sync_to_async
 from core.utils import Formatter
