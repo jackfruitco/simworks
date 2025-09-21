@@ -11,10 +11,10 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
+
 from simai.client import SimAIClient
 from simcore.models import Simulation
 from simcore.utils import get_user_initials
-
 from .models import Message
 from .models import RoleChoices
 from .utils import broadcast_message
@@ -205,28 +205,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Set preferred content mode
         await self.handle_content_mode(data.get("content_mode"))
 
-        # TODO remove if not broken
-        # is_new_simulation = await Message.objects.filter(simulation=self.simulation).aexists()
-        #
-        # first_msg = await sync_to_async(
-        #     lambda: Message.objects.filter(simulation=self.simulation)
-        #     .order_by("timestamp")
-        #     .first()
-        # )()
-        #
-        # if first_msg:
-        #     print("[WebSocket] Received client_ready event")
-        #     print(f"[WebSocket] Sending message to group: {first_msg.content}")
-        #     sender_username = await sync_to_async(
-        #         lambda: first_msg.sender.username
-        #     )()
-        #     display_name = await sync_to_async(
-        #         lambda: first_msg.display_name or first_msg.sender.username
-        #     )()
-        #     display_initials = await sync_to_async(
-        #         lambda: first_msg.simulation.sim_patient_initials
-        #     )()
-
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
         Check whether a simulation has ended either by flag or time limit.
@@ -241,8 +219,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return True
 
         if (
-            simulation.time_limit
-            and (simulation.start_timestamp + simulation.time_limit) < timezone.now()
+                simulation.time_limit
+                and (simulation.start_timestamp + simulation.time_limit) < timezone.now()
         ):
             simulation.end_timestamp = timezone.now()
             await sync_to_async(simulation.save)()
@@ -396,7 +374,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.content_mode = ContentMode.HTML
 
     async def simulate_system_typing(
-        self, display_initials: str, started: bool = True
+            self, display_initials: str, started: bool = True
     ) -> None:
         """
         Simulate the system user beginning or stopping typing.
@@ -421,7 +399,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @sync_to_async
     def save_message(
-        self, simulation: Simulation, sender, content: str, role: str = "A"
+            self, simulation: Simulation, sender, content: str, role: str = "A"
     ) -> Message:
         """
         Save a message to the database using the Message model.
