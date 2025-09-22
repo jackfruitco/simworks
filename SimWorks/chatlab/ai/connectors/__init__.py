@@ -1,5 +1,10 @@
-from .patient_responses import generate_patient_initial
+# simcore/ai/connectors/__init__.py
+from .patient_responses import (
+    generate_patient_initial,
+    generate_patient_reply,
+)
 
-__ALL__ = [
-    "generate_patient_initial"
+__all__ = [
+    "generate_patient_initial",
+    "generate_patient_reply",
 ]

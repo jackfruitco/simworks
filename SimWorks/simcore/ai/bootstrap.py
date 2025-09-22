@@ -5,18 +5,22 @@ import importlib
 import inspect
 import pathlib
 import pkgutil
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from django.conf import settings
 
 from .client import AIClient
 from .providers.base import ProviderBase
 
+if TYPE_CHECKING:
+    from .client import AIClient  # type: ignore
+
 _ai_client: Optional[AIClient] = None
 _default_model: Optional[str] = None
 
 _providers_path = pathlib.Path(__file__).parent / "providers"
 
+# Dynamically discover supported providers from the .providers/ directory
 SUPPORTED_PROVIDERS = [
     mod.name
     for mod in pkgutil.iter_modules([str(_providers_path)])
@@ -63,8 +67,8 @@ def _build_provider_from_module(provider_key: str) -> ProviderBase:
         # Try the most common signature first
         provider = provider_cls(
             api_key=getattr(settings, "AI_API_KEY", None),  # may be unused by non-OpenAI providers
-            base_url=getattr(settings, "OPENAI_BASE_URL", None),
-            timeout=getattr(settings, "OPENAI_TIMEOUT_S", 30),
+            base_url=getattr(settings, "AI_BASE_URL", None),
+            timeout=getattr(settings, "AI_TIMEOUT_S", 30),
             name=provider_key,
         )
         if not isinstance(provider, ProviderBase):
@@ -91,9 +95,12 @@ def init_ai_singleton() -> AIClient:
     if settings.AI_PROVIDER not in SUPPORTED_PROVIDERS:
         raise RuntimeError(f"Unsupported AI_PROVIDER={settings.AI_PROVIDER}")
 
+    from .client import AIClient            # lazy import to prevent circular import
+
     provider = _build_provider_from_module(settings.AI_PROVIDER)
     _ai_client = AIClient(provider=provider)
     _default_model = settings.AI_DEFAULT_MODEL
+
     return _ai_client
 
 
