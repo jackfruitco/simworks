@@ -1,81 +1,90 @@
 # chatlab/ai/connectors/patient_responses.py
 import logging
+from typing import Type
 
-from chatlab.ai.schema import PatientInitialOutputSchema
+from chatlab.models import Message
 from chatlab.utils import broadcast_message
-from simcore.ai import (
-    get_ai_client,
-    get_default_model,
+from simcore.ai import get_ai_client
+from simcore.ai.schemas import StrictOutputSchema
+from simcore.ai.schemas.normalized_types import (
+    NormalizedAIMessage, NormalizedAIRequest, NormalizedAIResponse
 )
-from simcore.ai.schemas.normalized_types import NormalizedAIMessage, NormalizedAIRequest, NormalizedAIResponse
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
 
 
-async def generate_patient_initial(simulation_id: int) -> dict:
-    """Generate initial introduction message for the patient in the ChatLab Session.
+async def _build_messages_and_schema(
+        sim: Simulation, *, rtype: str, user_msg: Message | None
+) -> tuple[list[NormalizedAIMessage], Type[StrictOutputSchema]]:
+    if rtype == "initial":
+        from chatlab.ai.schema import PatientInitialOutputSchema as Schema  # local import avoids cycles
+        msgs = [
+            # TODO add sim name to prompt
+            NormalizedAIMessage(role="developer", content=sim.prompt_instruction),
+            NormalizedAIMessage(role="user", content=sim.prompt_message or ""),
+        ]
+        return msgs, Schema
 
-    :param simulation_id: The simulation ID.
-    :type simulation_id: int
+    if rtype == "reply":
+        if not user_msg:
+            raise ValueError("user_msg required for rtype='reply'")
 
-    :param user_msg: The user's initial message.
-    :type user_msg: str
+        from chatlab.ai.schema import PatientReplyOutputSchema as Schema
+        msgs = [NormalizedAIMessage(role="user", content=user_msg.content)]
+        return msgs, Schema
 
-    :return: A dictionary containing the initial message and usage information.
-    :rtype: dict
-    """
-    logger.debug(f"connector 'generate_patient_initial' called...")
+    raise ValueError(f"Unknown rtype: {rtype}")
 
-    # Get parameters
-    _client = get_ai_client()
-    _simulation = await Simulation.aresolve(simulation_id)
-    _schema_cls = PatientInitialOutputSchema
-    _model = get_default_model()
 
-    # Build message payload
-    _messages_out: list[NormalizedAIMessage] = [
-        NormalizedAIMessage(
-            # TODO add Sim patient name to prompt instruction
-            role="developer", content=_simulation.prompt_instruction
-        ),
-        NormalizedAIMessage(
-            role="user", content=_simulation.prompt_message or ""
-        ),
-    ]
+async def _generate_patient_response(
+        *, simulation_id: int, rtype: str, user_msg: Message | None, as_dict: bool
+) -> NormalizedAIResponse | dict:
+    client = get_ai_client()
+    sim = await Simulation.aresolve(simulation_id)
+    previous_response_id = await sim.aget_previous_response_id()
 
-    request: NormalizedAIRequest = NormalizedAIRequest(
-        model=_model,
-        messages=_messages_out,
-        schema_cls=_schema_cls,
-        metadata={"use_case": "chatlab:patient_initial", "simulation_id": _simulation.id},
+    messages, schema_cls = await _build_messages_and_schema(
+        sim, rtype=rtype, user_msg=user_msg
     )
-    logger.debug(f"... request built: {request}")
 
-    resp: NormalizedAIResponse = await _client.send_request(
-        request,
-        simulation=_simulation
+    req = NormalizedAIRequest(
+        messages=messages,
+        schema_cls=schema_cls,
+        previous_response_id=previous_response_id,
+        metadata={
+            "use_case": f"chatlab:patient_{rtype}",
+            "simulation_id": sim.id,
+            "user_msg_pk": getattr(user_msg, "pk", None),
+        },
     )
-    logger.debug(f"... response received: {resp}")
+    resp = await client.send_request(req, simulation=sim)
 
     for m in resp.messages:
         await broadcast_message(m.db_pk)
-
-    # TODO weird return type... why not return the NormalizedAIResponse?
-    return {
-        "text": (resp.messages[-1].content if resp.messages else ""),
-        "usage": resp.usage,
-        "model": resp.provider_meta.get("model"),
-    }
+    return resp.model_dump() if as_dict else resp
 
 
-async def generate_patient_response(simulation_id: int, user_msg: str) -> dict:
-    client = get_ai_client()
-    req = NormalizedAIRequest(
-        model=get_default_model(),
-        messages=[
-            NormalizedAIMessage(role="system", content="You are the patient. Be terse under stress."),
-            NormalizedAIMessage(role="user", content=user_msg),
-        ],
-        metadata={"use_case": "chatlab.patient_response", "simulation_id": simulation_id},
+# ---------- Public entry points ------------------------------------------------------
+async def generate_patient_initial(
+        simulation_id: int, *, as_dict: bool = True
+) -> NormalizedAIResponse | dict:
+    """Generate patient initial response."""
+    return await _generate_patient_response(
+        simulation_id=simulation_id,
+        rtype="initial",
+        user_msg=None,
+        as_dict=as_dict
+    )
+
+
+async def generate_patient_reply(
+        simulation_id: int, user_msg: Message, *, as_dict: bool = True
+) -> NormalizedAIResponse | dict:
+    """Generate patient reply response."""
+    return await _generate_patient_response(
+        simulation_id=simulation_id,
+        rtype="reply",
+        user_msg=user_msg,
+        as_dict=as_dict
     )

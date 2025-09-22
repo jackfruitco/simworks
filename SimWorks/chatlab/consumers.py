@@ -1,9 +1,6 @@
-import asyncio
 import inspect
 import json
 import logging
-import random
-import time
 import warnings
 from enum import Enum
 
@@ -12,15 +9,13 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
-from simai.client import SimAIClient
+from simcore.ai.schemas import NormalizedAIResponse
 from simcore.models import Simulation
 from simcore.utils import get_user_initials
 from .models import Message
 from .models import RoleChoices
-from .utils import broadcast_message
 
 logger = logging.getLogger(__name__)
-ai: SimAIClient = SimAIClient()
 
 
 class ContentMode(str, Enum):
@@ -205,6 +200,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Set preferred content mode
         await self.handle_content_mode(data.get("content_mode"))
 
+    async def _generate_patient_response(self, user_msg: Message) -> NormalizedAIResponse:
+        """Generate patient response."""
+        from simcore.ai.tasks.dispatch import acall_connector
+        from chatlab.ai.connectors import generate_patient_reply
+
+        return await acall_connector(
+            generate_patient_reply,
+            simulation_id=self.simulation.pk,
+            user_msg=user_msg,
+            enqueue=False
+        )
+
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
         Check whether a simulation has ended either by flag or time limit.
@@ -275,24 +282,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # TODO
             # await self.broadcast_message_status(user_msg.id, "delivered")
 
-            # Record start_timestamp time for typing indicator
-            start_time = time.monotonic()
-            min_delay_time = random.uniform(3.0, 8.0)
-
-            # Send user's input to OpenAI to generate a response, then
-            # Wait until the minimum delay time is met
-            _generated_messages: list[Message]
-            _generated_messages, _ = await ai.generate_patient_reply(user_msg)
-            elapsed = time.monotonic() - start_time
-            if elapsed < min_delay_time:
-                await asyncio.sleep(min_delay_time - elapsed)
-
-            # Convert _generated_messages to a list in a synchronous thread
-            # sim_responses_list = await sync_to_async(list)(_generated_messages)
-
-            # Broadcast each system-generated message
-            for m in _generated_messages:
-                await broadcast_message(m, status="delivered")
+            await self._generate_patient_response(user_msg)
 
     async def handle_typing(self, data: dict) -> None:
         """
@@ -458,25 +448,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
-    async def feedback_created(self, event: dict) -> None:
-        """
-        Handles the creation of feedback by processing the given event data asynchronously.
-        The function logs the name of the current function for debugging and monitoring purposes,
-        then sends the feedback event data to a specified recipient.
-
-        :param event: A dictionary containing event data related to feedback creation.
-        :type event: dict
-        :return: None
-        :rtype: None
-        """
-        # TODO deprecation warning; remove in 0.6.5
-        warnings.warn(
-            "'feedback_created' event.type is deprecated. Use 'simulation.feedback_created' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return await self.simulation_feedback_created(event)
-
     async def simulation_feedback_created(self, event: dict) -> None:
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
@@ -514,14 +485,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Proceed to send the message if 'content' exists
         await self.send(text_data=json.dumps(event))
-
-    async def message_created(self, event):
-        warnings.warn(
-            "'message_created' event.type is deprecated. Use 'chat.message_created' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return await self.chat_message_created(event)
 
     async def message_status_update(self, event: dict) -> None:
         """

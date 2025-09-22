@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 async def create_new_simulation(
     user, modifiers: list = None, force: bool = False
 ) -> Simulation:
-    """Create a new Simulation and ChatSession, and trigger celery task to get initial message(s)."""
+    """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
+    from simcore.ai.tasks.dispatch import acall_connector
+    from chatlab.ai.connectors import generate_patient_initial
+
     logger.debug(
         f"received request to create new simulation for {user.username!r} "
         f"with modifiers {modifiers!r} (force {force!r})"
@@ -49,13 +52,7 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulatio #{simulation.id}")
 
     # Generate an initial message
-    from simcore.ai.tasks.dispatch import call_connector
-    from chatlab.ai.connectors import generate_patient_initial
-
-    call_connector(
-        generate_patient_initial,
-        simulation.id,
-    )
+    await acall_connector(generate_patient_initial, simulation_id=simulation.id)
 
     return simulation
 
@@ -258,7 +255,7 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
     Similarly, the associated Simulation object is retrieved to enrich the payload with
     additional details like sender information and simulation-specific identifiers.
 
-    The payload generated contains relevant metadata about the message, such as the sender's
+    The payload generated contains relevant metadata about the message, such as the sender'simulation
     information, display details, media attachments, and the message type. The data is then
     cleaned of null values before being broadcast to the specified group.
 
