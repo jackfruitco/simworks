@@ -27,10 +27,10 @@ class Response(models.Model):
     objects = ResponseQuerySet.as_manager()
 
     simulation = models.ForeignKey(
-        "simcore.Simulation", related_name="responses", on_delete=models.CASCADE
+        "simcore.Simulation", related_name="responses_v1", on_delete=models.CASCADE
     )
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, related_name="responses", on_delete=models.CASCADE
+        settings.AUTH_USER_MODEL, related_name="responses_v1", on_delete=models.CASCADE
     )
 
     raw = models.JSONField(verbose_name="OpenAI Raw Response")

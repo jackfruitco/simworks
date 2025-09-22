@@ -1,4 +1,6 @@
 # simcore/models.py
+from __future__ import annotations
+
 import asyncio
 import logging
 import mimetypes
@@ -6,7 +8,6 @@ import os
 import uuid
 import warnings
 from datetime import timedelta
-from typing import TYPE_CHECKING
 
 from asgiref.sync import sync_to_async, async_to_sync
 from autoslug import AutoSlugField
@@ -20,8 +21,8 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
-from simcore.utils import randomize_display_name
 from simcore.ai.promptkit import Prompt as PromptDTO
+from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -166,32 +167,21 @@ class Simulation(models.Model):
             return self.end_timestamp - self.start_timestamp
         return None
 
-    def get_previous_response_id(self, exclude_type: list[str] | str = "M"):
-        """
-        Returns the id of the previous OpenAI response for this simulation.
+    async def aget_previous_response(self) -> AIResponse | None:
+        """Return most recent AIResponse for this simulation, or None."""
+        return await self.responses.order_by("-created_at").afirst()
 
-        :param exclude_type: String or List of ResponseType enums to exclude from the query.
+    def get_previous_response(self) -> AIResponse | None:
+        """Return most recent AIResponse for this simulation, or None."""
+        return self.responses.order_by("-created_at").first()
 
-        :return:
-        """
-        qs = self.responses.all()
-        if exclude_type is not None:
-            if not isinstance(exclude_type, list):
-                try:
-                    exclude_type = [exclude_type]
-                except TypeError as e:
-                    logger.error(
-                        f"Unable to coerce 'exclude_type' to list: '{exclude_type}'"
-                    )
-                    exclude_type = []
-            for t in exclude_type:
-                qs = qs.exclude(type=t)
-        response = qs.order_by("-created").first()
-        return response.id if response else None
+    def get_previous_response_id(self) -> str | None:
+        r = self.get_previous_response()
+        return r.provider_id or None if r else None
 
-    @sync_to_async
-    def aget_previous_response_id(self, exclude_type: list[str] | str = "M"):
-        return self.get_previous_response_id(exclude_type)
+    async def aget_previous_response_id(self) -> str | None:
+        r = await self.aget_previous_response()
+        return r.provider_id or None if r else None
 
     @property
     def start_timestamp_ms(self):
@@ -729,3 +719,38 @@ class SimulationImage(models.Model):
             self.mime_type = "application/octet-stream"
 
         super().save(*args, **kwargs)
+
+
+class AIResponse(models.Model):
+    """Store AI response for the specified simulation."""
+
+    created_at = models.DateTimeField(auto_now_add=True, editable=False, db_index=True)
+    modified_at = models.DateTimeField(auto_now=True, editable=False)
+
+    simulation = models.ForeignKey(
+        Simulation, on_delete=models.CASCADE, related_name="responses"
+    )
+
+    provider_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+    )
+
+    provider = models.CharField(default="openai", max_length=255)
+    raw = models.JSONField(verbose_name="raw AI response", blank=True, null=True)
+    normalized = models.JSONField(verbose_name="normalized AI response")
+
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    reasoning_tokens = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["simulation", "created_at"]
+        indexes = [
+            models.Index(fields=["simulation", "-created_at"], name="airesp_sim_createdat_desc"),
+            models.Index(fields=["simulation", "provider_id"], name="airesp_sim_providerid_idx"),
+        ]
+
+    def __str__(self):
+        return f"AI Response id {self.pk} (Simulation id {self.simulation.pk}; created_at={self.created_at})"

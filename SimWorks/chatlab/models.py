@@ -67,7 +67,7 @@ class Message(models.Model):
     is_read = models.BooleanField(default=False)
 
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
-    response = models.ForeignKey(
+    responsev1 = models.ForeignKey(
         "simai.Response",
         on_delete=models.CASCADE,
         verbose_name="OpenAI Response",
@@ -75,16 +75,42 @@ class Message(models.Model):
         null=True,
         blank=True,
     )
-    openai_id = models.CharField(null=True, blank=True, max_length=255)
+    responsev2 = models.ForeignKey(
+        "simcore.AIResponse",
+        on_delete=models.CASCADE,
+        verbose_name="AI Response",
+        related_name="messages",
+        null=True,
+        blank=True,
+    )
+    provider_response_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
+
+    # TODO deprecated - remove
+    @property
+    def openai_id(self):
+        """Deprecated. Use provider_response_id instead."""
+        logger.warning(
+            "openai_id is deprecated. Use provider_response_id instead.",
+            DeprecationWarning,
+        )
+        return self.response.id if self.response else None
 
     @property
     def has_media(self):
         return self.media.exists()
 
+    def set_provider_resp_id(self, id):
+        self.provider_response_id = id
+        self.save(update_fields=["provider_response_id"])
+
+    # TODO deprecated - remove
     def set_openai_id(self, openai_id):
-        self.openai_id = openai_id
-        self.save(update_fields=["openai_id"])
+        logger.warning(
+            "set_openai_id is deprecated. Use set_provider_resp_id instead.",
+            DeprecationWarning,
+        )
+        self.set_provider_resp_id(openai_id)
 
     def get_previous_openai_id(self) -> str or None:
         """Return most recent OpenAI response_ID in current simulation"""
@@ -93,12 +119,12 @@ class Message(models.Model):
                 simulation=self.simulation,
                 order__lt=self.order,
                 role=RoleChoices.ASSISTANT,  # Only consider ASSISTANT messages
-                openai_id__isnull=False,  # That have an openai_id set
+                openai_id__isnull=False,  # That have an provider_response_id set
             )
             .order_by("-order")
             .first()
         )
-        return previous_message.openai_id if previous_message else None
+        return previous_message.provider_response_id if previous_message else None
 
     def get_openai_input(self) -> dict:
         """Return list formatted for OpenAI Responses API input."""
