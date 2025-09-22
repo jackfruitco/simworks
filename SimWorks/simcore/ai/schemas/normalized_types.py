@@ -1,7 +1,5 @@
 # simcore/ai/schemas/normalized_types.py
-
 import logging
-
 from importlib import import_module
 from typing import Optional, List, Dict, Any, Literal, Annotated, Union, TypeVar
 
@@ -9,9 +7,7 @@ from pydantic import BaseModel, Field
 
 from simcore.ai.schemas import StrictBaseModel, StrictOutputSchema
 
-
 logger = logging.getLogger(__name__)
-
 
 # ---------- Union Type for Output Schemas --------------------------------------------
 OutputSchemaType = TypeVar("OutputSchemaType", bound=StrictOutputSchema)
@@ -22,16 +18,17 @@ class NormalizedAIMessage(BaseModel):
     role: str
     content: str
 
-    db_pk: Optional[int] = None        # django object pk
+    db_pk: Optional[int] = None  # django object pk
     tool_calls: Optional[List[Dict[str, Any]]] = None
 
-    async def persist(self, simulation: Any):
+    async def persist(self, simulation: Any, **kwargs: Any):
         """
         Convenience helper: persist this message for the given Simulation.
+
         Delegates to simcore.ai.persist.persist_message to avoid ORM coupling.
         """
-        from .. import persist_message
-        return await persist_message(simulation, self)
+        from ..utils import persist_message
+        return await persist_message(simulation, self, **kwargs)
 
 
 class MetaBase(StrictBaseModel):
@@ -43,9 +40,10 @@ class MetaBase(StrictBaseModel):
     async def persist(self, simulation: Any):
         """
         Convenience helper: persist this metadata item for the given Simulation.
+
         Delegates to simcore.ai.persist.persist_metadata to avoid ORM coupling.
         """
-        from .. import persist_metadata
+        from ..utils import persist_metadata
         return await persist_metadata(simulation, self)
 
 
@@ -115,7 +113,7 @@ NormalizedAIMetadata = Annotated[
 
 
 class NormalizedAIRequest(BaseModel):
-    model: str
+    model: Optional[str] = None
     messages: List[NormalizedAIMessage]
     schema_cls: Any = None
     tools: Optional[List[Dict[str, Any]]] = None
@@ -125,12 +123,16 @@ class NormalizedAIRequest(BaseModel):
     stream: bool = False
     metadata: Dict[str, Any] = {}
 
+    previous_response_id: Optional[str] = None
+
 
 class NormalizedAIResponse(BaseModel):
     messages: List[NormalizedAIMessage]
     metadata: List[NormalizedAIMetadata]
     usage: Dict[str, int] = Field(default_factory=dict)
+
     provider_meta: Dict[str, Any] = Field(default_factory=dict)
+    db_pk: Optional[int] = None  # django object pk
 
     @classmethod
     def normalize(cls, resp: Any, _from: str, *, schema_cls=None) -> "NormalizedAIResponse":
@@ -139,17 +141,24 @@ class NormalizedAIResponse(BaseModel):
         data = mod.normalize_response(resp, schema_cls=schema_cls)
         return data if isinstance(data, cls) else cls(**data)
 
-    async def persist(self, simulation: Any):
+    async def persist_response(self, simulation: Any):
         """
-        Persist all messages and metadata contained in this response for the given Simulation.
-        Uses each item's own `.persist()` convenience method to keep concerns separated.
+        Convenience helper: persist this response for the given Simulation.
+
+        Delegates to simcore.ai.persist.persist_response to avoid ORM coupling.
         """
-        results = {"messages": [], "metadata": []}
-        for m in self.messages or []:
-            results["messages"].append(await m.persist(simulation))
-        for md in self.metadata or []:
-            results["metadata"].append(await md.persist(simulation))
-        return results
+        from ..utils import persist_response
+        return await persist_response(simulation, self)
+
+    async def persist_full_response(self, simulation: Any):
+        """
+        Convenience helper: persist the full response, messages, and metadata
+        for the given Simulation.
+
+        Delegates to simcore.ai.persist.persist_message to avoid ORM coupling.
+        """
+        from ..utils import persist_all
+        return await persist_all(self, simulation)
 
 
 class NormalizedStreamChunk(BaseModel):

@@ -15,10 +15,9 @@ from pydantic import TypeAdapter
 
 from .base import ProviderBase
 from ..parsers.output_parser import maybe_parse_to_schema
-from ..schemas.normalized_types import NormalizedAIMessage, NormalizedAIMetadata, NormalizedAIMetadata as MetaUnion, \
-    NormalizedAIRequest, NormalizedAIResponse, NormalizedStreamChunk
+from ..schemas.normalized_types import NormalizedAIMessage, NormalizedAIMetadata, NormalizedAIRequest, \
+    NormalizedAIResponse, NormalizedStreamChunk
 from ..utils.helpers import build_output_schema
-
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +44,7 @@ def _coerce_usage(usage_obj) -> dict:
         "input_tokens_details": input_tokens_details,
         "output_tokens_details": output_tokens_details,
     }
+
 
 def _iter_metadata_items(md):
     """
@@ -190,9 +190,18 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
         logger.debug(f"... metafield ({count}) normalized: {meta_obj}")
         count += 1
 
+    # Attempt to serialize the provider response object
+    try:
+        provider_response = resp.model_dump()
+    except Exception as e:
+        logger.warning(f"Failed to dump response to schema: {e}")
+        provider_response = None
+
     provider_meta = {
         "model": getattr(resp, "model", None),
-        "provider": "openai"
+        "provider": "openai",
+        "provider_response_id": getattr(resp, "id", None),
+        "provider_response": provider_response,
     }
 
     return NormalizedAIResponse(
@@ -264,5 +273,5 @@ def build_from_settings(settings) -> ProviderBase:
                getattr(settings, "AI_API_KEY", None))
     if not api_key:
         raise RuntimeError("No OpenAI API key found. Please set OPENAI_API_KEY or AI_API_KEY in settings.")
-    timeout = getattr(settings, "OPENAI_TIMEOUT_S", 30)
+    timeout = getattr(settings, "AI_TIMEOUT_S", 30)
     return OpenAIProvider(api_key=api_key, timeout=timeout)

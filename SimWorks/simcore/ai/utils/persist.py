@@ -1,8 +1,8 @@
 # simcore/ai/utils/persist.py
+import json
 import logging
 from typing import TYPE_CHECKING
 from typing import Awaitable, Callable, Type, Dict, Any
-
 
 from core.utils import get_or_create_system_user
 from asgiref.sync import sync_to_async
@@ -16,23 +16,46 @@ from simcore.ai.schemas.normalized_types import (
     PatientDemographicsMeta,
     SimulationMetaKV,
     ScenarioMeta,
-    NormalizedAIMetadata,
+    NormalizedAIMetadata, NormalizedAIResponse,
 )
 
 if TYPE_CHECKING:
     from simcore.models import Simulation, SimulationMetadata
 
-
 logger = logging.getLogger(__name__)
+
+
+def log_success(
+        instance_cls: str,
+        instance_pk: int,
+        simulation_pk: int,
+        fallback: bool = False,
+) -> None:
+    """Log a successful persistence operation."""
+    msg = f"... persisted {instance_cls} "
+    msg += "using fallback to generic KV " if fallback else ""
+    msg += f"(pk {instance_pk}; `Simulation` pk {simulation_pk})"
+    logger.debug(msg)
+    return
 
 
 # ---------- Internal async creators / helpers ---------------------------------------
 async def _create_metadata(model_cls, sim, *, key: str, value: str = "", **extra):
     return await model_cls.objects.acreate(simulation=sim, key=key, value=value or "", **extra)
 
+
+async def _upsert(model_cls, sim, *, key: str, value: str = "", **extra):
+    instance, _ = await model_cls.objects.aupdate_or_create(
+        simulation=sim,
+        key=key,
+        defaults={"value": value or "", **extra},
+    )
+    return instance
+
+
 async def _persist_lab_result(sim, meta):
     from simcore.models import LabResult
-    return await _create_metadata(
+    return await _upsert(
         LabResult,
         sim,
         key=meta.key,
@@ -44,13 +67,15 @@ async def _persist_lab_result(sim, meta):
         panel_name=meta.panel_name,
     )
 
+
 async def _persist_rad_result(sim, meta):
     from simcore.models import RadResult
-    return await _create_metadata(RadResult, sim, key=meta.key, value=meta.value, result_flag=meta.flag)
+    return await _upsert(RadResult, sim, key=meta.key, value=meta.value, result_flag=meta.flag)
+
 
 async def _persist_patient_history(sim, meta):
     from simcore.models import PatientHistory
-    return await _create_metadata(
+    return await _upsert(
         PatientHistory,
         sim,
         key=meta.key,
@@ -59,17 +84,21 @@ async def _persist_patient_history(sim, meta):
         duration=meta.duration,
     )
 
+
 async def _persist_feedback(sim, meta):
     from simcore.models import SimulationFeedback
-    return await _create_metadata(SimulationFeedback, sim, key=meta.key, value=meta.value)
+    return await _upsert(SimulationFeedback, sim, key=meta.key, value=meta.value)
+
 
 async def _persist_demographics(sim, meta):
     from simcore.models import PatientDemographics
-    return await _create_metadata(PatientDemographics, sim, key=meta.key, value=meta.value)
+    return await _upsert(PatientDemographics, sim, key=meta.key, value=meta.value)
+
 
 async def _persist_sim_kv(sim, meta):
     from simcore.models import SimulationMetadata
-    return await _create_metadata(SimulationMetadata, sim, key=meta.key, value=(meta.value or ""))
+    return await _upsert(SimulationMetadata, sim, key=meta.key, value=(meta.value or ""))
+
 
 async def _persist_scenario(sim, meta):
     from simcore.models import SimulationMetadata
@@ -79,7 +108,8 @@ async def _persist_scenario(sim, meta):
         setattr(sim, field_map[meta.key], meta.value or "")
         await sync_to_async(sim.save)(update_fields=[field_map[meta.key]])
     # Also persist a KV row for auditability
-    return await _create_metadata(SimulationMetadata, sim, key=meta.key, value=(meta.value or ""))
+    return await _upsert(SimulationMetadata, sim, key=meta.key, value=(meta.value or ""))
+
 
 # Map normalized meta model -> persistence coroutine
 _META_PERSIST_HANDLERS: Dict[Type[Any], Callable[[Any, Any], Awaitable[Any]]] = {}
@@ -87,6 +117,7 @@ _META_PERSIST_HANDLERS: Dict[Type[Any], Callable[[Any, Any], Awaitable[Any]]] = 
 
 def _register(meta_cls: Type[Any], handler: Callable[[Any, Any], Awaitable[Any]]) -> None:
     _META_PERSIST_HANDLERS[meta_cls] = handler
+
 
 # Registration (add new meta types here to extend persistence without touching core logic)
 _register(LabResultMeta, _persist_lab_result)
@@ -103,65 +134,165 @@ async def _resolve_system_user() -> "User":
     return await sync_to_async(get_or_create_system_user)()
 
 
-async def _map_user(role: str, sim: "Simulation") -> tuple[str, "User"]:
+async def _map_user(role: str, sim: "Simulation") -> tuple[str, "User", str | None]:
     # Map normalized roles to ChatLab DB choices
     r = (role or "").lower()
     if r in {"assistant", "developer", "system", "patient"}:
-        return "A", await _resolve_system_user()  # RoleChoices.ASSISTANT
-    return "U", sim.user  # RoleChoices.USER
+        # return example: ("A", <User: System>, "John D.")
+        return "A", await _resolve_system_user(), sim.sim_patient_display_name
+    # return example: ("U", <User: John D.>)
+    return "U", sim.user, None
 
 
-async def persist_metadata(s: "Simulation", m: NormalizedAIMetadata) -> "SimulationMetadata":
+async def persist_metadata(
+        simulation: "Simulation", metadata: NormalizedAIMetadata
+) -> NormalizedAIMetadata:
+    """Persist a normalized AI metadata object to the database."""
     # Resolve the first matching handler by isinstance to allow subclassing
     for cls, handler in _META_PERSIST_HANDLERS.items():
-        if isinstance(m, cls):
-            instance = await handler(s, m)
-            # attach pk back onto the normalized DTO for upstream use
-            try:
-                m.instance_id = getattr(instance, "pk", None)
-            except Exception:
-                pass
-            return instance
-    # As a last resort, persist as generic KV
+        if isinstance(metadata, cls):
+            # create the instance, then
+            # attach the PK back onto the normalized DTO
+            instance = await handler(simulation, metadata)
+            metadata.db_pk = getattr(instance, "pk", None)
+
+            log_success(
+                instance.__class__.__name__, instance.pk, simulation.pk
+            )
+            return metadata
+
+    # create the instance, then attach the PK back onto the normalized DTO
+    # fallback; persist as generic KV
     from simcore.models import SimulationMetadata
-    instance = await SimulationMetadata.objects.acreate(
-        simulation=s, key=getattr(m, "key", "meta"), value=getattr(m, "value", "") or ""
+    instance, _ = await SimulationMetadata.objects.aupdate_or_create(
+        simulation=simulation,
+        key=getattr(metadata, "key", "meta"),
+        defaults={
+            "value": getattr(metadata, "value", "") or ""
+        },
+    )
+    metadata.db_pk = getattr(instance, "pk", None)
+
+    log_success(
+        instance.__class__.__name__,
+        instance.pk,
+        simulation.pk,
+        fallback=True
     )
 
-    m.db_pk = getattr(instance, "pk", None)
-
-    logger.debug(f"... persisted metafield ("
-                 f"`{instance.__class__.__name__}` id {instance.pk}; "
-                 f"`Simulation` id {s.pk})"
-                 )
-
-    return m
+    return metadata
 
 
-async def persist_message(s: "Simulation", m: NormalizedAIMessage) -> NormalizedAIMessage:
+async def persist_message(
+        simulation: "Simulation",
+        message: NormalizedAIMessage,
+        **kwargs,
+) -> NormalizedAIMessage:
+    """Persist a normalized AI message to the database."""
     # Lazy import of Message to avoid circulars if any
     # TODO move Message to simcore.models
     from chatlab.models import Message
-    _role, _sender = await _map_user(m.role, s)
+    _role, _sender, _display = await _map_user(message.role, simulation)
 
     data = {
-        "simulation": s,
+        "simulation": simulation,
         "role": _role,
         "sender": _sender,
-        "content": m.content,
+        "content": message.content,
         # "message_type": m.message_type,       # TODO
         # "media": m.media,                     # TODO
         "is_from_ai": True,  # TODO
-        # "openai_id"                           # TODO
-        # "display_name"                        # TODO
+        "provider_response_id": kwargs.pop("provider_response_id", None),
+        "display_name": _display,
     }
 
+    # create the instance, then attach the PK back onto the normalized DTO
     instance = await Message.objects.acreate(**data)
-    m.db_pk = getattr(instance, "pk", None)
+    message.db_pk = getattr(instance, "pk", None)
 
-    logger.debug(f"... persisted message ("
-                 f"`{instance.__class__.__name__}` id {instance.pk}; "
-                 f"`Simulation` id {s.pk})"
-                 )
+    log_success(instance.__class__.__name__, instance.pk, simulation.pk)
 
-    return m
+    return message
+
+
+async def persist_response(
+        simulation: Any, response: NormalizedAIResponse
+) -> NormalizedAIResponse:
+    """Persist a normalized AI response to the database."""
+    from simcore.models import Simulation, AIResponse
+
+    simulation = await Simulation.aresolve(simulation)
+
+    # Pop raw Provider Response from meta, then ensure it is a dict
+    # Provider normalization methods should have already dumped to JSON-safe dict
+    provider_response = response.provider_meta.pop("provider_response", None)
+    if not isinstance(provider_response, dict):
+        logger.warning(
+            f"Provider response is not a dict (got "
+            f"{type(provider_response).__name__}). "
+            f"Skipping raw persistence."
+        )
+        provider_response = None
+
+    data = {
+        "simulation": simulation,
+        "provider": response.provider_meta.get("provider"),
+        "provider_id": response.provider_meta.get("provider_response_id"),
+        "raw": provider_response,
+        "normalized": response.model_dump(),
+        "input_tokens": response.usage.get("input_tokens") or 0,
+        "output_tokens": response.usage.get("output_tokens") or 0,
+        "reasoning_tokens": response.usage.get("reasoning_tokens") or 0,
+    }
+
+    # create the instance, then attach the PK back onto the normalized DTO
+    instance = await AIResponse.objects.acreate(**data)
+    response.db_pk = getattr(instance, "pk", None)
+
+    log_success(instance.__class__.__name__, instance.pk, simulation.pk)
+
+    return response
+
+
+async def persist_all(response: NormalizedAIResponse, simulation: Any):
+    """
+    Persist full response, including messages and metadata, for the given Simulation.
+
+    Uses each item's own `.persist()` convenience method to keep concerns separated.
+
+    TODO: create Response instance first to use as fk to message and metadata, then response with db_pks
+
+    :param response: The normalized AI response object
+    :type response: NormalizedAIResponse
+
+    :param simulation: The Simulation instance or int (pk)
+    :type simulation: Simulation or int
+
+    :return: The response DTO, updated with db_pks
+    :rtype: NormalizedAIResponse
+
+    :raises Exception: If any of the persist calls fail
+    """
+    prov_id = response.provider_meta.get("provider_response_id") or response.provider_meta.get("provider_id")
+
+    # Persist messages
+    for m in response.messages:
+        try:
+            await m.persist(simulation, provider_response_id=prov_id)
+        except Exception:
+            logger.exception("failed to persist message! %r", m)
+
+    # Persist metadata
+    for mf in response.metadata:
+        try:
+            await mf.persist(simulation)
+        except Exception:
+            logger.exception("failed to persist metafield! %r", mf)
+
+    # Persist the response itself
+    try:
+        await response.persist_response(simulation)
+    except Exception:
+        logger.exception("failed to persist response! %r", response)
+
+    return response
