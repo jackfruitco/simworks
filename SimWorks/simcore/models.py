@@ -313,6 +313,7 @@ class Simulation(models.Model):
         p: PromptDTO
         if not prompt and lab:
             from simcore.ai.promptkit import PromptEngine
+            from simcore.ai.prompts.sections.modifiers import PatientNameSection
 
             try:
                 from simcore.ai.utils.imports import resolve_initial_section
@@ -331,7 +332,7 @@ class Simulation(models.Model):
 
             logger.debug(f"...... starting PromptEngine\n(engine context:\t{prompt_context})")
             ctx = {**prompt_context, **kwargs}
-            p = await PromptEngine.abuild_from(init_cls, **ctx)
+            p = await PromptEngine.abuild_from(init_cls, PatientNameSection, **ctx)
 
         else:
             # Coerce/validate provided prompt

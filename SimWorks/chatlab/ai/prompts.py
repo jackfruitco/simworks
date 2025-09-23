@@ -1,13 +1,11 @@
-import asyncio
 import logging
-
 from dataclasses import dataclass
 from typing import Optional
 
 from simcore.ai.promptkit import PromptSection, register_section
 
-
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class BaseSection(PromptSection):
@@ -67,6 +65,7 @@ class InitialSection(BaseSection):
         "diagnoses that would prompt urgent medical attention if that would "
         "not be immediately clear to a non-medical person."
     )
+
 
 @register_section
 @dataclass
