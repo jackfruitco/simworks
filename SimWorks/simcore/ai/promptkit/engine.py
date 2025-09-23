@@ -47,7 +47,9 @@ class PromptEngine:
     # ----- building
     async def abuild(self, **ctx) -> Prompt:
         logger.debug(f"...abuilding... [debug: {self.__class__.__name__[:20]} - {self._sections}]")
-        ordered: Sequence[PromptSection] = sorted(self._sections)
+        ordered: Sequence[PromptSection] = sorted(
+            self._sections, key=lambda s: (s.weight, s.label)
+        )
         outputs: list[SectionOutput] = []
         used_labels: list[str] = []
         errors: list[dict] = []

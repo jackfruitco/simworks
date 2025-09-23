@@ -237,6 +237,7 @@ class OpenAIProvider(ProviderBase):
             model=req.model,
             input=[m.model_dump(exclude_none=True) for m in req.messages],
             text=schema,
+            previous_response_id=req.previous_response_id or NOT_GIVEN,
             # tools=req.tools,
             # tool_choice=req.tool_choice,
             max_output_tokens=req.max_output_tokens,
