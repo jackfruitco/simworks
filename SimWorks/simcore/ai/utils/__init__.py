@@ -5,6 +5,7 @@ from .persist import (
     persist_message,
     persist_metadata,
     persist_response,
+    persist_attachment,
     persist_all,
 )
 
@@ -14,5 +15,6 @@ __all__ = [
     "persist_message",
     "persist_metadata",
     "persist_response",
+    "persist_attachment",
     "persist_all",
 ]

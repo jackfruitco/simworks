@@ -1,11 +1,15 @@
 # simcore/ai/utils/persist.py
-import json
+import base64
 import logging
-from typing import TYPE_CHECKING
+import mimetypes
+import uuid
 from typing import Awaitable, Callable, Type, Dict, Any
+from typing import TYPE_CHECKING
+
+from asgiref.sync import sync_to_async
+from django.core.files.base import ContentFile
 
 from core.utils import get_or_create_system_user
-from asgiref.sync import sync_to_async
 from simcore.ai.schemas.normalized_types import (
     NormalizedAIMessage,
     GenericMeta,
@@ -16,7 +20,7 @@ from simcore.ai.schemas.normalized_types import (
     PatientDemographicsMeta,
     SimulationMetaKV,
     ScenarioMeta,
-    NormalizedAIMetadata, NormalizedAIResponse,
+    NormalizedAIMetadata, NormalizedAIResponse, NormalizedAttachment,
 )
 
 if TYPE_CHECKING:
@@ -254,6 +258,65 @@ async def persist_response(
     return response
 
 
+async def persist_attachment(
+        attachment: NormalizedAttachment, simulation: Any
+) -> NormalizedAttachment:
+    """Persist a normalized AI attachment to the database."""
+    from simcore.models import Simulation, SimulationImage
+
+    # Resolve simulation
+    simulation = await Simulation.aresolve(simulation)
+
+    if not getattr(attachment, "b64", None):
+        raise ValueError("Attachment has no base64 content (b64).")
+
+    # Guess MIME type from the declared format (e.g., 'webp', 'png', 'jpeg')
+    ext = (attachment.format or "").lstrip(".")
+    mime_type_ = mimetypes.guess_type(f"temp.{ext}")[0] or "application/octet-stream"
+
+    # Decode and build an in-memory file
+    try:
+        image_bytes = base64.b64decode(attachment.b64)
+        provider_id = (
+                attachment.provider_meta.get("provider_response_id")
+                or attachment.provider_meta.get("provider_id")
+        )
+        file_id = provider_id or str(uuid.uuid4())
+        image_file = ContentFile(image_bytes, name=f"temp_{file_id}.{ext}")
+    except Exception as e:
+        # Keep the message specific to decoding/file prep
+        raise Exception(f"Failed to decode/prepare image file: {e}") from e
+
+    # Attach the file to the DTO (if your DTO has this field)
+    attachment.file = image_file
+
+    # Create DB row
+    data = {
+        "simulation": simulation,
+        "original": image_file,
+        "mime_type": mime_type_,
+    }
+    # Persist provider id if your model supports it
+    if hasattr(SimulationImage, "provider_id") and provider_id:
+        data["provider_id"] = provider_id
+
+    instance = await SimulationImage.objects.acreate(**data)
+
+    # Reflect DB info back to DTO
+    attachment.db_pk = getattr(instance, "pk", None)
+    attachment.slug = getattr(instance, "slug", None)
+
+    if hasattr(attachment, "db_model"):
+        attachment.db_model = instance.__class__.__name__
+
+    try:
+        log_success(instance.__class__.__name__, instance.pk, simulation.pk)
+    except Exception:
+        logger.debug("log_success failed for SimulationImage persist.", exc_info=True)
+
+    return attachment
+
+
 async def persist_all(response: NormalizedAIResponse, simulation: Any):
     """
     Persist full response, including messages and metadata, for the given Simulation.
@@ -281,6 +344,13 @@ async def persist_all(response: NormalizedAIResponse, simulation: Any):
             await m.persist(simulation, provider_response_id=prov_id)
         except Exception:
             logger.exception("failed to persist message! %r", m)
+
+        if m.attachments:
+            for a in m.attachments:
+                try:
+                    await persist_attachment(a, simulation)
+                except Exception:
+                    logger.exception("failed to persist attachment! %r", a)
 
     # Persist metadata
     for mf in response.metadata:

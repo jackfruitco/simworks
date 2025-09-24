@@ -3,6 +3,7 @@ import logging
 from typing import AsyncIterator
 from typing import Optional
 
+from django.conf import settings
 from simcore.ai import get_default_model
 from simcore.ai.providers.base import ProviderBase
 from simcore.ai.providers.openai import OpenAIProvider
@@ -45,6 +46,7 @@ class AIClient:
         if not req.model:
             req.model = get_default_model()
 
+        # Forward request to provider
         resp: NormalizedAIResponse = await self.provider.call(req)
 
         logger.debug(f"client received normalized response:\n(response:\t{resp})")
