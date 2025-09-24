@@ -1,7 +1,9 @@
 # simcore/ai/providers/base.py
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
-from simcore.ai.schemas.normalized_types import NormalizedAIRequest, NormalizedAIResponse, NormalizedStreamChunk
+from typing import AsyncIterator, Protocol, Any
+
+from simcore.ai.schemas.normalized_types import NormalizedAIRequest, NormalizedAIResponse, NormalizedStreamChunk, \
+    NormalizedAITool
 
 
 class ProviderError(Exception):
@@ -29,3 +31,9 @@ class ProviderBase(ABC):
 
     def __repr__(self) -> str:
         return f"<AIProvider {self.name}>"
+
+
+class ToolAdapter(Protocol):
+    def to_provider(self, tool: NormalizedAITool) -> Any: ...
+
+    def from_provider(self, raw: Any) -> NormalizedAITool: ...

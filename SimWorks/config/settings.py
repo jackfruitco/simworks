@@ -135,6 +135,13 @@ if AI_API_KEY is None and AI_PROVIDER == "openai":
 
 AI_DEFAULT_MODEL = os.getenv("AI_DEFAULT_MODEL", "gpt-5-mini")
 AI_CUSTOM_PROMPT_PATH = os.getenv("AI_CUSTOM_PROMPT_PATH")
+AI_IMAGE_FORMAT = os.getenv("AI_IMAGE_FORMAT", "webp")
+AI_IMAGE_MODEL = os.getenv("AI_IMAGE_MODEL", "gpt-image-1")
+AI_IMAGE_OUTPUT_COMPRESSION = os.getenv("AI_IMAGE_OUTPUT_COMPRESSION", None)
+AI_IMAGE_QUALITY = os.getenv("AI_IMAGE_QUALITY", "auto")
+AI_IMAGE_SIZE = os.getenv("AI_IMAGE_SIZE", "auto")
+AI_IMAGE_MODERATION = os.getenv("AI_IMAGE_MODERATION", "auto")
+AI_IMAGE_BACKGROUND = os.getenv("AI_IMAGE_BACKGROUND", "auto")
 
 OPENAI_DEFAULT_IMAGE_FORMAT = check_env("OPENAI_DEFAULT_IMAGE_FORMAT", default="webp")
 

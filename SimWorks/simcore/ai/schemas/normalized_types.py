@@ -1,7 +1,7 @@
 # simcore/ai/schemas/normalized_types.py
 import logging
 from importlib import import_module
-from typing import Optional, List, Dict, Any, Literal, Annotated, Union, TypeVar
+from typing import Optional, List, Dict, Any, Literal, Annotated, Union, TypeVar, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -14,12 +14,41 @@ OutputSchemaType = TypeVar("OutputSchemaType", bound=StrictOutputSchema)
 
 
 # ---------- Normalized AI types ------------------------------------------------------
+class NormalizedAttachment(BaseModel):
+    type: Literal["image"]
+
+    b64: Optional[str] = None
+    fil: Optional[Any] = None
+    url: Optional[str] = None
+    format: Optional[str] = None  # "png", "jpeg", etc.
+    size: Optional[str] = None    # "1024x1024"
+    background: Optional[str] = None
+
+    provider_meta: Dict[str, Any] = Field(default_factory=dict)
+    # linkage after persistence (post-persist)
+    db_pk: Optional[int] = None
+    db_model: Optional[str] = None
+    slug: Optional[str] = None
+
+    async def persist_response(self, simulation: Any):
+        """
+        Convenience helper: persist this attachment for the given Simulation.
+
+        Delegates to simcore.ai.persist.persist_attachment to avoid ORM coupling.
+        """
+        from ..utils import persist_attachment
+        return await persist_attachment(simulation, self)
+
+
 class NormalizedAIMessage(BaseModel):
     role: str
     content: str
 
     db_pk: Optional[int] = None  # django object pk
     tool_calls: Optional[List[Dict[str, Any]]] = None
+
+    attachments: List[NormalizedAttachment] = Field(default_factory=list)
+
 
     async def persist(self, simulation: Any, **kwargs: Any):
         """
@@ -112,20 +141,30 @@ NormalizedAIMetadata = Annotated[
 ]
 
 
+# ---------- Normalized AI Tools ---------------------------------------------------------------------------------------
+class NormalizedAITool(BaseModel):
+    label: str  # e.g. "image_generation"
+    function: Optional[str] = None
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+
+# --------- Normalized AI Request --------------------------------------------------------------------------------------
 class NormalizedAIRequest(BaseModel):
     model: Optional[str] = None
     messages: List[NormalizedAIMessage]
     schema_cls: Any = None
-    tools: Optional[List[Dict[str, Any]]] = None
+    tools: Optional[List[NormalizedAITool]] = None
     tool_choice: Optional[str] = None
     temperature: Optional[float] = 0.2
     max_output_tokens: Optional[int] = None
     stream: bool = False
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
     previous_response_id: Optional[str] = None
+    image_format: Optional[str] = None
 
 
+# ---------- Normalized AI Response ------------------------------------------------------------------------------------
 class NormalizedAIResponse(BaseModel):
     messages: List[NormalizedAIMessage]
     metadata: List[NormalizedAIMetadata]
@@ -161,6 +200,7 @@ class NormalizedAIResponse(BaseModel):
         return await persist_all(self, simulation)
 
 
+# ---------- Normalized Stream Chunk -----------------------------------------------------------------------------------
 class NormalizedStreamChunk(BaseModel):
     delta: str = ""
     tool_call_delta: Optional[Dict[str, Any]] = None
