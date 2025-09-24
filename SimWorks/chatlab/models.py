@@ -91,7 +91,7 @@ class Message(models.Model):
     def openai_id(self):
         """Deprecated. Use provider_response_id instead."""
         logger.warning(
-            "openai_id is deprecated. Use provider_response_id instead.",
+            "provider_id is deprecated. Use provider_response_id instead.",
             DeprecationWarning,
         )
         return self.response.id if self.response else None

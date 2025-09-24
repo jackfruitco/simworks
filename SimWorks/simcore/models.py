@@ -636,12 +636,23 @@ class SimulationImage(models.Model):
         Simulation, on_delete=models.CASCADE, related_name="images"
     )
 
-    openai_id = models.CharField(
+    provider_id = models.CharField(
         max_length=255,
         blank=True,
         null=True,
         help_text="OpenAI image ID (if applicable)",
     )
+
+    def openai_id(self) -> str:
+        """Return the OpenAI image ID, if available.
+
+        For backwards compatibility, this method is deprecated and will be removed in future.
+        """
+        logger.warning(
+            "`openai_id` is deprecated. Use `provider_id` instead.",
+            PendingDeprecationWarning
+        )
+        return self.provider_id
 
     uuid = models.UUIDField(
         default=uuid.uuid4,
