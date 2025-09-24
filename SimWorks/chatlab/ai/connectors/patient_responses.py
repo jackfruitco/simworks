@@ -7,8 +7,9 @@ from chatlab.utils import broadcast_message
 from simcore.ai import get_ai_client
 from simcore.ai.schemas import StrictOutputSchema
 from simcore.ai.schemas.normalized_types import (
-    NormalizedAIMessage, NormalizedAIRequest, NormalizedAIResponse
+    NormalizedAIMessage, NormalizedAIRequest, NormalizedAIResponse, NormalizedAITool
 )
+from simcore.ai.schemas.tools import NormalizedImageGenerationTool
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
@@ -16,29 +17,51 @@ logger = logging.getLogger(__name__)
 
 async def _build_messages_and_schema(
         sim: Simulation, *, rtype: str, user_msg: Message | None
-) -> tuple[list[NormalizedAIMessage], Type[StrictOutputSchema]]:
-    if rtype == "initial":
-        from chatlab.ai.schema import PatientInitialOutputSchema as Schema  # local import avoids cycles
-        msgs = [
-            # TODO add sim name to prompt
-            NormalizedAIMessage(role="developer", content=sim.prompt_instruction),
-            NormalizedAIMessage(role="user", content=sim.prompt_message or ""),
-        ]
-        return msgs, Schema
+) -> tuple[list[NormalizedAIMessage], Type[StrictOutputSchema] | None]:
+    match rtype:
 
-    if rtype == "reply":
-        if not user_msg:
-            raise ValueError("user_msg required for rtype='reply'")
+        case "initial":
+            from chatlab.ai.schema import PatientInitialOutputSchema as Schema  # local import avoids cycles
+            msgs = [
+                NormalizedAIMessage(role="developer", content=sim.prompt_instruction),
+                NormalizedAIMessage(role="user", content=sim.prompt_message or ""),
+            ]
+            return msgs, Schema
 
-        from chatlab.ai.schema import PatientReplyOutputSchema as Schema
-        msgs = [NormalizedAIMessage(role="user", content=user_msg.content)]
-        return msgs, Schema
+        case "reply":
+            if not user_msg:
+                raise ValueError("user_msg required for rtype='reply'")
 
-    raise ValueError(f"Unknown rtype: {rtype}")
+            from chatlab.ai.schema import PatientReplyOutputSchema as Schema
+            msgs = [NormalizedAIMessage(role="user", content=user_msg.content)]
+
+            return msgs, Schema
+
+        case "image":
+            from simcore.ai.promptkit import PromptEngine, Prompt
+            from ..prompts import ImageSection
+
+            p: Prompt = await PromptEngine.abuild_from(ImageSection)
+            msgs = [
+                NormalizedAIMessage(role="developer", content=p.instruction),
+                # NormalizedAIMessage(role="user", content=p.message),# TODO placeholder if needed; remove if not needed
+            ]
+
+            return msgs, None
+
+        case _:
+            logger.exception(f"Unknown rtype: {rtype}", ValueError)
+            return [], None
 
 
 async def _generate_patient_response(
-        *, simulation_id: int, rtype: str, user_msg: Message | None, as_dict: bool
+        *,
+        simulation_id: int,
+        rtype: str,
+        user_msg: Message | None,
+        as_dict: bool,
+        tools: list[NormalizedAITool] | None = None,
+        **kwargs,
 ) -> NormalizedAIResponse | dict:
     client = get_ai_client()
     sim = await Simulation.aresolve(simulation_id)
@@ -48,16 +71,29 @@ async def _generate_patient_response(
         sim, rtype=rtype, user_msg=user_msg
     )
 
+    if not messages:
+        logger.warning("No messages to send -- skipping.")
+        return {}
+
     req = NormalizedAIRequest(
         messages=messages,
         schema_cls=schema_cls,
         previous_response_id=previous_response_id,
+        tools=tools or [],
         metadata={
             "use_case": f"chatlab:patient_{rtype}",
             "simulation_id": sim.id,
             "user_msg_pk": getattr(user_msg, "pk", None),
         },
     )
+
+    # add kwargs to request if matching key found on NormalizedAIRequest DTO
+    for k, v in kwargs.items():
+        try:
+            setattr(req, k, v)
+        except AttributeError:
+            logger.warning(f"received kwarg `{k}`, but no matching key found on {req.__class__.__name__} -- skipping")
+
     resp = await client.send_request(req, simulation=sim)
 
     for m in resp.messages:
@@ -87,4 +123,23 @@ async def generate_patient_reply(
         rtype="reply",
         user_msg=user_msg,
         as_dict=as_dict
+    )
+
+
+async def generate_patient_image(
+        simulation_id: int,
+        user_msg: Message,
+        *,
+        as_dict: bool = True,
+        output_format: str = None,
+) -> NormalizedAIResponse | dict:
+    """Generate patient image response."""
+    return await _generate_patient_response(
+        simulation_id=simulation_id,
+        rtype="image",
+        tools=[
+            NormalizedImageGenerationTool(
+                output_format=output_format or None
+            )
+        ],
     )

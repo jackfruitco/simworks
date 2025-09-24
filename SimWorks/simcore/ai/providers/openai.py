@@ -1,5 +1,8 @@
 # simcore/ai/providers/openai.py
+from __future__ import annotations
+
 import logging
+from typing import Any
 
 from openai import (
     AsyncOpenAI,
@@ -11,15 +14,81 @@ from openai.types.responses import (
     ResponseTextConfigParam,
     ResponseUsage as OpenAIUsage,
 )
+from openai.types.responses.response_output_item import ImageGenerationCall
+from openai.types.responses.tool import ImageGeneration
 from pydantic import TypeAdapter
 
-from .base import ProviderBase
+from .base import ProviderBase, ToolAdapter
 from ..parsers.output_parser import maybe_parse_to_schema
-from ..schemas.normalized_types import NormalizedAIMessage, NormalizedAIMetadata, NormalizedAIRequest, \
-    NormalizedAIResponse, NormalizedStreamChunk
+from ..schemas.normalized_types import (
+    NormalizedAIMessage,
+    NormalizedAIMetadata,
+    NormalizedAIRequest,
+    NormalizedAIResponse,
+    NormalizedStreamChunk, NormalizedAITool, NormalizedAttachment
+)
+from ..schemas.tools import NormalizedImageGenerationTool
 from ..utils.helpers import build_output_schema
 
 logger = logging.getLogger(__name__)
+
+
+class OpenAIImageToolAdapter(ToolAdapter):
+    """Adapter for OpenAI Image Generation Tool
+
+    Includes: `to_provider` and `from_provider` methods
+    """
+    provider = "openai"
+
+    def to_provider(self, tool: NormalizedImageGenerationTool) -> Any:
+        """Adapt NormalizedAITool to OpenAI ImageGenerationTool"""
+
+        # Pop keys not supported by OpenAI API
+        kwargs = tool.model_dump(exclude_none=True)
+        allowed = getattr(ImageGeneration, "model_fields", {}).keys()
+        filtered = {k: v for k, v in kwargs.items() if k in allowed}
+
+        return ImageGeneration(**filtered)
+
+    def from_provider(self, raw: ImageGeneration) -> NormalizedImageGenerationTool:
+        """Adapt OpenAI ImageGenerationTool to NormalizedAITool"""
+        return NormalizedImageGenerationTool(
+            function="generate",
+            arguments=raw.model_dump(),
+        )
+
+
+# Provider-local tool adapter registry
+_ADAPTERS: dict[type[NormalizedAITool], ToolAdapter] = {
+    NormalizedImageGenerationTool: OpenAIImageToolAdapter(),
+}
+
+
+def resolve_adapter_for(tool: NormalizedAITool) -> ToolAdapter:
+    """Resolve provider tool adapter for a given normalized tool type"""
+    for cls in type(tool).mro():
+        if cls in _ADAPTERS:
+            return _ADAPTERS[cls]
+    raise NotImplementedError(f"{type(tool).__name__} not supported by {__name__}")
+
+
+def _adapt_tools(tools: list[NormalizedAITool] | None) -> list[Any]:
+    """Adapt a list of NormalizedAITools to provider-specific tool objects"""
+    out: list[Any] = []
+    for t in tools or []:
+        adapter = resolve_adapter_for(t)
+        out.append(adapter.to_provider(t))
+    return out
+
+
+def available_tools() -> list[NormalizedAITool]:
+    """List available tools for OpenAI provider"""
+    return [
+        NormalizedImageGenerationTool(
+            function="generate",
+            arguments={},
+        ),
+    ]
 
 
 def _coerce_usage(usage_obj) -> dict:
@@ -127,40 +196,74 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
     text: str = getattr(resp, "output_text", None)
     usage_obj: OpenAIUsage = getattr(resp, "usage", None)
     _usage = _coerce_usage(usage_obj)
+    parsed_messages_present = False
 
-    if not text:
-        msg = f"No output_text found in OpenAI Responses API response: {resp}"
-        logger.error(msg)
-        raise ValueError(msg)
-
-    # If caller supplied a schema, try to parse strictly
-    if schema_cls is not None:
-        _parsed = maybe_parse_to_schema(text, schema_cls)
+    if text:
+        if schema_cls is not None:
+            _parsed = maybe_parse_to_schema(text, schema_cls)
+        else:
+            _parsed = None
+        if not _parsed or isinstance(_parsed, str):
+            logger.warning("Could not parse output_text to schema.")
+        else:
+            parsed_messages_present = bool(getattr(_parsed, "messages", None))
     else:
         _parsed = None
 
-    if not _parsed or isinstance(_parsed, str):
-        # TODO add fallback to plain text if schema fails
-        raise ValueError(f"Could not parse output_text to schema: {_parsed}")
+    if not text and not getattr(resp, "output", None):
+        msg = "No output_text or output found on OpenAI response"
+        raise ValueError(msg)
 
     _messages: list[NormalizedAIMessage] = []
     _metadata: list[NormalizedAIMetadata] = []
+    _attachments: list[NormalizedAttachment] = []
 
     # Parse and normalize message(s)
-    for raw_msg in getattr(_parsed, "messages", []) or []:
+    for raw_msg in (getattr(_parsed, "messages", None) or []):
         _messages.append(
-
-            NormalizedAIMessage(
-                role=raw_msg.role,
-                content=raw_msg.content
-            )
+            NormalizedAIMessage(role=raw_msg.role, content=raw_msg.content)
         )
 
-    count = 1
-    total = len(_messages)
+    total, count = len(_messages), 1
     for m in _messages:
         logger.debug(f"... message ({count} of {total}) normalized: {m}")
         count += 1
+
+    # Parse and normalize attachments (e.g. Images)
+    for item in getattr(resp, "output", []) or []:
+        if isinstance(item, ImageGenerationCall):
+            # SDKs may differ: prefer getattr + log if missing
+            b64 = getattr(item, "response", None)
+            if not b64:
+                logger.warning("ImageGenerationCall present, but no base64 payload on `response`")
+            norm = NormalizedAttachment(
+                type="image",
+                b64=b64,
+                provider_meta={
+                    "provider": "openai",
+                    "provider_image_call_id": getattr(item, "id", None),
+                    "provider_raw_response": item.model_dump(),
+                },
+            )
+            _attachments.append(norm)
+            logger.debug(f"... image generation output normalized: {repr(norm)[:200]}")
+
+    if _attachments:
+        _messages.append(
+            NormalizedAIMessage(
+                role="tool",
+                content="",
+                tool_calls=[
+                    {
+                        "name": "image_generation",
+                        "id": a.provider_meta.get("provider_image_call_id")
+                    }
+                    for a in _attachments
+                ],
+                attachments=_attachments,
+            )
+        )
+        logger.debug("... image generation output(s) attached to message list")
 
     md_obj = getattr(_parsed, "metadata", None)
 
@@ -233,15 +336,24 @@ class OpenAIProvider(ProviderBase):
         else:
             schema = NOT_GIVEN
 
+        provider_tools = _adapt_tools(req.tools)
+        logger.debug(f"provider `{self.name}` adapted tools: {provider_tools}")
+
+        input_ = [
+            m.model_dump(
+                include={"role","content","tool_calls"},
+                exclude_none=True
+            ) for m in req.messages
+        ]
         resp: OpenAIResponse = await self._client.responses.create(
-            model=req.model,
-            input=[m.model_dump(exclude_none=True) for m in req.messages],
-            text=schema,
+            model=req.model or NOT_GIVEN,
+            input=input_,
+            text=schema or NOT_GIVEN,
             previous_response_id=req.previous_response_id or NOT_GIVEN,
-            # tools=req.tools,
-            # tool_choice=req.tool_choice,
-            max_output_tokens=req.max_output_tokens,
-            # temperature=req.temperature,
+            tools=provider_tools or NOT_GIVEN,
+            tool_choice=req.tool_choice or NOT_GIVEN,
+            max_output_tokens=req.max_output_tokens or NOT_GIVEN,
+            temperature=req.temperature or NOT_GIVEN,
         )
         logger.debug(f"provider `{self.name}` received response\n(response:\t{resp})")
 

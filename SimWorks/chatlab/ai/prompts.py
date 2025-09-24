@@ -91,14 +91,14 @@ class ImageSection(BaseSection):
             return None
 
         return (
-            "For this response onlu, generate an image based off the medical "
+            "For this response only, generate an image based off the medical "
             "provider's request in the message(s)."
             "\n"
             "Images must not be against OpenAI guidelines."
             "\n"
             "The image should be as if taken by the patient with a smartphone. "
             "The image should not show details that would not normally be seen "
-            "in an image. Do not overexagerate the look of an sign or symptom."
+            "in an image. Do not overexaggerate the look of a sign or symptom."
         )
 
     async def render_message(self, **ctx) -> Optional[str]:
