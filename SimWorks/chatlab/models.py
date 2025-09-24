@@ -86,7 +86,7 @@ class Message(models.Model):
     provider_response_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
 
-    # TODO deprecated - remove
+    # TODO deprecated -- remove before v0.8.0
     @property
     def openai_id(self):
         """Deprecated. Use provider_response_id instead."""
@@ -104,7 +104,7 @@ class Message(models.Model):
         self.provider_response_id = id
         self.save(update_fields=["provider_response_id"])
 
-    # TODO deprecated - remove
+    # TODO deprecated -- remove before v0.8.0
     def set_openai_id(self, openai_id):
         logger.warning(
             "set_openai_id is deprecated. Use set_provider_resp_id instead.",

@@ -254,13 +254,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        # TODO deprecation warning
-        if data.get("event_type") in {"message", "chat.message"}:
-            warnings.warn(
-                "'message' event_type is deprecated. Use 'chat.message' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        # TODO deprecated -- remove before v0.8.0
+        # if data.get("event_type") in {"message", "chat.message"}:
+        #     warnings.warn(
+        #         "'message' event_type is deprecated. Use 'chat.message' instead.",
+        #         DeprecationWarning,
+        #         stacklevel=2,
+        #     )
 
         is_from_user = data.get("role", "").upper() == "USER"
         content = data["content"]
@@ -279,7 +279,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
             # Simulate the user message as delivered once saved to the database
-            # TODO
+            # TODO [FEAT]: consider v0.8.1
             # await self.broadcast_message_status(user_msg.id, "delivered")
 
             await self._generate_patient_response(user_msg)

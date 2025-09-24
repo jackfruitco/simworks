@@ -94,14 +94,14 @@ async def socket_send(
     """
 
     # Remove deprecated `__event` kwarg if present
-    # TODO deprecation
-    if "__event" in kwargs:
-        __event = kwargs.pop("__event")
-        warnings.warn(
-            DeprecationWarning(
-                "`__event` is no longer used. Use explicit `__type` instead."
-            )
-        )
+    # TODO deprecation -- remove before v0.8.0
+    # if "__event" in kwargs:
+    #     __event = kwargs.pop("__event")
+    #     warnings.warn(
+    #         DeprecationWarning(
+    #             "`__event` is no longer used. Use explicit `__type` instead."
+    #         )
+    #     )
 
     # Build group name from simulation ID if group not provided
     if __group is None:
