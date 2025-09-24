@@ -353,7 +353,7 @@ class OpenAIProvider(ProviderBase):
             tools=provider_tools or NOT_GIVEN,
             tool_choice=req.tool_choice or NOT_GIVEN,
             max_output_tokens=req.max_output_tokens or NOT_GIVEN,
-            temperature=req.temperature or NOT_GIVEN,
+            # temperature=req.temperature or NOT_GIVEN,
         )
         logger.debug(f"provider `{self.name}` received response\n(response:\t{resp})")
 
