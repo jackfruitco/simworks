@@ -4,6 +4,7 @@ from typing import Type
 
 from chatlab.models import Message
 from chatlab.utils import broadcast_message
+from core.utils import remove_null_keys
 from simcore.ai import get_ai_client
 from simcore.ai.schemas import StrictOutputSchema
 from simcore.ai.schemas.normalized_types import (
@@ -54,15 +55,50 @@ async def _build_messages_and_schema(
             return [], None
 
 
+async def generate_patient_image(
+        simulation_id: int,
+        user_msg: Message,
+        *,
+        as_dict: bool = True,
+        output_format: str = None,
+) -> NormalizedAIResponse | dict:
+    """Generate patient image response."""
+    tool_args: dict = {
+        "output_format": output_format
+    }
+    cleaned_args = remove_null_keys(tool_args)
+
+    return await _generate_patient_response(
+        simulation_id=simulation_id,
+        rtype="image",
+        tools=[
+            NormalizedImageGenerationTool(**cleaned_args),
+        ],
+    )
+
+
 async def _generate_patient_response(
         *,
         simulation_id: int,
         rtype: str,
-        user_msg: Message | None,
-        as_dict: bool,
+        user_msg: Message | None = None,
+        as_dict: bool = True,
         tools: list[NormalizedAITool] | None = None,
         **kwargs,
 ) -> NormalizedAIResponse | dict:
+    """Internal low-level patient response generator method. Defaults return type: dict.
+
+    Args:
+        simulation_id (int): The simulation ID.
+        rtype: The response type (e.g. "initial", "reply", "image").
+        user_msg: The user message (if any).
+        as_dict: Whether to return the response as a dict or as a Model instance.
+        tools: Optional list of Normalized tools to use in the response.
+        kwargs: Additional keyword arguments to pass to the NormalizedAIRequest.
+
+    Returns:
+        The normalized AI response.
+    """
     client = get_ai_client()
     sim = await Simulation.aresolve(simulation_id)
     previous_response_id = await sim.aget_previous_response_id()
@@ -96,6 +132,13 @@ async def _generate_patient_response(
 
     resp = await client.send_request(req, simulation=sim)
 
+    if getattr(resp, "image_requested", None):
+        logger.debug("image requested -- starting image generation.")
+        await generate_patient_image(
+            simulation_id=simulation_id,
+            user_msg=user_msg,
+        )
+
     for m in resp.messages:
         await broadcast_message(m.db_pk)
     return resp.model_dump() if as_dict else resp
@@ -123,23 +166,4 @@ async def generate_patient_reply(
         rtype="reply",
         user_msg=user_msg,
         as_dict=as_dict
-    )
-
-
-async def generate_patient_image(
-        simulation_id: int,
-        user_msg: Message,
-        *,
-        as_dict: bool = True,
-        output_format: str = None,
-) -> NormalizedAIResponse | dict:
-    """Generate patient image response."""
-    return await _generate_patient_response(
-        simulation_id=simulation_id,
-        rtype="image",
-        tools=[
-            NormalizedImageGenerationTool(
-                output_format=output_format or None
-            )
-        ],
     )

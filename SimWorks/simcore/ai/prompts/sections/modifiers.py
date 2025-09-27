@@ -19,6 +19,7 @@ class BaseSection(PromptSection):
 @dataclass
 class PatientNameSection(BaseSection):
     name: str = "patient_name"
+    weight: int = 0
 
     async def render_instruction(self, **ctx) -> Optional[str]:
 
@@ -43,7 +44,6 @@ class PatientNameSection(BaseSection):
             return None
 
         return (
-            f"You are roleplaying as {full_name}. "
-            f"Use this name, and only this name, to identify yourself. "
-            f"Do not break character."
+            "# Role and Objective\n"
+            f"Portray {full_name}, a standardized patient, for realistic SMS/text-based medical simulation scenarios."
         )

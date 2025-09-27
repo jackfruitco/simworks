@@ -49,7 +49,7 @@ class AIClient:
         # Forward request to provider
         resp: NormalizedAIResponse = await self.provider.call(req)
 
-        logger.debug(f"client received normalized response:\n(response:\t{resp})")
+        logger.debug(f"client received normalized response:\n(response:\t{resp.model_dump_json()[:200]})")
 
         if persist and simulation is not None:
             logger.debug(f"client persisting messages/metadata for simulation {simulation.pk}")

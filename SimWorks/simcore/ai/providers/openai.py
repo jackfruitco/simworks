@@ -214,26 +214,28 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
         msg = "No output_text or output found on OpenAI response"
         raise ValueError(msg)
 
-    _messages: list[NormalizedAIMessage] = []
-    _metadata: list[NormalizedAIMetadata] = []
-    _attachments: list[NormalizedAttachment] = []
+    messages_: list[NormalizedAIMessage] = []
+    metadata_: list[NormalizedAIMetadata] = []
+    attachments_: list[NormalizedAttachment] = []
+    image_requested_: bool | None = None
 
     # Parse and normalize message(s)
     for raw_msg in (getattr(_parsed, "messages", None) or []):
-        _messages.append(
+        messages_.append(
             NormalizedAIMessage(role=raw_msg.role, content=raw_msg.content)
         )
 
-    total, count = len(_messages), 1
-    for m in _messages:
+    total, count = len(messages_), 1
+    for m in messages_:
         logger.debug(f"... message ({count} of {total}) normalized: {m}")
         count += 1
 
     # Parse and normalize attachments (e.g. Images)
-    for item in getattr(resp, "output", []) or []:
-        if isinstance(item, ImageGenerationCall):
-            # SDKs may differ: prefer getattr + log if missing
-            b64 = getattr(item, "response", None)
+    logger.debug("... parsing output(s) for attachments")
+    for output_item in getattr(resp, "output", []) or []:
+        logger.debug(f"... output item {type(output_item)}: {repr(output_item)[:100] or '<empty>'}")
+        if isinstance(output_item, ImageGenerationCall):
+            b64 = getattr(output_item, "result", None)
             if not b64:
                 logger.warning("ImageGenerationCall present, but no base64 payload on `response`")
             norm = NormalizedAttachment(
@@ -241,15 +243,15 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
                 b64=b64,
                 provider_meta={
                     "provider": "openai",
-                    "provider_image_call_id": getattr(item, "id", None),
-                    "provider_raw_response": item.model_dump(),
+                    "provider_image_call_id": getattr(output_item, "id", None),
+                    "provider_raw_response": output_item.model_dump(),
                 },
             )
-            _attachments.append(norm)
-            logger.debug(f"... image generation output normalized: {repr(norm)[:200]}")
+            attachments_.append(norm)
+            logger.debug(f"... image generation output normalized: {repr(norm)[:100]}")
 
-    if _attachments:
-        _messages.append(
+    if attachments_:
+        messages_.append(
             NormalizedAIMessage(
                 role="tool",
                 content="",
@@ -258,9 +260,9 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
                         "name": "image_generation",
                         "id": a.provider_meta.get("provider_image_call_id")
                     }
-                    for a in _attachments
+                    for a in attachments_
                 ],
-                attachments=_attachments,
+                attachments=attachments_,
             )
         )
         logger.debug("... image generation output(s) attached to message list")
@@ -271,15 +273,15 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
         logger.debug("... no metadata object on parsed schema")
 
     count = 1
-    for item in _iter_metadata_items(md_obj) or []:
+    for output_item in _iter_metadata_items(md_obj) or []:
         # Accept either Pydantic models or plain dicts
-        if hasattr(item, "model_dump"):
-            data = item.model_dump()
-        elif isinstance(item, dict):
-            data = item
+        if hasattr(output_item, "model_dump"):
+            data = output_item.model_dump()
+        elif isinstance(output_item, dict):
+            data = output_item
         else:
             # Unknown object → coerce to generic
-            data = {"type": "generic", "key": getattr(item, "key", "meta"), "value": getattr(item, "value", None)}
+            data = {"type": "generic", "key": getattr(output_item, "key", "meta"), "value": getattr(output_item, "value", None)}
 
         # Ensure discriminator and key exist
         data.setdefault("type", "generic")
@@ -288,10 +290,14 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
         logger.debug(f"... metafield ({count}) prepared for normalization: {data}")
 
         meta_obj = _META_ADAPTER.validate_python(data)
-        _metadata.append(meta_obj)
+        metadata_.append(meta_obj)
 
         logger.debug(f"... metafield ({count}) normalized: {meta_obj}")
         count += 1
+
+    # Check if image was requested
+    if _parsed:
+        image_requested_ = getattr(_parsed, "image_requested", None)
 
     # Attempt to serialize the provider response object
     try:
@@ -308,10 +314,11 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
     }
 
     return NormalizedAIResponse(
-        messages=_messages,
-        metadata=_metadata,
+        messages=messages_,
+        metadata=metadata_,
         usage=_usage,
         provider_meta=provider_meta,
+        image_requested=image_requested_ or None,
     )
 
 

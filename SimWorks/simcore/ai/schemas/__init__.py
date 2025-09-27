@@ -17,7 +17,9 @@ from .normalized_types import (
     NormalizedAIRequest,
     NormalizedAIResponse,
     NormalizedStreamChunk,
+    NormalizedAITool,
 )
+from .tools import NormalizedCustomTool
 
 __all__ = [
     "StrictBaseModel",
@@ -28,4 +30,6 @@ __all__ = [
     "NormalizedAIRequest",
     "NormalizedAIResponse",
     "NormalizedStreamChunk",
+    "NormalizedAITool",
+    "NormalizedCustomTool",
 ]

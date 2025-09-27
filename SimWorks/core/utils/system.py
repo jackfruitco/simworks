@@ -51,7 +51,7 @@ import logging
 from typing import Any
 
 
-def remove_null_keys(_dict: Any) -> dict[Any, Any]:
+def remove_null_keys(dict_: Any) -> dict[Any, Any]:
     """
     Recursively removes keys from a dictionary (or nested dictionaries/lists)
     whose values are None or empty strings.
@@ -60,12 +60,12 @@ def remove_null_keys(_dict: Any) -> dict[Any, Any]:
     """
     import logging
 
-    if not isinstance(_dict, dict):
+    if not isinstance(dict_, dict):
         try:
-            _dict = dict(_dict)
+            dict_ = dict(dict_)
         except (ValueError, TypeError) as e:
-            logging.error(f"Failed to convert {type(_dict)} to dict: {e}")
-            return _dict
+            logging.error(f"Failed to convert {type(dict_)} to dict: {e}")
+            return dict_
 
     def _clean(value):
         if isinstance(value, dict):
@@ -83,4 +83,4 @@ def remove_null_keys(_dict: Any) -> dict[Any, Any]:
         else:
             return value
 
-    return _clean(_dict)
+    return _clean(dict_)

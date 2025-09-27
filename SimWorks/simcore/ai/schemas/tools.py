@@ -1,12 +1,26 @@
 from typing import Literal, Optional
 
 from django.conf import settings
+from pydantic import Field
 
+from . import StrictBaseModel
 from .normalized_types import NormalizedAITool
 
 
+class NormalizedToolParameter(StrictBaseModel):
+    type: str
+    properties: dict
+
+
+class NormalizedCustomTool(NormalizedAITool):
+    type: Literal["function"] = "function"
+    description: Optional[str]
+    parameters: list[NormalizedToolParameter] = Field(default_factory=list)
+    strict: Optional[bool] = True
+
+
 class NormalizedImageGenerationTool(NormalizedAITool):
-    label: Literal["image_generation"] = "image_generation"
+    type: Literal["image_generation"] = "image_generation"
 
     model: str = settings.AI_IMAGE_MODEL
 

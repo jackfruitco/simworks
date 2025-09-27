@@ -18,13 +18,15 @@ class NormalizedAttachment(BaseModel):
     type: Literal["image"]
 
     b64: Optional[str] = None
-    fil: Optional[Any] = None
+    file: Optional[Any] = None
     url: Optional[str] = None
+
     format: Optional[str] = None  # "png", "jpeg", etc.
     size: Optional[str] = None    # "1024x1024"
     background: Optional[str] = None
 
     provider_meta: Dict[str, Any] = Field(default_factory=dict)
+
     # linkage after persistence (post-persist)
     db_pk: Optional[int] = None
     db_model: Optional[str] = None
@@ -143,7 +145,7 @@ NormalizedAIMetadata = Annotated[
 
 # ---------- Normalized AI Tools ---------------------------------------------------------------------------------------
 class NormalizedAITool(BaseModel):
-    label: str  # e.g. "image_generation"
+    type: str  # e.g. "image_generation"
     function: Optional[str] = None
     arguments: Dict[str, Any] = Field(default_factory=dict)
 
@@ -169,6 +171,8 @@ class NormalizedAIResponse(BaseModel):
     messages: List[NormalizedAIMessage]
     metadata: List[NormalizedAIMetadata]
     usage: Dict[str, int] = Field(default_factory=dict)
+
+    image_requested: Optional[bool] = None
 
     provider_meta: Dict[str, Any] = Field(default_factory=dict)
     db_pk: Optional[int] = None  # django object pk

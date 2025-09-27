@@ -287,10 +287,9 @@ async def persist_attachment(
         # Keep the message specific to decoding/file prep
         raise Exception(f"Failed to decode/prepare image file: {e}") from e
 
-    # Attach the file to the DTO (if your DTO has this field)
     attachment.file = image_file
 
-    # Create DB row
+    # Create DB instance
     data = {
         "simulation": simulation,
         "original": image_file,
