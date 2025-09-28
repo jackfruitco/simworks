@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import QuerySet
 from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
@@ -14,27 +15,52 @@ from django.utils.timezone import now
 class CustomUser(AbstractUser):
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
 
-    def get_scenario_log(self, within_days=None, within_weeks=None, within_months=None):
-        """
-        Return a queryset of scenario data (diagnosis and chief complaint) filtered by time.
-        Priority of filters: days > weeks > months.
-        """
+    def get_scenario_log(
+            self,
+            within_days: float | None = None,
+            within_weeks: float | None = None,
+            within_months: float | None = None,
+    ) -> models.QuerySet:
         from simcore.models import Simulation
 
-        # Prioritize the most specific time range
+        # Normalize the time window (days > weeks > months)
         if within_days is None:
             if within_weeks is not None:
                 within_days = within_weeks * 7
             elif within_months is not None:
-                within_days = within_months * 30  # Approximate month
+                within_days = within_months * 30
 
-        qs = Simulation.objects.filter(user=self).exclude(diagnosis__isnull=True)
-
+        qs = (
+            Simulation.objects.filter(user=self)
+            .exclude(diagnosis__isnull=True)
+            .order_by('-start_timestamp')
+        )
         if within_days:
             cutoff = now() - timedelta(days=within_days)
             qs = qs.filter(start_timestamp__gte=cutoff)
 
+        # Return a queryset
         return qs.values("id", "start_timestamp", "diagnosis", "chief_complaint")
+
+    async def aget_scenario_log(
+            self,
+            within_days: float | None = None,
+            within_weeks: float | None = None,
+            within_months: float | None = None,
+    ) -> list[dict]:
+        """Async wrapper to get scenario log"""
+
+        # Evaluate inside the worker thread so nothing lazy leaks to the event loop
+        def _run():
+            return list(
+                self.get_scenario_log(
+                    within_days=within_days,
+                    within_weeks=within_weeks,
+                    within_months=within_months,
+                )
+            )
+
+        return await sync_to_async(_run)()
 
 
 class UserRole(models.Model):

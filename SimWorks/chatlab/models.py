@@ -75,7 +75,7 @@ class Message(models.Model):
         null=True,
         blank=True,
     )
-    responsev2 = models.ForeignKey(
+    response = models.ForeignKey(
         "simcore.AIResponse",
         on_delete=models.CASCADE,
         verbose_name="AI Response",

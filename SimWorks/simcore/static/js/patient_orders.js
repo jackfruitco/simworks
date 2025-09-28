@@ -85,7 +85,7 @@
           "Content-Type": "application/json",
           "HX-Request": "true",
         },
-        body: JSON.stringify({ lab_orders: pendingOrders }),
+        body: JSON.stringify({ submitted_orders: pendingOrders }),
       });
       console.debug("Submitting orders:", pendingOrders);
 

@@ -149,6 +149,29 @@ def _iter_metadata_items(md):
                     "key": item.get("key", "meta"),
                     "value": item.get("value"),
                 }
+        # lab_results
+        for item in md.get("lab_results", []) or []:
+            if isinstance(item, dict):
+                yield {
+                    "type": "lab_results",
+                    "panel_name": item.get("panel_name"),
+                    "result_name": item.get("result_name"),
+                    "result_value": item.get("result_value"),
+                    "result_unit": item.get("result_unit"),
+                    "reference_range_low": item.get("reference_range_low"),
+                    "reference_range_high": item.get("reference_range_high"),
+                    "result_flag": item.get("result_flag"),
+                    "result_comment": item.get("result_comment"),
+                }
+        # radiology_results
+        for item in md.get("radiology_results", []) or []:
+            if isinstance(item, dict):
+                yield {
+                    "type": "radiology_results",
+                    "key": item.get("result_name"),
+                    "value": item.get("result_value"),
+                    "result_flag": item.get("result_flag"),
+                }
         # patient_history
         for item in md.get("patient_history", []) or []:
             if isinstance(item, dict):
@@ -233,7 +256,7 @@ def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAI
     # Parse and normalize attachments (e.g. Images)
     logger.debug("... parsing output(s) for attachments")
     for output_item in getattr(resp, "output", []) or []:
-        logger.debug(f"... output item {type(output_item)}: {repr(output_item)[:100] or '<empty>'}")
+        logger.debug(f"... output item {type(output_item)}: {repr(output_item)[:200] or '<empty>'}")
         if isinstance(output_item, ImageGenerationCall):
             b64 = getattr(output_item, "result", None)
             if not b64:
@@ -331,11 +354,14 @@ class OpenAIProvider(ProviderBase):
             name: str = "openai",
     ):
         self._client = AsyncOpenAI(api_key=api_key, timeout=timeout)
+        self.timeout = timeout
+        self.api_key = api_key
+        self.name = name
         super().__init__(name=name, description="N/A")
 
-    async def call(self, req: NormalizedAIRequest) -> NormalizedAIResponse:
+    async def call(self, req: NormalizedAIRequest, timeout: float | None = None) -> NormalizedAIResponse:
         """Call OpenAI API and normalize the response."""
-        logger.debug(f"provider `{self.name}` received request call")
+        logger.debug(f"provider `{self.name}`:: received request call")
 
         if req.schema_cls is not None:
             schema: ResponseTextConfigParam = build_output_schema(
@@ -343,8 +369,12 @@ class OpenAIProvider(ProviderBase):
         else:
             schema = NOT_GIVEN
 
-        provider_tools = _adapt_tools(req.tools)
-        logger.debug(f"provider `{self.name}` adapted tools: {provider_tools}")
+        if req.tools:
+            provider_tools = _adapt_tools(req.tools)
+            logger.debug(f"provider `{self.name}`:: adapted tools: {provider_tools}")
+        else:
+            provider_tools = None
+            logger.debug(f"provider `{self.name}`:: no tools to adapt")
 
         input_ = [
             m.model_dump(
@@ -360,9 +390,10 @@ class OpenAIProvider(ProviderBase):
             tools=provider_tools or NOT_GIVEN,
             tool_choice=req.tool_choice or NOT_GIVEN,
             max_output_tokens=req.max_output_tokens or NOT_GIVEN,
+            timeout=timeout or self.timeout or NOT_GIVEN,
             # temperature=req.temperature or NOT_GIVEN,
         )
-        logger.debug(f"provider `{self.name}` received response\n(response:\t{resp})")
+        logger.debug(f"provider `{self.name}`:: received response\n(response:\t{str(resp)[:200]})")
 
         return NormalizedAIResponse.normalize(
             resp=resp,

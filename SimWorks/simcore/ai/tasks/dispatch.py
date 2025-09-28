@@ -16,22 +16,24 @@ async def acall_connector(
         fn,
         *args,
         enqueue: bool = True,
-        eta=None,
-        countdown=None,
+        countdown: float = None,
+        eta: Any = None,
         **kwargs
 ) -> Any | AsyncResult:
     """Async connector dispatcher.
 
-    :param fn: Dotted path to connector callable
-    :param args: Connector args
-    :param enqueue: Whether to enqueue the connector task
-    :eta: ETA for task scheduling
-    :countdown: Countdown for task scheduling
-    :param kwargs: Connector kwargs
+    Args:
+        fn: Dotted path to connector callable
+        args: Connector args
+        enqueue: Whether to enqueue the connector task
+        eta: ETA for task scheduling
+        countdown: Countdown for task scheduling
+        kwargs: Connector kwargs
     """
     logger.debug(f"acall_connector: '{fn}' (enqueued={enqueue})...")
     path = dotted_path(fn)
     if enqueue:
+        logger.debug(f"applying connector task in queue: {path} ...")
         return execute_connector.apply_async(
             args=(path, *args),
             kwargs=kwargs,

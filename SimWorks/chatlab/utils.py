@@ -49,7 +49,7 @@ async def create_new_simulation(
 
     # Link ChatLab extension
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
-    logger.debug(f"chatlab session #{session.id} linked simulatio #{simulation.id}")
+    logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     # Generate an initial message
     await acall_connector(generate_patient_initial, simulation_id=simulation.id)

@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from simcore.ai.schemas import StrictBaseModel, StrictOutputSchema
+from simcore.ai.schemas import StrictBaseModel, StrictOutputSchema, NormalizedAIMessage, NormalizedAIMetadata
 
 
 class ABCMetadataItem(StrictBaseModel):
@@ -74,16 +74,25 @@ class MessageItem(StrictBaseModel):
     content: str
 
 
+class LLMConditionsCheckItem(StrictBaseModel):
+    key: str
+    value: str
+
+
 class PatientInitialOutputSchema(StrictOutputSchema):
     image_requested: bool
-    messages: List[MessageItem]
-    metadata: Metadata
+    # messages: List[MessageItem]
+    # metadata: Metadata
+    messages: list[NormalizedAIMessage] = Field(default_factory=list)
+    metadata: list[NormalizedAIMetadata] = Field(default_factory=list)
+    llm_conditions_check: List[LLMConditionsCheckItem]
 
 
 class PatientReplyOutputSchema(StrictOutputSchema):
     image_requested: bool
     messages: List[MessageItem]
     metadata: Metadata
+    llm_conditions_check: List[LLMConditionsCheckItem]
 
 
 class LabResult(StrictBaseModel):
@@ -121,7 +130,7 @@ class RadResult(StrictBaseModel):
     )
 
 
-class PatientResultsOutputSchema(StrictOutputSchema):
+class ResultsMetadata(StrictBaseModel):
     lab_results: List[LabResult] = Field(
         ...,
         description="The lab results of the patient. Each item is a lab result object.",
@@ -130,6 +139,19 @@ class PatientResultsOutputSchema(StrictOutputSchema):
         ...,
         description="The radiology results of the patient. Each item is a radiology result object.",
     )
+
+class PatientResultsOutputSchema(StrictOutputSchema):
+    metadata: ResultsMetadata
+    llm_conditions_check: List[LLMConditionsCheckItem]
+
+    # lab_results: List[LabResult] = Field(
+    #     ...,
+    #     description="The lab results of the patient. Each item is a lab result object.",
+    # )
+    # radiology_results: List[RadResult] = Field(
+    #     ...,
+    #     description="The radiology results of the patient. Each item is a radiology result object.",
+    # )
 
 Boolish = Literal["true", "false", "partial"]
 

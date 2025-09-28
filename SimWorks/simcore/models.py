@@ -22,6 +22,7 @@ from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from simcore.ai.promptkit import Prompt as PromptDTO
+from simcore.ai.prompts.sections.modifiers import UserRoleSection, UserHistorySection
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -313,7 +314,11 @@ class Simulation(models.Model):
         p: PromptDTO
         if not prompt and lab:
             from simcore.ai.promptkit import PromptEngine
-            from simcore.ai.prompts.sections.modifiers import PatientNameSection
+            from simcore.ai.prompts.sections.modifiers import (
+                PatientNameSection,
+                UserRoleSection,
+                UserHistorySection
+            )
 
             try:
                 from simcore.ai.utils.imports import resolve_initial_section
@@ -332,7 +337,12 @@ class Simulation(models.Model):
 
             logger.debug(f"...... starting PromptEngine\n(engine context:\t{prompt_context})")
             ctx = {**prompt_context, **kwargs}
-            p = await PromptEngine.abuild_from(init_cls, PatientNameSection, **ctx)
+            p = await PromptEngine.abuild_from(
+                init_cls,
+                PatientNameSection,
+                UserRoleSection,
+                UserHistorySection,
+                **ctx)
 
         else:
             # Coerce/validate provided prompt
@@ -361,7 +371,7 @@ class Simulation(models.Model):
             # "sections": [...],        # TODO add when the engine exposes used labels
         })
 
-        logger.debug(f"...... PromptEngine complete: {p}")
+        logger.debug(f"...... PromptEngine complete: {print(p)}")
 
         logger.debug(f"... creating Simulation")
         create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}

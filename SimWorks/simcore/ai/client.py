@@ -21,6 +21,7 @@ class AIClient:
             req: NormalizedAIRequest,
             *,
             simulation: Optional["Simulation"] = None,
+            timeout: Optional[float] = None,
             persist: bool = True,
     ) -> NormalizedAIResponse:
         """
@@ -35,6 +36,9 @@ class AIClient:
         :param persist: Toggle DB persistence; if False, only returns the DTOs.
         :type persist: bool
 
+        :param timeout: Timeout for the provider call.
+        :type timeout: Optional[float]
+
         :return: The normalized provider-agnostic response DTO.
         :rtype: NormalizedAIResponse
 
@@ -47,7 +51,7 @@ class AIClient:
             req.model = get_default_model()
 
         # Forward request to provider
-        resp: NormalizedAIResponse = await self.provider.call(req)
+        resp: NormalizedAIResponse = await self.provider.call(req, timeout)
 
         logger.debug(f"client received normalized response:\n(response:\t{resp.model_dump_json()[:200]})")
 

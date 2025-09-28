@@ -128,7 +128,7 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
-AI_TIMEOUT_S = int(os.getenv("AI_TIMEOUT_S", "30"))
+AI_TIMEOUT_S = float(os.getenv("AI_TIMEOUT_S", 30.0))
 
 AI_API_KEY = check_env("AI_API_KEY")
 if AI_API_KEY is None and AI_PROVIDER == "openai":

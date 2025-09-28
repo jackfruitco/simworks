@@ -60,16 +60,31 @@ def tool_checksum(request, tool_name, simulation_id):
 
 
 @csrf_exempt
-def sign_orders(request, simulation_id):
+async def sign_orders(request, simulation_id):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
-            lab_orders = data.get("lab_orders", [])
+            submitted_orders = data.get("submitted_orders", None)
 
-            from simai.tasks import generate_patient_results as g
+            if submitted_orders is None:
+                try:
+                    submitted_orders = data.lab_orders
+                except AttributeError:
+                    raise ValueError(f"submitted_orders not found in request body")
 
-            g.delay(_simulation_id=simulation_id, _lab_orders=lab_orders)
-            return JsonResponse({"status": "ok", "orders": lab_orders})
+            from simcore.ai.tasks import acall_connector
+            from simcore.ai.connectors import generate_patient_results
+
+            await acall_connector(
+                generate_patient_results,
+                simulation_id=simulation_id,
+                submitted_orders=submitted_orders,
+            )
+
+            # from simai.tasks import generate_patient_results as g
+            #
+            # g.delay(_simulation_id=simulation_id, _lab_orders=submitted_orders)
+            return JsonResponse({"status": "ok", "orders": submitted_orders})
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
     return JsonResponse({"error": "Method not allowed"}, status=405)

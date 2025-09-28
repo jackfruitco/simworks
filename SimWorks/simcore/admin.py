@@ -150,3 +150,10 @@ class SimulationImageAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(AIResponse)
+class AIResponseAdmin(admin.ModelAdmin):
+
+    def has_change_permission(self, request, obj=None):
+        return False

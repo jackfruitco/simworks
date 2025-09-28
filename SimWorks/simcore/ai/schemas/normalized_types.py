@@ -86,12 +86,14 @@ class GenericMeta(MetaBase):
 
 class LabResultMeta(MetaBase):
     type: Literal["lab_result"]
-    value: str
-    unit: str
-    ref_low: str
-    ref_high: str
-    flag: str
     panel_name: Optional[str] = None
+    result_name: str
+    result_value: str
+    result_unit: str
+    reference_range_low: str
+    reference_range_high: str
+    result_flag: str
+    result_comment: str
 
 
 class RadResultMeta(MetaBase):

@@ -12,6 +12,7 @@ from simcore.ai.schemas.normalized_types import (
 )
 from simcore.ai.schemas.tools import NormalizedImageGenerationTool
 from simcore.models import Simulation
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ async def _build_messages_and_schema(
 
 async def generate_patient_image(
         simulation_id: int,
-        user_msg: Message,
+        user_msg: Message | int = None,
         *,
         as_dict: bool = True,
         output_format: str = None,
@@ -74,6 +75,7 @@ async def generate_patient_image(
         tools=[
             NormalizedImageGenerationTool(**cleaned_args),
         ],
+        timeout=120.0,
     )
 
 
@@ -84,6 +86,7 @@ async def _generate_patient_response(
         user_msg: Message | None = None,
         as_dict: bool = True,
         tools: list[NormalizedAITool] | None = None,
+        timeout: float | None = None,
         **kwargs,
 ) -> NormalizedAIResponse | dict:
     """Internal low-level patient response generator method. Defaults return type: dict.
@@ -102,6 +105,12 @@ async def _generate_patient_response(
     client = get_ai_client()
     sim = await Simulation.aresolve(simulation_id)
     previous_response_id = await sim.aget_previous_response_id()
+    if user_msg and not isinstance(user_msg, Message):
+        try:
+            user_msg = await Message.objects.aget(id=user_msg)
+        except Message.DoesNotExist:
+            logger.warning(f"No message found with pk={user_msg} -- skipping")
+            user_msg = None
 
     messages, schema_cls = await _build_messages_and_schema(
         sim, rtype=rtype, user_msg=user_msg
@@ -130,13 +139,16 @@ async def _generate_patient_response(
         except AttributeError:
             logger.warning(f"received kwarg `{k}`, but no matching key found on {req.__class__.__name__} -- skipping")
 
-    resp = await client.send_request(req, simulation=sim)
+    resp = await client.send_request(req, simulation=sim, timeout=timeout)
 
     if getattr(resp, "image_requested", None):
         logger.debug("image requested -- starting image generation.")
-        await generate_patient_image(
+
+        from simcore.ai.tasks.dispatch import acall_connector
+        await acall_connector(
+            generate_patient_image,
             simulation_id=simulation_id,
-            user_msg=user_msg,
+            user_msg=user_msg.pk,
         )
 
     for m in resp.messages:
@@ -158,7 +170,7 @@ async def generate_patient_initial(
 
 
 async def generate_patient_reply(
-        simulation_id: int, user_msg: Message, *, as_dict: bool = True
+        simulation_id: int, user_msg: Message | int, *, as_dict: bool = True
 ) -> NormalizedAIResponse | dict:
     """Generate patient reply response."""
     return await _generate_patient_response(

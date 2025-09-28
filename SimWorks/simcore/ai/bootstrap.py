@@ -65,10 +65,10 @@ def _build_provider_from_module(provider_key: str) -> ProviderBase:
     # Attempt a generic construction for common providers (api_key/base_url/timeout/name)
     try:
         # Try the most common signature first
-        provider = provider_cls(
+        provider: ProviderBase = provider_cls(
             api_key=getattr(settings, "AI_API_KEY", None),  # may be unused by non-OpenAI providers
             base_url=getattr(settings, "AI_BASE_URL", None),
-            timeout=getattr(settings, "AI_TIMEOUT_S", 30),
+            timeout=getattr(settings, "AI_TIMEOUT_S", 30.0),
             name=provider_key,
         )
         if not isinstance(provider, ProviderBase):
