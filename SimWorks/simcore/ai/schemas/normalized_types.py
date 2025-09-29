@@ -1,11 +1,14 @@
 # simcore/ai/schemas/normalized_types.py
 import logging
+import warnings
 from importlib import import_module
-from typing import Optional, List, Dict, Any, Literal, Annotated, Union, TypeVar, Protocol
+from typing import Optional, List, Dict, Any, Literal, Annotated, Union, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from simcore.ai.schemas import StrictBaseModel, StrictOutputSchema
+
+warnings.warn("This module is deprecated. Use simcore.ai.schemas.types instead.", DeprecationWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +17,7 @@ OutputSchemaType = TypeVar("OutputSchemaType", bound=StrictOutputSchema)
 
 
 # ---------- Normalized AI types ------------------------------------------------------
-class NormalizedAttachment(BaseModel):
+class NormalizedAttachment(StrictBaseModel):
     type: Literal["image"]
 
     b64: Optional[str] = None
@@ -22,7 +25,7 @@ class NormalizedAttachment(BaseModel):
     url: Optional[str] = None
 
     format: Optional[str] = None  # "png", "jpeg", etc.
-    size: Optional[str] = None    # "1024x1024"
+    size: Optional[str] = None  # "1024x1024"
     background: Optional[str] = None
 
     provider_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -41,8 +44,12 @@ class NormalizedAttachment(BaseModel):
         from ..utils import persist_attachment
         return await persist_attachment(simulation, self)
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.Attachment instead.", DeprecationWarning)
+        super().__init__(**data)
 
-class NormalizedAIMessage(BaseModel):
+
+class NormalizedAIMessage(StrictBaseModel):
     role: str
     content: str
 
@@ -50,7 +57,6 @@ class NormalizedAIMessage(BaseModel):
     tool_calls: Optional[List[Dict[str, Any]]] = None
 
     attachments: List[NormalizedAttachment] = Field(default_factory=list)
-
 
     async def persist(self, simulation: Any, **kwargs: Any):
         """
@@ -60,6 +66,10 @@ class NormalizedAIMessage(BaseModel):
         """
         from ..utils import persist_message
         return await persist_message(simulation, self, **kwargs)
+
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.Message instead.", DeprecationWarning)
+        super().__init__(**data)
 
 
 class MetaBase(StrictBaseModel):
@@ -77,14 +87,24 @@ class MetaBase(StrictBaseModel):
         from ..utils import persist_metadata
         return await persist_metadata(simulation, self)
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.Metafield instead.", DeprecationWarning)
+        super().__init__(**data)
+
 
 class GenericMeta(MetaBase):
     type: Literal["generic"]
     value: Optional[str] = None
     extra: Dict[str, Any] = {}
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.GenericMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
+
 
 class LabResultMeta(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.LabResultMetafield instead
     type: Literal["lab_result"]
     panel_name: Optional[str] = None
     result_name: str
@@ -95,39 +115,80 @@ class LabResultMeta(MetaBase):
     result_flag: str
     result_comment: str
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.LabResultMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
+
 
 class RadResultMeta(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.RadResultMetafield instead
     type: Literal["rad_result"]
     value: str
     flag: str
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.RadResultMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
+
 
 class PatientHistoryMeta(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.PatientHistoryMetafield instead
     type: Literal["patient_history"]
     value: str
     is_resolved: bool
     duration: str
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.PatientHistoryMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
+
 
 class SimulationFeedbackMeta(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.SimulationFeedbackMetafield instead
     type: Literal["simulation_feedback"]
     value: str
+
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.SimulationFeedbackMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
 
 
 # ---------- Additional Metadata Types -----------------------------------------------
 class PatientDemographicsMeta(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.PatientDemographicsMetafield instead
     type: Literal["patient_demographics"]
     value: str
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.PatientDemographicsMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
+
 
 class SimulationMetaKV(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.SimulationMetadataMetafield instead
     type: Literal["simulation_metadata"]
     value: str
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.SimulationMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
+
 
 class ScenarioMeta(MetaBase):
+    # Deprecated, use simcore.ai.schemas.types.ScenarioMetafield instead
     type: Literal["scenario"]
     value: str
+
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.ScenarioMetafield instead.",
+                      DeprecationWarning)
+        super().__init__(**data)
 
 
 NormalizedAIMetadata = Annotated[
@@ -146,14 +207,20 @@ NormalizedAIMetadata = Annotated[
 
 
 # ---------- Normalized AI Tools ---------------------------------------------------------------------------------------
-class NormalizedAITool(BaseModel):
+class NormalizedAITool(StrictBaseModel):
+    # Deprecated, use simcore.ai.schemas.types.AITool instead
     type: str  # e.g. "image_generation"
     function: Optional[str] = None
     arguments: Dict[str, Any] = Field(default_factory=dict)
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.LLMTool instead.", DeprecationWarning)
+        super().__init__(**data)
+
 
 # --------- Normalized AI Request --------------------------------------------------------------------------------------
-class NormalizedAIRequest(BaseModel):
+class NormalizedAIRequest(StrictBaseModel):
+    # Deprecated, use simcore.ai.schemas.types.LLMRequest instead
     model: Optional[str] = None
     messages: List[NormalizedAIMessage]
     schema_cls: Any = None
@@ -167,9 +234,14 @@ class NormalizedAIRequest(BaseModel):
     previous_response_id: Optional[str] = None
     image_format: Optional[str] = None
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.LLMRequest instead.", DeprecationWarning)
+        super().__init__(**data)
+
 
 # ---------- Normalized AI Response ------------------------------------------------------------------------------------
-class NormalizedAIResponse(BaseModel):
+class NormalizedAIResponse(StrictBaseModel):
+    # Deprecated, use simcore.ai.schemas.types.LLMResponse instead
     messages: List[NormalizedAIMessage]
     metadata: List[NormalizedAIMetadata]
     usage: Dict[str, int] = Field(default_factory=dict)
@@ -205,9 +277,18 @@ class NormalizedAIResponse(BaseModel):
         from ..utils import persist_all
         return await persist_all(self, simulation)
 
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.LLMResponse instead.", DeprecationWarning)
+        super().__init__(**data)
+
 
 # ---------- Normalized Stream Chunk -----------------------------------------------------------------------------------
-class NormalizedStreamChunk(BaseModel):
+class NormalizedStreamChunk(StrictBaseModel):
+    # Deprecated, use simcore.ai.schemas.types.StreamChunk instead
     delta: str = ""
     tool_call_delta: Optional[Dict[str, Any]] = None
     usage_partial: Optional[Dict[str, int]] = None
+
+    def __init__(self, **data):
+        warnings.warn("This class is deprecated. Use simcore.ai.schemas.types.StreamChunk instead.", DeprecationWarning)
+        super().__init__(**data)
