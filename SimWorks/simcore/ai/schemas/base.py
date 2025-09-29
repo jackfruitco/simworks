@@ -25,7 +25,7 @@ def project_from(
     include: tuple[str, ...] | None = None,
     name: str | None = None,
     overrides: dict | None = None,
-):
+) -> type[StrictBaseModel]  :
     """
     Build a new StrictBaseModel by selecting (and optionally overriding) fields from BaseCls.
 

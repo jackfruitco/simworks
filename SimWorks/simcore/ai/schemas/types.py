@@ -103,7 +103,7 @@ MetafieldItem = Annotated[
         PatientHistoryMetafield,
         SimulationFeedbackMetafield,
         PatientDemographicsMetafield,
-        SimulationMetadataMetafield,
+        SimulationMetafield,
         ScenarioMetafield,
     ],
     Field(discriminator="kind"),

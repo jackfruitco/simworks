@@ -9,27 +9,36 @@ Example:
     from simcore.ai.schemas import NormalizedAIResponse, OutputSchemaType
 """
 
-from .base import StrictBaseModel, StrictOutputSchema
-from .normalized_types import (
-    OutputSchemaType,
-    NormalizedAIMessage,
-    NormalizedAIMetadata,
-    NormalizedAIRequest,
-    NormalizedAIResponse,
-    NormalizedStreamChunk,
-    NormalizedAITool,
+from .base import StrictBaseModel, StrictOutputSchema, Boolish
+from .types import (
+    AttachmentItem,
+    MessageItem,
+    MetafieldItem,
+    ToolItem,
+    LLMRequest,
+    LLMResponse,
+    StreamChunk,
 )
+
+from .output_types import (
+    OutputMessageItem,
+    OutputMetafieldItem,
+)
+
 from .tools import NormalizedCustomTool
 
 __all__ = [
     "StrictBaseModel",
     "StrictOutputSchema",
-    "OutputSchemaType",
-    "NormalizedAIMessage",
-    "NormalizedAIMetadata",
-    "NormalizedAIRequest",
-    "NormalizedAIResponse",
-    "NormalizedStreamChunk",
-    "NormalizedAITool",
+    "Boolish",
+    "AttachmentItem",
+    "MessageItem",
+    "MetafieldItem",
+    "ToolItem",
+    "LLMRequest",
+    "LLMResponse",
+    "StreamChunk",
     "NormalizedCustomTool",
+    "OutputMessageItem",
+    "OutputMetafieldItem",
 ]

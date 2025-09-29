@@ -1,7 +1,7 @@
 # simcore/ai/schemas/output_types.py
 from __future__ import annotations
 
-from typing import Annotated, Union, Literal
+from typing import Annotated, Union, Literal, TypeAlias
 
 from pydantic import Field
 
@@ -87,7 +87,7 @@ OutputScenarioMetafield = project_from(
     name="OutputScenarioMetafield",
 )
 
-OutputMetafieldItem = Annotated[
+OutputMetafieldItem: Annotated[
     Union[
         OutputGenericMetafield,
         OutputLabResultMetafield,
