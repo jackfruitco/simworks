@@ -9,7 +9,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
-from simcore.ai.schemas import NormalizedAIResponse
+from simcore.ai.schemas import LLMResponse
 from simcore.models import Simulation
 from simcore.utils import get_user_initials
 from .models import Message
@@ -200,7 +200,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Set preferred content mode
         await self.handle_content_mode(data.get("content_mode"))
 
-    async def _generate_patient_response(self, user_msg: Message) -> NormalizedAIResponse:
+    async def _generate_patient_response(self, user_msg: Message) -> LLMResponse:
         """Generate patient response."""
         from simcore.ai.tasks.dispatch import acall_connector
         from chatlab.ai.connectors import generate_patient_reply

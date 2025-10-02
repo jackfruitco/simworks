@@ -6,27 +6,23 @@ from chatlab.models import Message
 from chatlab.utils import broadcast_message
 from core.utils import remove_null_keys
 from simcore.ai import get_ai_client
-from simcore.ai.schemas import StrictOutputSchema
-from simcore.ai.schemas.normalized_types import (
-    NormalizedAIMessage, NormalizedAIRequest, NormalizedAIResponse, NormalizedAITool
-)
-from simcore.ai.schemas.tools import NormalizedImageGenerationTool
+from simcore.ai.schemas import StrictOutputSchema, MessageItem, LLMResponse, LLMRequest, ToolItem
+from simcore.ai.schemas.tools import ImageGenerationTool
 from simcore.models import Simulation
-import asyncio
 
 logger = logging.getLogger(__name__)
 
 
 async def _build_messages_and_schema(
         sim: Simulation, *, rtype: str, user_msg: Message | None
-) -> tuple[list[NormalizedAIMessage], Type[StrictOutputSchema] | None]:
+) -> tuple[list[MessageItem], Type[StrictOutputSchema] | None]:
     match rtype:
 
         case "initial":
-            from chatlab.ai.schema import PatientInitialOutputSchema as Schema  # local import avoids cycles
+            from chatlab.ai.schemas import PatientInitialOutputSchema as Schema  # local import avoids cycles
             msgs = [
-                NormalizedAIMessage(role="developer", content=sim.prompt_instruction),
-                NormalizedAIMessage(role="user", content=sim.prompt_message or ""),
+                MessageItem(role="developer", content=sim.prompt_instruction),
+                MessageItem(role="user", content=sim.prompt_message or ""),
             ]
             return msgs, Schema
 
@@ -34,8 +30,8 @@ async def _build_messages_and_schema(
             if not user_msg:
                 raise ValueError("user_msg required for rtype='reply'")
 
-            from chatlab.ai.schema import PatientReplyOutputSchema as Schema
-            msgs = [NormalizedAIMessage(role="user", content=user_msg.content)]
+            from chatlab.ai.schemas import PatientReplyOutputSchema as Schema
+            msgs = [MessageItem(role="user", content=user_msg.content)]
 
             return msgs, Schema
 
@@ -45,8 +41,8 @@ async def _build_messages_and_schema(
 
             p: Prompt = await PromptEngine.abuild_from(ImageSection)
             msgs = [
-                NormalizedAIMessage(role="developer", content=p.instruction),
-                # NormalizedAIMessage(role="user", content=p.message),# TODO placeholder if needed; remove if not needed
+                MessageItem(role="developer", content=p.instruction),
+                # MessageItem(role="user", content=p.message),# TODO placeholder if needed; remove if not needed
             ]
 
             return msgs, None
@@ -62,7 +58,7 @@ async def generate_patient_image(
         *,
         as_dict: bool = True,
         output_format: str = None,
-) -> NormalizedAIResponse | dict:
+) -> LLMResponse | dict:
     """Generate patient image response."""
     tool_args: dict = {
         "output_format": output_format
@@ -73,7 +69,7 @@ async def generate_patient_image(
         simulation_id=simulation_id,
         rtype="image",
         tools=[
-            NormalizedImageGenerationTool(**cleaned_args),
+            ImageGenerationTool(**cleaned_args),
         ],
         timeout=120.0,
     )
@@ -85,10 +81,10 @@ async def _generate_patient_response(
         rtype: str,
         user_msg: Message | None = None,
         as_dict: bool = True,
-        tools: list[NormalizedAITool] | None = None,
+        tools: list[ToolItem] | None = None,
         timeout: float | None = None,
         **kwargs,
-) -> NormalizedAIResponse | dict:
+) -> LLMResponse | dict:
     """Internal low-level patient response generator method. Defaults return type: dict.
 
     Args:
@@ -97,10 +93,10 @@ async def _generate_patient_response(
         user_msg: The user message (if any).
         as_dict: Whether to return the response as a dict or as a Model instance.
         tools: Optional list of Normalized tools to use in the response.
-        kwargs: Additional keyword arguments to pass to the NormalizedAIRequest.
+        kwargs: Additional keyword arguments to pass to the LLMRequest.
 
     Returns:
-        The normalized AI response.
+        The normalized LLM response.
     """
     client = get_ai_client()
     sim = await Simulation.aresolve(simulation_id)
@@ -120,7 +116,7 @@ async def _generate_patient_response(
         logger.warning("No messages to send -- skipping.")
         return {}
 
-    req = NormalizedAIRequest(
+    req = LLMRequest(
         messages=messages,
         schema_cls=schema_cls,
         previous_response_id=previous_response_id,
@@ -159,7 +155,7 @@ async def _generate_patient_response(
 # ---------- Public entry points ------------------------------------------------------
 async def generate_patient_initial(
         simulation_id: int, *, as_dict: bool = True
-) -> NormalizedAIResponse | dict:
+) -> LLMResponse | dict:
     """Generate patient initial response."""
     return await _generate_patient_response(
         simulation_id=simulation_id,
@@ -171,7 +167,7 @@ async def generate_patient_initial(
 
 async def generate_patient_reply(
         simulation_id: int, user_msg: Message | int, *, as_dict: bool = True
-) -> NormalizedAIResponse | dict:
+) -> LLMResponse | dict:
     """Generate patient reply response."""
     return await _generate_patient_response(
         simulation_id=simulation_id,

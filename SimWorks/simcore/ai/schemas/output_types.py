@@ -20,21 +20,21 @@ from .types import (
 )
 
 # Messages: only expose what the LLM should output
-OutputMessageItem = project_from(
+OutputMessageItem: type[StrictBaseModel] = project_from(
     MessageItem,
     include=("role", "content"),
-    overrides={"role": Literal["patient"]},   # narrow if appropriate for this schema
+    overrides={"role": Literal["patient", "developer"]},  # narrow if appropriate for this schema
     name="OutputMessageItem",
 )
 
-# Metafields: expose only LLM-facing fields (drop db_pk, etc.)
-OutputGenericMetafield = project_from(
+# Metadata: expose only LLM-facing fields (drop db_pk, etc.)
+OutputGenericMetafield: type[StrictBaseModel] = project_from(
     GenericMetafield,
-    exclude=("db_pk", "extra"),                # keep extra if you want; default here hides it
+    include=("kind", "key", "value"),  # keep extra if you want; default here hides it
     name="OutputGenericMetafield",
 )
 
-OutputLabResultMetafield = project_from(
+OutputLabResultMetafield: type[StrictBaseModel] = project_from(
     LabResultMetafield,
     include=(
         "kind",
@@ -51,43 +51,43 @@ OutputLabResultMetafield = project_from(
     name="OutputLabResultMetafield",
 )
 
-OutputRadResultMetafield = project_from(
+OutputRadResultMetafield: type[StrictBaseModel] = project_from(
     RadResultMetafield,
     include=("kind", "key", "value", "flag"),
     name="OutputRadResultMetafield",
 )
 
-OutputPatientHistoryMetafield = project_from(
+OutputPatientHistoryMetafield: type[StrictBaseModel] = project_from(
     PatientHistoryMetafield,
     include=("kind", "key", "value", "is_resolved", "duration"),
     name="OutputPatientHistoryMetafield",
 )
 
-OutputSimulationFeedbackMetafield = project_from(
+OutputSimulationFeedbackMetafield: type[StrictBaseModel] = project_from(
     SimulationFeedbackMetafield,
     include=("kind", "key", "value"),
     name="OutputSimulationFeedbackMetafield",
 )
 
-OutputPatientDemographicsMetafield = project_from(
+OutputPatientDemographicsMetafield: type[StrictBaseModel] = project_from(
     PatientDemographicsMetafield,
     include=("kind", "key", "value"),
     name="OutputPatientDemographicsMetafield",
 )
 
-OutputSimulationMetafield = project_from(
+OutputSimulationMetafield: type[StrictBaseModel] = project_from(
     SimulationMetafield,
     include=("kind", "key", "value"),
     name="OutputSimulationMetafield",
 )
 
-OutputScenarioMetafield = project_from(
+OutputScenarioMetafield: type[StrictBaseModel] = project_from(
     ScenarioMetafield,
     include=("kind", "key", "value"),
     name="OutputScenarioMetafield",
 )
 
-OutputMetafieldItem: Annotated[
+OutputMetafieldItem: TypeAlias = Annotated[
     Union[
         OutputGenericMetafield,
         OutputLabResultMetafield,

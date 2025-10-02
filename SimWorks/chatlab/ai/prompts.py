@@ -45,6 +45,9 @@ class InitialSection(BaseSection):
         "explicitly asks for more detail or length.\n"
         "- After each response, validate that only the SMS message and allowed background information are included; "
         "self-correct if extra commentary or clinical information appears.\n"
+        "“Return metadata as a list. Each element must include a type field with one of: patient_demographics, "
+        "lab_result, rad_result, patient_history, simulation_metadata, scenario, simulation_feedback. Include all "
+        "required fields for that type; omit fields that don’t apply.\n"
     )
 
 

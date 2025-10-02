@@ -25,7 +25,7 @@ from .output_types import (
     OutputMetafieldItem,
 )
 
-from .tools import NormalizedCustomTool
+from .tools import CustomToolItem
 
 __all__ = [
     "StrictBaseModel",
@@ -38,7 +38,7 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "StreamChunk",
-    "NormalizedCustomTool",
+    "CustomToolItem",
     "OutputMessageItem",
     "OutputMetafieldItem",
 ]

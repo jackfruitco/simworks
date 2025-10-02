@@ -1,8 +1,9 @@
-# simcore/ai/providers/openai.py
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
+from typing import get_origin, get_args
 
 from openai import (
     AsyncOpenAI,
@@ -12,338 +13,73 @@ from openai import (
 from openai.types.responses import (
     Response as OpenAIResponse,
     ResponseTextConfigParam,
-    ResponseUsage as OpenAIUsage,
 )
 from openai.types.responses.response_output_item import ImageGenerationCall
 from openai.types.responses.tool import ImageGeneration
-from pydantic import TypeAdapter
+from pydantic import Field, create_model
 
-from .base import ProviderBase, ToolAdapter
-from ..parsers.output_parser import maybe_parse_to_schema
-from ..schemas.normalized_types import (
-    NormalizedAIMessage,
-    NormalizedAIMetadata,
-    NormalizedAIRequest,
-    NormalizedAIResponse,
-    NormalizedStreamChunk, NormalizedAITool, NormalizedAttachment
+from .base import ProviderBase
+from ..schemas import StrictBaseModel, StrictOutputSchema
+from ..schemas.output_types import (
+    OutputGenericMetafield, OutputPatientHistoryMetafield, OutputPatientDemographicsMetafield,
+    OutputSimulationMetafield, OutputScenarioMetafield,
 )
-from ..schemas.tools import NormalizedImageGenerationTool
+from ..schemas.types import LLMRequest, LLMResponse, AttachmentItem
 from ..utils.helpers import build_output_schema
 
 logger = logging.getLogger(__name__)
 
 
-class OpenAIImageToolAdapter(ToolAdapter):
-    """Adapter for OpenAI Image Generation Tool
+class OpenAIMetadataItem(StrictBaseModel):
+    generic_metadata: list[OutputGenericMetafield] = Field(...)
+    patient_history: list[OutputPatientHistoryMetafield] = Field(...)
+    patient_demographics: list[OutputPatientDemographicsMetafield] = Field(...)
+    simulation_metadata: list[OutputSimulationMetafield] = Field(...)
+    scenario_data: list[OutputScenarioMetafield] = Field(...)
 
-    Includes: `to_provider` and `from_provider` methods
-    """
+    def flatten(self) -> list[dict]:
+        flat: list[dict] = []
+
+        for items in self.model_dump().values():
+            flat.extend(items)
+        return flat
+
+
+# --- OpenAI Tool Adapter for ToolItem DTOs ---------------------------------
+class OpenAIToolAdapter(ProviderBase.ToolAdapter):
+    """Adapter for OpenAI tool/function specs from/to our ToolItem DTOs."""
     provider = "openai"
 
-    def to_provider(self, tool: NormalizedImageGenerationTool) -> Any:
-        """Adapt NormalizedAITool to OpenAI ImageGenerationTool"""
+    def to_provider(self, tool: "ToolItem") -> Any:  # type: ignore[name-defined]
+        # Expecting kind=="image_generation" or function-based tools; adapt to OpenAI's tool schema
+        # For image generation via Responses API, OpenAI uses `tools=[{"type":"image_generation"}]` variant.
+        # If you use function tools, map to {"type":"function", "function": {...}}.
+        if tool.kind == "image_generation":
+            # Map our DTO to OpenAI ImageGeneration spec
+            # `ImageGeneration` pydantic model takes fields like size, background, prompt_bias, etc.
+            allowed = getattr(ImageGeneration, "model_fields", {}).keys()
+            filtered = {k: v for k, v in (tool.arguments or {}).items() if k in allowed}
+            return ImageGeneration(**filtered)
+        # default: function tool
+        return {
+            "type": "function",
+            "function": {
+                "name": tool.function or "tool",
+                "parameters": tool.arguments or {},
+            },
+        }
 
-        # Pop keys not supported by OpenAI API
-        kwargs = tool.model_dump(exclude_none=True)
-        allowed = getattr(ImageGeneration, "model_fields", {}).keys()
-        filtered = {k: v for k, v in kwargs.items() if k in allowed}
-
-        return ImageGeneration(**filtered)
-
-    def from_provider(self, raw: ImageGeneration) -> NormalizedImageGenerationTool:
-        """Adapt OpenAI ImageGenerationTool to NormalizedAITool"""
-        return NormalizedImageGenerationTool(
-            function="generate",
-            arguments=raw.model_dump(),
-        )
-
-
-# Provider-local tool adapter registry
-_ADAPTERS: dict[type[NormalizedAITool], ToolAdapter] = {
-    NormalizedImageGenerationTool: OpenAIImageToolAdapter(),
-}
-
-
-def resolve_adapter_for(tool: NormalizedAITool) -> ToolAdapter:
-    """Resolve provider tool adapter for a given normalized tool type"""
-    for cls in type(tool).mro():
-        if cls in _ADAPTERS:
-            return _ADAPTERS[cls]
-    raise NotImplementedError(f"{type(tool).__name__} not supported by {__name__}")
-
-
-def _adapt_tools(tools: list[NormalizedAITool] | None) -> list[Any]:
-    """Adapt a list of NormalizedAITools to provider-specific tool objects"""
-    out: list[Any] = []
-    for t in tools or []:
-        adapter = resolve_adapter_for(t)
-        out.append(adapter.to_provider(t))
-    return out
-
-
-def available_tools() -> list[NormalizedAITool]:
-    """List available tools for OpenAI provider"""
-    return [
-        NormalizedImageGenerationTool(
-            function="generate",
-            arguments={},
-        ),
-    ]
-
-
-def _coerce_usage(usage_obj) -> dict:
-    """
-    Coerce OpenAI ResponseUsage into the flat dict shape our NormalizedAIResponse expects.
-    Falls back to None for any missing fields.
-    """
-    if not usage_obj:
-        return {}
-    # Plain attributes on the OpenAI SDK object, with safe fallbacks
-    input_tokens = getattr(usage_obj, "input_tokens", None)
-    output_tokens = getattr(usage_obj, "output_tokens", None)
-    total_tokens = getattr(usage_obj, "total_tokens", None)
-    itd = getattr(usage_obj, "input_tokens_details", None)
-    otd = getattr(usage_obj, "output_tokens_details", None)
-    input_tokens_details = getattr(itd, "cached_tokens", None) if itd is not None else None
-    output_tokens_details = getattr(otd, "reasoning_tokens", None) if otd is not None else None
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "input_tokens_details": input_tokens_details,
-        "output_tokens_details": output_tokens_details,
-    }
-
-
-def _iter_metadata_items(md):
-    """
-    Yield flattened metadata dicts from the parsed schema's `metadata` object.
-    Supports the PatientInitialOutputSchema shape:
-      {
-        "patient_demographics": [{key, value}],
-        "patient_history": [{key, value|null, is_resolved, duration}],
-        "simulation_metadata": [{key, value}],
-        "scenario_data": {diagnosis, chief_complaint}
-      }
-    Produces generic meta rows with a `type` discriminator and optional `extra`.
-    """
-    if not md:
-        return
-
-    # Dump to dict if provided as a Pydantic model
-    if hasattr(md, "model_dump"):
-        md = md.model_dump()
-
-    # If the provider already returned a list of union-shaped items, forward them
-    if isinstance(md, list):
-        for item in md:
-            yield item
-        return
-    # Expect a dict with the structured sections
-    if isinstance(md, dict):
-        # patient_demographics
-        for item in md.get("patient_demographics", []) or []:
-            if isinstance(item, dict):
-                yield {
-                    "type": "patient_demographics",
-                    "key": item.get("key", "meta"),
-                    "value": item.get("value"),
-                }
-        # lab_results
-        for item in md.get("lab_results", []) or []:
-            if isinstance(item, dict):
-                yield {
-                    "type": "lab_results",
-                    "panel_name": item.get("panel_name"),
-                    "result_name": item.get("result_name"),
-                    "result_value": item.get("result_value"),
-                    "result_unit": item.get("result_unit"),
-                    "reference_range_low": item.get("reference_range_low"),
-                    "reference_range_high": item.get("reference_range_high"),
-                    "result_flag": item.get("result_flag"),
-                    "result_comment": item.get("result_comment"),
-                }
-        # radiology_results
-        for item in md.get("radiology_results", []) or []:
-            if isinstance(item, dict):
-                yield {
-                    "type": "radiology_results",
-                    "key": item.get("result_name"),
-                    "value": item.get("result_value"),
-                    "result_flag": item.get("result_flag"),
-                }
-        # patient_history
-        for item in md.get("patient_history", []) or []:
-            if isinstance(item, dict):
-                yield {
-                    "type": "patient_history",
-                    "key": item.get("key", "history"),
-                    "value": item.get("value") or "None",
-                    "is_resolved": item.get("is_resolved"),
-                    "duration": item.get("duration"),
-                }
-        # simulation_metadata
-        for item in md.get("simulation_metadata", []) or []:
-            if isinstance(item, dict):
-                yield {
-                    "type": "simulation_metadata",
-                    "key": item.get("key", "meta"),
-                    "value": item.get("value"),
-                }
-        # scenario_data
-        sd = md.get("scenario_data")
-        if isinstance(sd, dict):
-            if "diagnosis" in sd:
-                yield {"type": "scenario", "key": "diagnosis", "value": sd.get("diagnosis")}
-            if "chief_complaint" in sd:
-                yield {"type": "scenario", "key": "chief_complaint", "value": sd.get("chief_complaint")}
-        return
-    # Fallback: unknown shape → nothing
-    return
-
-
-_META_ADAPTER = TypeAdapter(NormalizedAIMetadata)
-
-
-# Normalize OpenAI Responses API objects to our schema -----------------------
-def normalize_response(resp: OpenAIResponse, *, schema_cls=None) -> NormalizedAIResponse:
-    """
-    Parse OpenAI Responses API output using the standardized `output_text`.
-    If a Pydantic schema class is provided (e.g., PatientInitialOutputSchema),
-    attempt to coerce the text back into that schema; otherwise return the raw text.
-    """
-    # Get `output_text` from the OpenAI Responses API Response object
-    # see https://platform.openai.com/docs/api-reference/responses/object#responses/object-output_text
-    logger.debug(f"provider normalizing {resp.__class__.__name__} to {NormalizedAIResponse.__name__}")
-
-    text: str = getattr(resp, "output_text", None)
-    usage_obj: OpenAIUsage = getattr(resp, "usage", None)
-    _usage = _coerce_usage(usage_obj)
-    parsed_messages_present = False
-
-    if text:
-        if schema_cls is not None:
-            _parsed = maybe_parse_to_schema(text, schema_cls)
-        else:
-            _parsed = None
-        if not _parsed or isinstance(_parsed, str):
-            logger.warning("Could not parse output_text to schema.")
-        else:
-            parsed_messages_present = bool(getattr(_parsed, "messages", None))
-    else:
-        _parsed = None
-
-    if not text and not getattr(resp, "output", None):
-        msg = "No output_text or output found on OpenAI response"
-        raise ValueError(msg)
-
-    messages_: list[NormalizedAIMessage] = []
-    metadata_: list[NormalizedAIMetadata] = []
-    attachments_: list[NormalizedAttachment] = []
-    image_requested_: bool | None = None
-
-    # Parse and normalize message(s)
-    for raw_msg in (getattr(_parsed, "messages", None) or []):
-        messages_.append(
-            NormalizedAIMessage(role=raw_msg.role, content=raw_msg.content)
-        )
-
-    total, count = len(messages_), 1
-    for m in messages_:
-        logger.debug(f"... message ({count} of {total}) normalized: {m}")
-        count += 1
-
-    # Parse and normalize attachments (e.g. Images)
-    logger.debug("... parsing output(s) for attachments")
-    for output_item in getattr(resp, "output", []) or []:
-        logger.debug(f"... output item {type(output_item)}: {repr(output_item)[:200] or '<empty>'}")
-        if isinstance(output_item, ImageGenerationCall):
-            b64 = getattr(output_item, "result", None)
-            if not b64:
-                logger.warning("ImageGenerationCall present, but no base64 payload on `response`")
-            norm = NormalizedAttachment(
-                type="image",
-                b64=b64,
-                provider_meta={
-                    "provider": "openai",
-                    "provider_image_call_id": getattr(output_item, "id", None),
-                    "provider_raw_response": output_item.model_dump(),
-                },
-            )
-            attachments_.append(norm)
-            logger.debug(f"... image generation output normalized: {repr(norm)[:100]}")
-
-    if attachments_:
-        messages_.append(
-            NormalizedAIMessage(
-                role="tool",
-                content="",
-                tool_calls=[
-                    {
-                        "name": "image_generation",
-                        "id": a.provider_meta.get("provider_image_call_id")
-                    }
-                    for a in attachments_
-                ],
-                attachments=attachments_,
-            )
-        )
-        logger.debug("... image generation output(s) attached to message list")
-
-    md_obj = getattr(_parsed, "metadata", None)
-
-    if not md_obj:
-        logger.debug("... no metadata object on parsed schema")
-
-    count = 1
-    for output_item in _iter_metadata_items(md_obj) or []:
-        # Accept either Pydantic models or plain dicts
-        if hasattr(output_item, "model_dump"):
-            data = output_item.model_dump()
-        elif isinstance(output_item, dict):
-            data = output_item
-        else:
-            # Unknown object → coerce to generic
-            data = {"type": "generic", "key": getattr(output_item, "key", "meta"), "value": getattr(output_item, "value", None)}
-
-        # Ensure discriminator and key exist
-        data.setdefault("type", "generic")
-        data.setdefault("key", data.get("key", "meta"))
-
-        logger.debug(f"... metafield ({count}) prepared for normalization: {data}")
-
-        meta_obj = _META_ADAPTER.validate_python(data)
-        metadata_.append(meta_obj)
-
-        logger.debug(f"... metafield ({count}) normalized: {meta_obj}")
-        count += 1
-
-    # Check if image was requested
-    if _parsed:
-        image_requested_ = getattr(_parsed, "image_requested", None)
-
-    # Attempt to serialize the provider response object
-    try:
-        provider_response = resp.model_dump()
-    except Exception as e:
-        logger.warning(f"Failed to dump response to schema: {e}")
-        provider_response = None
-
-    provider_meta = {
-        "model": getattr(resp, "model", None),
-        "provider": "openai",
-        "provider_response_id": getattr(resp, "id", None),
-        "provider_response": provider_response,
-    }
-
-    return NormalizedAIResponse(
-        messages=messages_,
-        metadata=metadata_,
-        usage=_usage,
-        provider_meta=provider_meta,
-        image_requested=image_requested_ or None,
-    )
-
+    def from_provider(self, raw: Any) -> "ToolItem":  # type: ignore[name-defined]
+        from simcore.ai.schemas.types import ToolItem  # local import to avoid cycles
+        # OpenAI returns {"type":"function", "function": {...}} or an ImageGeneration model
+        if isinstance(raw, ImageGeneration):
+            return ToolItem(kind="image_generation", function="generate", arguments=raw.model_dump())
+        if isinstance(raw, dict) and raw.get("type") == "function":
+            fn = raw.get("function") or {}
+            return ToolItem(kind="function", function=fn.get("name"), arguments=fn.get("parameters") or {})
+        # Fallback generic
+        return ToolItem(kind=str(getattr(raw, "type", "function")), function=getattr(raw, "name", None),
+                        arguments=getattr(raw, "parameters", {}) or {})
 
 # ---------- OpenAI Provider Definition -----------------------------------------------
 class OpenAIProvider(ProviderBase):
@@ -356,67 +92,170 @@ class OpenAIProvider(ProviderBase):
         self._client = AsyncOpenAI(api_key=api_key, timeout=timeout)
         self.timeout = timeout
         self.api_key = api_key
-        self.name = name
-        super().__init__(name=name, description="N/A")
+        super().__init__(name=name, description="OpenAI Responses API")
+        # Register tools adapter
+        self.set_tool_adapter(OpenAIToolAdapter())
 
-    async def call(self, req: NormalizedAIRequest, timeout: float | None = None) -> NormalizedAIResponse:
-        """Call OpenAI API and normalize the response."""
-        logger.debug(f"provider `{self.name}`:: received request call")
+    def _schema_to_provider(self, schema_cls: type) -> type:
+        """Return a provider-specialized schema where `metadata` is an object
+        (`OpenAIMetadataItem`) whose **inner properties are all required**.
+        This avoids OpenAI's schema validator complaining about missing `required`
+        for every property on the object.
+        Uses model_fields to avoid forward-ref strings in __annotations__.
+        """
+        try:
+            field = getattr(schema_cls, "model_fields", {}).get("metadata")
+            if not field:
+                return schema_cls
+            ann = getattr(field, "annotation", None)
+            from typing import get_origin
+            origin = get_origin(ann)
+            if origin is list:
+                Specialized = create_model(
+                    schema_cls.__name__ + "OpenAI",
+                    __base__=schema_cls,
+                    metadata=(OpenAIMetadataItem, ...),
+                )
+                return Specialized
+        except Exception:
+            # Fall back silently to the original schema class if anything goes wrong
+            pass
+        return schema_cls
 
+    def normalize_output_instance(self, model_instance: Any) -> Any:
+        # If model_instance.metadata is OpenAIMetadataItem, flatten it
+        if model_instance is None:
+            return model_instance
+        metadata = getattr(model_instance, "metadata", None)
+        if isinstance(metadata, OpenAIMetadataItem):
+            flattened = metadata.flatten()
+            return model_instance.model_copy(update={"metadata": flattened})
+        return model_instance
+
+    async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+        logger.debug("provider `%s`:: received request call", self.name)
+
+        schema: ResponseTextConfigParam | NotGiven
         if req.schema_cls is not None:
-            schema: ResponseTextConfigParam = build_output_schema(
-                req.schema_cls)
+            specialized = self.specialize_output_schema(req.schema_cls)
+            schema = build_output_schema(specialized) if specialized is not None else NOT_GIVEN
         else:
             schema = NOT_GIVEN
 
-        if req.tools:
-            provider_tools = _adapt_tools(req.tools)
-            logger.debug(f"provider `{self.name}`:: adapted tools: {provider_tools}")
+        native_tools = self._tools_to_provider(req.tools)
+        if native_tools:
+            logger.debug("provider `%s`:: adapted tools: %s", self.name, native_tools)
         else:
-            provider_tools = None
-            logger.debug(f"provider `{self.name}`:: no tools to adapt")
+            logger.debug("provider `%s`:: no tools to adapt", self.name)
 
         input_ = [
-            m.model_dump(
-                include={"role","content","tool_calls"},
-                exclude_none=True
-            ) for m in req.messages
+            m.model_dump(include={"role", "content", "tool_calls"}, exclude_none=True)
+            for m in req.messages
         ]
+
         resp: OpenAIResponse = await self._client.responses.create(
             model=req.model or NOT_GIVEN,
             input=input_,
             text=schema or NOT_GIVEN,
             previous_response_id=req.previous_response_id or NOT_GIVEN,
-            tools=provider_tools or NOT_GIVEN,
+            tools=native_tools or NOT_GIVEN,
             tool_choice=req.tool_choice or NOT_GIVEN,
             max_output_tokens=req.max_output_tokens or NOT_GIVEN,
             timeout=timeout or self.timeout or NOT_GIVEN,
             # temperature=req.temperature or NOT_GIVEN,
         )
-        logger.debug(f"provider `{self.name}`:: received response\n(response:\t{str(resp)[:200]})")
+        logger.debug("provider `%s`:: received response\n(response:\t%s)", self.name, str(resp)[:200])
 
-        return NormalizedAIResponse.normalize(
-            resp=resp,
-            _from=self.name,
-            schema_cls=req.schema_cls,
-        )
+        return self.adapt_response(resp, schema_cls=req.schema_cls)
 
-    async def stream(self, req: NormalizedAIRequest):
+    async def stream(self, req: LLMRequest):  # pragma: no cover - not yet implemented
         raise NotImplementedError
 
-        async with self._client.responses.stream(
-                model=req.model,
-                input=[m.dict(exclude_none=True) for m in req.messages],
-                tools=req.tools,
-                tool_choice=req.tool_choice,
-                max_output_tokens=req.max_output_tokens,
-                temperature=req.temperature,
-        ) as stream:
-            async for event in stream:
-                if event.type == "delta":
-                    yield NormalizedStreamChunk(delta=event.delta.content or "")
-                elif event.type == "completed":
-                    break
+    # --- ProviderBase hook implementations ---------------------------------
+    def _extract_text(self, resp: OpenAIResponse) -> str | None:
+        return getattr(resp, "output_text", None)
+
+    def _extract_outputs(self, resp: OpenAIResponse):
+        return getattr(resp, "output", []) or []
+
+    def _is_image_output(self, item: Any) -> bool:
+        return isinstance(item, ImageGenerationCall)
+
+    def _build_attachment(self, item: Any) -> AttachmentItem | None:
+        if not isinstance(item, ImageGenerationCall):
+            return None
+        b64 = getattr(item, "result", None)
+        if not b64:
+            logger.warning("ImageGenerationCall present, but no base64 `result`")
+            return None
+        return AttachmentItem(
+            kind="image",
+            b64=b64,
+            provider_meta={
+                "provider": self.name,
+                "provider_image_call_id": getattr(item, "id", None),
+                "provider_raw_response": item.model_dump(),
+            },
+        )
+
+    def _extract_usage(self, resp: OpenAIResponse) -> dict:
+        usage = getattr(resp, "usage", None)
+        if not usage:
+            return {}
+
+        input_tokens = getattr(usage, "input_tokens", None)
+        output_tokens = getattr(usage, "output_tokens", None)
+        total_tokens = getattr(usage, "total_tokens", None)
+
+        itd = getattr(usage, "input_tokens_details", None)
+        otd = getattr(usage, "output_tokens_details", None)
+
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "input_tokens_details": getattr(itd, "cached_tokens", None) if itd else None,
+            "output_tokens_details": getattr(otd, "reasoning_tokens", None) if otd else None,
+        }
+
+    def _extract_provider_meta(self, resp: OpenAIResponse) -> dict:
+        meta = {
+            "model": getattr(resp, "model", None),
+            "provider": self.name,
+            "provider_response_id": getattr(resp, "id", None),
+        }
+        if logger.isEnabledFor(logging.DEBUG):
+            try:
+                meta["provider_response"] = resp.model_dump()
+            except Exception:
+                meta["provider_response"] = None
+        return meta
+
+    @staticmethod
+    def _coerce_usage(usage_obj) -> dict:
+        """
+        Coerce OpenAI ResponseUsage into the flat dict shape our NormalizedAIResponse expects.
+        Falls back to None for any missing fields.
+        """
+        # TODO deprecated -- remove method
+        warnings.warn("Pending Deprecation -- use _extract_usage() instead", DeprecationWarning, stacklevel=2)
+        if not usage_obj:
+            return {}
+        # Plain attributes on the OpenAI SDK object, with safe fallbacks
+        input_tokens = getattr(usage_obj, "input_tokens", None)
+        output_tokens = getattr(usage_obj, "output_tokens", None)
+        total_tokens = getattr(usage_obj, "total_tokens", None)
+        itd = getattr(usage_obj, "input_tokens_details", None)
+        otd = getattr(usage_obj, "output_tokens_details", None)
+        input_tokens_details = getattr(itd, "cached_tokens", None) if itd is not None else None
+        output_tokens_details = getattr(otd, "reasoning_tokens", None) if otd is not None else None
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "input_tokens_details": input_tokens_details,
+            "output_tokens_details": output_tokens_details,
+        }
 
 
 def build_from_settings(settings) -> ProviderBase:

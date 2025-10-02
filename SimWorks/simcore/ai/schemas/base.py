@@ -41,6 +41,11 @@ def project_from(
     else:
         fields = dict(hints)
 
+    # exclude
+    # if exclude:
+    #     for k in exclude:
+    #         fields.pop(k, None)
+
     # apply overrides + defaults
     final_fields = {}
     for k, ann in fields.items():

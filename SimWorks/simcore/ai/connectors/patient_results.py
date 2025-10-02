@@ -2,15 +2,13 @@
 import logging
 from typing import Type
 
-from chatlab.ai.schema import PatientResultsOutputSchema
+from chatlab.ai.schemas import PatientResultsOutputSchema
 from chatlab.models import Message
 from simcore.ai import get_ai_client, PromptEngine
 from simcore.ai.promptkit import Prompt
 from simcore.ai.prompts.sections import PatientResultsSection
-from simcore.ai.schemas import StrictOutputSchema
-from simcore.ai.schemas.normalized_types import (
-    NormalizedAIMessage, NormalizedAIRequest, NormalizedAIResponse, NormalizedAITool
-)
+from simcore.ai.schemas import StrictOutputSchema, LLMRequest, OutputMessageItem, MessageItem, ToolItem, LLMResponse
+
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
@@ -18,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 async def _build_messages_and_schema(
         sim: Simulation, *, rtype: str, user_msg: Message | None
-) -> tuple[list[NormalizedAIMessage], Type[StrictOutputSchema] | None]:
+) -> tuple[list[MessageItem], Type[StrictOutputSchema] | None]:
     # TODO consider in future if module grows
     raise NotImplementedError
 
@@ -29,10 +27,10 @@ async def generate_patient_results(
         rtype: str = "results",
         user_msg: Message | None = None,
         as_dict: bool = True,
-        tools: list[NormalizedAITool] | None = None,
+        tools: list[ToolItem] | None = None,
         timeout: float | None = None,
         **kwargs,
-) -> NormalizedAIResponse | dict:
+) -> LLMResponse | dict:
     """Generate patient results for a given simulation."""
     client = get_ai_client()
     sim = await Simulation.aresolve(simulation_id)
@@ -50,12 +48,14 @@ async def generate_patient_results(
     )
 
     # Build LLM message list for request
-    messages: list[NormalizedAIMessage] = [
-        NormalizedAIMessage(role="developer", content=p.instruction),
-        NormalizedAIMessage(role="user", content=p.message),
+    # messages: list[NormalizedAIMessage] = [
+    messages: list[OutputMessageItem] = [
+        OutputMessageItem(role="developer", content=p.instruction),
+        OutputMessageItem(role="user", content=p.message),
     ]
 
-    req = NormalizedAIRequest(
+    # req = NormalizedAIRequest(
+    req = LLMRequest(
         messages=messages,
         schema_cls=schema_cls,
         previous_response_id=previous_response_id,

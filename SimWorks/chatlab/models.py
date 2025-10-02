@@ -86,22 +86,8 @@ class Message(models.Model):
     provider_response_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
 
-    # TODO deprecated -- remove before v0.8.0
-    @property
-    def openai_id(self):
-        """Deprecated. Use provider_response_id instead."""
-        logger.warning(
-            "provider_id is deprecated. Use provider_response_id instead.",
-            DeprecationWarning,
-        )
-        return self.response.id if self.response else None
-
-    @property
-    def has_media(self):
-        return self.media.exists()
-
-    def set_provider_resp_id(self, id):
-        self.provider_response_id = id
+    def set_provider_resp_id(self, id_):
+        self.provider_response_id = id_
         self.save(update_fields=["provider_response_id"])
 
     # TODO deprecated -- remove before v0.8.0
@@ -112,7 +98,7 @@ class Message(models.Model):
         )
         self.set_provider_resp_id(openai_id)
 
-    def get_previous_openai_id(self) -> str or None:
+    def get_previous_openai_id(self) -> str | None:
         """Return most recent OpenAI response_ID in current simulation"""
         previous_message = (
             Message.objects.filter(
@@ -141,6 +127,7 @@ class Message(models.Model):
             self.MessageType.FILE,
         }
 
+    @property
     def has_media(self):
         return self.media.exists()
 

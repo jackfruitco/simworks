@@ -255,7 +255,7 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
     Similarly, the associated Simulation object is retrieved to enrich the payload with
     additional details like sender information and simulation-specific identifiers.
 
-    The payload generated contains relevant metadata about the message, such as the sender'simulation
+    The payload generated contains relevant metadata about the message, such as the sender's
     information, display details, media attachments, and the message type. The data is then
     cleaned of null values before being broadcast to the specified group.
 
@@ -272,7 +272,7 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
             message = await Message.objects.select_related("sender").prefetch_related("media").aget(id=message)
         except Message.DoesNotExist:
             logger.error(msg=f"Message ID {message} not found. Skipping broadcast.")
-            return
+            return None
 
     # Get Simulation instance from Message FK
     try:
@@ -283,7 +283,7 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
         logger.error(
             msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast."
         )
-        return
+        return None
 
     # Set channel and group layers to broadcast to
     channel_layer = get_channel_layer()
@@ -330,14 +330,14 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
     )
 
 
-async def broadcast_chat_message(message: Message or int, status: str = None):
+async def broadcast_chat_message(message: Message | int, status: str = None):
     """Broadcasts a message to all connected clients."""
     warnings.warn(DeprecationWarning("Use `broadcast_message` instead."))
 
     func_name = inspect.currentframe().f_code.co_name
 
-    async def _log(level=logging.DEBUG, msg=""):
-        logger.log(level=level, msg=f"[{func_name}]: {msg}")
+    async def _log(level=logging.DEBUG, msg_=""):
+        logger.log(level=level, msg=f"[{func_name}]: {msg_}")
 
     # Get Message instance if provided ID
     if not isinstance(message, Message):

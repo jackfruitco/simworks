@@ -1,15 +1,17 @@
 # simcore/ai/client.py
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, TYPE_CHECKING
 from typing import Optional
 
-from django.conf import settings
 from simcore.ai import get_default_model
 from simcore.ai.providers.base import ProviderBase
 from simcore.ai.providers.openai import OpenAIProvider
-from simcore.ai.schemas.normalized_types import NormalizedAIRequest, NormalizedAIResponse, NormalizedStreamChunk
+from simcore.ai.schemas import LLMResponse, LLMRequest, StreamChunk
+from simcore.ai.utils import persist_all
 
 logger = logging.getLogger(__name__)
+
+from simcore.models import Simulation
 
 
 class AIClient:
@@ -18,12 +20,12 @@ class AIClient:
 
     async def send_request(
             self,
-            req: NormalizedAIRequest,
+            req: LLMRequest,
             *,
-            simulation: Optional["Simulation"] = None,
+            simulation: Optional[Simulation] = None,
             timeout: Optional[float] = None,
             persist: bool = True,
-    ) -> NormalizedAIResponse:
+    ) -> LLMResponse:
         """
         Send a request to the provider and (optionally) persist normalized DTOs.
 
@@ -51,20 +53,21 @@ class AIClient:
             req.model = get_default_model()
 
         # Forward request to provider
-        resp: NormalizedAIResponse = await self.provider.call(req, timeout)
+        resp: LLMResponse = await self.provider.call(req, timeout)
 
-        logger.debug(f"client received normalized response:\n(response:\t{resp.model_dump_json()[:200]})")
+        logger.debug(f"client received response:\n(response:\t{resp.model_dump_json()[:200]})")
 
         if persist and simulation is not None:
-            logger.debug(f"client persisting messages/metadata for simulation {simulation.pk}")
-            await resp.persist_full_response(simulation)
-            logger.debug(f"client persisted messages/metadata for `Simulation` id {simulation.pk}")
+            logger.debug(f"client persisting response for simulation {simulation.pk}")
+            # await resp.persist_full_response(simulation)
+            await persist_all(resp, simulation)
+            logger.debug(f"client persisted response for `Simulation` id {simulation.pk}")
 
         logger.debug(f"client finished AI request cycle to provider: {self.provider}")
 
         return resp
 
-    async def stream_request(self, req: NormalizedAIRequest) -> AsyncIterator[NormalizedStreamChunk]:
+    async def stream_request(self, req: LLMRequest) -> AsyncIterator[StreamChunk]:
         logger.exception("Stream request not implemented")
         raise NotImplementedError
 

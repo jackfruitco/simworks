@@ -1,11 +1,15 @@
 # simcore/ai/schemas/types.py
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List, Literal, Annotated, Union
+import logging
+from importlib import import_module
+from typing import Any, Dict, Optional, List, Literal, Annotated, Union, TypeAlias
 
 from pydantic import Field
 
 from .base import StrictBaseModel
+
+logger = logging.getLogger(__name__)
 
 
 # ---------- Attachments (DTO) -------------------------------------------------------
@@ -15,8 +19,8 @@ class AttachmentItem(StrictBaseModel):
     file: Optional[Any] = None
     url: Optional[str] = None
 
-    format: Optional[str] = None   # "png", "jpeg"
-    size: Optional[str] = None     # "1024x1024"
+    format: Optional[str] = None  # "png", "jpeg"
+    size: Optional[str] = None  # "1024x1024"
     background: Optional[str] = None
 
     provider_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -95,7 +99,7 @@ class ScenarioMetafield(BaseMetafield):
     value: str
 
 
-MetafieldItem = Annotated[
+MetafieldItem: TypeAlias = Annotated[
     Union[
         GenericMetafield,
         LabResultMetafield,
@@ -112,7 +116,7 @@ MetafieldItem = Annotated[
 
 # ---------- Tools (DTO) ------------------------------------------------------------
 class ToolItem(StrictBaseModel):
-    kind: str                  # e.g., "image_generation"
+    kind: str  # e.g., "image_generation"
     function: Optional[str] = None
     arguments: Dict[str, Any] = Field(default_factory=dict)
 
@@ -144,6 +148,13 @@ class LLMResponse(StrictBaseModel):
 
     provider_meta: Dict[str, Any] = Field(default_factory=dict)
     db_pk: Optional[int] = None
+
+    @classmethod
+    def normalize(cls, resp: Any, _from: str, *, schema_cls=None) -> "LLMResponse":
+        logger.debug(f"{cls.__name__} received request to normalize response from {_from}. Forwarding...")
+        mod = import_module(f"simcore.ai.providers.{_from}")
+        data = mod.normalize_response(resp, schema_cls=schema_cls)
+        return data if isinstance(data, cls) else cls(**data)
 
 
 class StreamChunk(StrictBaseModel):
