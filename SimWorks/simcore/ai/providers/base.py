@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Any, Iterable, Optional, Protocol
+from typing import AsyncIterator, Any, Iterable, Optional, Protocol, get_origin, get_args, ClassVar
+from weakref import WeakKeyDictionary
 
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, Field, create_model
 
 # Slim, LLM-facing projections
 from simcore.ai.schemas.output_types import (
@@ -40,6 +41,23 @@ class ProviderBase(ABC):
     name: str
     description: str
 
+    _schema_cache: ClassVar[dict[str, WeakKeyDictionary[type, type]]] = {}
+
+    @classmethod
+    def clear_schema_cache(cls, provider_namespace: str | None = None) -> None:
+        """Clear the specialized schema cache.
+
+        If `provider_namespace` is provided, it can be either the full namespace
+        (e.g., 'simcore.ai.providers.openai') or just the label (e.g., 'openai').
+        """
+        if provider_namespace:
+            # Accept both "openai" and "simcore.ai.providers.openai"
+            if "." not in provider_namespace:  # looks like just a label
+                provider_namespace = f"simcore.ai.providers.{provider_namespace}"
+            cls._schema_cache.pop(provider_namespace, None)
+        else:
+            cls._schema_cache.clear()
+
     def __init__(self, name: str, description: str = "") -> None:
         self.name = name
         self.description = description
@@ -59,6 +77,20 @@ class ProviderBase(ABC):
     def __repr__(self) -> str:  # pragma: no cover
         return f"<AIProvider {self.name}>"
 
+    def _provider_namespace_key(self) -> str:
+        """
+        Return a stable provider namespace like 'simcore.ai.providers.<label>'
+        regardless of whether the class lives in ...<label>, ...<label>.base, etc.
+        """
+        mod = self.__class__.__module__
+        parts = mod.split(".")
+        try:
+            i = parts.index("providers")
+            label = parts[i + 1]
+            return ".".join(parts[: i + 2])
+        except (ValueError, IndexError):
+            return mod
+
     # ---------------------------------------------------------------------
     # Normalization/adaptation (provider-agnostic core + provider hooks)
     # ---------------------------------------------------------------------
@@ -71,14 +103,11 @@ class ProviderBase(ABC):
           3) Promote to DTO unions (MessageItem, MetafieldItem)
           4) Fold in provider-specific attachments (via hooks)
         """
-        # 1) Adapt schema class to provider specialized schema
-        specialized_schema_cls = self.specialize_output_schema(schema_cls)
-
-        # 2) Parse text into declared output schema (if any)
+        # 1) Client is responsible for schema overrides; use given schema_cls as-is
         parsed = None
         text_out = self._extract_text(resp)
-        if specialized_schema_cls is not None and text_out:
-            parsed = self._maybe_parse_to_schema(text_out, specialized_schema_cls)
+        if schema_cls is not None and text_out:
+            parsed = self._maybe_parse_to_schema(text_out, schema_cls)
 
         # 3) Normalize provider-shaped parsed instance back to normalized DTO shape
         if parsed is not None:
@@ -126,9 +155,6 @@ class ProviderBase(ABC):
                 )
             )
 
-        if specialized_schema_cls is not None:
-            import logging
-            logging.getLogger(__name__).debug("adapt_response parsed with specialized schema: %s", specialized_schema_cls.__name__)
         return LLMResponse(
             messages=messages,
             metadata=metadata,
@@ -137,11 +163,24 @@ class ProviderBase(ABC):
             image_requested=getattr(parsed, "image_requested", None) if parsed else None,
         )
 
-    def specialize_output_schema(self, schema_cls: type | None) -> type | None:
-        """Return a provider-specialized schema class for outbound requests."""
+    @staticmethod
+    def has_schema_overrides() -> bool:
+        """Return True if the provider has overridden its schema classes.
+        Providers can override this static method to indicate schema overrides.
+        """
+        return False
+
+    def override_schema(self, schema_cls: type | None) -> type | None:
         if schema_cls is None:
             return None
-        return self._schema_to_provider(schema_cls)
+        provider_key = self._provider_namespace_key()
+        cache = self._schema_cache.setdefault(provider_key, WeakKeyDictionary())
+        cached = cache.get(schema_cls)
+        if cached is not None:
+            return cached
+        specialized = self._schema_to_provider(schema_cls)
+        cache[schema_cls] = specialized
+        return specialized
 
     def normalize_output_instance(self, model_instance: Any) -> Any:
         """Normalize a provider-shaped parsed model instance back to the provider-agnostic shape.
@@ -180,17 +219,116 @@ class ProviderBase(ABC):
     # Provider-specific Schema HOOKS (override in concrete providers)
     # ---------------------------------------------------------------------
     def _schema_to_provider(self, schema_cls: type) -> type:
-        """Provider override to adapt the normalized DTO schema to provider schema.
-
-        Default implementation is a no-op.
         """
+        Return a provider-specialized schema where supported inner types are overridden
+        by provider-specific `*Override` classes when available.
+
+        Strategy:
+        - Walk all pydantic model fields on `schema_cls`.
+        - For each field annotation:
+            * If it is `list[T]`, try to map `T -> TOverride`
+            * If it is a direct type `T`, try to map `T -> TOverride`
+        - If any changes are made, return a new create_model(..., __base__=schema_cls)
+          that swaps those field types while preserving required/default semantics.
+        - If no changes, return the original `schema_cls`.
+        """
+        try:
+            model_fields = getattr(schema_cls, "model_fields", None)
+            if not model_fields:
+                return schema_cls
+
+            overrides: dict[str, tuple[Any, Any]] = {}
+
+            for fname, field in model_fields.items():
+                ann = getattr(field, "annotation", None)
+                if ann is None:
+                    continue
+
+                new_ann = None
+                origin = get_origin(ann)
+                args = get_args(ann)
+
+                # Handle list[T]
+                if origin is list and args:
+                    inner = args[0]
+                    override_inner = self._find_override_type(inner)
+                    if override_inner is not None:
+                        # Rebuild as list[override_inner]
+                        new_ann = list[override_inner]  # type: ignore[index]
+
+                else:
+                    # Handle direct type T
+                    override_type = self._find_override_type(ann)
+                    if override_type is not None:
+                        new_ann = override_type
+
+                if new_ann is not None:
+                    # Preserve required/default semantics
+                    is_required = bool(getattr(field, "is_required", False))
+                    if is_required:
+                        default = Field(...)
+                    else:
+                        default = Field(getattr(field, "default", None))
+                    overrides[fname] = (new_ann, default)
+
+            if overrides:
+                Specialized = create_model(
+                    schema_cls.__name__ + "ProviderOverride",
+                    __base__=schema_cls,
+                    **overrides,
+                )
+                return Specialized
+
+        except Exception:
+            # Fall back silently to the original schema class if anything goes wrong
+            pass
+
         return schema_cls
 
-    def _schema_from_provider(self, schema_cls: type) -> type:
-        """Provider override to adapt provider schema to the normalized DTO schema.
-
-        Default implementation is a no-op.
+    def _find_override_type(self, typ: Any) -> type | None:
         """
+        Given an original type, attempt to resolve a provider override class named
+        '<TypeName>Override'. Search order:
+          1) Provider module (e.g. simcore.ai.providers.openai)
+          2) Provider module's 'schema_overrides' submodule
+          3) Provider module's 'base' submodule
+          4) Legacy flat path (simcore.ai.providers.{self.name}) if different from provider module
+        Returns the override type if found, else None.
+        """
+        import sys
+        from importlib import import_module
+        try:
+            type_name = getattr(typ, "__name__", None)
+            if not type_name:
+                return None
+            override_name = f"{type_name}Override"
+
+            provider_root = self._provider_namespace_key()
+            search_modules = [
+                provider_root,
+                f"{provider_root}.schema_overrides",
+                f"{provider_root}.base",
+            ]
+            legacy_mod = f"simcore.ai.providers.{self.name}"
+            if legacy_mod != provider_root:
+                search_modules.append(legacy_mod)
+
+            for modname in search_modules:
+                mod = sys.modules.get(modname)
+                if mod is None:
+                    try:
+                        mod = import_module(modname)
+                    except Exception:
+                        continue
+                cand = getattr(mod, override_name, None)
+                if isinstance(cand, type):
+                    return cand
+        except Exception:
+            pass
+        return None
+
+    def reset_schema_override(self, schema_cls: type) -> type:
+        """Provider override to adapt provider schema back to the normalized DTO schema (no-op by default)."""
         return schema_cls
 
     # ---------------------------------------------------------------------

@@ -1,7 +1,8 @@
-# simcore/ai/schemas/output_schema.py
 from __future__ import annotations
 
-from pydantic import Field
+from typing import Any, get_args, get_origin
+
+from pydantic import Field, create_model
 
 from simcore.ai.schemas import (
     StrictOutputSchema,
@@ -9,6 +10,7 @@ from simcore.ai.schemas import (
     OutputMessageItem,
     OutputMetafieldItem,
 )
+from simcore.ai.schemas.output_types import OutputResultItem
 
 
 class LLMConditionsCheckItem(StrictOutputSchema):
@@ -31,7 +33,7 @@ class PatientReplyOutputSchema(StrictOutputSchema):
 
 
 class PatientResultsOutputSchema(StrictOutputSchema):
-    metadata: list[OutputMetafieldItem] = Field(...)
+    metadata: list[OutputResultItem] = Field(...)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 

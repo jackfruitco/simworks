@@ -1,11 +1,8 @@
-# simcore/ai/client.py
 import logging
-from typing import AsyncIterator, TYPE_CHECKING
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from simcore.ai import get_default_model
 from simcore.ai.providers.base import ProviderBase
-from simcore.ai.providers.openai import OpenAIProvider
 from simcore.ai.schemas import LLMResponse, LLMRequest, StreamChunk
 from simcore.ai.utils import persist_all
 
@@ -15,7 +12,7 @@ from simcore.models import Simulation
 
 
 class AIClient:
-    def __init__(self, provider: ProviderBase = OpenAIProvider):
+    def __init__(self, provider: ProviderBase):
         self.provider = provider
 
     async def send_request(
@@ -51,6 +48,9 @@ class AIClient:
 
         if not req.model:
             req.model = get_default_model()
+
+        if self.provider.has_schema_overrides():
+            req.schema_cls = self.provider.override_schema(req.schema_cls)
 
         # Forward request to provider
         resp: LLMResponse = await self.provider.call(req, timeout)

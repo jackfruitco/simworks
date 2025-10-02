@@ -1,87 +1,23 @@
+# simcore/ai/providers/openai/base.py
 from __future__ import annotations
 
 import logging
 import warnings
 from typing import Any
-from typing import get_origin, get_args
 
-from openai import (
-    AsyncOpenAI,
-    NotGiven,
-    NOT_GIVEN
-)
-from openai.types.responses import (
-    Response as OpenAIResponse,
-    ResponseTextConfigParam,
-)
+from openai import NotGiven, NOT_GIVEN, AsyncOpenAI
+from openai.types.responses import ResponseTextConfigParam, Response as OpenAIResponse
 from openai.types.responses.response_output_item import ImageGenerationCall
-from openai.types.responses.tool import ImageGeneration
-from pydantic import Field, create_model
 
-from .base import ProviderBase
-from ..schemas import StrictBaseModel, StrictOutputSchema
-from ..schemas.output_types import (
-    OutputGenericMetafield, OutputPatientHistoryMetafield, OutputPatientDemographicsMetafield,
-    OutputSimulationMetafield, OutputScenarioMetafield,
-)
-from ..schemas.types import LLMRequest, LLMResponse, AttachmentItem
-from ..utils.helpers import build_output_schema
+from simcore.ai import build_output_schema
+from simcore.ai.providers.base import ProviderBase
+from simcore.ai.providers.openai.schema_overrides import OutputMetafieldItemOverride, OutputResultItemOverride
+from simcore.ai.providers.openai.tools import OpenAIToolAdapter
+from simcore.ai.schemas import LLMRequest, LLMResponse, AttachmentItem
 
 logger = logging.getLogger(__name__)
 
 
-class OpenAIMetadataItem(StrictBaseModel):
-    generic_metadata: list[OutputGenericMetafield] = Field(...)
-    patient_history: list[OutputPatientHistoryMetafield] = Field(...)
-    patient_demographics: list[OutputPatientDemographicsMetafield] = Field(...)
-    simulation_metadata: list[OutputSimulationMetafield] = Field(...)
-    scenario_data: list[OutputScenarioMetafield] = Field(...)
-
-    def flatten(self) -> list[dict]:
-        flat: list[dict] = []
-
-        for items in self.model_dump().values():
-            flat.extend(items)
-        return flat
-
-
-# --- OpenAI Tool Adapter for ToolItem DTOs ---------------------------------
-class OpenAIToolAdapter(ProviderBase.ToolAdapter):
-    """Adapter for OpenAI tool/function specs from/to our ToolItem DTOs."""
-    provider = "openai"
-
-    def to_provider(self, tool: "ToolItem") -> Any:  # type: ignore[name-defined]
-        # Expecting kind=="image_generation" or function-based tools; adapt to OpenAI's tool schema
-        # For image generation via Responses API, OpenAI uses `tools=[{"type":"image_generation"}]` variant.
-        # If you use function tools, map to {"type":"function", "function": {...}}.
-        if tool.kind == "image_generation":
-            # Map our DTO to OpenAI ImageGeneration spec
-            # `ImageGeneration` pydantic model takes fields like size, background, prompt_bias, etc.
-            allowed = getattr(ImageGeneration, "model_fields", {}).keys()
-            filtered = {k: v for k, v in (tool.arguments or {}).items() if k in allowed}
-            return ImageGeneration(**filtered)
-        # default: function tool
-        return {
-            "type": "function",
-            "function": {
-                "name": tool.function or "tool",
-                "parameters": tool.arguments or {},
-            },
-        }
-
-    def from_provider(self, raw: Any) -> "ToolItem":  # type: ignore[name-defined]
-        from simcore.ai.schemas.types import ToolItem  # local import to avoid cycles
-        # OpenAI returns {"type":"function", "function": {...}} or an ImageGeneration model
-        if isinstance(raw, ImageGeneration):
-            return ToolItem(kind="image_generation", function="generate", arguments=raw.model_dump())
-        if isinstance(raw, dict) and raw.get("type") == "function":
-            fn = raw.get("function") or {}
-            return ToolItem(kind="function", function=fn.get("name"), arguments=fn.get("parameters") or {})
-        # Fallback generic
-        return ToolItem(kind=str(getattr(raw, "type", "function")), function=getattr(raw, "name", None),
-                        arguments=getattr(raw, "parameters", {}) or {})
-
-# ---------- OpenAI Provider Definition -----------------------------------------------
 class OpenAIProvider(ProviderBase):
     def __init__(
             self,
@@ -96,51 +32,47 @@ class OpenAIProvider(ProviderBase):
         # Register tools adapter
         self.set_tool_adapter(OpenAIToolAdapter())
 
-    def _schema_to_provider(self, schema_cls: type) -> type:
-        """Return a provider-specialized schema where `metadata` is an object
-        (`OpenAIMetadataItem`) whose **inner properties are all required**.
-        This avoids OpenAI's schema validator complaining about missing `required`
-        for every property on the object.
-        Uses model_fields to avoid forward-ref strings in __annotations__.
-        """
-        try:
-            field = getattr(schema_cls, "model_fields", {}).get("metadata")
-            if not field:
-                return schema_cls
-            ann = getattr(field, "annotation", None)
-            from typing import get_origin
-            origin = get_origin(ann)
-            if origin is list:
-                Specialized = create_model(
-                    schema_cls.__name__ + "OpenAI",
-                    __base__=schema_cls,
-                    metadata=(OpenAIMetadataItem, ...),
-                )
-                return Specialized
-        except Exception:
-            # Fall back silently to the original schema class if anything goes wrong
-            pass
-        return schema_cls
+
+    @staticmethod
+    def has_schema_overrides() -> bool:
+        return True
+
 
     def normalize_output_instance(self, model_instance: Any) -> Any:
-        # If model_instance.metadata is OpenAIMetadataItem, flatten it
+        # If model_instance.metadata is one of our provider override containers, flatten it
         if model_instance is None:
             return model_instance
+
         metadata = getattr(model_instance, "metadata", None)
-        if isinstance(metadata, OpenAIMetadataItem):
-            flattened = metadata.flatten()
-            return model_instance.model_copy(update={"metadata": flattened})
+
+        # Import locally to avoid reference errors if overrides move to a separate module
+        try:
+            override_types = []
+            try:
+                override_types.append(OutputMetafieldItemOverride)
+            except Exception:
+                pass
+            try:
+                override_types.append(OutputResultItemOverride)
+            except Exception:
+                pass
+
+            if any(isinstance(metadata, t) for t in override_types if isinstance(t, type)):
+                flattened = metadata.flatten()
+                return model_instance.model_copy(update={"metadata": flattened})
+        except Exception:
+            # If flatten fails for any reason, just return the original instance
+            return model_instance
+
         return model_instance
 
     async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
         logger.debug("provider `%s`:: received request call", self.name)
 
-        schema: ResponseTextConfigParam | NotGiven
-        if req.schema_cls is not None:
-            specialized = self.specialize_output_schema(req.schema_cls)
-            schema = build_output_schema(specialized) if specialized is not None else NOT_GIVEN
-        else:
-            schema = NOT_GIVEN
+        schema: ResponseTextConfigParam | NotGiven = (
+            build_output_schema(req.schema_cls) if req.schema_cls is not None
+            else NOT_GIVEN
+        )
 
         native_tools = self._tools_to_provider(req.tools)
         if native_tools:
@@ -256,12 +188,3 @@ class OpenAIProvider(ProviderBase):
             "input_tokens_details": input_tokens_details,
             "output_tokens_details": output_tokens_details,
         }
-
-
-def build_from_settings(settings) -> ProviderBase:
-    api_key = (getattr(settings, "OPENAI_API_KEY", None) or
-               getattr(settings, "AI_API_KEY", None))
-    if not api_key:
-        raise RuntimeError("No OpenAI API key found. Please set OPENAI_API_KEY or AI_API_KEY in settings.")
-    timeout = getattr(settings, "AI_TIMEOUT_S", 30)
-    return OpenAIProvider(api_key=api_key, timeout=timeout)

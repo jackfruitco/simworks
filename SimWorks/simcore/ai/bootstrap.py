@@ -24,7 +24,7 @@ _providers_path = pathlib.Path(__file__).parent / "providers"
 SUPPORTED_PROVIDERS = [
     mod.name
     for mod in pkgutil.iter_modules([str(_providers_path)])
-    if not mod.ispkg and not mod.name.startswith("_") and mod.name != "base"
+    if mod.ispkg and not mod.name.startswith("_") and mod.name != "base"
 ]
 
 
@@ -53,7 +53,7 @@ def _build_provider_from_module(provider_key: str) -> ProviderBase:
     # Fallback: find a subclass of AIProvider in the module
     provider_cls = None
     for _, obj in inspect.getmembers(mod, inspect.isclass):
-        if obj is not ProviderBase and issubclass(obj, ProviderBase) and obj.__module__ == mod.__name__:
+        if obj is not ProviderBase and issubclass(obj, ProviderBase) and obj.__module__.startswith(mod.__name__):
             provider_cls = obj
             break
 

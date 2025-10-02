@@ -90,13 +90,19 @@ OutputScenarioMetafield: type[StrictBaseModel] = project_from(
 OutputMetafieldItem: TypeAlias = Annotated[
     Union[
         OutputGenericMetafield,
-        OutputLabResultMetafield,
-        OutputRadResultMetafield,
         OutputPatientHistoryMetafield,
         OutputSimulationFeedbackMetafield,
         OutputPatientDemographicsMetafield,
         OutputSimulationMetafield,
         OutputScenarioMetafield,
+    ],
+    Field(discriminator="kind"),
+]
+
+OutputResultItem: TypeAlias = Annotated[
+    Union[
+        OutputLabResultMetafield,
+        OutputRadResultMetafield,
     ],
     Field(discriminator="kind"),
 ]
