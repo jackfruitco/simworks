@@ -10,17 +10,20 @@ from asgiref.sync import sync_to_async
 from django.core.files.base import ContentFile
 
 from core.utils import get_or_create_system_user
-from simcore.ai.schemas.normalized_types import (
-    NormalizedAIMessage,
-    GenericMeta,
-    LabResultMeta,
-    RadResultMeta,
-    PatientHistoryMeta,
-    SimulationFeedbackMeta,
-    PatientDemographicsMeta,
-    SimulationMetaKV,
-    ScenarioMeta,
-    NormalizedAIMetadata, NormalizedAIResponse, NormalizedAttachment,
+from simcore.ai.schemas.types import (
+    MessageItem,
+    MetafieldItem,
+    LLMResponse,
+    AttachmentItem,
+    # Metafield DTO classes
+    GenericMetafield,
+    LabResultMetafield,
+    RadResultMetafield,
+    PatientHistoryMetafield,
+    SimulationFeedbackMetafield,
+    PatientDemographicsMetafield,
+    SimulationMetafield,
+    ScenarioMetafield,
 )
 
 if TYPE_CHECKING:
@@ -29,18 +32,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def log_success(
+def success_msg(
         instance_cls: str,
         instance_pk: int,
         simulation_pk: int,
         fallback: bool = False,
-) -> None:
+) -> str:
     """Log a successful persistence operation."""
-    msg = f"... persisted {instance_cls} "
+    msg = f"... persisted {instance_cls} metafield "
     msg += "using fallback to generic KV " if fallback else ""
     msg += f"(pk {instance_pk}; `Simulation` pk {simulation_pk})"
-    logger.debug(msg)
-    return
+    return msg or ""
 
 
 # ---------- Internal async creators / helpers ---------------------------------------
@@ -63,11 +65,11 @@ async def _persist_lab_result(sim, meta):
         LabResult,
         sim,
         key=meta.key,
-        value=meta.value,
-        result_unit=meta.unit,
-        reference_range_low=meta.ref_low,
-        reference_range_high=meta.ref_high,
-        result_flag=meta.flag,
+        value=meta.result_value,
+        result_unit=meta.result_unit,
+        reference_range_low=meta.reference_range_low,
+        reference_range_high=meta.reference_range_high,
+        result_flag=meta.result_flag,
         panel_name=meta.panel_name,
     )
 
@@ -124,14 +126,14 @@ def _register(meta_cls: Type[Any], handler: Callable[[Any, Any], Awaitable[Any]]
 
 
 # Registration (add new meta types here to extend persistence without touching core logic)
-_register(LabResultMeta, _persist_lab_result)
-_register(RadResultMeta, _persist_rad_result)
-_register(PatientHistoryMeta, _persist_patient_history)
-_register(SimulationFeedbackMeta, _persist_feedback)
-_register(PatientDemographicsMeta, _persist_demographics)
-_register(SimulationMetaKV, _persist_sim_kv)
-_register(ScenarioMeta, _persist_scenario)
-_register(GenericMeta, _persist_sim_kv)  # generic fallback
+_register(LabResultMetafield, _persist_lab_result)
+_register(RadResultMetafield, _persist_rad_result)
+_register(PatientHistoryMetafield, _persist_patient_history)
+_register(SimulationFeedbackMetafield, _persist_feedback)
+_register(PatientDemographicsMetafield, _persist_demographics)
+_register(SimulationMetafield, _persist_sim_kv)
+_register(ScenarioMetafield, _persist_scenario)
+_register(GenericMetafield, _persist_sim_kv)  # generic fallback
 
 
 async def _resolve_system_user() -> "User":
@@ -149,8 +151,8 @@ async def _map_user(role: str, sim: "Simulation") -> tuple[str, "User", str | No
 
 
 async def persist_metadata(
-        simulation: "Simulation", metadata: NormalizedAIMetadata
-) -> NormalizedAIMetadata:
+        simulation: "Simulation", metadata: MetafieldItem
+) -> MetafieldItem:
     """Persist a normalized AI metadata object to the database."""
     # Resolve the first matching handler by isinstance to allow subclassing
     for cls, handler in _META_PERSIST_HANDLERS.items():
@@ -160,9 +162,9 @@ async def persist_metadata(
             instance = await handler(simulation, metadata)
             metadata.db_pk = getattr(instance, "pk", None)
 
-            log_success(
+            logger.debug(success_msg(
                 instance.__class__.__name__, instance.pk, simulation.pk
-            )
+            ))
             return metadata
 
     # create the instance, then attach the PK back onto the normalized DTO
@@ -177,21 +179,21 @@ async def persist_metadata(
     )
     metadata.db_pk = getattr(instance, "pk", None)
 
-    log_success(
+    logger.debug(success_msg(
         instance.__class__.__name__,
         instance.pk,
         simulation.pk,
         fallback=True
-    )
+    ))
 
     return metadata
 
 
 async def persist_message(
         simulation: "Simulation",
-        message: NormalizedAIMessage,
+        message: MessageItem,
         **kwargs,
-) -> NormalizedAIMessage:
+) -> MessageItem:
     """Persist a normalized AI message to the database."""
     # Lazy import of Message to avoid circulars if any
     # TODO move Message to simcore.models
@@ -214,14 +216,14 @@ async def persist_message(
     instance = await Message.objects.acreate(**data)
     message.db_pk = getattr(instance, "pk", None)
 
-    log_success(instance.__class__.__name__, instance.pk, simulation.pk)
+    logger.debug(success_msg(instance.__class__.__name__, instance.pk, simulation.pk))
 
     return message
 
 
 async def persist_response(
-        simulation: Any, response: NormalizedAIResponse
-) -> NormalizedAIResponse:
+        simulation: Any, response: LLMResponse
+) -> LLMResponse:
     """Persist a normalized AI response to the database."""
     from simcore.models import Simulation, AIResponse
 
@@ -253,14 +255,14 @@ async def persist_response(
     instance = await AIResponse.objects.acreate(**data)
     response.db_pk = getattr(instance, "pk", None)
 
-    log_success(instance.__class__.__name__, instance.pk, simulation.pk)
+    logger.debug(success_msg(instance.__class__.__name__, instance.pk, simulation.pk))
 
     return response
 
 
 async def persist_attachment(
-        attachment: NormalizedAttachment, simulation: Any
-) -> NormalizedAttachment:
+        attachment: AttachmentItem, simulation: Any
+) -> AttachmentItem:
     """Persist a normalized AI attachment to the database."""
     from simcore.models import Simulation, SimulationImage
 
@@ -309,29 +311,29 @@ async def persist_attachment(
         attachment.db_model = instance.__class__.__name__
 
     try:
-        log_success(instance.__class__.__name__, instance.pk, simulation.pk)
+        logger.debug(success_msg(instance.__class__.__name__, instance.pk, simulation.pk))
     except Exception:
         logger.debug("log_success failed for SimulationImage persist.", exc_info=True)
 
     return attachment
 
 
-async def persist_all(response: NormalizedAIResponse, simulation: Any):
+async def persist_all(response: LLMResponse, simulation: Any):
     """
     Persist full response, including messages and metadata, for the given Simulation.
 
-    Uses each item's own `.persist()` convenience method to keep concerns separated.
+    Uses each item's own persistence function to keep concerns separated.
 
     TODO: create Response instance first to use as fk to message and metadata, then response with db_pks
 
     :param response: The normalized AI response object
-    :type response: NormalizedAIResponse
+    :type response: LLMResponse
 
     :param simulation: The Simulation instance or int (pk)
     :type simulation: Simulation or int
 
     :return: The response DTO, updated with db_pks
-    :rtype: NormalizedAIResponse
+    :rtype: LLMResponse
 
     :raises Exception: If any of the persist calls fail
     """
@@ -340,7 +342,7 @@ async def persist_all(response: NormalizedAIResponse, simulation: Any):
     # Persist messages
     for m in response.messages:
         try:
-            await m.persist(simulation, provider_response_id=prov_id)
+            await persist_message(simulation, m, provider_response_id=prov_id)
         except Exception:
             logger.exception("failed to persist message! %r", m)
 
@@ -354,13 +356,13 @@ async def persist_all(response: NormalizedAIResponse, simulation: Any):
     # Persist metadata
     for mf in response.metadata:
         try:
-            await mf.persist(simulation)
+            await persist_metadata(simulation, mf)
         except Exception:
             logger.exception("failed to persist metafield! %r", mf)
 
     # Persist the response itself
     try:
-        await response.persist_response(simulation)
+        await persist_response(simulation, response)
     except Exception:
         logger.exception("failed to persist response! %r", response)
 
