@@ -7,7 +7,7 @@ from chatlab.models import Message
 from simcore.ai import get_ai_client, PromptEngine
 from simcore.ai.promptkit import Prompt
 from simcore.ai.prompts.sections import PatientResultsSection
-from simcore.ai.schemas import StrictOutputSchema, LLMRequest, OutputMessageItem, MessageItem, ToolItem, LLMResponse
+from simcore.ai.schemas import StrictOutputSchema, LLMRequest, MessageItem, ToolItem, LLMResponse
 
 from simcore.models import Simulation
 
@@ -49,9 +49,9 @@ async def generate_patient_results(
 
     # Build LLM message list for request
     # messages: list[NormalizedAIMessage] = [
-    messages: list[OutputMessageItem] = [
-        OutputMessageItem(role="developer", content=p.instruction),
-        OutputMessageItem(role="user", content=p.message),
+    messages: list[MessageItem] = [
+        MessageItem(role="developer", content=p.instruction),
+        MessageItem(role="user", content=p.message),
     ]
 
     # req = NormalizedAIRequest(

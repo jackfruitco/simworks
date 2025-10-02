@@ -23,14 +23,14 @@ from .types import (
 OutputMessageItem: type[StrictBaseModel] = project_from(
     MessageItem,
     include=("role", "content"),
-    overrides={"role": Literal["patient", "developer"]},  # narrow if appropriate for this schema
+    overrides={"role": Literal["patient"]},
     name="OutputMessageItem",
 )
 
 # Metadata: expose only LLM-facing fields (drop db_pk, etc.)
 OutputGenericMetafield: type[StrictBaseModel] = project_from(
     GenericMetafield,
-    include=("kind", "key", "value"),  # keep extra if you want; default here hides it
+    include=("kind", "key", "value"),
     name="OutputGenericMetafield",
 )
 
