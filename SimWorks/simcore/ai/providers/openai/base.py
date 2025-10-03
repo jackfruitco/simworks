@@ -108,7 +108,7 @@ class OpenAIProvider(ProviderBase):
             timeout=timeout or self.timeout or NOT_GIVEN,
             # temperature=req.temperature or NOT_GIVEN,
         )
-        logger.debug("provider '%s':: received response\n(response:\t%s)", self.name, str(resp)[:1000])
+        logger.debug("provider '%s':: received response\n(response (pre-adapt):\t%s)", self.name, str(resp)[:1000])
 
         return self.adapt_response(resp, schema_cls=req.schema_cls)
 

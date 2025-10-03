@@ -60,7 +60,7 @@ class AIClient:
         # Forward request to provider
         resp: LLMResponse = await self.provider.call(req, timeout)
 
-        logger.debug(f"client received response:\n(response:\t{resp.model_dump_json()[:200]})")
+        logger.debug(f"client received response:\n(response (post-adapt):\t{resp.model_dump_json()[:200]})")
 
         if persist and simulation is not None:
             logger.debug(f"client persisting response for simulation {simulation.pk}")

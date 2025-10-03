@@ -108,7 +108,7 @@ OutputResultItem: TypeAlias = Annotated[
     Field(discriminator="kind"),
 ]
 
-FullOutputMetafieldItem = Annotated[
+FullOutputMetafieldItem: TypeAlias = Annotated[
     # all OutputMetafieldItem fields must be added here for slim validation in `adapt_response`
     Union[
         OutputGenericMetafield,
