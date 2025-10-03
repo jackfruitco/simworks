@@ -93,16 +93,6 @@ async def socket_send(
     :param kwargs: Additional keyword arguments to pass to the `group_send` method.
     """
 
-    # Remove deprecated `__event` kwarg if present
-    # TODO deprecation -- remove before v0.8.0
-    # if "__event" in kwargs:
-    #     __event = kwargs.pop("__event")
-    #     warnings.warn(
-    #         DeprecationWarning(
-    #             "`__event` is no longer used. Use explicit `__type` instead."
-    #         )
-    #     )
-
     # Build group name from simulation ID if group not provided
     if __group is None:
         logger.debug(
@@ -116,7 +106,7 @@ async def socket_send(
                 f"No group provided and Simulation with ID '{__simulation_id}' was not found."
             )
 
-    logger.info(f"[socket_send] new '{__type}' event for group '{__group}'.")
+    logger.info(f"[socket_send] received new '{__type}' event for group '{__group}'.")
 
     channel_layer = get_channel_layer()
 
@@ -131,8 +121,7 @@ async def socket_send(
     except Exception as e:
         logger.error(msg=f"socket_send failed: {e}")
 
-    logger.debug(f"'{__type}': broadcasted to group '{__group}'")
-    logger.debug(f"Event payload: {__payload}")
+    logger.debug(f"'{__type}': broadcasted to group '{__group}'\n\t\tEvent payload: {__payload}")
     return
 
 
@@ -143,12 +132,14 @@ async def broadcast_event(
     __status: str = None,
     **kwargs,
 ) -> None:
-    """
-    Broadcasts an event by sending its details to a socket. This function is
-    asynchronous and facilitates communication between different components
-    or systems by transmitting payload data, event type, and other contextual
-    information. It can also include simulation and status details
-    in the transmission.
+    """Broadcasts an event to the specified group layer.
+
+    Uses `socket_send` to send the event payload to the specified group.
+
+    This function is asynchronous and facilitates communication between
+    different components or systems by transmitting payload data, event
+    type, and other contextual information. It can also include simulation
+    and status details in the transmission.
 
     :param __payload: The data to be sent within the event.
     :type __payload: dict
@@ -184,8 +175,9 @@ async def broadcast_patient_results(
     __source:  list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
     __status: str = None
 ) -> None:
-    """
-    Broadcast patient results to all connected clients using `socket_send`.
+    """Broadcasts a patient results event to the specified group layer.
+
+    Uses `socket_send` to send the event payload to the specified group.
 
     :param __source: Result source. One of: int (pk), QuerySet, list, LabResult, RadResult.
     :param __status:
@@ -248,8 +240,11 @@ async def broadcast_patient_results(
 
 
 async def broadcast_message(message: Message | int, status: str = None) -> None:
-    """
-    Broadcasts a message to a specific group layer using WebSocket and channels. The message
+    """Broadcasts a message event to the specified group layer.
+
+    Uses `socket_send` to send the event payload to the specified group.
+
+    The message
     can originate either from a system or a user. If a message ID is provided instead of a
     Message instance, the function retrieves the corresponding Message object from the database.
     Similarly, the associated Simulation object is retrieved to enrich the payload with
