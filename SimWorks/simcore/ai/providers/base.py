@@ -16,6 +16,7 @@ from pydantic import TypeAdapter, Field, create_model
 from simcore.ai.schemas.output_types import (
     OutputMessageItem,
     OutputMetafieldItem,
+    FullOutputMetafieldItem,
 )
 # DTOs (single source of truth)
 from simcore.ai.schemas.types import (
@@ -128,7 +129,7 @@ class ProviderBase(ABC):
         slim_messages = TypeAdapter(list[OutputMessageItem]).validate_python(
             raw_messages if isinstance(raw_messages, list) else []
         )
-        slim_metadata = TypeAdapter(list[OutputMetafieldItem]).validate_python(
+        slim_metadata = TypeAdapter(list[FullOutputMetafieldItem]).validate_python(
             raw_metadata if isinstance(raw_metadata, list) else []
         )
 
