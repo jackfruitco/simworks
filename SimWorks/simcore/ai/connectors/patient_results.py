@@ -1,15 +1,17 @@
 # chatlab/ai/connectors/patient_results.py
 import logging
+import warnings
 from typing import Type
 
 from chatlab.ai.schemas import PatientResultsOutputSchema
 from chatlab.models import Message
+from chatlab.utils import broadcast_patient_results
 from simcore.ai import get_ai_client, PromptEngine
 from simcore.ai.promptkit import Prompt
 from simcore.ai.prompts.sections import PatientResultsSection
 from simcore.ai.schemas import StrictOutputSchema, LLMRequest, MessageItem, ToolItem, LLMResponse
 
-from simcore.models import Simulation
+from simcore.models import Simulation, LabResult, RadResult
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +76,26 @@ async def generate_patient_results(
         except AttributeError:
             logger.warning(f"received kwarg `{k}`, but no matching key found on {req.__class__.__name__} -- skipping")
 
-    resp = await client.send_request(req, simulation=sim, timeout=timeout)
+    resp: LLMResponse = await client.send_request(req, simulation=sim, timeout=timeout)
 
-    # No broadcast needed; metadata is refreshed via front-end HTMX-refresh once persisted to DB
+    results: list[LabResult | RadResult] = []
+    for md in resp.messages:
+        if md.db_pk and md.kind == "lab_result":
+            instance_ = await LabResult.objects.aget(pk=md.db_pk)
+            results.append(instance_)
+        if md.db_pk and md.kind == "rad_result":
+            # TODO -- skipping RadResult staging for broadcast until UI can handle this
+            logger.warning(
+                f"skipping RadResult with pk={md.db_pk}: UI does not support this yet",
+                NotImplementedError,
+                stacklevel=1
+            )
+
+    logger.debug(f"results staged for broadcast: {results}")
+    try:
+        # TODO this is ChatLab-specific and not appropriate for simcore.ai -- move to ChatLab/ai/connectors or move broadcast to ai/utils
+        await broadcast_patient_results(results)
+    except Exception as e:
+        logger.error(f"failed to broadcast results: {e}")
 
     return resp.model_dump() if as_dict else resp
