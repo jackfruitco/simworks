@@ -98,7 +98,7 @@ def _normalize(out: Optional[str]) -> Optional[str]:
         logger.debug("Normalize: None -> None")
         return None
     s = str(out).strip()
-    logger.debug("Normalize: %r...", s[:80])
+    logger.debug("Normalize: %s...", s[:300])
     return s or None
 
 
