@@ -10,7 +10,6 @@ from ...schemas.output_types import OutputGenericMetafield, OutputPatientHistory
 
 
 class OutputMetafieldItemOverride(StrictBaseModel):
-    generic_metadata: list[OutputGenericMetafield] = Field(...)
     patient_history: list[OutputPatientHistoryMetafield] = Field(...)
     patient_demographics: list[OutputPatientDemographicsMetafield] = Field(...)
     simulation_metadata: list[OutputSimulationMetafield] = Field(...)

@@ -32,11 +32,9 @@ class OpenAIProvider(ProviderBase):
         # Register tools adapter
         self.set_tool_adapter(OpenAIToolAdapter())
 
-
     @staticmethod
     def has_schema_overrides() -> bool:
         return True
-
 
     def normalize_output_instance(self, model_instance: Any) -> Any:
         # If model_instance.metadata is one of our provider override containers, flatten it
@@ -57,8 +55,21 @@ class OpenAIProvider(ProviderBase):
             except Exception:
                 pass
 
+            # Handle if metadata is a single override container
             if any(isinstance(metadata, t) for t in override_types if isinstance(t, type)):
                 flattened = metadata.flatten()
+                return model_instance.model_copy(update={"metadata": flattened})
+            # Handle if metadata is a list of override containers
+            if isinstance(metadata, list) and metadata and any(
+                isinstance(metadata[0], t) for t in override_types if isinstance(t, type)
+            ):
+                flattened = []
+                for item in metadata:
+                    for t in override_types:
+                        if isinstance(item, t):
+                            flattened.extend(item.flatten())
+                            break
+                        # else: skip
                 return model_instance.model_copy(update={"metadata": flattened})
         except Exception:
             # If flatten fails for any reason, just return the original instance
@@ -67,8 +78,9 @@ class OpenAIProvider(ProviderBase):
         return model_instance
 
     async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
-        logger.debug("provider `%s`:: received request call", self.name)
+        logger.debug("provider '%s':: received request call", self.name)
 
+        logger.debug(f"provider '{self.name}':: building output schema from {req.schema_cls}")
         schema: ResponseTextConfigParam | NotGiven = (
             build_output_schema(req.schema_cls) if req.schema_cls is not None
             else NOT_GIVEN
@@ -76,9 +88,9 @@ class OpenAIProvider(ProviderBase):
 
         native_tools = self._tools_to_provider(req.tools)
         if native_tools:
-            logger.debug("provider `%s`:: adapted tools: %s", self.name, native_tools)
+            logger.debug("provider '%s':: adapted tools: %s", self.name, native_tools)
         else:
-            logger.debug("provider `%s`:: no tools to adapt", self.name)
+            logger.debug("provider '%s':: no tools to adapt", self.name)
 
         input_ = [
             m.model_dump(include={"role", "content", "tool_calls"}, exclude_none=True)
@@ -96,7 +108,7 @@ class OpenAIProvider(ProviderBase):
             timeout=timeout or self.timeout or NOT_GIVEN,
             # temperature=req.temperature or NOT_GIVEN,
         )
-        logger.debug("provider `%s`:: received response\n(response:\t%s)", self.name, str(resp)[:200])
+        logger.debug("provider '%s':: received response\n(response:\t%s)", self.name, str(resp)[:1000])
 
         return self.adapt_response(resp, schema_cls=req.schema_cls)
 

@@ -88,10 +88,11 @@ OutputScenarioMetafield: type[StrictBaseModel] = project_from(
 )
 
 OutputMetafieldItem: TypeAlias = Annotated[
+    # TODO: consider renaming for clarity.
     Union[
-        OutputGenericMetafield,
+        # OutputGenericMetafield,
         OutputPatientHistoryMetafield,
-        OutputSimulationFeedbackMetafield,
+        # OutputSimulationFeedbackMetafield,
         OutputPatientDemographicsMetafield,
         OutputSimulationMetafield,
         OutputScenarioMetafield,
@@ -101,6 +102,21 @@ OutputMetafieldItem: TypeAlias = Annotated[
 
 OutputResultItem: TypeAlias = Annotated[
     Union[
+        OutputLabResultMetafield,
+        OutputRadResultMetafield,
+    ],
+    Field(discriminator="kind"),
+]
+
+FullOutputMetafieldItem = Annotated[
+    # all OutputMetafieldItem fields must be added here for slim validation in `adapt_response`
+    Union[
+        OutputGenericMetafield,
+        OutputPatientHistoryMetafield,
+        OutputSimulationFeedbackMetafield,
+        OutputPatientDemographicsMetafield,
+        OutputSimulationMetafield,
+        OutputScenarioMetafield,
         OutputLabResultMetafield,
         OutputRadResultMetafield,
     ],

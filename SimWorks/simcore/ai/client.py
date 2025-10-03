@@ -50,7 +50,12 @@ class AIClient:
             req.model = get_default_model()
 
         if self.provider.has_schema_overrides():
-            req.schema_cls = self.provider.override_schema(req.schema_cls)
+            logger.debug(f"client applying schema overrides for provider {self.provider}")
+            override_cls = self.provider.apply_schema_overrides(req.schema_cls)
+            logger.debug(
+                f"client applied schema overrides for provider {self.provider}: {override_cls}"
+            )
+            req.schema_cls = override_cls
 
         # Forward request to provider
         resp: LLMResponse = await self.provider.call(req, timeout)
