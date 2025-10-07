@@ -1,4 +1,4 @@
-# chatlab/ai/connectors/patient_results.py
+# simcore/ai/connectors/patient_results.py
 import logging
 import warnings
 from typing import Type

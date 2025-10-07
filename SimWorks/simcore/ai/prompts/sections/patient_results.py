@@ -4,12 +4,6 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from django.contrib.auth import get_user_model
-import inspect
-
-from django.contrib.auth.models import AnonymousUser
-
-from accounts.models import CustomUser
 from ...promptkit import PromptSection, register_section
 
 logger = logging.getLogger(__name__)
