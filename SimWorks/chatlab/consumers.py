@@ -162,11 +162,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         event_dispatch = {
             "client_ready": self.handle_client_ready,
-            # "message": self.handle_message,  # TODO Deprecated, use `chat.message_created` instead
-            # "chat.message": self.handle_message,  # TODO Deprecated, use `chat.message_created` instead
-            # "message.created": self.handle_message,  # TODO Deprecated, use `chat.message_created` instead
             "chat.message_created": self.handle_message,
-            # "feedback.created": self.handle_generic_event,  # TODO Deprecated, use `simulation.feedback_created` instead
             "simulation.feedback_created": self.handle_generic_event,
             "typing": self.handle_typing,
             "stopped_typing": self.handle_stopped_typing,

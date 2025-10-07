@@ -109,19 +109,11 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 } else if (data.type === 'error') {
                     alert(data.message);
                     window.location.href = data.redirect || "/";
-                } else if (data.type === 'feedback.created' || data.type === 'simulation.feedback_created') {
+                } else if (data.type === 'simulation.feedback_created') {
                     const html = data?.html;
                     const tool = data?.tool || 'simulation_feedback';
                     const elementId = `${tool.replaceAll('_', '-')}-tool`;
                     const simulationManager = window.simulationManager;
-
-                    if (data.type === 'feedback.created') {
-                        console.warn(
-                            "[ChatManager] DEPRECATED",
-                            "Received deprecated event type 'feedback.created'.",
-                            "Use 'simulation.feedback_created' instead."
-                        );
-                    }
 
                     if (html) {
                         simulationManager.refreshToolFromHTML(tool, html);
@@ -150,12 +142,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     }
                 // } else if (data.type === 'stopped_typing') {
                 //    this.updateTypingUsers(data, false)
-                } else if (
-                    data.type === 'chat.message'
-                    || data.type === 'message'
-                    || data.type === 'message.created'
-                    || data.type === 'chat.message_created'
-                ) {
+                } else if (data.type === 'chat.message_created') {
                     const isFromSelf = data.senderId === this.currentUser;
                     const isFromSimulatedUser = data.isFromAi;
                     const status = isFromSelf ? data.status || 'delivered' : null;
@@ -234,7 +221,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
             if (this.chatSocket.readyState === WebSocket.OPEN) {
                 this.chatSocket.send(JSON.stringify({
-                    type: 'message',
+                    type: 'chat.message_created',
                     content: message,
                     role: 'user',
                     status: 'sent'
