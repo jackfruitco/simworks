@@ -91,7 +91,17 @@ async def generate_patient_results(
                 stacklevel=1
             )
 
-    logger.debug(f"results staged for broadcast: {results}")
+    summary = [
+        {
+            "id": r.pk,
+            "key": getattr(r, "key", None),
+            # using the FK id attribute avoids a DB hit
+            "simulation_id": getattr(r, "simulation_id", None),
+            "model": r.__class__.__name__,
+        }
+        for r in results
+    ]
+    logger.debug("results staged for broadcast: %s", summary)
 
     try:
         # TODO this is ChatLab-specific and not appropriate for simcore.ai -- move to ChatLab/ai/connectors or move broadcast to ai/utils
