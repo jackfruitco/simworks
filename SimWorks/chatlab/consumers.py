@@ -162,11 +162,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         event_dispatch = {
             "client_ready": self.handle_client_ready,
-            # "message": self.handle_message,                       # TODO Deprecated -- use `chat.message_created` instead
-            # "chat.message": self.handle_message,                  # TODO Deprecated -- use `chat.message_created` instead
-            # "message.created": self.handle_message,               # TODO Deprecated --use `chat.message_created` instead
+            # "message": self.handle_message,  # TODO Deprecated, use `chat.message_created` instead
+            # "chat.message": self.handle_message,  # TODO Deprecated, use `chat.message_created` instead
+            # "message.created": self.handle_message,  # TODO Deprecated, use `chat.message_created` instead
             "chat.message_created": self.handle_message,
-            # "feedback.created": self.handle_generic_event,    # TODO Deprecated -- use `simulation.feedback_created` instead
+            # "feedback.created": self.handle_generic_event,  # TODO Deprecated, use `simulation.feedback_created` instead
             "simulation.feedback_created": self.handle_generic_event,
             "typing": self.handle_typing,
             "stopped_typing": self.handle_stopped_typing,
@@ -254,13 +254,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        # TODO deprecated -- remove before v0.8.0
-        # if data.get("event_type") in {"message", "chat.message"}:
-        #     warnings.warn(
-        #         "'message' event_type is deprecated. Use 'chat.message' instead.",
-        #         DeprecationWarning,
-        #         stacklevel=2,
-        #     )
+        # TODO deprecation warning
+        if data.get("event_type") in {"message", "chat.message"}:
+            warnings.warn(
+                "'message' event_type is deprecated. Use 'chat.message' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         is_from_user = data.get("role", "").upper() == "USER"
         content = data["content"]
