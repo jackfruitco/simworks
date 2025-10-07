@@ -17,6 +17,7 @@ def register_section(cls: Type[PromptSection]) -> Type[PromptSection]:
             weight = 10
             content = "..."
 
+    TODO rename to `register_prompt` or `register_prompt_section`
     """
     PromptRegistry.register(cls)
     return cls
