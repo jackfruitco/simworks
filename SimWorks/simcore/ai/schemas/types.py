@@ -44,7 +44,7 @@ class MessageItem(StrictBaseModel):
 # ---------- Metadata (DTO) ---------------------------------------------------------
 class BaseMetafield(StrictBaseModel):
     kind: str
-    key: str
+    key: str = Field(..., max_length=255)
     db_pk: Optional[int] = None
 
 
@@ -56,14 +56,14 @@ class GenericMetafield(BaseMetafield):
 
 class LabResultMetafield(BaseMetafield):
     kind: Literal["lab_result"]
-    panel_name: Optional[str] = None
-    result_name: str
-    result_value: str
-    result_unit: str
-    reference_range_low: str
-    reference_range_high: str
-    result_flag: str
-    result_comment: str
+    panel_name: Optional[str] = Field(...,max_length=100)
+    result_name: str = Field(...,)
+    result_value: str = Field(...,)
+    result_unit: Optional[str] = Field(...,max_length=20)
+    reference_range_low: Optional[str] = Field(..., max_length=50)
+    reference_range_high: Optional[str] = Field(..., max_length=50)
+    result_flag: Literal["normal", "abnormal"] = Field(..., max_length=20)
+    result_comment: Optional[str] = Field(..., max_length=500)
 
 
 class RadResultMetafield(BaseMetafield):

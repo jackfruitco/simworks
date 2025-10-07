@@ -79,7 +79,7 @@ async def generate_patient_results(
     resp: LLMResponse = await client.send_request(req, simulation=sim, timeout=timeout)
 
     results: list[LabResult | RadResult] = []
-    for md in resp.messages:
+    for md in resp.metadata:
         if md.db_pk and md.kind == "lab_result":
             instance_ = await LabResult.objects.aget(pk=md.db_pk)
             results.append(instance_)
@@ -92,6 +92,7 @@ async def generate_patient_results(
             )
 
     logger.debug(f"results staged for broadcast: {results}")
+
     try:
         # TODO this is ChatLab-specific and not appropriate for simcore.ai -- move to ChatLab/ai/connectors or move broadcast to ai/utils
         await broadcast_patient_results(results)

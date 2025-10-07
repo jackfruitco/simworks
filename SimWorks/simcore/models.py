@@ -519,10 +519,10 @@ class LabResult(SimulationMetadata):
     """Store a lab result for the specified simulation."""
 
     panel_name = models.CharField(max_length=100, null=True, blank=True)
-    result_unit = models.CharField(max_length=20)
-    reference_range_low = models.CharField(max_length=20)
-    reference_range_high = models.CharField(max_length=20)
-    result_flag = models.CharField(max_length=20)
+    result_unit = models.CharField(max_length=20, blank=True, null=True)
+    reference_range_low = models.CharField(max_length=50,blank=True, null=True)
+    reference_range_high = models.CharField(max_length=50, blank=True, null=True)
+    result_flag = models.CharField(max_length=20)               # Normal, Abnormal
     result_comment = models.TextField(blank=True, null=True)
 
     @property

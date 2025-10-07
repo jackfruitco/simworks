@@ -61,6 +61,13 @@ async def _upsert(model_cls, sim, *, key: str, value: str = "", **extra):
 
 async def _persist_lab_result(sim, meta):
     from simcore.models import LabResult
+
+    logger.debug(
+        "Persisting LabResult: unit=%r (len=%s) flag=%r (len=%s)",
+        meta.result_unit, (len(meta.result_unit) if isinstance(meta.result_unit, str) else None),
+        meta.result_flag, (len(meta.result_flag) if isinstance(meta.result_flag, str) else None),
+    )
+
     return await _upsert(
         LabResult,
         sim,
