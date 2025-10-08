@@ -60,7 +60,7 @@ class AIClient:
         # Forward request to provider
         resp: LLMResponse = await self.provider.call(req, timeout)
 
-        logger.debug(f"client received response:\n(response (post-adapt):\t{resp.model_dump_json()[:200]})")
+        logger.debug(f"client received response:\n(response (post-adapt):\t{resp.model_dump_json()[:500]})")
 
         if persist and simulation is not None:
             logger.debug(f"client persisting response for simulation {simulation.pk}")
@@ -68,7 +68,10 @@ class AIClient:
             await persist_all(resp, simulation)
             logger.debug(f"client persisted response for `Simulation` id {simulation.pk}")
 
-        logger.debug(f"client finished AI request cycle to provider: {self.provider}")
+        logger.debug(
+            f"client finished AI request cycle to provider: {self.provider}\n"
+            f"(response (post-persist):\t{resp.model_dump_json()[:500]})"
+        )
 
         return resp
 

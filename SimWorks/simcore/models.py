@@ -210,15 +210,22 @@ class Simulation(models.Model):
     async def aend(self):
         await sync_to_async(self.end)()
 
-    def generate_feedback(self):
-        from simai.tasks import generate_feedback as generate_feedback_task
+    def generate_feedback(self, legacy: bool=False):
+        if legacy:
+            from simai.tasks import generate_feedback as generate_feedback_task
 
-        func_name = "generate_feedback"
+            func_name = "generate_feedback"
 
-        try:
-            generate_feedback_task.delay(__simulation_id=self.pk)
-        except Exception as e:
-            logger.warning(f"[{func_name}] Celery task failed to enqueue: {e}")
+            try:
+                generate_feedback_task.delay(__simulation_id=self.pk)
+            except Exception as e:
+                logger.warning(f"[{func_name}] Celery task failed to enqueue: {e}")
+
+            return
+
+        from simcore.ai.tasks import call_connector
+        from simcore.ai.connectors import generate_endex_feedback
+        call_connector(generate_endex_feedback, simulation_id=self.pk)
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256

@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, List, Literal, Annotated, Union, TypeAli
 
 from pydantic import Field
 
-from .base import StrictBaseModel
+from .base import StrictBaseModel, Boolish
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +56,10 @@ class GenericMetafield(BaseMetafield):
 
 class LabResultMetafield(BaseMetafield):
     kind: Literal["lab_result"]
-    panel_name: Optional[str] = Field(...,max_length=100)
-    result_name: str = Field(...,)
-    result_value: str = Field(...,)
-    result_unit: Optional[str] = Field(...,max_length=20)
+    panel_name: Optional[str] = Field(..., max_length=100)
+    result_name: str = Field(..., )
+    result_value: str = Field(..., )
+    result_unit: Optional[str] = Field(..., max_length=20)
     reference_range_low: Optional[str] = Field(..., max_length=50)
     reference_range_high: Optional[str] = Field(..., max_length=50)
     result_flag: Literal["normal", "abnormal"] = Field(..., max_length=20)
@@ -79,11 +79,6 @@ class PatientHistoryMetafield(BaseMetafield):
     duration: str
 
 
-class SimulationFeedbackMetafield(BaseMetafield):
-    kind: Literal["simulation_feedback"]
-    value: str
-
-
 class PatientDemographicsMetafield(BaseMetafield):
     kind: Literal["patient_demographics"]
     value: str
@@ -99,16 +94,47 @@ class ScenarioMetafield(BaseMetafield):
     value: str
 
 
+class FeedbackMetafieldBase(BaseMetafield):
+    kind: Literal["simulation_feedback"]
+
+
+class CorrectDiagnosisFeedback(FeedbackMetafieldBase):
+    kind: Literal["correct_diagnosis"]
+    key: Literal["correct_diagnosis"]
+    value: Boolish = Field(..., max_length=5)
+
+
+class CorrectTreatmentPlanFeedback(FeedbackMetafieldBase):
+    kind: Literal["correct_treatment_plan"]
+    key: Literal["correct_treatment_plan"]
+    value: Boolish = Field(..., max_length=5)
+
+
+class PatientExperienceFeedback(FeedbackMetafieldBase):
+    kind: Literal["patient_experience"]
+    key: Literal["patient_experience"]
+    value: Annotated[int, Field(ge=0, le=5)] = Field(...)
+
+
+class OverallFeedbackMetafield(FeedbackMetafieldBase):
+    kind: Literal["overall_feedback"]
+    key: Literal["overall_feedback"]
+    value: str = Field(..., max_length=1000)
+
+
 MetafieldItem: TypeAlias = Annotated[
     Union[
         GenericMetafield,
         LabResultMetafield,
         RadResultMetafield,
         PatientHistoryMetafield,
-        SimulationFeedbackMetafield,
         PatientDemographicsMetafield,
         SimulationMetafield,
         ScenarioMetafield,
+        CorrectDiagnosisFeedback,
+        CorrectTreatmentPlanFeedback,
+        PatientExperienceFeedback,
+        OverallFeedbackMetafield,
     ],
     Field(discriminator="kind"),
 ]

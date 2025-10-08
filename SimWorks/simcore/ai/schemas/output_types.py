@@ -13,10 +13,12 @@ from .types import (
     LabResultMetafield,
     RadResultMetafield,
     PatientHistoryMetafield,
-    SimulationFeedbackMetafield,
     PatientDemographicsMetafield,
     SimulationMetafield,
     ScenarioMetafield,
+    CorrectDiagnosisFeedback,
+    CorrectTreatmentPlanFeedback,
+    PatientExperienceFeedback, OverallFeedbackMetafield,
 )
 
 # Messages: only expose what the LLM should output
@@ -63,12 +65,6 @@ OutputPatientHistoryMetafield: type[StrictBaseModel] = project_from(
     name="OutputPatientHistoryMetafield",
 )
 
-OutputSimulationFeedbackMetafield: type[StrictBaseModel] = project_from(
-    SimulationFeedbackMetafield,
-    include=("kind", "key", "value"),
-    name="OutputSimulationFeedbackMetafield",
-)
-
 OutputPatientDemographicsMetafield: type[StrictBaseModel] = project_from(
     PatientDemographicsMetafield,
     include=("kind", "key", "value"),
@@ -100,6 +96,40 @@ OutputMetafieldItem: TypeAlias = Annotated[
     Field(discriminator="kind"),
 ]
 
+OutputCorrectDiagnosisFeedback: type[StrictBaseModel] = project_from(
+    CorrectDiagnosisFeedback,
+    include=("kind", "key", "value"),
+    name="OutputCorrectDiagnosisFeedbackMetafield",
+)
+
+OutputCorrectTreatmentPlanFeedback: type[StrictBaseModel] = project_from(
+    CorrectTreatmentPlanFeedback,
+    include=("kind", "key", "value"),
+    name="OutputCorrectTreatmentPlanFeedbackMetafield",
+)
+
+OutputPatientExperienceFeedback: type[StrictBaseModel] = project_from(
+    PatientExperienceFeedback,
+    include=("kind", "key", "value"),
+    name="OutputPatientExperienceMetafield",
+)
+
+OutputOverallFeedback: type[StrictBaseModel] = project_from(
+    OverallFeedbackMetafield,
+    include=("kind", "key", "value"),
+    name="OutputOverallFeedbackMetafield",
+)
+
+OutputFeedbackEndexItem: TypeAlias = Annotated[
+    Union[
+        OutputCorrectDiagnosisFeedback,
+        OutputCorrectTreatmentPlanFeedback,
+        OutputPatientExperienceFeedback,
+        OutputOverallFeedback,
+    ],
+    Field(discriminator="kind"),
+]
+
 OutputResultItem: TypeAlias = Annotated[
     Union[
         OutputLabResultMetafield,
@@ -113,12 +143,12 @@ FullOutputMetafieldItem: TypeAlias = Annotated[
     Union[
         OutputGenericMetafield,
         OutputPatientHistoryMetafield,
-        OutputSimulationFeedbackMetafield,
         OutputPatientDemographicsMetafield,
         OutputSimulationMetafield,
         OutputScenarioMetafield,
         OutputLabResultMetafield,
         OutputRadResultMetafield,
+        OutputFeedbackEndexItem,
     ],
     Field(discriminator="kind"),
 ]
