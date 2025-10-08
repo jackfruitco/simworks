@@ -20,10 +20,13 @@ from simcore.ai.schemas.types import (
     LabResultMetafield,
     RadResultMetafield,
     PatientHistoryMetafield,
-    SimulationFeedbackMetafield,
     PatientDemographicsMetafield,
     SimulationMetafield,
     ScenarioMetafield,
+    CorrectDiagnosisFeedback,
+    CorrectTreatmentPlanFeedback,
+    PatientExperienceFeedback,
+    OverallFeedbackMetafield,
 )
 
 if TYPE_CHECKING:
@@ -63,7 +66,7 @@ async def _persist_lab_result(sim, meta):
     from simcore.models import LabResult
 
     logger.debug(
-        f"Persisting LabResult: {meta.get("value")}",
+        f"Persisting LabResult: {getattr(meta, "value", None)}",
     )
 
     return await _upsert(
@@ -134,11 +137,14 @@ def _register(meta_cls: Type[Any], handler: Callable[[Any, Any], Awaitable[Any]]
 _register(LabResultMetafield, _persist_lab_result)
 _register(RadResultMetafield, _persist_rad_result)
 _register(PatientHistoryMetafield, _persist_patient_history)
-_register(SimulationFeedbackMetafield, _persist_feedback)
 _register(PatientDemographicsMetafield, _persist_demographics)
 _register(SimulationMetafield, _persist_sim_kv)
 _register(ScenarioMetafield, _persist_scenario)
 _register(GenericMetafield, _persist_sim_kv)  # generic fallback
+_register(CorrectDiagnosisFeedback, _persist_feedback)
+_register(CorrectTreatmentPlanFeedback, _persist_feedback)
+_register(PatientExperienceFeedback, _persist_feedback)
+_register(OverallFeedbackMetafield, _persist_feedback)
 
 
 async def _resolve_system_user() -> "User":
@@ -359,11 +365,11 @@ async def persist_all(response: LLMResponse, simulation: Any):
                     logger.exception("failed to persist attachment! %r", a)
 
     # Persist metadata
-    for mf in response.metadata:
+    for metafield in response.metadata:
         try:
-            await persist_metadata(simulation, mf)
+            await persist_metadata(simulation, metafield)
         except Exception:
-            logger.exception("failed to persist metafield! %r", mf)
+            logger.exception("failed to persist metafield! %r", metafield)
 
     # Persist the response itself
     try:
