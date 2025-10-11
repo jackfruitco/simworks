@@ -26,6 +26,9 @@
 <body class="background"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 
+    {# Context attributes block - use html `data-` attributes #}
+    <div id="context" {% block context_attrs %}{% endblock %}></div>
+
     {% block header %}{% include 'partials/header.html' %}{% endblock %}
     {% block toasts %}<div id="toast-container"></div>{% endblock %}
     {% block notifications %}{% include 'partials/notifications.html' %}{% endblock %}

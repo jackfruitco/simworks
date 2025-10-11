@@ -11,6 +11,13 @@
     {{ block.super }}
 {% endblock head-scripts %}
 
+{% block context_attrs %}
+    {{ block.super }}
+    data-feedback-continuation="{{ feedback_continuation|yesno:'true,false' }}"
+    data-is-chat-locked="{{ simulation.simulation_locked|yesno:'true,false' }}"
+    data-sim-id="{{ simulation.id }}"
+{% endblock context_attrs %}
+
 {% block content %}
     <div id="simulation-container" class="sim-wrapper">
 

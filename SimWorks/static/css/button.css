@@ -1,4 +1,4 @@
-#button, .button, .btn {
+    #button, .button, .btn {
   display: inline-block;
   background-color: var(--jckfrt-btn-alt)!important;
   color: var(--color-text-light)!important;

@@ -150,15 +150,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
         :return: None
         """
         func_name = inspect.currentframe().f_code.co_name
-
-        # Check if simulation has ended or timed out
-        if await self.is_simulation_ended(self.simulation):
-            return
-
-        # Parse the incoming data
+        # Parse the incoming data first
         data = json.loads(text_data)
         event_type = data.get("type")
         ChatConsumer.log(func_name, f"{event_type} event received: {data}")
+
+        # Gate by simulation state
+        ended = await self.is_simulation_ended(self.simulation)
+        if ended:
+            # Always allow lightweight client lifecycle and typing signals
+            allowed_when_ended = {"client_ready", "typing", "stopped_typing"}
+            # Also allow instructor/feedback messages to continue after end
+            is_feedback_chat = event_type == "chat.message_created" and data.get("feedbackConversation") is True
+            if event_type not in allowed_when_ended and not is_feedback_chat:
+                ChatConsumer.log(func_name, f"dropping '{event_type}' because simulation has ended", level=logging.INFO)
+                return
 
         event_dispatch = {
             "client_ready": self.handle_client_ready,
@@ -193,16 +199,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
             the appropriate message.
 
         """
-        # Set preferred content mode
-        await self.handle_content_mode(data.get("content_mode"))
+        # Set preferred content mode (support both content_mode and contentMode)
+        await self.handle_content_mode(data.get("content_mode") or data.get("contentMode"))
 
     async def _generate_patient_response(self, user_msg: Message) -> LLMResponse:
         """Generate patient response."""
-        from simcore.ai.tasks.dispatch import acall_connector
+        from simcore.ai.tasks import acall_connector
         from chatlab.ai.connectors import generate_patient_reply
 
         return await acall_connector(
             generate_patient_reply,
+            simulation_id=self.simulation.pk,
+            user_msg=user_msg,
+            enqueue=False
+        )
+
+    async def _generate_stitch_response(self, user_msg: Message) -> LLMResponse:
+        """Generate a response from Stitch for feedback conversations."""
+        from simcore.ai.tasks import acall_connector
+        from simcore.ai.connectors import generate_hotwash_response
+
+        return await acall_connector(
+            generate_hotwash_response,
             simulation_id=self.simulation.pk,
             user_msg=user_msg,
             enqueue=False
@@ -259,6 +277,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
 
         is_from_user = data.get("role", "").upper() == "USER"
+
         content = data["content"]
         sender = self.scope["user"]
 
@@ -277,6 +296,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Simulate the user message as delivered once saved to the database
             # TODO [FEAT]: consider v0.8.1
             # await self.broadcast_message_status(user_msg.id, "delivered")
+
+            feedback_conversation = data.get("feedbackConversation")
+            logger.debug(f"Consumer received message with conversation type: {feedback_conversation}")
+
+            if feedback_conversation:
+                await self._generate_stitch_response(user_msg)
+                return
 
             await self._generate_patient_response(user_msg)
 

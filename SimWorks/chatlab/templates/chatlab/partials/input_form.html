@@ -2,7 +2,10 @@
 
 <form id="chat-form"
     @submit.prevent="sendMessage"
-    x-data="{ isLocked: {{ simulation.is_ended|yesno:'true,false' }} }"
+    x-data="{
+        isLocked: {{ simulation_locked|yesno:'true,false' }},
+        isFeedbackContinuation: {{ feedback_continuation|yesno:'true,false' }},
+        }"
 >
   <button type="button" id="emoji-button" title="Emoji" class="emoji-button hide-small">
         <span class="iconify chat-icon" data-icon="fa6-regular:face-smile" data-inline="false"></span>
@@ -13,7 +16,13 @@
     x-ref="messageInput"
     x-on:input="$refs.messageInput.style.height = 'auto'; $refs.messageInput.style.height = $refs.messageInput.scrollHeight + 'px'"
     :disabled="isLocked"
-    :placeholder="isLocked ? 'Simulation locked.' : 'Message'"
+    :placeholder="
+        isLocked
+            ? 'Simulation locked — Chat is now read-only'
+            : isFeedbackContinuation
+                ? 'Message Stitch to continue feedback conversation'
+                : 'Message'
+    "
     @input="notifyTyping"
     rows="1"
     style="resize: none"
