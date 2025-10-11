@@ -6,5 +6,6 @@ __all__ = [
     "UserHistorySection",
     "PatientNameSection",
     "PatientResultsSection",
-    "FeedbackEndexSection",
+    "HotwashInitialSection",
+    "HotwashContinuationSection",
 ]

@@ -4,12 +4,13 @@ from .modifiers import (
     PatientNameSection
 )
 from .patient_results import PatientResultsSection
-from .feedback import FeedbackEndexSection
+from .feedback import HotwashInitialSection, HotwashContinuationSection
 
 __all__ = [
     "UserRoleSection",
     "UserHistorySection",
     "PatientNameSection",
     "PatientResultsSection",
-    "FeedbackEndexSection",
+    "HotwashInitialSection",
+    "HotwashContinuationSection",
 ]

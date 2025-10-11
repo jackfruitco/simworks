@@ -235,7 +235,7 @@ class ProviderBase(ABC):
             # fallback to string annotation slice if available
             logger.debug(f"no inner token found for `{field_name}` or found 'Union' - trying string annotation slice")
             try:
-                ann_str = schema_cls.__annotations__[field_name]  # with __future__ annotations, this is str
+                ann_str = schema_cls.__annotations__[field_name]
                 m = re.search(r"\[([\w\.]+)\]", ann_str)
                 if m:
                     name = m.group(1)

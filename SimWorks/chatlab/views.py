@@ -128,6 +128,23 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
         "simulation_locked": simulation.is_complete,
     }
 
+    # Checks for feedback continuation -
+    #   If a simulation has ended, but the user requests to continue feedback discussion,
+    #   a request will be made to run_simulation with feedback_continue_conversation=True
+    #   This will override the simulation lock to allow user's to type in the chat window.
+    val = request.GET.get("feedback_continue_conversation", "").lower()
+    feedback_continuation = val in ("true", "1", "yes", "on")
+
+    if feedback_continuation:
+        context["simulation_locked"] = False
+        context["feedback_continuation"] = True
+
+        logger.debug(
+            "Simulation pk=%s: user requesting feedback continuation. "
+            "Overriding context (simulation_locked=%s, feedback_continuation=%s)",
+            simulation_id, context["simulation_locked"], context["feedback_continuation"],
+        )
+
     return await sync_to_async(render)(request, "chatlab/simulation.html", context)
 
 

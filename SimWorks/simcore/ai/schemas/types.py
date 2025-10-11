@@ -119,7 +119,7 @@ class PatientExperienceFeedback(FeedbackMetafieldBase):
 class OverallFeedbackMetafield(FeedbackMetafieldBase):
     kind: Literal["overall_feedback"]
     key: Literal["overall_feedback"]
-    value: str = Field(..., max_length=1000)
+    value: str = Field(...) #, max_length=1250)
 
 
 MetafieldItem: TypeAlias = Annotated[

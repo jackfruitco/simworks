@@ -239,16 +239,23 @@ async def broadcast_patient_results(
     return
 
 
-async def broadcast_message(message: Message | int, status: str = None) -> None:
+async def broadcast_message(
+        message: Message | int,
+        status: str = None,
+        **kwargs,
+) -> None:
     """Broadcasts a message event to the specified group layer.
 
     Uses `socket_send` to send the event payload to the specified group.
 
-    The message
-    can originate either from a system or a user. If a message ID is provided instead of a
-    Message instance, the function retrieves the corresponding Message object from the database.
-    Similarly, the associated Simulation object is retrieved to enrich the payload with
-    additional details like sender information and simulation-specific identifiers.
+    The message can originate either from a system or a user.
+
+    If a message ID is provided instead of a Message instance, the function retrieves the corresponding Message object
+    from the database. Similarly, the associated Simulation object is retrieved to enrich the payload with additional
+    details like sender information and simulation-specific identifiers.
+
+    Optionally, include display_name in kwargs to override the sender's display name, which defaults to the simulated
+    patient's display name per the Simulation object, or the user's full name if the sender is a user.
 
     The payload generated contains relevant metadata about the message, such as the sender's
     information, display details, media attachments, and the message type. The data is then
@@ -292,8 +299,8 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
         display_initials = get_user_initials(message.sender)
     else:
         sender_username = "System"
-        display_name = simulation.sim_patient_display_name
-        display_initials = simulation.sim_patient_initials
+        display_name = kwargs.get("display_name", simulation.sim_patient_display_name)
+        display_initials = kwargs.get("display_name", simulation.sim_patient_initials)
 
     media_list = message.media.all()
     _media = [
@@ -327,7 +334,8 @@ async def broadcast_message(message: Message | int, status: str = None) -> None:
 
 async def broadcast_chat_message(message: Message | int, status: str = None):
     """Broadcasts a message to all connected clients."""
-    warnings.warn(DeprecationWarning("Use `broadcast_message` instead."))
+    # warnings.warn(DeprecationWarning("Use `broadcast_message` instead."))
+    raise DeprecationWarning("Use `broadcast_message` instead.")
 
     func_name = inspect.currentframe().f_code.co_name
 

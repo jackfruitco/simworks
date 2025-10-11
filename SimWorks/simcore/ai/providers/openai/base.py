@@ -11,9 +11,11 @@ from openai.types.responses.response_output_item import ImageGenerationCall
 
 from simcore.ai import build_output_schema
 from simcore.ai.providers.base import ProviderBase
-from simcore.ai.providers.openai.schema_overrides import OutputMetafieldItemOverride, OutputResultItemOverride
+from simcore.ai.providers.openai.schema_overrides import OutputMetafieldItemOverride, OutputResultItemOverride, \
+    OutputFeedbackEndexItemOverride
 from simcore.ai.providers.openai.tools import OpenAIToolAdapter
 from simcore.ai.schemas import LLMRequest, LLMResponse, AttachmentItem
+from simcore.ai.schemas.output import OutputFeedbackSchema
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +48,15 @@ class OpenAIProvider(ProviderBase):
         # Import locally to avoid reference errors if overrides move to a separate module
         try:
             override_types = []
-            try:
-                override_types.append(OutputMetafieldItemOverride)
-            except Exception:
-                pass
-            try:
-                override_types.append(OutputResultItemOverride)
-            except Exception:
-                pass
+            for name in (
+                    "OutputMetafieldItemOverride",
+                    "OutputResultItemOverride",
+                    "OutputFeedbackEndexItemOverride",
+            ):
+                try:
+                    override_types.append(globals()[name])  # or use getattr(module, name)
+                except KeyError:
+                    pass
 
             # Handle if metadata is a single override container
             if any(isinstance(metadata, t) for t in override_types if isinstance(t, type)):

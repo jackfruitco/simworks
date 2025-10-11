@@ -154,9 +154,10 @@ async def _resolve_system_user() -> "User":
 async def _map_user(role: str, sim: "Simulation") -> tuple[str, "User", str | None]:
     # Map normalized roles to ChatLab DB choices
     r = (role or "").lower()
-    if r in {"assistant", "developer", "system", "patient"}:
+    if r in {"assistant", "developer", "system", "patient", "instructor"}:
         # return example: ("A", <User: System>, "John D.")
-        return "A", await _resolve_system_user(), sim.sim_patient_display_name
+        display_name = "Stitch" if r == "instructor" else sim.sim_patient_display_name
+        return "A", await _resolve_system_user(), display_name
     # return example: ("U", <User: John D.>)
     return "U", sim.user, None
 

@@ -25,7 +25,7 @@ from .types import (
 OutputMessageItem: type[StrictBaseModel] = project_from(
     MessageItem,
     include=("role", "content"),
-    overrides={"role": Literal["patient"]},
+    overrides={"role": Literal["patient", "instructor"]},
     name="OutputMessageItem",
 )
 

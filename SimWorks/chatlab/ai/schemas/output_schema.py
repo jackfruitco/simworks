@@ -35,10 +35,3 @@ class PatientReplyOutputSchema(StrictOutputSchema):
 class PatientResultsOutputSchema(StrictOutputSchema):
     metadata: list[OutputResultItem] = Field(...)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
-
-
-class SimulationFeedbackOutputSchema(StrictOutputSchema):
-    correct_diagnosis: Boolish = Field(...)
-    correct_treatment_plan: Boolish = Field(...)
-    patient_experience: int = Field(..., ge=0, le=5)
-    overall_feedback: str = Field(...)
