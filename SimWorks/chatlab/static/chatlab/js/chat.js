@@ -11,6 +11,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         systemDisplayInitials: '',
         systemDisplayName: '',
         checksum: null,
+        feedbackContinueConversation: false,
+        isChatLocked: false,
         init() {
             this.messageInput = document.getElementById('chat-message-input');
             this.messageForm = document.getElementById('chat-form');
@@ -20,11 +22,19 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
             this.newMessageBtn = document.getElementById('new-message-btn');
 
+            // Get DOM data attributes
+            const simulationContext = document.getElementById('context');
+            this.feedbackContinueConversation = simulationContext?.dataset.feedbackContinuation === 'true';
+            this.isChatLocked = simulationContext?.dataset.isChatLocked === 'true';
+
             // Determines whether to request full HTML, raw text, or notification
             this.contentMode = 'fullHtml';
             // this.content_mode = 'rawText';
             // this.content_mode = 'trigger';
 
+            // TODO: split socket into channels for chat and simulation events
+            // only initialize chat socket is simulation is not locked
+            // simulation socket should remain open for event notifications
             this.initializeWebSocket();
             this.setupEventListeners();
             this.loadOlderMessages();
@@ -92,7 +102,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             this.chatSocket.onopen = () => {
                 const contentMode = this.contentMode || 'fullHtml';
                 console.log('WebSocket connection established');
-                this.chatSocket.send(JSON.stringify({ type: 'client_ready', 'contentMode': contentMode }));
+                this.chatSocket.send(JSON.stringify({ type: 'client_ready', 'content_mode': contentMode }));
             };
 
             this.chatSocket.onmessage = (event) => {
@@ -109,17 +119,30 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 } else if (data.type === 'error') {
                     alert(data.message);
                     window.location.href = data.redirect || "/";
-                } else if (data.type === 'simulation.feedback_created') {
+                } else if (
+                    data.type === 'simulation.feedback_created' ||
+                    data.type === 'simulation.hotwash.created') {
                     const html = data?.html;
                     const tool = data?.tool || 'simulation_feedback';
-                    const elementId = `${tool.replaceAll('_', '-')}-tool`;
                     const simulationManager = window.simulationManager;
-
-                    if (html) {
-                        simulationManager.refreshToolFromHTML(tool, html);
-                    } else {
-                        simulationManager.checkTools([tool], true);
+                    try {
+                        if (simulationManager) {
+                            if (html) {
+                                simulationManager.refreshToolFromHTML(tool, html);
+                            } else {
+                                simulationManager.checkTools([tool], true);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("[ChatManager] Tool refresh/check failed:", e);
                     }
+                } else if (
+                    data.type === 'simulation.feedback.continue_conversation' ||
+                    data.type === `simulation.hotwash.continue_conversation`
+                ) {
+                    // TODO: unlock chat
+                    this.feedbackContinueConversation = true;
+
                 } else if (data.type === 'message_status_update') {
                     const existing = this.messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
                     if (existing) {
@@ -134,30 +157,31 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                             }
                         }
                     }
-                    return;
                 } else if (data.type === 'typing' || data.type === 'stopped_typing') {
                     const startedTyping = data.type === 'typing';
                     if (data.username !== this.currentUser) {
                         this.updateTypingUsers(data, startedTyping)
                     }
-                // } else if (data.type === 'stopped_typing') {
-                //    this.updateTypingUsers(data, false)
                 } else if (data.type === 'chat.message_created') {
                     const isFromSelf = data.senderId === this.currentUser;
-                    const isFromSimulatedUser = data.isFromAi;
+                    const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? false;
                     const status = isFromSelf ? data.status || 'delivered' : null;
-                    const displayName = data.display_name || data.username || 'Unknown';
+                    const displayName = data.display_name || data.displayName || data.username || 'Unknown';
 
                     // If not from the current user, stop simulated system typing and refresh tools
                     if (isFromSimulatedUser) {
                         this.simulateSystemTyping(false);
 
-                        // Check if tools new current, and refresh if not
-                        if (window.window.simulationManager) {
-                            window.window.simulationManager.checkTools([
-                                'simulation_metadata',
-                                'patient_history'
-                            ]);
+                        // Check if tools need current, and refresh if not
+                        if (window.simulationManager) {
+                            try {
+                                window.simulationManager.checkTools([
+                                    'simulation_metadata',
+                                    'patient_history'
+                                ]);
+                            } catch (e) {
+                                console.warn("[ChatManager] checkTools failed:", e);
+                            }
                         }
 
                         // Sidebar pulse stuff
@@ -187,7 +211,16 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
                     // Append message to chat-panel
                     console.debug("[ChatManager]", {content, isFromSelf, status, displayName});
-                    this.appendMessage(content, isFromSelf, status, displayName, data.id, data.mediaList ?? []);
+                    const isFeedbackConversation = !!data.feedbackConversation;
+                    this.appendMessage(
+                        content,
+                        isFromSelf,
+                        isFeedbackConversation,
+                        status,
+                        displayName,
+                        data.id,
+                        data.mediaList ?? []
+                    );
                     if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
                         this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
                     }
@@ -224,14 +257,16 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     type: 'chat.message_created',
                     content: message,
                     role: 'user',
-                    status: 'sent'
+                    status: 'sent',
+                    feedbackConversation: this.feedbackContinueConversation,
                 }));
 
                 this.appendMessage(
                     message,
                     true,
+                    this.feedbackContinueConversation,
                     '', // no initial status
-                    this.currentUser
+                    this.currentUser,
                 );
 
                 this.messageText = '';
@@ -246,15 +281,24 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 alert('WebSocket is not connected. Please wait and try again.');
             }
         },
-        appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
-            console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName });
+        appendMessage(content,
+                      isFromSelf,
+                      isFeedbackConversation,
+                      status = "",
+                      displayName = "",
+                      messageId = null,
+                      mediaList = [],
+        ) {
+            console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName, isFeedbackConversation });
 
             content = this._coerceContent(content);
             status = status || "";
 
             if (this._isDuplicateMessage(content, messageId)) return;
 
-            if (!isFromSelf) displayName = this.systemDisplayName;
+            if (!isFromSelf && displayName === "") {
+                displayName = this.systemDisplayName;
+            }
 
             const bubble = this._buildMessageBubble(content, isFromSelf, displayName, status, mediaList);
             if (messageId) bubble.dataset.messageId = messageId;
@@ -347,96 +391,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 this.newMessageBtn.classList.remove('hidden', 'bounce');
                 this.newMessageBtn.classList.add('bounce');
                 setTimeout(() => this.newMessageBtn.classList.remove('bounce'), 1000);
-            }
-        },
-        appendMessageV1(
-            content,
-            isSender,
-            status = "",
-            displayName = "",
-            messageId = null
-        ) {
-            console.warn("[appendMessageV1] DEPRECATED", "Use appendMessage instead.");
-
-            if (typeof content === 'string') {
-                try {
-                    if (content.startsWith('"') && content.endsWith('"')) {
-                        content = JSON.parse(content);
-                    }
-                } catch (e) {
-                    console.warn("Failed to parse message content", e);
-                }
-            }
-
-            status = status || "";
-            content = this.escapeHtml(content);
-
-            let existing = null;
-
-            if (messageId) {
-                existing = this.messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
-            }
-
-            if (!existing && content) {
-                existing = Array.from(this.messagesDiv.children).find(div =>
-                    div.textContent.includes(content)
-                );
-                if (existing && messageId) {
-                    existing.dataset.messageId = messageId;
-                }
-            }
-
-            if (existing) {
-                console.debug("[appendMessageV1] Skipping duplicate message", messageId || "(no id)");
-                return;
-            }
-
-            // Ensure a standardized displayName for the Sim System User
-            if (!isSender) { displayName = this.systemDisplayName; }
-
-            const wasAtBottom = this.isScrolledToBottom();
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `chat-bubble ${isSender ? 'outgoing' : 'incoming'}`;
-            messageDiv.innerHTML = `
-                ${!isSender ? `<strong class="sender-name">${this.escapeHtml(displayName)}</strong>` : ''}
-                ${content}
-                <div class="timestamp">
-                    <span class="bubble-time">
-                        ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
-                    </span>
-                    ${
-                        isSender
-                            ? `<span class="status-icons" x-data="{ delivered: ${!!status}, read: ${status === 'read'} }">
-                                <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
-                                <span class="iconify status-icon read-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="read"></span>
-                            </span>`
-                            : ''
-                    }
-                </div>
-            `;
-
-            if (messageId) {
-                messageDiv.dataset.messageId = messageId;
-            }
-
-            this.messagesDiv.appendChild(messageDiv);
-
-            if (isSender) {
-                this.messagesDiv.scrollTo({
-                    top: this.messagesDiv.scrollHeight,
-                    behavior: 'smooth'
-                });
-            } else if (wasAtBottom) {
-                this.messagesDiv.scrollTo({
-                    top: this.messagesDiv.scrollHeight,
-                    behavior: 'smooth'
-                });
-            } else {
-                this.newMessageBtn.classList.remove('hidden');
-                this.newMessageBtn.classList.add('bounce');
-                setTimeout(() => {
-                  this.newMessageBtn.classList.remove('bounce');
-                }, 1000);
             }
         },
         escapeHtml(unsafe) {

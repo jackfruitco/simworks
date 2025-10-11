@@ -300,7 +300,7 @@ async def broadcast_message(
     else:
         sender_username = "System"
         display_name = kwargs.get("display_name", simulation.sim_patient_display_name)
-        display_initials = kwargs.get("display_name", simulation.sim_patient_initials)
+        display_initials = kwargs.get("display_name", "")[:1] or simulation.sim_patient_initials
 
     media_list = message.media.all()
     _media = [
