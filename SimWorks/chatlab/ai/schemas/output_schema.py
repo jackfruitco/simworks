@@ -4,13 +4,13 @@ from typing import Any, get_args, get_origin
 
 from pydantic import Field, create_model
 
-from simcore.ai.schemas import (
+from simcore.ai_v1.schemas import (
     StrictOutputSchema,
     Boolish,
     OutputMessageItem,
     OutputMetafieldItem,
 )
-from simcore.ai.schemas.output_types import OutputResultItem
+from simcore.ai_v1.schemas.output_types import OutputResultItem
 
 
 class LLMConditionsCheckItem(StrictOutputSchema):

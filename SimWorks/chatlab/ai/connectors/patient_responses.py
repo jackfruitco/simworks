@@ -1,13 +1,13 @@
-# chatlab/ai/connectors/patient_responses.py
+# chatlab/ai_v1/connectors/patient_responses.py
 import logging
 from typing import Type
 
 from chatlab.models import Message
 from chatlab.utils import broadcast_message
 from core.utils import remove_null_keys
-from simcore.ai import get_ai_client
-from simcore.ai.schemas import StrictOutputSchema, MessageItem, LLMResponse, LLMRequest, ToolItem
-from simcore.ai.schemas.tools import ImageGenerationTool
+from simcore.ai_v1 import get_ai_client
+from simcore.ai_v1.schemas import StrictOutputSchema, MessageItem, LLMResponse, LLMRequest, ToolItem
+from simcore.ai_v1.schemas.tools import ImageGenerationTool
 from simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ async def _build_messages_and_schema(
             return msgs, Schema
 
         case "image":
-            from simcore.ai.promptkit import PromptEngine, Prompt
+            from simcore.ai_v1.promptkit import PromptEngine, Prompt
             from ..prompts import ImageSection
 
             p: Prompt = await PromptEngine.abuild_from(ImageSection)
@@ -140,7 +140,7 @@ async def _generate_patient_response(
     if getattr(resp, "image_requested", None):
         logger.debug("image requested -- starting image generation.")
 
-        from simcore.ai.tasks.dispatch import acall_connector
+        from simcore.ai_v1.tasks.dispatch import acall_connector
         await acall_connector(
             generate_patient_image,
             simulation_id=simulation_id,

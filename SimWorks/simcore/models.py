@@ -21,8 +21,8 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
-from simcore.ai.promptkit import Prompt as PromptDTO
-from simcore.ai.prompts.sections.modifiers import UserRoleSection, UserHistorySection
+from simcore.ai_v1.promptkit import Prompt as PromptDTO
+from simcore.ai_v1.prompts.sections.modifiers import UserRoleSection, UserHistorySection
 from simcore.utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class Simulation(models.Model):
         help_text="The prompt to use as AI instructions",
     )
 
-    # used for new simulations that use prompt_v3 (simcore.ai.promptkit)
+    # used for new simulations that use prompt_v3 (simcore.ai_v1.promptkit)
     prompt_instruction = models.TextField(
         help_text="The prompt to use as AI instructions",
         default="",
@@ -223,8 +223,8 @@ class Simulation(models.Model):
 
             return
 
-        from simcore.ai.tasks import call_connector
-        from simcore.ai.connectors import generate_endex_feedback
+        from simcore.ai_v1.tasks import call_connector
+        from simcore.ai_v1.connectors import generate_endex_feedback
         call_connector(generate_endex_feedback, simulation_id=self.pk)
 
     def calculate_metadata_checksum(self) -> str:
@@ -320,15 +320,15 @@ class Simulation(models.Model):
         logger.debug(f"... using PromptEngine (v3)")
         p: PromptDTO
         if not prompt and lab:
-            from simcore.ai.promptkit import PromptEngine
-            from simcore.ai.prompts.sections.modifiers import (
+            from simcore.ai_v1.promptkit import PromptEngine
+            from simcore.ai_v1.prompts.sections.modifiers import (
                 PatientNameSection,
                 UserRoleSection,
                 UserHistorySection
             )
 
             try:
-                from simcore.ai.utils.imports import resolve_initial_section
+                from simcore.ai_v1.utils.imports import resolve_initial_section
                 init_cls = resolve_initial_section(lab)
             except Exception as e:
                 raise ValueError(

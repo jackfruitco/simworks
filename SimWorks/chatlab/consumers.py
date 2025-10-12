@@ -9,7 +9,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
-from simcore.ai.schemas import LLMResponse
+from simcore.ai_v1.schemas import LLMResponse
 from simcore.models import Simulation
 from simcore.utils import get_user_initials
 from .models import Message
@@ -204,7 +204,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def _generate_patient_response(self, user_msg: Message) -> LLMResponse:
         """Generate patient response."""
-        from simcore.ai.tasks import acall_connector
+        from simcore.ai_v1.tasks import acall_connector
         from chatlab.ai.connectors import generate_patient_reply
 
         return await acall_connector(
@@ -216,8 +216,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def _generate_stitch_response(self, user_msg: Message) -> LLMResponse:
         """Generate a response from Stitch for feedback conversations."""
-        from simcore.ai.tasks import acall_connector
-        from simcore.ai.connectors import generate_hotwash_response
+        from simcore.ai_v1.tasks import acall_connector
+        from simcore.ai_v1.connectors import generate_hotwash_response
 
         return await acall_connector(
             generate_hotwash_response,

@@ -72,8 +72,8 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from simcore.ai.tasks import acall_connector
-            from simcore.ai.connectors import generate_patient_results
+            from simcore.ai_v1.tasks import acall_connector
+            from simcore.ai_v1.connectors import generate_patient_results
 
             await acall_connector(
                 generate_patient_results,

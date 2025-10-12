@@ -1,7 +1,7 @@
 """Module to register custom LLM tools for function calling"""
 from typing import Literal
 
-from simcore.ai.schemas import CustomToolItem
+from simcore.ai_v1.schemas import CustomToolItem
 
 
 class CustomImageResponseTool(CustomToolItem):

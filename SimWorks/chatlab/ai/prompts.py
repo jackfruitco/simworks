@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from simcore.ai.promptkit import PromptSection, register_section
+from simcore.ai_v1.promptkit import PromptSection, register_section
 
 logger = logging.getLogger(__name__)
 

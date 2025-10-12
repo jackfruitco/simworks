@@ -102,17 +102,17 @@ LOGGING = {
         },
 
         # ---------- AI loggers -------------------------------------------------------------------
-        "simcore.ai": {
+        "simcore.ai_v1": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "chatlab.ai": {
+        "chatlab.ai_v1": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "trainerlab.ai": {
+        "trainerlab.ai_v1": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
