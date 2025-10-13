@@ -33,3 +33,6 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "zope-interface==8.0.1",
 ]
+
+[tool.uv.workspace]
+members = ["packages/simcore_ai", "packages/simcore_ai_django"]

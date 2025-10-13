@@ -15,6 +15,8 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/SimWorks" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/simcore_ai/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/simcore_ai_django/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="uv (SimWorks)" jdkType="Python SDK" />
@@ -22,10 +24,5 @@
   </component>
   <component name="TemplatesService">
     <option name="TEMPLATE_CONFIGURATION" value="Django" />
-    <option name="TEMPLATE_FOLDERS">
-      <list>
-        <option value="$MODULE_DIR$/src/templates" />
-      </list>
-    </option>
   </component>
 </module>
