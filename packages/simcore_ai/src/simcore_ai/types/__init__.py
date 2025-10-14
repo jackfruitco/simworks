@@ -1,7 +1,9 @@
 # simcore_ai/types/__init__.py
-from .base import StrictBaseModel, StrictOutputSchema, Boolish
-from .helpers import project_from
+from .base import *
+from .config import *
 from .dtos import *
+from .helpers import project_from
+from .identity import Identity
 from .tools import *
 
 __all__ = [
@@ -9,6 +11,7 @@ __all__ = [
     "StrictBaseModel",
     "StrictOutputSchema",
     "Boolish",
+    "Identity",
     "LLMRequestMessage",
     "LLMResponseItem",
     "LLMTextPart",
@@ -16,9 +19,12 @@ __all__ = [
     "LLMAudioPart",
     "LLMToolCallPart",
     "LLMToolResultPart",
-    "LLMToolSpec",
+    "BaseLLMTool",
     "LLMToolCall",
+    "LLMUsage",
     "LLMRequest",
     "LLMResponse",
-    "LLMStreamChunk"
+    "LLMStreamChunk",
+    "AIProviderConfig",
+    "AIClientConfig",
 ]

@@ -28,7 +28,7 @@ async def create_new_simulation(
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
     from simcore.ai_v1.tasks.dispatch import acall_connector
-    from chatlab.ai.connectors import generate_patient_initial
+    from chatlab.ai.services import generate_patient_initial
 
     logger.debug(
         f"received request to create new simulation for {user.username!r} "

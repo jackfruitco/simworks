@@ -205,7 +205,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _generate_patient_response(self, user_msg: Message) -> LLMResponse:
         """Generate patient response."""
         from simcore.ai_v1.tasks import acall_connector
-        from chatlab.ai.connectors import generate_patient_reply
+        from chatlab.ai.services import generate_patient_reply
 
         return await acall_connector(
             generate_patient_reply,

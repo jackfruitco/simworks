@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional, Literal, TypeAlias
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from pydantic import Field
 
-from . import LLMToolSpec, LLMToolChoice, LLMToolCall, LLMToolCallDelta
+from . import BaseLLMTool, LLMToolChoice, LLMToolCall, LLMToolCallDelta
 
 logger = logging.getLogger(__name__)
 from .base import StrictBaseModel
@@ -88,13 +89,23 @@ class LLMRequest(StrictBaseModel):
     model: str | None = None
     messages: list[LLMRequestMessage]
 
-    # Response formats (your new naming)
-    response_format_cls: Any = None
-    response_format_adapted: dict | None = None
+    # Identity
+    namespace: str | None = None
+    bucket: str | None = None
+    name: str | None = None
+
+    # Correlation
+    correlation_id: UUID = Field(default_factory=uuid4)
+
+    # Codec routing
+    codec_identity: str | None = None
+
+    # Response format (provider-agnostic)
+    response_format_class: Any = None   # renamed from response_format_cls
     response_format: dict | None = None
 
     # Tooling
-    tools: list[LLMToolSpec] = Field(default_factory=list)
+    tools: list[BaseLLMTool] = Field(default_factory=list)
     tool_choice: LLMToolChoice = "auto"
 
     # Misc
@@ -106,6 +117,23 @@ class LLMRequest(StrictBaseModel):
 
 
 class LLMResponse(StrictBaseModel):
+    # Identity echoed back (operation identity)
+    namespace: str | None = None
+    bucket: str | None = None
+    name: str | None = None
+
+    # Correlation
+    correlation_id: UUID = Field(default_factory=uuid4)
+    request_correlation_id: UUID | None = None
+
+    # Provider/client + timing
+    provider_name: str | None = None
+    client_name: str | None = None
+    received_at: datetime | None = None
+
+    # Codec routing
+    codec_identity: str | None = None
+
     outputs: list[LLMResponseItem] = Field(default_factory=list)
     usage: LLMUsage | None = None
     tool_calls: list[LLMToolCall] = Field(default_factory=list)

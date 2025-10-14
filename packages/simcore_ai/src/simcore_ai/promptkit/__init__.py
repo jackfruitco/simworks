@@ -12,5 +12,6 @@ __all__ = [
     "PromptSection",
     "PromptEngine",
     "PromptRegistry",
+    # decorators
     "prompt",
 ]

@@ -56,9 +56,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
     "django_htmx",
+    "simcore_ai_django",
     "core",
     "simcore",
-    "simai",
     "chatlab",
     "trainerlab",
     "strawberry_django",
@@ -127,24 +127,48 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
-AI_TIMEOUT_S = float(os.getenv("AI_TIMEOUT_S", 30.0))
+AI_PROVIDERS = {
+    "default": {
+        "provider": "openai",
+        "api_key": os.getenv("OPENAI_API_KEY") or os.getenv("AI_API_KEY"),
+        "model": os.getenv("AI_DEFAULT_MODEL", "gpt-5-mini"),
+        # Optional provider-level fields (only if you need them)
+        "base_url": os.getenv("AI_BASE_URL"),
+        "timeout_s": float(os.getenv("AI_TIMEOUT_S", 60)),
+        # Image-specific options (only if you use image generation)
+        "image_model": os.getenv("AI_IMAGE_MODEL", "gpt-image-1"),
+        "image_format": os.getenv("AI_IMAGE_FORMAT", "webp"),
+        "image_size": os.getenv("AI_IMAGE_SIZE", "auto"),
+        "image_quality": os.getenv("AI_IMAGE_QUALITY", "auto"),
+        "image_background": os.getenv("AI_IMAGE_BACKGROUND", "auto"),
+        "image_moderation": os.getenv("AI_IMAGE_MODERATION", "auto"),
+        # Marks this client as default (optional; also inferred by the alias "default")
+        "default": True,
+    },
 
-AI_API_KEY = check_env("AI_API_KEY")
-if AI_API_KEY is None and AI_PROVIDER == "openai":
-    AI_API_KEY = os.getenv("OPENAI_API_KEY")
+    "openai-images": {
+        "provider": "openai",
+        "api_key": os.getenv("OPENAI_IMAGE_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        "model": os.getenv("AI_IMAGE_MODEL", "gpt-image-1"),
+        "image_format": os.getenv("AI_IMAGE_FORMAT", "webp"),
+        "image_size": os.getenv("AI_IMAGE_SIZE", "auto"),
+        "image_quality": os.getenv("AI_IMAGE_QUALITY", "auto"),
+        "image_background": os.getenv("AI_IMAGE_BACKGROUND", "auto"),
+        "image_moderation": os.getenv("AI_IMAGE_MODERATION", "auto"),
+    },
+}
 
-AI_DEFAULT_MODEL = os.getenv("AI_DEFAULT_MODEL", "gpt-5-mini")
-AI_CUSTOM_PROMPT_PATH = os.getenv("AI_CUSTOM_PROMPT_PATH")
-AI_IMAGE_FORMAT = os.getenv("AI_IMAGE_FORMAT", "webp")
-AI_IMAGE_MODEL = os.getenv("AI_IMAGE_MODEL", "gpt-image-1")
-AI_IMAGE_OUTPUT_COMPRESSION = os.getenv("AI_IMAGE_OUTPUT_COMPRESSION", None)
-AI_IMAGE_QUALITY = os.getenv("AI_IMAGE_QUALITY", "auto")
-AI_IMAGE_SIZE = os.getenv("AI_IMAGE_SIZE", "auto")
-AI_IMAGE_MODERATION = os.getenv("AI_IMAGE_MODERATION", "auto")
-AI_IMAGE_BACKGROUND = os.getenv("AI_IMAGE_BACKGROUND", "auto")
+AI_EXECUTION_BACKEND = os.getenv("AI_EXECUTION_BACKEND", "celery")  # or "immediate"
 
-OPENAI_DEFAULT_IMAGE_FORMAT = check_env("OPENAI_DEFAULT_IMAGE_FORMAT", default="webp")
+# AI runtime behavior (used by simcore_ai_django.setup.configure_ai_clients)
+AI_CLIENT_DEFAULTS = {
+    "max_retries": int(os.getenv("AI_MAX_RETRIES", 2)),
+    "timeout_s": int(float(os.getenv("AI_TIMEOUT_S", 60))),  # keeps parity if you like one knob
+    "telemetry_enabled": True,
+    "log_prompts": False,
+    "raise_on_error": True,
+}
+
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)

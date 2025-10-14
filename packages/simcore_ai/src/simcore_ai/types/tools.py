@@ -1,10 +1,16 @@
+# simcore_ai/types/tools.py
 from __future__ import annotations
+
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+
+from pydantic import Field
+
+from .base import StrictBaseModel
+
 
 # ---- Tool specs (request time) -------------------------------------------------------
 
-class LLMToolSpec(BaseModel):
+class BaseLLMTool(StrictBaseModel):
     """
     Provider-agnostic tool declaration.
     - input_schema is a JSON Schema dict (compile with schema_compiler for provider quirks).
@@ -15,18 +21,21 @@ class LLMToolSpec(BaseModel):
     strict: bool | None = None
     examples: list[dict[str, Any]] | None = None
 
+
 LLMToolChoice = Literal["auto", "none"] | str
+
 
 # ---- Normalized record of a tool call (response time) --------------------------------
 
-class LLMToolCall(BaseModel):
+class LLMToolCall(StrictBaseModel):
     call_id: str
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
 
+
 # ---- Streaming delta for tool calls --------------------------------------------------
 
-class LLMToolCallDelta(BaseModel):
+class LLMToolCallDelta(StrictBaseModel):
     """Chunked updates to a single tool call during streaming."""
     call_id: str | None = None
     name: str | None = None

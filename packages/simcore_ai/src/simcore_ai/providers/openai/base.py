@@ -2,34 +2,49 @@
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
 from typing import Any, Final, Literal
+from uuid import uuid4
 
-from openai import NotGiven, NOT_GIVEN, AsyncOpenAI
+from openai import NOT_GIVEN, AsyncOpenAI
 from openai.types.responses import Response as OpenAIResponse
 from openai.types.responses.response_output_item import ImageGenerationCall
 
+from simcore_ai.tracing import service_span, service_span_sync
+from simcore_ai.types import (
+    LLMToolResultPart,
+    LLMToolCall,
+    LLMRequest,
+    LLMResponse,
+)
+from simcore_ai.exceptions import ProviderError
 from ..base import BaseProvider
 from ..openai.tools import OpenAIToolAdapter
-from ...types.dtos import LLMRequest, LLMResponse
-from ...types.tools import LLMToolCall
-from ...types.dtos import LLMToolResultPart
 
 logger = logging.getLogger(__name__)
 
 PROVIDER_NAME: Final[Literal["openai"]] = "openai"
 
+
 class OpenAIProvider(BaseProvider):
     def __init__(
             self,
-            api_key: str,
-            timeout: float | NotGiven = NOT_GIVEN,
+            *,
+            api_key: str | None,
+            base_url: str | None = None,
+            default_model: str | None = None,
+            timeout_s: int = 60,
             name: str = PROVIDER_NAME,
-    ):
-        self._client = AsyncOpenAI(api_key=api_key, timeout=timeout)
-        self.timeout = timeout
+            **kwargs: object,
+    ) -> None:
         self.api_key = api_key
+        self.base_url = base_url or None
+        self.default_model = default_model
+        self.timeout_s = timeout_s
+
+        self._client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout_s)
+
         super().__init__(name=name, description="OpenAI Responses API")
+
         # Register tools adapter
         self.set_tool_adapter(OpenAIToolAdapter())
 
@@ -51,43 +66,90 @@ class OpenAIProvider(BaseProvider):
         Map OpenAI Responses output items into (LLMToolCall, LLMToolResultPart).
         Currently supports ImageGenerationCall; extend for other tool types as needed.
         """
-        if isinstance(item, ImageGenerationCall):
-            call_id = getattr(item, "id", None) or str(uuid4())
-            b64 = getattr(item, "result", None)
-            mime = getattr(item, "mime_type", None) or "image/png"
-            return (
-                LLMToolCall(call_id=call_id, name="image_generation", arguments={}),
-                LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64),
-            )
-        return None
+        with service_span_sync(
+            "ai.tools.handle_output",
+            attributes={
+                "ai.provider_name": self.name,
+                "ai.output.type": type(item).__name__,
+            },
+        ):
+            if isinstance(item, ImageGenerationCall):
+                call_id = getattr(item, "id", None) or str(uuid4())
+                b64 = getattr(item, "result", None)
+                mime = getattr(item, "mime_type", None) or "image/png"
+                return (
+                    LLMToolCall(call_id=call_id, name="image_generation", arguments={}),
+                    LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64),
+                )
+            return None
 
     async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
         logger.debug("provider '%s':: received request call", self.name)
 
-        native_tools = self._tools_to_provider(req.tools)
-        if native_tools:
-            logger.debug("provider '%s':: adapted tools: %s", self.name, native_tools)
-        else:
-            logger.debug("provider '%s':: no tools to adapt", self.name)
+        async with service_span(
+                "ai.client.call",
+                attributes={
+                    "ai.provider_name": self.name,
+                    "ai.client_name": getattr(self, "name", self.__class__.__name__),
+                    "ai.model": req.model or self.default_model or "<unspecified>",
+                    "ai.stream": bool(getattr(req, "stream", False)),
+                },
+        ):
+            # Adapt tools (child span)
+            async with service_span("ai.tools.adapt", attributes={"ai.provider_name": self.name}):
+                native_tools = self._tools_to_provider(req.tools)
+                if native_tools:
+                    logger.debug("provider '%s':: adapted tools: %s", self.name, native_tools)
+                else:
+                    logger.debug("provider '%s':: no tools to adapt", self.name)
 
-        input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
+            # Serialize input messages (child span)
+            async with service_span("ai.prompt.serialize", attributes={"ai.msg.count": len(req.messages or [])}):
+                input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
 
-        resp: OpenAIResponse = await self._client.responses.create(
-            model=req.model or NOT_GIVEN,
-            input=input_,
-            previous_response_id=req.previous_response_id or NOT_GIVEN,
-            tools=native_tools or NOT_GIVEN,
-            tool_choice=req.tool_choice or NOT_GIVEN,
-            max_output_tokens=req.max_output_tokens or NOT_GIVEN,
-            timeout=timeout or self.timeout or NOT_GIVEN,
-            response_format=req.response_format or NOT_GIVEN,
-        )
-        logger.debug("provider '%s':: received response\n(response (pre-adapt):\t%s)", self.name, str(resp)[:1000])
+            # Provider request (child span)
+            async with service_span("ai.provider.send", attributes={"ai.provider_name": self.name}):
+                resp: OpenAIResponse = await self._client.responses.create(
+                    model=req.model or NOT_GIVEN,
+                    input=input_,
+                    previous_response_id=req.previous_response_id or NOT_GIVEN,
+                    tools=native_tools or NOT_GIVEN,
+                    tool_choice=req.tool_choice or NOT_GIVEN,
+                    max_output_tokens=req.max_output_tokens or NOT_GIVEN,
+                    timeout=timeout or self.timeout_s or NOT_GIVEN,
+                    response_format=req.response_format or NOT_GIVEN,
+                )
 
-        return self.adapt_response(resp, schema_cls=req.response_format_cls)
+            logger.debug(
+                "provider '%s':: received response\n(response (pre-adapt):\t%s)",
+                self.name,
+                str(resp)[:1000],
+            )
 
-    async def stream(self, req: LLMRequest):  # pragma: no cover - not yet implemented
-        raise NotImplementedError
+            # Normalize/Adapt (core BaseProvider handles nested spans for normalize)
+            return self.adapt_response(resp, schema_cls=req.response_format_cls)
+
+    async def stream(self, req: LLMRequest):  # pragma: no cover - streaming not implemented yet
+        async with service_span(
+                "ai.client.stream",
+                attributes={
+                    "ai.provider_name": self.name,
+                    "ai.client_name": getattr(self, "name", self.__class__.__name__),
+                    "ai.model": req.model or self.default_model or "<unspecified>",
+                    "ai.stream": True,
+                },
+        ) as span:
+            try:
+                # When streaming is implemented, emit per-chunk events here, e.g.:
+                # span.add_event("ai.client.stream_chunk", {"type": "text", "bytes": len(delta)})
+                pass
+            finally:
+                # For now, note unimplemented to aid observability
+                try:
+                    span.add_event("ai.client.stream.unimplemented", {"reason": "not yet implemented"})
+                except Exception:
+                    pass
+            raise ProviderError("OpenAIProvider.stream is not implemented yet")
 
     # --- BaseProvider hook implementations ---------------------------------
     def _extract_text(self, resp: OpenAIResponse) -> str | None:
