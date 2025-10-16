@@ -24,8 +24,9 @@ packages = ["src/simcore_ai_django"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "src/simcore_ai_django/**",
-  "pyproject.toml",
-  "README.md",
-  "LICENSE*",
+    "src/simcore_ai_django/**",
+    "tests/simcore_ai_django/**",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE*",
 ]

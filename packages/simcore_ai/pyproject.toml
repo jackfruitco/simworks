@@ -32,8 +32,9 @@ packages = ["src/simcore_ai"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "src/simcore_ai/**",
-  "pyproject.toml",
-  "README.md",
-  "LICENSE*",
+    "src/simcore_ai/**",
+    "tests/simcore_ai/**",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE*",
 ]
