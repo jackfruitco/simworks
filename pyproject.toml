@@ -27,6 +27,7 @@ dependencies = [
     "pydantic==2.12.0",
     "pydantic-django>=0.1.1",
     "pytest>=8.4.2",
+    "pytest-django>=4.11.1",
     "redis>=6.4.0",
     "strawberry-graphql==0.283.3",
     "strawberry-graphql-django==0.66.0",
@@ -36,3 +37,12 @@ dependencies = [
 
 [tool.uv.workspace]
 members = ["packages/simcore_ai", "packages/simcore_ai_django"]
+
+[tool.uv.sources]
+simcore-ai = { workspace = true }
+simcore-ai-django = { workspace = true }
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["tests/*.py", "tests/**/*.py"]
+addopts = "-ra -q"
