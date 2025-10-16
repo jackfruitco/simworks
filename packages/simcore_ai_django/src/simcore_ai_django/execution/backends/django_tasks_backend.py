@@ -1,59 +1,72 @@
 # simcore_ai_django/execution/django_tasks_backend.py
 from __future__ import annotations
 
-from typing import Mapping, Any, Optional
+from typing import Mapping, Any, Optional, Type, Dict
 
-from simcore_ai.tracing import (
-    inject_trace,
-    extract_trace,
-    service_span_sync,
-)
-from simcore_ai_django.execution.base_backend import BaseExecutionBackend
+from simcore_ai.tracing import inject_trace, extract_trace, service_span_sync
+from ..types import BaseExecutionBackend, SupportsServiceInit
+from ..decorators import task_backend
+
+BACKEND_NAME = "django_tasks"
 
 
+@task_backend(BACKEND_NAME)
 class DjangoTasksBackend(BaseExecutionBackend):
     """
     Placeholder backend for Django 6.0 Tasks.
 
-    Tracing scaffolding is present (so future implementation will nest correctly
-    under the caller's trace), but the backend is intentionally **not usable** yet.
+    This backend is **not implemented yet**. It exists to reserve the
+    canonical backend name ("django_tasks") and to provide tracing scaffolding
+    so traces will nest correctly once implemented.
 
-    Instantiating this class raises NotImplementedError to avoid accidental use
-    until Django tasks integration is implemented.
+    Initialization raises `NotImplementedError` to avoid accidental use until
+    the real integration is built.
+
+    Conventions preserved here match the other backends:
+    - Span names: `exec.backend.execute` / `exec.backend.enqueue`
+    - Attributes: `backend`, fully qualified `service_cls`, queue/delay, and
+      identity/correlation fields via `_span_attrs_from_kwargs`.
+    - Priority: Django Tasks are expected to support priority; advertise this
+      via `supports_priority = True` (the entrypoint will pass it when ready).
     """
+
+    # Django Tasks will support priority; advertise for the entrypoint.
+    supports_priority: bool = True
 
     def __init__(self) -> None:
         raise NotImplementedError(
-            "DjangoTasksBackend is not implemented yet. Set AI_EXECUTION_BACKEND to 'immediate' or 'celery'."
+            "DjangoTasksBackend is not implemented yet. Set AI_EXECUTION_BACKENDS['DEFAULT_BACKEND'] to 'immediate' or 'celery'."
         )
 
-    def execute(self, *, service_cls, kwargs: Mapping[str, Any]) -> Any:  # pragma: no cover - scaffold
+    def execute(self, *, service_cls: Type[SupportsServiceInit], kwargs: Mapping[str, Any]) -> Any:  # pragma: no cover - scaffold
         with service_span_sync(
-                "ai.tasks.execute",
-                attributes={
-                    "ai.backend": "django_tasks",
-                    "ai.service_cls": f"{service_cls.__module__}.{service_cls.__name__}",
-                },
+            "exec.backend.execute",
+            attributes={
+                "backend": BACKEND_NAME,
+                "service_cls": f"{service_cls.__module__}.{service_cls.__name__}",
+                **self._span_attrs_from_kwargs(kwargs),
+            },
         ):
-            # This code path is unreachable because __init__ raises.
+            # Unreachable because __init__ raises
             raise NotImplementedError("DjangoTasksBackend.execute is not implemented yet")
 
     def enqueue(
-            self,
-            *,
-            service_cls,
-            kwargs: Mapping[str, Any],
-            delay_s: Optional[int] = None,
-            queue: Optional[str] = None,
+        self,
+        *,
+        service_cls: Type[SupportsServiceInit],
+        kwargs: Mapping[str, Any],
+        delay_s: Optional[float] = None,
+        queue: Optional[str] = None,
     ) -> str:  # pragma: no cover - scaffold
         with service_span_sync(
-                "ai.tasks.enqueue",
-                attributes={
-                    "ai.backend": "django_tasks",
-                    "ai.service_cls": f"{service_cls.__module__}.{service_cls.__name__}",
-                    "ai.delay_s": delay_s if delay_s is not None else 0,
-                    "ai.queue": queue or "",
-                },
+            "exec.backend.enqueue",
+            attributes={
+                "backend": BACKEND_NAME,
+                "service_cls": f"{service_cls.__module__}.{service_cls.__name__}",
+                "queue": queue,
+                "delay_s": delay_s,
+                **self._span_attrs_from_kwargs(kwargs),
+            },
         ):
             # Prepare for future trace propagation (will attach to the task payload)
             try:
@@ -61,12 +74,12 @@ class DjangoTasksBackend(BaseExecutionBackend):
             except Exception:
                 traceparent = None
 
-            # This code path is unreachable because __init__ raises.
+            # Unreachable because __init__ raises
             raise NotImplementedError("DjangoTasksBackend.enqueue is not implemented yet")
 
     # --- Future worker-side helper (example) -------------------------------------
     @staticmethod
-    def _continue_trace(traceparent: str | None):  # pragma: no cover - scaffold
+    def _continue_trace(traceparent: Optional[str]):  # pragma: no cover - scaffold
         """Example extractor to be used inside the eventual task runner."""
         if not traceparent:
             return None

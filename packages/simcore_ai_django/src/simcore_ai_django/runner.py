@@ -11,7 +11,7 @@ from django.conf import settings
 from simcore_ai.client import AIClient
 from simcore_ai.types import LLMRequest, LLMResponse
 from simcore_ai.services import BaseLLMService
-from simcore_ai.tracing import service_span_sync, service_span
+from simcore_ai.tracing import service_span_sync, service_span, extract_trace
 
 # Codec execution helper
 from .codecs.execute import execute_codec
@@ -60,6 +60,7 @@ def _resolve_namespace(service: BaseLLMService, namespace: Optional[str]) -> str
 def run_service(
     service: BaseLLMService,
     *,
+    traceparent: Optional[str] = None,
     namespace: Optional[str] = None,
     client_name: Optional[str] = None,
     provider_name: Optional[str] = None,
@@ -79,23 +80,50 @@ def run_service(
       - promote response -> write response audit -> emit ai_response_received
       - codec.validate/parse/persist (optional) -> emit ai_response_ready
     """
-    with service_span_sync("ai.run_service", attributes={
-        "ai.namespace": namespace or service.namespace,
-        "ai.service_name": service.name,
-        "ai.provider_name": provider_name or service.provider_name,
-        "ai.client_name": client_name or "default",
-    }):
+    # If a traceparent was provided by the transport (e.g., Celery), extract it to continue the trace.
+    if traceparent:
+        try:
+            extract_trace(traceparent)
+        except Exception:
+            pass
 
-        ns = _resolve_namespace(service, namespace)
+    ns = _resolve_namespace(service, namespace)
+    codec = service.get_codec()
+    codec_name = codec.__class__.__name__ if codec else None
 
+    with service_span_sync(
+        "ai.run_service",
+        attributes={
+            "ai.namespace": namespace or getattr(service, "namespace", None),
+            "ai.service_name": getattr(service, "name", None),
+            "ai.provider_name": provider_name or getattr(service, "provider_name", None),
+            "ai.client_name": client_name or "default",
+            "ai.codec_name": codec_name,
+        },
+    ):
         # 1) Build base request (service should construct messages/prompt and set response_format_cls)
-        base_req: LLMRequest = _maybe_await(service.build_request())
+        try:
+            base_req: LLMRequest = _maybe_await(service.build_request())
+        except Exception as e:
+            emit_failure(
+                error=f"{type(e).__name__}: {e}",
+                namespace=ns,
+                client_name=client_name or getattr(service, "client_name", None),
+                provider_name=provider_name or getattr(service, "provider_name", None),
+                simulation_pk=simulation_pk,
+                correlation_id=correlation_id,
+                request_audit_pk=None,
+                origin=origin or getattr(service, "origin", None),
+                bucket=bucket or getattr(service, "bucket", None),
+                service_name=service_name or getattr(service, "name", service.__class__.__name__),
+            )
+            raise
 
         # 2) Promote to Django-rich request (attach routing/context overlays)
         dj_req: DjangoLLMRequest = promote_request(
             base_req,
             namespace=ns,
-            client_name=client_name or getattr(service, "provider_name", None),
+            client_name=client_name or getattr(service, "client_name", None),
             provider_name=provider_name or getattr(service, "provider_name", None),
             simulation_pk=simulation_pk,
             correlation_id=correlation_id,
@@ -109,7 +137,10 @@ def run_service(
             request_pk = write_request_audit(dj_req)
 
         # 4) Emit request sent
-        with service_span_sync("ai.emit.request_sent", attributes={"ai.namespace": dj_req.namespace}):
+        with service_span_sync(
+            "ai.emit.request_sent",
+            attributes={"ai.namespace": dj_req.namespace, "ai.codec_name": codec_name},
+        ):
             emit_request(
                 request_dto=dj_req,
                 request_audit_pk=request_pk,
@@ -121,15 +152,14 @@ def run_service(
                 origin=dj_req.origin,
                 bucket=dj_req.bucket,
                 service_name=dj_req.service_name,
-                codec_name=getattr(service.get_codec(), "__class__", type("X",(object,),{})).__name__
-                    if hasattr(service, "get_codec") else None,
+                codec_name=codec_name,
             )
 
         # 5) Demote back to core request (strip Django overlays) before sending
         core_req: LLMRequest = demote_request(dj_req)
 
         # 6) Resolve client from service (registry-backed). Provider builds final schema internally.
-        client: AIClient = service._get_client(service.get_codec())
+        client: AIClient = service._get_client(codec)
 
         # 7) Send request (sync or async provider handled by `_maybe_await`)
         core_resp: LLMResponse = _maybe_await(client.call(core_req))
@@ -162,7 +192,10 @@ def run_service(
             response_pk = write_response_audit(dj_resp, request_audit_pk=request_pk)
 
         # 10) Emit response received (pre-codec handling)
-        with service_span_sync("ai.emit.response_received", attributes={"ai.namespace": dj_resp.namespace}):
+        with service_span_sync(
+            "ai.emit.response_received",
+            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+        ):
             emit_response_received(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
@@ -178,10 +211,12 @@ def run_service(
             )
 
         # 11) Optional codec handling (validate/parse/persist)
-        codec = service.get_codec()
         if codec:
             try:
-                with service_span_sync("ai.codec.handle", attributes={"ai.codec": codec.__class__.__name__}):
+                with service_span_sync(
+                    "ai.codec.handle",
+                    attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
+                ):
                     execute_codec(
                         codec,
                         dj_resp,
@@ -208,7 +243,10 @@ def run_service(
                 )
 
         # 12) Emit response ready (post-codec)
-        with service_span_sync("ai.emit.response_ready", attributes={"ai.namespace": dj_resp.namespace}):
+        with service_span_sync(
+            "ai.emit.response_ready",
+            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+        ):
             emit_response_ready(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
@@ -231,6 +269,7 @@ def run_service(
 async def arun_service(
     service: BaseLLMService,
     *,
+    traceparent: Optional[str] = None,
     namespace: Optional[str] = None,
     client_name: Optional[str] = None,
     provider_name: Optional[str] = None,
@@ -243,23 +282,50 @@ async def arun_service(
     """
     Async orchestration variant of run_service (awaits all awaitables).
     """
-    async with service_span("ai.arun_service", attributes={
-        "ai.namespace": namespace or service.namespace,
-        "ai.service_name": service.name,
-        "ai.provider_name": provider_name or service.provider_name,
-        "ai.client_name": client_name or "default",
-    }):
+    # If a traceparent was provided by the transport (e.g., Celery), extract it to continue the trace.
+    if traceparent:
+        try:
+            extract_trace(traceparent)
+        except Exception:
+            pass
 
-        ns = _resolve_namespace(service, namespace)
+    ns = _resolve_namespace(service, namespace)
+    codec = service.get_codec()
+    codec_name = codec.__class__.__name__ if codec else None
 
+    async with service_span(
+        "ai.arun_service",
+        attributes={
+            "ai.namespace": namespace or getattr(service, "namespace", None),
+            "ai.service_name": getattr(service, "name", None),
+            "ai.provider_name": provider_name or getattr(service, "provider_name", None),
+            "ai.client_name": client_name or "default",
+            "ai.codec_name": codec_name,
+        },
+    ):
         # Build base request
-        base_req: LLMRequest = await _maybe_await_async(service.build_request())
+        try:
+            base_req: LLMRequest = await _maybe_await_async(service.build_request())
+        except Exception as e:
+            emit_failure(
+                error=f"{type(e).__name__}: {e}",
+                namespace=ns,
+                client_name=client_name or getattr(service, "client_name", None),
+                provider_name=provider_name or getattr(service, "provider_name", None),
+                simulation_pk=simulation_pk,
+                correlation_id=correlation_id,
+                request_audit_pk=None,
+                origin=origin or getattr(service, "origin", None),
+                bucket=bucket or getattr(service, "bucket", None),
+                service_name=service_name or getattr(service, "name", service.__class__.__name__),
+            )
+            raise
 
         # Promote request
         dj_req: DjangoLLMRequest = promote_request(
             base_req,
             namespace=ns,
-            client_name=client_name or getattr(service, "provider_name", None),
+            client_name=client_name or getattr(service, "client_name", None),
             provider_name=provider_name or getattr(service, "provider_name", None),
             simulation_pk=simulation_pk,
             correlation_id=correlation_id,
@@ -270,7 +336,10 @@ async def arun_service(
 
         async with service_span("ai.audit.request"):
             request_pk = write_request_audit(dj_req)
-        async with service_span("ai.emit.request_sent", attributes={"ai.namespace": dj_req.namespace}):
+        async with service_span(
+            "ai.emit.request_sent",
+            attributes={"ai.namespace": dj_req.namespace, "ai.codec_name": codec_name},
+        ):
             emit_request(
                 request_dto=dj_req,
                 request_audit_pk=request_pk,
@@ -282,12 +351,11 @@ async def arun_service(
                 origin=dj_req.origin,
                 bucket=dj_req.bucket,
                 service_name=dj_req.service_name,
-                codec_name=getattr(service.get_codec(), "__class__", type("X",(object,),{})).__name__
-                    if hasattr(service, "get_codec") else None,
+                codec_name=codec_name,
             )
 
         core_req: LLMRequest = demote_request(dj_req)
-        client: AIClient = service._get_client(service.get_codec())
+        client: AIClient = service._get_client(codec)
 
         # Await call
         core_resp: LLMResponse = await _maybe_await_async(client.call(core_req))
@@ -316,7 +384,10 @@ async def arun_service(
         async with service_span("ai.audit.response"):
             response_pk = write_response_audit(dj_resp, request_audit_pk=request_pk)
 
-        async with service_span("ai.emit.response_received", attributes={"ai.namespace": dj_resp.namespace}):
+        async with service_span(
+            "ai.emit.response_received",
+            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+        ):
             emit_response_received(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
@@ -331,10 +402,12 @@ async def arun_service(
                 service_name=dj_resp.service_name,
             )
 
-        codec = service.get_codec()
         if codec:
             try:
-                async with service_span("ai.codec.handle", attributes={"ai.codec": codec.__class__.__name__}):
+                async with service_span(
+                    "ai.codec.handle",
+                    attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
+                ):
                     await _maybe_await_async(
                         execute_codec(
                             codec,
@@ -362,7 +435,10 @@ async def arun_service(
                     service_name=dj_resp.service_name,
                 )
 
-        async with service_span("ai.emit.response_ready", attributes={"ai.namespace": dj_resp.namespace}):
+        async with service_span(
+            "ai.emit.response_ready",
+            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+        ):
             emit_response_ready(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,

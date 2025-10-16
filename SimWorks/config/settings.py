@@ -169,6 +169,12 @@ AI_CLIENT_DEFAULTS = {
     "raise_on_error": True,
 }
 
+AI_EXECUTION_BACKENDS = {
+    "DEFAULT_BACKEND": "celery",
+    "DEFAULT_MODE": "async",
+    # "CELERY": {"queue_default": "ai-default"},
+}
+
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)

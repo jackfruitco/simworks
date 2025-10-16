@@ -5,10 +5,20 @@ from simcore_ai.services.base import BaseLLMService
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse
 from simcore_ai_django.codecs import get_codec as _registry_get_codec  # (namespace, codec_name) -> BaseLLMCodec
+from simcore_ai_django.execution.helpers import (
+    settings_default_backend as _exec_default_backend,
+    settings_default_mode as _exec_default_mode,
+)
 from simcore_ai_django.prompts.render_section import \
     render_section as _default_renderer  # async (namespace, section_key, simulation) -> str
 from simcore_ai_django.services.helpers import _infer_namespace_from_module, _parse_codec_identity
+from simcore_ai_django.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
+
+__all__ = [
+    "DjangoBaseLLMService",
+    "DjangoExecutableLLMService",
+]
 
 
 class DjangoBaseLLMService(BaseLLMService):
@@ -45,7 +55,33 @@ class DjangoBaseLLMService(BaseLLMService):
     encoded on the response via `resp.codec_identity`. This guarantees that deferred or replayed
     responses use the same intended codec even if the service's defaults have changed. If no
     `codec_identity` is present, it falls back to `get_codec()`.
+
+    **Execution Configuration**
+
+    The following service-level attributes control how the service is dispatched by
+    the execution entrypoint. If left as `None`, they fall back to Django settings
+    (`AI_EXECUTION_BACKENDS`) and then to hard-coded defaults:
+
+    - `execution_mode`: "sync" | "async" (default: settings.DEFAULT_MODE → "sync")
+    - `execution_backend`: "immediate" | "celery" | "django_tasks" (default: settings.DEFAULT_BACKEND → "immediate")
+    - `execution_priority`: int in [-100, 100] (default: 0)
+    - `execution_run_after`: float seconds until run (default: None → run now)
+    - `require_enqueue`: bool (default: False). If True, sync requests are upgraded to async at dispatch time.
+
+    See also
+    --------
+    `DjangoExecutableLLMService` — a convenience subclass that mixes in
+    `ServiceExecutionMixin` to provide `.execute(...)` and builder-style
+    `.using(...).enqueue/execute(...)` helpers out of the box.
     """
+
+    # --- Execution configuration knobs (service-level defaults) ---
+    # If left as None, these fall back to Django settings and then hard defaults.
+    execution_mode: str | None = None            # "sync" | "async"
+    execution_backend: str | None = None         # "immediate" | "celery" | "django_tasks" (future)
+    execution_priority: int | None = None        # -100..100
+    execution_run_after: float | None = None     # seconds (or set at call-site)
+    require_enqueue: bool = False                # hard rule: force async if True
 
     def __post_init__(self):
         super().__post_init__()
@@ -76,6 +112,33 @@ class DjangoBaseLLMService(BaseLLMService):
         # codec_name: if not set, compose from bucket:name for registry lookups
         if not getattr(self, "codec_name", None):
             self.codec_name = f"{self.bucket}:{self.name}"
+
+        # -----------------------------
+        # Execution defaults (resolve from service → settings → hardcoded)
+        # -----------------------------
+        if getattr(self, "execution_mode", None) is None:
+            # settings fallback → hard default "sync"
+            try:
+                self.execution_mode = _exec_default_mode()
+            except Exception:
+                self.execution_mode = "sync"
+
+        if getattr(self, "execution_backend", None) is None:
+            # settings fallback → hard default "immediate"
+            try:
+                self.execution_backend = _exec_default_backend()
+            except Exception:
+                self.execution_backend = "immediate"
+
+        if getattr(self, "execution_priority", None) is None:
+            # hard default priority 0 (middle)
+            self.execution_priority = 0
+
+        if getattr(self, "execution_run_after", None) is None:
+            # None means "now"; callers can override per-call
+            self.execution_run_after = None
+
+        # require_enqueue has a class default of False; leave as-is unless explicitly set on subclass
 
     def get_codec(self, simulation=None):
         """
@@ -217,3 +280,46 @@ class DjangoBaseLLMService(BaseLLMService):
     async def on_failure(self, simulation, err: Exception) -> None:
         # Same principle as on_success
         return
+
+
+class DjangoExecutableLLMService(DjangoBaseLLMService, ServiceExecutionMixin):
+    """
+    A Django-ready service base **with execution helpers**.
+
+    This class combines `DjangoBaseLLMService` (Django-aware defaults for
+    codec resolution, renderer, and emitter) with `ServiceExecutionMixin`
+    (ergonomic execution API). Use this when you want a drop‑in base that
+    can run **now** (sync) or **later** (async) with a single import.
+
+    Highlights
+    ----------
+    - Inherits all behavior from `DjangoBaseLLMService`.
+    - Adds `execute(**ctx)` for immediate, in‑process execution
+      (via the configured *immediate* backend).
+    - Adds a builder API: `using(**overrides)` → `.execute(**ctx)` / `.enqueue(**ctx)`
+      for per‑call control over `backend`, `run_after`, and `priority`.
+    - Honors class‑level defaults if defined on your concrete service:
+      `execution_mode`, `execution_backend`, `execution_priority`,
+      `execution_run_after`, and `require_enqueue`.
+
+    Examples
+    --------
+    Run immediately using defaults:
+
+        class PatientIntakeService(DjangoExecutableLLMService):
+            pass
+
+        PatientIntakeService.execute(user_id=123)
+
+    Enqueue with overrides (Celery):
+
+        PatientIntakeService.using(backend="celery", run_after=60, priority=50).enqueue(user_id=123)
+
+    Notes
+    -----
+    - All orchestration (mode/backend resolution, queue mapping, trace context)
+      is handled in `simcore_ai_django.execution.entrypoint.execute`.
+    - Tracing spans are emitted both here (light wrappers) and in the
+      entrypoint/backends for full visibility across the call chain.
+    """
+    pass

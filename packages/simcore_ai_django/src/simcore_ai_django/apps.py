@@ -14,9 +14,11 @@ class SimcoreAIDjangoConfig(AppConfig):
             # Discover per-app receivers and prompts
             with service_span_sync("ai.autodiscover.receivers"):
                 autodiscover_modules("ai.receivers")
-            with service_span_sync("ai.autodiscover.prompts"):
+            with service_span_sync("ai.autodiscover.task_backends"):    # Add new backends here
+                autodiscover_modules("ai.task_backends")
+            with service_span_sync("ai.autodiscover.prompts"):          # Add new prompts here
                 autodiscover_modules("ai.prompts")
-            with service_span_sync("ai.autodiscover.services"):
+            with service_span_sync("ai.autodiscover.services"):         # Add new services here
                 autodiscover_modules("ai.services")
-            with service_span_sync("ai.autodiscover.codecs"):
+            with service_span_sync("ai.autodiscover.codecs"):           # Add new codecs here
                 autodiscover_modules("ai.codecs")
