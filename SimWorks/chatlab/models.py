@@ -5,7 +5,7 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from simai.models import Response
+# from simai.models import Response
 from simcore.models import BaseSession
 from simcore.models import Simulation
 from simcore.models import SimulationImage

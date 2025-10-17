@@ -5,7 +5,7 @@ from typing import Annotated, Union, Literal, TypeAlias
 
 from pydantic import Field
 
-from .base import StrictBaseModel, project_from
+from simcore_ai.types import StrictBaseModel, project_from
 from .types import (
     MessageItem,
     # Metafield DTOs:

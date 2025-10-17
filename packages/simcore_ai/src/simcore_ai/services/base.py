@@ -250,9 +250,9 @@ class BaseLLMService:
             key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
             codec_identity = f"{ident.namespace}.{key_name.replace(':','.')}"
             req.codec_identity = codec_identity
-            schema_cls = getattr(codec, "response_format_class", None) or getattr(codec, "schema_cls", None) or getattr(codec, "output_model", None)
+            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(codec, "output_model", None)
             if schema_cls is not None:
-                req.response_format_class = schema_cls
+                req.response_format_cls = schema_cls
             if hasattr(codec, "get_response_format"):
                 try:
                     rf = codec.get_response_format()
@@ -320,9 +320,9 @@ class BaseLLMService:
             key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
             codec_identity = f"{ident.namespace}.{key_name.replace(':','.')}"
             req.codec_identity = codec_identity
-            schema_cls = getattr(codec, "response_format_class", None) or getattr(codec, "schema_cls", None) or getattr(codec, "output_model", None)
+            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(codec, "output_model", None)
             if schema_cls is not None:
-                req.response_format_class = schema_cls
+                req.response_format_cls = schema_cls
             if hasattr(codec, "get_response_format"):
                 try:
                     rf = codec.get_response_format()

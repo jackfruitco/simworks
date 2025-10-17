@@ -35,7 +35,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
 
     Usage:
       class PatientInitialResponseCodec(DjangoBaseLLMCodec):
-          response_format_class = PatientInitialOutputSchema  # optional
+          response_format_cls = PatientInitialOutputSchema  # optional
 
           def persist(self, *, resp: LLMResponse, structured: Any | None = None, **ctx) -> Any:
               # Implement idempotent writes using resp.identity + resp.correlation_id
@@ -56,8 +56,8 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
     """
 
     # Hints for the base implementation (subclasses may override)
-    response_format_class: type[BaseModel] | None = None
-    # Only attempt text→JSON extraction when a response_format_class is present unless this flag is True
+    response_format_cls: type[BaseModel] | None = None
+    # Only attempt text→JSON extraction when a response_format_cls is present unless this flag is True
     allow_text_json_without_schema: bool = False
 
     # --- main entrypoints -------------------------------------------------
@@ -67,22 +67,22 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
 
         Returns:
             - A Pydantic model instance if a structured candidate is found AND validated
-            - None if no candidate is found OR no response_format_class is set
+            - None if no candidate is found OR no response_format_cls is set
         Raises:
-            - CodecDecodeError if validation against `response_format_class` fails
+            - CodecDecodeError if validation against `response_format_cls` fails
         """
         with service_span_sync(
             "ai.codec.validate",
             attributes={
                 "ai.codec": self.__class__.__name__,
-                "ai.schema": getattr(getattr(self, "response_format_class", None), "__name__", None),
+                "ai.schema": getattr(getattr(self, "response_format_cls", None), "__name__", None),
             },
         ):
             candidate = self.extract_structured_candidate(resp)
             if candidate is None:
                 return None
 
-            schema_cls = getattr(self, "response_format_class", None)
+            schema_cls = getattr(self, "response_format_cls", None)
             if schema_cls is None:
                 # Structured candidate exists but no schema to validate against
                 return None
@@ -98,14 +98,14 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
         Normalize/coerce the extracted candidate into the final structured object.
 
         Default behavior:
-          - If `response_format_class` is set and candidate is not None:
-              return response_format_class.model_validate(candidate)
+          - If `response_format_cls` is set and candidate is not None:
+              return response_format_cls.model_validate(candidate)
           - Else:
               return candidate (unchanged)
 
         Subclasses can override to merge tool outputs, coerce datatypes, or enrich data.
         """
-        schema_cls = getattr(self, "response_format_class", None)
+        schema_cls = getattr(self, "response_format_cls", None)
         if candidate is None:
             return None
         if schema_cls is not None:
@@ -176,7 +176,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
                 "ai.corr.response": getattr(resp, "correlation_id", None),
                 "ai.provider": getattr(resp, "provider_name", None),
                 "ai.client": getattr(resp, "client_name", None),
-                "ai.schema": getattr(getattr(self, "response_format_class", None), "__name__", None),
+                "ai.schema": getattr(getattr(self, "response_format_cls", None), "__name__", None),
             },
         ):
             # 1) validate (optional)
@@ -187,7 +187,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
                 "ai.codec.restructure",
                 attributes={
                     "ai.codec": self.__class__.__name__,
-                    "ai.schema": getattr(getattr(self, "response_format_class", None), "__name__", None),
+                    "ai.schema": getattr(getattr(self, "response_format_cls", None), "__name__", None),
                 },
             ):
                 candidate_dict = None
@@ -213,7 +213,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
         Extract a structured candidate from the response in priority order:
           1) Provider-provided dict at resp.provider_meta["structured"]
           2) Tool result parts: JSON MIME/base64
-          3) Text parts: JSON parse (guarded by response_format_class or allow_text_json_without_schema)
+          3) Text parts: JSON parse (guarded by response_format_cls or allow_text_json_without_schema)
         """
         with service_span_sync(
             "ai.codec.extract",
@@ -244,7 +244,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
 
             # 3) Text → JSON (guarded)
             try:
-                if self.response_format_class is not None or self.allow_text_json_without_schema:
+                if self.response_format_cls is not None or self.allow_text_json_without_schema:
                     for item in getattr(resp, "outputs", []) or []:
                         for part in getattr(item, "content", []) or []:
                             if isinstance(part, LLMTextPart):
