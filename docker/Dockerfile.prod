@@ -16,16 +16,20 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
-    UV_PROJECT_ENVIRONMENT=/usr/local
+    UV_PROJECT_ENVIRONMENT=/usr/local \
+    UV_NO_EDITABLE=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy local packages
+COPY packages ./packages
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --compile-bytecode && \
+    uv sync --frozen --no-editable --compile-bytecode && \
     uv pip list
 
 # === Runtime Base Stage ===

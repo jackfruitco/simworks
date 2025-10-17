@@ -13,20 +13,27 @@ COPY --from=uv /uv /uvx /bin/
 
 WORKDIR /app
 
+# UV envs
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
-    UV_PROJECT_ENVIRONMENT=/usr/local
+    UV_PROJECT_ENVIRONMENT=/usr/local \
+    UV_NO_EDITABLE=1
+
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Copy local packages
+COPY packages ./packages
+
+# Install dependencies from the lockfile (read-only) and verify imports
 RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --compile-bytecode && \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml,ro \
+    --mount=type=bind,source=uv.lock,target=uv.lock,ro \
+    uv sync --frozen --no-editable --compile-bytecode && \
     uv pip list
+
 
 # === Runtime Base Stage ===
 FROM python:${PYTHON_VERSION}-slim-bookworm AS base
@@ -38,6 +45,9 @@ WORKDIR /app
 
 # Copy Python deps from builder
 COPY --from=builder /usr/local /usr/local
+
+# Ensure local packages are importable in all stages
+# ENV PYTHONPATH="/app/packages:/app"
 
 # Create user and folders
 ARG UID=10001

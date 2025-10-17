@@ -33,6 +33,8 @@ dependencies = [
     "strawberry-graphql-django==0.66.0",
     "typing-extensions>=4.15.0",
     "zope-interface==8.0.1",
+    "simcore-ai>=0.0.0",
+    "simcore-ai-django>=0.0.0",
 ]
 
 [tool.uv.workspace]
