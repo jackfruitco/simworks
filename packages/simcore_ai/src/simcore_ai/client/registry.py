@@ -5,7 +5,9 @@ from threading import RLock
 from typing import Dict, Optional, Mapping, Any
 
 from .client import AIClient
-from simcore_ai.exceptions import RegistryError, RegistryDuplicateError, RegistryLookupError
+from simcore_ai.exceptions.registry_exceptions import (
+    RegistryError, RegistryDuplicateError, RegistryLookupError
+)
 from simcore_ai.providers.factory import create_provider
 from simcore_ai.types import AIClientConfig, AIProviderConfig
 from simcore_ai.tracing import service_span_sync

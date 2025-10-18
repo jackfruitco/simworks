@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from pydantic import Field
 
-from . import BaseLLMTool, LLMToolChoice, LLMToolCall, LLMToolCallDelta
+from .tools import BaseLLMTool, LLMToolChoice, LLMToolCall, LLMToolCallDelta
 
 logger = logging.getLogger(__name__)
 from .base import StrictBaseModel
@@ -61,7 +61,7 @@ LLMContentPart: TypeAlias = (
 # ---------- LLM Types (DTO) -------------------------------------------------------
 # Input (request)
 class LLMRequestMessage(StrictBaseModel):
-    role: Literal["system", "user"]
+    role: Literal["system", "user", "developer", "assistant", "patient", "instructor", "facilitator"]
     content: list[LLMTextPart | LLMImagePart | LLMAudioPart]  # no tool parts
 
 
@@ -101,7 +101,7 @@ class LLMRequest(StrictBaseModel):
     codec_identity: str | None = None
 
     # Response format (provider-agnostic)
-    response_format_class: Any = None   # renamed from response_format_cls
+    response_format_cls: Any = None   # renamed from response_format_cls
     response_format: dict | None = None
 
     # Tooling

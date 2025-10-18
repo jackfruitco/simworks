@@ -1,5 +1,4 @@
-from simcore_ai.exceptions import RetryableError, NonRetryableError
-from simcore_ai.exceptions.base import SimCoreError
+from simcore_ai.exceptions.base import SimCoreError, RetryableError, NonRetryableError
 
 
 class ProviderError(SimCoreError): ...

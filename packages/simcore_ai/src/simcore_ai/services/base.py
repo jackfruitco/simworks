@@ -3,17 +3,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from ..tracing import get_tracer, service_span
 from dataclasses import dataclass, field
 from typing import Sequence, Optional, Protocol, Callable
 
-from simcore_ai.types.identity import Identity
 from simcore_ai.codecs import (
     BaseLLMCodec,
     get_codec as _core_get_codec
 )
-from simcore_ai.exceptions import ServiceConfigError, ServiceCodecResolutionError
+from simcore_ai.types.identity import Identity
+from .exceptions import ServiceConfigError, ServiceCodecResolutionError
 from ..client import AIClient
+from ..tracing import get_tracer, service_span
 from ..types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart
 
 logger = logging.getLogger(__name__)
@@ -30,8 +30,6 @@ class ServiceEmitter(Protocol):
     def emit_stream_chunk(self, simulation_id: int, namespace: str, chunk_dto) -> None: ...
 
     def emit_stream_complete(self, simulation_id: int, namespace: str, correlation_id) -> None: ...
-
-
 
 
 @dataclass
@@ -248,9 +246,10 @@ class BaseLLMService:
             # Codec resolution and attach codec identity and response format
             codec = self.get_codec(simulation)
             key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
-            codec_identity = f"{ident.namespace}.{key_name.replace(':','.')}"
+            codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
             req.codec_identity = codec_identity
-            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(codec, "output_model", None)
+            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(
+                codec, "output_model", None)
             if schema_cls is not None:
                 req.response_format_cls = schema_cls
             if hasattr(codec, "get_response_format"):
@@ -318,9 +317,10 @@ class BaseLLMService:
             # Codec resolution and attach codec identity and response format
             codec = self.get_codec(simulation)
             key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
-            codec_identity = f"{ident.namespace}.{key_name.replace(':','.')}"
+            codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
             req.codec_identity = codec_identity
-            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(codec, "output_model", None)
+            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(
+                codec, "output_model", None)
             if schema_cls is not None:
                 req.response_format_cls = schema_cls
             if hasattr(codec, "get_response_format"):

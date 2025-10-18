@@ -6,12 +6,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 class StrictBaseModel(BaseModel):
-    """Default strict model used across SimWorks."""
+    """Default Pydantic strict model used across SimWorks."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class StrictOutputSchema(StrictBaseModel):
-    """Marker/base for LLM output schemas."""
+    """Default Pydantic model for LLM output schemas."""
     pass
 
 

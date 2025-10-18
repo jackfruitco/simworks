@@ -1,14 +1,13 @@
+import asyncio
 import logging
 from typing import AsyncIterator, Optional
 
 from simcore_ai.providers import BaseProvider
-from simcore_ai.types import LLMResponse, LLMRequest, LLMStreamChunk
+from simcore_ai.providers.exceptions import ProviderCallError
 from simcore_ai.tracing import service_span
-from simcore_ai.exceptions import ProviderCallError
-import asyncio
+from simcore_ai.types import LLMResponse, LLMRequest, LLMStreamChunk
 
 logger = logging.getLogger(__name__)
-
 
 
 class AIClient:
@@ -36,13 +35,13 @@ class AIClient:
         :raises Exception: If the provider call fails.
         """
         async with service_span(
-            "ai.client.send_request",
-            attributes={
-                "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
-                "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
-                "ai.stream": bool(getattr(req, "stream", False)),
-                "ai.timeout": timeout if timeout is not None else getattr(self.provider, "timeout_s", None),
-            },
+                "ai.client.send_request",
+                attributes={
+                    "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
+                    "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
+                    "ai.stream": bool(getattr(req, "stream", False)),
+                    "ai.timeout": timeout if timeout is not None else getattr(self.provider, "timeout_s", None),
+                },
         ):
             logger.debug(f"client received normalized request:\n(request:\t{req})")
             logger.debug(f"client sending request to provider: {self.provider}")
@@ -52,7 +51,8 @@ class AIClient:
                 if default_model:
                     req.model = default_model
                 else:
-                    logger.debug("No explicit model provided and provider has no default_model; proceeding without explicit model")
+                    logger.debug(
+                        "No explicit model provided and provider has no default_model; proceeding without explicit model")
 
             # Let the provider compile + wrap into a final payload on req.response_format
             try:
@@ -72,11 +72,11 @@ class AIClient:
             for attempt in range(1, attempts + 1):
                 try:
                     async with service_span(
-                        "ai.client.provider_call",
-                        attributes={
-                            "ai.attempt": attempt,
-                            "ai.max_attempts": attempts,
-                        },
+                            "ai.client.provider_call",
+                            attributes={
+                                "ai.attempt": attempt,
+                                "ai.max_attempts": attempts,
+                            },
                     ):
                         resp: LLMResponse = await self.provider.call(req, timeout)
                     last_exc = None
@@ -108,13 +108,13 @@ class AIClient:
 
                     # Retry with backoff
                     async with service_span(
-                        "ai.client.retry",
-                        attributes={
-                            "ai.attempt": attempt + 1,
-                            "ai.backoff_ms": backoff_ms,
-                            "ai.error.class": type(e).__name__,
-                            "ai.rate_limited": bool(is_rl),
-                        },
+                            "ai.client.retry",
+                            attributes={
+                                "ai.attempt": attempt + 1,
+                                "ai.backoff_ms": backoff_ms,
+                                "ai.error.class": type(e).__name__,
+                                "ai.rate_limited": bool(is_rl),
+                            },
                     ):
                         await asyncio.sleep(backoff_ms / 1000.0)
                         # Exponential backoff (cap to 10s)
@@ -135,12 +135,12 @@ class AIClient:
     async def stream_request(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
         """Pass-through streaming; providers may yield LLMStreamChunk deltas."""
         async with service_span(
-            "ai.client.stream_request",
-            attributes={
-                "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
-                "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
-                "ai.stream": True,
-            },
+                "ai.client.stream_request",
+                attributes={
+                    "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
+                    "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
+                    "ai.stream": True,
+                },
         ):
             async for chunk in self.provider.stream(req):
                 yield chunk

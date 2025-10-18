@@ -1,15 +1,15 @@
 # simcore_ai/codecs/registry.py
 from __future__ import annotations
+
 from typing import Dict, Iterable, Optional, Tuple
 
-from simcore_ai.exceptions import (
+from .base import BaseLLMCodec
+from .exceptions import (
     CodecError,
     CodecNotFoundError,
-    RegistryDuplicateError,
-    RegistryLookupError,
 )
+from ..exceptions.registry_exceptions import RegistryDuplicateError, RegistryLookupError
 
-from .base import BaseLLMCodec
 
 # Normalizer helper shared by both name and namespace
 def _norm(val: Optional[str]) -> Optional[str]:
@@ -17,6 +17,7 @@ def _norm(val: Optional[str]) -> Optional[str]:
         return None
     s = str(val).strip()
     return s.lower().replace(" ", "_") if s else None
+
 
 class CodecRegistry:
     """
@@ -110,12 +111,14 @@ class CodecRegistry:
         cls._by_name.clear()
         cls._by_ns.clear()
 
+
 # Top-level helpers mirroring Django layer’s surface
 def register(namespace: str, name: str, codec: BaseLLMCodec) -> None:
     # Allow manual registration when not using the decorator
     codec.namespace = namespace  # type: ignore[attr-defined]
-    codec.name = name            # type: ignore[attr-defined]
+    codec.name = name  # type: ignore[attr-defined]
     CodecRegistry.register(codec)
+
 
 def get_codec(namespace: str, name: str) -> Optional[BaseLLMCodec]:
     return CodecRegistry.get_codec(namespace, name)

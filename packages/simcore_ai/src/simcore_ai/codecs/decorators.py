@@ -28,7 +28,7 @@ from typing import Type
 
 from simcore_ai.codecs import BaseLLMCodec
 from simcore_ai.codecs.registry import CodecRegistry
-from simcore_ai.exceptions import RegistryDuplicateError
+from simcore_ai.exceptions.registry_exceptions import RegistryDuplicateError
 
 
 def codec(codec_cls: Type[BaseLLMCodec]) -> Type[BaseLLMCodec]:

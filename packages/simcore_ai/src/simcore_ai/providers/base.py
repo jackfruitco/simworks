@@ -5,10 +5,10 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, Iterable, Optional, Protocol
 
+from .exceptions import ProviderError, ProviderSchemaUnsupported
 from ..tracing import service_span_sync
 from ..types import (
     LLMRequest,
-    LLMRequestMessage,
     LLMResponse,
     LLMResponseItem,
     LLMStreamChunk,
@@ -17,11 +17,8 @@ from ..types import (
     LLMToolCall,
 )
 from ..types.tools import BaseLLMTool
-from simcore_ai.exceptions import ProviderError, ProviderSchemaUnsupported
 
 logger = logging.getLogger(__name__)
-
-
 
 
 class BaseProvider(ABC):
@@ -29,11 +26,11 @@ class BaseProvider(ABC):
     # Rate-limit observability
     # ---------------------------------------------------------------------
     def record_rate_limit(
-        self,
-        *,
-        status_code: int | None = None,
-        retry_after_ms: int | None = None,
-        detail: str | None = None,
+            self,
+            *,
+            status_code: int | None = None,
+            retry_after_ms: int | None = None,
+            detail: str | None = None,
     ) -> None:
         """Emit a short span when a rate limit is encountered.
 
@@ -42,17 +39,18 @@ class BaseProvider(ABC):
         """
         try:
             with service_span_sync(
-                "ai.provider.ratelimit",
-                attributes={
-                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                    "http.status_code": status_code if status_code is not None else 429,
-                    "retry_after_ms": retry_after_ms,
-                },
+                    "ai.provider.ratelimit",
+                    attributes={
+                        "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                        "http.status_code": status_code if status_code is not None else 429,
+                        "retry_after_ms": retry_after_ms,
+                    },
             ):
                 if detail:
                     logger.debug("%s rate-limited: %s", self.name, detail)
         except Exception:  # pragma: no cover - never break on tracing errors
             pass
+
     """
     Abstract base class for all AI providers.
 
@@ -125,10 +123,10 @@ class BaseProvider(ABC):
             schema_cls: Optional Pydantic model class to parse structured text into
         """
         with service_span_sync(
-            "ai.response.normalize",
-            attributes={
-                "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-            },
+                "ai.response.normalize",
+                attributes={
+                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                },
         ) as span:
             messages: list[LLMResponseItem] = []
             tool_calls: list[LLMToolCall] = []
@@ -171,9 +169,11 @@ class BaseProvider(ABC):
                         continue
 
                     # 3c) Unrecognized output item: ignore silently but keep diagnostics enabled
-                    logger.debug("provider '%s':: unhandled output item type: %s", getattr(self, "name", self), type(obj).__name__)
+                    logger.debug("provider '%s':: unhandled output item type: %s", getattr(self, "name", self),
+                                 type(obj).__name__)
                 except Exception:
-                    logger.debug("provider '%s':: failed to adapt an output item; skipping", getattr(self, "name", self), exc_info=True)
+                    logger.debug("provider '%s':: failed to adapt an output item; skipping",
+                                 getattr(self, "name", self), exc_info=True)
                     continue
 
             # Attach summary attributes for observability
@@ -212,14 +212,15 @@ class BaseProvider(ABC):
             None (modifies `req` in-place)
         """
         with service_span_sync(
-            "ai.schema.build_final",
-            attributes={
-                "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-            },
+                "ai.schema.build_final",
+                attributes={
+                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                },
         ):
             try:
                 # Compile/adapt into provider-friendly JSON Schema
-                with service_span_sync("ai.schema.adapters", attributes={"ai.provider_name": getattr(self, "name", self.__class__.__name__)}):
+                with service_span_sync("ai.schema.adapters",
+                                       attributes={"ai.provider_name": getattr(self, "name", self.__class__.__name__)}):
                     adapted = self._apply_schema_adapters(req)
                 if adapted is None:
                     return  # no schema provided; nothing to do
@@ -250,11 +251,11 @@ class BaseProvider(ABC):
             return None
 
         with service_span_sync(
-            "ai.schema.compile",
-            attributes={
-                "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                "ai.output_schema_cls": getattr(source, "__name__", type(source).__name__),
-            },
+                "ai.schema.compile",
+                attributes={
+                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "ai.output_schema_cls": getattr(source, "__name__", type(source).__name__),
+                },
         ):
             # Derive base JSON Schema
             try:
@@ -263,7 +264,8 @@ class BaseProvider(ABC):
                 base_schema = source  # already a dict-like schema
 
             if not isinstance(base_schema, dict):
-                raise ProviderSchemaUnsupported("output_schema_cls must be a Pydantic model class or a JSON Schema dict")
+                raise ProviderSchemaUnsupported(
+                    "output_schema_cls must be a Pydantic model class or a JSON Schema dict")
 
             # Run provider adapters
             from ..schemas.compiler import compile_schema
@@ -279,7 +281,6 @@ class BaseProvider(ABC):
         returned, the caller will use `compiled_schema` directly.
         """
         return None
-
 
     # ---------------------------------------------------------------------
     # Provider-specific Response HOOKS (override in concrete providers)
@@ -311,11 +312,13 @@ class BaseProvider(ABC):
         output you recognize, and the base class will try generic fallbacks.
         """
         return None
+
     # ---------------------------------------------------------------------
     # Tools
     # ---------------------------------------------------------------------
     class ToolAdapter(Protocol):
         def to_provider(self, tool: BaseLLMTool) -> Any: ...
+
         def from_provider(self, tool: Any) -> BaseLLMTool: ...
 
     # -- Tool adaptation helpers -------------------------------------------------

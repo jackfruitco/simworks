@@ -26,7 +26,6 @@ Import Guidelines:
 """
 from .client import AIClient, create_client, get_ai_client, set_default_client
 from .codecs import BaseLLMCodec, codec
-from .exceptions import SimCoreError
 from .services import BaseLLMService
 from .types import AIProviderConfig, AIClientConfig, Identity
 from .tracing import (
@@ -45,7 +44,6 @@ __all__ = [
     "BaseLLMCodec",
     "codec",
     "Identity",
-    "SimCoreError",
     "inject_trace",
     "extract_trace",
     "get_tracer",

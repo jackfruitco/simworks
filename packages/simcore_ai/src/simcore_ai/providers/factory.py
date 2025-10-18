@@ -1,13 +1,12 @@
 # simcore_ai/providers/factory.py
 from __future__ import annotations
 
-from typing import Dict, Type, Optional
+from typing import Dict, Type
 
-from ..types import AIProviderConfig
 from .base import BaseProvider
+from ..exceptions.registry_exceptions import RegistryError, RegistryDuplicateError, RegistryLookupError
 from ..tracing import service_span_sync
-from simcore_ai.exceptions import RegistryError, RegistryDuplicateError, RegistryLookupError
-
+from ..types import AIProviderConfig
 
 # In-process provider registry
 _PROVIDER_REGISTRY: Dict[str, Type[BaseProvider]] = {}
@@ -19,11 +18,11 @@ def register_provider(name: str, provider_cls: Type[BaseProvider]) -> None:
     Safe to call at import-time from provider packages.
     """
     with service_span_sync(
-        "ai.providers.register",
-        attributes={
-            "ai.provider_name": name,
-            "ai.provider_cls": f"{provider_cls.__module__}.{provider_cls.__name__}",
-        },
+            "ai.providers.register",
+            attributes={
+                "ai.provider_name": name,
+                "ai.provider_cls": f"{provider_cls.__module__}.{provider_cls.__name__}",
+            },
     ):
         key = name.lower().strip()
         if not key:
@@ -39,8 +38,8 @@ def register_provider(name: str, provider_cls: Type[BaseProvider]) -> None:
 def get_provider_class(name: str) -> Type[BaseProvider]:
     key = (name or "").lower().strip()
     with service_span_sync(
-        "ai.providers.get_class",
-        attributes={"ai.provider_name": name},
+            "ai.providers.get_class",
+            attributes={"ai.provider_name": name},
     ):
         try:
             return _PROVIDER_REGISTRY[key]
@@ -56,13 +55,13 @@ def create_provider(config: AIProviderConfig) -> BaseProvider:
     Provider-specific defaults (e.g., base_url) should be applied by the provider __init__.
     """
     with service_span_sync(
-        "ai.providers.create",
-        attributes={
-            "ai.provider_name": config.provider,
-            "ai.model": getattr(config, "model", None) or "<unspecified>",
-            "ai.base_url.set": bool(getattr(config, "base_url", None)),
-            "ai.timeout": getattr(config, "timeout_s", None),
-        },
+            "ai.providers.create",
+            attributes={
+                "ai.provider_name": config.provider,
+                "ai.model": getattr(config, "model", None) or "<unspecified>",
+                "ai.base_url.set": bool(getattr(config, "base_url", None)),
+                "ai.timeout": getattr(config, "timeout_s", None),
+            },
     ):
         cls = get_provider_class(config.provider)
         # Providers should accept these kwargs but can ignore unsupported ones.

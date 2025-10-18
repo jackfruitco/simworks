@@ -15,6 +15,7 @@ class SchemaAdapter(Protocol):
 
     Schema adapters are used to transform a schema for a given provider.
     """
+
     def adapt(self, schema: dict) -> dict: ...
 
 

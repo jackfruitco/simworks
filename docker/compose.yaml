@@ -9,8 +9,10 @@ services:
     volumes:
       - static-vol:/app/static
       - media-vol:/app/media
+      # FOR DEVELOPMENT ONLY
       # - nginx-conf:/app/nginx
-      - /opt/www/logs:/app/logs
+      - ./packages:/app/packages
+      - ./pyproject.toml:/app/pyproject.toml:ro
     restart: unless-stopped
     logging:
       driver: "json-file"

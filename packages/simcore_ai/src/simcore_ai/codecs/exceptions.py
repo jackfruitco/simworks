@@ -1,4 +1,4 @@
-from simcore_ai.exceptions import RegistryLookupError
+from simcore_ai.exceptions.registry_exceptions import RegistryLookupError
 from simcore_ai.exceptions.base import SimCoreError
 
 

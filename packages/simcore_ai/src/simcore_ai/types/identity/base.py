@@ -1,10 +1,10 @@
-# simcore_ai/types/identity.py
+# simcore_ai/types/base.py
 from __future__ import annotations
 from dataclasses import dataclass
 import re
 
 from typing import Tuple
-from simcore_ai.exceptions import IdentityError
+from .exceptions import IdentityError
 
 """
 This module defines the `Identity` class, which provides a standardized way to represent

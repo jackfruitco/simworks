@@ -31,7 +31,8 @@ COPY packages ./packages
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml,ro \
     --mount=type=bind,source=uv.lock,target=uv.lock,ro \
-    uv sync --frozen --no-editable --compile-bytecode && \
+    # uv sync --frozen --no-editable --compile-bytecode && \
+    uv sync --frozen --compile-bytecode && \
     uv pip list
 
 

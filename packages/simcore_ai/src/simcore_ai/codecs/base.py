@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-from abc import ABC
-from typing import Any
 import base64
 import json
+from abc import ABC
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse, LLMTextPart, LLMToolResultPart
 from simcore_ai.types import StrictOutputSchema
-from simcore_ai.tracing import service_span_sync
-
 # Identity model for framework-agnostic codec keys
 from simcore_ai.types.identity import Identity
-
-from simcore_ai.exceptions import CodecDecodeError, CodecSchemaError
+from .exceptions import CodecDecodeError, CodecSchemaError
 
 
 class BaseLLMCodec(ABC):
@@ -82,11 +80,11 @@ class BaseLLMCodec(ABC):
         and validated, otherwise returns None.
         """
         with service_span_sync(
-            "ai.codec.validate",
-            attributes={
-                "ai.codec": self.__class__.__name__,
-                "ai.schema": getattr(getattr(self, "schema_cls", None), "__name__", None),
-            },
+                "ai.codec.validate",
+                attributes={
+                    "ai.codec": self.__class__.__name__,
+                    "ai.schema": getattr(getattr(self, "schema_cls", None), "__name__", None),
+                },
         ):
             candidate = self.extract_structured_candidate(resp)
             if candidate is None:
@@ -109,8 +107,8 @@ class BaseLLMCodec(ABC):
           3) First tool result part with JSON mime, base64-decoded and parsed
         """
         with service_span_sync(
-            "ai.codec.extract",
-            attributes={"ai.codec": self.__class__.__name__},
+                "ai.codec.extract",
+                attributes={"ai.codec": self.__class__.__name__},
         ):
             # 1) Provider-provided
             obj = resp.provider_meta.get("structured")
@@ -130,7 +128,7 @@ class BaseLLMCodec(ABC):
             for item in getattr(resp, "outputs", []) or []:
                 for part in getattr(item, "content", []) or []:
                     if isinstance(part, LLMToolResultPart) and (
-                        part.mime_type or ""
+                            part.mime_type or ""
                     ).startswith(("application/json", "text/json")):
                         try:
                             raw = base64.b64decode(part.data_b64).decode("utf-8")

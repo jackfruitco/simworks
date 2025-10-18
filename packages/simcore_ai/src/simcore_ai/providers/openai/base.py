@@ -16,8 +16,8 @@ from simcore_ai.types import (
     LLMRequest,
     LLMResponse,
 )
-from simcore_ai.exceptions import ProviderError
 from ..base import BaseProvider
+from ..exceptions import ProviderError
 from ..openai.tools import OpenAIToolAdapter
 
 logger = logging.getLogger(__name__)
@@ -67,11 +67,11 @@ class OpenAIProvider(BaseProvider):
         Currently supports ImageGenerationCall; extend for other tool types as needed.
         """
         with service_span_sync(
-            "ai.tools.handle_output",
-            attributes={
-                "ai.provider_name": self.name,
-                "ai.output.type": type(item).__name__,
-            },
+                "ai.tools.handle_output",
+                attributes={
+                    "ai.provider_name": self.name,
+                    "ai.output.type": type(item).__name__,
+                },
         ):
             if isinstance(item, ImageGenerationCall):
                 call_id = getattr(item, "id", None) or str(uuid4())
