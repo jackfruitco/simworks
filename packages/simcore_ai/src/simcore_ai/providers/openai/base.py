@@ -48,6 +48,24 @@ class OpenAIProvider(BaseProvider):
         # Register tools adapter
         self.set_tool_adapter(OpenAIToolAdapter())
 
+    async def healthcheck(self, *, timeout: float | None = None) -> tuple[bool, str]:
+        """
+        Minimal live check using Responses API; no tokens-heavy call.
+        """
+        try:
+            # call OpenAI Responses API with ping message
+            await self._client.responses.create(
+                model=self.default_model or "gpt-4o-mini",
+                input=[EasyInputMessageParam(role="user", content="ping")],
+                max_output_tokens=16,
+                timeout=timeout or min(self.timeout_s or 10, 10),
+            )
+            return True, "responses.create OK"
+        except Exception as exc:
+            # Optionally map rate limit / auth separately for clearer logs
+            self.record_rate_limit(status_code=getattr(exc, "status_code", None), detail=str(exc))
+            return False, f"openai error: {exc!s}"
+
     def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
         if not compiled_schema:
             return None

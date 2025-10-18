@@ -87,6 +87,21 @@ class BaseProvider(ABC):
     def __repr__(self) -> str:  # pragma: no cover
         return f"<AIProvider {self.name}>"
 
+
+    async def healthcheck(self, *, timeout: float | None = None) -> tuple[bool, str]:
+        """
+        Default provider healthcheck.
+
+        Returns:
+            (ok, detail): ok=True if healthy, detail is a short message.
+        """
+        # Default behavior (safe no-op): just report the provider is constructed.
+        # Concrete providers SHOULD override with a minimal live call.
+        try:
+            return True, f"{getattr(self, 'name', self.__class__.__name__)} ready"
+        except Exception as exc:
+            return False, f"init error: {exc!s}"
+
     def _provider_namespace_key(self) -> str:
         """
         Return a stable provider namespace like 'simcore.ai_v1.providers.<label>'
