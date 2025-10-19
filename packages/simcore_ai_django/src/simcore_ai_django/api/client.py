@@ -1,4 +1,4 @@
-# simcore_ai_django/api.py
+# simcore_ai_django/client.py
 from __future__ import annotations
 
 """
