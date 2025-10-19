@@ -19,7 +19,7 @@ If all components share the same tuple3 identity, they work together automatical
 ## 1️⃣ Response Schema
 
 ### Base Class
-`DjangoStrictSchema`
+`DjangoBaseOutputSchema`
 
 ### Minimum Definition
 Define your output fields only.
@@ -27,9 +27,11 @@ Define your output fields only.
 ```python
 from simcore_ai_django.api.types import DjangoStrictSchema, DjangoLLMResponseItem
 
+
 class PatientInitialOutputSchema(DjangoStrictSchema):
     messages: list[DjangoLLMResponseItem]
 ```
+Tip: To align identities across all components without extra wiring, add identity mixins (e.g., ChatlabMixin, StandardizedPatientMixin) or set origin/bucket as class attrs. Otherwise, the Django autoderive rules will use your app label for origin, default for bucket, and a stripped/snake class name for name.
 
 ✅ **Identity** auto-derives from Django app, class name, and mixins.
 
@@ -94,6 +96,13 @@ from simcore_ai_django.api.types import DjangoExecutableLLMService
 @llm_service
 class GenerateInitialResponse(DjangoExecutableLLMService):
     pass
+
+# or,
+
+@llm_service
+class GenerateInitialResponse(DjangoExecutableLLMService):
+    from your_app.ai.schemas import YourSchema as _Schema
+    response_format_cls = _Schema
 ```
 
 ✅ Automatically resolves:
