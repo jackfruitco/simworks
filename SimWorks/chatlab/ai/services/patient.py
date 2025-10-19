@@ -11,12 +11,11 @@ from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
 # PromptKit v3 (used for the image case)
 from simcore_ai_django.promptkit import PromptEngine
-from simcore_ai_django.services import llm_service
+from simcore_ai_django.api.decorators import llm_service
 # Django-aware service base and rich DTOs
 from simcore_ai_django.services.base import DjangoExecutableLLMService
 # Tool DTO (provider-agnostic)
-from simcore_ai_django.types import DjangoLLMBaseTool
-from simcore_ai_django.types import DjangoLLMRequestMessage
+from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
 
 logger = logging.getLogger(__name__)
 

@@ -8,6 +8,5 @@ from ..mixins import SimcoreMixin, FeedbackMixin
 @codec
 class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
     """Codec for the initial patient feedback."""
-    name = "hotwash_initial"
 
-    codec_name = "hotwash_initial"
+

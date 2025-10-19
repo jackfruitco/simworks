@@ -7,6 +7,9 @@ from .client import *
 from .decorators import *
 from .mixins import *
 from .identity import *
+from .tracing import *
+from ..services import DjangoBaseLLMService
+from ..types import *
 
 __all__ = [
     # decorators
@@ -27,4 +30,13 @@ __all__ = [
     "derive_django_identity_for_class",
     "get_app_label_for_class",
     "resolve_collision_django",
+
+    # services
+    "DjangoBaseLLMService",
+
+    # tracing
+    "service_span_sync",
+
+    # types
+    # TODO add types to API
 ]

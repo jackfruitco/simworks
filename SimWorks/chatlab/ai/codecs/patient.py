@@ -6,8 +6,9 @@ from typing import Any, Iterable, Optional
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from simcore_ai.tracing import service_span_sync
-from simcore_ai_django.codecs import DjangoBaseLLMCodec, codec
+from simcore_ai_django.api import service_span_sync
+from simcore_ai_django.api.decorators import codec
+from simcore_ai_django.codecs import DjangoBaseLLMCodec
 
 from ..schemas import (
     PatientInitialOutputSchema,
