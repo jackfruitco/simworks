@@ -1,10 +1,10 @@
 # simcore_ai_django/codecs/decorators.py
 """
-Django codec registration decorator (tuple3 identity; class-based registration).
+Django codec registration decorator (tuple3 identity (origin, bucket, name); class-based registration).
 
 This decorator **registers a DjangoBaseLLMCodec SUBCLASS (class, not instance)**
 with the central Django codec registry using a **tuple3 identity**:
-`(namespace, bucket, name)`.
+`(origin, bucket, name)`.
 
 You can use it with or without parameters:
 
@@ -16,20 +16,15 @@ You can use it with or without parameters:
     @codec
     class PatientInitialResponseCodec(DjangoBaseLLMCodec):
         # Optional overrides (otherwise inferred)
-        namespace = "chatlab"            # defaults to app/module root, e.g. "chatlab"
+        origin = "chatlab"            # defaults to app/module root, e.g. "chatlab"
         bucket = "sim_responses"         # defaults to "default" (with DeprecationWarning)
         name = "patient_initial_response"  # defaults to class name, snake-cased, with "Codec" suffix removed
 
 **2) Parameterized form (explicit identity)**
 
-    @codec(namespace="chatlab", bucket="sim_responses", name="patient_initial_response")
+    @codec(origin="chatlab", bucket="sim_responses", name="patient_initial_response")
     class PatientInitialResponseCodec(DjangoBaseLLMCodec):
         ...
-
-**Legacy (deprecated)**
-
-    @codec(namespace="chatlab", name="sim_responses:patient_initial_response")  # DEPRECATED
-    class LegacyCodec(DjangoBaseLLMCodec): ...
 
 Notes
 -----
@@ -62,9 +57,9 @@ def _snake(name: str) -> str:
     return s.replace("__", "_").strip("_").lower()
 
 
-def _infer_namespace_from_module(codec_cls: Type[DjangoBaseLLMCodec]) -> Optional[str]:
+def _infer_origin_from_module(codec_cls: Type[DjangoBaseLLMCodec]) -> Optional[str]:
     """
-    Infer app namespace from the module path, using the root package segment.
+    Infer app origin from the module path, using the root package segment.
     Example: 'chatlab.ai.codecs.sim_responses' -> 'chatlab'
     """
     mod = getattr(codec_cls, "__module__", "") or ""
@@ -75,71 +70,71 @@ def _infer_namespace_from_module(codec_cls: Type[DjangoBaseLLMCodec]) -> Optiona
 def _normalize_identity(
     *,
     codec_cls: Type[DjangoBaseLLMCodec],
-    namespace: Optional[str],
+    origin: Optional[str],
     bucket: Optional[str],
     name: Optional[str],
 ) -> tuple[str, str, str]:
-    # Prefer explicit args; fall back to class attributes
-    ns = (namespace or getattr(codec_cls, "namespace", None) or _infer_namespace_from_module(codec_cls) or "default").strip()
-    nm_raw = name or getattr(codec_cls, "name", None)
-    buck = bucket or getattr(codec_cls, "bucket", None)
+    # Prefer explicit args; fall back to class attributes; then infer from module; then default.
+    origin_raw = (origin or getattr(codec_cls, "origin", None) or _infer_origin_from_module(codec_cls) or "default").strip()
+    name_raw = name or getattr(codec_cls, "name", None)
+    bucket_raw = bucket or getattr(codec_cls, "bucket", None)
 
-    # Legacy "bucket:name" in name → parse (warn)
-    if nm_raw and ":" in str(nm_raw) and (buck is None):
+    # Legacy "bucket:name" in name → parse (warn) when bucket not provided
+    if name_raw and ":" in str(name_raw) and bucket is None:
         warnings.warn(
             "Decorator received legacy name='bucket:name'. Please pass bucket and name separately.",
             DeprecationWarning,
             stacklevel=3,
         )
-        bucket_part, name_part = str(nm_raw).split(":", 1)
-        buck = bucket_part
-        nm_raw = name_part
+        bucket_part, name_part = str(name_raw).split(":", 1)
+        bucket_raw = bucket_part
+        name_raw = name_part
 
-    # Default name: class name (snake) with 'codec' suffix removed
-    if not nm_raw:
+    # Default name: class name (snake) with 'Codec' suffix removed
+    if not name_raw:
         cls_name = codec_cls.__name__
         cls_name = re.sub(r"Codec$", "", cls_name)
-        nm_raw = _snake(cls_name)
+        name_raw = _snake(cls_name)
     else:
-        nm_raw = _snake(str(nm_raw))
+        name_raw = _snake(str(name_raw))
 
     # Default bucket: "default" (warn)
-    if not buck:
+    if not bucket_raw:
         warnings.warn(
             "No bucket provided for codec identity; defaulting to bucket='default'. "
             "Bucket is optional, but explicit categories are recommended.",
             DeprecationWarning,
             stacklevel=3,
         )
-        buck = "default"
+        bucket_raw = "default"
 
-    ns = _snake(ns)
-    buck = _snake(str(buck))
-    nm = _snake(str(nm_raw))
-    return ns, buck, nm
+    org = _snake(origin_raw)
+    buck = _snake(str(bucket_raw))
+    nm = _snake(str(name_raw))
+    return org, buck, nm
 
 
-def _register_class(codec_cls: Type[DjangoBaseLLMCodec], *, namespace: str, bucket: str, name: str) -> Type[DjangoBaseLLMCodec]:
+def _register_class(codec_cls: Type[DjangoBaseLLMCodec], *, origin: str, bucket: str, name: str) -> Type[DjangoBaseLLMCodec]:
     with service_span_sync(
         "ai.codec.register",
         attributes={
             "ai.codec": codec_cls.__name__,
-            "ai.identity.codec": f"{namespace}.{bucket}.{name}",
-            "ns": namespace,
+            "ai.identity.codec": f"{origin}.{bucket}.{name}",
+            "origin": origin,
             "bucket": bucket,
             "name": name,
         },
     ):
         # Annotate the class (helpful for logging/resolve)
-        setattr(codec_cls, "namespace", namespace)
+        setattr(codec_cls, "origin", origin)
         setattr(codec_cls, "bucket", bucket)
         setattr(codec_cls, "name", name)
         # Register the CLASS (not an instance)
-        DjangoCodecRegistry.register(namespace, bucket, name, codec_cls)
+        DjangoCodecRegistry.register(origin, bucket, name, codec_cls)
     return codec_cls
 
 
-def codec(_cls: Optional[C] = None, *, namespace: Optional[str] = None, bucket: Optional[str] = None, name: Optional[str] = None) -> Callable[[C], C] | C:
+def codec(_cls: Optional[C] = None, *, origin: Optional[str] = None, bucket: Optional[str] = None, name: Optional[str] = None) -> Callable[[C], C] | C:
     """
     Decorate a DjangoBaseLLMCodec subclass to register it with a tuple3 identity.
 
@@ -147,19 +142,19 @@ def codec(_cls: Optional[C] = None, *, namespace: Optional[str] = None, bucket: 
         @codec
         class MyCodec(DjangoBaseLLMCodec): ...
 
-        @codec(namespace="chatlab", bucket="sim_responses", name="my_codec")
+        @codec(origin="chatlab", bucket="sim_responses", name="my_codec")
         class MyExplicitCodec(DjangoBaseLLMCodec): ...
 
     Legacy (deprecated):
-        @codec(namespace="chatlab", name="sim_responses:my_codec")
+        @codec(origin="chatlab", name="sim_responses:my_codec")
         class LegacyCodec(DjangoBaseLLMCodec): ...
     """
     def _wrap(cls: C) -> C:
         if not isinstance(cls, type) or not issubclass(cls, DjangoBaseLLMCodec):
             raise TypeError("@codec can only be applied to DjangoBaseLLMCodec subclasses")
 
-        ns, buck, nm = _normalize_identity(codec_cls=cls, namespace=namespace, bucket=bucket, name=name)
-        return _register_class(cls, namespace=ns, bucket=buck, name=nm)
+        org, buck, nm = _normalize_identity(codec_cls=cls, origin=origin, bucket=bucket, name=name)
+        return _register_class(cls, origin=org, bucket=buck, name=nm)
 
     # No-arg usage: @codec
     if _cls is None:
