@@ -20,8 +20,9 @@ It also **re-exports** core helpers so projects can import them from the Django 
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Callable
 from functools import lru_cache
-from typing import Iterable, Callable, Optional, Tuple
+from typing import Optional, Tuple
 
 from django.apps import AppConfig, apps
 from django.conf import settings
@@ -102,7 +103,7 @@ def derive_django_identity_for_class(
     origin: Optional[str] = None,
     bucket: Optional[str] = None,
     name: Optional[str] = None,
-    strip_tokens: Iterable[str] = (),
+    __strip_tokens: Iterable[str] = (),
 ) -> Tuple[str, str, str]:
     """Derive `(origin, bucket, name)` for a class using Django context.
 
@@ -157,8 +158,8 @@ def derive_django_identity_for_class(
     if app_label:
         tokens.update(_app_strip_tokens(app_label))
         tokens.update(_app_label_token_variants(app_label))
-    if strip_tokens:
-        tokens.update(strip_tokens)
+    if __strip_tokens:
+        tokens.update(__strip_tokens)
 
     # Also strip the resolved origin/bucket strings if present in the class name
     tokens.update({use_origin, use_bucket, snake(use_origin), snake(use_bucket)})

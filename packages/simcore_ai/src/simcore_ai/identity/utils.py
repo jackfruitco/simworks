@@ -24,7 +24,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Iterable, Optional, Tuple, Callable, Union
+from typing import Optional, Tuple, Union
+from collections.abc import Iterable, Callable
 
 __all__ = [
     "DEFAULT_STRIP_TOKENS",
@@ -89,18 +90,18 @@ def strip_tokens(
 
     out = name or ""
     if not out or (not strip_leading and not strip_trailing):
-        return name
+        return out
 
     def _strip_once(s: str) -> tuple[str, bool]:
-        changed = False
+        changed_ = False
         for tok in tokens:
             if strip_leading and s.startswith(tok):
                 s = s[len(tok):]
-                changed = True
+                changed_ = True
             if strip_trailing and s.endswith(tok):
                 s = s[:-len(tok)]
-                changed = True
-        return s, changed
+                changed_ = True
+        return s, changed_
 
     if repeat:
         while True:
@@ -138,7 +139,8 @@ def derive_identity_for_class(
         origin: Optional[str] = None,
         bucket: Optional[str] = None,
         name: Optional[str] = None,
-        strip_tokens: Iterable[str] = (),
+        __strip_tokens: Iterable[str] = (),
+        **kwargs,
 ) -> Tuple[str, str, str]:
     """Derive a tuple identity (origin, bucket, name) for a class.
 
@@ -149,13 +151,16 @@ def derive_identity_for_class(
 
     All three parts are normalized via `snake()` before returning.
     """
+    if "strip_tokens" in kwargs and not __strip_tokens:
+        __strip_tokens = kwargs["strip_tokens"]
+
     o_raw = origin or module_root(cls) or "default"
     b_raw = bucket or "default"
     if name is not None:
         n_raw = name
     else:
         cls_name = getattr(cls, "__name__", str(cls))
-        n_raw = derive_name_from_class(cls_name, strip_tokens)
+        n_raw = derive_name_from_class(cls_name, __strip_tokens)
 
     return snake(o_raw), snake(b_raw), snake(n_raw)
 
