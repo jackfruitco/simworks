@@ -7,7 +7,7 @@ import warnings
 
 try:
     # Prefer core Identity if available
-    from simcore_ai.types.identity import Identity
+    from simcore_ai.identity import Identity
 except Exception:  # pragma: no cover - optional import
     Identity = object  # type: ignore[misc,assignment]
 

@@ -9,7 +9,7 @@ Exports:
 """
 from __future__ import annotations
 
-from simcore_ai.types.identity.mixins import IdentityMixin
+from simcore_ai.identity.mixins import IdentityMixin
 
 __all__ = [
     "IdentityMixin",

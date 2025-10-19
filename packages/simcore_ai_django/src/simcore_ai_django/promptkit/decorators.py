@@ -1,60 +1,40 @@
 # simcore_ai_django/promptkit/decorators.py
+# simcore_ai_django/promptkit/decorators.py
+"""Django-aware decorators for registering PromptSection classes.
+
+Features:
+  - Django-aware registration of PromptSection and related types.
+  - Auto-derivation of (origin, bucket, name) identity using Django app label and shared rules.
+  - Canonical dot-only identity strings for prompt registration.
+"""
+
 from __future__ import annotations
 
 import logging
-import re
-from typing import Type, Optional
-
-from django.apps import apps as django_apps
+from typing import Type
 
 from simcore_ai.promptkit.registry import PromptRegistry
 from simcore_ai.promptkit.types import PromptSection
-from simcore_ai.types.identity.base import Identity
+from simcore_ai_django.identity import derive_django_identity_for_class
 
 logger = logging.getLogger(__name__)
 
-_SUFFIX_RE = re.compile(
-    r"(PromptScenario|Scenario|PromptSection|Prompt|Section)$", re.IGNORECASE
-)
-
-
-def _infer_app_label(py_module: str) -> Optional[str]:
-    """Return the Django app label that contains the given module path."""
-    try:
-        cfg = django_apps.get_containing_app_config(py_module)
-        return getattr(cfg, "label", None)
-    except Exception:
-        return None
-
-
-def _derive_name_from_class(cls_name: str) -> str:
-    """Strip common suffixes and normalize to a slug-like lower name."""
-    base = _SUFFIX_RE.sub("", cls_name).strip()
-    # convert CamelCase -> snake-ish -> kebab-ish -> plain lower
-    # we rely on Identity normalization later, so keep it simple:
-    return base or cls_name
-
 
 def _ensure_identity(cls: Type[PromptSection]) -> None:
-    """If a PromptSection class lacks an Identity, synthesize one from Django context."""
-    ident = getattr(cls, "identity", None)
-    has_explicit = isinstance(ident, Identity)
+    """Ensure a PromptSection class has (origin, bucket, name) set using Django-aware derivation."""
     has_parts = all(isinstance(getattr(cls, k, None), str) and getattr(cls, k) for k in ("origin", "bucket", "name"))
-
-    if has_explicit or has_parts:
+    if has_parts:
         return
-
-    origin = _infer_app_label(cls.__module__) or "app"
-    bucket = getattr(cls, "bucket", None) or "default"
-    derived = _derive_name_from_class(cls.__name__)
-    name = getattr(cls, "name", None) or derived
-
-    cls.identity = Identity.from_parts(origin=origin, bucket=bucket, name=name)  # type: ignore[attr-defined]
-    logger.info(
-        "Prompt identity inferred for %s -> %s",
-        cls.__name__,
-        cls.identity.to_string(),  # type: ignore[attr-defined]
+    org, buck, nm = derive_django_identity_for_class(
+        cls,
+        origin=getattr(cls, "origin", None),
+        bucket=getattr(cls, "bucket", None),
+        name=getattr(cls, "name", None),
     )
+    setattr(cls, "origin", org)
+    setattr(cls, "bucket", buck)
+    setattr(cls, "name", nm)
+    logger.info("Prompt identity derived for %s -> %s.%s.%s", cls.__name__, org, buck, nm)
 
 
 def _register_prompt_section(cls: Type[PromptSection]) -> Type[PromptSection]:
@@ -68,7 +48,7 @@ def _register_prompt_section(cls: Type[PromptSection]) -> Type[PromptSection]:
 def prompt_section(cls: Type[PromptSection]) -> Type[PromptSection]:
     """Django-aware decorator that registers a PromptSection and auto-fills identity.
 
-    If `identity` (or origin/bucket/name) is not declared on the class, we will:
+    If (origin, bucket, name) are not declared on the class, we will:
       - set `origin` to the Django app label for the class' module
       - set `bucket` to `"default"`
       - derive `name` from the class name with common suffixes removed

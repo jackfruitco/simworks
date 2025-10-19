@@ -27,7 +27,7 @@ from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse, LLMTextPart, LLMToolResultPart
 from simcore_ai.types import StrictOutputSchema
 # Identity model for framework-agnostic codec keys
-from simcore_ai.types.identity import Identity
+from simcore_ai.identity import Identity
 from .exceptions import CodecDecodeError, CodecSchemaError
 
 

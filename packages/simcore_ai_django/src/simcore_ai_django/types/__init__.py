@@ -43,6 +43,7 @@ __all__ = [
     "DjangoLLMUsage",
     "DjangoLLMResponse",
     "DjangoLLMToolCall",
+    "DjangoLLMToolSpec",
 
     "LLMTextPart",
     "LLMImagePart",

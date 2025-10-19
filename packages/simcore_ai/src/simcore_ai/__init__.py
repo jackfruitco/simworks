@@ -28,6 +28,7 @@ from .client import AIClient, create_client, get_ai_client, set_default_client
 from .client.schemas import AIProviderConfig, AIClientRegistration
 from .codecs import BaseLLMCodec, codec
 from .services import BaseLLMService
+from .identity import Identity
 from .tracing import (
     inject_trace, extract_trace, get_tracer,
     service_span, service_span_sync

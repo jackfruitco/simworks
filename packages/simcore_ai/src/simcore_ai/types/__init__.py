@@ -2,7 +2,6 @@
 from .base import *
 from .dtos import *
 from .helpers import project_from
-from .identity import Identity
 from .tools import *
 
 __all__ = [
@@ -11,7 +10,6 @@ __all__ = [
     "StrictOutputSchema",
     "Boolish",
     "BaseLLMTool",
-    "Identity",
     "LLMRequestMessage",
     "LLMResponseItem",
     "LLMTextPart",
