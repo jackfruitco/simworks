@@ -1,9 +1,6 @@
 # simcore/ai/services/feedback.py
 from simcore_ai_django.services import DjangoExecutableLLMService
-
-
-class FeedbackMixin:
-    bucket = "feedback"
+from ..mixins import FeedbackMixin
 
 
 class GenerateHotwashInitialResponse(DjangoExecutableLLMService, FeedbackMixin):

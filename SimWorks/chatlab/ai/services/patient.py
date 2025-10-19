@@ -7,7 +7,7 @@ from typing import Type, Optional, Tuple, List
 from chatlab.ai.prompts.mixins import ChatlabMixin
 from chatlab.models import Message
 from core.utils import remove_null_keys
-from simcore.ai.prompts.mixins import StandardizedPatientMixin
+from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
 # PromptKit v3 (used for the image case)
 from simcore_ai_django.promptkit import PromptEngine

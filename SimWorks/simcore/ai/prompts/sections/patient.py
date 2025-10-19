@@ -3,14 +3,15 @@ from dataclasses import dataclass
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from simcore.ai.prompts.mixins import SimcoreBaseMixin, StandardizedPatientMixin
+from simcore.ai.mixins import SimcoreMixin, StandardizedPatientMixin
 from simcore.models import Simulation
-from simcore_ai_django.promptkit import PromptSection, prompt_section
+from simcore_ai_django.api.decorators import prompt_section
+from simcore_ai_django.promptkit import PromptSection
 
 
 @prompt_section
 @dataclass
-class PatientNameSection(PromptSection, SimcoreBaseMixin, StandardizedPatientMixin):
+class PatientNameSection(PromptSection, SimcoreMixin, StandardizedPatientMixin):
     name = "name"
 
     # weight = 100
