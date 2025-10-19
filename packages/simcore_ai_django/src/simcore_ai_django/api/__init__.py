@@ -8,8 +8,7 @@ from .decorators import *
 from .mixins import *
 from .identity import *
 from .tracing import *
-from ..services import DjangoBaseLLMService
-from ..types import *
+from .types import *
 
 __all__ = [
     # decorators
@@ -33,10 +32,14 @@ __all__ = [
 
     # services
     "DjangoBaseLLMService",
+    "DjangoExecutableLLMService",
 
     # tracing
     "service_span_sync",
 
+    # tools
+    "DjangoLLMBaseTool",
+    "DjangoLLMToolCall",
     # types
     # TODO add types to API
 ]
