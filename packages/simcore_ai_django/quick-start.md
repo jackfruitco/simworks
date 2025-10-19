@@ -25,8 +25,7 @@ If all components share the same tuple3 identity, they work together automatical
 Define your output fields only.
 
 ```python
-from simcore_ai_django.api.types import DjangoStrictSchema
-from simcore_ai_django.types import DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoStrictSchema, DjangoLLMResponseItem
 
 class PatientInitialOutputSchema(DjangoStrictSchema):
     messages: list[DjangoLLMResponseItem]
