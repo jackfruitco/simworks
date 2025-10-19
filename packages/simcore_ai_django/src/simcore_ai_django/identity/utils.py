@@ -106,6 +106,10 @@ def derive_django_identity_for_class(
 ) -> Tuple[str, str, str]:
     """Derive `(origin, bucket, name)` for a class using Django context.
 
+    This Django-aware derivation **always** bases `name` on the concrete class being
+    registered (i.e., `cls.__name__`), not on any mixins/bases in its MRO. This
+    prevents accidental names like `chatlab_mixin`.
+
     Origin precedence:
       1) explicit `origin`
       2) class attribute `origin`
@@ -113,10 +117,17 @@ def derive_django_identity_for_class(
       4) module_root(cls)
       5) "default"
 
-    Tokens used = DEFAULT_STRIP_TOKENS ∪ {"Django"} ∪ global settings ∪ app tokens ∪
-    app-label variants ∪ provided `strip_tokens`. All outputs are snake-cased.
+    Bucket precedence:
+      1) explicit `bucket`
+      2) class attribute `bucket`
+      3) second module segment if available
+      4) "default"
+
+    Tokens used for stripping = DEFAULT_STRIP_TOKENS ∪ {"Django", "Mixin"} ∪ global settings
+    ∪ app tokens ∪ app-label variants ∪ provided `strip_tokens` ∪ {origin, bucket}.
+    All outputs are snake-cased.
     """
-    # Select origin with precedence
+    # ---- Resolve origin with precedence ----
     if origin:
         use_origin = origin
     elif isinstance(getattr(cls, "origin", None), str) and getattr(cls, "origin"):
@@ -128,10 +139,20 @@ def derive_django_identity_for_class(
         else:
             use_origin = module_root(cls) or "default"
 
-    # Build token set
+    # ---- Resolve bucket with precedence ----
+    if bucket:
+        use_bucket = bucket
+    elif isinstance(getattr(cls, "bucket", None), str) and getattr(cls, "bucket"):
+        use_bucket = getattr(cls, "bucket")
+    else:
+        mod = getattr(cls, "__module__", "") or ""
+        parts = [p for p in mod.split(".") if p]
+        use_bucket = parts[1] if len(parts) > 1 else "default"
+
+    # ---- Build strip-token set ----
     app_label = get_app_label_for_class(cls)
     tokens = set(DEFAULT_STRIP_TOKENS)
-    tokens.add("Django")
+    tokens.update({"Django", "Mixin"})
     tokens.update(_global_strip_tokens())
     if app_label:
         tokens.update(_app_strip_tokens(app_label))
@@ -139,16 +160,26 @@ def derive_django_identity_for_class(
     if strip_tokens:
         tokens.update(strip_tokens)
 
-    # Delegate to core derivation with computed origin and unioned tokens
-    o, b, n = derive_identity_for_class(
-        cls,
-        origin=use_origin,
-        bucket=bucket,
-        name=name,
-        strip_tokens=tokens,
-    )
-    # Defensive normalization
-    return snake(o), snake(b), snake(n)
+    # Also strip the resolved origin/bucket strings if present in the class name
+    tokens.update({use_origin, use_bucket, snake(use_origin), snake(use_bucket)})
+
+    # ---- Derive name from the concrete class only ----
+    if name:
+        use_name = name
+    else:
+        base_name = getattr(cls, "__name__", "") or "default"
+
+        # Common framework suffixes to remove
+        suffixes = ("Section", "Service", "Prompt", "Codec")
+        for suf in suffixes:
+            if base_name.endswith(suf):
+                base_name = base_name[: -len(suf)]
+
+        # Strip noise tokens then snake_case
+        cleaned = strip_tokens(base_name, tokens)
+        use_name = snake(cleaned) or (snake(base_name) if base_name else "default")
+
+    return snake(use_origin), snake(use_bucket), snake(use_name)
 
 
 def resolve_collision_django(
