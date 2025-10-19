@@ -80,21 +80,6 @@ LOGGING = {
             "level": check_env("NOTIFY_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "simai": {
-            "handlers": ["console", "logfire"],
-            "level": check_env("SIMAI_LOG_LEVEL", None) or LOG_LEVEL,
-            "propagate": False,
-        },
-        "simai.promptkit": {
-            "handlers": ["console"],
-            "level": check_env("SIMAI_PROMPTS_LOG_LEVEL", None) or LOG_LEVEL,
-            "propagate": False,
-        },
-        "simai.parser": {
-            "handlers": ["console", "logfire"],
-            "level": check_env("SIMAI_PARSER_LOG_LEVEL", None) or LOG_LEVEL,
-            "propagate": False,
-        },
         "simcore": {
             "handlers": ["console", "logfire"],
             "level": check_env("SIMCORE_LOG_LEVEL", None) or LOG_LEVEL,
@@ -102,17 +87,12 @@ LOGGING = {
         },
 
         # ---------- AI loggers -------------------------------------------------------------------
-        "simcore.ai_v1": {
+        "simcore_ai": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "chatlab.ai_v1": {
-            "handlers": ["console", "logfire"],
-            "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
-            "propagate": False,
-        },
-        "trainerlab.ai_v1": {
+        "simcore_ai_django": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,

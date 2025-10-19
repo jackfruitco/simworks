@@ -1,17 +1,40 @@
-# simcore_ai/registry.py
+# simcore_ai/client/registry.py
 from __future__ import annotations
+
+"""
+simcore_ai.client.registry
+==========================
+
+In-process registry for `AIClient` instances.
+
+Responsibilities
+----------------
+- Create and register `AIClient` objects from effective provider configurations.
+- Maintain a default client pointer (until the Django glue selects one deterministically).
+- Resolve clients by explicit name, by provider semantic name, or fall back to default.
+- Provide light diagnostics for setup flows (e.g., client_count, is_configured).
+
+Notes
+-----
+- This module consumes the **new** `AIProviderConfig` from `simcore_ai.client.schemas`.
+- The effective provider configuration (including overrides and API key resolution)
+  should typically be computed by the Django glue before calling `create_client`.
+- Default selection policy is orchestrated in the Django setup layer; `make_default`
+  remains supported but is best avoided in application code.
+"""
 
 from threading import RLock
 from typing import Dict, Optional, Mapping, Any
 
 from .client import AIClient
 from simcore_ai.exceptions.registry_exceptions import (
-    RegistryError, RegistryDuplicateError, RegistryLookupError
+    RegistryError,
+    RegistryDuplicateError,
+    RegistryLookupError,
 )
 from simcore_ai.providers.factory import create_provider
-from simcore_ai.types import AIClientConfig, AIProviderConfig
+from simcore_ai.client.schemas import AIProviderConfig, AIClientConfig
 from simcore_ai.tracing import service_span_sync
-
 
 _clients: Dict[str, AIClient] = {}
 _default_name: Optional[str] = None
@@ -19,38 +42,53 @@ _lock = RLock()
 
 
 def _normalize_segment(s: Optional[str]) -> str:
+    """Normalize a segment for auto-generated names (lowercase, dashes, fallback 'default')."""
     if not s:
         return "default"
     return s.strip().replace(" ", "-").lower()
 
 
 def _default_name_for(cfg: AIProviderConfig) -> str:
+    """Construct an automatic client name from provider key and model."""
     return f"{_normalize_segment(cfg.provider)}-{_normalize_segment(cfg.model)}"
 
 
 def create_client(
-    cfg: AIProviderConfig,
-    name: str | None = None,
-    *,
-    make_default: bool = False,
-    replace: bool = False,
-    client_config: Optional[AIClientConfig] = None,
+        cfg: AIProviderConfig,
+        name: str | None = None,
+        *,
+        make_default: bool = False,
+        replace: bool = False,
+        client_config: Optional[AIClientConfig] = None,
 ) -> AIClient:
     """
-    Create and register an AIClient under a name.
-    - If name is None, uses "{provider}-{model or default}".
-    - If replace is False and name exists, raises.
-    - If make_default is True, sets this as the default client.
+    Create and register an `AIClient` under a name.
+
+    Behavior:
+    - If `name` is None, uses "{provider}-{model or default}".
+    - If `replace` is False and name exists, raises `RegistryDuplicateError`.
+    - If `make_default` is True, sets this as the default client (note: default
+      selection is normally orchestrated in the Django setup layer).
+
+    Args:
+        cfg: Effective provider configuration (merged & resolved).
+        name: Registry name for this client.
+        make_default: Whether to set this client as default immediately.
+        replace: If True, replaces an existing client with the same name.
+        client_config: Runtime knobs for the client (timeout, retries, etc.).
+
+    Returns:
+        The newly registered `AIClient`.
     """
     with service_span_sync(
-        "ai.clients.create",
-        attributes={
-            "ai.provider_name": cfg.provider,
-            "ai.model": cfg.model or "<unspecified>",
-            "ai.client_name": name or _default_name_for(cfg),
-            "ai.make_default": bool(make_default),
-            "ai.replace": bool(replace),
-        },
+            "ai.clients.create",
+            attributes={
+                "ai.provider_name": cfg.provider,
+                "ai.model": cfg.model or "<unspecified>",
+                "ai.client_name": name or _default_name_for(cfg),
+                "ai.make_default": bool(make_default),
+                "ai.replace": bool(replace),
+            },
     ):
         provider = create_provider(cfg)
         client = AIClient(provider=provider, config=client_config or AIClientConfig())
@@ -61,6 +99,7 @@ def create_client(
                 raise RegistryDuplicateError(f"AI client '{cname}' already exists.")
             _clients[cname] = client
 
+            # Maintain default pointer if requested or not yet set.
             global _default_name
             if make_default or _default_name is None:
                 _default_name = cname
@@ -68,23 +107,28 @@ def create_client(
 
 
 def create_client_from_dict(
-    cfg_dict: Mapping[str, Any],
-    name: str | None = None,
-    *,
-    make_default: bool = False,
-    replace: bool = False,
-    client_config: Optional[AIClientConfig] = None,
+        cfg_dict: Mapping[str, Any],
+        name: str | None = None,
+        *,
+        make_default: bool = False,
+        replace: bool = False,
+        client_config: Optional[AIClientConfig] = None,
 ) -> AIClient:
     """
-    Convenience: build AIProviderConfig from a plain dict, then create the client.
+    Convenience helper: build `AIProviderConfig` from a plain dict, then create the client.
+
+    Note:
+        In the new architecture, the Django integration typically constructs an
+        effective `AIProviderConfig` directly and calls `create_client`. This function
+        is retained for convenience and test helpers.
     """
     with service_span_sync(
-        "ai.clients.create_from_dict",
-        attributes={
-            "ai.client_name": name or "<auto>",
-            "ai.make_default": bool(make_default),
-            "ai.replace": bool(replace),
-        },
+            "ai.clients.create_from_dict",
+            attributes={
+                "ai.client_name": name or "<auto>",
+                "ai.make_default": bool(make_default),
+                "ai.replace": bool(replace),
+            },
     ):
         cfg = AIProviderConfig(**cfg_dict)  # type: ignore[arg-type]
         return create_client(
@@ -96,20 +140,44 @@ def create_client_from_dict(
         )
 
 
+def get_default_client() -> AIClient:
+    """
+    Return the current default AIClient instance.
+
+    Raises:
+        RegistryLookupError: if no default client is registered.
+    """
+    with _lock:
+        return _get_default_client_locked()
+
+
+def _get_default_client_locked() -> AIClient:
+    """Internal: return default client, assuming _lock is already held."""
+    if _default_name and _default_name in _clients:
+        return _clients[_default_name]
+    raise RegistryLookupError(
+        "No default AI client is set. Ensure one client is marked 'default': True or that setup chose a default."
+    )
+
+
 def get_ai_client(name: str | None = None, provider: str | None = None) -> AIClient:
     """
     Resolve a client by:
-      1) name (if provided),
-      2) provider (if unique),
+      1) explicit `name` (if provided),
+      2) `provider` semantic name (if unique among clients),
       3) default client (if set),
     otherwise raise a helpful error.
+
+    Args:
+        name: The registry name of the client.
+        provider: The semantic provider name (e.g., "openai" or "openai:prod").
     """
     with service_span_sync(
-        "ai.client.resolve",
-        attributes={
-            "ai.client_name": name or "",
-            "ai.provider_name": provider or "",
-        },
+            "ai.client.resolve",
+            attributes={
+                "ai.client_name": name or "",
+                "ai.provider_name": provider or "",
+            },
     ) as span:
         with _lock:
             if name:
@@ -117,7 +185,10 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
                     resolved = _clients[name]
                     try:
                         span.set_attribute("ai.client.resolved_name", name)
-                        span.set_attribute("ai.provider.resolved", getattr(resolved.provider, "name", None) or "")
+                        span.set_attribute(
+                            "ai.provider.resolved",
+                            getattr(resolved.provider, "name", None) or "",
+                        )
                     except Exception:
                         pass
                     return resolved
@@ -145,28 +216,27 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
                     )
                 raise RegistryLookupError(f"No clients for provider '{provider}'.")
 
-            if _default_name and _default_name in _clients:
-                resolved = _clients[_default_name]
-                try:
-                    span.set_attribute("ai.client.resolved_name", _default_name)
-                    span.set_attribute("ai.provider.resolved", getattr(resolved.provider, "name", None) or "")
-                except Exception:
-                    pass
-                return resolved
-
-            raise RegistryLookupError(
-                "No AI clients have been created. "
-                "Create one with create_client(...) or bootstrap from your framework."
-            )
+            resolved = _get_default_client_locked()
+            try:
+                span.set_attribute("ai.client.resolved_name", _default_name or "")
+                span.set_attribute(
+                    "ai.provider.resolved",
+                    getattr(resolved.provider, "name", None) or "",
+                )
+            except Exception:
+                pass
+            return resolved
 
 
 def list_clients() -> Dict[str, AIClient]:
+    """Return a shallow copy of the registered clients mapping."""
     with _lock:
         with service_span_sync("ai.clients.list", attributes={"ai.clients.count": len(_clients)}):
             return dict(_clients)
 
 
 def set_default_client(name: str) -> None:
+    """Set the default client by registry name."""
     with _lock:
         with service_span_sync("ai.clients.set_default", attributes={"ai.client_name": name}):
             if name not in _clients:
@@ -182,3 +252,17 @@ def clear_clients() -> None:
             _clients.clear()
             global _default_name
             _default_name = None
+
+
+# ---- Diagnostics helpers -----------------------------------------------------
+
+
+def client_count() -> int:
+    """Return the number of registered clients (for setup idempotency checks)."""
+    with _lock:
+        return len(_clients)
+
+
+def is_configured() -> bool:
+    """Return True if at least one client is registered."""
+    return client_count() > 0

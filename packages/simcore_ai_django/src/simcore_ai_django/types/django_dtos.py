@@ -21,6 +21,7 @@ from uuid import UUID
 
 from pydantic import Field
 
+from simcore.tools import BaseTool
 from simcore_ai.types import (
     StrictBaseModel,
     LLMRequest,
@@ -33,7 +34,7 @@ from simcore_ai.types import (
     LLMToolCallPart,
     LLMTextPart,
     LLMImagePart,
-    LLMAudioPart,
+    LLMAudioPart, BaseLLMTool,
 )
 
 
@@ -104,6 +105,10 @@ class DjangoLLMResponseItem(LLMResponseItem, DjangoDTOBase):
     response_correlation_id: UUID | None = None
 
 
+class DJangoLLMResponseMessage(LLMResponseItem, DjangoDTOBase):
+    """Rich response message that can be persisted individually if desired."""
+
+
 class DjangoLLMUsage(LLMUsage, DjangoDTOBase):
     """Optional persisted usage row.
 
@@ -142,6 +147,9 @@ class DjangoLLMToolCall(LLMToolCall, DjangoDTOBase):
     request_correlation_id: UUID | None = None
     response_correlation_id: UUID | None = None
 
+class DjangoLLMBaseTool(BaseLLMTool, DjangoDTOBase):
+    """Base tool class for Django-aware tooling."""
+    pass
 
 # Re-export commonly used core content parts for convenience
 __all__ = [

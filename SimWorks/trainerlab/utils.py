@@ -37,11 +37,4 @@ async def create_new_simulation(
     # Link ChatLab extension
     session = await TrainerSession.objects.acreate(simulation=simulation)
 
-    # Generate an initial message
-    # logger.debug(
-    #     f"Starting celery task to generate initial data for Sim#{simulation.id}"
-    # )
-    # from simai.tasks import generate_patient_initial as task
-    # task.delay(simulation.id, force)
-
     return simulation if not request_session else session

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Literal, Dict, Any, Annotated, TypeAlias, Union
 
 from pydantic import Field
@@ -5,7 +7,6 @@ from pydantic import Field
 from simcore_ai.types import StrictBaseModel, Boolish
 
 
-# ---------- Metadata (DTO) ---------------------------------------------------------
 class BaseMetafield(StrictBaseModel):
     kind: str
     key: str = Field(..., max_length=255)
@@ -83,7 +84,7 @@ class PatientExperienceFeedback(FeedbackMetafieldBase):
 class OverallFeedbackMetafield(FeedbackMetafieldBase):
     kind: Literal["overall_feedback"]
     key: Literal["overall_feedback"]
-    value: str = Field(...)  # , max_length=1250)
+    value: str = Field(...) #, max_length=1250)
 
 
 MetafieldItem: TypeAlias = Annotated[

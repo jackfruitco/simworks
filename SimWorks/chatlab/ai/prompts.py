@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from simcore.ai_v1.promptkit import PromptSection, register_section
+from simcore_ai.promptkit import PromptSection, prompt
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class BaseSection(PromptSection):
     category = "chatlab"
 
 
-@register_section
+@prompt
 @dataclass
 class InitialSection(BaseSection):
     name: str = "initial"
@@ -51,7 +51,7 @@ class InitialSection(BaseSection):
     )
 
 
-@register_section
+@prompt
 @dataclass
 class ImageSection(BaseSection):
     name: str = "image"

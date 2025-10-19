@@ -20,13 +20,15 @@ from .django_dtos import (
     DjangoLLMResponseItem,
     DjangoLLMUsage,
     DjangoLLMResponse,
+    DjangoLLMBaseTool,
     DjangoLLMToolCall,
 )
 from .promote import promote_request, promote_response
-from simcore_ai_django.services.base import DjangoBaseLLMService
+# from simcore_ai_django.services.base import DjangoBaseLLMService
 
 __all__ = [
     "DjangoDTOBase",
+    "DjangoLLMBaseTool",
     "DjangoLLMRequestMessage",
     "DjangoLLMRequest",
     "DjangoLLMResponseItem",
@@ -42,5 +44,5 @@ __all__ = [
     "demote_response",
     "promote_request",
     "promote_response",
-    "DjangoBaseLLMService",
+    # "DjangoBaseLLMService",
 ]

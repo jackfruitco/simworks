@@ -38,14 +38,20 @@ class BaseProvider(ABC):
         it detects a 429-like error from the SDK/HTTP layer.
         """
         try:
-            with service_span_sync(
-                    "ai.provider.ratelimit",
-                    attributes={
-                        "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                        "http.status_code": status_code if status_code is not None else 429,
-                        "retry_after_ms": retry_after_ms,
-                    },
-            ):
+            attrs = {
+                "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                "http.status_code": status_code if status_code is not None else 429,
+            }
+            pk = getattr(self, "provider_key", None)
+            pl = getattr(self, "provider_label", None)
+            if pk is not None:
+                attrs["ai.provider_key"] = pk
+            if pl is not None:
+                attrs["ai.provider_label"] = pl
+            if retry_after_ms is not None:
+                attrs["retry_after_ms"] = retry_after_ms
+
+            with service_span_sync("ai.provider.ratelimit", attributes=attrs):
                 if detail:
                     logger.debug("%s rate-limited: %s", self.name, detail)
         except Exception:  # pragma: no cover - never break on tracing errors
@@ -64,12 +70,23 @@ class BaseProvider(ABC):
     name: str
     description: str
 
-    def __init__(self, *, name: str, description: str | None = None, **_: object) -> None:
+    def __init__(
+            self,
+            *,
+            name: str,
+            description: str | None = None,
+            provider_key: Optional[str] = None,
+            provider_label: Optional[str] = None,
+            **_: object
+    ) -> None:
         """Common initializer for providers.
         Only standardizes identity fields; provider-specific params are handled by subclasses.
         """
         self.name = name
         self.description = description or name
+        # Optional observability fields (set by the factory when available)
+        self.provider_key = provider_key
+        self.provider_label = provider_label
 
     _tool_adapter: Optional["BaseProvider.ToolAdapter"] = None
 
@@ -141,6 +158,8 @@ class BaseProvider(ABC):
                 "ai.response.normalize",
                 attributes={
                     "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "ai.provider_key": getattr(self, "provider_key", None),
+                    "ai.provider_label": getattr(self, "provider_label", None),
                 },
         ) as span:
             messages: list[LLMResponseItem] = []
@@ -230,12 +249,18 @@ class BaseProvider(ABC):
                 "ai.schema.build_final",
                 attributes={
                     "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "ai.provider_key": getattr(self, "provider_key", None),
+                    "ai.provider_label": getattr(self, "provider_label", None),
                 },
         ):
             try:
                 # Compile/adapt into provider-friendly JSON Schema
                 with service_span_sync("ai.schema.adapters",
-                                       attributes={"ai.provider_name": getattr(self, "name", self.__class__.__name__)}):
+                                       attributes={
+                                           "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                                           "ai.provider_key": getattr(self, "provider_key", None),
+                                           "ai.provider_label": getattr(self, "provider_label", None),
+                                       }):
                     adapted = self._apply_schema_adapters(req)
                 if adapted is None:
                     return  # no schema provided; nothing to do
@@ -269,6 +294,8 @@ class BaseProvider(ABC):
                 "ai.schema.compile",
                 attributes={
                     "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "ai.provider_key": getattr(self, "provider_key", None),
+                    "ai.provider_label": getattr(self, "provider_label", None),
                     "ai.output_schema_cls": getattr(source, "__name__", type(source).__name__),
                 },
         ):

@@ -9,7 +9,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
-from simcore.ai_v1.schemas import LLMResponse
+from simcore_ai_django.types import DjangoLLMResponse
 from simcore.models import Simulation
 from simcore.utils import get_user_initials
 from .models import Message
@@ -202,22 +202,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Set preferred content mode (support both content_mode and contentMode)
         await self.handle_content_mode(data.get("content_mode") or data.get("contentMode"))
 
-    async def _generate_patient_response(self, user_msg: Message) -> LLMResponse:
+    async def _generate_patient_response(self, user_msg: Message) -> None:
         """Generate patient response."""
-        from simcore.ai_v1.tasks import acall_connector
-        from chatlab.ai.services import generate_patient_reply
+        from .ai.services import GenerateReplyResponse
+        GenerateReplyResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
 
-        return await acall_connector(
-            generate_patient_reply,
-            simulation_id=self.simulation.pk,
-            user_msg=user_msg,
-            enqueue=False
-        )
 
-    async def _generate_stitch_response(self, user_msg: Message) -> LLMResponse:
+    async def _generate_stitch_response(self, user_msg: Message) -> None:
         """Generate a response from Stitch for feedback conversations."""
-        from simcore.ai_v1.tasks import acall_connector
-        from simcore.ai_v1.connectors import generate_hotwash_response
+        raise NotImplementedError
+        from .ai.services import GenerateStitchResponse
+        GenerateStitchResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
 
         return await acall_connector(
             generate_hotwash_response,

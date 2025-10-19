@@ -1,3 +1,19 @@
+"""Base codec class for structured LLM output validation and interpretation.
+
+Identity usage:
+  The codec identity is composed of three parts: origin, bucket, and name.
+  These are used for cross-layer registration and lookup, replacing any prior use of 'namespace'.
+
+Responsibilities:
+  - Declare the structured output contract via `schema_cls` (a StrictOutputSchema subclass).
+  - Optionally provide `schema_meta` (e.g., {'name': '...', 'strict': True}) consumed by providers when wrapping.
+  - Offer helpers to extract a structured JSON candidate from a normalized LLMResponse and validate it.
+
+NOT responsible for:
+  - Persistence, emitting signals, or any ORM/Django logic (do that in simcore_ai_django or app code).
+  - Provider schema adaptation (that's handled by the provider/compiler layer).
+"""
+
 from __future__ import annotations
 
 import base64
@@ -33,7 +49,7 @@ class BaseLLMCodec(ABC):
         (that's handled by the provider/compiler layer).
 
     Identity:
-      The codec may define `namespace`, `bucket`, and `name` to align with service/registry identity.
+      The codec may define `origin`, `bucket`, and `name` to align with service/registry identity.
       These correspond to the `Identity` model used for cross-layer registration and lookup.
     """
 
@@ -47,7 +63,7 @@ class BaseLLMCodec(ABC):
     schema_meta: dict[str, Any] | None = None
 
     # Optional identity parts to align with services/registries
-    namespace: str = "default"
+    origin: str = "default"
     bucket: str = "default"
 
     # ----------------------------------------------------------------------
@@ -103,8 +119,8 @@ class BaseLLMCodec(ABC):
 
         Priority:
           1) Provider-supplied object in resp.provider_meta['structured']
-          2) First assistant text part that parses as JSON
-          3) First tool result part with JSON mime, base64-decoded and parsed
+          2) First assistant text part from resp.messages that parses as JSON
+          3) First tool result part from resp.messages with JSON mime, base64-decoded and parsed
         """
         with service_span_sync(
                 "ai.codec.extract",
@@ -116,7 +132,7 @@ class BaseLLMCodec(ABC):
                 return obj
 
             # 2) Text → JSON
-            for item in getattr(resp, "outputs", []) or []:
+            for item in getattr(resp, "messages", []) or []:
                 for part in getattr(item, "content", []) or []:
                     if isinstance(part, LLMTextPart):
                         try:
@@ -125,16 +141,16 @@ class BaseLLMCodec(ABC):
                             pass
 
             # 3) Tool result → JSON
-            for item in getattr(resp, "outputs", []) or []:
+            for item in getattr(resp, "messages", []) or []:
                 for part in getattr(item, "content", []) or []:
-                    if isinstance(part, LLMToolResultPart) and (
-                            part.mime_type or ""
-                    ).startswith(("application/json", "text/json")):
-                        try:
-                            raw = base64.b64decode(part.data_b64).decode("utf-8")
-                            return json.loads(raw)
-                        except Exception:
-                            pass
+                    if isinstance(part, LLMToolResultPart):
+                        mime_type_normalized = (part.mime_type or "").split(";", 1)[0].strip().lower()
+                        if mime_type_normalized in {"application/json", "text/json"} and part.data_b64:
+                            try:
+                                raw = base64.b64decode(part.data_b64).decode("utf-8")
+                                return json.loads(raw)
+                            except Exception:
+                                pass
 
             return None
 
@@ -143,15 +159,15 @@ class BaseLLMCodec(ABC):
     # ----------------------------------------------------------------------
     @property
     def identity(self) -> Identity:
-        return Identity(namespace=self.namespace, bucket=self.bucket, name=self.name)
+        return Identity(origin=self.origin, bucket=self.bucket, name=self.name)
 
     @property
     def identity_key2(self) -> tuple[str, str]:
-        """Two-part key used by the core registry: (namespace, f"{bucket}:{name}")"""
+        """Two-part key used by the core registry: (origin, f"{bucket}:{name}")"""
         ident = self.identity
         return ident.as_tuple2
 
     @property
     def identity_str(self) -> str:
-        """Human-friendly identity string 'namespace.bucket.name'."""
+        """Human-friendly identity string 'origin.bucket.name'."""
         return self.identity.to_string()

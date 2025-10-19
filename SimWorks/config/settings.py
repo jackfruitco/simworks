@@ -127,47 +127,59 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-AI_PROVIDERS = {
-    "default": {
-        "provider": "openai",
-        "api_key": os.getenv("OPENAI_API_KEY") or os.getenv("AI_API_KEY"),
-        "model": os.getenv("AI_DEFAULT_MODEL", "gpt-5-mini"),
-        # Optional provider-level fields (only if you need them)
-        "base_url": os.getenv("AI_BASE_URL"),
-        "timeout_s": float(os.getenv("AI_TIMEOUT_S", 60)),
-        # Image-specific options (only if you use image generation)
-        "image_model": os.getenv("AI_IMAGE_MODEL", "gpt-image-1"),
-        "image_format": os.getenv("AI_IMAGE_FORMAT", "webp"),
-        "image_size": os.getenv("AI_IMAGE_SIZE", "auto"),
-        "image_quality": os.getenv("AI_IMAGE_QUALITY", "auto"),
-        "image_background": os.getenv("AI_IMAGE_BACKGROUND", "auto"),
-        "image_moderation": os.getenv("AI_IMAGE_MODERATION", "auto"),
-        # Marks this client as default (optional; also inferred by the alias "default")
-        "default": True,
+# ---------------------------------------------------------------------------
+# SIMCORE_AI unified configuration (replaces AI_PROVIDERS/AI_CLIENT_DEFAULTS)
+# ---------------------------------------------------------------------------
+SIMCORE_AI = {
+    "PROVIDERS": {
+        # Provider key: used by clients to reference this provider
+        "openai": {
+            "provider": "openai",
+            # optional human label for observability (e.g., prod/sandbox/gov)
+            "label": os.getenv("AI_PROVIDER_LABEL", "prod"),
+            # supply either api_key OR api_key_env (or both)
+            "api_key": os.getenv("OPENAI_API_KEY") or os.getenv("AI_API_KEY"),
+            "api_key_env": "OPENAI_API_KEY",
+            # optional provider-level defaults
+            "base_url": os.getenv("AI_BASE_URL"),
+            "model": os.getenv("AI_DEFAULT_MODEL", "gpt-4o-mini"),
+            "timeout_s": float(os.getenv("AI_TIMEOUT_S", 60)),
+        },
+        # Additional providers can be added here, e.g. "anthropic": {...}
     },
 
-    "openai-images": {
-        "provider": "openai",
-        "api_key": os.getenv("OPENAI_IMAGE_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        "model": os.getenv("AI_IMAGE_MODEL", "gpt-image-1"),
-        "image_format": os.getenv("AI_IMAGE_FORMAT", "webp"),
-        "image_size": os.getenv("AI_IMAGE_SIZE", "auto"),
-        "image_quality": os.getenv("AI_IMAGE_QUALITY", "auto"),
-        "image_background": os.getenv("AI_IMAGE_BACKGROUND", "auto"),
-        "image_moderation": os.getenv("AI_IMAGE_MODERATION", "auto"),
+    "CLIENTS": {
+        # The dict key becomes the registry name
+        "default": {
+            "provider": "openai",
+            # client-level overrides are optional; if omitted, provider defaults apply
+            "model": os.getenv("AI_DEFAULT_MODEL", "gpt-4o-mini"),
+            "default": True,
+            "enabled": True,
+        },
+        "openai-images": {
+            "provider": "openai",
+            "model": os.getenv("AI_IMAGE_MODEL", "gpt-image-1"),
+            "enabled": False,
+            # Optional, but not required if enabled=False
+            "healthcheck": False,
+        },
     },
+
+    # Runtime knobs for AIClient (formerly AI_CLIENT_DEFAULTS)
+    "CLIENT_DEFAULTS": {
+        "max_retries": int(os.getenv("AI_MAX_RETRIES", 2)),
+        "timeout_s": int(float(os.getenv("AI_TIMEOUT_S", 60))),  # seconds
+        "telemetry_enabled": True,
+        "log_prompts": False,
+        "raise_on_error": True,
+    },
+
+    # Startup healthcheck (can be overridden by env SIMCORE_AI_HEALTHCHECK_ON_START)
+    "HEALTHCHECK_ON_START": True,
 }
 
 AI_EXECUTION_BACKEND = os.getenv("AI_EXECUTION_BACKEND", "celery")  # or "immediate"
-
-# AI runtime behavior (used by simcore_ai_django.setup.configure_ai_clients)
-AI_CLIENT_DEFAULTS = {
-    "max_retries": int(os.getenv("AI_MAX_RETRIES", 2)),
-    "timeout_s": int(float(os.getenv("AI_TIMEOUT_S", 60))),  # keeps parity if you like one knob
-    "telemetry_enabled": True,
-    "log_prompts": False,
-    "raise_on_error": True,
-}
 
 AI_EXECUTION_BACKENDS = {
     "DEFAULT_BACKEND": "celery",

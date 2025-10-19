@@ -8,7 +8,7 @@ from .exceptions import IdentityError
 
 """
 This module defines the `Identity` class, which provides a standardized way to represent
-an identity composed of three hierarchical components: namespace, bucket, and name.
+an identity composed of three hierarchical components: origin, bucket, and name.
 
 Normalization rules applied to each component:
 - If the input is None or empty, it defaults to "default".
@@ -57,26 +57,26 @@ def _norm(s: str | None) -> str:
 class Identity:
     """
     Represents a hierarchical identity with three components:
-    - namespace: top-level grouping (e.g., project or origin)
-    - bucket: functional group within the namespace
+    - origin: top-level grouping (e.g., project or origin)
+    - bucket: functional group within the origin
     - name: specific operation or entity name
 
     Each field is normalized by stripping whitespace, converting to lowercase,
     and replacing spaces and hyphens with underscores. Empty or None values
     default to "default".
     """
-    namespace: str = "default"
+    origin: str = "default"
     bucket: str = "default"
     name: str = "default"
 
     def __post_init__(self):
         # dataclass with frozen=True: use object.__setattr__
-        object.__setattr__(self, "namespace", _norm(self.namespace))
+        object.__setattr__(self, "origin", _norm(self.origin))
         object.__setattr__(self, "bucket", _norm(self.bucket))
         object.__setattr__(self, "name", _norm(self.name))
 
     @property
-    def namespace_str(self) -> str:
+    def origin_str(self) -> str:
         """Returns the canonical string representation of the identity."""
         return self.to_string()
 

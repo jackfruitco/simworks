@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from simcore_ai.exceptions import ServiceCodecResolutionError
+from simcore_ai.services.exceptions import ServiceCodecResolutionError
 from simcore_ai.services.base import BaseLLMService
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse

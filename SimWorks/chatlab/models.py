@@ -5,7 +5,6 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-# from simai.models import Response
 from simcore.models import BaseSession
 from simcore.models import Simulation
 from simcore.models import SimulationImage
@@ -67,14 +66,7 @@ class Message(models.Model):
     is_read = models.BooleanField(default=False)
 
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
-    responsev1 = models.ForeignKey(
-        "simai.Response",
-        on_delete=models.CASCADE,
-        verbose_name="OpenAI Response",
-        related_name="messages",
-        null=True,
-        blank=True,
-    )
+
     response = models.ForeignKey(
         "simcore.AIResponse",
         on_delete=models.CASCADE,

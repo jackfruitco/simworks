@@ -6,13 +6,35 @@ from simcore_ai.providers import BaseProvider
 from simcore_ai.providers.exceptions import ProviderCallError
 from simcore_ai.tracing import service_span
 from simcore_ai.types import LLMResponse, LLMRequest, LLMStreamChunk
+from simcore_ai.client.schemas import AIClientConfig
 
 logger = logging.getLogger(__name__)
 
 
 class AIClient:
-    def __init__(self, provider: BaseProvider):
+    def __init__(self, provider: BaseProvider, config: Optional[AIClientConfig] = None):
+        """
+        Initialize an AIClient with a concrete provider and optional runtime config.
+
+        Args:
+            provider: Concrete provider implementing BaseProvider (e.g., OpenAIProvider).
+            config:   Runtime behavior knobs (retries, timeout, telemetry flags).
+        """
         self.provider = provider
+        self.config = config or AIClientConfig()
+
+    async def call(
+            self,
+            req: LLMRequest,
+            *,
+            timeout: Optional[float] = None,
+    ) -> LLMResponse:
+        """
+        Convenience wrapper that mirrors provider-style `call()`.
+
+        Delegates to `send_request(...)` for backward-compatibility with existing code.
+        """
+        return await self.send_request(req, timeout=timeout)
 
     async def send_request(
             self,
@@ -27,20 +49,34 @@ class AIClient:
         :type req: LLMRequest
 
         :param timeout: Timeout for the provider call.
+            If not specified, uses client config timeout, else provider default.
         :type timeout: Optional[float]
 
         :return: The normalized provider-agnostic response DTO.
         :rtype: LLMResponse
 
-        :raises Exception: If the provider call fails.
+        :raises Exception: If the provider call fails and raise_on_error=True.
+        :raises ProviderCallError: If provider call fails after retries and raise_on_error=True.
+
+        Note:
+            If raise_on_error=False, returns a soft-failure empty response with error metadata.
         """
+        # Determine effective timeout: explicit arg > client config > provider default
+        effective_timeout = (
+            timeout
+            if timeout is not None
+            else (self.config.timeout_s if self.config.timeout_s is not None else getattr(self.provider, "timeout_s", None))
+        )
+
         async with service_span(
                 "ai.client.send_request",
                 attributes={
                     "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
                     "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
                     "ai.stream": bool(getattr(req, "stream", False)),
-                    "ai.timeout": timeout if timeout is not None else getattr(self.provider, "timeout_s", None),
+                    "ai.timeout": effective_timeout,
+                    "ai.provider_key": getattr(self.provider, "provider_key", None),
+                    "ai.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
             logger.debug(f"client received normalized request:\n(request:\t{req})")
@@ -64,9 +100,9 @@ class AIClient:
                     getattr(self.provider, "name", self.provider),
                 )
 
-            # Forward request to provider with simple retry/backoff
-            attempts = getattr(self.provider, "retry_attempts", 1) or 1
-            backoff_ms = getattr(self.provider, "retry_backoff_ms", 500) or 500
+            # Client-level retry policy; provider may still influence via exceptions (e.g., 429)
+            attempts = max(1, int(getattr(self.config, "max_retries", 1) or 1))
+            backoff_ms = 500  # initial backoff; exponential with cap below
 
             last_exc: Exception | None = None
             for attempt in range(1, attempts + 1):
@@ -78,7 +114,7 @@ class AIClient:
                                 "ai.max_attempts": attempts,
                             },
                     ):
-                        resp: LLMResponse = await self.provider.call(req, timeout)
+                        resp: LLMResponse = await self.provider.call(req, effective_timeout)
                     last_exc = None
                     break
                 except Exception as e:  # noqa: BLE001
@@ -121,7 +157,20 @@ class AIClient:
                         backoff_ms = min(int(backoff_ms * 2), 10_000)
 
             if last_exc is not None:
-                raise ProviderCallError("Provider call failed after retries") from last_exc
+                if getattr(self.config, "raise_on_error", True):
+                    raise ProviderCallError("Provider call failed after retries") from last_exc
+                # Best-effort soft failure: return an empty response with error metadata
+                logger.warning("AIClient returning soft-failure response due to raise_on_error=False: %s", last_exc)
+                return LLMResponse(
+                    messages=[],
+                    usage={},
+                    tool_calls=[],
+                    provider_meta={
+                        "provider": getattr(self.provider, "name", type(self.provider).__name__),
+                        "error": str(last_exc),
+                        "error_class": type(last_exc).__name__,
+                    },
+                )
 
             logger.debug(f"client received response:\n(response (post-adapt):\t{resp.model_dump_json()[:500]})")
 
@@ -140,6 +189,8 @@ class AIClient:
                     "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
                     "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
                     "ai.stream": True,
+                    "ai.provider_key": getattr(self.provider, "provider_key", None),
+                    "ai.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
             async for chunk in self.provider.stream(req):

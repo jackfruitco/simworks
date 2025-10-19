@@ -1,10 +1,9 @@
 """Module to register custom LLM tools for function calling"""
 from typing import Literal
 
-from simcore.ai_v1.schemas import CustomToolItem
+from simcore_ai_django.types import DjangoLLMToolSpec
 
-
-class CustomImageResponseTool(CustomToolItem):
+class CustomImageResponseTool(DjangoLLMToolSpec):
     type: Literal["get_patient_image_response"] = "get_patient_image_response"
     description = "Generate an image response as the patient based on the request from the provider"
 

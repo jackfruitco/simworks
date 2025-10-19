@@ -1,69 +1,180 @@
+# simcore_ai_django/setup.py
 from __future__ import annotations
+"""
+simcore_ai_django.setup
+=======================
+
+Django-side bootstrap for AI providers and clients.
+
+Responsibilities
+----------------
+- Read and validate `settings.SIMCORE_AI`:
+    SIMCORE_AI = {
+        "PROVIDERS": { "<prov-key>": {provider, label?, base_url?, api_key?, api_key_env?,
+                                      model?, organization?, timeout_s?}, ... },
+        "CLIENTS":   { "<client-name>": {provider: "<prov-key>", default?, enabled?,
+                                          model?, base_url?, api_key?, api_key_env?,
+                                          timeout_s?, client_config?}, ... },
+        "CLIENT_DEFAULTS": {...runtime knobs for AIClient...},
+        "HEALTHCHECK_ON_START": True,
+    }
+- Build provider wiring (`AIProviderConfig`) and client registrations (`AIClientRegistration`).
+- Merge client overrides into provider configs (without side effects) to produce effective configs.
+- Create and register clients; select a default per policy:
+    * If multiple `default=True`: log WARNINGs, keep the first one encountered.
+    * If none: log WARNING and use the first enabled client as default.
+- Optionally run a quick, non-fatal healthcheck against all registered clients.
+- Be idempotent across multiple `apps.ready()` invocations (e.g., with autoreload).
+
+Notes
+-----
+- No backwards compatibility with the old `AI_PROVIDERS`/`AI_CLIENT_DEFAULTS`.
+- API key resolution order is handled inside the factory/merge workflow:
+    client.api_key -> provider.api_key -> os.environ[client.api_key_env or provider.api_key_env]
+"""
+
+import logging
+import os
+from typing import Dict, Tuple
 
 from django.conf import settings
-from simcore_ai.tracing import service_span_sync
 
-from simcore_ai.client.registry import create_client_from_dict
-from simcore_ai.types import AIClientConfig
+from simcore_ai.client.registry import (
+    create_client,
+    set_default_client,
+    is_configured as registry_is_configured,
+)
+from simcore_ai.client.schemas import AIProviderConfig, AIClientRegistration, AIClientConfig
+from simcore_ai.client.utils import effective_provider_config
+from simcore_ai.tracing import service_span_sync
+from .health import healthcheck_all_registered
+
+logger = logging.getLogger(__name__)
+
+# Module-level idempotency guard. We still double-check the registry itself.
+_CONFIGURED_SIGNATURE: Tuple[int, int] | None = None  # (num_providers, num_clients)
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    """Parse a boolean environment variable with sensible defaults."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def configure_ai_clients() -> None:
     """
-    Initialize simcore_ai client registry from Django settings.AI_PROVIDERS.
+    Initialize the simcore_ai client registry from Django settings.SIMCORE_AI.
 
-    Example settings:
-    AI_PROVIDERS = {
-        "default": {
-            "provider": "openai",
-            "api_key": "sk-...",
-            "model": "gpt-5-mini",
-            # optional:
-            # "base_url": None,
-            # "timeout_s": 60,
-            # "default": true,  # will be treated as default too
-        },
-        "openai-images": {
-            "provider": "openai",
-            "api_key": "sk-...",
-            "model": "gpt-image-1",
-        },
-        "anthropic-core": {
-            "provider": "anthropic",
-            "api_key": "anth-...",
-            "model": "claude-3-7-sonnet",
-        },
-    }
+    This function is safe to call multiple times during Django startup; it will
+    short-circuit if the registry appears configured and the settings signature
+    has not changed.
     """
-    providers = getattr(settings, "AI_PROVIDERS", {}) or {}
-    first = True
+    sim = getattr(settings, "SIMCORE_AI", None) or {}
+    providers_cfg = sim.get("PROVIDERS", {}) or {}
+    clients_cfg = sim.get("CLIENTS", {}) or {}
+    client_defaults = sim.get("CLIENT_DEFAULTS", {}) or {}
+    health_on_start = bool(sim.get("HEALTHCHECK_ON_START", True))
+    # Env override wins:
+    health_on_start = _env_bool("SIMCORE_AI_HEALTHCHECK_ON_START", health_on_start)
+
+    # Idempotency: quick signature check (counts only, sufficient for autoreload loops)
+    global _CONFIGURED_SIGNATURE
+    current_sig = (len(providers_cfg), len(clients_cfg))
+    if _CONFIGURED_SIGNATURE == current_sig and registry_is_configured():
+        logger.info("AI clients already configured (skipping); providers=%d clients=%d",
+                    current_sig[0], current_sig[1])
+        return
 
     with service_span_sync(
         "ai.clients.configure",
-        attributes={"ai.providers.count": len(providers)},
+        attributes={
+            "ai.providers.count": len(providers_cfg),
+            "ai.clients.count": len(clients_cfg),
+            "ai.healthcheck_on_start": bool(health_on_start),
+        },
     ):
-        for name, cfg in providers.items():
-            with service_span_sync(
-                "ai.clients.configure.entry",
-                attributes={"ai.client_name": name},
-            ):
-                if not isinstance(cfg, dict):
-                    raise ValueError(f"AI_PROVIDERS['{name}'] must be a dict, got: {type(cfg)}")
+        # --- Validate and build provider objects ---------------------------------
+        providers: Dict[str, AIProviderConfig] = {}
+        for pkey, payload in providers_cfg.items():
+            if not isinstance(payload, dict):
+                raise ValueError(f"SIMCORE_AI['PROVIDERS']['{pkey}'] must be a dict, got: {type(payload)}")
+            prov = AIProviderConfig(**payload)
+            providers[pkey] = prov
 
-                is_default = bool(cfg.get("default")) or (name == "default") or first
+        # --- Validate and build client registrations ------------------------------
+        registrations: list[AIClientRegistration] = []
+        for cname, payload in clients_cfg.items():
+            if not isinstance(payload, dict):
+                raise ValueError(f"SIMCORE_AI['CLIENTS']['{cname}'] must be a dict, got: {type(payload)}")
+            reg = AIClientRegistration(name=cname, **payload)
+            registrations.append(reg)
 
-                # Merge global AI_CLIENT_DEFAULTS from settings (if any)
-                client_defaults = getattr(settings, "AI_CLIENT_DEFAULTS", {}) or {}
-                if not isinstance(client_defaults, dict):
-                    raise ValueError("AI_CLIENT_DEFAULTS must be a dict if defined.")
+        # --- Build AIClientConfig defaults ---------------------------------------
+        if not isinstance(client_defaults, dict):
+            raise ValueError("SIMCORE_AI['CLIENT_DEFAULTS'] must be a dict if defined.")
+        client_cfg_defaults = AIClientConfig(**client_defaults)
 
-                with service_span_sync("ai.clients.configure.defaults"):
-                    client_cfg = AIClientConfig(**client_defaults)
+        # --- Create clients & choose default per policy ---------------------------
+        seen_default_name: str | None = None
+        first_enabled_name: str | None = None
 
-                create_client_from_dict(
-                    cfg_dict=cfg,
-                    name=name,
-                    make_default=is_default,
-                    replace=True,
-                    client_config=client_cfg,
-                )
-                first = False
+        for reg in registrations:
+            if not reg.enabled:
+                logger.info("AI client disabled; skipping: %s", reg.name)
+                continue
+
+            prov = providers.get(reg.provider)
+            if prov is None:
+                raise KeyError(f"Client '{reg.name}' references unknown provider key '{reg.provider}'")
+
+            eff = effective_provider_config(prov, reg)
+            client = create_client(
+                eff,
+                name=reg.name,
+                make_default=False,   # select default after loop per policy
+                replace=True,         # idempotent across reloads
+                client_config=client_cfg_defaults,
+            )
+
+            # Persist healthcheck preference for orchestrator
+            try:
+                setattr(client, "healthcheck_enabled", bool(getattr(reg, "healthcheck", True)))
+            except Exception:
+                # Never let this crash startup
+                pass
+
+            if first_enabled_name is None:
+                first_enabled_name = reg.name
+
+            if reg.default:
+                if seen_default_name is None:
+                    seen_default_name = reg.name
+                else:
+                    logger.warning(
+                        "Multiple default clients marked: already '%s', ignoring additional '%s'",
+                        seen_default_name, reg.name
+                    )
+
+        # Select default per policy
+        if seen_default_name:
+            set_default_client(seen_default_name)
+            logger.info("AI default client set to '%s' (first default=True)", seen_default_name)
+        elif first_enabled_name:
+            set_default_client(first_enabled_name)
+            logger.warning("No default client marked; using first enabled '%s'", first_enabled_name)
+        else:
+            logger.warning("No enabled AI clients were configured.")
+
+        # --- Optional healthcheck -------------------------------------------------
+        if health_on_start:
+            with service_span_sync("ai.clients.healthcheck"):
+                health_results = healthcheck_all_registered()
+                # Summarize counts
+                ok = sum(1 for _, (ok, _) in health_results.items() if ok)
+                total = len(health_results)
+                logger.info("AI healthcheck summary: %d/%d OK", ok, total)
+
+        # Mark configured for idempotency
+        _CONFIGURED_SIGNATURE = current_sig

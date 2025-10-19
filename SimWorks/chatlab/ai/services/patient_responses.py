@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 # ----------------------------- services ------------------------------------------
-@llm_service(namespace="chatlab", bucket="patient")
+@llm_service(origin="chatlab", bucket="patient")
 class GenerateInitialResponse(DjangoExecutableLLMService):
     """Generate the initial patient response.
 
@@ -29,9 +29,9 @@ class GenerateInitialResponse(DjangoExecutableLLMService):
     """
 
     # Execution defaults (service-level); None => use settings / hard defaults
-    execution_mode: Optional[str] = None  # "sync" | "async"
-    execution_backend: Optional[str] = None  # "immediate" | "celery" | "django_tasks"
-    execution_priority: Optional[int] = None  # -100..100
+    execution_mode: Optional[str] = "sync"  # "sync" | "async"
+    execution_backend: Optional[str] = "immediate"  # "immediate" | "celery" | "django_tasks"
+    execution_priority: Optional[int] = -100  # -100..100
     execution_run_after: Optional[float] = None  # seconds; None => now
     require_enqueue: bool = False  # force async if True
 
@@ -56,7 +56,7 @@ class GenerateInitialResponse(DjangoExecutableLLMService):
         return msgs, self.response_format_cls
 
 
-@llm_service(namespace="chatlab", bucket="patient")
+@llm_service(origin="chatlab", bucket="patient")
 class GenerateReplyResponse(DjangoExecutableLLMService):
     """Generate a reply to a user message.
 
@@ -98,7 +98,7 @@ class GenerateReplyResponse(DjangoExecutableLLMService):
         return msgs, self.response_format_cls
 
 
-@llm_service(namespace="chatlab", bucket="patient")
+@llm_service(origin="chatlab", bucket="patient")
 class GenerateImageResponse(DjangoExecutableLLMService):
     """Generate a patient image via provider tool-call.
 

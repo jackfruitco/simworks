@@ -46,8 +46,8 @@ def _parse_codec_identity(value: Union[str, Identity]) -> Tuple[Optional[str], O
 
     # Identity object
     try:
-        if hasattr(value, "namespace") and hasattr(value, "bucket") and hasattr(value, "name"):
-            ns = _norm(getattr(value, "namespace"))
+        if hasattr(value, "origin") and hasattr(value, "bucket") and hasattr(value, "name"):
+            ns = _norm(getattr(value, "origin"))
             buck = _norm(getattr(value, "bucket"))
             nm = _norm(getattr(value, "name"))
             return ns, buck, nm
@@ -73,7 +73,7 @@ def _parse_codec_identity(value: Union[str, Identity]) -> Tuple[Optional[str], O
 
 class DjangoCodecRegistry:
     """
-    Registry of Django codec **classes** keyed by tuple3 identity: (namespace, bucket, name).
+    Registry of Django codec **classes** keyed by tuple3 identity: (origin, bucket, name).
 
     Preferred registration:
         register("chatlab", "sim_responses", "patient_initial_response", PatientInitialResponseCodec)
@@ -86,8 +86,8 @@ class DjangoCodecRegistry:
     _by_tuple: Dict[Tuple[str, str, str], Type[DjangoBaseLLMCodec]] = {}
 
     @classmethod
-    def register(cls, namespace: str, bucket: str, name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
-        ns = _norm(namespace) or "default"
+    def register(cls, origin: str, bucket: str, name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
+        ns = _norm(origin) or "default"
         buck = _norm(bucket) or "default"
         nm = _norm(name) or "default"
 
@@ -96,28 +96,28 @@ class DjangoCodecRegistry:
             raise CodecRegistrationError(f"Duplicate codec for identity: {ns}.{buck}.{nm}")
 
         # annotate class with identity (helpful for logging)
-        setattr(codec_class, "namespace", ns)
+        setattr(codec_class, "origin", ns)
         setattr(codec_class, "bucket", buck)
         setattr(codec_class, "name", nm)
 
         cls._by_tuple[key] = codec_class
 
     @classmethod
-    def register_legacy(cls, namespace: str, legacy_bucket_name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
+    def register_legacy(cls, origin: str, legacy_bucket_name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
         warnings.warn(
             "Registering codecs using name='bucket:name' is deprecated; "
-            "use register(namespace, bucket, name, codec_class) instead.",
+            "use register(origin, bucket, name, codec_class) instead.",
             DeprecationWarning,
             stacklevel=2,
         )
         buck, nm = _parse_legacy_bucket_name(legacy_bucket_name)
         if not buck or not nm:
             raise CodecRegistrationError("Malformed legacy codec name; expected 'bucket:name'")
-        cls.register(namespace, buck, nm, codec_class)
+        cls.register(origin, buck, nm, codec_class)
 
     @classmethod
-    def get_codec(cls, namespace: str, bucket: str, name: str) -> Optional[Type[DjangoBaseLLMCodec]]:
-        ns = _norm(namespace) or "default"
+    def get_codec(cls, origin: str, bucket: str, name: str) -> Optional[Type[DjangoBaseLLMCodec]]:
+        ns = _norm(origin) or "default"
         buck = _norm(bucket) or "default"
         nm = _norm(name) or "default"
 
@@ -144,11 +144,11 @@ class DjangoCodecRegistry:
         return None
 
     @classmethod
-    def require(cls, namespace: str, bucket: str, name: str) -> Type[DjangoBaseLLMCodec]:
-        obj = cls.get_codec(namespace, bucket, name)
+    def require(cls, origin: str, bucket: str, name: str) -> Type[DjangoBaseLLMCodec]:
+        obj = cls.get_codec(origin, bucket, name)
         if obj is None:
             available = ", ".join(sorted(f"{ns}.{b}.{n}" for (ns, b, n) in cls._by_tuple.keys())) or "<none>"
-            raise CodecNotFoundError(f"Codec '{namespace}.{bucket}.{name}' not registered; available: {available}")
+            raise CodecNotFoundError(f"Codec '{origin}.{bucket}.{name}' not registered; available: {available}")
         return obj
 
     @classmethod

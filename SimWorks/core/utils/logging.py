@@ -4,14 +4,13 @@ import logging
 
 class AppColorFormatter(logging.Formatter):
     COLORS = {
-        "chatlab": "\033[34m",  # Dark Blue
-        "simcore.ai_v1": "\033[32m",  # Dark Green
-        "trainerlab.ai_v1": "\033[32m",  # Dark Green
-        "chatlab.ai_v1": "\033[32m",  # Dark Green
-        "accounts": "\033[35m",  # Dark Magenta
-        "notifications": "\033[33m",  # Dark Yellow/Brown
-        "simcore": "\033[36m",  # Dark Cyan
-        # "core": "\033[30m",             # Black
+        "chatlab": "\033[34m",              # Dark Blue
+        "simcore_ai": "\033[32m",           # Dark Green
+        "simcore_ai_django": "\033[32m",    # Dark Green
+        "accounts": "\033[35m",             # Dark Magenta
+        "notifications": "\033[33m",        # Dark Yellow/Brown
+        "simcore": "\033[36m",              # Dark Cyan
+        # "core": "\033[30m",               # Black
     }
     RESET = "\033[0m"
 

@@ -1,10 +1,12 @@
-# simcore/ai_v1/services/__init__.py
+# simcore/ai/services/__init__.py
 from .patient_responses import (
-    generate_patient_initial,
-    generate_patient_reply,
+    GenerateInitialResponse,
+    GenerateReplyResponse,
+    GenerateImageResponse
 )
 
 __all__ = [
-    "generate_patient_initial",
-    "generate_patient_reply",
+    "GenerateInitialResponse",
+    "GenerateReplyResponse",
+    "GenerateImageResponse",
 ]

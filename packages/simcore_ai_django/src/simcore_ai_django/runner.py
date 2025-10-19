@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 from uuid import UUID
 
 from django.conf import settings
@@ -10,7 +10,6 @@ from django.conf import settings
 # Core DTOs and client
 from simcore_ai.client import AIClient
 from simcore_ai.types import LLMRequest, LLMResponse
-from simcore_ai.services import BaseLLMService
 from simcore_ai.tracing import service_span_sync, service_span, extract_trace
 
 # Codec execution helper
@@ -32,6 +31,8 @@ from .dispatch import (
     emit_failure,
 )
 
+if TYPE_CHECKING:
+    from simcore_ai.services import BaseLLMService
 
 # ------------------------------ utilities --------------------------------
 

@@ -1,4 +1,4 @@
-from .output_schema import (
+from .patient_responses import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,

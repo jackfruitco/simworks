@@ -1,4 +1,3 @@
-
 # simcore_ai/tracing.py
 from __future__ import annotations
 
@@ -10,7 +9,6 @@ from opentelemetry import trace
 from opentelemetry.trace import Span, SpanKind, Status, StatusCode, Tracer
 
 logger = logging.getLogger(__name__)
-
 
 # ---------------------------------------------------------------------------
 # Tracer utilities
@@ -97,4 +95,3 @@ __all__ = [
     "service_span",
     "service_span_sync",
 ]
-

@@ -1,6 +1,5 @@
 # simcore_ai/types/__init__.py
 from .base import *
-from .config import *
 from .dtos import *
 from .helpers import project_from
 from .identity import Identity
@@ -11,6 +10,7 @@ __all__ = [
     "StrictBaseModel",
     "StrictOutputSchema",
     "Boolish",
+    "BaseLLMTool",
     "Identity",
     "LLMRequestMessage",
     "LLMResponseItem",
@@ -25,6 +25,4 @@ __all__ = [
     "LLMRequest",
     "LLMResponse",
     "LLMStreamChunk",
-    "AIProviderConfig",
-    "AIClientConfig",
 ]

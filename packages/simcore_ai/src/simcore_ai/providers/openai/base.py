@@ -1,12 +1,40 @@
 # simcore_ai/providers/openai/base.py
 from __future__ import annotations
+"""
+OpenAIProvider
+==============
+
+Concrete provider implementation for the OpenAI *Responses* API.
+
+Responsibilities
+----------------
+- Translate normalized `LLMRequest` objects into OpenAI SDK calls.
+- Normalize provider-native responses into our `LLMResponse` model using the
+  provider-agnostic adaptation pipeline in `BaseProvider`.
+- Provide provider-specific response-format wrapping (JSON Schema) and tool
+  output normalization (e.g., image generation results).
+- Emit rich tracing spans for observability.
+
+Construction
+------------
+Instances are constructed by `simcore_ai.providers.factory.create_provider`, which
+passes a resolved configuration:
+    - api_key:      Final API key (already resolved with env/overrides).
+    - base_url:     Optional custom endpoint.
+    - default_model:Default model used if the request does not specify one.
+    - timeout_s:    Request timeout in seconds.
+    - name:         Semantic provider identity (e.g., "openai:prod").
+
+This class does not fetch environment variables directly; resolution occurs in
+the Django setup + provider factory layer.
+"""
 
 import logging
 from typing import Any, Final, Literal
 from uuid import uuid4
 
 from openai import NOT_GIVEN, AsyncOpenAI
-from openai.types.responses import Response as OpenAIResponse
+from openai.types.responses import Response as OpenAIResponse, EasyInputMessageParam
 from openai.types.responses.response_output_item import ImageGenerationCall
 
 from simcore_ai.tracing import service_span, service_span_sync
@@ -26,6 +54,8 @@ PROVIDER_NAME: Final[Literal["openai"]] = "openai"
 
 
 class OpenAIProvider(BaseProvider):
+    """OpenAI Responses API provider."""
+
     def __init__(
             self,
             *,
@@ -36,6 +66,17 @@ class OpenAIProvider(BaseProvider):
             name: str = PROVIDER_NAME,
             **kwargs: object,
     ) -> None:
+        """
+        Initialize the OpenAI provider.
+
+        Args:
+            api_key: Final API key to use for authentication (may be None in dev).
+            base_url: Optional custom endpoint URL.
+            default_model: Default model used when a request omits `req.model`.
+            timeout_s: Default request timeout (seconds).
+            name: Semantic provider name for logs/tracing (e.g., "openai:prod").
+            **kwargs: Ignored; included for forward-compatibility.
+        """
         self.api_key = api_key
         self.base_url = base_url or None
         self.default_model = default_model
@@ -67,6 +108,16 @@ class OpenAIProvider(BaseProvider):
             return False, f"openai error: {exc!s}"
 
     def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
+        """
+        Wrap a compiled JSON Schema into the OpenAI Responses `response_format` envelope.
+
+        Args:
+            compiled_schema: Provider-adapted JSON Schema dictionary.
+            meta: Optional metadata (`name`, `strict`) derived from the request.
+
+        Returns:
+            A dict payload suitable for `response_format`, or None to use the schema directly.
+        """
         if not compiled_schema:
             return None
         meta = meta or {}
@@ -81,8 +132,10 @@ class OpenAIProvider(BaseProvider):
 
     def _normalize_tool_output(self, item: Any):
         """
-        Map OpenAI Responses output items into (LLMToolCall, LLMToolResultPart).
-        Currently supports ImageGenerationCall; extend for other tool types as needed.
+        Convert provider-native tool outputs into normalized tool call/result parts.
+
+        Currently supports:
+            - ImageGenerationCall -> (LLMToolCall, LLMToolResultPart)
         """
         with service_span_sync(
                 "ai.tools.handle_output",
@@ -102,6 +155,16 @@ class OpenAIProvider(BaseProvider):
             return None
 
     async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+        """
+        Execute a non-streaming request against the OpenAI Responses API.
+
+        Args:
+            req: Normalized request DTO (messages, tools, schema, etc.).
+            timeout: Optional per-call timeout; falls back to `self.timeout_s`.
+
+        Returns:
+            LLMResponse normalized via the BaseProvider adaptation pipeline.
+        """
         logger.debug("provider '%s':: received request call", self.name)
 
         async with service_span(
@@ -148,6 +211,12 @@ class OpenAIProvider(BaseProvider):
             return self.adapt_response(resp, schema_cls=req.response_format_cls)
 
     async def stream(self, req: LLMRequest):  # pragma: no cover - streaming not implemented yet
+        """
+        Execute a streaming request against the OpenAI Responses API.
+
+        Note:
+            Streaming is not yet implemented and will raise ProviderError.
+        """
         async with service_span(
                 "ai.client.stream",
                 attributes={
@@ -171,32 +240,27 @@ class OpenAIProvider(BaseProvider):
 
     # --- BaseProvider hook implementations ---------------------------------
     def _extract_text(self, resp: OpenAIResponse) -> str | None:
+        """Return the primary text output from the OpenAI response, if present."""
         return getattr(resp, "output_text", None)
 
     def _extract_outputs(self, resp: OpenAIResponse):
+        """Return iterable of native output items (images, tools, etc.)."""
         return getattr(resp, "output", []) or []
 
     def _is_image_output(self, item: Any) -> bool:
+        """Return True if the given item represents an image generation result."""
         return isinstance(item, ImageGenerationCall)
 
     # def _build_attachment(self, item: Any) -> AttachmentItem | None:
-    #     if not isinstance(item, ImageGenerationCall):
-    #         return None
-    #     b64 = getattr(item, "result", None)
-    #     if not b64:
-    #         logger.warning("ImageGenerationCall present, but no base64 `result`")
-    #         return None
-    #     return AttachmentItem(
-    #         kind="image",
-    #         b64=b64,
-    #         provider_meta={
-    #             "provider": self.name,
-    #             "provider_image_call_id": getattr(item, "id", None),
-    #             "provider_raw_response": item.model_dump(),
-    #         },
-    #     )
+    #     ...
 
     def _extract_usage(self, resp: OpenAIResponse) -> dict:
+        """
+        Extract normalized token usage information from the response, if available.
+
+        Returns:
+            A dictionary with input/output/total tokens and optional details.
+        """
         usage = getattr(resp, "usage", None)
         if not usage:
             return {}
@@ -217,6 +281,11 @@ class OpenAIProvider(BaseProvider):
         }
 
     def _extract_provider_meta(self, resp: OpenAIResponse) -> dict:
+        """
+        Build provider-specific metadata for diagnostics.
+
+        Includes model name, response id, and (in DEBUG) the full provider response dump.
+        """
         meta = {
             "model": getattr(resp, "model", None),
             "provider": self.name,

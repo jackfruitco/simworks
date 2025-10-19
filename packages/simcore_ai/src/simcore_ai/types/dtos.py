@@ -90,7 +90,7 @@ class LLMRequest(StrictBaseModel):
     messages: list[LLMRequestMessage]
 
     # Identity
-    namespace: str | None = None
+    origin: str | None = None
     bucket: str | None = None
     name: str | None = None
 
@@ -118,7 +118,7 @@ class LLMRequest(StrictBaseModel):
 
 class LLMResponse(StrictBaseModel):
     # Identity echoed back (operation identity)
-    namespace: str | None = None
+    origin: str | None = None
     bucket: str | None = None
     name: str | None = None
 

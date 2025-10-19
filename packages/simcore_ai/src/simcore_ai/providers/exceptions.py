@@ -1,3 +1,6 @@
+# simcore_ai/providers/exceptions.py
+from __future__ import annotations
+
 from simcore_ai.exceptions.base import SimCoreError, RetryableError, NonRetryableError
 
 
