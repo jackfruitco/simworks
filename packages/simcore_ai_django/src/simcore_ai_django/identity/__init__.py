@@ -1,5 +1,6 @@
 # simcore_ai_django/identity/__init__.py
 from .utils import *
+from .mixins import *
 
 __all__ = [
     # Django-aware helpers
@@ -15,4 +16,6 @@ __all__ = [
     "derive_identity_for_class",
     "resolve_collision",
     "parse_dot_identity",
+    # Mixins
+    "DjangoIdentityMixin",
 ]

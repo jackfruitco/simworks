@@ -35,13 +35,15 @@ Helpers:
 import logging
 from typing import Dict, Optional
 
-from simcore_ai.identity.utils import resolve_collision  # env-driven debug fallback
+from simcore_ai.identity.utils import resolve_collision
 
 from .base import BaseLLMCodec
-from .exceptions import CodecError, CodecNotFoundError
-from ..exceptions.registry_exceptions import RegistryDuplicateError, RegistryLookupError
+from .exceptions import CodecNotFoundError
+from ..exceptions.registry_exceptions import RegistryLookupError
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["CodecRegistry", "register", "get_codec"]
 
 
 def _norm(s: Optional[str]) -> str:
@@ -84,10 +86,10 @@ class CodecRegistry:
             - If replace=False and a different codec exists:
                 • In debug → raise
                 • In non-debug → suffix `name` with '-2', '-3', … until unique, then register.
+            - Collisions are handled via resolve_collision.
 
         Raises:
             TypeError: if required attributes are missing.
-            RegistryDuplicateError: if an entry already exists and replace=False in debug mode.
         """
         origin = getattr(codec, "origin", None)
         bucket = getattr(codec, "bucket", None)
@@ -186,7 +188,7 @@ def register(origin: str, bucket: str, name: str, codec: BaseLLMCodec, *, replac
     # Set identity attributes on the instance when provided externally.
     codec.origin = origin  # type: ignore[attr-defined]
     codec.bucket = bucket  # type: ignore[attr-defined]
-    codec.name = name      # type: ignore[attr-defined]
+    codec.name = name  # type: ignore[attr-defined]
     CodecRegistry.register(codec, replace=replace)
 
 

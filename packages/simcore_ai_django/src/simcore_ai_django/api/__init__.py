@@ -19,7 +19,7 @@ __all__ = [
     "llm_service",
 
     # mixins
-    "IdentityMixin",
+    "DjangoIdentityMixin",
 
     # client
     "get_ai_client",

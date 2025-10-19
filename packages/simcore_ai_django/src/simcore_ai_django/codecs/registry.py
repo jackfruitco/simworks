@@ -1,4 +1,3 @@
-# simcore_ai_django/codecs/registry.py
 from __future__ import annotations
 
 """
@@ -19,6 +18,8 @@ Public API:
     DjangoCodecRegistry.has(origin, bucket, name) -> bool
     DjangoCodecRegistry.names() -> Iterable[str]
     DjangoCodecRegistry.clear() -> None
+    register(origin, bucket, name, codec_class) -> None
+    get_codec(origin, bucket, name) -> Optional[Type[DjangoBaseLLMCodec]]
 
 Legacy helpers and namespace/colon forms have been removed.
 """
@@ -30,6 +31,8 @@ from simcore_ai_django.identity import resolve_collision_django
 from .base import DjangoBaseLLMCodec
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["DjangoCodecRegistry", "register", "get_codec"]
 
 
 # ------------------------ helpers ------------------------
