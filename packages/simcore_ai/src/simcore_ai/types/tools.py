@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from .base import _StrictBaseModel as StrictBaseModel
+from .base import StrictBaseModel
 
 
 # ---- Tool specs (request time) -------------------------------------------------------

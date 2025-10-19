@@ -8,12 +8,12 @@ from pydantic import BaseModel, ConfigDict
 from simcore_ai.identity import IdentityMixin
 
 
-class _StrictBaseModel(BaseModel):
+class StrictBaseModel(BaseModel):
     """Default Pydantic strict model used across SimWorks."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     @classmethod
-    def model_construct_safe(cls, **kwargs) -> _StrictBaseModel:
+    def model_construct_safe(cls, **kwargs) -> StrictBaseModel:
         """Constructs a model without validation.
 
         This method skips Pydantic's validation and returns a model instance.
@@ -21,16 +21,16 @@ class _StrictBaseModel(BaseModel):
         """
         return cls.model_construct(**kwargs)
 
-class BaseOutputItem(_StrictBaseModel):
+class BaseOutputItem(StrictBaseModel):
     """Default Pydantic model for LLM output schema items."""
     pass
 
 
-class BaseOutputSchema(_StrictBaseModel, IdentityMixin):
+class BaseOutputSchema(StrictBaseModel, IdentityMixin):
     """Default Pydantic model for LLM output schemas."""
 
     @classmethod
-    def model_construct_safe(cls, **kwargs) -> _StrictBaseModel:
+    def model_construct_safe(cls, **kwargs) -> StrictBaseModel:
         """Constructs a schema without validation.
 
         This method skips Pydantic's validation and returns a model instance.
