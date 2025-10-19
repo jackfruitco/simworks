@@ -17,7 +17,7 @@ You can use it with or without parameters:
     class PatientInitialResponseCodec(DjangoBaseLLMCodec):
         # Optional overrides (otherwise inferred)
         origin = "chatlab"            # defaults to app/module root, e.g. "chatlab"
-        bucket = "sim_responses"         # defaults to "default" (with DeprecationWarning)
+        bucket = "sim_responses"         # defaults to "default"
         name = "patient_initial_response"  # defaults to class name, snake-cased, with "Codec" suffix removed
 
 **2) Parameterized form (explicit identity)**
@@ -29,7 +29,7 @@ You can use it with or without parameters:
 Notes
 -----
 - The registry stores **classes**, not instances. A fresh codec instance is created per use.
-- Bucket is **optional**. If omitted, we register with bucket="default" and emit a DeprecationWarning.
+- If bucket is omitted, it defaults to "default".
 - Identities are normalized to lowercase snake_case.
 - This module re-exports the decorator via `simcore_ai_django.codecs.codec`.
 """
@@ -38,7 +38,6 @@ from __future__ import annotations
 from typing import Any, Callable, Optional, Type, TypeVar
 
 import re
-import warnings
 
 from simcore_ai.tracing import service_span_sync
 
@@ -79,17 +78,6 @@ def _normalize_identity(
     name_raw = name or getattr(codec_cls, "name", None)
     bucket_raw = bucket or getattr(codec_cls, "bucket", None)
 
-    # Legacy "bucket:name" in name → parse (warn) when bucket not provided
-    if name_raw and ":" in str(name_raw) and bucket is None:
-        warnings.warn(
-            "Decorator received legacy name='bucket:name'. Please pass bucket and name separately.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        bucket_part, name_part = str(name_raw).split(":", 1)
-        bucket_raw = bucket_part
-        name_raw = name_part
-
     # Default name: class name (snake) with 'Codec' suffix removed
     if not name_raw:
         cls_name = codec_cls.__name__
@@ -98,14 +86,8 @@ def _normalize_identity(
     else:
         name_raw = _snake(str(name_raw))
 
-    # Default bucket: "default" (warn)
+    # Default bucket: "default"
     if not bucket_raw:
-        warnings.warn(
-            "No bucket provided for codec identity; defaulting to bucket='default'. "
-            "Bucket is optional, but explicit categories are recommended.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
         bucket_raw = "default"
 
     org = _snake(origin_raw)
@@ -144,10 +126,6 @@ def codec(_cls: Optional[C] = None, *, origin: Optional[str] = None, bucket: Opt
 
         @codec(origin="chatlab", bucket="sim_responses", name="my_codec")
         class MyExplicitCodec(DjangoBaseLLMCodec): ...
-
-    Legacy (deprecated):
-        @codec(origin="chatlab", name="sim_responses:my_codec")
-        class LegacyCodec(DjangoBaseLLMCodec): ...
     """
     def _wrap(cls: C) -> C:
         if not isinstance(cls, type) or not issubclass(cls, DjangoBaseLLMCodec):
