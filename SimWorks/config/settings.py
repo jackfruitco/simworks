@@ -130,6 +130,10 @@ else:
 # ---------------------------------------------------------------------------
 # SIMCORE_AI unified configuration (replaces AI_PROVIDERS/AI_CLIENT_DEFAULTS)
 # ---------------------------------------------------------------------------
+AI_IDENTITY_STRIP_TOKENS = [
+    t for t in re.split(r"[\s,]+", os.getenv("AI_IDENTITY_STRIP_TOKENS", "").strip()) if t
+]
+
 SIMCORE_AI = {
     "PROVIDERS": {
         # Provider key: used by clients to reference this provider
