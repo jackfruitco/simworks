@@ -27,7 +27,6 @@ from .django_dtos import (
     DjangoLLMToolCall,
 )
 from .promote import promote_request, promote_response
-# from simcore_ai_django.services.base import DjangoBaseLLMService
 
 __all__ = [
     "StrictBaseModel",

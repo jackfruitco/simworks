@@ -4,19 +4,18 @@ from __future__ import annotations
 import logging
 from typing import Type, Optional, Tuple, List
 
-from chatlab.ai.prompts.mixins import ChatlabMixin
+from chatlab.ai.mixins import ChatlabMixin
 from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
+from simcore_ai_django.api.decorators import llm_service
+# Django-aware service base and rich DTOs
+from simcore_ai_django.api.types import DjangoExecutableLLMService
 # PromptKit v3 (used for the image case)
 from simcore_ai_django.promptkit import PromptEngine
-from simcore_ai_django.services import llm_service
-# Django-aware service base and rich DTOs
-from simcore_ai_django.services.base import DjangoExecutableLLMService
 # Tool DTO (provider-agnostic)
-from simcore_ai_django.types import DjangoLLMBaseTool
-from simcore_ai_django.types import DjangoLLMRequestMessage
+from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,6 @@ class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, Standard
     Uses Simulation.prompt_instruction/message to construct rich Django request messages
     and validates against the structured output schema.
     """
-    prompt_plan = ["chatlab:patient:initial", ]
 
     # Execution defaults (service-level); None => use settings / hard defaults
     execution_mode: Optional[str] = "sync"  # "sync" | "async"
@@ -111,8 +109,8 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
             self, *, sim: Simulation, user_msg: Message | None = None
     ) -> Tuple[List[DjangoLLMRequestMessage], Optional[Type[None]]]:
         # Use a PromptKit section to generate the instruction for image generation
-        from ..prompts import ImageSection  # local import to avoid cycles
-        prompt = await PromptEngine.abuild_from(ImageSection)
+        from ..prompts import ChatlabImageSection  # local import to avoid cycles
+        prompt = await PromptEngine.abuild_from(ChatlabImageSection)
         msgs: List[DjangoLLMRequestMessage] = [
             DjangoLLMRequestMessage(role="developer", content=prompt.instruction or "")
         ]

@@ -15,11 +15,11 @@ Backward compatibility with legacy `namespace` or colon identities is removed.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, ClassVar, Optional
+from typing import Any, Awaitable, Callable, Optional
 import inspect
 import logging
 
-from simcore_ai.types.identity.base import Identity
+from simcore_ai_django.api.identity import Identity
 
 logger = logging.getLogger(__name__)
 

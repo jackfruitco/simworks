@@ -9,7 +9,6 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
-from simcore_ai_django.types import DjangoLLMResponse
 from simcore.models import Simulation
 from simcore.utils import get_user_initials
 from .models import Message

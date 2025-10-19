@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from simcore_ai.services.exceptions import ServiceCodecResolutionError
 from simcore_ai.services.base import BaseLLMService
+from simcore_ai.services.exceptions import ServiceCodecResolutionError
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse
-from simcore_ai_django.codecs import get_codec as _registry_get_codec  # (namespace, codec_name) -> BaseLLMCodec
+from simcore_ai_django.codecs import get_codec as _registry_get_codec  # (origin, bucket, name) -> BaseLLMCodec
 from simcore_ai_django.execution.helpers import (
     settings_default_backend as _exec_default_backend,
     settings_default_mode as _exec_default_mode,
 )
+from simcore_ai_django.identity import derive_django_identity_for_class, parse_dot_identity
 from simcore_ai_django.prompts.render_section import \
-    render_section as _default_renderer  # async (namespace, section_key, simulation) -> str
-from simcore_ai_django.services.helpers import _infer_namespace_from_module, _parse_codec_identity
+    render_section as _default_renderer  # async (origin, section_key, simulation) -> str
 from simcore_ai_django.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
 
@@ -19,6 +19,28 @@ __all__ = [
     "DjangoBaseLLMService",
     "DjangoExecutableLLMService",
 ]
+
+
+def _bucket_name_from_codec_name(codec_name: str | None, fallback_bucket: str | None, fallback_name: str | None) -> \
+tuple[str | None, str | None]:
+    """Interpret an optional codec_name into (bucket, name).
+    Supported forms:
+      - None -> (fallback_bucket, fallback_name)
+      - "default" -> ("default", "default")
+      - "bucket.name" -> ("bucket", "name")
+      - Any legacy "bucket:name" will be treated as "bucket.name" (no warnings).
+    """
+    if not codec_name:
+        return fallback_bucket, fallback_name
+    raw = str(codec_name).strip()
+    raw = raw.replace(":", ".")  # tolerate legacy, but do not emit warnings
+    if raw == "default":
+        return "default", "default"
+    parts = [p.strip() for p in raw.split(".") if p.strip()]
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    # Fallback: keep provided fallback if malformed
+    return fallback_bucket, fallback_name
 
 
 class DjangoBaseLLMService(BaseLLMService):
@@ -44,15 +66,17 @@ class DjangoBaseLLMService(BaseLLMService):
        ```
     2. **Custom selection** – Override `select_codec()` in your subclass to return a codec class or instance.
     3. **Default registry lookup** – If neither of the above is defined, the base `get_codec()` method
-       will resolve a codec automatically using the Django codec registry, matching on `(namespace, codec_name)`
-       and falling back to `"default"` when needed.
+       will resolve a codec automatically using the Django codec registry, matching on `(origin, bucket, name)`
+       tuple and falling back to `"default.default.default"` when needed.
+
+    The codec identity is stored and transmitted as a dot-only triple string `origin.bucket.name`.
 
     The result may be a codec instance, codec class, or `None` (for stateless runs).
 
     **Handling Responses**
 
     When handling a response object, call `resolve_codec_for_response(resp)` to prefer the codec
-    encoded on the response via `resp.codec_identity`. This guarantees that deferred or replayed
+    encoded on the response via `resp.codec_identity` (dot-only triple string). This guarantees that deferred or replayed
     responses use the same intended codec even if the service's defaults have changed. If no
     `codec_identity` is present, it falls back to `get_codec()`.
 
@@ -77,11 +101,11 @@ class DjangoBaseLLMService(BaseLLMService):
 
     # --- Execution configuration knobs (service-level defaults) ---
     # If left as None, these fall back to Django settings and then hard defaults.
-    execution_mode: str | None = None            # "sync" | "async"
-    execution_backend: str | None = None         # "immediate" | "celery" | "django_tasks" (future)
-    execution_priority: int | None = None        # -100..100
-    execution_run_after: float | None = None     # seconds (or set at call-site)
-    require_enqueue: bool = False                # hard rule: force async if True
+    execution_mode: str | None = None  # "sync" | "async"
+    execution_backend: str | None = None  # "immediate" | "celery" | "django_tasks" (future)
+    execution_priority: int | None = None  # -100..100
+    execution_run_after: float | None = None  # seconds (or set at call-site)
+    require_enqueue: bool = False  # hard rule: force async if True
 
     def __post_init__(self):
         super().__post_init__()
@@ -92,26 +116,20 @@ class DjangoBaseLLMService(BaseLLMService):
             self.render_section = _default_renderer
 
         # -----------------------------
-        # Derive identity defaults
+        # Derive identity defaults using Django-aware derivation if any parts are missing
         # -----------------------------
-        # namespace: default to Django app_label
-        if not getattr(self, "namespace", None):
-            self.namespace = _infer_namespace_from_module(self.__class__.__module__)
-        # bucket: default fallback
-        if not getattr(self, "bucket", None):
-            self.bucket = "default"
-        # name: from class name without 'Service' suffix
-        if not getattr(self, "name", None):
-            cls_name = self.__class__.__name__
-            core = cls_name[:-7] if cls_name.endswith("Service") else cls_name
-            self.name = (
-                core.strip()
-                .replace(" ", "_")
-                .replace("-", "_")
-            ).lower()
-        # codec_name: if not set, compose from bucket:name for registry lookups
+        if not all(getattr(self, k, None) for k in ("origin", "bucket", "name")):
+            org, buck, nm = derive_django_identity_for_class(
+                self.__class__,
+                origin=getattr(self, "origin", None),
+                bucket=getattr(self, "bucket", None),
+                name=getattr(self, "name", None),
+            )
+            self.origin, self.bucket, self.name = org, buck, nm
+
+        # codec_name: if not set, compose from bucket.name for registry lookups (dot form)
         if not getattr(self, "codec_name", None):
-            self.codec_name = f"{self.bucket}:{self.name}"
+            self.codec_name = f"{self.bucket}.{self.name}"
 
         # -----------------------------
         # Execution defaults (resolve from service → settings → hardcoded)
@@ -148,25 +166,28 @@ class DjangoBaseLLMService(BaseLLMService):
         **Resolution Order**
         1. Explicitly injected `codec_class` on the service.
         2. Result of `select_codec()` (if the subclass overrides it).
-        3. Django registry via `(namespace, codec_name)` with fallbacks:
-           - (namespace, f"{bucket}:{name}") if codec_name is unset
-           - (namespace, "default")
-        4. Core registry (if available) via `(namespace, codec_name)` with same fallbacks.
+        3. Django registry via `(origin, bucket, name)` with fallbacks:
+           - (origin, codec_bucket, codec_name) if codec_name is set
+           - (origin, "default", "default")
+        4. Core registry (if available) via `(origin, bucket, name)` with same fallbacks.
         5. Raise `ServiceCodecResolutionError` if no codec found.
+
+        The `codec_name` attribute may be either "default" or "bucket.name" form.
         """
-        ns = getattr(self, "namespace", None)
+        origin = getattr(self, "origin", None)
         bucket = getattr(self, "bucket", None) or "default"
         name = getattr(self, "name", None)
-        codec_name = getattr(self, "codec_name", None) or (f"{bucket}:{name}" if name else None)
+        c_bucket, c_name = _bucket_name_from_codec_name(getattr(self, "codec_name", None), bucket, name)
 
         with service_span_sync(
                 "svc.get_codec",
                 attributes={
                     "svc.class": self.__class__.__name__,
-                    "svc.namespace": ns,
+                    "svc.origin": origin,
                     "svc.bucket": bucket,
                     "svc.name": name,
-                    "svc.codec_name": codec_name,
+                    "svc.codec_bucket": c_bucket,
+                    "svc.codec_name": c_name,
                 },
         ):
             # 1) explicit class wins
@@ -178,14 +199,14 @@ class DjangoBaseLLMService(BaseLLMService):
             if sel is not None:
                 return sel
 
-            # 3) Django registry
+            # 3) Django registry (triple-based)
             try:
-                if ns and codec_name:
-                    obj = _registry_get_codec(ns, codec_name)
+                if origin and c_bucket and c_name:
+                    obj = _registry_get_codec(origin, c_bucket, c_name)
                     if obj:
                         return obj
-                if ns:
-                    obj = _registry_get_codec(ns, "default")
+                if origin:
+                    obj = _registry_get_codec(origin, "default", "default")
                     if obj:
                         return obj
             except Exception:
@@ -198,21 +219,21 @@ class DjangoBaseLLMService(BaseLLMService):
             except Exception:
                 _core_get_codec = None
 
-            if _core_get_codec is not None and ns:
+            if _core_get_codec is not None and origin:
                 obj = None
-                if codec_name:
-                    obj = _core_get_codec(ns, codec_name)
+                if c_bucket and c_name:
+                    obj = _core_get_codec(origin, c_bucket, c_name)
                 if not obj:
-                    obj = _core_get_codec(ns, "default")
+                    obj = _core_get_codec(origin, "default", "default")
                 if obj:
                     return obj
 
             # 5) Miss: raise rich error
             raise ServiceCodecResolutionError(
-                namespace=ns,
+                origin=origin,
                 bucket=bucket,
                 name=name,
-                codec_name=codec_name,
+                codec_name=(f"{c_bucket}.{c_name}" if c_bucket and c_name else None),
                 service=self.__class__.__name__,
             )
 
@@ -222,8 +243,8 @@ class DjangoBaseLLMService(BaseLLMService):
 
         Preference order:
         1) If `resp.codec_identity` is present, resolve that exact codec identity via registries.
-           - First try the Django codec registry: (namespace, codec_name)
-           - Then try the core registry with the same pair
+           - First try the Django codec registry: (origin, bucket, name) from dot-only string
+           - Then try the core registry with the same triple
         2) Fallback to this service's `get_codec()` resolution (request-time rules).
 
         Raises:
@@ -240,10 +261,10 @@ class DjangoBaseLLMService(BaseLLMService):
         ):
             cid = getattr(resp, "codec_identity", None)
             if cid:
-                ns, key = _parse_codec_identity(cid)
-                if ns and key:
+                o, b, n = parse_dot_identity(cid)
+                if o and b and n:
                     # 1) Django registry
-                    obj = _registry_get_codec(ns, key)
+                    obj = _registry_get_codec(o, b, n)
                     if obj:
                         return obj
                     # 2) Core registry
@@ -252,7 +273,7 @@ class DjangoBaseLLMService(BaseLLMService):
                     except Exception:
                         _core_get_codec = None
                     if _core_get_codec is not None:
-                        obj = _core_get_codec(ns, key)
+                        obj = _core_get_codec(o, b, n)
                         if obj:
                             return obj
             # 3) Fallback to request-time resolution

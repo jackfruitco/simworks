@@ -2,34 +2,48 @@
 from __future__ import annotations
 
 """
-Codec registry.
+Codec registry (core, framework-agnostic).
 
 Stores codec *instances* keyed by their canonical identity:
 
     key := f"{origin}.{bucket}.{name or 'default'}".lower()
 
-Legacy `namespace`-based lookups are removed. Codecs must expose:
+Legacy formats are removed. Codecs must expose:
     - origin: str
     - bucket: str
     - name:   str (optional; defaults to "default")
+
+Collision policy:
+    - Uses core resolve_collision (env-driven via SIMCORE_AI_DEBUG if debug flag is unset):
+      * DEBUG=True → raise on duplicate
+      * DEBUG=False → warn and suffix name with '-2', '-3', ...
 
 Public API:
     CodecRegistry.register(codec, *, replace=False) -> None
     CodecRegistry.get(origin, bucket, name="default") -> BaseLLMCodec
     CodecRegistry.get_by_key(key: str) -> BaseLLMCodec
     CodecRegistry.get_default_for_bucket(origin, bucket) -> BaseLLMCodec | None
+    CodecRegistry.has(origin, bucket, name="default") -> bool
     CodecRegistry.list() -> dict[str, BaseLLMCodec]
     CodecRegistry.clear() -> None
+
+Helpers:
+    register(origin, bucket, name, codec, *, replace=False) -> None
+    get_codec(origin, bucket, name="default") -> Optional[BaseLLMCodec]
 """
 
 import logging
 from typing import Dict, Optional
 
+from simcore_ai.identity.utils import resolve_collision
+
 from .base import BaseLLMCodec
-from .exceptions import CodecError, CodecNotFoundError
-from ..exceptions.registry_exceptions import RegistryDuplicateError, RegistryLookupError
+from .exceptions import CodecNotFoundError
+from ..exceptions.registry_exceptions import RegistryLookupError
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["CodecRegistry", "register", "get_codec"]
 
 
 def _norm(s: Optional[str]) -> str:
@@ -58,13 +72,24 @@ class CodecRegistry:
     _items: Dict[str, BaseLLMCodec] = {}
 
     @classmethod
+    def has(cls, origin: str, bucket: str, name: str = "default") -> bool:
+        """Return True if a codec is already registered at (origin, bucket, name)."""
+        return _key(origin, bucket, name) in cls._items
+
+    @classmethod
     def register(cls, codec: BaseLLMCodec, *, replace: bool = False) -> None:
         """
         Register a codec instance using its (origin, bucket, name) identity.
 
+        Collision policy:
+            - If replace=True and a different codec exists at the key, it will be replaced.
+            - If replace=False and a different codec exists:
+                • In debug → raise
+                • In non-debug → suffix `name` with '-2', '-3', … until unique, then register.
+            - Collisions are handled via resolve_collision.
+
         Raises:
             TypeError: if required attributes are missing.
-            RegistryDuplicateError: if an entry already exists and replace=False.
         """
         origin = getattr(codec, "origin", None)
         bucket = getattr(codec, "bucket", None)
@@ -75,11 +100,25 @@ class CodecRegistry:
         if not bucket or not isinstance(bucket, str):
             raise TypeError(f"Codec {type(codec).__name__} missing required field 'bucket'")
 
-        k = _key(origin, bucket, name)
+        # Collision handling (only when replace=False and different object exists)
+        initial_key = _key(origin, bucket, name)
+        if not replace and initial_key in cls._items and cls._items[initial_key] is not codec:
+            # Let the core resolver decide raise vs suffix; it operates on tuple then we rebuild key.
+            def _exists(t: tuple[str, str, str]) -> bool:
+                return _key(*t) in cls._items
 
-        if not replace and k in cls._items and cls._items[k] is not codec:
-            raise RegistryDuplicateError(f"Codec already registered at '{k}'")
+            o = _norm(origin) or "default"
+            b = _norm(bucket) or "default"
+            n = _norm(name or "default") or "default"
+            o, b, n = resolve_collision("codec", (o, b, n), exists=_exists)
+            # Update the codec's own identity to the resolved value so downstream users see the final name.
+            setattr(codec, "origin", o)
+            setattr(codec, "bucket", b)
+            setattr(codec, "name", n)
 
+        k = _key(getattr(codec, "origin", origin), getattr(codec, "bucket", bucket), getattr(codec, "name", name))
+
+        # If replace=True or unique key → register.
         cls._items[k] = codec
         logger.info("codec.registered %s", k)
 
@@ -144,11 +183,12 @@ class CodecRegistry:
 def register(origin: str, bucket: str, name: str, codec: BaseLLMCodec, *, replace: bool = False) -> None:
     """
     Manually register a codec instance when not using the @codec decorator.
+    Applies collision policy if replace=False.
     """
     # Set identity attributes on the instance when provided externally.
     codec.origin = origin  # type: ignore[attr-defined]
     codec.bucket = bucket  # type: ignore[attr-defined]
-    codec.name = name      # type: ignore[attr-defined]
+    codec.name = name  # type: ignore[attr-defined]
     CodecRegistry.register(codec, replace=replace)
 
 

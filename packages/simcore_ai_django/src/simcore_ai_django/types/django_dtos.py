@@ -21,7 +21,6 @@ from uuid import UUID
 
 from pydantic import Field
 
-from simcore.tools import BaseTool
 from simcore_ai.types import (
     StrictBaseModel,
     LLMRequest,
@@ -34,7 +33,8 @@ from simcore_ai.types import (
     LLMToolCallPart,
     LLMTextPart,
     LLMImagePart,
-    LLMAudioPart, BaseLLMTool,
+    LLMAudioPart,
+    BaseLLMTool,
 )
 
 
@@ -163,5 +163,6 @@ __all__ = [
     "DjangoLLMUsage",
     "DjangoLLMResponse",
     # Tools
+    "DjangoLLMBaseTool",
     "DjangoLLMToolCall",
 ]

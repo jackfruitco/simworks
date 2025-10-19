@@ -1,5 +1,4 @@
 # simcore_ai/services/base.py
-# simcore_ai/services/base.py
 """
 BaseLLMService: Abstract base for LLM-backed AI services.
 Provides identity fields (origin, bucket, name) to disambiguate service identity.
@@ -25,7 +24,7 @@ from simcore_ai.codecs import (
     BaseLLMCodec,
     get_codec as _core_get_codec
 )
-from simcore_ai.types.identity import Identity
+from simcore_ai.identity import Identity
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError
 from ..client import AIClient
 from ..promptkit import Prompt, PromptEngine, PromptSection

@@ -5,6 +5,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from simcore_ai.identity import IdentityMixin
+
+
 class StrictBaseModel(BaseModel):
     """Default Pydantic strict model used across SimWorks."""
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -19,7 +22,7 @@ class StrictBaseModel(BaseModel):
         return cls.model_construct(**kwargs)
 
 
-class StrictOutputSchema(StrictBaseModel):
+class StrictOutputSchema(StrictBaseModel, IdentityMixin):
     """Default Pydantic model for LLM output schemas."""
 
     @classmethod

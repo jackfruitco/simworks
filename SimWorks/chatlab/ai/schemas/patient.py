@@ -1,15 +1,19 @@
+# simcore/ai/schemas/patient.py
 from __future__ import annotations
 from pydantic import Field
-from simcore_ai_django.types import StrictOutputSchema, DjangoLLMResponseItem
+
+from chatlab.ai.mixins import ChatlabMixin
+from simcore.ai.mixins import StandardizedPatientMixin
+from simcore_ai_django.api.types import DjangoStrictSchema, DjangoLLMResponseItem
 
 
-class LLMConditionsCheckItem(StrictOutputSchema):
+class LLMConditionsCheckItem(DjangoStrictSchema):
     """Key/value pair that signals whether a downstream condition is met."""
     key: str
     value: str
 
 
-class PatientInitialOutputSchema(StrictOutputSchema):
+class PatientInitialOutputSchema(DjangoStrictSchema, ChatlabMixin, StandardizedPatientMixin):
     """
     Output for the initial patient response turn.
     - `image_requested`: whether the assistant is asking to attach/generate an image
@@ -22,14 +26,14 @@ class PatientInitialOutputSchema(StrictOutputSchema):
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
-class PatientReplyOutputSchema(StrictOutputSchema):
+class PatientReplyOutputSchema(DjangoStrictSchema):
     """Output for subsequent patient reply turns."""
     image_requested: bool
     messages: list[DjangoLLMResponseItem] = Field(..., min_items=1)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
-class PatientResultsOutputSchema(StrictOutputSchema):
+class PatientResultsOutputSchema(DjangoStrictSchema):
     """
     Final “results” payload for the interaction.
     `metadata` can include structured outputs (e.g., scored observations) as messages.

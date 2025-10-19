@@ -1,9 +1,9 @@
 # simcore/ai/mixins/origin.py
 from __future__ import annotations
 
-from simcore_ai.types.identity import IdentityMixin
+from simcore_ai_django.api.mixins import DjangoIdentityMixin
 
 
-class SimcoreMixin(IdentityMixin):
+class SimcoreMixin(DjangoIdentityMixin):
     """Identity mixin for the simcore app origin."""
     origin = "simcore"

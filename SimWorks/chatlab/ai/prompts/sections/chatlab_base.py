@@ -1,15 +1,17 @@
 from dataclasses import dataclass
 from typing import Any
 
+from chatlab.ai.mixins import ChatlabMixin
 from simcore.ai.mixins import StandardizedPatientMixin
-from simcore_ai_django.promptkit import PromptSection, prompt_section
-from ..mixins import ChatlabMixin
+from simcore_ai_django.api.decorators import prompt_section
+from simcore_ai_django.api.types import PromptSection
 
 
 @prompt_section
 @dataclass
 class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
     """Prompt section for the LLM to generate an initial scenario."""
+
     weight: int = 10
     instruction: str = (
         "### Instructions\n"
