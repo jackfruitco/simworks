@@ -20,7 +20,7 @@ Exports:
 """
 from __future__ import annotations
 
-from simcore_ai.services.decorators import llm_service
+from simcore_ai_django.services.decorators import llm_service
 
 from simcore_ai_django.codecs.decorators import codec
 from simcore_ai_django.promptkit.decorators import prompt_section, prompt_scenario
