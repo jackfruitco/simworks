@@ -11,6 +11,7 @@ from ..mixins import ChatlabMixin
 @dataclass
 class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
     """Prompt section for the LLM to generate an initial scenario."""
+
     weight: int = 10
     instruction: str = (
         "### Instructions\n"

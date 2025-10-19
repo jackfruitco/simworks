@@ -1,22 +1,14 @@
 # chatlab/ai/codecs/patient.py
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, TYPE_CHECKING
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from simcore_ai_django.api import service_span_sync
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import DjangoBaseLLMCodec
-
-from ..schemas import (
-    PatientInitialOutputSchema,
-    PatientReplyOutputSchema,
-    PatientResultsOutputSchema,
-)
-
+from chatlab.ai.prompts.mixins import ChatlabMixin
 from chatlab.models import Message, RoleChoices
+from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import (
     Simulation,
     AIResponse,
@@ -26,6 +18,12 @@ from simcore.models import (
     LabResult,
     RadResult,
 )
+from simcore_ai_django.api import service_span_sync
+from simcore_ai_django.api.decorators import codec
+from simcore_ai_django.codecs import DjangoBaseLLMCodec
+
+if TYPE_CHECKING:
+    from ..schemas import PatientInitialOutputSchema, PatientReplyOutputSchema, PatientResultsOutputSchema
 
 
 # ------------------------------
@@ -41,9 +39,14 @@ def _first_message_text(messages: Iterable[dict] | None) -> str:
         return ""
     try:
         first = next(iter(messages))
-        return (first or {}).get("content", "") or ""
     except StopIteration:
         return ""
+    if first is None:
+        return ""
+    # Support both dict-like and object-like items
+    if isinstance(first, dict):
+        return (first or {}).get("content", "") or ""
+    return getattr(first, "content", "") or ""
 
 
 def _persist_ai_response(*, sim: Simulation, provider_id: Optional[str], raw: Any, normalized: dict) -> AIResponse:
@@ -56,7 +59,8 @@ def _persist_ai_response(*, sim: Simulation, provider_id: Optional[str], raw: An
     )
 
 
-def _persist_message(*, sim: Simulation, sender_id: Optional[int], content: str, ai_resp: Optional[AIResponse]) -> Message:
+def _persist_message(*, sim: Simulation, sender_id: Optional[int], content: str,
+                     ai_resp: Optional[AIResponse]) -> Message:
     User = get_user_model()
     if sender_id is not None:
         sender = User.objects.get(pk=sender_id)
@@ -143,8 +147,8 @@ def _persist_result_metadata(sim: Simulation, items: Iterable[dict]) -> None:
 # ------------------------------
 
 
-@codec(origin="chatlab", bucket="standardized_patient", name="GenerateInitialResponse")
-class PatientInitialResponseCodec(DjangoBaseLLMCodec[PatientInitialOutputSchema]):
+@codec
+class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCodec):
     """
     Codec for the **initial patient response** in ChatLab.
 
@@ -157,16 +161,14 @@ class PatientInitialResponseCodec(DjangoBaseLLMCodec[PatientInitialOutputSchema]
     - Optional `sender_id`: user pk to attribute the assistant message (else simulation.user)
     """
 
-    response_format_cls = PatientInitialOutputSchema
-
     @transaction.atomic
     def persist(self, *, response, parsed: PatientInitialOutputSchema) -> dict:
         with service_span_sync(
-            "codec.persist",
-            attributes={
-                "ai.identity.codec": str(getattr(self, "identity", "chatlab.patient.GeneratePatientInitial")),
-                "codec_class": self.__class__.__name__,
-            },
+                "codec.persist",
+                attributes={
+                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "codec_class": self.__class__.__name__,
+                },
         ):
             sim = _resolve_simulation(
                 response.request.context.get("simulation")
@@ -191,24 +193,22 @@ class PatientInitialResponseCodec(DjangoBaseLLMCodec[PatientInitialOutputSchema]
             return {"ai_response_id": ai_resp.pk, "simulation_id": sim.pk}
 
 
-@codec(origin="chatlab", bucket="standardized_patient", name="GenerateReplyResponse")
-class PatientReplyResponseCodec(DjangoBaseLLMCodec[PatientReplyOutputSchema]):
+@codec
+class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCodec):
     """Codec for subsequent **patient replies** in ChatLab.
 
     - Validates against `PatientReplyOutputSchema`
     - Persists `AIResponse` and an assistant `Message` (first message content)
     """
 
-    response_format_cls = PatientReplyOutputSchema
-
     @transaction.atomic
     def persist(self, *, response, parsed: PatientReplyOutputSchema) -> dict:
         with service_span_sync(
-            "codec.persist",
-            attributes={
-                "ai.identity.codec": str(getattr(self, "identity", "chatlab.patient.GeneratePatientReply")),
-                "codec_class": self.__class__.__name__,
-            },
+                "codec.persist",
+                attributes={
+                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "codec_class": self.__class__.__name__,
+                },
         ):
             sim = _resolve_simulation(
                 response.request.context.get("simulation")
@@ -232,24 +232,22 @@ class PatientReplyResponseCodec(DjangoBaseLLMCodec[PatientReplyOutputSchema]):
             return {"ai_response_id": ai_resp.pk, "simulation_id": sim.pk}
 
 
-@codec(origin="chatlab", bucket="standardized_patient", name="GeneratePatientResults")
-class PatientResultsResponseCodec(DjangoBaseLLMCodec[PatientResultsOutputSchema]):
+@codec
+class PatientResultsCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCodec):
     """Codec for **diagnostic results** (labs/rads) returned by the model.
 
     - Validates against `PatientResultsOutputSchema`
     - Persists `AIResponse` and result metadata rows (LabResult/RadResult)
     """
 
-    response_format_cls = PatientResultsOutputSchema
-
     @transaction.atomic
     def persist(self, *, response, parsed: PatientResultsOutputSchema) -> dict:
         with service_span_sync(
-            "codec.persist",
-            attributes={
-                "ai.identity.codec": str(getattr(self, "identity", "chatlab.patient.GeneratePatientResults")),
-                "codec_class": self.__class__.__name__,
-            },
+                "codec.persist",
+                attributes={
+                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "codec_class": self.__class__.__name__,
+                },
         ):
             sim = _resolve_simulation(
                 response.request.context.get("simulation")

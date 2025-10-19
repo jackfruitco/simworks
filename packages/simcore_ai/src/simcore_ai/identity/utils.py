@@ -40,7 +40,10 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 # Default suffix tokens to strip from class names when deriving identity "name"
-DEFAULT_STRIP_TOKENS = {"Codec", "Service", "Prompt", "PromptSection", "Section", "Response"}
+DEFAULT_STRIP_TOKENS = {
+    "Codec", "Service", "Prompt", "PromptSection", "Section", "Response",
+    "Generate", "Output", "Schema",
+}
 
 
 def _env_truthy(value: str | None) -> bool:
@@ -60,19 +63,57 @@ def snake(s: str) -> str:
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
-def strip_tokens(name: str, extra_tokens: Iterable[str] = ()) -> str:
-    """Remove any provided tokens from the *end* of a class name (case-sensitive).
+def strip_tokens(
+    name: str,
+    extra_tokens: Iterable[str] = (),
+    *,
+    strip_leading: bool = True,
+    strip_trailing: bool = True,
+    repeat: bool = True,
+) -> str:
+    """Remove provided tokens from the *edges* of a class name.
 
-    Longest tokens are stripped first to avoid partial overlaps, then trailing
-    underscores/spaces are trimmed.
+    - Strips tokens from the **leading** and/or **trailing** edge(s) (configurable).
+    - If `repeat=True` (default), keeps stripping while any token still matches either edge.
+    - Longest tokens are tried first to avoid partial overlaps.
+    - Trims leftover underscores/spaces/hyphens at the edges.
+
+    Notes:
+        • Matching is case-sensitive. Provide the exact-cased tokens you expect
+          (Django utils already adds app-label variants).
+        • Only edges are stripped — interior occurrences are preserved.
     """
     tokens = list(DEFAULT_STRIP_TOKENS) + list(extra_tokens)
+    # Try longest first to avoid partial matches swallowing each other.
     tokens.sort(key=len, reverse=True)
-    out = name
-    for token in tokens:
-        if out.endswith(token):
-            out = out[: -len(token)]
-    return out.rstrip("_ ").strip() or name  # guard against empty
+
+    out = name or ""
+    if not out or (not strip_leading and not strip_trailing):
+        return name
+
+    def _strip_once(s: str) -> tuple[str, bool]:
+        changed = False
+        for tok in tokens:
+            if strip_leading and s.startswith(tok):
+                s = s[len(tok):]
+                changed = True
+            if strip_trailing and s.endswith(tok):
+                s = s[:-len(tok)]
+                changed = True
+        return s, changed
+
+    if repeat:
+        while True:
+            out, changed = _strip_once(out)
+            if not changed:
+                break
+    else:
+        out, _ = _strip_once(out)
+
+    # Clean padding artifacts produced by token removal.
+    out = out.strip("_- ").strip()
+    # Guard: if we stripped everything, fall back to the original name.
+    return out or name
 
 
 def derive_name_from_class(cls_name: str, extra_tokens: Iterable[str] = ()) -> str:

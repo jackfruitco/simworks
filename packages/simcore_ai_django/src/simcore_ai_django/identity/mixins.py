@@ -19,6 +19,11 @@ class DjangoIdentityMixin(IdentityMixin):
         n = getattr(cls, "name", None)
         return derive_django_identity_for_class(cls, origin=o, bucket=b, name=n)
 
+    @classmethod
+    def identity_str(cls) -> str:
+        o, b, n = cls.identity_tuple()
+        return f"{o}.{b}.{n}"
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         if not getattr(cls, "origin", None) or not getattr(cls, "bucket", None) or not getattr(cls, "name", None):

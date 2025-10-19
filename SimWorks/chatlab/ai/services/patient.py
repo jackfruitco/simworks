@@ -28,7 +28,6 @@ class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, Standard
     Uses Simulation.prompt_instruction/message to construct rich Django request messages
     and validates against the structured output schema.
     """
-    prompt_plan = ["chatlab:patient:initial", ]
 
     # Execution defaults (service-level); None => use settings / hard defaults
     execution_mode: Optional[str] = "sync"  # "sync" | "async"
@@ -110,8 +109,8 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
             self, *, sim: Simulation, user_msg: Message | None = None
     ) -> Tuple[List[DjangoLLMRequestMessage], Optional[Type[None]]]:
         # Use a PromptKit section to generate the instruction for image generation
-        from ..prompts import ImageSection  # local import to avoid cycles
-        prompt = await PromptEngine.abuild_from(ImageSection)
+        from ..prompts import ChatlabImageSection       # local import to avoid cycles
+        prompt = await PromptEngine.abuild_from(ChatlabImageSection)
         msgs: List[DjangoLLMRequestMessage] = [
             DjangoLLMRequestMessage(role="developer", content=prompt.instruction or "")
         ]
