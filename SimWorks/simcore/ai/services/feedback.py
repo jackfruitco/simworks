@@ -1,5 +1,5 @@
 # simcore/ai/services/feedback.py
-from simcore_ai_django.services import DjangoExecutableLLMService
+from simcore_ai_django.api.types import DjangoExecutableLLMService
 from ..mixins import FeedbackMixin
 
 

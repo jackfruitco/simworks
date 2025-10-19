@@ -2,10 +2,9 @@
 from __future__ import annotations
 from pydantic import Field
 
-from chatlab.ai.prompts.mixins import ChatlabMixin
+from chatlab.ai.mixins import ChatlabMixin
 from simcore.ai.mixins import StandardizedPatientMixin
-from simcore_ai_django.types import DjangoLLMResponseItem
-from simcore_ai_django.api.types import DjangoStrictSchema
+from simcore_ai_django.api.types import DjangoStrictSchema, DjangoLLMResponseItem
 
 
 class LLMConditionsCheckItem(DjangoStrictSchema):

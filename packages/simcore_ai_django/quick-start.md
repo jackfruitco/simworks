@@ -45,7 +45,7 @@ Provide either a static `instruction` or a custom render method.
 
 ```python
 from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.promptkit import PromptSection
+from simcore_ai_django.api.types import PromptSection
 
 @prompt_section
 class InitialSection(PromptSection):
@@ -66,7 +66,7 @@ Implement a `persist()` method.
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseLLMCodec
 
 @codec
 class InitialCodec(DjangoBaseLLMCodec):
@@ -89,7 +89,7 @@ Usually no overrides needed.
 
 ```python
 from simcore_ai_django.api.decorators import llm_service
-from simcore_ai_django.services.base import DjangoExecutableLLMService
+from simcore_ai_django.api.types import DjangoExecutableLLMService
 
 @llm_service
 class GenerateInitialResponse(DjangoExecutableLLMService):

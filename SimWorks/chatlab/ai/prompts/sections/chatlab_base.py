@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import Any
 
+from chatlab.ai.mixins import ChatlabMixin
 from simcore.ai.mixins import StandardizedPatientMixin
-from simcore_ai_django.promptkit import PromptSection
 from simcore_ai_django.api.decorators import prompt_section
-from ..mixins import ChatlabMixin
+from simcore_ai_django.api.types import PromptSection
 
 
 @prompt_section

@@ -6,7 +6,7 @@ from typing import Any, Iterable, Optional, TYPE_CHECKING
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from chatlab.ai.prompts.mixins import ChatlabMixin
+from chatlab.ai.mixins import ChatlabMixin
 from chatlab.models import Message, RoleChoices
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import (
@@ -20,7 +20,7 @@ from simcore.models import (
 )
 from simcore_ai_django.api import service_span_sync
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseLLMCodec
 
 if TYPE_CHECKING:
     from ..schemas import PatientInitialOutputSchema, PatientReplyOutputSchema, PatientResultsOutputSchema

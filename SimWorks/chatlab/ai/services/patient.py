@@ -4,16 +4,16 @@ from __future__ import annotations
 import logging
 from typing import Type, Optional, Tuple, List
 
-from chatlab.ai.prompts.mixins import ChatlabMixin
+from chatlab.ai.mixins import ChatlabMixin
 from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
-# PromptKit v3 (used for the image case)
-from simcore_ai_django.promptkit import PromptEngine
 from simcore_ai_django.api.decorators import llm_service
 # Django-aware service base and rich DTOs
-from simcore_ai_django.services.base import DjangoExecutableLLMService
+from simcore_ai_django.api.types import DjangoExecutableLLMService
+# PromptKit v3 (used for the image case)
+from simcore_ai_django.promptkit import PromptEngine
 # Tool DTO (provider-agnostic)
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
 
@@ -109,7 +109,7 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
             self, *, sim: Simulation, user_msg: Message | None = None
     ) -> Tuple[List[DjangoLLMRequestMessage], Optional[Type[None]]]:
         # Use a PromptKit section to generate the instruction for image generation
-        from ..prompts import ChatlabImageSection       # local import to avoid cycles
+        from ..prompts import ChatlabImageSection  # local import to avoid cycles
         prompt = await PromptEngine.abuild_from(ChatlabImageSection)
         msgs: List[DjangoLLMRequestMessage] = [
             DjangoLLMRequestMessage(role="developer", content=prompt.instruction or "")
