@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Iterable, Optional, Protocol
+from typing import Any, AsyncIterator, Optional, Protocol
+from collections.abc import Iterable
 
 from .exceptions import ProviderError, ProviderSchemaUnsupported
 from ..tracing import service_span_sync

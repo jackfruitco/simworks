@@ -45,7 +45,8 @@ SIMCORE_AI = {
 The goal is to surface actionable, early feedback when settings are malformed.
 """
 
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import Any, Dict, List, Optional
+from collections.abc import Iterable, Mapping
 
 from django.conf import settings
 from django.core import checks

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from typing import Callable, Union, Type, Protocol, Literal
+from collections.abc import Callable
+from typing import Union, Type, Protocol, Literal
 
 logger = logging.getLogger(__name__)
 

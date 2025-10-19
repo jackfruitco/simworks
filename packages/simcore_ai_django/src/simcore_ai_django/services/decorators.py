@@ -3,7 +3,8 @@ enforces dot-only identity semantics, and applies collision policy."""
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence, Type, overload, cast, Any
+from collections.abc import Callable, Sequence
+from typing import Optional, Type, overload, cast, Any
 
 from simcore_ai.tracing import service_span_sync
 from .base import DjangoBaseLLMService, DjangoExecutableLLMService

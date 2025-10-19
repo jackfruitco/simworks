@@ -26,7 +26,8 @@ Tracing:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Mapping, Optional, Protocol, runtime_checkable, Dict
+from collections.abc import Mapping
+from typing import Any, Optional, Protocol, runtime_checkable, Dict
 
 
 @runtime_checkable

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager, asynccontextmanager
-from typing import Any, Dict, Iterator, AsyncIterator, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
+from typing import Any, Dict, Iterator, AsyncIterator
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode, Tracer

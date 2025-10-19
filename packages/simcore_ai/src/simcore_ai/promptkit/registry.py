@@ -16,7 +16,8 @@ Typical usage:
     SectionCls = PromptRegistry.require_str("chatlab.patient.initial")
 """
 
-from typing import Iterable, Optional, Type
+from typing import Optional, Type
+from collections.abc import Iterable
 import logging
 import threading
 

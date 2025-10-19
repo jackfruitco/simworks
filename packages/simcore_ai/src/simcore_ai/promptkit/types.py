@@ -15,7 +15,8 @@ Backward compatibility with legacy `namespace` or colon identities is removed.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Awaitable, Optional
 import inspect
 import logging
 

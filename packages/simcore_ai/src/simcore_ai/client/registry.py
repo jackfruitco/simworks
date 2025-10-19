@@ -24,7 +24,8 @@ Notes
 """
 
 from threading import RLock
-from typing import Dict, Optional, Mapping, Any
+from typing import Dict, Optional, Any
+from collections.abc import Mapping
 
 from .client import AIClient
 from simcore_ai.exceptions.registry_exceptions import (

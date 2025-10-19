@@ -8,7 +8,8 @@ Helpers for execution entrypoint:
   - backend lookup (re-export from registry)
 """
 
-from typing import Any, Dict, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any, Dict, Optional
 
 from django.conf import settings
 

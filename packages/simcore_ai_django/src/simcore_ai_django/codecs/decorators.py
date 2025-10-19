@@ -35,7 +35,8 @@ Notes
 """
 from __future__ import annotations
 
-from typing import Callable, Optional, Type, TypeVar
+from collections.abc import Callable
+from typing import Optional, Type, TypeVar
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai_django.identity import derive_django_identity_for_class, resolve_collision_django

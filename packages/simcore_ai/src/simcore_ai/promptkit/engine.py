@@ -1,7 +1,8 @@
 # simcore_ai/promptkit/engine.py
 from __future__ import annotations
 
-from typing import Iterable, Type, Union, Sequence
+from typing import Type, Union
+from collections.abc import Iterable, Sequence
 import asyncio
 import logging
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager, asynccontextmanager
-from typing import Any, Mapping, Iterator, AsyncIterator
+from typing import Any, Iterator, AsyncIterator
+from collections.abc import Mapping
 
 from opentelemetry import trace
 from opentelemetry.trace import Span, SpanKind, Status, StatusCode, Tracer

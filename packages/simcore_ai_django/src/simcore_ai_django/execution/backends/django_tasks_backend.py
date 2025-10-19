@@ -1,7 +1,8 @@
 # simcore_ai_django/execution/django_tasks_backend.py
 from __future__ import annotations
 
-from typing import Mapping, Any, Optional, Type, Dict
+from collections.abc import Mapping
+from typing import Any, Optional, Type
 
 from simcore_ai.tracing import inject_trace, extract_trace, service_span_sync
 from ..types import BaseExecutionBackend, SupportsServiceInit

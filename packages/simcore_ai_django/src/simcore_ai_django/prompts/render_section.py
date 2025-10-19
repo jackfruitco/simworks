@@ -6,7 +6,8 @@ if it is present, allowing project-level prompt definitions to participate in Dj
 template selection.
 """
 from __future__ import annotations
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from typing import Any, Optional
 from asgiref.sync import sync_to_async
 from django.template.loader import select_template
 from django.utils import timezone

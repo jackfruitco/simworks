@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
-from uuid import UUID
+from typing import List, Optional
+from collections.abc import Iterable
 
 from simcore_ai.types import (
     LLMRequest,

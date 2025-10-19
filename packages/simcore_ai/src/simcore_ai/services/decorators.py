@@ -1,4 +1,5 @@
-from typing import Sequence, Callable, Optional, Any, TypeVar, overload, cast
+from typing import Optional, Any, TypeVar, overload, cast
+from collections.abc import Sequence, Callable
 from simcore_ai.services import BaseLLMService
 
 TFunc = TypeVar("TFunc", bound=Callable[..., Any])

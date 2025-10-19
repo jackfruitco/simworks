@@ -25,7 +25,8 @@ Legacy helpers and namespace/colon forms have been removed.
 """
 
 import logging
-from typing import Dict, Iterable, Optional, Tuple, Type
+from typing import Dict, Optional, Tuple, Type
+from collections.abc import Iterable
 
 from simcore_ai_django.identity import resolve_collision_django
 from .base import DjangoBaseLLMCodec

@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Sequence, Callable
 from dataclasses import dataclass, field
-from typing import Sequence, Optional, Protocol, Callable
+from typing import Optional, Protocol
 
 from typing import Any
 from simcore_ai.promptkit.resolvers import resolve_section, PromptSectionResolutionError

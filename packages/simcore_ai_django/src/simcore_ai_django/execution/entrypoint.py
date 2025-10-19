@@ -29,7 +29,8 @@ Notes
 - Terminology uses Django Tasks style (queue_name, run_after, priority); we map to backend args.
 """
 
-from typing import Any, Optional, Mapping, Dict, Union, Type
+from collections.abc import Mapping
+from typing import Any, Optional, Dict, Union, Type
 from datetime import datetime
 
 from simcore_ai.tracing import service_span_sync

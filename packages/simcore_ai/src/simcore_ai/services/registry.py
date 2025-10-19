@@ -18,7 +18,8 @@ Exported symbols:
 import logging
 import os
 import threading
-from typing import Optional, Type, Iterable
+from typing import Optional, Type
+from collections.abc import Iterable
 
 from simcore_ai.identity import resolve_collision, parse_dot_identity
 

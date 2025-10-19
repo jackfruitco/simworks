@@ -11,8 +11,9 @@ from __future__ import annotations
 import enum
 import os
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, date
-from typing import Mapping, Any, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
