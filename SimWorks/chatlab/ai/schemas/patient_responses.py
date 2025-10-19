@@ -1,7 +1,6 @@
 from __future__ import annotations
 from pydantic import Field
-from simcore_ai.types import StrictOutputSchema
-from simcore_ai_django.types import DjangoLLMResponseItem
+from simcore_ai_django.types import StrictOutputSchema, DjangoLLMResponseItem
 
 
 class LLMConditionsCheckItem(StrictOutputSchema):

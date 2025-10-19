@@ -1,21 +1,15 @@
-import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
-from simcore_ai.promptkit import PromptSection, prompt
+from simcore.ai.prompts.mixins import StandardizedPatientMixin
+from simcore_ai_django.promptkit import PromptSection, prompt_section
+from ..mixins import ChatlabMixin
 
-logger = logging.getLogger(__name__)
 
-
+@prompt_section
 @dataclass
-class BaseSection(PromptSection):
-    category = "chatlab"
-
-
-@prompt
-@dataclass
-class InitialSection(BaseSection):
-    name: str = "initial"
+class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
+    """Prompt section for the LLM to generate an initial scenario."""
     weight: int = 10
     instruction: str = (
         "### Instructions\n"
@@ -51,20 +45,36 @@ class InitialSection(BaseSection):
     )
 
 
-@prompt
+@prompt_section
 @dataclass
-class ImageSection(BaseSection):
-    name: str = "image"
+class ChatlabPatientReplySection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
+    """Prompt section for the patient's reply to the LLM."""
+    instruction = None
+
+    async def render_message(self, **ctx: Any) -> str | None:
+        from chatlab.models import Message
+        user_msg: Message | int | None = None
+        if user_msg := ctx.get("user_msg"):
+            if not isinstance(user_msg, Message):
+                user_msg = await Message.objects.aget(id=user_msg)
+            return user_msg.content
+        raise ValueError("user_msg must be provided")
+
+
+@prompt_section
+@dataclass
+class ChatlabImageSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
+    """Prompt section for the LLM to generate an image."""
     weight: int = 20
     instruction: str = (
-            "For this response only, generate an image based off the medical "
-            "provider's request in the message(s)."
-            "\n"
-            "Images must not be against OpenAI guidelines."
-            "\n"
-            "The image should be as if taken by the patient with a smartphone. "
-            "The image should not show details that would not normally be seen "
-            "in an image. Do not overexaggerate the look of a sign or symptom."
-        )
+        "For this response only, generate an image based off the medical "
+        "provider's request in the message(s)."
+        "\n"
+        "Images must not be against OpenAI guidelines."
+        "\n"
+        "The image should be as if taken by the patient with a smartphone. "
+        "The image should not show details that would not normally be seen "
+        "in an image. Do not overexaggerate the look of a sign or symptom."
+    )
 
-    message: str =  "Generate the image."
+    message: str = "Generate the image."

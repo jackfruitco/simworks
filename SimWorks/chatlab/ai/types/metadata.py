@@ -4,7 +4,7 @@ from typing import Optional, Literal, Dict, Any, Annotated, TypeAlias, Union
 
 from pydantic import Field
 
-from simcore_ai.types import StrictBaseModel, Boolish
+from simcore_ai_django.types import StrictBaseModel, Boolish
 
 
 class BaseMetafield(StrictBaseModel):

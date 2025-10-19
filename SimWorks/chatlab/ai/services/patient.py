@@ -1,32 +1,35 @@
-# chatlab/ai/services/patient_responses.py (v3 services)
+# chatlab/ai/services/patient.py (v3 services)
 from __future__ import annotations
 
 import logging
 from typing import Type, Optional, Tuple, List
 
+from chatlab.ai.prompts.mixins import ChatlabMixin
 from chatlab.models import Message
 from core.utils import remove_null_keys
+from simcore.ai.prompts.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
 # PromptKit v3 (used for the image case)
-from simcore_ai.promptkit import PromptEngine
-from simcore_ai.services.decorators import llm_service
-# Tool DTO (provider-agnostic)
-from simcore_ai.types import BaseLLMTool
+from simcore_ai_django.promptkit import PromptEngine
+from simcore_ai_django.services import llm_service
 # Django-aware service base and rich DTOs
 from simcore_ai_django.services.base import DjangoExecutableLLMService
+# Tool DTO (provider-agnostic)
+from simcore_ai_django.types import DjangoLLMBaseTool
 from simcore_ai_django.types import DjangoLLMRequestMessage
 
 logger = logging.getLogger(__name__)
 
 
 # ----------------------------- services ------------------------------------------
-@llm_service(origin="chatlab", bucket="patient")
-class GenerateInitialResponse(DjangoExecutableLLMService):
+@llm_service
+class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
     """Generate the initial patient response.
 
     Uses Simulation.prompt_instruction/message to construct rich Django request messages
     and validates against the structured output schema.
     """
+    prompt_plan = ["chatlab:patient:initial", ]
 
     # Execution defaults (service-level); None => use settings / hard defaults
     execution_mode: Optional[str] = "sync"  # "sync" | "async"
@@ -41,23 +44,9 @@ class GenerateInitialResponse(DjangoExecutableLLMService):
     from chatlab.ai.schemas import PatientInitialOutputSchema as _Schema
     response_format_cls = _Schema
 
-    async def build_messages_and_schema(
-            self, *, sim: Simulation, user_msg: Message | None = None
-    ) -> Tuple[List[DjangoLLMRequestMessage], Optional[Type[_Schema]]]:
-        msgs: List[DjangoLLMRequestMessage] = []
-        if getattr(sim, "prompt_instruction", None):
-            msgs.append(
-                DjangoLLMRequestMessage(role="developer", content=sim.prompt_instruction)
-            )
-        if getattr(sim, "prompt_message", None):
-            msgs.append(
-                DjangoLLMRequestMessage(role="user", content=sim.prompt_message)
-            )
-        return msgs, self.response_format_cls
 
-
-@llm_service(origin="chatlab", bucket="patient")
-class GenerateReplyResponse(DjangoExecutableLLMService):
+@llm_service
+class GenerateReplyResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
     """Generate a reply to a user message.
 
     Expects a user message pk (or a resolved Message) and validates against the
@@ -98,8 +87,8 @@ class GenerateReplyResponse(DjangoExecutableLLMService):
         return msgs, self.response_format_cls
 
 
-@llm_service(origin="chatlab", bucket="patient")
-class GenerateImageResponse(DjangoExecutableLLMService):
+@llm_service
+class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
     """Generate a patient image via provider tool-call.
 
     Builds a developer instruction via PromptKit and attaches a normalized image
@@ -129,12 +118,12 @@ class GenerateImageResponse(DjangoExecutableLLMService):
         ]
         return msgs, None
 
-    def build_tools(self) -> list[BaseLLMTool]:
+    def build_tools(self) -> list[DjangoLLMBaseTool]:
         args = remove_null_keys({
             "output_format": self.output_format,
         })
         return [
-            BaseLLMTool(
+            DjangoLLMBaseTool(
                 type="image_generation",
                 name="image_generation",
                 description="Generate an image from the prompt",

@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 from simcore_ai.promptkit import *
-from simcore_ai.promptkit.decorators import prompt
+from .decorators import prompt_section, prompt_scenario
+
 __all__ = [
     "Prompt",
     "PromptSection",
+    "PromptScenario",
     "PromptEngine",
     "PromptRegistry",
-    # decorator
-    "prompt",
+    # decorators
+    "prompt_section",
+    "prompt_scenario"
+
 ]

@@ -1,4 +1,4 @@
-# chatlab/ai/codecs/patient_responses.py
+# chatlab/ai/codecs/patient.py
 from __future__ import annotations
 
 from typing import Any, Iterable, Optional
@@ -7,8 +7,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from simcore_ai.tracing import service_span_sync
-from simcore_ai_django.codecs.base import DjangoBaseLLMCodec
-from simcore_ai.codecs.decorators import codec
+from simcore_ai_django.codecs import DjangoBaseLLMCodec, codec
 
 from ..schemas import (
     PatientInitialOutputSchema,
@@ -143,7 +142,7 @@ def _persist_result_metadata(sim: Simulation, items: Iterable[dict]) -> None:
 # ------------------------------
 
 
-@codec(namespace="chatlab", bucket="patient", name="GenerateInitialResponse")
+@codec(origin="chatlab", bucket="standardized_patient", name="GenerateInitialResponse")
 class PatientInitialResponseCodec(DjangoBaseLLMCodec[PatientInitialOutputSchema]):
     """
     Codec for the **initial patient response** in ChatLab.
@@ -191,7 +190,7 @@ class PatientInitialResponseCodec(DjangoBaseLLMCodec[PatientInitialOutputSchema]
             return {"ai_response_id": ai_resp.pk, "simulation_id": sim.pk}
 
 
-@codec(namespace="chatlab", bucket="patient", name="GenerateReplyResponse")
+@codec(origin="chatlab", bucket="standardized_patient", name="GenerateReplyResponse")
 class PatientReplyResponseCodec(DjangoBaseLLMCodec[PatientReplyOutputSchema]):
     """Codec for subsequent **patient replies** in ChatLab.
 
@@ -232,7 +231,7 @@ class PatientReplyResponseCodec(DjangoBaseLLMCodec[PatientReplyOutputSchema]):
             return {"ai_response_id": ai_resp.pk, "simulation_id": sim.pk}
 
 
-@codec(namespace="chatlab", bucket="patient", name="GeneratePatientResults")
+@codec(origin="chatlab", bucket="standardized_patient", name="GeneratePatientResults")
 class PatientResultsResponseCodec(DjangoBaseLLMCodec[PatientResultsOutputSchema]):
     """Codec for **diagnostic results** (labs/rads) returned by the model.
 

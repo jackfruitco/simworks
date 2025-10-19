@@ -6,6 +6,9 @@ Most types are defined in the simcore_ai.types module, but may be extended with 
 """
 
 from simcore_ai.types import (
+    StrictBaseModel,
+    StrictOutputSchema,
+    Boolish,
     LLMTextPart,
     LLMImagePart,
     LLMAudioPart,
@@ -27,7 +30,12 @@ from .promote import promote_request, promote_response
 # from simcore_ai_django.services.base import DjangoBaseLLMService
 
 __all__ = [
+    "StrictBaseModel",
+    "StrictOutputSchema",
+    "Boolish",
+
     "DjangoDTOBase",
+
     "DjangoLLMBaseTool",
     "DjangoLLMRequestMessage",
     "DjangoLLMRequest",
@@ -35,11 +43,13 @@ __all__ = [
     "DjangoLLMUsage",
     "DjangoLLMResponse",
     "DjangoLLMToolCall",
+
     "LLMTextPart",
     "LLMImagePart",
     "LLMAudioPart",
     "LLMToolCallPart",
     "LLMToolResultPart",
+
     "demote_request",
     "demote_response",
     "promote_request",

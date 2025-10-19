@@ -2,11 +2,16 @@
 from simcore_ai_django.services import DjangoExecutableLLMService
 
 
-class GenerateHotwashInitialResponse(DjangoExecutableLLMService):
+class FeedbackMixin:
+    bucket = "feedback"
+
+
+class GenerateHotwashInitialResponse(DjangoExecutableLLMService, FeedbackMixin):
     """Generate the initial patient feedback."""
-    raise NotImplementedError
+    execution_mode = "async"
 
 
-class GenerateHotwashContinuationResponse(DjangoExecutableLLMService):
+
+class GenerateHotwashContinuationResponse(DjangoExecutableLLMService, FeedbackMixin):
     """Generate the continuation feedback."""
     raise NotImplementedError

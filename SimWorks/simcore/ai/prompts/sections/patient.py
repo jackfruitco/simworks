@@ -1,14 +1,17 @@
-# simcore/ai/prompts/sections/standardized_patient.py
+# simcore/ai/prompts/sections/patient.py
+from dataclasses import dataclass
+
 from django.core.exceptions import ObjectDoesNotExist
 
+from simcore.ai.prompts.mixins import SimcoreBaseMixin, StandardizedPatientMixin
 from simcore.models import Simulation
-from simcore_ai_django.promptkit import PromptSection, prompt
+from simcore_ai_django.promptkit import PromptSection, prompt_section
 
 
-@prompt
-class PatientNameSection(PromptSection):
-    name = "patient_name"
-    category = "patient"
+@prompt_section
+@dataclass
+class PatientNameSection(PromptSection, SimcoreBaseMixin, StandardizedPatientMixin):
+    name = "name"
 
     # weight = 100
     # tags =

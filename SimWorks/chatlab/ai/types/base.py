@@ -9,7 +9,7 @@ from pydantic import Field
 
 from chatlab.ai.types.messages import MessageItem
 from chatlab.ai.types.metadata import MetafieldItem
-from simcore_ai.types import StrictBaseModel
+from simcore_ai_django.types import StrictBaseModel
 
 logger = logging.getLogger(__name__)
 

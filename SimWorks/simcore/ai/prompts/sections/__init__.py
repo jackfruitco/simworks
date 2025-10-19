@@ -1,4 +1,4 @@
-from .standardized_patient import *
+from .patient import *
 
 __all__ = (
     "PatientNameSection",

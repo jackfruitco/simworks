@@ -1,9 +1,15 @@
 # simcore_ai/services/base.py
 # simcore_ai/services/base.py
 """
-BaseLLMService: Abstract base for LLM-backed AI services. Provides identity fields (origin, bucket, name)
-to disambiguate service identity. The canonical string form is `identity_str` ("origin.bucket.name").
+BaseLLMService: Abstract base for LLM-backed AI services.
+Provides identity fields (origin, bucket, name) to disambiguate service identity.
+The canonical string form is `identity_str` ("origin.bucket.name").
 The legacy `namespace` field is deprecated in favor of `identity_str` and `origin`.
+
+Prompt plan support:
+    - The `prompt_plan` is now a **list of canonical section identities ("origin:bucket:name") or PromptSection classes**
+      (no role tuples). The service uses a PromptEngine to build a single Prompt aggregate which is then converted into
+      request messages (developer/user + extras).
 """
 from __future__ import annotations
 
@@ -12,6 +18,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import Sequence, Optional, Protocol, Callable
 
+from typing import Any
+from simcore_ai.promptkit.resolvers import resolve_section, PromptSectionResolutionError
+
 from simcore_ai.codecs import (
     BaseLLMCodec,
     get_codec as _core_get_codec
@@ -19,6 +28,7 @@ from simcore_ai.codecs import (
 from simcore_ai.types.identity import Identity
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError
 from ..client import AIClient
+from ..promptkit import Prompt, PromptEngine, PromptSection
 from ..tracing import get_tracer, service_span
 from ..types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart
 
@@ -69,11 +79,15 @@ class BaseLLMService:
     backoff_factor: float = 2.0
     backoff_jitter: float = 0.1  # +/- seconds
 
-    prompt_plan: Sequence[tuple[str, str]] = field(default_factory=tuple)
+    prompt_plan: Sequence[Any] = field(default_factory=tuple)
     client: Optional[AIClient] = None
 
     emitter: ServiceEmitter | None = None
     render_section: Callable[[str, str, object], "asyncio.Future[str]"] | None = None
+
+    # Prompt building (via existing Promptkit engine)
+    prompt_engine: PromptEngine | None = None
+    prompt: Prompt | None = None
 
     def __post_init__(self):
         # Build canonical identity string from parts
@@ -83,6 +97,42 @@ class BaseLLMService:
             name=(self.name or self.__class__.__name__),
         )
         self.identity_str = ident.to_string()
+    async def ensure_prompt(self, simulation) -> Prompt:
+        """Ensure `self.prompt` is built once via the configured PromptEngine.
+
+        The plan now contains only canonical section identities ("origin:bucket:name")
+        or PromptSection classes. We resolve all specs to classes and pass them to
+        the engine's `build_from`/`abuild_from` method, along with a context.
+        """
+        if self.prompt is not None:
+            return self.prompt
+
+        plan = self.get_prompt_plan(simulation)
+        section_classes: list[type[PromptSection]] = []
+        for spec in plan:
+            try:
+                SectionCls = resolve_section(spec)
+            except PromptSectionResolutionError as exc:
+                # Legacy fallback path (string key + render_section)
+                if self.render_section and isinstance(spec, str):
+                    # Build a synthetic Prompt from the rendered text
+                    text = await self.render_section(self.identity_str, spec, simulation)
+                    self.prompt = Prompt(instruction=text, message="", extra_messages=[], meta={"fallback": True})
+                    return self.prompt
+                raise
+            section_classes.append(SectionCls)
+
+        engine = self.prompt_engine or PromptEngine
+        ctx = {"simulation": simulation, "service": self}
+
+        # Prefer async engine if available
+        if hasattr(engine, "abuild_from"):
+            prompt: Prompt = await engine.abuild_from(section_classes, context=ctx)  # type: ignore[arg-type]
+        else:
+            prompt: Prompt = engine.build_from(section_classes, context=ctx)  # type: ignore[arg-type]
+
+        self.prompt = prompt
+        return prompt
 
         # Backwards-compatibility: if legacy `codec` (str) was set and no explicit codec_name, copy it over.
         if self.codec_name is None and isinstance(self.codec, str):
@@ -126,14 +176,40 @@ class BaseLLMService:
             return self.codec
         return None
 
-    async def build_messages(self, simulation) -> list[LLMRequestMessage]:
-        if not self.render_section:
-            raise ServiceConfigError("render_section callable not provided")
-        msgs: list[LLMRequestMessage] = []
-        for role, section_key in self.prompt_plan:
-            text = await self.render_section(self.identity_str, section_key, simulation)
-            msgs.append(LLMRequestMessage(role=role, content=[LLMTextPart(text=text)]))
-        return msgs
+    def get_prompt_plan(self, simulation) -> Sequence[Any]:
+        """Return the prompt plan to use for this invocation.
+        Override in subclasses to make the plan dynamic per simulation.
+        Defaults to the class/instance `prompt_plan` attribute.
+
+        Each entry may be:
+            - (role, section_spec): where section_spec is a canonical string or PromptSection class/instance
+            - section_spec: bare section spec (canonical string or PromptSection), in which case two messages
+              (developer/user) are emitted if section returns a Prompt with instruction/message.
+        """
+        return self.prompt_plan
+
+    async def build_request_messages(self, simulation) -> list[LLMRequestMessage]:
+        """Build messages from the engine-produced Prompt aggregate.
+
+        Emits `developer` from `prompt.instruction`, `user` from `prompt.message`,
+        and any `(role, text)` pairs from `prompt.extra_messages`.
+        """
+        prompt = await self.ensure_prompt(simulation)
+        messages: list[LLMRequestMessage] = []
+
+        instruction = getattr(prompt, "instruction", None) or ""
+        message = getattr(prompt, "message", None) or ""
+        extras = getattr(prompt, "extra_messages", None) or []
+
+        if instruction:
+            messages.append(LLMRequestMessage(role="developer", content=[LLMTextPart(text=str(instruction))]))
+        if message:
+            messages.append(LLMRequestMessage(role="user", content=[LLMTextPart(text=str(message))]))
+        for role, text in extras:
+            if text:
+                messages.append(LLMRequestMessage(role=str(role), content=[LLMTextPart(text=str(text))]))
+
+        return messages
 
     def select_codec(self):
         """
@@ -239,7 +315,7 @@ class BaseLLMService:
         }
         logger.info("llm.service.start", extra=attrs)
         async with service_span(f"LLMService.{self.__class__.__name__}.run", **attrs):
-            messages = await self.build_messages(simulation)
+            messages = await self.build_request_messages(simulation)
             req = LLMRequest(
                 messages=messages,
                 stream=False,
@@ -314,7 +390,7 @@ class BaseLLMService:
             "codec_name": self.get_codec_name(simulation) or "unknown",
         }
         async with service_span(f"LLMService.{self.__class__.__name__}.run_stream", **attrs):
-            messages = await self.build_messages(simulation)
+            messages = await self.build_request_messages(simulation)
             req = LLMRequest(
                 messages=messages,
                 stream=True,

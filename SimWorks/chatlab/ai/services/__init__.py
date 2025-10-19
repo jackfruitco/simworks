@@ -1,5 +1,5 @@
 # simcore/ai/services/__init__.py
-from .patient_responses import (
+from .patient import (
     GenerateInitialResponse,
     GenerateReplyResponse,
     GenerateImageResponse

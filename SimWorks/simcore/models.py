@@ -22,7 +22,7 @@ from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from simcore.utils import randomize_display_name
-from simcore_ai.promptkit import Prompt
+from simcore_ai_django.promptkit import Prompt
 
 logger = logging.getLogger(__name__)
 

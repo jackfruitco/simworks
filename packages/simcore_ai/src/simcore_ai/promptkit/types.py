@@ -1,10 +1,25 @@
 # simcore_ai/promptkit/types.py
 from __future__ import annotations
 
+"""Core promptkit types (AIv3).
+
+This module defines lightweight types shared by the prompt system:
+
+- `Prompt`: final aggregate produced by a prompt engine. Services convert this
+  to LLMRequestMessage objects (default: developer instruction + user message).
+- `PromptSection`: declarative section base class. Sections advertise identity
+  via either a class-level `identity: Identity` or class attrs `origin/bucket/name`.
+  The canonical identity string uses **dot form**: `origin.bucket.name`.
+
+Backward compatibility with legacy `namespace` or colon identities is removed.
+"""
+
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, ClassVar, Optional
 import inspect
 import logging
+
+from simcore_ai.types.identity.base import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -14,103 +29,149 @@ __all__ = [
     "PROMPT_VERSION",
     "Prompt",
     "PromptSection",
+    "PromptScenario",
     "Renderable",
     "call_maybe_async",
 ]
 
+
 @dataclass
 class Prompt:
-    """Final prompt object produced by the engine and passed to the LLM.
-    - instruction: developer/system guidance for the model
-    - message: end-user message (what the "user" says)
-    Additional metadata can be attached in `meta`.
+    """Final prompt object produced by the engine and consumed by services.
+
+    Attributes:
+        instruction: Developer/system guidance for the model (maps to role="developer").
+        message: End-user message for the model (maps to role="user").
+        extra_messages: Optional list of (role, text) pairs for additional context.
+        meta: Arbitrary metadata for traceability/debugging.
     """
+
     instruction: str = ""
-    message: str | None = None
+    message: Optional[str] = None
+    extra_messages: list[tuple[str, str]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.instruction = (self.instruction or "").strip()
         if self.message is not None:
             self.message = self.message.strip()
+        # basic normalization for extras
+        self.extra_messages = [
+            (str(role), str(text)) for role, text in (self.extra_messages or []) if str(text).strip()
+        ]
         self.meta.setdefault("version", PROMPT_VERSION)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return {
             "instruction": self.instruction,
             "message": self.message,
+            "extra_messages": list(self.extra_messages),
             "meta": dict(self.meta),  # shallow copy to avoid external mutation
         }
 
+
 Renderable = str | None | Awaitable[str | None]
+
 
 @dataclass(order=True)
 class PromptSection:
+    """Base class for declarative prompt sections (AIv3).
+
+    Sections provide identity **at the class level** using one of:
+      1) `identity: Identity` (preferred), or
+      2) `origin`, `bucket`, and `name` string attributes.
+
+    Instances may also carry static `instruction`/`message` text, which the
+    engine may use directly when present.
+
+    The canonical identity string is **dot-based**: `origin.bucket.name`.
     """
-    Base class for declarative prompt sections.
-    Subclasses typically override class attrs (category, name, weight)
-    and implement `render(self, **ctx) -> str|None|Awaitable[str|None]`.
-    """
+
     # sort key first (dataclass(order=True) sorts by this)
     weight: int = field(default=100, compare=True)
 
-    # identity
-    category: str = field(default="", compare=False)
-    name: str = field(default="", compare=False)
+    # optional static content (instance- or class-level)
+    instruction: Optional[str] = field(default=None, compare=False)
+    message: Optional[str] = field(default=None, compare=False)
 
-    # optional static content
-    # `instruction` is used for LLM developer/system instructions
-    # `message` is used for LLM end-user messages
-    instruction: str | None = field(default=None, compare=False)
-    message: str | None = field(default=None, compare=False)
-
-    # optional tags
+    # optional tags (non-functional; for selection or debugging)
     tags: frozenset[str] = field(default_factory=frozenset, compare=False, repr=False)
 
-    # ---- labeling helpers
-    @property
-    def label(self) -> str:
-        cat = (self.category or getattr(type(self), "category", "") or "").strip().lower()
-        nam = (self.name or getattr(type(self), "name", "") or "").strip().lower()
-        return f"{cat}:{nam}"
-
+    # ---------------- Identity helpers (class + instance) -----------------
     @classmethod
-    def label_static(cls) -> str:
-        cat = (getattr(cls, "category", "") or "").strip().lower()
-        nam = (getattr(cls, "name", "") or "").strip().lower()
-        return f"{cat}:{nam}"
+    def identity_static(cls) -> Identity:
+        """Return the class identity as an `Identity`.
 
-    # ---- rendering
-    async def render_instruction(self, **ctx) -> str | None:
+        Resolution order:
+          1) class attr `identity: Identity`
+          2) class attrs `origin`, `bucket`, `name` (all truthy strings)
+
+        Raises:
+            TypeError: if identity cannot be derived.
+        """
+        ident = getattr(cls, "identity", None)
+        if isinstance(ident, Identity):
+            return ident
+
+        origin = getattr(cls, "origin", None)
+        bucket = getattr(cls, "bucket", None)
+        name = getattr(cls, "name", None)
+        if all(isinstance(x, str) and x for x in (origin, bucket, name)):
+            return Identity.from_parts(origin=origin, bucket=bucket, name=name)
+
+        raise TypeError(
+            f"{cls.__name__} must define either `identity: Identity` or class attrs "
+            f"`origin`, `bucket`, and `name`.")
+
+    @property
+    def identity(self) -> Identity:
+        """Instance view of the class identity."""
+        return type(self).identity_static()
+
+    @property
+    def identity_str(self) -> str:
+        """Canonical dot identity string (e.g., "chatlab.patient.initial")."""
+        return self.identity.to_string()
+
+    # ---------------- Rendering helpers ----------------------------------
+    async def render_instruction(self, **ctx: Any) -> str | None:
         """Return developer/system instructions for this section, if any."""
-        logger.debug("Render instruction: %s (has=%s)", self.label, self.instruction is not None)
         text = self.instruction if self.instruction is not None else getattr(type(self), "instruction", None)
-        return _normalize(text)
+        out = _normalize(text)
+        logger.debug("Render instruction: %s (present=%s)", self.identity_str, bool(out))
+        return out
 
-    async def render_message(self, **ctx) -> str | None:
+    async def render_message(self, **ctx: Any) -> str | None:
         """Return end-user message content for this section, if any."""
-        logger.debug("Render message: %s (has=%s)", self.label, self.message is not None)
         text = self.message if self.message is not None else getattr(type(self), "message", None)
-        return _normalize(text)
+        out = _normalize(text)
+        logger.debug("Render message: %s (present=%s)", self.identity_str, bool(out))
+        return out
 
-    async def render(self, **ctx) -> str | None:
-        """Backward-compat: treat as instruction render by default."""
+    async def render(self, **ctx: Any) -> str | None:
+        """Backward-compat shim: default to instruction rendering."""
         return await self.render_instruction(**ctx)
 
 
+class PromptScenario(PromptSection):
+    """Base class for declarative prompt scenarios (AIv3)."""
+    # TODO: add scenario support
+    pass
+
+# ---------------- Utilities ----------------------------------------------
+
 def _normalize(out: str | None) -> str | None:
     if out is None:
-        logger.debug("Normalize: None -> None")
         return None
     s = str(out).strip()
-    logger.debug("Normalize: %s...", s[:300])
     return s or None
 
 
-async def call_maybe_async(fn: Callable[..., Renderable], *args, **kwargs) -> str | None:
-    """
-    Await fn if it’s an async function or returns an awaitable.
-    Return normalized str|None, logging and swallowing exceptions safely.
+async def call_maybe_async(fn: Callable[..., Renderable], *args: Any, **kwargs: Any) -> str | None:
+    """Call `fn`, awaiting if necessary, and normalize the return to `str|None`.
+
+    This helper is resilient to accidental coroutine returns and logs failures
+    without raising, returning `None` instead.
     """
     try:
         if inspect.iscoroutinefunction(fn):
@@ -119,6 +180,6 @@ async def call_maybe_async(fn: Callable[..., Renderable], *args, **kwargs) -> st
         if inspect.isawaitable(res):  # defensive: someone returned a coroutine
             return _normalize(await res)
         return _normalize(res)
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - never break rendering
         logger.warning("Prompt section call failed for %s: %s", getattr(fn, "__name__", fn), e, exc_info=True)
         return None

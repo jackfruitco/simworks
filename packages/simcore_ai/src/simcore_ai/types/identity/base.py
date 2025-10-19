@@ -1,4 +1,4 @@
-# simcore_ai/types/base.py
+# simcore_ai/types/identity/base.py
 from __future__ import annotations
 from dataclasses import dataclass
 import re
@@ -24,7 +24,7 @@ def _norm(s: str | None) -> str:
     Replaces:
         - Whitespace with underscores
         - Hyphens with underscores
-        - Punctuation with underscores
+        - Dots/colons with underscores
         - Uppercase with Lowercase
         - Leading and trailing whitespace
         - Empty strings with "default"
@@ -83,19 +83,19 @@ class Identity:
     @classmethod
     def from_parts(
             cls,
-            namespace: str | None = None,
+            origin: str | None = None,
             bucket: str | None = None,
             name: str | None = None,
     ) -> "Identity":
         """
         Creates an Identity instance, normalizing missing parts to "default".
         """
-        return cls(namespace=namespace or "default", bucket=bucket or "default", name=name or "default")
+        return cls(origin=origin or "default", bucket=bucket or "default", name=name or "default")
 
     @classmethod
     def from_string(cls, value: str) -> "Identity":
         """
-        Parse a canonical identity string 'namespace.bucket.name' into an Identity.
+        Parse a canonical identity string 'origin.bucket.name' into an Identity.
         Raises IdentityError if the format is invalid.
         """
         if value is None:
@@ -108,23 +108,18 @@ class Identity:
             raise IdentityError("Identity string cannot be empty")
         parts = raw.split(".")
         if len(parts) != 3:
-            raise IdentityError(f"Invalid identity format {value!r}; expected 'namespace.bucket.name'")
-        ns, buck, nm = parts
-        return cls(namespace=ns, bucket=buck, name=nm)
+            raise IdentityError(f"Invalid identity format {value!r}; expected 'origin.bucket.name'")
+        orig, buck, nm = parts
+        return cls(origin=orig, bucket=buck, name=nm)
 
     # canonical tuple for equality/hash/sorting
     @property
     def as_tuple3(self) -> Tuple[str, str, str]:
-        return (self.namespace, self.bucket, self.name)
-
-    # compact 2-part key if you keep your current registry format
-    @property
-    def as_tuple2(self) -> Tuple[str, str]:
-        return (self.namespace, f"{self.bucket}:{self.name}")
+        return (self.origin, self.bucket, self.name)
 
     # stable string for logs/metrics
     def to_string(self) -> str:
-        return f"{self.namespace}.{self.bucket}.{self.name}"
+        return f"{self.origin}.{self.bucket}.{self.name}"
 
     # Let Python dict/set use this efficiently
     def __hash__(self) -> int:
@@ -134,3 +129,11 @@ class Identity:
         if not isinstance(other, Identity):
             return NotImplemented
         return self.as_tuple3 == other.as_tuple3
+
+
+def parse_identity_str(value: str) -> Identity:
+    """Strictly parse an identity in the form "origin.bucket.name" into an Identity.
+
+    Raises IdentityError if the input is not exactly three dot-separated parts.
+    """
+    return Identity.from_string(value)
