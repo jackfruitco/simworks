@@ -5,7 +5,7 @@ Identity usage:
   These are used for cross-layer registration and lookup, replacing any prior use of 'namespace'.
 
 Responsibilities:
-  - Declare the structured output contract via `schema_cls` (a StrictOutputSchema subclass).
+  - Declare the structured output contract via `schema_cls` (a BaseOutputSchema subclass).
   - Optionally provide `schema_meta` (e.g., {'name': '...', 'strict': True}) consumed by providers when wrapping.
   - Offer helpers to extract a structured JSON candidate from a normalized LLMResponse and validate it.
 
@@ -25,7 +25,7 @@ from pydantic import BaseModel, ValidationError
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse, LLMTextPart, LLMToolResultPart
-from simcore_ai.types import StrictOutputSchema
+from simcore_ai.types import BaseOutputSchema
 # Identity model for framework-agnostic codec keys
 from simcore_ai.identity import Identity
 from .exceptions import CodecDecodeError, CodecSchemaError
@@ -36,7 +36,7 @@ class BaseLLMCodec(ABC):
 
     Responsibilities in the core package:
       • Declare the structured output contract via `schema_cls`
-        (a StrictOutputSchema subclass).
+        (a BaseOutputSchema subclass).
       • Optionally provide `schema_meta`
         (e.g., {'name': '...', 'strict': True}) consumed by providers when wrapping.
       • Offer helpers to extract a structured JSON candidate from a normalized
@@ -57,7 +57,7 @@ class BaseLLMCodec(ABC):
     name: str
 
     #: Pydantic model class describing the expected structured output
-    schema_cls: type[StrictOutputSchema]
+    schema_cls: type[BaseOutputSchema]
 
     #: Optional metadata to guide provider wrapping (e.g., name/strict flags)
     schema_meta: dict[str, Any] | None = None

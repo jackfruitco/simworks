@@ -11,4 +11,4 @@ class GenerateHotwashInitialResponse(DjangoExecutableLLMService, FeedbackMixin):
 
 class GenerateHotwashContinuationResponse(DjangoExecutableLLMService, FeedbackMixin):
     """Generate the continuation feedback."""
-    raise NotImplementedError
+    pass

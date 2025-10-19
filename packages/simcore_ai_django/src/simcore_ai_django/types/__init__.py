@@ -7,7 +7,7 @@ Most types are defined in the simcore_ai.types module, but may be extended with 
 
 from simcore_ai.types import (
     StrictBaseModel,
-    StrictOutputSchema,
+    BaseOutputSchema,
     Boolish,
     LLMTextPart,
     LLMImagePart,
@@ -30,7 +30,7 @@ from .promote import promote_request, promote_response
 
 __all__ = [
     "StrictBaseModel",
-    "StrictOutputSchema",
+    "BaseOutputSchema",
     "Boolish",
 
     "DjangoDTOBase",

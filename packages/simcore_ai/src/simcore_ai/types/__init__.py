@@ -6,8 +6,7 @@ from .tools import *
 
 __all__ = [
     "project_from",
-    "StrictBaseModel",
-    "StrictOutputSchema",
+    "BaseOutputSchema",
     "Boolish",
     "BaseLLMTool",
     "LLMRequestMessage",
