@@ -22,11 +22,12 @@ No heavy Django imports are required here beyond the safe mixins module.
 from __future__ import annotations
 
 import logging
+from typing import Optional, Type, Any
 
 from simcore_ai.promptkit.decorators import PromptSectionDecorator
 from simcore_ai_django.decorators.mixins import DjangoSimcoreIdentityMixin
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class DjangoPromptSectionDecorator(DjangoSimcoreIdentityMixin, PromptSectionDecorator):
@@ -40,7 +41,25 @@ class DjangoPromptSectionDecorator(DjangoSimcoreIdentityMixin, PromptSectionDeco
     pass
 
 
+class DjangoPromptScenarioDecorator(DjangoSimcoreIdentityMixin, PromptSectionDecorator):
+    """Django-aware prompt section decorator.
+
+    Inherits:
+      - Identity resolution and token merging from `DjangoSimcoreIdentityMixin`.
+      - Class-only enforcement and collision-handling registration from
+        `PromptScenarioDecorator`.
+    """
+
+    def log_custom(self, cls: Optional[Type[Any]] = None, *args: Any, **kwargs: Any) -> None:
+        logger.warning("DjangoPromptScenarioDecorator is not implemented yet. "
+                       "Deferring to DjangoPromptSectionDecorator instead.")
+
+
 # Ready-to-use instance for Django apps
 prompt_section = DjangoPromptSectionDecorator()
+prompt_scenario = DjangoPromptScenarioDecorator()
 
-__all__ = ["prompt_section", "DjangoPromptSectionDecorator"]
+__all__ = [
+    "prompt_section", "DjangoPromptSectionDecorator",
+    "prompt_scenario", "DjangoPromptScenarioDecorator"
+]
