@@ -32,9 +32,10 @@ from simcore_ai_django.api.decorators import codec
 ```
 
 The `@codec` decorator:
-- Registers your Codec with the registry
-- Ensures proper identity
-- Enables automatic linking by tuple3 identity
+- Registers your codec **class** with the Django codec registry
+- Ensures proper tuple³ identity (origin, bucket, name)
+- Applies collision-safe renaming (e.g., `name-2`) when necessary
+- Enables automatic linking to matching Service/Prompt/Schema by tuple³ identity
 
 ---
 
@@ -45,6 +46,7 @@ from simcore_ai_django.api.decorators import codec
 from simcore_ai_django.api.types import DjangoBaseLLMCodec
 
 @codec
+# dev: if SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER is true, a shallow instantiation is attempted
 class PatientInitialResponseCodec(DjangoBaseLLMCodec):
     def persist(self, *, response, parsed) -> dict:
         # Save AI messages, metadata, or computed results
@@ -63,8 +65,10 @@ Just like Services and Schemas, Codecs derive their identity automatically:
 | Field | Resolution |
 |:--|:--|
 | **origin** | Django app label |
-| **bucket** | `"default"` unless provided or inherited |
+| **bucket** | `"default"` unless provided or inherited (services and codecs default to `"default"`) |
 | **name** | Stripped & snake‑cased class name (edges only) |
+
+Token stripping includes core tokens (Prompt, Section, Service, Codec, Generate, Response, Mixin), plus Django and any app/settings-provided tokens (AppConfig.AI_IDENTITY_STRIP_TOKENS, settings.SIMCORE_AI_IDENTITY_STRIP_TOKENS). Mixins do not influence the derived name.
 
 ### Example with Mixins
 
@@ -141,8 +145,10 @@ print(MyCodec.identity_str())    # 'chatlab.standardized_patient.initial'
 To see all registered codecs:
 
 ```python
-from simcore_ai.codecs.registry import CODEC_REGISTRY
-print(list(CODEC_REGISTRY.keys()))
+from simcore_ai_django.codecs.registry import DjangoCodecRegistry
+
+# Check whether a codec is registered by identity
+print(DjangoCodecRegistry.has("chatlab", "standardized_patient", "initial"))
 ```
 
 ---
@@ -155,9 +161,10 @@ print(list(CODEC_REGISTRY.keys()))
 - Implement a `persist()` method
 
 ✅ **Automatic**
-- Identity autoderivation
+- Identity autoderivation (Django-aware)
+- Collision-safe registration (suffixing when needed)
 - Schema validation
-- Registry registration
+- Optional dev-time constructibility check (SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER)
 
 ✅ **Optional**
 - Mixins for shared origin/bucket

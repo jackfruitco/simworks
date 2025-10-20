@@ -17,6 +17,8 @@ Each service:
 - Can be executed synchronously or asynchronously
 - Automatically resolves its PromptSection, Codec, and Schema by matching identity
 
+Identity derivation is **Django-aware** and **collision-safe**, automatically using your app label, mixins, and token stripping rules (duplicate names are suffixed like `-2`, `-3`).
+
 ---
 
 ## Base Classes
@@ -35,9 +37,11 @@ Each service:
 from simcore_ai_django.api.decorators import llm_service
 ```
 
-The `@llm_service` decorator wraps your class and ensures that:
+The `@llm_service` decorator wraps your **async function** (or class) into a service and ensures that:
 - It has a valid identity (derived or declared)
 - It’s properly registered and ready to execute
+
+Supports both `@llm_service` and `@llm_service(origin="...", bucket="...", name="...")`.
 
 ---
 
@@ -45,18 +49,17 @@ The `@llm_service` decorator wraps your class and ensures that:
 
 ```python
 from simcore_ai_django.api.decorators import llm_service
-from simcore_ai_django.api.types import DjangoExecutableLLMService
 
-@llm_service
-class GenerateInitialResponse(DjangoExecutableLLMService):
-    pass
+@llm_service  # or: @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
+async def generate_initial(simulation, slim):
+    print("✅ AI service executed successfully")
+    return {"ok": True}
 ```
 
-✅ This will automatically derive:
 ```
 origin = "chatlab"  # app label
-bucket = "default"
-name   = "generate_initial_response"
+bucket = "standardized_patient"  # or "default" if not set elsewhere
+name   = "initial"
 ```
 
 and link to matching `PromptSection`, `Codec`, and `Schema` with the same identity.
@@ -64,6 +67,8 @@ and link to matching `PromptSection`, `Codec`, and `Schema` with the same identi
 ---
 
 ## Identity Mixins
+
+**Note:** For function-based services, prefer passing `origin`/`bucket` via the decorator when you need overrides. Mixins remain useful if you choose a class-based service style.
 
 It’s best practice to mix in your app’s `origin` and `bucket`:
 
@@ -94,10 +99,8 @@ chatlab.standardized_patient.initial
 
 ## Execution
 
-All executable services can be called with `.execute()`:
-
 ```python
-await GenerateInitialResponse.execute(simulation=my_sim)
+await generate_initial.execute(simulation=my_sim)
 ```
 
 By default:
@@ -109,7 +112,7 @@ By default:
 You can also use `.using()` for overrides:
 
 ```python
-GenerateInitialResponse.using(backend="celery", run_after=30).enqueue(simulation=my_sim)
+generate_initial.using(backend="celery", run_after=30).enqueue(simulation=my_sim)
 ```
 
 ---
@@ -130,13 +133,12 @@ GenerateInitialResponse.using(backend="celery", run_after=30).enqueue(simulation
 
 ```python
 from simcore_ai_django.api.decorators import llm_service
-from simcore_ai_django.api.types import DjangoExecutableLLMService
-from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
+from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin  # optional if using class-based style
 
-@llm_service
-class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
-    async def on_success(self, simulation, resp):
-        print(f"✅ Response: {resp}")
+@llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
+async def generate_initial(simulation, slim):
+    print("✅ Response emitted")
+    return {"ok": True}
 ```
 
 This is all you need — `prompt_section`, `codec`, and `schema` will resolve by identity.
@@ -150,16 +152,16 @@ If not explicitly set:
 |:--|:--|
 | `origin` | Django app label |
 | `bucket` | `"default"` |
-| `name` | Derived from class name (after token stripping) |
+| `name` | Derived from function/class name after token stripping |
 
 ---
 
 ## Debugging Identity
 
 ```python
-print(GenerateInitialResponse.identity_tuple())
+print(generate_initial.identity_tuple())
 # ('chatlab', 'standardized_patient', 'initial')
-print(GenerateInitialResponse.identity_str())
+print(generate_initial.identity_str())
 # 'chatlab.standardized_patient.initial'
 ```
 
@@ -169,7 +171,7 @@ print(GenerateInitialResponse.identity_str())
 
 ```text
 ┌─────────────────────────────┐
-│ GenerateInitialResponse     │
+│ generate_initial()          │
 │ (Service)                   │
 └──────────────┬──────────────┘
                │
@@ -191,15 +193,14 @@ print(GenerateInitialResponse.identity_str())
 ## Advanced Example
 
 ```python
-@llm_service
-class GenerateDifferentialDiagnosis(DjangoExecutableLLMService, ChatlabMixin):
-    bucket = "triage"
+from simcore_ai_django.api.decorators import llm_service
 
-    async def get_prompt_plan(self, simulation):
-        return ["chatlab.triage.initial"]
-
-    async def on_success(self, simulation, resp):
-        print(resp.metadata)
+@llm_service(origin="chatlab", bucket="triage", name="differential_diagnosis")
+async def generate_differential(simulation):
+    # Optionally specify a prompt plan on the service class:
+    generate_differential.prompt_plan = (("chatlab", "triage", "initial"),)
+    # Execute or enqueue as needed:
+    await generate_differential.execute(simulation=simulation)
 ```
 
 ---
@@ -207,7 +208,7 @@ class GenerateDifferentialDiagnosis(DjangoExecutableLLMService, ChatlabMixin):
 ## Summary
 
 ✅ **Minimum required**
-- Define a subclass of `DjangoExecutableLLMService`
+- Define an async function
 - Decorate with `@llm_service`
 - Use identity mixins (recommended)
 - Implement nothing if default flow suffices
@@ -217,7 +218,7 @@ class GenerateDifferentialDiagnosis(DjangoExecutableLLMService, ChatlabMixin):
 
 ✅ **Execution**
 ```python
-await MyService.execute(simulation=my_sim)
+await generate_initial.execute(simulation=my_sim)
 ```
 
 ---

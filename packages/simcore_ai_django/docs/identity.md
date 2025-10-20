@@ -30,7 +30,7 @@ All four building blocks (Service, Codec, PromptSection, Schema) carry the same 
 `simcore_ai_django` extends the core identity utilities so classes can **autoderive** their identity:
 
 - **origin** → Django **app label** (e.g., `"chatlab"`)
-- **bucket** → `"default"` unless set on the class or provided by a mixin
+- **bucket** → `"default"` unless set on the class/mixin or provided explicitly
 - **name** → stripped & snake-cased class name
 
 ### Edge‑only token stripping
@@ -39,12 +39,13 @@ Name derivation strips common tokens from the **leading and trailing** edges of 
 
 **Default core tokens:**
 ```
-Codec, Service, Prompt, PromptSection, Section, Response, Generate, Output, Schema
+Prompt, Section, Service, Codec, Generate, Response, Mixin
 ```
 
 **Django adds:**
 - Your **app label** and common case variants (e.g., `Chatlab`, `CHATLAB`)
 - Any tokens you add globally or per app (see below)
+- The literal token "Django"
 
 > We intentionally strip only at the **edges** to avoid mangling words like “Outpatient”.
 
@@ -54,7 +55,7 @@ You can extend the tokens via Django settings:
 
 ```python
 # settings.py
-AI_IDENTITY_STRIP_TOKENS = {"Mixin", "LLM", "DTO"}
+SIMCORE_AI_IDENTITY_STRIP_TOKENS = ["Mixin", "LLM", "DTO"]
 ```
 
 ### Per‑app tokens (`apps.py`)
@@ -67,7 +68,7 @@ from django.apps import AppConfig
 
 class ChatlabConfig(AppConfig):
     name = "chatlab"
-    identity_strip_tokens = {"Patient"}  # e.g., strip “Patient” from edges
+    AI_IDENTITY_STRIP_TOKENS = ["Patient"]  # e.g., strip “Patient” from edges
 ```
 
 These will be unioned with core + app-label tokens at runtime.
@@ -106,13 +107,7 @@ class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPati
 
 ## Collision Policy (DEBUG vs Production)
 
-If two different classes derive the **exact same** identity in the **same registry**:
-
-- **DEBUG=True** (or `SIMCORE_AI_DEBUG=1`): **raise** an error to catch the issue early
-- **Production**: log a **warning**, then suffix the **name** with `-2`, `-3`, … until unique
-  - e.g., `chatlab.standardized_patient.initial-2`
-
-> You can test derivations in isolation with `Class.identity_tuple()` and confirm registries during startup.
+If two different classes/functions resolve to the **same** identity in the **same** registry, the framework will **suffix** the name to make it unique (e.g., `-2`, `-3`, …) and log a warning with source hints. This behavior is consistent across environments to keep startup robust.
 
 ---
 
@@ -133,6 +128,12 @@ And you can parse/build canonical strings:
 from simcore_ai.identity import parse_dot_identity
 
 origin, bucket, name = parse_dot_identity("chatlab.standardized_patient.initial")
+```
+
+You can also derive identities directly without registering:
+```python
+from simcore_ai_django.identity import derive_django_identity_for_class
+print(derive_django_identity_for_class(MyPromptSection))
 ```
 
 ---
@@ -182,14 +183,13 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, Django
 ```python
 # services/patient.py
 from simcore_ai_django.api.decorators import llm_service
-from simcore_ai_django.services.base import DjangoExecutableLLMService
 
-@llm_service
-class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+@llm_service  # or: @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
+async def generate_initial(simulation, slim):
     # Optional today until schema-by-identity is enabled globally:
     from chatlab.ai.schemas import PatientInitialOutputSchema as _Schema
-    response_format_cls = _Schema
-    pass
+    # Your domain logic here; return model-ready data. Schema can be bound in service config elsewhere.
+    return {"ok": True}
 ```
 
 **Resulting identity:** `chatlab.standardized_patient.initial` for all four.
@@ -209,6 +209,9 @@ Yes. The Django-aware decorators (`@llm_service`, `@codec`, `@prompt_section`) a
 
 ### What about schema-by-identity?
 If enabled, codecs/services will auto-resolve schemas with the same tuple3. Until then, set `response_format_cls` on services explicitly.
+
+### What if two functions/classes end up with the same identity?
+The registry will suffix the later one (e.g., `-2`, `-3`) and log a warning. If you need a stable name, set `name = "..."` on the class or pass `name=` to the decorator.
 
 ---
 

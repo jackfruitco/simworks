@@ -9,6 +9,8 @@
 A **PromptSection** represents a discrete, reusable component of an LLM prompt.  
 Each section defines *what* the AI sees and *why* it’s relevant to the scenario.
 
+> Identity derivation is **Django‑aware** — it automatically uses your app label and mixins — and is **collision‑safe** (duplicate names are suffixed like `-2`, `-3`).
+
 When all prompt components share the same **tuple3 identity** (`origin.bucket.name`),
 the framework automatically links them to their matching **Service**, **Codec**, and **Schema**.
 
@@ -38,6 +40,8 @@ The `@prompt_section` decorator:
 - Auto‑derives its identity
 - Enables `PromptEngine` and `Service` to resolve it automatically
 
+Supports both `@prompt_section` and `@prompt_section(origin="...", bucket="...", name="...")` forms.
+
 ---
 
 ## Minimal Example
@@ -51,6 +55,8 @@ class PatientInitialSection(PromptSection):
     instruction = "You are a standardized patient in a telemedicine chat."
     message = "Begin the conversation naturally, in first‑person tone."
 ```
+
+This section registers automatically as `chatlab.standardized_patient.initial` when the app and mixins are configured correctly.
 
 ✅ Identity autoderives to `chatlab.standardized_patient.initial`  
 (if your app and mixins set `origin` and `bucket` correctly).
@@ -67,6 +73,11 @@ class PatientFollowupSection(PromptSection):
     async def arender(self, simulation, **ctx):
         last_symptom = getattr(simulation, "chief_complaint", "unknown symptoms")
         return f"The patient reports persistent {last_symptom}."
+```
+
+```python
+def render(self, simulation, **ctx):
+    return "Patient continues describing symptoms naturally."
 ```
 
 You can also define synchronous `render()` if async context isn’t needed.
@@ -92,6 +103,8 @@ name = "initial"
 ```
 
 → `chatlab.standardized_patient.initial`
+
+> Core tokens (`Prompt`, `Section`, `Service`, `Codec`, `Generate`, `Response`, `Mixin`, and `Django`) are automatically stripped when deriving the section name.
 
 ---
 
@@ -136,6 +149,8 @@ If omitted, the Service automatically uses the PromptSection that matches its ow
 
 ## Prompt Resolution Process
 
+> 0. The identity `(origin, bucket, name)` is resolved using the Django‑aware identity resolver.
+
 1. The `PromptEngine` retrieves section classes from the registry.
 2. Each section contributes instruction + message text.
 3. Combined prompt → transformed into structured LLM messages:
@@ -151,9 +166,11 @@ If omitted, the Service automatically uses the PromptSection that matches its ow
 from simcore_ai.promptkit.registry import PromptRegistry
 
 # See what’s registered
-for ident, section_cls in PromptRegistry._store.items():
-    print(ident.to_string(), "→", section_cls.__name__)
+for ident in PromptRegistry.list_identities():
+    print(ident.to_string())
 ```
+
+`PromptRegistry.list_identities()` provides a safe, public way to view all registered prompt sections.
 
 To confirm identity for your section:
 
@@ -169,7 +186,8 @@ print(PatientInitialSection.identity_tuple())
 ✅ Keep `PromptSections` **focused** — one clear role per section  
 ✅ Prefer static `instruction` + dynamic `message` separation  
 ✅ Use mixins to simplify identity and avoid repetition  
-✅ Avoid hardcoding simulation data — use render hooks instead
+✅ Avoid hardcoding simulation data — use render hooks instead  
+✅ Avoid naming collisions; while the registry automatically suffixes duplicates, prefer unique class names for clarity.
 
 ---
 
