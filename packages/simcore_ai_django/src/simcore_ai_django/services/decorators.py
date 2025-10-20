@@ -17,7 +17,11 @@ Behavior:
 """
 from __future__ import annotations
 
-from simcore_ai.decorators.base import make_fn_service_decorator
+import inspect
+from simcore_ai.decorators.base import (
+    make_class_decorator,
+    make_fn_service_decorator,
+)
 from simcore_ai_django.identity import resolve_collision_django
 from simcore_ai_django.identity.resolvers import django_identity_resolver
 
@@ -60,10 +64,48 @@ def _post_register_service(cls: type) -> None:
         return
 
 
-# Build the dual-form function→service decorator using the shared factory and Django resolver.
-llm_service = make_fn_service_decorator(
+
+# Build both variants and expose a single smart decorator that dispatches based on the target.
+_class_dec = make_class_decorator(
     identity_resolver=django_identity_resolver,
     post_register=_post_register_service,
 )
+_fn_dec = make_fn_service_decorator(
+    identity_resolver=django_identity_resolver,
+    post_register=_post_register_service,
+)
+
+def llm_service(_obj=None, /, **kw):
+    """
+    Smart decorator for Django services.
+
+    - If applied to a **class**, preserves the class' MRO (keeps mixins like
+      ServiceExecutionMixin so `.execute()` remains available).
+    - If applied to an **async function**, generates a `_FnService(BaseLLMService)`
+      wrapper and registers it with Django-aware identity.
+
+    Works in both forms:
+        @llm_service
+        class MyClassService(...): ...
+
+        @llm_service
+        async def my_fn_service(...): ...
+
+        @llm_service(origin="chatlab", bucket="default", name="generate_initial_response")
+        class/fn ...
+    """
+    # Called as @llm_service without params
+    if _obj is not None:
+        if inspect.isclass(_obj):
+            return _class_dec(_obj)
+        return _fn_dec(_obj)
+
+    # Called as @llm_service(...)
+    def _apply(obj):
+        if inspect.isclass(obj):
+            return _class_dec(origin=kw.get("origin"), bucket=kw.get("bucket"), name=kw.get("name"), **{k: v for k, v in kw.items() if k not in {"origin", "bucket", "name"}})(obj)
+        return _fn_dec(**kw)(obj)
+
+    return _apply
 
 __all__ = ["llm_service"]
