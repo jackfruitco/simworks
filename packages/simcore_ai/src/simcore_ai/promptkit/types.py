@@ -30,7 +30,6 @@ __all__ = [
     "PROMPT_VERSION",
     "Prompt",
     "PromptSection",
-    "PromptScenario",
     "Renderable",
     "call_maybe_async",
 ]
@@ -153,11 +152,6 @@ class PromptSection:
         """Backward-compat shim: default to instruction rendering."""
         return await self.render_instruction(**ctx)
 
-
-class PromptScenario(PromptSection):
-    """Base class for declarative prompt scenarios (AIv3)."""
-    # TODO: add scenario support
-    pass
 
 # ---------------- Utilities ----------------------------------------------
 

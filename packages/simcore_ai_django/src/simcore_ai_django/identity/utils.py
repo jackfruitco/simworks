@@ -30,13 +30,16 @@ from django.conf import settings
 from simcore_ai.identity.utils import (
     DEFAULT_STRIP_TOKENS,
     snake,
-    strip_tokens,
+    strip_tokens as strip_tokens_fn,
     derive_name_from_class,
     module_root,
     derive_identity_for_class,
     resolve_collision,
     parse_dot_identity,
 )
+
+# Compatibility export to preserve public API
+strip_tokens = strip_tokens_fn  # re-export for Django layer
 
 __all__ = [
     # Django-aware helpers
@@ -177,7 +180,7 @@ def derive_django_identity_for_class(
                 base_name = base_name[: -len(suf)]
 
         # Strip noise tokens then snake_case
-        cleaned = strip_tokens(base_name, tokens)
+        cleaned = strip_tokens_fn(base_name, tokens)
         use_name = snake(cleaned) or (snake(base_name) if base_name else "default")
 
     return snake(use_origin), snake(use_bucket), snake(use_name)
