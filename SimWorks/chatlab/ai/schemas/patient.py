@@ -1,18 +1,16 @@
 # simcore/ai/schemas/patient.py
 from __future__ import annotations
+
 from pydantic import Field
 
 from chatlab.ai.mixins import ChatlabMixin
 from simcore.ai.mixins import StandardizedPatientMixin
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem, DjangoBaseOutputBlock
+from simcore_ai_django.schemas.decorators import response_schema
+from simcore.ai.schemas.output_items import LLMConditionsCheckItem
 
 
-class LLMConditionsCheckItem(DjangoBaseOutputSchema):
-    """Key/value pair that signals whether a downstream condition is met."""
-    key: str
-    value: str
-
-
+@response_schema
 class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
     """
     Output for the initial patient response turn.
@@ -26,6 +24,7 @@ class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, Standardi
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
+@response_schema
 class PatientReplyOutputSchema(DjangoBaseOutputSchema):
     """Output for subsequent patient reply turns."""
     image_requested: bool
@@ -33,6 +32,7 @@ class PatientReplyOutputSchema(DjangoBaseOutputSchema):
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
+@response_schema
 class PatientResultsOutputSchema(DjangoBaseOutputSchema):
     """
     Final “results” payload for the interaction.
