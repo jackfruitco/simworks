@@ -376,15 +376,6 @@ class Simulation(models.Model):
 
     def save(self, *args, **kwargs):
 
-        # Ensure the prompt is set based on user.role if not already provided
-        if not self.prompt:
-            if not self.user:
-                raise ValueError("Cannot assign default prompt without a user.")
-            # self.prompt = get_or_create_prompt(app_label="chatlab", user=self.user, role=getattr(self.user, "role", None))
-            # self.prompt = build_prompt(lab="chatlab", user=self.user, role=getattr(self.user, "role", None))
-            # TODO convert to AIv3
-            # self.prompt = build_prompt(lab="chatlab", user=self.user)
-
         # Handle display name update if the full name is changed
         updating_name = False
         if self.pk:

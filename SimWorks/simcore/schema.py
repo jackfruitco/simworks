@@ -15,7 +15,6 @@ from simcore.models import (
 
 logger = logging.getLogger(__name__)
 
-
 @strawberry_django.type(SimulationMetadata)
 class SimulationMetadataType:
     id: auto
@@ -38,7 +37,6 @@ class SimulationType:
     sim_patient_full_name: auto
     sim_patient_display_name: auto
 
-    prompt: auto
     user: UserType
     messages: list[MessageType]
     metadata: list[SimulationMetadataType]

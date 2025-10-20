@@ -204,7 +204,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _generate_patient_response(self, user_msg: Message) -> None:
         """Generate patient response."""
         from .ai.services import GenerateReplyResponse
-        GenerateReplyResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
+        GenerateReplyResponse().execute(simulation=self.simulation.pk, user_msg=user_msg)
 
 
     async def _generate_stitch_response(self, user_msg: Message) -> None:

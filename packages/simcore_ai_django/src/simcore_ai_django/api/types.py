@@ -1,4 +1,5 @@
-from ..codecs.decorators import DjangoBaseLLMCodec
+# simcore_ai_django/api/types.py
+from ..codecs import DjangoBaseLLMCodec
 from ..promptkit import PromptSection, PromptScenario, Prompt
 from ..schemas import DjangoBaseOutputSchema, DjangoBaseOutputItem, DjangoBaseOutputBlock
 from ..services import DjangoExecutableLLMService, DjangoBaseLLMService

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # ----------------------------- services ------------------------------------------
 @llm_service
-class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate the initial patient response.
 
     Uses Simulation.prompt_instruction/message to construct rich Django request messages

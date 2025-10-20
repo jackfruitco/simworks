@@ -24,8 +24,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Optional, Tuple, Union
 from collections.abc import Iterable, Callable
+from typing import Optional, Tuple, Union
 
 __all__ = [
     "DEFAULT_STRIP_TOKENS",
@@ -65,12 +65,12 @@ def snake(s: str) -> str:
 
 
 def strip_tokens(
-    name: str,
-    extra_tokens: Iterable[str] = (),
-    *,
-    strip_leading: bool = True,
-    strip_trailing: bool = True,
-    repeat: bool = True,
+        name: str,
+        extra_tokens: Iterable[str] = (),
+        *,
+        strip_leading: bool = True,
+        strip_trailing: bool = True,
+        repeat: bool = True,
 ) -> str:
     """Remove provided tokens from the *edges* of a class name.
 

@@ -1,50 +1,48 @@
 # simcore_ai/promptkit/decorators.py
-"""Core (non-Django) decorators for PromptKit that auto-derive tuple3 identities using core rules."""
+"""Core (non-Django) decorators for PromptKit built on the base decorator factory.
 
+This module defines the **core** PromptKit decorator using the shared dual-form
+factory and the **default module-centric identity resolver**. It intentionally
+remains framework-agnostic and does not import any Django modules.
+
+Usage (dual-form):
+
+    from simcore_ai.promptkit.decorators import prompt_section
+
+    @prompt_section
+    class PatientIntro(PromptSection):
+        instruction = "Gather patient demographics."
+
+    @prompt_section(origin="chatlab", bucket="patient", name="intro")
+    class PatientIntroExplicit(PromptSection):
+        instruction = "Gather patient demographics."
+
+The identity parts are resolved with the following defaults in core:
+- origin: module root or "simcore"
+- bucket: second module segment or "default"
+- name:   snake_case(class name with common suffixes removed)
+
+Registration is performed via `PromptRegistry.register(cls)`. The decorator is
+safe to import even when registries are unavailable at import time.
+"""
 from __future__ import annotations
 
 import logging
-from typing import Type
 
-from simcore_ai.identity import derive_identity_for_class
+from simcore_ai.decorators.base import (
+    make_class_decorator,
+    default_identity_resolver,
+)
 from .registry import PromptRegistry
 from .types import PromptSection
 
 logger = logging.getLogger(__name__)
 
+# Build the dual-form decorator using the shared factory and core resolver.
+# Registration is passed as a post hook and is guarded internally by the factory.
+prompt_section = make_class_decorator(
+    identity_resolver=default_identity_resolver,
+    post_register=PromptRegistry.register,
+)
 
-def prompt_section(cls: Type[PromptSection]) -> Type[PromptSection]:
-    """Decorator to register a `PromptSection` subclass in the global registry (AIv3).
-
-    The class must declare tuple3 identity `(origin, bucket, name)` in dot-only canonical form,
-    or the decorator will auto-derive missing parts using module-root origin, default bucket,
-    and stripped/snake-cased class name.
-
-    Example:
-        >>> @prompt_section
-        ... class PatientIntro(PromptSection):
-        ...     origin = "chatlab"
-        ...     bucket = "patient"
-        ...     name = "intro"
-        ...     instruction = "Gather patient demographics."
-    """
-    has_parts = all(isinstance(getattr(cls, k, None), str) and getattr(cls, k) for k in ("origin", "bucket", "name"))
-    if not has_parts:
-        org, buck, nm = derive_identity_for_class(
-            cls,
-            origin=getattr(cls, "origin", None),
-            bucket=getattr(cls, "bucket", None),
-            name=getattr(cls, "name", None),
-        )
-        setattr(cls, "origin", org)
-        setattr(cls, "bucket", buck)
-        setattr(cls, "name", nm)
-    try:
-        PromptRegistry.register(cls)
-        cls._is_registered_prompt = True  # introspection / debugging aid
-        logger.debug("Registered prompt section: %s",
-                     f"{getattr(cls, 'origin', '?')}.{getattr(cls, 'bucket', '?')}.{getattr(cls, 'name', '?')}")
-    except Exception as e:
-        logger.exception("Failed to register prompt section %s: %s", cls, e)
-        raise
-    return cls
+__all__ = ["prompt_section", "PromptSection"]
