@@ -78,13 +78,13 @@ Pattern:
 
 ```python
 try:
-    from simcore_ai.services.registry import ServicesRegistry
+    from simcore_ai.services.registry import ServiceRegistry
 except ImportError:
-    ServicesRegistry = None
+    ServiceRegistry = None
 
-if ServicesRegistry:
-    ServicesRegistry.register(MyService)
-    ServicesRegistry.has("chatlab", "standardized_patient", "initial")  # True/False
+if ServiceRegistry:
+    ServiceRegistry.register(MyService)
+    ServiceRegistry.has("chatlab", "standardized_patient", "initial")  # True/False
 ```
 
 The Django `@llm_service` decorator calls `resolve_collision_django` before registering, mirroring codec/prompt behavior.
