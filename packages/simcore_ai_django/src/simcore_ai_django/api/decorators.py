@@ -1,27 +1,32 @@
 # simcore_ai_django/api/decorators.py
-"""Django-aware decorator re-exports for the public SimWorks API.
+"""Django-aware decorator re-exports for public consumption.
 
-This module re-exports the **Django-layer** decorators so app code can import
-from a single, stable location. These decorators are dual-form (`@dec` or
-`@dec(...)`) and use the Django-aware identity resolver (leaf-class based,
-app/settings token stripping), with guarded registration/collision handling.
+This module re-exports the **Django-layer** decorator instances so app code can
+import them from a single, stable location:
+
+    from simcore_ai_django.api.decorators import llm_service, codec, prompt_section, response_schema
+
+All decorators are dual-form (`@dec` or `@dec(...)`) and use the Django-aware
+identity resolver and token stripping via mixins. Registration enforces tuple³
+uniqueness; collisions are handled by the decorators with hyphen-int suffixing
+on the **name** and WARNING logs.
 
 Exports:
-    - codec          — Register a Django codec class (tuple³ identity).
-    - llm_service    — Wrap an async function as a Django service class.
-    - prompt_section — Register a PromptSection subclass.
-    - prompt_scenario — (stub) Scenario-level prompt decorator.
+    - llm_service     — Wrap an async function or register a service class.
+    - codec           — Register a codec class.
+    - prompt_section  — Register a PromptSection subclass.
+    - response_schema — Register a response schema class.
 """
 from __future__ import annotations
 
+from simcore_ai_django.codecs.decorators import codec
+from simcore_ai_django.promptkit.decorators import prompt_section
+from simcore_ai_django.schemas.decorators import response_schema
 from simcore_ai_django.services.decorators import llm_service
 
-from simcore_ai_django.codecs.decorators import codec
-from simcore_ai_django.promptkit.decorators import prompt_section, prompt_scenario
-
 __all__ = [
-    "codec",
     "llm_service",
+    "codec",
     "prompt_section",
-    "prompt_scenario",
+    "response_schema",
 ]

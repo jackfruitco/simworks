@@ -1,7 +1,8 @@
-# packages/simcore_ai_django/src/simcore_ai_django/apps.py
 from __future__ import annotations
 
 import os
+
+from simcore_ai_django.decorators.helpers import gather_app_identity_tokens
 
 """
 simcore_ai_django.apps
@@ -26,6 +27,10 @@ from django.apps import AppConfig
 from django.utils.module_loading import autodiscover_modules
 from simcore_ai.tracing import service_span_sync
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class SimcoreAIDjangoConfig(AppConfig):
     """Django AppConfig for simcore_ai_django."""
@@ -43,20 +48,30 @@ class SimcoreAIDjangoConfig(AppConfig):
         if os.environ.get("DJANGO_SKIP_READY") == "1":
             return
 
+        from . import identity as _identity_mod
+        with service_span_sync("ai.identity.collect_tokens"):
+            try:
+                _identity_mod.APP_IDENTITY_STRIP_TOKENS = gather_app_identity_tokens()
+            except Exception:
+                # always keep startup resilient
+                logger.debug("Failed collecting APP_IDENTITY_STRIP_TOKENS", exc_info=True)
+
         from .setup import configure_ai_clients
 
         with service_span_sync("ai.django_app.ready"):
             with service_span_sync("ai.clients.setup"):
                 configure_ai_clients()
 
+            with service_span_sync("ai.autodiscover.identity"):
+                autodiscover_modules("ai.identity")
             # Discover per-app receivers and prompts
             with service_span_sync("ai.autodiscover.receivers"):
                 autodiscover_modules("ai.receivers")
-            with service_span_sync("ai.autodiscover.task_backends"):    # Add new backends here
+            with service_span_sync("ai.autodiscover.task_backends"):  # Add new backends here
                 autodiscover_modules("ai.task_backends")
-            with service_span_sync("ai.autodiscover.prompts"):          # Add new prompts here
+            with service_span_sync("ai.autodiscover.prompts"):  # Add new prompts here
                 autodiscover_modules("ai.prompts")
-            with service_span_sync("ai.autodiscover.services"):         # Add new services here
+            with service_span_sync("ai.autodiscover.services"):  # Add new services here
                 autodiscover_modules("ai.services")
-            with service_span_sync("ai.autodiscover.codecs"):           # Add new codecs here
+            with service_span_sync("ai.autodiscover.codecs"):  # Add new codecs here
                 autodiscover_modules("ai.codecs")
