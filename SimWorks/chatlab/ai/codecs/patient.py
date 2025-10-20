@@ -25,6 +25,11 @@ from simcore_ai_django.api.types import DjangoBaseLLMCodec
 if TYPE_CHECKING:
     from ..schemas import PatientInitialOutputSchema, PatientReplyOutputSchema, PatientResultsOutputSchema
 
+__all__ = [
+    "PatientInitialResponseCodec",
+    "PatientReplyCodec",
+    "PatientResultsCodec"
+]
 
 # ------------------------------
 # Helpers

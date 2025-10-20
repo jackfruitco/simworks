@@ -65,10 +65,27 @@ def _post_register_service(cls: type) -> None:
 
 
 
+def _bind_extras(cls, extras: dict):
+    # Ensure codec_name exists; default to "default" if not provided
+    codec = extras.get("codec")
+    if codec is not None:
+        setattr(cls, "codec_name", codec)
+    elif not hasattr(cls, "codec_name"):
+        setattr(cls, "codec_name", "default")
+
+    # Optional prompt plan on class
+    prompt_plan = extras.get("prompt_plan")
+    if prompt_plan is not None:
+        try:
+            setattr(cls, "prompt_plan", tuple(prompt_plan))
+        except Exception:
+            setattr(cls, "prompt_plan", ())
+
 # Build both variants and expose a single smart decorator that dispatches based on the target.
 _class_dec = make_class_decorator(
     identity_resolver=django_identity_resolver,
     post_register=_post_register_service,
+    bind_extras=_bind_extras,
 )
 _fn_dec = make_fn_service_decorator(
     identity_resolver=django_identity_resolver,

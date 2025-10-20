@@ -233,7 +233,7 @@ class DjangoBaseLLMService(BaseLLMService):
                 origin=origin,
                 bucket=bucket,
                 name=name,
-                codec_name=(f"{c_bucket}.{c_name}" if c_bucket and c_name else None),
+                codec=(f"{c_bucket}.{c_name}" if c_bucket and c_name else None),
                 service=self.__class__.__name__,
             )
 
