@@ -331,7 +331,7 @@ class Simulation(models.Model):
         )
 
         # Execute LLM service
-        GenerateInitialResponse.execute(simulation_id=instance.pk)
+        GenerateInitialResponse().execute(simulation_id=instance.pk)
 
         return instance
 

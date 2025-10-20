@@ -303,7 +303,7 @@ class DjangoBaseLLMService(BaseLLMService):
         return
 
 
-class DjangoExecutableLLMService(DjangoBaseLLMService, ServiceExecutionMixin):
+class DjangoExecutableLLMService(ServiceExecutionMixin, DjangoBaseLLMService):
     """
     A Django-ready service base **with execution helpers**.
 

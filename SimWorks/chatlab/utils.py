@@ -50,7 +50,7 @@ async def create_new_simulation(
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
-    GenerateInitialResponse.execute()
+    GenerateInitialResponse().execute()
 
     return simulation
 
