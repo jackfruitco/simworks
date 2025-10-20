@@ -1,22 +1,16 @@
 # simcore_ai_django/api/decorators.py
-"""Provides decorators for use within the simcore_ai_django API.
+"""Django-aware decorator re-exports for the public SimWorks API.
 
-This module imports and re-exports several decorators from the `simcore_ai` library
-to simplify access and ensure consistent usage. The included decorators pertain to
-codecs, large language model (LLM) services, prompts management, and related
-functional areas.
-
-Decorators:
-    - `codec`: Handles encoding/decoding operations.
-    - `llm_service`: Enables integration of large language model services.
-    - `prompt_section`: Manages sections within prompt definitions.
-    - `prompt_scenario`: Manages scenarios within prompt definitions.
+This module re-exports the **Django-layer** decorators so app code can import
+from a single, stable location. These decorators are dual-form (`@dec` or
+`@dec(...)`) and use the Django-aware identity resolver (leaf-class based,
+app/settings token stripping), with guarded registration/collision handling.
 
 Exports:
-    - codec
-    - llm_service
-    - prompt_section
-    - prompt_scenario
+    - codec          — Register a Django codec class (tuple³ identity).
+    - llm_service    — Wrap an async function as a Django service class.
+    - prompt_section — Register a PromptSection subclass.
+    - prompt_scenario — (stub) Scenario-level prompt decorator.
 """
 from __future__ import annotations
 
