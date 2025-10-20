@@ -40,7 +40,7 @@ class IdentityResolver(Protocol):
 
 # ---------- Helpers ----------
 
-_CORE_SUFFIX_STRIP: tuple[str, ...] = (
+_CORE_AFFIX_STRIP: tuple[str, ...] = (
     "Prompt",
     "Section",
     "Service",
@@ -50,10 +50,23 @@ _CORE_SUFFIX_STRIP: tuple[str, ...] = (
     "Mixin",
 )
 
-def _strip_suffixes(name: str, suffixes: Sequence[str]) -> str:
-    for sfx in suffixes:
-        if name.endswith(sfx) and len(name) > len(sfx):
-            return name[: -len(sfx)]
+def _strip_affixes(name: str, tokens: Sequence[str]) -> str:
+    """
+    Remove any of the given tokens from the start or end of `name`,
+    repeating until no further change occurs. This ensures we handle
+    stacked affixes like 'PatientInitialPrompt' -> 'Initial' and
+    'JsonCodec' -> 'Json'.
+    """
+    changed = True
+    while changed:
+        changed = False
+        for tok in tokens:
+            if name.startswith(tok) and len(name) > len(tok):
+                name = name[len(tok):]
+                changed = True
+            if name.endswith(tok) and len(name) > len(tok):
+                name = name[:-len(tok)]
+                changed = True
     return name
 
 def _derive_from_module(obj: Any) -> tuple[str, str, str]:
@@ -89,21 +102,22 @@ def default_identity_resolver(
     Defaults:
       origin: module root or 'simcore'
       bucket: second module segment or 'default'
-      name:   snake_case(class/function name with common suffixes removed)
+      name:   snake_case(class/function name with common affixes removed)
 
     All returned parts are snake-cased.
     """
     mod_origin, mod_bucket, mod_name = _derive_from_module(obj)
 
-    raw_origin = origin or mod_origin or "simcore"
+    raw_origin = origin or mod_origin or "simcore_ai"
     raw_bucket = bucket or mod_bucket or "default"
-    raw_name = name or _strip_suffixes(mod_name, _CORE_SUFFIX_STRIP) or "default"
+    raw_name = name or _strip_affixes(mod_name, _CORE_AFFIX_STRIP) or "default"
 
     return snake(raw_origin), snake(raw_bucket), snake(raw_name)
 
 
-# ---------- Decorator factories ----------
-
+# ---------- Decorator factories ---------------------------------------------
+# Decorator factories are used to create dual-form decorators.
+# ----------------------------------------------------------------------------
 @overload
 def make_class_decorator(
     identity_resolver: IdentityResolver,
