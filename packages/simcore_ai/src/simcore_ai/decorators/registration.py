@@ -212,6 +212,10 @@ class BaseRegistrationDecorator:
         """
         pass  # no-op base implementation
 
+    def log_custom(self, cls: Optional[Type[Any]] = None, *args: Any, **kwargs: Any) -> None:
+        """Simple method used in __call__ provided to subclasses."""
+        pass
+
     def register(self, cls: Type[Any], identity: dict[str, str]) -> None:
         """
         Performs the registration of the class or function.
@@ -255,6 +259,8 @@ class BaseRegistrationDecorator:
         Returns:
             The decorated class/function or a decorator partial.
         """
+        self.log_custom(arg, **kwargs)
+
         if arg is not None and callable(arg) and not kwargs:
             # Used as @decorator without parameters
             return self._decorate(arg)
