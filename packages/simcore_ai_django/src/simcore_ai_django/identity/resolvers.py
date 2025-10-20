@@ -74,7 +74,7 @@ def _collect_tokens(obj: object) -> Tuple[str, ...]:
     app/settings-provided tokens.
     """
     dynamic = tuple(_iter_app_and_project_tokens(obj))
-    return tuple(*_CORE_STRIP, *_DJANGO_EXTRA, *dynamic)
+    return *_CORE_STRIP, *_DJANGO_EXTRA, *dynamic
 
 
 def django_identity_resolver(
@@ -98,7 +98,7 @@ def django_identity_resolver(
     # We call the Django-aware derive function on the object (class). The core
     # service factory ensures that for functions we pass the generated class.
     org, buck, nm = derive_django_identity_for_class(
-        obj, origin=origin, bucket=bucket, name=name, strip_tokens=tokens
+        obj, origin=origin, bucket=bucket, name=name, __strip_tokens=tokens
     )
 
     if not buck:
