@@ -1,74 +1,46 @@
 # simcore_ai_django/promptkit/decorators.py
-"""Django-aware PromptKit decorators built on the shared base factory.
+"""Django-aware prompt section decorator.
 
-This module wires Django-facing prompt decorators to the core dual-form
-factory using a Django-aware identity resolver. It keeps imports one-way
-(Django ➜ core) and avoids registry or identity logic duplication.
+This module composes the Django identity/tokens mixins with the **core**
+prompt section decorator to provide a drop-in `@prompt_section` that:
 
-Exports:
-- `prompt_section`: dual-form decorator for `PromptSection` subclasses.
-- `prompt_scenario`: (stub) future decorator for scenario-level prompts.
+- Supports decorating **classes only** (prompt sections must be classes).
+  Function targets are rejected by the core decorator with a clear `TypeError`.
+- Resolves identity using Django-aware defaults (AppConfig-aware) while
+  preserving the core precedence rules:
+    kwargs > class attrs > Django/module defaults
+- Strips affix tokens from the **name only** (case-insensitive, both ends,
+  iterative) using merged sources (core defaults + env + Django settings +
+  AppConfig contributions).
+- Registers prompt sections with the core `PromptRegistry` and enforces tuple³
+  uniqueness. Collisions are handled by the decorator via hyphen-int suffixing
+  on the **name** (`name-2`, `-3`, ...), with WARNING logs; import-time never
+  crashes.
 
-Identity rules (Django):
-- Uses the **leaf concrete class** for `name` (mixin-safe), with standardized
-  suffix stripping and app/settings-provided tokens.
-- `bucket` defaults to "default" when not explicitly provided or derived.
-- All parts are normalized to snake_case.
-
-Collisions:
-- Prompt section collisions are handled by the PromptRegistry implementation
-  (which may apply renames). Collision policy is intentionally *not* embedded
-  in the resolver to keep it pure and composable.
+No heavy Django imports are required here beyond the safe mixins module.
 """
 from __future__ import annotations
 
-import warnings
-from typing import Optional, Type, Callable, Any, overload
+import logging
 
-from simcore_ai.decorators.base import make_class_decorator
-from simcore_ai.promptkit import PromptRegistry, PromptSection
-from simcore_ai_django.identity.resolvers import django_identity_resolver
+from simcore_ai.promptkit.decorators import PromptSectionDecorator
+from simcore_ai_django.decorators.mixins import DjangoSimcoreIdentityMixin
 
-# Build the dual-form decorator using the shared factory and Django-aware resolver.
-prompt_section = make_class_decorator(
-    identity_resolver=django_identity_resolver,
-    post_register=PromptRegistry.register,
-)
+log = logging.getLogger(__name__)
 
 
-@overload
-def prompt_scenario(
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-) -> Callable[[Type[PromptSection]], Type[PromptSection]]: ...
+class DjangoPromptSectionDecorator(DjangoSimcoreIdentityMixin, PromptSectionDecorator):
+    """Django-aware prompt section decorator.
 
-
-@overload
-def prompt_scenario(
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-) -> Callable[[Type[PromptSection]], Type[PromptSection]]: ...
-
-
-def prompt_scenario(
-        cls: Optional[Type[PromptSection]] = None,
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-) -> Any:
-    """Stub for a future scenario-level prompt decorator.
-
-    This will likely validate additional scenario metadata and register the
-    class with a ScenarioRegistry. For now, it only warns and returns the
-    class unchanged to avoid breaking imports.
+    Inherits:
+      - Identity resolution and token merging from `DjangoSimcoreIdentityMixin`.
+      - Class-only enforcement and collision-handling registration from
+        `PromptSectionDecorator`.
     """
-    warnings.warn("`prompt_scenario` decorator is not yet implemented")
-    return cls
+    pass
 
 
-__all__ = ["prompt_section", "prompt_scenario", "PromptSection"]
+# Ready-to-use instance for Django apps
+prompt_section = DjangoPromptSectionDecorator()
+
+__all__ = ["prompt_section", "DjangoPromptSectionDecorator"]
