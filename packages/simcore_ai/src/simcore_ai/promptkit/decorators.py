@@ -1,48 +1,74 @@
-# simcore_ai/promptkit/decorators.py
-"""Core (non-Django) decorators for PromptKit built on the base decorator factory.
-
-This module defines the **core** PromptKit decorator using the shared dual-form
-factory and the **default module-centric identity resolver**. It intentionally
-remains framework-agnostic and does not import any Django modules.
-
-Usage (dual-form):
-
-    from simcore_ai.promptkit.decorators import prompt_section
-
-    @prompt_section
-    class PatientIntro(PromptSection):
-        instruction = "Gather patient demographics."
-
-    @prompt_section(origin="chatlab", bucket="patient", name="intro")
-    class PatientIntroExplicit(PromptSection):
-        instruction = "Gather patient demographics."
-
-The identity parts are resolved with the following defaults in core:
-- origin: module root or "simcore"
-- bucket: second module segment or "default"
-- name:   snake_case(class name with common suffixes removed)
-
-Registration is performed via `PromptRegistry.register(cls)`. The decorator is
-safe to import even when registries are unavailable at import time.
-"""
-from __future__ import annotations
-
 import logging
+from collections.abc import Callable
+from typing import Any
 
-from simcore_ai.decorators.base import (
-    make_class_decorator,
-    default_identity_resolver,
+from simcore_ai.decorators.registration import BaseRegistrationDecorator
+from simcore_ai.promptkit.registry import (
+    PromptRegistry,
+    DuplicatePromptSectionIdentityError,
 )
-from .registry import PromptRegistry
-from .types import PromptSection
 
 logger = logging.getLogger(__name__)
 
-# Build the dual-form decorator using the shared factory and core resolver.
-# Registration is passed as a post hook and is guarded internally by the factory.
-prompt_section = make_class_decorator(
-    identity_resolver=default_identity_resolver,
-    post_register=PromptRegistry.register,
-)
 
-__all__ = ["prompt_section", "PromptSection"]
+class PromptSectionDecorator(BaseRegistrationDecorator):
+    """Decorator for registering prompt sections with uniqueness enforcement.
+
+    Ensures that registered prompt sections have unique tuple³ identities by
+    appending suffixes '-2', '-3', ... to the name on collision.
+    Function targets are rejected.
+    """
+
+    def wrap_function(self, func: Callable) -> Callable:
+        """Reject decorating functions."""
+        raise TypeError("PromptSectionDecorator cannot be used to decorate functions.")
+
+    def register(self, obj: Any) -> Any:
+        """Register the prompt section object with unique name enforcement.
+
+        Args:
+            obj: The prompt section object to register.
+
+        Returns:
+            The registered object.
+
+        Raises:
+            Any exceptions raised by PromptRegistry.register other than DuplicatePromptSectionIdentityError.
+        """
+        base_name = getattr(obj, "name", None)
+        if not isinstance(base_name, str):
+            raise ValueError("Registered object must have a string 'name' attribute.")
+
+        suffix = 1
+        while True:
+            try:
+                if suffix == 1:
+                    registered_obj = PromptRegistry.register(obj)
+                else:
+                    # Create a copy or modify the name attribute with suffix
+                    new_name = f"{base_name}-{suffix}"
+                    # Assuming obj has a 'name' attribute that can be set
+                    setattr(obj, "name", new_name)
+                    registered_obj = PromptRegistry.register(obj)
+                if suffix > 1:
+                    logger.info(
+                        "Registered prompt section with unique name '%s' after %d attempts",
+                        getattr(registered_obj, "name", None),
+                        suffix,
+                    )
+                else:
+                    logger.info(
+                        "Registered prompt section with name '%s'",
+                        getattr(registered_obj, "name", None),
+                    )
+                return registered_obj
+            except DuplicatePromptSectionIdentityError:
+                logger.warning(
+                    "Duplicate prompt section identity detected for name '%s', trying suffix '-%d'",
+                    getattr(obj, "name", None),
+                    suffix + 1,
+                )
+                suffix += 1
+
+
+prompt_section = PromptSectionDecorator()

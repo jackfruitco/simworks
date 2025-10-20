@@ -8,28 +8,35 @@ Key format:
     (origin, bucket, name): all are non-empty strings.
 
 Collision policy:
-    When registering a service with a key that already exists, the core resolver
-    (`resolve_collision`) is used to determine if the new class should override the old.
+    When registering a service with a key that already exists and is associated
+    with a different class, a DuplicateServiceIdentityError is raised.
+    The registry does not rename or resolve collisions automatically.
 
 Exported symbols:
-    - ServicesRegistry
+    - ServiceRegistry
+    - DuplicateServiceIdentityError
 """
 
 import logging
 import os
 import threading
-from typing import Optional, Type
 from collections.abc import Iterable
+from typing import Optional, Type
 
-from simcore_ai.identity import resolve_collision, parse_dot_identity
+from simcore_ai.identity import parse_dot_identity
 
 _logger = logging.getLogger(__name__)
 
 
-class ServicesRegistry:
+class DuplicateServiceIdentityError(Exception):
+    """Raised when attempting to register a service class with a duplicate identity."""
+
+
+class ServiceRegistry:
     """
     Framework-agnostic registry for service classes, keyed by (origin, bucket, name).
     """
+
     _store: dict[tuple[str, str, str], Type] = {}
     _lock = threading.RLock()
 
@@ -69,25 +76,29 @@ class ServicesRegistry:
     @classmethod
     def register(cls, service_cls: Type, *, debug: Optional[bool] = None) -> None:
         """
-        Register a service class, resolving collisions if necessary.
+        Register a service class.
+
+        Raises DuplicateServiceIdentityError if a different class is already registered
+        under the same identity.
+
+        If the same class is already registered under the identity, this is a no-op.
+
         If 'debug' is not supplied, uses SIMCORE_AI_DEBUG environment variable.
         """
         ident = cls._identity_for_cls(service_cls)
         debug_mode = debug if debug is not None else cls._debug_from_env()
 
-        def exists(t):
-            return t in cls._store
-
-        new_ident = resolve_collision(
-            "service", ident, debug=debug_mode, exists=exists
-        )
         with cls._lock:
-            prev = cls._store.get(new_ident)
-            cls._store[new_ident] = service_cls
-            if prev and prev is not service_cls:
-                _logger.info(f"Service {new_ident} replaced {prev} with {service_cls}")
-            elif not prev:
-                _logger.info(f"Service {new_ident} registered: {service_cls}")
+            prev = cls._store.get(ident)
+            if prev is not None and prev is not service_cls:
+                raise DuplicateServiceIdentityError(
+                    f"Service identity {ident} already registered with a different class {prev}"
+                )
+            if prev is service_cls:
+                # already registered, no-op
+                return
+            cls._store[ident] = service_cls
+            _logger.info(f"Service {ident} registered: {service_cls}")
 
     @classmethod
     def get(cls, identity: tuple[str, str, str]) -> Optional[Type]:
@@ -127,7 +138,7 @@ class ServicesRegistry:
         """Remove all registered service classes."""
         with cls._lock:
             cls._store.clear()
-            _logger.info("ServicesRegistry cleared")
+            _logger.info("ServiceRegistry cleared")
 
 
-__all__ = ["ServicesRegistry"]
+__all__ = ["ServiceRegistry", "DuplicateServiceIdentityError"]
