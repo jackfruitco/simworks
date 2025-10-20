@@ -1,4 +1,5 @@
 #!/bin/bash
+export DJANGO_SKIP_READY=1
 
 # Check if Django server is responding
 if curl -fs http://localhost:8000/health > /dev/null; then

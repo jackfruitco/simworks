@@ -1,5 +1,8 @@
 # packages/simcore_ai_django/src/simcore_ai_django/apps.py
 from __future__ import annotations
+
+import os
+
 """
 simcore_ai_django.apps
 ======================
@@ -37,6 +40,9 @@ class SimcoreAIDjangoConfig(AppConfig):
         to `configure_ai_clients()` for provider/client setup (idempotent), then runs
         autodiscovery hooks to allow project apps to register receivers, prompts, etc.
         """
+        if os.environ.get("DJANGO_SKIP_READY") == "1":
+            return
+
         from .setup import configure_ai_clients
 
         with service_span_sync("ai.django_app.ready"):
