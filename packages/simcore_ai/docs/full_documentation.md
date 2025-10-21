@@ -1,6 +1,6 @@
 # simcore_ai Documentation
 
-This guide explains the concepts, APIs, and extension points that power `simcore_ai`. The framework promotes structured, provider-agnostic AI workflows through normalized data models, composable prompts, codecs, and service abstractions.
+`simcore_ai` supplies framework-agnostic building blocks for orchestrating structured LLM workloads. The library focuses on normalized DTOs, composable prompts, codec-driven validation, and reusable service abstractions that sit above provider SDKs.
 
 ## Architecture overview
 
@@ -11,12 +11,12 @@ This guide explains the concepts, APIs, and extension points that power `simcore
                                                              |
                                                              v
                                                    +-------------------+
-                                                   | Provider adapter  |
+                                                   | AIClient          |
                                                    +-------------------+
                                                              |
                                                              v
                                                    +-------------------+
-                                                   | Provider response |
+                                                   | Provider adapter  |
                                                    +-------------------+
                                                              |
                                                              v
@@ -30,222 +30,316 @@ This guide explains the concepts, APIs, and extension points that power `simcore
                                                    +-------------------+
 ```
 
-Key building blocks:
+Key ingredients:
 
-- **PromptKit** manages reusable prompt sections and converts them to message DTOs.
-- **DTOs** describe requests, responses, tool calls, and streaming chunks in a provider-neutral format.
-- **Providers** translate normalized payloads into API calls for a specific large language model service.
-- **Codecs** validate and transform provider responses into strongly typed Python objects.
-- **Services** combine prompts, codecs, and providers into cohesive units of work.
+- **PromptKit** builds structured prompts from reusable sections.
+- **DTOs** encode prompts, responses, tool calls, and streaming deltas in a provider-neutral format.
+- **AIClient** adapts DTOs into provider SDK calls and back again.
+- **Codecs** validate responses against `pydantic` schemas.
+- **Services** encapsulate prompt rendering, retries, telemetry, and codec selection.
 
 ## DTOs (`simcore_ai.types`)
 
-DTOs standardize cross-provider data exchange. Important classes include:
+The DTO layer keeps data structures portable across providers:
 
-- `ChatMessage`: Represents a single prompt message with `role`, `content`, and optional metadata.
-- `ChatRequest`: Captures model, temperature, and message list for chat completion calls.
-- `ChatResponse`: Wraps one or more `ChatChoice` objects returned by the provider.
-- `ToolCall` / `ToolResult`: Support tool-enabled workflows where the model requests function invocations.
-- `StreamChunk`: Represents incremental responses for streaming scenarios.
+- `LLMRequestMessage` &mdash; a single prompt turn with `role` and a list of content parts (text, images, tool calls, etc.).
+- `LLMRequest` &mdash; the full request envelope: model choice, normalized messages, streaming flag, tool declarations, and codec hints.
+- `LLMResponse` &mdash; the normalized result containing response items, usage statistics, provider metadata, and tool call records.
+- `LLMResponseItem` &mdash; an assistant turn expressed as structured parts (text chunks, tool outputs, images, audio).
+- `LLMStreamChunk` &mdash; incremental streaming deltas emitted while a request is in-flight.
+- `BaseOutputSchema` &mdash; base class for typed response contracts that codecs can validate against.
 
-DTOs are lightweight `pydantic` models, enabling validation and serialization across async boundaries.
+All DTOs inherit from a strict `BaseModel`, so extra fields raise validation errors and serialization stays predictable.
 
 ## Prompt composition (`simcore_ai.promptkit`)
 
-PromptKit encourages a layered approach:
+PromptKit revolves around two primitives:
 
-1. **Sections** &mdash; `PromptSection` encapsulates reusable content or templates.
-2. **Prompt** &mdash; `Prompt` aggregates sections and handles rendering.
-3. **Messages** &mdash; `Prompt.render_to_messages(**kwargs)` returns DTOs ready for a provider adapter.
+- `Prompt` &mdash; a lightweight container for developer instructions, user messages, and optional extra turns.
+- `PromptSection` &mdash; declarative components that render text dynamically via `PromptEngine`.
 
-### Section patterns
-
-```python
-from simcore_ai.promptkit import Prompt, PromptSection
-
-introduction = PromptSection("system", "You are an assistant that answers concisely.")
-question = PromptSection("user", "Answer with a short explanation: {query}")
-
-prompt = Prompt([introduction, question])
-messages = prompt.render_to_messages(query="Explain gradient descent")
-```
-
-Sections can load content from files, fetch context at runtime, or combine subsections. Because sections render independently, complex prompts remain testable and maintainable.
-
-## Services (`simcore_ai.services`)
-
-A service owns the lifecycle of an AI call: building requests, delegating to providers, and returning typed results. Instantiate `Service` with:
-
-- `provider`: Identifier understood by the provider registry.
-- `model`: Provider-specific model name.
-- `codec`: Optional codec that validates and transforms responses.
-- `config`: Additional options such as retry policies, timeout budgets, or metadata.
-
-### Creating a service
+For simple flows, instantiate `Prompt` directly and translate it into request messages:
 
 ```python
-from simcore_ai.codecs import JsonCodec
-from simcore_ai.services import Service
-from simcore_ai.types import ChatRequest
-from pydantic import BaseModel
+from simcore_ai.promptkit import Prompt
+from simcore_ai.types import LLMRequestMessage, LLMTextPart
 
-class KeywordPlan(BaseModel):
-    keywords: list[str]
-
-codec = JsonCodec(KeywordPlan)
-
-keyword_service = Service(
-    provider="openai",
-    model="gpt-4o-mini",
-    codec=codec,
-    config={"max_retries": 2},
+prompt = Prompt(
+    instruction="You are a concise assistant.",
+    message="Reply with JSON containing a 'summary' field for the provided text.",
 )
 
-request = ChatRequest(messages=messages, temperature=0.2)
-plan = await keyword_service.call(request)
+messages: list[LLMRequestMessage] = []
+
+if prompt.instruction:
+    messages.append(
+        LLMRequestMessage(role="developer", content=[LLMTextPart(text=prompt.instruction)])
+    )
+
+if prompt.message:
+    messages.append(
+        LLMRequestMessage(role="user", content=[LLMTextPart(text=prompt.message)])
+    )
+
+for role, text in prompt.extra_messages:
+    messages.append(LLMRequestMessage(role=role, content=[LLMTextPart(text=text)]))
 ```
 
-### Streaming support
-
-Call `Service.stream` to receive `StreamChunk` objects:
+For reusable, testable prompt sections, subclass `PromptSection` and use `PromptEngine` to render them. In the example below, `payload` represents the request object carrying runtime data (for example, an instance of `SummaryRequest`).
 
 ```python
-async for chunk in keyword_service.stream(request):
-    if chunk.choices:
-        print(chunk.choices[0].delta)
+from simcore_ai.promptkit import PromptEngine, PromptSection
+from simcore_ai.identity import Identity
+
+class SystemSection(PromptSection):
+    identity = Identity.from_parts("guides", "summaries", "system")
+    instruction = "You are a concise assistant."  # static content
+
+class ArticleSection(PromptSection):
+    identity = Identity.from_parts("guides", "summaries", "article")
+
+    async def render_message(self, *, title: str, body: str, **_: object) -> str | None:
+        return (
+            "Return JSON with a 'summary' field for the article titled "
+            f"'{title}'.\n\nArticle body:\n{body}"
+        )
+
+prompt = await PromptEngine.abuild_from(SystemSection, ArticleSection, title=payload.title, body=payload.body)
 ```
 
-Streaming is helpful for real-time UIs or incremental processing pipelines.
+The resulting `Prompt` can be converted to `LLMRequestMessage` instances using the helper shown above.
 
 ## Codecs (`simcore_ai.codecs`)
 
-Codecs attach structured validation to service outputs. Bundled codecs include:
-
-- `JsonCodec(model_type)`: Parse JSON responses into a `pydantic` model.
-- `TextCodec(parser)`: Apply a custom parsing function to raw text output.
-- `PassThroughCodec()`: Return the provider response as-is when no transformation is required.
-
-### Creating a custom codec
+Codecs transform normalized responses into typed models. Subclass `BaseLLMCodec` or decorate a class with `@codecs.codec` to register it.
 
 ```python
-from simcore_ai.codecs import BaseCodec
+from simcore_ai.codecs import BaseLLMCodec
+from simcore_ai.types import BaseOutputSchema
 
-class CsvCodec(BaseCodec[list[dict[str, str]]]):
-    def decode(self, response):
-        rows = []
-        for line in response.text.splitlines():
-            name, value = line.split(",")
-            rows.append({"name": name, "value": value})
-        return rows
+class KeywordPlan(BaseOutputSchema):
+    keywords: list[str]
+
+class KeywordCodec(BaseLLMCodec):
+    name = "keyword-plan"
+    origin = "guides"
+    bucket = "services"
+    schema_cls = KeywordPlan
+
+codec = KeywordCodec()
+
+structured = codec.validate_from_response(response)
+if structured is None:
+    raise ValueError("Response did not contain JSON matching KeywordPlan")
 ```
 
-Custom codecs can raise `CodecError` when validation fails, allowing services to trigger retries or error handling logic.
+`validate_from_response` extracts structured JSON from the normalized response, validates it against `schema_cls`, and returns an instance of that schema. If validation fails, `None` is returned so you can fall back to manual parsing or trigger a retry.
 
-## Provider adapters (`simcore_ai.providers`)
+## Provider clients (`simcore_ai.client`)
 
-Providers translate normalized DTOs into HTTP calls or SDK invocations. The package ships with adapters for popular API providers; you can register your own adapters via the provider registry.
-
-### Implementing a provider
+The client registry wires provider configuration to reusable `AIClient` instances.
 
 ```python
-from simcore_ai.providers import ProviderAdapter, registry
-from simcore_ai.types import ChatRequest, ChatResponse
+import os
 
-class CustomAdapter(ProviderAdapter):
-    name = "acme"
+from simcore_ai.client import create_client_from_dict, get_default_client
 
-    async def create_chat_completion(self, request: ChatRequest) -> ChatResponse:
-        payload = self._convert_request(request)
-        raw_response = await self._http_client.post("/v1/chat", json=payload)
-        return self._parse_response(raw_response)
-
-registry.register(CustomAdapter())
-```
-
-Adapters typically implement methods for chat completions, embeddings, audio, or tools. They can use SDK clients, HTTP libraries, or message buses depending on provider requirements.
-
-## Schema compiler (`simcore_ai.schemas`)
-
-The schema compiler converts JSON Schemas into codecs and tool definitions. Use it to keep your contract definitions in one place.
-
-```python
-from simcore_ai.schemas import compile_output_schema
-
-output_schema = {
-    "title": "Schedule",
-    "type": "object",
-    "properties": {
-        "tasks": {
-            "type": "array",
-            "items": {"type": "string"},
-        }
+create_client_from_dict(
+    {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "api_key": os.environ["OPENAI_API_KEY"],
     },
-    "required": ["tasks"],
-}
+    name="openai-gpt4o",
+    make_default=True,
+)
 
-schedule_codec = compile_output_schema(output_schema)
+client = get_default_client()
 ```
 
-Compiled codecs integrate seamlessly with services, preserving validation guarantees.
-
-## Tool calling
-
-`simcore_ai` supports model-initiated tool invocations. Define tools as functions with type annotations or use DTO-based definitions.
+Send requests using normalized DTOs:
 
 ```python
-from simcore_ai.tools import Tool
-from simcore_ai.types import ToolResult
+from simcore_ai.types import LLMRequest
 
-async def fetch_weather(city: str) -> ToolResult:
-    return ToolResult(output=f"Weather for {city}: sunny")
-
-tool = Tool.from_callable("fetch_weather", fetch_weather)
+request = LLMRequest(model="gpt-4o-mini", messages=messages)
+response = await client.send_request(request)
 ```
 
-Register tools with a service invocation by passing them to the provider call or service configuration. When the model requests a tool, the service executes it and feeds the result back into the conversation.
+For streaming, set `stream=True` on the request and iterate over `client.stream_request(request)`.
 
-## Error handling and retries
+## Services (`simcore_ai.services`)
 
-Services integrate with retry policies specified in `config`. You can provide a retry strategy implementing exponential backoff, circuit breaking, or provider-specific logic.
+`BaseLLMService` wraps prompt rendering, codec selection, retries, telemetry, and event emission around an `AIClient`. Services expect two collaborators:
+
+- a **simulation** object carrying runtime context (at minimum an `id` attribute)
+- a **ServiceEmitter** implementation that records requests, responses, failures, and streaming chunks
+
+### Subclassing `BaseLLMService`
 
 ```python
-keyword_service = Service(
-    provider="openai",
-    model="gpt-4o-mini",
-    codec=codec,
-    config={
-        "max_retries": 3,
-        "retryable_exceptions": {"RateLimitError", "TimeoutError"},
+from dataclasses import dataclass
+
+from simcore_ai.client import get_default_client
+from simcore_ai.promptkit import Prompt
+from simcore_ai.services import BaseLLMService
+from simcore_ai.types import LLMRequestMessage, LLMTextPart
+
+# reuse `codec = KeywordCodec()` from the codecs section above
+
+class ConsoleEmitter:
+    def emit_request(self, simulation_id, identity, request):
+        print("request", identity, request.model)
+
+    def emit_response(self, simulation_id, identity, response):
+        print("response", identity)
+
+    def emit_failure(self, simulation_id, identity, correlation_id, error):
+        print("failure", identity, error)
+
+    def emit_stream_chunk(self, simulation_id, identity, chunk):
+        print("chunk", identity, chunk.delta)
+
+    def emit_stream_complete(self, simulation_id, identity, correlation_id):
+        print("stream complete", identity)
+
+
+class KeywordService(BaseLLMService):
+    origin = "guides"
+    bucket = "services"
+    name = "keyword"
+    provider_name = "openai"  # resolved by client registry
+
+    def select_codec(self):
+        return codec  # return an instance or class of BaseLLMCodec
+
+    async def build_request_messages(self, simulation) -> list[LLMRequestMessage]:
+        prompt = Prompt(
+            instruction="You return keyword lists as JSON.",
+            message=f"Reply with {{\"keywords\": [...]}} for: {simulation.text}",
+        )
+
+        messages: list[LLMRequestMessage] = []
+        if prompt.instruction:
+            messages.append(LLMRequestMessage(role="developer", content=[LLMTextPart(text=prompt.instruction)]))
+        if prompt.message:
+            messages.append(LLMRequestMessage(role="user", content=[LLMTextPart(text=prompt.message)]))
+        return messages
+
+
+@dataclass
+class Simulation:
+    id: int
+    text: str
+
+
+service = KeywordService(
+    simulation_id=42,
+    emitter=ConsoleEmitter(),
+    client=get_default_client(),
+)
+
+simulation = Simulation(id=42, text="Launch a self-serve workspace tier for startups.")
+response = await service.run(simulation)
+structured = codec.validate_from_response(response)
+```
+
+`run` executes a single request with retries. To stream provider deltas, call `await service.run_stream(simulation)`; streaming chunks are forwarded to the emitter.
+
+### Function services with `llm_service`
+
+The `llm_service` decorator turns an async function into a service class. This is useful when you want to bundle prompt rendering with side effects in a single coroutine.
+
+```python
+from simcore_ai.services import llm_service
+
+@llm_service(origin="guides", bucket="summaries", name="article")
+async def on_summary_complete(simulation, slim):
+    print("completed", simulation.id)
+
+SummaryService = on_summary_complete  # decorator returns the generated subclass
+```
+
+The generated class still expects an emitter and simulation context; only the lifecycle hooks are auto-wired.
+
+## Streaming
+
+- **Direct client streaming** &mdash; set `stream=True` on `LLMRequest` and consume `AIClient.stream_request(request)` to receive `LLMStreamChunk` items as soon as the provider produces them.
+- **Service streaming** &mdash; call `await service.run_stream(simulation)` to let the service orchestrate streaming, retries, and telemetry; streaming data is pushed through the configured emitter.
+
+Each stream chunk exposes `delta` (text), optional `tool_call_delta`, and incremental usage metadata.
+
+## Schema adapters (`simcore_ai.schemas`)
+
+Schema adapters let you tweak JSON Schemas per provider before they are embedded in requests.
+
+```python
+from simcore_ai.schemas import register_adapter, schema_adapter, compile_schema
+
+@schema_adapter("openai", order=50)
+def enforce_object(adapter_schema: dict) -> dict:
+    schema = dict(adapter_schema)
+    schema.setdefault("type", "object")
+    return schema
+
+compiled = compile_schema(raw_schema, provider="openai")
+```
+
+Adapters run in ascending `order`, allowing you to compose provider-specific adjustments.
+
+## Tool metadata (`simcore_ai.types.tools`)
+
+Declare tool contracts with `BaseLLMTool` and attach them to `LLMRequest.tools`. Streaming tool call progress is captured via `LLMToolCallDelta`.
+
+```python
+from simcore_ai.types import BaseLLMTool
+
+search_tool = BaseLLMTool(
+    name="search",
+    description="Look up articles in the knowledge base",
+    input_schema={
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
     },
 )
+
+request.tools.append(search_tool)
+request.tool_choice = "auto"
 ```
 
-Use telemetry hooks to capture metrics, logging, and tracing details per request.
+When the provider triggers a tool call, the normalized response includes `LLMToolCall` entries so your application can execute the requested function and feed results back into the conversation.
 
-## Testing services
+## Testing
 
-Because DTOs and codecs are pure Python objects, services are easy to test:
+Because services operate on DTOs and dependency injection, unit testing stays straightforward:
 
-- Replace provider adapters with fakes that return canned DTOs.
-- Mock codec outputs to isolate prompt logic.
-- Validate prompt rendering by asserting on the messages generated from sections.
+- Inject a fake `AIClient` that returns canned `LLMResponse` objects.
+- Provide a lightweight emitter that records emitted events for assertions.
+- Assert on prompt rendering by calling your helper that converts prompts into `LLMRequestMessage` lists.
 
 ```python
-class FakeAdapter:
-    async def create_chat_completion(self, request):
-        return ChatResponse(choices=[...])
+from simcore_ai.types import LLMResponse
+
+class FakeClient:
+    async def send_request(self, request):
+        return LLMResponse(outputs=[], usage=None)
+
+fake_service = KeywordService(
+    simulation_id=1,
+    emitter=ConsoleEmitter(),
+    client=FakeClient(),
+)
+
+await fake_service.run(Simulation(id=1, text="Example payload"))
 ```
-
-Inject the fake adapter into the registry during tests to run service logic without hitting external APIs.
-
-## CLI utilities
-
-The package optionally exposes a `simcore-ai` CLI for tasks such as prompt rendering or schema validation. Run `simcore-ai --help` to view available commands once the package is installed with CLI extras.
 
 ## Next steps
 
-- Explore the `simcore_ai` source under `src/simcore_ai/` for additional utilities.
-- Build specialized codecs for your domain.
-- Register multiple providers and route requests dynamically based on performance, latency, or cost.
+- Explore the source under `src/simcore_ai/` for additional utilities such as tracing helpers and decorators.
+- Register multiple clients and experiment with routing based on latency or cost.
+- Build custom codecs to validate domain-specific response formats.
+- Combine tool declarations with schema adapters to create robust, provider-agnostic tool-calling workflows.
 
-With these building blocks, you can design resilient AI workflows that remain portable across providers while maintaining strict data contracts.
+With these primitives, you can construct resilient AI workflows that remain portable across providers while preserving strong data contracts.
+
