@@ -1,196 +1,130 @@
 # Prompt Engine — simcore_ai_django
 
-> The Prompt Engine orchestrates prompt composition, rendering, and delivery to the LLM.
+> Compose PromptSections into a single prompt payload for LLM services.
 
 ---
 
 ## Overview
 
-The **Prompt Engine** is the layer that takes:
-1. A **Service's** `prompt_plan` or matching `PromptSection`
-2. A **Simulation** or runtime context
-3. Produces a **structured prompt** ready for the LLM provider
+The **Prompt Engine** takes one or more `PromptSection` classes/instances and produces a `Prompt` object containing:
 
-It connects your declarative `PromptSection` definitions to the actual `LLMRequestMessage` objects
-that form the model's input.
+- `instruction` (developer/system message)
+- `message` (user message)
+- `extra_messages` (additional role/text pairs)
+- `meta` (metadata captured during rendering)
 
----
-
-## Responsibilities
-
-| Role | Description |
-|------|--------------|
-| **Resolve Sections** | Find matching `PromptSection` classes via registry or identity |
-| **Render** | Execute static or dynamic section instructions/messages |
-| **Assemble** | Combine them into a structured `Prompt` |
-| **Transform** | Convert to provider-compatible `LLMRequestMessage` list |
-| **Trace** | Annotate spans for performance and debugging |
+`simcore_ai_django` re-exports the core engine from `simcore_ai.promptkit`, so the API is identical across both packages.
 
 ---
 
-## Core Entry Points
+## Core Usage
 
-### 1️⃣ Build Prompt from Service Identity
-
-```python
-from simcore_ai_django.api.prompt_engine import PromptEngine
-
-prompt = await PromptEngine.abuild_for_service(MyService, simulation=my_sim)
-```
-
-- Looks up sections by service identity.
-- Falls back to `service.prompt_plan` if defined.
-- Calls `arender()` on dynamic sections.
-
-### 2️⃣ Build from Explicit Section List
+### Build from sections
 
 ```python
+from simcore_ai_django.promptkit import PromptEngine
 from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
-prompt = await PromptEngine.abuild_from([PatientInitialSection, PatientFollowupSection], context={"simulation": my_sim})
-```
 
-### 3️⃣ Synchronous Build (for testing)
-
-```python
-prompt = PromptEngine.build_for_service(MyService, simulation=my_sim)
-```
-
----
-
-## Prompt Composition
-
-The engine merges multiple `PromptSection`s into a unified `Prompt` object:
-
-```python
-Prompt(
-    instruction="You are a standardized patient in a telemedicine chat.",
-    message="Begin the conversation naturally.",
-    extra_messages=[
-        {"role": "system", "content": "Follow role guidelines."},
-        {"role": "user", "content": "Reply in first-person tone."},
-    ],
+prompt = await PromptEngine.abuild_from(
+    PatientInitialSection,
+    PatientFollowupSection,
+    simulation=my_sim,
+    service=my_service,
 )
 ```
 
-Each section contributes one or more of these fields.
+- Pass section **classes** or **instances** as positional arguments.
+- Context is supplied via keyword arguments (`simulation=...`, `service=...`, etc.).
+- The engine instantiates sections, orders them by `weight`, and calls `render_instruction` / `render_message`.
+
+### Incremental composition
+
+```python
+engine = PromptEngine()
+engine.add(PatientInitialSection)
+engine.add(PatientFollowupSection(weight=50))
+prompt = await engine.abuild(simulation=my_sim, service=my_service)
+```
+
+- `add()` accepts classes or instances; duplicates are ignored by label.
+- Use `.build(...)` for synchronous execution in test scripts (outside event loops).
+
+### Raw prompt
+
+The resulting prompt is a dataclass:
+
+```python
+from simcore_ai_django.promptkit import Prompt
+
+print(prompt.instruction)
+print(prompt.message)
+print(prompt.extra_messages)
+print(prompt.meta.get("sections"))  # labels rendered in order
+```
 
 ---
 
-## Context Injection
+## Context Contract
 
-When rendering, each section’s `arender()` or `render()` method receives the following context:
+Each section’s `render_instruction` / `render_message` receives the keyword arguments you supply. Common keys:
 
 | Key | Description |
-|-----|--------------|
-| `simulation` | The active simulation object |
-| `service` | The current service class or instance |
-| `ctx` | Any additional context passed by the caller |
+|-----|-------------|
+| `simulation` | Active simulation / domain object |
+| `service` | Service instance building the prompt |
+| `ctx` | Optional additional data you pass |
 
-You can override these arguments in your Service:
-
-```python
-async def get_prompt_context(self, simulation):
-    return {"simulation": simulation, "user": simulation.user}
-```
+Sections can opt into any subset of these by signature. The engine never mutates the context you supply.
 
 ---
 
-## Identity Resolution Flow
+## Error Handling & Tracing
 
-1. Service identity derived via Django rules (app → bucket → name)
-2. Engine queries `PromptRegistry` for matching sections
-3. If none found, raises `PromptSectionNotFoundError`
-4. Otherwise, assembles sections in order
-
-Example:
-```
-chatlab.standardized_patient.initial
-├── Service: GenerateInitialResponse
-├── Prompt: PatientInitialSection
-├── Codec: PatientInitialCodec
-└── Schema: PatientInitialOutputSchema
-```
+- Rendering happens inside OpenTelemetry spans (`ai.prompt.section`, `ai.prompt.render_instruction`, etc.).
+- Exceptions during rendering are caught and logged; the section simply contributes nothing to the prompt.
+- Metadata on the returned `Prompt.meta` includes `sections` (labels rendered) and `errors` (render failures).
 
 ---
 
-## Prompt Registry Integration
+## Integration with Services
 
-The engine interacts with:
+`BaseLLMService.ensure_prompt()` (and therefore `DjangoBaseLLMService`) uses `PromptEngine` under the hood:
 
-```python
-from simcore_ai.promptkit.registry import PromptRegistry
-```
+1. Resolve the service’s `prompt_plan` (list of section specs).
+2. Call `PromptEngine.abuild_from(...)` with the resolved classes.
+3. Cache the resulting prompt for the lifetime of the service instance.
 
-to retrieve registered `PromptSection` classes.  
-All sections are registered automatically by the `@prompt_section` decorator.
-
-```python
-PromptRegistry.find(("chatlab", "standardized_patient", "initial"))
-```
+If a section spec cannot be resolved, the service falls back to Django template rendering via `simcore_ai_django.prompts.render_section`.
 
 ---
 
-## Debugging Prompts
+## Custom Engines
 
-### Dump Prompt Plan
-
-```python
-prompt = await PromptEngine.abuild_for_service(MyService, simulation=my_sim)
-prompt.debug_dump()
-```
-
-### Inspect Section Timing
-
-Enable `SIMCORE_AI_DEBUG=True` to measure section render times:
-
-```
-[PromptEngine] render: PatientInitialSection → 25ms
-```
-
----
-
-## Extending PromptEngine
-
-You can subclass or monkey-patch behavior safely:
+`PromptEngine` is a regular class, so you can subclass it for advanced behavior:
 
 ```python
-from simcore_ai_django.promptkit.engine import PromptEngine
+from simcore_ai_django.promptkit import PromptEngine
 
 class CustomPromptEngine(PromptEngine):
-    @classmethod
-    async def abuild_for_service(cls, service_cls, simulation, **ctx):
-        ctx["custom"] = True
-        return await super().abuild_for_service(service_cls, simulation, **ctx)
+    async def abuild(self, **ctx):
+        ctx.setdefault("feature_flag", True)
+        return await super().abuild(**ctx)
 ```
 
-Then set in your app’s `apps.py`:
+Inject your custom engine into a service by overriding `prompt_engine`:
 
 ```python
-from chatlab.ai.prompt_engine import CustomPromptEngine
-
-PromptEngine.set_default(CustomPromptEngine)
+class MyService(DjangoBaseLLMService):
+    prompt_engine = CustomPromptEngine
 ```
 
 ---
 
-## Error Handling
+## Debugging Tips
 
-| Error | Description |
-|:------|:-------------|
-| `PromptSectionNotFoundError` | No section found matching service identity |
-| `PromptRenderError` | Section raised an exception during `arender()` |
-| `PromptAssemblyError` | Internal failure assembling prompt text |
-
-When in **DEBUG** mode, these errors raise immediately; in production, they are logged and a fallback prompt is used.
-
----
-
-## Summary
-
-✅ Automatically assembles structured LLM prompts  
-✅ Identity-aware section resolution  
-✅ Async‑safe rendering pipeline  
-✅ Integrates with tracing, registries, and services  
+- Inspect `prompt.meta["errors"]` to see sections that failed to render.
+- Use `PromptEngine.add_many()` to bulk load sections from iterables.
+- Set `weight` on sections to control ordering (lower weight renders first).
 
 ---
 

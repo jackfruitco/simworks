@@ -1,46 +1,47 @@
-# Response Schemas in simcore_ai_django
+# Schemas in simcore_ai_django
 
-> Define strict, Pydantic‑based schemas that validate AI output and align by identity.
+> Define strict, Pydantic-based schemas that validate AI output and align by identity.
 
 ---
 
 ## Overview
 
-A **Response Schema** describes the structured output expected from the LLM.  
-In `simcore_ai_django`, schemas:
+A **Response Schema** describes the structured output expected from the LLM. In `simcore_ai_django`, schemas:
 
-- Inherit from **`DjangoStrictSchema`** (Pydantic model + Django‑aware identity)
-- Participate in the **tuple3 identity** system (`origin.bucket.name`)
-- Are discovered automatically by **Codecs** and **Services** when identities match
-- Remain framework‑agnostic for pure validation (persistence lives in Codecs)
+- Inherit from **`DjangoBaseOutputSchema`** (a strict Pydantic model with Django-aware identity helpers).
+- Participate in the **tuple³ identity** system (`origin.bucket.name`).
+- Are discovered automatically by **Codecs** and **Services** when identities match.
+- Remain focused on validation; persistence stays inside Codecs.
 
 ---
 
-## Base Class
+## Base Classes
 
 ```python
-from simcore_ai_django.api.types import DjangoStrictSchema
+from simcore_ai_django.api.types import (
+    DjangoBaseOutputSchema,
+    DjangoBaseOutputBlock,
+    DjangoBaseOutputItem,
+    DjangoLLMResponseItem,
+)
 ```
 
-`DjangoStrictSchema`:
-- Extends Pydantic’s strict model behavior
-- Mixes in `DjangoIdentityMixin` so `(origin, bucket, name)` autoderive from:
-  - **origin** → Django app label
-  - **bucket** → `"default"` (unless set or provided by mixin)
-  - **name** → stripped + snake‑case of class name (edge‑only token removal)
+- Use `DjangoBaseOutputSchema` for top-level response models.
+- Use `DjangoBaseOutputBlock` for nested structured groups (no identity required).
+- Use `DjangoBaseOutputItem` for key/value pairs inside blocks.
 
 ---
 
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.types import DjangoStrictSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
 
-class PatientInitialOutputSchema(DjangoStrictSchema):
+class PatientInitialOutputSchema(DjangoBaseOutputSchema):
     messages: list[DjangoLLMResponseItem]
 ```
 
-✅ Identity autoderives (e.g., `chatlab.standardized_patient.initial`) assuming your app/mixins set origin/bucket appropriately.
+Identity autoderives (e.g., `chatlab.standardized_patient.initial`) when your app or mixins define `origin`/`bucket`.
 
 ---
 
@@ -56,11 +57,12 @@ class StandardizedPatientMixin(DjangoIdentityMixin):
     bucket = "standardized_patient"
 
 
-class PatientInitialOutputSchema(DjangoStrictSchema, ChatlabMixin, StandardizedPatientMixin):
+class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
     messages: list[DjangoLLMResponseItem]
 ```
 
-Resulting identity:
+Identity resolves to:
+
 ```
 chatlab.standardized_patient.initial
 ```
@@ -88,29 +90,28 @@ class FeedbackBlock(DjangoBaseOutputBlock):
     correct_diagnosis: CorrectDiagnosisItem
 ```
 
-Use `DjangoBaseOutputItem` for key/value leaf nodes and `DjangoBaseOutputBlock` for grouped fields.  
 Blocks do **not** require an identity.
 
 ### Full Schema
 
 ```python
-class HotwashInitialSchema(DjangoStrictSchema):
+class HotwashInitialSchema(DjangoBaseOutputSchema):
     metadata: FeedbackBlock
 ```
 
 ---
 
-## Token Stripping (edge‑only)
+## Token Stripping (edge-only)
 
-Class name → `name` uses edge‑only token removal, then snake‑case.
+Class name → `name` uses edge-only token removal, then snake_case.
 
-**Core defaults:** `{"Codec","Service","Prompt","PromptSection","Section","Response","Generate","Output","Schema"}`
+**Core defaults:** `{ "Prompt", "Section", "Service", "Codec", "Generate", "Response", "Mixin" }`
 
-**Django adds:** your app label variants + custom tokens from:
+**Django adds:** `"Django"`, app label variants, and optional tokens from:
 - `settings.AI_IDENTITY_STRIP_TOKENS`
-- `apps.py`: `identity_strip_tokens = {"Patient", ...}`
+- `AppConfig.identity_strip_tokens` or `AppConfig.AI_IDENTITY_STRIP_TOKENS`
 
-> Edge‑only stripping avoids altering middle words like “Outpatient”.
+> Edge-only stripping avoids altering middle words like “Outpatient”.
 
 ---
 
@@ -118,32 +119,34 @@ Class name → `name` uses edge‑only token removal, then snake‑case.
 
 When identities match, the framework wires components automatically:
 
-- **Codec** with the same tuple3 → used for parse/validate/persist
-- **Service** with the same tuple3 → will resolve the matching schema via the codec
-- **PromptSection** → participates in the same identity to build prompts
+- **Codec** with the same tuple³ → used for parse/validate/persist.
+- **Service** with the same tuple³ → resolves the matching codec and schema via registries.
+- **PromptSection** → participates in the same identity to build prompts.
 
-> If schema-by-identity is not globally enabled in your build, set it explicitly on the Service:
-> ```python
-> class MyService(...):
->     from my_app.ai.schemas import MySchema as _Schema
->     response_format_cls = _Schema
-> ```
+If your build does not enable schema-by-identity globally, set it explicitly on the Service:
+
+```python
+class MyService(...):
+    from my_app.ai.schemas import MySchema as _Schema
+    response_format_cls = _Schema
+```
 
 ---
 
 ## Validation Behavior
 
 Schemas are strict:
-- Unknown fields are rejected
-- Type mismatches raise errors
-- Helpful error messages for debugging in **DEBUG**
+
+- Unknown fields are rejected.
+- Type mismatches raise errors.
+- Helpful error messages in **DEBUG** environments.
 
 You can include Pydantic validators for advanced logic.
 
 ```python
 from pydantic import field_validator
 
-class MySchema(DjangoStrictSchema):
+class MySchema(DjangoBaseOutputSchema):
     score: int
 
     @field_validator("score")
@@ -167,10 +170,10 @@ print(PatientInitialOutputSchema.identity_str())    # 'chatlab.standardized_pati
 
 ## Best Practices
 
-- Use **mixins** per domain (e.g., `StandardizedPatientMixin`, `TriageMixin`)
-- Keep schemas focused on validation; use Codecs for persistence
-- Break large schemas into **items** and **blocks** for clarity
-- Add per‑app strip tokens to keep names concise
+- Use **mixins** per domain (e.g., `StandardizedPatientMixin`, `TriageMixin`).
+- Keep schemas focused on validation; use Codecs for persistence.
+- Break large schemas into **items** and **blocks** for clarity.
+- Add per-app strip tokens to keep names concise.
 
 ---
 

@@ -2,7 +2,7 @@
 
 Welcome to the **simcore_ai_django** documentation — the Django integration layer for the `simcore_ai` AI framework.
 
-This package extends the core `simcore_ai` library to integrate seamlessly with Django apps. It provides decorators, mixins, and base classes to define **AI-driven services**, **codecs**, **prompt sections**, and **response schemas** that can automatically interconnect through a shared identity system.
+This package extends the core `simcore_ai` library so Django apps can register AI services, codecs, prompt sections, and response schemas that cooperate automatically via shared tuple³ identities.
 
 ---
 
@@ -10,12 +10,12 @@ This package extends the core `simcore_ai` library to integrate seamlessly with 
 
 `simcore_ai_django` allows you to:
 
-- Define **LLM services** that can be executed asynchronously or synchronously using `.execute()`.
-- Create **PromptSections** that dynamically build LLM prompts.
-- Register **Codecs** that validate and persist LLM responses.
-- Build **Response Schemas** that validate structured AI outputs.
-- Leverage the **Tuple3 Identity System** (`origin.bucket.name`) for automatic wiring of services, codecs, and schemas.
-- Extend the **core AI identity system** to Django apps with autoderived origins (from app labels).
+- Define **LLM services** that can be executed synchronously or asynchronously through `.execute()` and `.enqueue()`.
+- Create **PromptSections** that render developer and user-facing messages.
+- Register **Codecs** that validate and persist LLM responses using Django models.
+- Build **Response Schemas** with strict Pydantic models (`DjangoBaseOutputSchema`).
+- Leverage the **Tuple³ Identity System** (`origin.bucket.name`) for automatic wiring.
+- Extend the **core AI identity system** with Django-aware defaults (app labels, mixins, strip tokens).
 
 ---
 
@@ -23,36 +23,34 @@ This package extends the core `simcore_ai` library to integrate seamlessly with 
 
 ### Identity-Driven Architecture
 
-Every major class (service, codec, prompt section, schema) has a **tuple3 identity**:
+Every major class (service, codec, prompt section, schema) has a tuple³ identity:
 
 ```
 (origin, bucket, name)
 ```
 
-This identity links corresponding components automatically — for example, a service, codec, and schema that all share the same identity will automatically work together.
-
-See [Identity System](identity.md) for full details.
+Matching identities allow components to discover one another automatically. See [Identity System](identity.md) for full details.
 
 ### Four Pillars
 
 | Component | Purpose | Decorator | Base Class |
-|------------|----------|------------|-------------|
+|-----------|---------|-----------|------------|
 | **Service** | Defines an executable AI workflow | `@llm_service` | `DjangoExecutableLLMService` |
 | **Codec** | Validates & persists AI responses | `@codec` | `DjangoBaseLLMCodec` |
 | **Prompt Section** | Builds prompt content or messages | `@prompt_section` | `PromptSection` |
-| **Response Schema** | Defines structured output schema | *(none required)* | `DjangoStrictSchema` |
+| **Response Schema** | Defines structured output schema | *(decorator optional)* | `DjangoBaseOutputSchema` |
 
-Each can autoderive its identity, making boilerplate optional.
+Each component can autoderive its identity, keeping boilerplate minimal.
 
 ---
 
 ## 📂 Documentation Index
 
 ### Getting Started
-- [Quick Start Guide](quick_start.md)
+- [Quick Start Guide](quick-start.md)
 
 ### Identity System
-- [Tuple3 Identities & Mixins](identity.md)
+- [Tuple³ Identities & Mixins](identity.md)
 
 ### Building Blocks
 - [Services](services.md)
@@ -60,22 +58,29 @@ Each can autoderive its identity, making boilerplate optional.
 - [Response Schemas](schemas.md)
 - [Prompt Sections](prompt_sections.md)
 - [Prompts & Prompt Plans](prompts.md)
+- [Prompt Engine](prompt_engine.md)
+
+### Platform Integration
+- [Execution Backends](execution_backends.md)
+- [Registries](registries.md)
+- [Signals & Emitters](signals.md)
+- [Settings](settings.md)
 
 ---
 
 ## 🧭 How It Fits Together
 
-Here’s how the main components interact in a typical flow:
+A typical flow looks like:
 
 ```text
-Service.execute() 
-  → PromptSection.render() builds messages
-  → LLM call via Provider
-  → Codec.persist() saves results
-  → Schema validates structured output
+Service.execute()
+  → PromptSection.render_* builds messages
+  → LLM call via provider
+  → Codec.persist() validates & saves
+  → Schema enforces structured output
 ```
 
-Each step is automatically linked by **identity**, so long as the `origin`, `bucket`, and `name` match.
+Each step is linked by **identity** so long as the `origin`, `bucket`, and `name` match.
 
 ---
 
@@ -83,14 +88,14 @@ Each step is automatically linked by **identity**, so long as the `origin`, `buc
 
 - Python 3.11+
 - Django 5.0+
-- simcore_ai (core library)
+- `simcore_ai`
 
 ---
 
 ## 🧩 Related Packages
 
 | Package | Description |
-|----------|--------------|
+|---------|-------------|
 | `simcore_ai` | Core AI utilities and provider abstractions |
 | `simcore_ai_django` | Django integration and execution layer |
 | `simworks` | Example Django project that consumes this package |
@@ -98,8 +103,8 @@ Each step is automatically linked by **identity**, so long as the `origin`, `buc
 ---
 
 ## 🧠 Tip
-If you’re just starting, begin with the **[Quick Start Guide](quick_start.md)**.  
-It walks through creating a complete service (schema → prompt → codec → service) from scratch.
+
+If you’re just starting, begin with the **[Quick Start Guide](quick-start.md)**. It walks through creating a complete chain (schema → prompt section → codec → service).
 
 ---
 

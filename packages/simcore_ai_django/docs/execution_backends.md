@@ -1,34 +1,35 @@
 # Execution Backends — simcore_ai_django
 
-> Control how AI Services are executed in Django: immediate, deferred, or background (Celery).
+> Control how AI Services are dispatched in Django: inline, deferred, or background.
 
 ---
 
 ## Overview
 
-`simcore_ai_django` introduces an **execution layer** that determines *when* and *how* an AI service runs.
+`DjangoExecutableLLMService` combines Django-aware defaults with the core execution mixin. Each service can run:
 
-Each `DjangoExecutableLLMService` can run:
 - **immediately** (inline, synchronous)
-- **asynchronously** (via Celery or a future Django task runner)
-- **scheduled** (with delay or priority)
+- **asynchronously** (e.g., via Celery)
+- **scheduled** (delay + priority)
+
+Execution behavior is driven by service attributes, per-call overrides, and the `AI_EXECUTION_BACKENDS` setting.
 
 ---
 
-## Execution Concepts
+## Execution Fields
 
 | Field | Type | Default | Description |
-|-------|------|----------|--------------|
-| `execution_mode` | `"sync"` / `"async"` | `"sync"` | Whether to run immediately or defer |
-| `execution_backend` | `"immediate"` / `"celery"` / `"django_tasks"` | `"immediate"` | Which backend executes the service |
-| `execution_priority` | `int` | `0` | Priority from -100 (low) to 100 (high) |
-| `execution_run_after` | `float | None` | `None` | Delay in seconds before execution |
-| `require_enqueue` | `bool` | `False` | Force async even if mode is `"sync"` |
+|-------|------|---------|-------------|
+| `execution_mode` | `"sync"` / `"async"` | `settings.AI_EXECUTION_BACKENDS["DEFAULT_MODE"]` → `"sync"` | Whether to run immediately or enqueue. |
+| `execution_backend` | `"immediate"` / `"celery"` / custom | `settings.AI_EXECUTION_BACKENDS["DEFAULT_BACKEND"]` → `"immediate"` | Backend implementation used for dispatch. |
+| `execution_priority` | `int` | `0` | Relative priority (-100 .. 100). |
+| `execution_run_after` | `float | None` | `None` | Seconds to delay execution. |
+| `require_enqueue` | `bool` | `False` | Force async even if mode is `"sync"`. |
 
-These may be:
-1. Declared as **class attributes**
-2. Set **per call** using `.using(...)` or `.enqueue(...)`
-3. Controlled globally via **Django settings**
+These values can be:
+1. Declared as **class attributes** on the service.
+2. Set **per call** using `.using(...)` + `.execute()` / `.enqueue()`.
+3. Resolved from settings if left unset.
 
 ---
 
@@ -51,121 +52,79 @@ Run immediately:
 await GenerateInitialResponse.execute(simulation=my_sim)
 ```
 
-Enqueue to Celery with delay:
+Enqueue with overrides:
 
 ```python
-await GenerateInitialResponse.using(run_after=60).enqueue(simulation=my_sim)
+await GenerateInitialResponse.using(run_after=60, priority=10).enqueue(simulation=my_sim)
 ```
 
 ---
 
 ## Default Resolution Logic
 
-If not explicitly set, each parameter resolves in order:
+When resolving execution parameters, the service checks in order:
 
-| Step | Source |
-|------|---------|
-| 1️⃣ | Attribute on the Service class |
-| 2️⃣ | Django setting `AI_EXECUTION_*` |
-| 3️⃣ | Hardcoded fallback (`sync` / `immediate` / priority=0) |
+1. Per-call overrides from `.using(...)`.
+2. Service class attributes.
+3. `AI_EXECUTION_BACKENDS` setting.
+4. Hard-coded fallbacks (`mode="sync"`, `backend="immediate"`, `priority=0`).
 
-### Relevant Django Settings
-
-| Setting | Default | Description |
-|----------|----------|--------------|
-| `AI_EXECUTION_DEFAULT_MODE` | `"sync"` | Default mode |
-| `AI_EXECUTION_DEFAULT_BACKEND` | `"immediate"` | Default backend |
-| `AI_EXECUTION_BACKENDS` | `{}` | Registry of backend implementations |
-| `AI_EXECUTION_QUEUE` | `"default"` | Default Celery/Django task queue |
-
----
-
-## Backends
-
-### 1️⃣ Immediate Backend
-
-Runs directly in the current process.
-
-✅ Fastest  
-🚫 Blocks current thread  
-🔧 Best for lightweight or test scenarios
-
-### 2️⃣ Celery Backend
-
-Runs via Celery worker as an async job.
-
-✅ Scalable  
-✅ Non-blocking  
-🚫 Requires Celery + broker
+### `AI_EXECUTION_BACKENDS` Structure
 
 ```python
-await GenerateInitialResponse.using(backend="celery", priority=10).enqueue(...)
+AI_EXECUTION_BACKENDS = {
+    "DEFAULT_MODE": "sync",
+    "DEFAULT_BACKEND": "immediate",
+    "CELERY": {
+        "queue_default": "ai-default",
+    },
+}
 ```
 
-### 3️⃣ Django Tasks (Future)
-
-Planned for Django-native async background tasks.
+Custom keys are ignored by the built-in helpers but can be consumed by your backends.
 
 ---
 
-## ServiceExecutionMixin
+## Built-in Backends
 
-`DjangoExecutableLLMService` inherits from `ServiceExecutionMixin` to add helper methods:
+### Immediate Backend
 
-```python
-GenerateInitialResponse.using(priority=50, run_after=5).enqueue(simulation=my_sim)
-GenerateInitialResponse.using(mode="sync").execute(simulation=my_sim)
-```
+- Runs the service inline within the calling process.
+- Default backend; no extra configuration required.
 
-Under the hood:
-- `.execute()` dispatches directly
-- `.enqueue()` serializes the call to the configured backend
+### Celery Backend
 
----
+- Dispatches work to a Celery worker.
+- Reads `queue_default` from `AI_EXECUTION_BACKENDS["CELERY"]` if provided.
+- Requires `simcore_ai_django.execution.celery_backend` to be importable (Celery optional dependency).
 
-## Debugging Execution
-
-Set environment variable:
-
-```
-SIMCORE_AI_DEBUG_EXECUTION=true
-```
-
-Logs service dispatch trace:
-
-```
-[AIService] backend=celery mode=async delay=60 priority=10 → queued
-```
-
----
-
-## Extending Backends
-
-Custom backends can be registered dynamically:
+Register additional backends with the helper:
 
 ```python
 from simcore_ai_django.execution.registry import register_backend
 
 @register_backend("rq")
-def enqueue_rq(service_cls, **kwargs):
-    # integrate with django-rq
-    ...
+def enqueue_rq(service_cls, *, call_ctx):
+    ...  # custom implementation
 ```
 
-Then used as:
+Then use via `.using(backend="rq")`.
 
-```python
-await MyService.using(backend="rq").enqueue(simulation=my_sim)
-```
+---
+
+## Debugging Dispatch
+
+- The execution entrypoint emits OpenTelemetry spans (`ai.execute`, `ai.enqueue`) detailing backend, mode, and correlation IDs.
+- Inspect the context passed to backends via `simcore_ai_django.execution.helpers.span_attrs_from_ctx`.
+- Loggers under `simcore_ai_django.execution` provide additional diagnostics when set to DEBUG.
 
 ---
 
 ## Summary
 
-✅ Declarative async control for AI Services  
-✅ Integrated with Django + Celery  
-✅ Tracing-friendly for observability  
-✅ Easily extensible for custom task runners  
+- Execution behavior is configurable per service, per call, or globally via settings.
+- Immediate and Celery backends are bundled; others can be registered dynamically.
+- Use `.using(...)` to adjust backend, delay, and priority without subclassing.
 
 ---
 
