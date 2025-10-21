@@ -1,6 +1,6 @@
 # simcore_ai_django/schemas/types.py
 from simcore_ai.types.base import BaseOutputItem, BaseOutputSchema
-from simcore_ai_django.identity import DjangoIdentityMixin
+from simcore_ai_django.identity.mixins import DjangoIdentityMixin
 
 __all__ = [
     "DjangoBaseOutputSchema",

@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from simcore_ai.identity import IdentityMixin
-from simcore_ai_django.identity import derive_django_identity_for_class
+from .utils import derive_django_identity_for_class
+
 
 class DjangoIdentityMixin(IdentityMixin):
     """
@@ -12,6 +13,7 @@ class DjangoIdentityMixin(IdentityMixin):
       from Django app label (origin), default bucket, and stripped class name.
     - All parts normalize to snake_case.
     """
+
     @classmethod
     def identity_tuple(cls) -> tuple[str, str, str]:
         o = getattr(cls, "origin", None)

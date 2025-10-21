@@ -5,10 +5,8 @@ This module provides a facade over identity utilities, respecting the import-bou
 All identity-related helpers should be imported from this module by SimWorks Django apps.
 """
 
-from typing import Type, Any
-
-from simcore_ai_django.identity import *
 from simcore_ai.identity import Identity, IdentityMixin
+from simcore_ai_django.identity.utils import *
 
 __all__ = [
     "Identity",
@@ -28,4 +26,3 @@ __all__ = [
     "resolve_collision",
     "parse_dot_identity",
 ]
-
