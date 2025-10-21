@@ -43,74 +43,77 @@ def _ensure_module(name: str) -> ModuleType:
 
 
 # ---------------------------------------------------------------------------
-# Minimal Django shims
+# Minimal Django shims (installed only when Django is unavailable)
 # ---------------------------------------------------------------------------
 
-django_mod = _ensure_module("django")
+try:  # pragma: no cover - import guard
+    import django as django_mod  # type: ignore[import]
+except ModuleNotFoundError:  # pragma: no cover - exercised in lightweight envs
+    USING_DJANGO_STUB = True
 
-# django.conf.settings replacement (mutable namespace patched per test)
-conf_mod = _ensure_module("django.conf")
-conf_mod.settings = SimpleNamespace()
-django_mod.conf = conf_mod
+    django_mod = _ensure_module("django")
 
-# django.apps.AppConfig base class used by simcore_ai_django.apps
-apps_mod = _ensure_module("django.apps")
+    # django.conf.settings replacement (mutable namespace patched per test)
+    conf_mod = _ensure_module("django.conf")
+    conf_mod.settings = SimpleNamespace()
+    django_mod.conf = conf_mod
 
+    # django.apps.AppConfig base class used by simcore_ai_django.apps
+    apps_mod = _ensure_module("django.apps")
 
-class _FakeAppConfig:
-    def __init__(self, app_name: str = "", app_module: ModuleType | None = None) -> None:
-        self.name = app_name or getattr(self, "name", "")
-        self.app_module = app_module
+    class _FakeAppConfig:
+        def __init__(self, app_name: str = "", app_module: ModuleType | None = None) -> None:
+            self.name = app_name or getattr(self, "name", "")
+            self.app_module = app_module
 
-    def ready(self) -> None:  # pragma: no cover - simple stub
+        def ready(self) -> None:  # pragma: no cover - simple stub
+            return None
+
+    apps_mod.AppConfig = _FakeAppConfig
+    apps_registry = SimpleNamespace(app_configs={})
+    apps_registry.get_app_config = lambda label: apps_registry.app_configs[label]
+    apps_registry.get_app_configs = lambda: list(apps_registry.app_configs.values())
+    apps_mod.apps = apps_registry
+    django_mod.apps = apps_mod
+
+    # django.utils.module_loading.autodiscover_modules stub used during AppConfig.ready
+    utils_mod = _ensure_module("django.utils")
+    module_loading_mod = _ensure_module("django.utils.module_loading")
+
+    def autodiscover_modules(*_modules: str, **_kwargs: object) -> None:  # pragma: no cover - trivial
         return None
 
+    module_loading_mod.autodiscover_modules = autodiscover_modules
+    utils_mod.module_loading = module_loading_mod
+    django_mod.utils = utils_mod
 
-apps_mod.AppConfig = _FakeAppConfig
-apps_registry = SimpleNamespace(app_configs={})
-apps_registry.get_app_config = lambda label: apps_registry.app_configs[label]
-apps_registry.get_app_configs = lambda: list(apps_registry.app_configs.values())
-apps_mod.apps = apps_registry
-django_mod.apps = apps_mod
+    # django.dispatch.Signal used by simcore_ai_django.signals
+    dispatch_mod = _ensure_module("django.dispatch")
 
-# django.utils.module_loading.autodiscover_modules stub used during AppConfig.ready
-utils_mod = _ensure_module("django.utils")
-module_loading_mod = _ensure_module("django.utils.module_loading")
+    class _Signal:
+        """Minimal drop-in replacement for :class:`django.dispatch.Signal`."""
 
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            self._receivers: list = []
 
-def autodiscover_modules(*_modules: str, **_kwargs: object) -> None:  # pragma: no cover - trivial
-    return None
+        def connect(self, receiver, **_kwargs: object) -> None:  # pragma: no cover - unused hook
+            self._receivers.append(receiver)
 
+        def send_robust(self, sender=None, **payload: object):  # pragma: no cover - behaviour trivial
+            results = []
+            for receiver in list(self._receivers):
+                try:
+                    results.append((receiver, receiver(sender=sender, **payload)))
+                except Exception as exc:  # pragma: no cover - defensive
+                    results.append((receiver, exc))
+            return results
 
-module_loading_mod.autodiscover_modules = autodiscover_modules
-utils_mod.module_loading = module_loading_mod
-django_mod.utils = utils_mod
+    dispatch_mod.Signal = _Signal
+    django_mod.dispatch = dispatch_mod
 
-# django.dispatch.Signal used by simcore_ai_django.signals
-dispatch_mod = _ensure_module("django.dispatch")
-
-
-class _Signal:
-    """Minimal drop-in replacement for :class:`django.dispatch.Signal`."""
-
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        self._receivers: list = []
-
-    def connect(self, receiver, **_kwargs: object) -> None:  # pragma: no cover - unused hook
-        self._receivers.append(receiver)
-
-    def send_robust(self, sender=None, **payload: object):  # pragma: no cover - behaviour trivial
-        results = []
-        for receiver in list(self._receivers):
-            try:
-                results.append((receiver, receiver(sender=sender, **payload)))
-            except Exception as exc:  # pragma: no cover - defensive
-                results.append((receiver, exc))
-        return results
-
-
-dispatch_mod.Signal = _Signal
-django_mod.dispatch = dispatch_mod
+else:  # pragma: no cover - when Django is installed
+    USING_DJANGO_STUB = False
+    conf_mod = django_mod.conf
 
 
 # ---------------------------------------------------------------------------
@@ -151,11 +154,13 @@ def shared_task(*_task_args: object, **_task_kwargs: object):
 celery_mod.shared_task = shared_task
 
 
-@pytest.fixture
-def settings(monkeypatch):
-    settings_ns = SimpleNamespace()
-    monkeypatch.setattr(conf_mod, "settings", settings_ns, raising=False)
-    return settings_ns
+if USING_DJANGO_STUB:
+
+    @pytest.fixture
+    def settings(monkeypatch):
+        settings_ns = SimpleNamespace()
+        monkeypatch.setattr(conf_mod, "settings", settings_ns, raising=False)
+        return settings_ns
 
 
 # ---------------------------------------------------------------------------
@@ -293,75 +298,66 @@ config_mod = _ensure_module("pydantic.config")
 config_mod.ConfigDict = dict  # type: ignore[assignment]
 
 
-db_mod = _ensure_module("django.db")
+if USING_DJANGO_STUB:
 
+    db_mod = _ensure_module("django.db")
 
-class _Atomic:
-    def __enter__(self):  # pragma: no cover - trivial
-        return None
+    class _Atomic:
+        def __enter__(self):  # pragma: no cover - trivial
+            return None
 
-    def __exit__(self, exc_type, exc, tb):  # pragma: no cover - trivial
-        return False
+        def __exit__(self, exc_type, exc, tb):  # pragma: no cover - trivial
+            return False
 
+    class _Transaction:
+        def atomic(self):  # pragma: no cover - trivial
+            return _Atomic()
 
-class _Transaction:
-    def atomic(self):  # pragma: no cover - trivial
-        return _Atomic()
+    db_mod.transaction = _Transaction()
 
+    models_mod = _ensure_module("django.db.models")
 
-db_mod.transaction = _Transaction()
+    class _Model:
+        objects = SimpleNamespace()
 
+        def save(self, *args, **kwargs):  # pragma: no cover - trivial
+            return None
 
-models_mod = _ensure_module("django.db.models")
+    class _Field:
+        def __init__(self, *args, **kwargs):  # pragma: no cover - trivial
+            self.args = args
+            self.kwargs = kwargs
 
+    def _ForeignKey(to, *args, **kwargs):  # pragma: no cover - trivial
+        return _Field(to, *args, **kwargs)
 
-class _Model:
-    objects = SimpleNamespace()
+    class _Index:
+        def __init__(self, *args, **kwargs):  # pragma: no cover - trivial
+            self.args = args
+            self.kwargs = kwargs
 
-    def save(self, *args, **kwargs):  # pragma: no cover - trivial
-        return None
+    models_mod.Model = _Model
+    models_mod.DateTimeField = _Field
+    models_mod.CharField = _Field
+    models_mod.BooleanField = _Field
+    models_mod.JSONField = _Field
+    models_mod.UUIDField = _Field
+    models_mod.IntegerField = _Field
+    models_mod.TextField = _Field
+    models_mod.PositiveIntegerField = _Field
+    models_mod.ForeignKey = _ForeignKey
+    models_mod.Index = _Index
+    models_mod.SET_NULL = object()
 
+    # django.utils.timezone stub
+    timezone_mod = _ensure_module("django.utils.timezone")
 
-class _Field:
-    def __init__(self, *args, **kwargs):  # pragma: no cover - trivial
-        self.args = args
-        self.kwargs = kwargs
+    def _now():  # pragma: no cover - trivial helper
+        import datetime
 
+        return datetime.datetime.utcnow()
 
-def _ForeignKey(to, *args, **kwargs):  # pragma: no cover - trivial
-    return _Field(to, *args, **kwargs)
+    timezone_mod.now = _now
 
-
-class _Index:
-    def __init__(self, *args, **kwargs):  # pragma: no cover - trivial
-        self.args = args
-        self.kwargs = kwargs
-
-
-models_mod.Model = _Model
-models_mod.DateTimeField = _Field
-models_mod.CharField = _Field
-models_mod.BooleanField = _Field
-models_mod.JSONField = _Field
-models_mod.UUIDField = _Field
-models_mod.IntegerField = _Field
-models_mod.TextField = _Field
-models_mod.PositiveIntegerField = _Field
-models_mod.ForeignKey = _ForeignKey
-models_mod.Index = _Index
-models_mod.SET_NULL = object()
-
-# django.utils.timezone stub
-timezone_mod = _ensure_module("django.utils.timezone")
-
-
-def _now():  # pragma: no cover - trivial helper
-    import datetime
-
-    return datetime.datetime.utcnow()
-
-
-timezone_mod.now = _now
-
-django_mod.utils.timezone = timezone_mod
+    django_mod.utils.timezone = timezone_mod
 
