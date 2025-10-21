@@ -1,156 +1,96 @@
 # Settings & Environment Variables — simcore_ai_django
 
-> Reference guide for environment variables and Django settings that influence AI service behavior.
+> Reference guide for configuration knobs that influence AI service behavior.
 
 ---
 
 ## Overview
 
-`simcore_ai_django` integrates deeply with Django’s settings and your environment.
-This document explains the configuration hierarchy, key environment variables,
-and safe defaults used by the AI framework.
+`simcore_ai_django` leans on Django settings for configuration. Environment variables are minimal; most options live under structured settings so they can be overridden per environment.
+
+Configuration precedence:
+
+1. **Service overrides** (class attributes or `.using(...)` calls)
+2. **Django settings**
+3. **Built-in defaults**
 
 ---
 
-## Configuration Hierarchy
+## Django Settings
 
-The framework checks configuration in this order (highest → lowest precedence):
+### Identity Tokens
 
-1. **Django `settings.py`**
-2. **Environment variables**
-3. **Built‑in defaults**
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `SIMCORE_AI_IDENTITY_STRIP_TOKENS` | list[str] | `[]` | Global extra tokens stripped from identity names (merged with app tokens). |
+| `AI_IDENTITY_STRIP_TOKENS` | list[str] | `[]` | Legacy alias consumed by identity utils. |
 
-Example:
+Each app may also define `identity_strip_tokens` **or** `AI_IDENTITY_STRIP_TOKENS` on its `AppConfig`. Both forms are honored.
+
+### Codec Registration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER` | bool | `False` | When true, codec registration instantiates the class once to surface import-time errors. |
+
+### Execution Backends
+
+`AI_EXECUTION_BACKENDS` is a dictionary that configures dispatch defaults and backend metadata:
+
 ```python
-from django.conf import settings
-DEBUG = getattr(settings, "SIMCORE_AI_DEBUG", os.getenv("SIMCORE_AI_DEBUG", False))
+AI_EXECUTION_BACKENDS = {
+    "DEFAULT_MODE": "sync",      # or "async"
+    "DEFAULT_BACKEND": "immediate",  # or "celery"
+    "CELERY": {
+        "queue_default": "ai-default",
+    },
+}
 ```
+
+- `DEFAULT_MODE` → fallback for `execution_mode` when not set on a service.
+- `DEFAULT_BACKEND` → fallback for `execution_backend`.
+- `CELERY.queue_default` → optional queue name used by the Celery backend.
+
+### Prompt/Tracing Utilities
+
+The prompt engine and service base classes emit OpenTelemetry spans automatically. No extra settings are required, but you can configure OpenTelemetry exporters as usual in Django settings.
 
 ---
 
 ## Environment Variables
 
-### Core Variables
+While most configuration lives in Django settings, a few environment variables are commonly used alongside this package:
 
-| Variable | Type | Default | Description |
-|:--|:--|:--|:--|
-| `SIMCORE_AI_DEBUG` | `bool` | `False` | Enables verbose logging and registry collision tracing |
-| `SIMCORE_AI_BACKEND` | `str` | `"immediate"` | Execution backend (`immediate`, `celery`, etc.) |
-| SIMCORE_AI_IDENTITY_STRIP_TOKENS | str (CSV) | "" | Adds custom tokens to strip from identity names (merged with app-level tokens) |
-| `SIMCORE_AI_PROVIDER` | `str` | `"openai"` | Default AI provider |
-| `SIMCORE_AI_TIMEOUT` | `int` | `60` | Request timeout (seconds) |
-| `SIMCORE_AI_API_KEY` | `str` | `None` | API key if provider not using Django secrets |
+| Variable | Purpose |
+|----------|---------|
+| `SIMCORE_AI_IDENTITY_STRIP_TOKENS` | CSV string parsed into the setting of the same name (useful for twelve-factor deployments). |
+| Provider-specific keys (e.g., `OPENAI_API_KEY`) | Consumed by your chosen `simcore_ai` provider implementation. |
+
+Everything else—including execution mode, codecs, registries, and signals—is controlled via Django settings or service-level overrides.
 
 ---
 
-## Django Settings (Optional Overrides)
+## Inspecting Configuration
 
-| Setting | Description |
-|:--|:--|
-| `SIMCORE_AI_DEBUG` | Overrides `SIMCORE_AI_DEBUG` env var. Enables full trace mode. |
-| SIMCORE_AI_IDENTITY_STRIP_TOKENS | List or CSV string of additional tokens to remove when deriving identity. |
-| `SIMCORE_AI_BACKEND` | Execution backend selection. `"immediate"` (default) or `"celery"`. |
-| `SIMCORE_AI_PROVIDER` | Name of provider; should match installed provider class name. |
-| `SIMCORE_AI_TIMEOUT` | Global default request timeout for LLM calls. |
-| `SIMCORE_AI_API_KEY` | Secret key for provider if not stored in system envs. |
-
----
-
-## Identity Token Configuration
-
-### Base Tokens (Core)
-
-```
-Prompt, Section, Service, Codec, Generate, Response, Mixin
-```
-
-### Django Extensions
-
-Django automatically extends these with:
-- `The literal token "Django"`
-- `Tokens from settings.SIMCORE_AI_IDENTITY_STRIP_TOKENS (list or CSV)`
-- `Tokens from AppConfig.AI_IDENTITY_STRIP_TOKENS (per app)`
-
-### Example
+Quick helpers you can run from `manage.py shell`:
 
 ```python
-# settings.py
-SIMCORE_AI_IDENTITY_STRIP_TOKENS = ["Patient", "Generate", "Output"]
-```
+from simcore_ai_django.execution.helpers import get_settings_dict
+print(get_settings_dict())  # AI_EXECUTION_BACKENDS snapshot
 
-```python
-# apps.py
-from django.apps import AppConfig
-
-class ChatlabConfig(AppConfig):
-    name = "chatlab"
-    AI_IDENTITY_STRIP_TOKENS = {"Chatlab", "Generate"}
-```
-
-Result → tokens {"Chatlab", "Generate", "Patient"} are removed from edges.
-
----
-
-## Backend Configuration
-
-### Immediate Backend (Default)
-Runs tasks synchronously in the request thread.
-Useful for development or small workloads.
-
-### Celery Backend
-If Celery workers are configured, `.using("celery")` can enqueue tasks:
-
-```python
-generate_initial.using("celery").enqueue(simulation=my_sim)
-```
-
-Celery connection settings:
-```python
-CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
-```
-
----
-
-## Debug Mode
-
-When `SIMCORE_AI_DEBUG` or `settings.SIMCORE_AI_DEBUG` is true:
-- Registry collisions are de-duplicated by suffixing (e.g., "-2") and logged
-- LLM payloads are logged (without secrets)
-- Prompt render times are measured
-- Provider round‑trip timings are printed
-
----
-
-## Safety Notes
-
-✅ **Always** store provider API keys in `.env` or Django Secrets Manager.  
-🚫 Never commit `SIMCORE_AI_API_KEY` to source control.  
-⚙️ Keep `SIMCORE_AI_DEBUG=False` in production.
-
----
-
-## Quick Diagnostic
-
-```bash
-python manage.py shell_plus
->>> from simcore_ai.identity.utils import dump_identity_config
->>> dump_identity_config()
-{
-  "DEBUG": True,
-  "STRIP_TOKENS": ["Prompt", "Section", "Service", "Codec", "Generate", "Response", "Mixin", "Patient", ...],
-  "BACKEND": "immediate"
-}
+from simcore_ai_django.identity import derive_django_identity_for_class
+from myapp.ai.prompts.sections import PatientInitialSection
+print(derive_django_identity_for_class(PatientInitialSection))
 ```
 
 ---
 
 ## Summary
 
-- Environment variables control default AI runtime behavior.
-- Django settings override envs when defined.
-- Identity and registry behaviors are fully configurable.
-- Debug mode offers extra safety and insight during development.
+- Prefer structured Django settings over ad-hoc environment variables.
+- Use `AI_EXECUTION_BACKENDS` to control default mode/backend/queue.
+- Identity stripping tokens can be declared globally or per-app.
+- Enable `SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER` to surface codec errors early.
 
 ---
 

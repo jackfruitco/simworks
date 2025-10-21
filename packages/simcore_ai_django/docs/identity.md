@@ -1,8 +1,8 @@
 # Identity System (simcore_ai_django)
 
-> How `(origin, bucket, name)` stitches Services, Codecs, Prompt Sections, and Schemas together — with zero boilerplate.
+> How `(origin, bucket, name)` stitches Services, Codecs, Prompt Sections, and Schemas together — with minimal configuration.
 
-The **tuple3 identity** model is the backbone of `simcore_ai_django`. When your **Service**, **PromptSection**, **Codec**, and **Response Schema** all share the same identity, the framework wires them together automatically.
+The **tuple³ identity** model is the backbone of `simcore_ai_django`. When your **Service**, **PromptSection**, **Codec**, and **Response Schema** all share the same identity, the framework wires them together automatically.
 
 ```
 (origin, bucket, name)  →  "origin.bucket.name"
@@ -17,9 +17,9 @@ Examples:
 
 ## Overview
 
-- **Origin**: logical project or producer (e.g., your Django **app label**)
-- **Bucket**: functional grouping (e.g., `standardized_patient`, `triage`, `feedback`)
-- **Name**: concrete operation (snake-cased from your class name, minus common tokens)
+- **Origin**: logical project or producer (typically your Django **app label**).
+- **Bucket**: functional grouping (e.g., `standardized_patient`, `triage`, `feedback`).
+- **Name**: concrete operation (derived from the class name after token stripping).
 
 All four building blocks (Service, Codec, PromptSection, Schema) carry the same identity so they can find each other without extra configuration.
 
@@ -29,13 +29,13 @@ All four building blocks (Service, Codec, PromptSection, Schema) carry the same 
 
 `simcore_ai_django` extends the core identity utilities so classes can **autoderive** their identity:
 
-- **origin** → Django **app label** (e.g., `"chatlab"`)
-- **bucket** → `"default"` unless set on the class/mixin or provided explicitly
-- **name** → stripped & snake-cased class name
+- **origin** → Django **app label** when available (falls back to module root → `"default"`).
+- **bucket** → `"default"` unless set on the class/mixin or provided explicitly.
+- **name** → class name with edge tokens stripped and converted to snake_case.
 
-### Edge‑only token stripping
+### Edge-only token stripping
 
-Name derivation strips common tokens from the **leading and trailing** edges of your class name (not the middle), repeatedly, then converts the remaining text to snake_case.
+Name derivation removes tokens from the **leading and trailing** edges of your class name (not the middle), then converts the remainder to snake_case.
 
 **Default core tokens:**
 ```
@@ -43,35 +43,13 @@ Prompt, Section, Service, Codec, Generate, Response, Mixin
 ```
 
 **Django adds:**
-- Your **app label** and common case variants (e.g., `Chatlab`, `CHATLAB`)
-- Any tokens you add globally or per app (see below)
-- The literal token "Django"
+- `"Django"`
+- Variants of your **app label** (case and slug forms)
+- Global tokens from `settings.AI_IDENTITY_STRIP_TOKENS`
+- App-specific tokens from `AppConfig.identity_strip_tokens` or `AppConfig.AI_IDENTITY_STRIP_TOKENS`
+- Any extra tokens supplied by mixins/decorators
 
-> We intentionally strip only at the **edges** to avoid mangling words like “Outpatient”.
-
-### Global tokens (settings)
-
-You can extend the tokens via Django settings:
-
-```python
-# settings.py
-SIMCORE_AI_IDENTITY_STRIP_TOKENS = ["Mixin", "LLM", "DTO"]
-```
-
-### Per‑app tokens (`apps.py`)
-
-Each app can provide additional strip tokens:
-
-```python
-# chatlab/apps.py
-from django.apps import AppConfig
-
-class ChatlabConfig(AppConfig):
-    name = "chatlab"
-    AI_IDENTITY_STRIP_TOKENS = ["Patient"]  # e.g., strip “Patient” from edges
-```
-
-These will be unioned with core + app-label tokens at runtime.
+> We intentionally strip only at the edges to avoid mangling words like “Outpatient”.
 
 ---
 
@@ -99,21 +77,26 @@ class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPati
 ```
 
 **Why mixins?**
-- Keep `origin`/`bucket` consistent across Services, Codecs, Sections, and Schemas
-- Let `name` auto-derive from the class (after token stripping)
-- Reduce boilerplate and avoid mistakes
+- Keep `origin`/`bucket` consistent across Services, Codecs, Sections, and Schemas.
+- Let `name` autoderive from the class (after token stripping).
+- Reduce boilerplate and avoid mistakes.
 
 ---
 
 ## Collision Policy (DEBUG vs Production)
 
-If two different classes/functions resolve to the **same** identity in the **same** registry, the framework will **suffix** the name to make it unique (e.g., `-2`, `-3`, …) and log a warning with source hints. This behavior is consistent across environments to keep startup robust.
+If two different classes/functions resolve to the **same** identity in the **same** registry, the framework will defer to `resolve_collision_django`:
+
+- **`settings.DEBUG` True** → raises immediately.
+- **`settings.DEBUG` False** → logs and suffixes the name with `-2`, `-3`, ….
+
+This behavior keeps startup robust while still surfacing issues early in development.
 
 ---
 
 ## Inspecting & Debugging Identities
 
-Every identity-aware class supports an inspection method:
+Every identity-aware class supports inspection helpers:
 
 ```python
 print(MyService.identity_tuple())        # ('chatlab', 'standardized_patient', 'initial')
@@ -125,12 +108,13 @@ print(MySchema.identity_tuple())         # ditto
 And you can parse/build canonical strings:
 
 ```python
-from simcore_ai.identity import parse_dot_identity
+from simcore_ai_django.identity import parse_dot_identity
 
 origin, bucket, name = parse_dot_identity("chatlab.standardized_patient.initial")
 ```
 
 You can also derive identities directly without registering:
+
 ```python
 from simcore_ai_django.identity import derive_django_identity_for_class
 print(derive_django_identity_for_class(MyPromptSection))
@@ -140,7 +124,7 @@ print(derive_django_identity_for_class(MyPromptSection))
 
 ## Minimal Examples (All Four Types)
 
-When all four share the same identity, the service can run with almost no config.
+When all four share the same identity, the service can run with almost no configuration.
 
 ```python
 # mixins.py
@@ -152,9 +136,9 @@ class StandardizedPatientMixin(DjangoIdentityMixin): bucket = "standardized_pati
 
 ```python
 # schemas/patient.py
-from simcore_ai_django.api.types import DjangoStrictSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
 
-class PatientInitialOutputSchema(DjangoStrictSchema, ChatlabMixin, StandardizedPatientMixin):
+class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
     messages: list[DjangoLLMResponseItem]
 ```
 
@@ -186,9 +170,6 @@ from simcore_ai_django.api.decorators import llm_service
 
 @llm_service  # or: @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
-    # Optional today until schema-by-identity is enabled globally:
-    from chatlab.ai.schemas import PatientInitialOutputSchema as _Schema
-    # Your domain logic here; return model-ready data. Schema can be bound in service config elsewhere.
     return {"ok": True}
 ```
 
@@ -198,40 +179,15 @@ async def generate_initial(simulation, slim):
 
 ## Frequently Asked Questions
 
-### Do I have to use mixins?
-No. You can set `origin`/`bucket`/`name` as **class attributes** directly. Mixins just reduce repetition and ensure consistency.
+**How do I override only the bucket?**
+> Provide `bucket="triage"` on the decorator or mix it in via `DjangoIdentityMixin`.
 
-### Can I override the `name`?
-Yes — set `name = "my_snake_name"` on the class to bypass auto-derivation.
+**Can I see all registered identities?**
+> Use registry helpers such as `PromptRegistry.all()` or `DjangoCodecRegistry.names()`.
 
-### Can I use decorators to override identity?
-Yes. The Django-aware decorators (`@llm_service`, `@codec`, `@prompt_section`) accept classes that already carry identity attrs or mixins. Prefer class-level attrs/mixins for clarity.
-
-### What about schema-by-identity?
-If enabled, codecs/services will auto-resolve schemas with the same tuple3. Until then, set `response_format_cls` on services explicitly.
-
-### What if two functions/classes end up with the same identity?
-The registry will suffix the later one (e.g., `-2`, `-3`) and log a warning. If you need a stable name, set `name = "..."` on the class or pass `name=` to the decorator.
+**Do schemas require decorators?**
+> No. Schemas inherit from `DjangoBaseOutputSchema` and autoderive identity based on mixins/class name.
 
 ---
 
-## Tips for Large Apps
-
-- Define a small set of identity mixins per domain (e.g., `StandardizedPatientMixin`, `TriageMixin`).
-- Add per-app strip tokens in `apps.py` to keep names concise (e.g., strip `Patient`, `Scenario`).
-- In tests, assert identity alignment across all types for each operation.
-
-```python
-assert Svc.identity_tuple() == Codec.identity_tuple() == Sec.identity_tuple() == Schema.identity_tuple()
-```
-
----
-
-## See Also
-
-- [Quick Start](quick_start.md)
-- [Services](services.md)
-- [Codecs](codecs.md)
-- [Schemas](schemas.md)
-- [Prompt Sections](prompt_sections.md)
-- [Prompts & Plans](prompts.md)
+© 2025 Jackfruit SimWorks • simcore_ai_django

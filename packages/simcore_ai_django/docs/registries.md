@@ -6,12 +6,11 @@
 
 ## Overview
 
-Registries map **tuple3 identities** to concrete classes so the framework can
-wire components automatically. In `simcore_ai_django`, the important registries are:
+Registries map **tuple³ identities** to concrete classes so the framework can wire components automatically. In `simcore_ai_django`, the important registries are:
 
-- **Prompt Registry** — maps identities → `PromptSection` classes
-- **Codec Registry** — maps identities → `DjangoBaseLLMCodec` classes
-- **(Optional) Services Registry** — discovery and collision control for services (dev tooling)
+- **Prompt Registry** — maps identities → `PromptSection` classes.
+- **Codec Registry** — maps identities → `DjangoBaseLLMCodec` classes.
+- **(Optional) Services Registry** — discovery and collision control for services (dev tooling).
 
 ---
 
@@ -21,14 +20,10 @@ wire components automatically. In `simcore_ai_django`, the important registries 
 
 - Populated by the `@prompt_section` decorator.
 - Accepts dot-only strings like `"chatlab.standardized_patient.initial"`.
-- Used by `PromptEngine` and Services to resolve section classes.
+- Used by `PromptEngine` and services to resolve section classes.
 
 ```python
-from simcore_ai.promptkit.registry import PromptRegistry
-
-# Register via decorator
-@prompt_section
-class PatientInitialSection(PromptSection): ...
+from simcore_ai_django.promptkit import PromptRegistry
 
 # Lookup
 Section = PromptRegistry.require_str("chatlab.standardized_patient.initial")
@@ -37,48 +32,47 @@ Section = PromptRegistry.require_str("chatlab.standardized_patient.initial")
 all_sections = list(PromptRegistry.all())
 ```
 
-**Collision Policy:**  
-If two different classes register the same identity:  
-- **DEBUG:** raise immediately  
-- **Production:** log warning and auto-suffix name (`-2`, `-3`, …) via identity collision resolver.
-
-> Use `Class.identity_tuple()` in tests to assert identities before registration.
+**Collision Policy:** collisions are resolved via `resolve_collision_django` (DEBUG raises, production suffixes the name).
 
 ---
 
 ## Codec Registry
 
-**Module:** `simcore_ai.codecs.registry` (core) and `simcore_ai_django.codecs.registry` (Django)
+**Module:** `simcore_ai_django.codecs.registry`
 
 - Populated by the `@codec` decorator.
-- Keys are `(origin, codec_name)` where `codec_name` usually equals `"{bucket}:{name}"` in legacy setups, but **dot-only tuple3** is now preferred.
-- Django registry defers to core registry if not found locally.
+- Keys are `(origin, bucket, name)` tuples stored in lowercase snake_case.
+- Lookups support exact identity plus fallbacks to `(bucket, "default")` and `("default", "default")` for backwards compatibility.
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import get_codec as get_django_codec
+from simcore_ai_django.codecs import DjangoCodecRegistry, get_codec
 
 @codec
-class PatientInitialCodec(DjangoBaseLLMCodec): ...
+class PatientInitialCodec(DjangoBaseLLMCodec):
+    ...
 
-codec = get_django_codec("chatlab", "standardized_patient.initial")  # preferred
+codec_cls = get_codec("chatlab", "standardized_patient", "initial")
+assert codec_cls is PatientInitialCodec
 ```
 
-**Selection Order in Services:**  
-1. `codec_class` attribute on service (if set)  
-2. `select_codec()` override return (class/instance)  
-3. Django registry by identity (`origin`, `bucket.name` or dot tuple3)  
-4. Core codec registry as fallback  
-5. Raise `ServiceCodecResolutionError`
+**Selection order inside services:**
+
+1. Explicit `codec_class` attribute or injected codec instance.
+2. `select_codec()` override return value.
+3. `DjangoCodecRegistry.get_codec(origin, bucket, name)` (with fallbacks).
+4. Core `simcore_ai.codecs.registry` as a final fallback.
+5. Raise `ServiceCodecResolutionError` if nothing matches.
 
 ---
 
-## Services Registry (Optional for dev tooling)
+## Services Registry (Optional)
 
 If you enable a services registry, it’s typically used to:
-- Detect **collisions** early (especially during tests/dev)
-- Offer **discovery** (listing available services and identities)
-- Power **docs or admin UIs**
+
+- Detect **collisions** early (especially during tests/dev).
+- Offer **discovery** (listing available services and identities).
+- Power docs or admin UIs.
 
 Pattern:
 
@@ -93,22 +87,23 @@ if ServicesRegistry:
     ServicesRegistry.has("chatlab", "standardized_patient", "initial")  # True/False
 ```
 
+The Django `@llm_service` decorator calls `resolve_collision_django` before registering, mirroring codec/prompt behavior.
+
 ---
 
 ## Debugging Registries
 
 ```python
 # Prompt sections
-from simcore_ai.promptkit.registry import PromptRegistry
-print([s.__name__ for s in PromptRegistry.all()])
+from simcore_ai_django.promptkit import PromptRegistry
+print([cls.identity_static().to_string() for cls in PromptRegistry.all()])
 
 # Codecs
-from simcore_ai_django.codecs.registry import CODEC_REGISTRY as DJANGO_CODECS
-print(list(DJANGO_CODECS.keys()))
+from simcore_ai_django.codecs import DjangoCodecRegistry
+print(list(DjangoCodecRegistry.names()))
 ```
 
-If registration order matters (e.g., import not executed), ensure your app imports
-modules containing decorated classes in `apps.py:ready()`.
+Ensure your app imports modules containing decorated classes inside `AppConfig.ready()` so they register on startup.
 
 ```python
 class ChatlabConfig(AppConfig):
@@ -123,18 +118,20 @@ class ChatlabConfig(AppConfig):
 
 ## Collision Handling
 
-- Identities are normalized to snake_case
-- Edge-only token stripping applied (class/mixins/app tokens)
-- In **DEBUG**, collisions raise to fail fast
-- In **Production**, `resolve_collision_django` suffixes the name (`-2`, `-3`, …)
+- Identities are normalized to snake_case.
+- Edge-only token stripping applies (class/mixins/app tokens).
+- In **DEBUG**, collisions raise to fail fast.
+- In **production**, `resolve_collision_django` suffixes the name (`-2`, `-3`, …).
 
-Use in registries like:
+Use the helper directly when you need to preflight identities:
 
 ```python
-org, buck, nm = resolve_collision_django(
-    kind="prompt_section",
-    candidate=("chatlab", "standardized_patient", "initial"),
-    exists=lambda t: PromptRegistry.get_str(".".join(t)) is not None,
+from simcore_ai_django.identity import resolve_collision_django
+
+origin, bucket, name = resolve_collision_django(
+    "codec",
+    ("chatlab", "standardized_patient", "initial"),
+    exists=DjangoCodecRegistry.has,
 )
 ```
 
@@ -144,7 +141,7 @@ org, buck, nm = resolve_collision_django(
 
 - Keep decorator imports under dedicated modules (`ai/services.py`, `ai/codecs.py`, etc.) and import them in `apps.py:ready()`.
 - Assert identity alignment in unit tests before registration.
-- Prefer dot-only tuple3 identity strings in all references and configuration.
+- Prefer dot-only tuple³ identity strings in all references and configuration.
 
 ---
 

@@ -1,48 +1,31 @@
 # Prompts and Prompt Plans in simcore_ai_django
 
-> Prompts bring together PromptSections into a coherent input for an LLM Service.
+> Prompts assemble PromptSections into the final input for an LLM service.
 
 ---
 
 ## Overview
 
-A **Prompt** represents the *final assembled message set* that is passed to the LLM.
+A **Prompt** represents the final set of messages sent to the LLM. Services build prompts dynamically from one or more `PromptSection`s resolved by identity or declared in a `prompt_plan`.
 
-It is composed dynamically from one or more **PromptSections** registered in the global
-`PromptRegistry`, according to a Service’s `prompt_plan`.
-
-When all components share the same **tuple3 identity** (`origin.bucket.name`),  
-the system automatically links them — no manual configuration required.
+When components share the same **tuple³ identity** (`origin.bucket.name`), the system links them automatically — no manual wiring required.
 
 ---
 
-## Components of a Prompt
+## Prompt Composition
 
-| Part | Description |
-|------|--------------|
-| `instruction` | Developer or system message text |
-| `message` | User-facing message text |
-| `extra_messages` | Optional (role, text) tuples for additional context |
-| `metadata` | Optional contextual info for downstream codecs |
-
----
-
-## Prompt Assembly Flow
-
-1. The **Service** requests a prompt from the `PromptEngine`.
-2. The `PromptEngine` loads each **PromptSection** in the service’s `prompt_plan`.
-3. Each section contributes an instruction, message, and/or extras.
-4. The engine combines them into a single `Prompt` object.
-5. The `Prompt` is serialized into structured `LLMRequestMessage` objects.
+1. The **Service** asks `PromptEngine` to build a prompt.
+2. The engine instantiates each `PromptSection` in the service’s `prompt_plan` (or the section matching the service identity).
+3. Sections emit instructions/messages; the engine merges them into a single `Prompt` dataclass.
+4. The service converts that prompt into structured `LLMRequestMessage` objects.
 
 ---
 
 ## Default Prompt Resolution
 
-If the Service does not define a `prompt_plan`, the engine automatically looks up
-a section whose identity matches the Service’s own identity tuple.
+If a service does not define `prompt_plan`, the engine looks up a section whose identity matches the service’s own tuple.
 
-Example:
+Example chain:
 
 ```
 chatlab.standardized_patient.initial
@@ -52,13 +35,13 @@ chatlab.standardized_patient.initial
 └── PatientInitialOutputSchema
 ```
 
-The Service will automatically use `PatientInitialSection` as its prompt source.
+The service automatically uses `PatientInitialSection` as its prompt source.
 
 ---
 
 ## Manual Prompt Plans
 
-A Service can override the default by specifying an explicit sequence:
+A service can override the default by providing explicit specs:
 
 ```python
 prompt_plan = [
@@ -67,7 +50,7 @@ prompt_plan = [
 ]
 ```
 
-or using class references:
+You can also provide classes directly:
 
 ```python
 from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
@@ -75,76 +58,60 @@ from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSe
 prompt_plan = [PatientInitialSection, PatientFollowupSection]
 ```
 
----
-
-## Rendering Process
-
-Each `PromptSection` can define `instruction`, `message`, or dynamic renderers:
-
-```python
-class PatientFollowupSection(PromptSection):
-    async def arender(self, simulation, **ctx):
-        last_symptom = getattr(simulation, "chief_complaint", "none")
-        return f"Patient reports continued {last_symptom}."
-```
-
-The resulting `Prompt` becomes:
-
-```python
-Prompt(
-    instruction="You are a standardized patient...",
-    message="Patient reports continued sore throat.",
-    extra_messages=[],
-)
-```
+Each spec is resolved via `simcore_ai.promptkit.resolvers.resolve_section`, so canonical strings or classes both work.
 
 ---
 
-## Debugging Prompt Assembly
-
-To debug a Service’s prompt composition:
+## Inspecting Prompts at Runtime
 
 ```python
 svc = GenerateInitialResponse(simulation_id=1)
 prompt = await svc.ensure_prompt(simulation=my_sim)
+
 print(prompt.instruction)
 print(prompt.message)
+print(prompt.extra_messages)
+print(prompt.meta["sections"])  # labels rendered in order
 ```
 
-To inspect all registered sections:
-
-```python
-from simcore_ai.promptkit.registry import PromptRegistry
-
-for ident, section in PromptRegistry._store.items():
-    print(ident.to_string(), "→", section.__name__)
-```
+`ensure_prompt` caches the prompt on the service instance for reuse during the request lifecycle.
 
 ---
 
-## Integration with PromptEngine
-
-The `PromptEngine` supports both sync and async builds.
+## Working with PromptRegistry
 
 ```python
-prompt = await PromptEngine.abuild_from([PatientInitialSection], context=ctx)
+from simcore_ai_django.promptkit import PromptRegistry
+
+sections = [cls.__name__ for cls in PromptRegistry.all()]
+print(sections)
 ```
 
-Each section receives a context dict:
-```python
-ctx = {"simulation": simulation, "service": service}
-```
-
-Use this context to access runtime state for dynamic rendering.
+Use `PromptRegistry.require_str("origin.bucket.name")` to fetch a specific section class by identity.
 
 ---
 
-## Best Practices
+## Rendering Hooks
 
-✅ Keep prompts modular (1 section = 1 narrative purpose)  
-✅ Use mixins to share identities across related components  
-✅ Limit dynamic logic to renderers — static fields for everything else  
-✅ Use consistent tuple3 naming to enable auto‑wiring
+Each `PromptSection` can define `instruction`, `message`, or override `render_instruction` / `render_message` for dynamic content:
+
+```python
+@prompt_section
+class PatientFollowupSection(PromptSection):
+    async def render_message(self, simulation, **ctx):
+        last_symptom = getattr(simulation, "chief_complaint", "none")
+        return f"Patient reports continued {last_symptom}."
+```
+
+The engine passes keyword arguments such as `simulation` and `service` to these methods.
+
+---
+
+## Debugging Tips
+
+- Print `PromptRegistry.all()` to verify sections were registered during startup.
+- Check `prompt.meta["errors"]` for sections that failed to render.
+- Weight sections via the `weight` attribute to control ordering (lower renders first).
 
 ---
 
@@ -162,13 +129,14 @@ class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, Standard
     pass
 ```
 
-This will automatically use the `PatientInitialSection` without needing to specify a `prompt_plan`.
+This service will automatically render `PatientInitialSection` without specifying a `prompt_plan` because the identities align.
 
 ---
 
 ## Related Docs
 
 - [Prompt Sections](prompt_sections.md)
+- [Prompt Engine](prompt_engine.md)
 - [Services](services.md)
 - [Codecs](codecs.md)
 - [Schemas](schemas.md)
