@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 class DjangoCodecRegistrationMixin:
     """Override `register` to use the Django codec registry with collision suffixing."""
 
-    def register(self, obj):  # type: ignore[override]
+    def register(self, cls, identity, **kwargs):  # type: ignore[override]
         """
         Register the codec class using the **Django** registry, enforcing tuple³ uniqueness
         and handling collisions by suffixing the *name* (`name-2`, `-3`, ...).
@@ -45,13 +45,13 @@ class DjangoCodecRegistrationMixin:
         except Exception:  # pragma: no cover
             log.debug(
                 "DjangoCodecRegistry unavailable; skipping registration for %s",
-                getattr(obj, "__name__", obj),
+                getattr(cls, "__name__", cls),
             )
             return
 
-        origin = getattr(obj, "origin", None)
-        bucket = getattr(obj, "bucket", None)
-        base_name = getattr(obj, "name", None)
+        origin = getattr(cls, "origin", None)
+        bucket = getattr(cls, "bucket", None)
+        base_name = getattr(cls, "name", None)
 
         if not (origin and bucket and base_name):
             log.debug(
@@ -66,19 +66,19 @@ class DjangoCodecRegistrationMixin:
         while True:
             try:
                 # Register with explicit tuple identity
-                Registry.register(origin, bucket, getattr(obj, "name", base_name), obj)
+                Registry.register(origin, bucket, getattr(cls, "name", base_name), cls)
                 log.info(
                     "django.codec.registered (%s, %s, %s) -> %s",
                     origin,
                     bucket,
-                    getattr(obj, "name", base_name),
-                    getattr(obj, "__name__", obj),
+                    getattr(cls, "name", base_name),
+                    getattr(cls, "__name__", cls),
                 )
                 return
             except DuplicateCodecIdentityError:
                 suffix += 1
                 new_name = f"{base_name}-{suffix}"
-                setattr(obj, "name", new_name)
+                setattr(cls, "name", new_name)
                 log.warning(
                     "Collision for django codec identity (%s, %s, %s); renamed to (%s, %s, %s)",
                     origin,
@@ -92,7 +92,7 @@ class DjangoCodecRegistrationMixin:
             except Exception:  # pragma: no cover
                 log.debug(
                     "Django codec registration error suppressed for %s",
-                    getattr(obj, "__name__", obj),
+                    getattr(cls, "__name__", cls),
                     exc_info=True,
                 )
                 return
