@@ -133,8 +133,19 @@ class BaseRegistrationDecorator:
         """
         tokens = set(self.strip_tokens())
         if extra_tokens:
-            tokens.update(extra_tokens)
+            # Be defensive: only add string-like tokens
+            for t in extra_tokens:
+                if isinstance(t, str):
+                    tokens.add(t)
         return tokens
+
+    def _strip_affixes_casefold(self, value: str, affixes: Iterable[str]) -> str:
+        """
+        Instance-level shim so mixins/decorators can call a consistent API.
+
+        Delegates to the module-level `_strip_affixes_casefold` implementation.
+        """
+        return _strip_affixes_casefold(value, affixes)
 
     def resolve_identity(
             self,
@@ -144,6 +155,7 @@ class BaseRegistrationDecorator:
             version: Optional[str] = None,
             namespace: Optional[str] = None,
             strip_tokens: Optional[Iterable[str]] = None,
+            **_ignored: Any
     ) -> dict[str, str]:
         """
         Resolves the identity attributes for the decorated class or function.
@@ -195,7 +207,7 @@ class BaseRegistrationDecorator:
         # Strip affixes only from the name, case-insensitive
         tokens = self.collect_strip_tokens(strip_tokens)
         if identity.get("name"):
-            identity["name"] = _strip_affixes_casefold(identity["name"], tokens)
+            identity["name"] = self._strip_affixes_casefold(identity["name"], tokens)
 
         return identity
 
@@ -216,7 +228,7 @@ class BaseRegistrationDecorator:
         """Simple method used in __call__ provided to subclasses."""
         pass
 
-    def register(self, cls: Type[Any], identity: dict[str, str]) -> None:
+    def register(self, cls: Type[Any], identity: dict[str, str], **kwargs) -> None:
         """
         Performs the registration of the class or function.
 
@@ -286,7 +298,16 @@ class BaseRegistrationDecorator:
             The decorated class or function.
         """
         try:
-            identity = self.resolve_identity(cls_or_func)
+            explicit_origin = getattr(cls_or_func, "origin", None)
+            explicit_bucket = getattr(cls_or_func, "bucket", None)
+            explicit_name = getattr(cls_or_func, "name", None)
+
+            identity = self.resolve_identity(
+                cls_or_func,
+                origin=explicit_origin,
+                bucket=explicit_bucket,
+                name=explicit_name,
+            )
             self.register(cls_or_func, identity)
             self.bind_extras(cls_or_func)
             if callable(cls_or_func) and not isinstance(cls_or_func, type):

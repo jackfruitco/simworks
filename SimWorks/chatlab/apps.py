@@ -4,9 +4,8 @@ from django.apps import AppConfig
 class ChatLabConfig(AppConfig):
     name = "chatlab"
 
-    # e.g. {"app", "App", "AppName"}
     # simcore_ai_django already adds all app names to this (normed)
-    identity_strip_tokens = {}
+    # identity_strip_tokens = []
 
     def ready(self):
         from simcore.history_registry import register_history_provider

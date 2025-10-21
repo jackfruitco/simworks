@@ -124,28 +124,18 @@ def _iter_app_tokens() -> Iterable[str]:
 class DjangoStripTokensMixin(BaseRegistrationDecorator):
     """Mixin that augments `collect_strip_tokens` with Django-aware sources."""
 
-    def collect_strip_tokens(self, obj: Any) -> tuple[str, ...]:  # type: ignore[override]
-        base = super().collect_strip_tokens(obj)
-        merged: list[str] = list(base)
-
+    def collect_strip_tokens(self, extra_tokens: Optional[Iterable[str]] = None) -> set[str]:  # type: ignore[override]
+        # Start with core tokens + any explicit extras (from decorator kwargs call site)
+        tokens = set(super().collect_strip_tokens(extra_tokens))
         # Merge Django package defaults
-        merged.extend(DJANGO_DEFAULT_STRIP_TOKENS)
+        tokens.update(DJANGO_DEFAULT_STRIP_TOKENS)
         # Merge env (Django-specific)
-        merged.extend(_iter_env_tokens())
+        tokens.update(_iter_env_tokens())
         # Merge settings-driven tokens
-        merged.extend(_iter_setting_tokens())
+        tokens.update(_iter_setting_tokens())
         # Merge AppConfig contributions
-        merged.extend(_iter_app_tokens())
-
-        # Deduplicate while preserving order
-        deduped: list[str] = []
-        seen = set()
-        for t in merged:
-            k = t.casefold()
-            if k and k not in seen:
-                seen.add(k)
-                deduped.append(t)
-        return tuple(deduped)
+        tokens.update(_iter_app_tokens())
+        return tokens
 
 
 class DjangoIdentityResolverMixin(BaseRegistrationDecorator):
@@ -189,9 +179,9 @@ class DjangoIdentityResolverMixin(BaseRegistrationDecorator):
             self,
             obj: Any,
             *,
-            origin: Optional[str],
-            bucket: Optional[str],
-            name: Optional[str],
+            origin: Optional[str] = None,
+            bucket: Optional[str] = None,
+            name: Optional[str] = None,
     ) -> tuple[str, str, str]:  # type: ignore[override]
         """Resolve identity with Django-aware defaults; strip tokens on **name** only."""
         # 1) Try kwargs first
@@ -223,7 +213,7 @@ class DjangoIdentityResolverMixin(BaseRegistrationDecorator):
             n_raw = n_raw if n_raw is not None else n2
 
         # Normalize and strip **name** only using the complete token set
-        tokens = self.collect_strip_tokens(obj)
+        tokens = self.collect_strip_tokens()
         name_stripped = self._strip_affixes_casefold(str(n_raw), tokens)
         return snake(str(o_raw)), snake(str(b_raw)), snake(str(name_stripped))
 

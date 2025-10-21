@@ -9,7 +9,7 @@ from simcore_ai_django.execution.helpers import (
     settings_default_backend as _exec_default_backend,
     settings_default_mode as _exec_default_mode,
 )
-from simcore_ai_django.identity import derive_django_identity_for_class, parse_dot_identity
+from simcore_ai_django.identity.utils import derive_django_identity_for_class, parse_dot_identity
 from simcore_ai_django.prompts.render_section import \
     render_section as _default_renderer  # async (origin, section_key, simulation) -> str
 from simcore_ai_django.services.mixins import ServiceExecutionMixin

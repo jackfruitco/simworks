@@ -23,7 +23,7 @@ from typing import Iterable, Optional, Tuple
 from django.apps import apps
 from django.conf import settings
 
-from simcore_ai_django.identity import derive_django_identity_for_class
+from .utils import derive_django_identity_for_class
 
 __all__ = ["django_identity_resolver"]
 

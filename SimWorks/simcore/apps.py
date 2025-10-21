@@ -7,7 +7,7 @@ class SimcoreConfig(AppConfig):
 
     # e.g. {"app", "App", "AppName"}
     # simcore_ai_django already adds all app names to this (normed)
-    identity_strip_tokens = {"Patient"}
+    identity_strip_tokens = ["Patient"]
 
     def ready(self):
         # Import all built-in tools
