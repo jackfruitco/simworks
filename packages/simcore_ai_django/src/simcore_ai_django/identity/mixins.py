@@ -1,8 +1,12 @@
 # simcore_ai_django/identity/mixins.py
 from __future__ import annotations
 
+import logging
+
 from simcore_ai.identity import IdentityMixin
 from .utils import derive_django_identity_for_class
+
+logger = logging.getLogger(__name__)
 
 
 class DjangoIdentityMixin(IdentityMixin):
@@ -26,10 +30,23 @@ class DjangoIdentityMixin(IdentityMixin):
         o, b, n = cls.identity_tuple()
         return f"{o}.{b}.{n}"
 
+
+    # __identity_abstract__ = True
+
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # skip deriving identity for mixin classes
-        if cls.__name__.endswith("Mixin") or cls.__module__.endswith(".mixins"):
+        if (
+                cls.__name__.endswith("Mixin")
+                or cls.__module__.endswith(".mixins")
+                or getattr(cls, "__identity_abstract__", False)
+        ):
             return
-        if not getattr(cls, "origin", None) or not getattr(cls, "bucket", None) or not getattr(cls, "name", None):
-            cls.origin, cls.bucket, cls.name = cls.identity_tuple()
+
+        try:
+            if not all(getattr(cls, k, None) for k in ("origin", "bucket", "name")):
+                cls.origin, cls.bucket, cls.name = cls.identity_tuple()
+        except Exception:
+            # Never block Django startup; log at debug
+            logger.debug("Skipping identity init for %s", cls, exc_info=True)
