@@ -11,7 +11,7 @@ from simcore.ai.schemas.output_items import LLMConditionsCheckItem
 
 
 @response_schema
-class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
+class PatientInitialOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """
     Output for the initial patient response turn.
     - `image_requested`: whether the assistant is asking to attach/generate an image
@@ -25,7 +25,7 @@ class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, Standardi
 
 
 @response_schema
-class PatientReplyOutputSchema(DjangoBaseOutputSchema):
+class PatientReplyOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """Output for subsequent patient reply turns."""
     image_requested: bool
     messages: list[DjangoLLMResponseItem] = Field(..., min_items=1)
@@ -33,7 +33,7 @@ class PatientReplyOutputSchema(DjangoBaseOutputSchema):
 
 
 @response_schema
-class PatientResultsOutputSchema(DjangoBaseOutputSchema):
+class PatientResultsOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """
     Final “results” payload for the interaction.
     `metadata` can include structured outputs (e.g., scored observations) as messages.
