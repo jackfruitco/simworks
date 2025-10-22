@@ -28,5 +28,8 @@ class DjangoIdentityMixin(IdentityMixin):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        # skip deriving identity for mixin classes
+        if cls.__name__.endswith("Mixin") or cls.__module__.endswith(".mixins"):
+            return
         if not getattr(cls, "origin", None) or not getattr(cls, "bucket", None) or not getattr(cls, "name", None):
             cls.origin, cls.bucket, cls.name = cls.identity_tuple()

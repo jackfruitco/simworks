@@ -178,29 +178,30 @@ def derive_django_identity_for_class(
             if base_name.endswith(suf):
                 base_name = base_name[: -len(suf)]
 
-        # Strip noise tokens then snake_case
         cleaned = strip_tokens_fn(base_name, tokens)
         candidate = snake(cleaned) or (snake(base_name) if base_name else "default")
 
-        # Gaurd against lab only `name`
         app_label = get_app_label_for_class(cls)
         forbidden = {
             snake(use_origin),
             snake(use_bucket),
             snake(app_label) if app_label else "",
-            ""
+            "",
         }
+
         if candidate in forbidden:
+            # Try again with core-only tokens (less aggressive than app-specific variants)
             core_only = set(DEFAULT_STRIP_TOKENS) | {"Django", "Mixin"}
             cleaned2 = strip_tokens_fn(base_name, core_only)
-            candidate = snake(cleaned) or (snake(base_name) if base_name else "default")
-            if candidate not in forbidden:
-                use_name = candidate
-            else:
-                raise ValueError(f"Could not derive name for {cls} from {base_name!r}")
+            candidate2 = snake(cleaned2) or (snake(base_name) if base_name else "default")
 
+            if candidate2 in forbidden:
+                # For mixins we now avoid this path entirely, but as a final guard:
+                candidate2 = "default"
 
-        use_name = snake(cleaned) or (snake(base_name) if base_name else "default")
+            use_name = candidate2
+        else:
+            use_name = candidate
 
     return snake(use_origin), snake(use_bucket), snake(use_name)
 
