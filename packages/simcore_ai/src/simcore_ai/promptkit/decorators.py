@@ -1,12 +1,14 @@
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from simcore_ai.decorators.registration import BaseRegistrationDecorator
 from simcore_ai.promptkit.registry import (
     PromptRegistry,
     DuplicatePromptSectionIdentityError,
 )
+
+from simcore_ai.promptkit import PromptSection
 
 logger = logging.getLogger(__name__)
 
@@ -23,52 +25,49 @@ class PromptSectionDecorator(BaseRegistrationDecorator):
         """Reject decorating functions."""
         raise TypeError("PromptSectionDecorator cannot be used to decorate functions.")
 
-    def register(self, obj: Any) -> Any:
+
+    def register(self, cls: type[PromptSection], identity: tuple[str, str, str], **kwargs) -> None:
         """Register the prompt section object with unique name enforcement.
 
-        Args:
-            obj: The prompt section object to register.
-
-        Returns:
-            The registered object.
-
-        Raises:
-            Any exceptions raised by PromptRegistry.register other than DuplicatePromptSectionIdentityError.
+        If the (origin, bucket, name) tuple already exists, this will append
+        a numeric suffix to the *name* (e.g., `name-2`, `name-3`, ...) and retry,
+        logging a warning on each collision. Only the `name` portion is changed.
         """
-        base_name = getattr(obj, "name", None)
-        if not isinstance(base_name, str):
-            raise ValueError("Registered object must have a string 'name' attribute.")
+        origin, bucket, name = identity
 
-        suffix = 1
+        # Ensure the resolved identity is reflected on the class prior to registration
+        setattr(cls, "origin", origin)
+        setattr(cls, "bucket", bucket)
+        setattr(cls, "name", name)
+        # Optional convenience string form if the class uses it
+        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+
         while True:
             try:
-                if suffix == 1:
-                    registered_obj = PromptRegistry.register(obj)
-                else:
-                    # Create a copy or modify the name attribute with suffix
-                    new_name = f"{base_name}-{suffix}"
-                    # Assuming obj has a 'name' attribute that can be set
-                    setattr(obj, "name", new_name)
-                    registered_obj = PromptRegistry.register(obj)
-                if suffix > 1:
-                    logger.info(
-                        "Registered prompt section with unique name '%s' after %d attempts",
-                        getattr(registered_obj, "name", None),
-                        suffix,
-                    )
-                else:
-                    logger.info(
-                        "Registered prompt section with name '%s'",
-                        getattr(registered_obj, "name", None),
-                    )
-                return registered_obj
-            except DuplicatePromptSectionIdentityError:
-                logger.warning(
-                    "Duplicate prompt section identity detected for name '%s', trying suffix '-%d'",
-                    getattr(obj, "name", None),
-                    suffix + 1,
+                PromptRegistry.register(cls)
+                logger.info(
+                    "Registered prompt section (%s, %s, %s) -> %s",
+                    origin,
+                    bucket,
+                    name,
+                    getattr(cls, "__name__", str(cls)),
                 )
-                suffix += 1
+                return
+            except DuplicatePromptSectionIdentityError:
+                # Bump only the name portion with a numeric suffix and retry
+                new_name = self._bump_suffix(name)
+                logger.warning(
+                    "Collision for prompt section identity (%s, %s, %s); renamed to (%s, %s, %s)",
+                    origin,
+                    bucket,
+                    name,
+                    origin,
+                    bucket,
+                    new_name,
+                )
+                name = new_name
+                setattr(cls, "name", name)
+                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
 
 
 prompt_section = PromptSectionDecorator()

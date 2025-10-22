@@ -73,7 +73,7 @@ class PromptRegistry:
     # Registration
     # ------------------------------------------------------------------
     @classmethod
-    def register(cls, section_cls: Type[PromptSection]) -> None:
+    def register(cls, section_cls: type[PromptSection]) -> None:
         ident_tuple = _identity_tuple_for_cls(section_cls)
         with cls._lock:
             if ident_tuple not in cls._store:

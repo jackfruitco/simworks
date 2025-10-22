@@ -147,6 +147,16 @@ class BaseRegistrationDecorator:
         """
         return _strip_affixes_casefold(value, affixes)
 
+    @staticmethod
+    def _bump_suffix(name: str) -> str:
+        """Return `name-2` or increment an existing trailing `-N` suffix."""
+        if "-" not in name:
+            return f"{name}-2"
+        base, sep, tail = name.rpartition("-")
+        if sep and tail.isdigit() and base:
+            return f"{base}-{int(tail) + 1}"
+        return f"{name}-2"
+
     def resolve_identity(
             self,
             cls: Optional[Type[Any]] = None,
@@ -228,7 +238,7 @@ class BaseRegistrationDecorator:
         """Simple method used in __call__ provided to subclasses."""
         pass
 
-    def register(self, cls: Type[Any], identity: dict[str, str], **kwargs) -> None:
+    def register(self, cls: Type[Any], identity: tuple[str, str, str], **kwargs) -> None:
         """
         Performs the registration of the class or function.
 

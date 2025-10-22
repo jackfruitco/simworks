@@ -21,17 +21,18 @@ Composition:
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from simcore_ai.codecs.decorators import CodecDecorator as _CoreCodecDecorator
 from simcore_ai_django.decorators.mixins import DjangoSimcoreIdentityMixin
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class DjangoCodecRegistrationMixin:
     """Override `register` to use the Django codec registry with collision suffixing."""
 
-    def register(self, cls, identity, **kwargs):  # type: ignore[override]
+    def register(self, cls: type[Any], identity: tuple[str, str, str], **kwargs) -> None:
         """
         Register the codec class using the **Django** registry, enforcing tuple³ uniqueness
         and handling collisions by suffixing the *name* (`name-2`, `-3`, ...).
@@ -43,59 +44,55 @@ class DjangoCodecRegistrationMixin:
                 DuplicateCodecIdentityError,
             )
         except Exception:  # pragma: no cover
-            log.debug(
+            logger.debug(
                 "DjangoCodecRegistry unavailable; skipping registration for %s",
                 getattr(cls, "__name__", cls),
             )
             return
 
-        origin = getattr(cls, "origin", None)
-        bucket = getattr(cls, "bucket", None)
-        base_name = getattr(cls, "name", None)
+        origin, bucket, name = identity
 
-        if not (origin and bucket and base_name):
-            log.debug(
+        # Ensure the resolved identity is reflected on the class prior to registration
+        setattr(cls, "origin", origin)
+        setattr(cls, "bucket", bucket)
+        setattr(cls, "name", name)
+        # Optional convenience string form if the class uses it
+        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+
+        if not (origin and bucket and name):
+            logger.debug(
                 "Codec identity incomplete; skipping registration: origin=%r bucket=%r name=%r",
-                origin,
-                bucket,
-                base_name,
+                origin, bucket, name
             )
             return
 
-        suffix = 1
         while True:
             try:
-                # Register with explicit tuple identity
-                Registry.register(origin, bucket, getattr(cls, "name", base_name), cls)
-                log.info(
-                    "django.codec.registered (%s, %s, %s) -> %s",
+                Registry.register(origin, bucket, name, cls)
+                logger.info(
+                    "Registered Codec (%s, %s, %s) -> %s",
                     origin,
                     bucket,
-                    getattr(cls, "name", base_name),
-                    getattr(cls, "__name__", cls),
+                    name,
+                    getattr(cls, "__name__", str(cls)),
                 )
                 return
             except DuplicateCodecIdentityError:
-                suffix += 1
-                new_name = f"{base_name}-{suffix}"
-                setattr(cls, "name", new_name)
-                log.warning(
-                    "Collision for django codec identity (%s, %s, %s); renamed to (%s, %s, %s)",
+                # Bump only the name portion with a numeric suffix and retry
+                new_name = self._bump_suffix(name)
+                logger.warning(
+                    "Collision for Codec identity (%s, %s, %s); renamed to (%s, %s, %s)",
                     origin,
                     bucket,
-                    base_name,
+                    name,
                     origin,
                     bucket,
                     new_name,
                 )
-                # retry with updated name
-            except Exception:  # pragma: no cover
-                log.debug(
-                    "Django codec registration error suppressed for %s",
-                    getattr(cls, "__name__", cls),
-                    exc_info=True,
-                )
-                return
+                name = new_name
+                setattr(cls, "name", name)
+                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+
 
 
 class DjangoCodecDecorator(

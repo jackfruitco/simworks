@@ -149,9 +149,8 @@ def derive_django_identity_for_class(
     elif isinstance(getattr(cls, "bucket", None), str) and getattr(cls, "bucket"):
         use_bucket = getattr(cls, "bucket")
     else:
-        mod = getattr(cls, "__module__", "") or ""
-        parts = [p for p in mod.split(".") if p]
-        use_bucket = parts[1] if len(parts) > 1 else "default"
+        # default to "default" (NOT module path)
+        use_bucket = "default"
 
     # ---- Build strip-token set ----
     app_label = get_app_label_for_class(cls)
@@ -181,6 +180,26 @@ def derive_django_identity_for_class(
 
         # Strip noise tokens then snake_case
         cleaned = strip_tokens_fn(base_name, tokens)
+        candidate = snake(cleaned) or (snake(base_name) if base_name else "default")
+
+        # Gaurd against lab only `name`
+        app_label = get_app_label_for_class(cls)
+        forbidden = {
+            snake(use_origin),
+            snake(use_bucket),
+            snake(app_label) if app_label else "",
+            ""
+        }
+        if candidate in forbidden:
+            core_only = set(DEFAULT_STRIP_TOKENS) | {"Django", "Mixin"}
+            cleaned2 = strip_tokens_fn(base_name, core_only)
+            candidate = snake(cleaned) or (snake(base_name) if base_name else "default")
+            if candidate not in forbidden:
+                use_name = candidate
+            else:
+                raise ValueError(f"Could not derive name for {cls} from {base_name!r}")
+
+
         use_name = snake(cleaned) or (snake(base_name) if base_name else "default")
 
     return snake(use_origin), snake(use_bucket), snake(use_name)
