@@ -56,48 +56,10 @@ class ResponseSchemaDecorator(BaseRegistrationDecorator):
             f"got callable {func!r}"
         )
 
-    # --- register with collision handling ---
-    def register(self, obj: Any) -> None:  # type: ignore[override]
-        """Register the schema class with tuple³ uniqueness and collision suffixing."""
-        Registry, DuplicateResponseSchemaIdentityError = _get_registry_and_exc()
-        if Registry is None:
-            log.debug("ResponseSchemaRegistry unavailable; skipping registration for %s", getattr(obj, "__name__", obj))
-            return
-
-        origin = getattr(obj, "origin", None)
-        bucket = getattr(obj, "bucket", None)
-        base_name = getattr(obj, "name", None)
-
-        if not (origin and bucket and base_name):
-            log.debug(
-                "Response schema identity incomplete; skipping registration: origin=%r bucket=%r name=%r",
-                origin, bucket, base_name
-            )
-            return
-
-        suffix = 1
-        while True:
-            try:
-                Registry.register(obj)  # type: ignore[attr-defined]
-                log.info(
-                    "Registered response schema: (%s, %s, %s) -> %s",
-                    origin, bucket, getattr(obj, "name", base_name), getattr(obj, "__name__", obj),
-                )
-                return
-            except DuplicateResponseSchemaIdentityError:
-                suffix += 1
-                new_name = f"{base_name}-{suffix}"
-                setattr(obj, "name", new_name)
-                log.warning(
-                    "Collision for response schema identity (%s, %s, %s); renamed to (%s, %s, %s)",
-                    origin, bucket, base_name,
-                    origin, bucket, new_name,
-                )
-                # retry with updated name
-            except Exception:  # pragma: no cover - registry-specific non-fatal errors
-                log.debug("Response schema registration error suppressed for %s", getattr(obj, "__name__", obj),
-                          exc_info=True)
-                return
+    # --- register---
+    def register(self, cls, identity, **kwargs):
+        """No-op; no schema registry."""
+        pass
 
 
 # Ready-to-use decorator instance

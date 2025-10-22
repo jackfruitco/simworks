@@ -47,7 +47,7 @@ except Exception:  # pragma: no cover
     class DuplicateServiceIdentityError(Exception):  # fallback to ensure collision loop works
         pass
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ServiceRegistrationMixin:
@@ -103,43 +103,56 @@ class ServiceRegistrationMixin:
             elif not hasattr(obj, "prompt_plan"):
                 setattr(obj, "prompt_plan", ())
         except Exception:  # pragma: no cover - extras must never break import
-            log.debug("llm_service.bind_extras: suppressed extras binding error", exc_info=True)
+            logger.debug("llm_service.bind_extras: suppressed extras binding error", exc_info=True)
 
     # ----- registration with collision handling -----
-    def register(self, obj: Any) -> None:
+    def register(self, cls: Type[Any], identity: tuple[str, str, str], **kwargs) -> None:
         """Register the service class with tuple³ uniqueness and collision resolution."""
         if ServiceRegistry is None:  # registry unavailable at import time; skip safely
-            log.debug("ServiceRegistry unavailable; skipping registration for %s", getattr(obj, "__name__", obj))
+            logger.debug("ServiceRegistry unavailable; skipping registration for %s", getattr(cls, "__name__", cls))
             return
+        origin, bucket, name = identity
 
-        # Expect identity to be present already (set by BaseRegistrationDecorator)
-        base_origin = getattr(obj, "origin", None)
-        base_bucket = getattr(obj, "bucket", None)
-        base_name = getattr(obj, "name", None)
+        # Ensure the resolved identity is reflected on the class prior to registration
+        setattr(cls, "origin", origin)
+        setattr(cls, "bucket", bucket)
+        setattr(cls, "name", name)
+        # Optional convenience string form if the class uses it
+        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
 
-        if not (base_origin and base_bucket and base_name):
-            log.debug(
+        if not (origin and bucket and name):
+            logger.debug(
                 "Service identity incomplete; skipping registration: origin=%r bucket=%r name=%r",
-                base_origin, base_bucket, base_name
+                origin, bucket, name
             )
             return
 
-        suffix = 1
         while True:
             try:
-                # Attempt registry insertion (should be atomic & raise on dup)
-                ServiceRegistry.register(obj, debug=None)  # type: ignore[attr-defined]
+                ServiceRegistry.register(cls)
+                logger.info(
+                    "Registered AI Service (%s, %s, %s) -> %s",
+                    origin,
+                    bucket,
+                    name,
+                    getattr(cls, "__name__", str(cls)),
+                )
                 return
             except DuplicateServiceIdentityError:
-                suffix += 1
-                new_name = f"{base_name}-{suffix}"
-                setattr(obj, "name", new_name)
-                log.warning(
+                # Bump only the name portion with a numeric suffix and retry
+                new_name = self._bump_suffix(name)
+                logger.warning(
                     "Collision for service identity (%s, %s, %s); renamed to (%s, %s, %s)",
-                    base_origin, base_bucket, base_name,
-                    base_origin, base_bucket, new_name,
+                    origin,
+                    bucket,
+                    name,
+                    origin,
+                    bucket,
+                    new_name,
                 )
-                # Loop continues with updated name
+                name = new_name
+                setattr(cls, "name", name)
+                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
 
 
 class ServiceRegistrationDecorator(BaseRegistrationDecorator, ServiceRegistrationMixin):

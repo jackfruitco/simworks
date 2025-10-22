@@ -16,19 +16,17 @@ Registration policy:
 - Attempt to register the codec class with `CodecRegistry.register(codec_cls, replace=False)`.
 - The registry is expected to enforce tuple³ uniqueness (origin, bucket, name)
   by raising `DuplicateCodecIdentityError` on collision.
-- On collision, this decorator appends a hyphen-int suffix to the **name**
-  (e.g., `name-2`, `name-3`, ...) and retries until success.
-- Collisions are logged at WARNING level; import-time must never crash.
+- On collision, this decorator appends a hyphen-int suffix to the **name** (e.g., `name-2`, `name-3`, ...) and retries until success.
 """
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, NoReturn
 import logging
+from typing import Any
 
 from simcore_ai.decorators.registration import BaseRegistrationDecorator
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
 
 # Lazy, import-safe references to the registry and duplicate exception.
 # These imports are inside functions to avoid hard failures at import time
@@ -58,43 +56,55 @@ class CodecDecorator(BaseRegistrationDecorator):
     #     )
 
     # --- register with collision handling ---
-    def register(self, obj: Any) -> None:  # type: ignore[override]
+    def register(self, cls: type[Any], identity: tuple[str, str, str], **kwargs) -> None:
         """Register the codec class with tuple³ uniqueness and collision suffixing."""
         Registry, DuplicateCodecIdentityError = _get_registry_and_exc()
         if Registry is None:
-            log.debug("CodecRegistry unavailable; skipping registration for %s", getattr(obj, "__name__", obj))
+            logger.debug("CodecRegistry unavailable; skipping registration for %s", getattr(cls, "__name__", cls))
             return
 
-        origin = getattr(obj, "origin", None)
-        bucket = getattr(obj, "bucket", None)
-        base_name = getattr(obj, "name", None)
+        origin, bucket, name = identity
 
-        if not (origin and bucket and base_name):
-            log.debug(
+        # Ensure the resolved identity is reflected on the class prior to registration
+        setattr(cls, "origin", origin)
+        setattr(cls, "bucket", bucket)
+        setattr(cls, "name", name)
+        # Optional convenience string form if the class uses it
+        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+
+        if not (origin and bucket and name):
+            logger.debug(
                 "Codec identity incomplete; skipping registration: origin=%r bucket=%r name=%r",
-                origin, bucket, base_name
+                origin, bucket, name
             )
             return
 
-        suffix = 1
         while True:
             try:
-                Registry.register(obj, replace=False)  # type: ignore[attr-defined]
-                log.info("Registered codec: (%s, %s, %s) -> %s", origin, bucket, getattr(obj, "name", base_name), getattr(obj, "__name__", obj))
+                Registry.register(cls, replace=False)  # type: ignore[attr-defined]
+                logger.info(
+                    "Registered Codec (%s, %s, %s) -> %s",
+                    origin,
+                    bucket,
+                    name,
+                    getattr(cls, "__name__", str(cls)),
+                )
                 return
             except DuplicateCodecIdentityError:
-                suffix += 1
-                new_name = f"{base_name}-{suffix}"
-                setattr(obj, "name", new_name)
-                log.warning(
-                    "Collision for codec identity (%s, %s, %s); renamed to (%s, %s, %s)",
-                    origin, bucket, base_name,
-                    origin, bucket, new_name,
+                # Bump only the name portion with a numeric suffix and retry
+                new_name = self._bump_suffix(name)
+                logger.warning(
+                    "Collision for Codec identity (%s, %s, %s); renamed to (%s, %s, %s)",
+                    origin,
+                    bucket,
+                    name,
+                    origin,
+                    bucket,
+                    new_name,
                 )
-                # retry with updated name
-            except Exception:  # pragma: no cover - registry-specific non-fatal errors
-                log.debug("Codec registration error suppressed for %s", getattr(obj, "__name__", obj), exc_info=True)
-                return
+                name = new_name
+                setattr(cls, "name", name)
+                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
 
 
 # Ready-to-use decorator instance
