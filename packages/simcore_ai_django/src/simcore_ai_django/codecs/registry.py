@@ -55,7 +55,13 @@ class DjangoCodecRegistry:
             return key in cls._by_tuple
 
     @classmethod
-    def register(cls, origin: str, bucket: str, name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
+    def register(
+            cls,
+            origin: str,
+            bucket: str,
+            name: str,
+            codec_class: Type[DjangoBaseLLMCodec]
+    ) -> None:
         ns = _norm(origin)
         buck = _norm(bucket)
         nm = _norm(name)

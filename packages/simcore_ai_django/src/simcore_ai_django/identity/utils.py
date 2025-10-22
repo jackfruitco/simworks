@@ -20,6 +20,7 @@ It also **re-exports** core helpers so projects can import them from the Django 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Callable
 from functools import lru_cache
 from typing import Optional, Tuple
@@ -181,6 +182,7 @@ def derive_django_identity_for_class(
         cleaned = strip_tokens_fn(base_name, tokens)
         candidate = snake(cleaned) or (snake(base_name) if base_name else "default")
 
+        # Guard against app-only or empty names after stripping
         app_label = get_app_label_for_class(cls)
         forbidden = {
             snake(use_origin),
@@ -190,18 +192,17 @@ def derive_django_identity_for_class(
         }
 
         if candidate in forbidden:
-            # Try again with core-only tokens (less aggressive than app-specific variants)
             core_only = set(DEFAULT_STRIP_TOKENS) | {"Django", "Mixin"}
             cleaned2 = strip_tokens_fn(base_name, core_only)
             candidate2 = snake(cleaned2) or (snake(base_name) if base_name else "default")
 
-            if candidate2 in forbidden:
-                # For mixins we now avoid this path entirely, but as a final guard:
-                candidate2 = "default"
-
-            use_name = candidate2
+            # Prefer a non-forbidden fallback; otherwise settle on 'default'
+            use_name = candidate2 if candidate2 not in forbidden else "default"
         else:
             use_name = candidate
+
+        # Strip stray underscores
+        use_name = re.sub(r"_+", "_", use_name).strip("_") or "default"
 
     return snake(use_origin), snake(use_bucket), snake(use_name)
 
