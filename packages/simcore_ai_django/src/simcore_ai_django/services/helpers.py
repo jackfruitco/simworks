@@ -46,3 +46,24 @@ def _parse_codec_identity(codec_identity: str) -> Tuple[str | None, str | None]:
         return None, None
 
     return ns, f"{bucket}:{name}"
+
+
+def _kind_name_from_codec_name(codec_name: str | None, fallback_kind: str | None, fallback_name: str | None) -> tuple[str | None, str | None]:
+    """Interpret an optional codec_name into (kind, name).
+    Supported forms:
+      - None -> (fallback_kind, fallback_name)
+      - "default" -> ("default", "default")
+      - "kind.name" -> ("kind", "name")
+      - Any legacy "kind:name" will be treated as "kind.name" (no warnings).
+    """
+    if not codec_name:
+        return fallback_kind, fallback_name
+    raw = str(codec_name).strip()
+    raw = raw.replace(":", ".")  # tolerate legacy, but do not emit warnings
+    if raw == "default":
+        return "default", "default"
+    parts = [p.strip() for p in raw.split(".") if p.strip()]
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    # Fallback: keep provided fallback if malformed
+    return fallback_kind, fallback_name

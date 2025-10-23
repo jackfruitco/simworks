@@ -15,8 +15,9 @@ across AI components. It includes:
 
 Design:
 - Pure-Python; no Django dependencies.
-- Canonical identity is a tuple3: (origin, bucket, name).
-- Canonical string form is dot-only: "origin.bucket.name".
+- Canonical identity is a tuple3: (namespace, kind, name).
+  (Legacy synonyms: origin → namespace, bucket → kind.)
+- Canonical string form is dot-only: "namespace.kind.name".
 """
 
 from __future__ import annotations
@@ -142,27 +143,39 @@ def derive_identity_for_class(
         __strip_tokens: Iterable[str] = (),
         **kwargs,
 ) -> Tuple[str, str, str]:
-    """Derive a tuple identity (origin, bucket, name) for a class.
+    """
+    Derive a tuple identity (namespace, kind, name) for a class.
+
+    Accepts both the new vocabulary (`namespace`, `kind`, `name`) and legacy
+    synonyms (`origin`, `bucket`, `name`). If both are provided, the new names
+    (`namespace`/`kind`) take precedence.
 
     Rules:
-      - origin: explicit → module_root(cls) → "default"
-      - bucket: explicit → "default"
-      - name:   explicit → strip suffix tokens from class name → snake_case
+      - namespace: explicit → module_root(cls) → "default"
+      - kind:      explicit → "default"
+      - name:      explicit → strip suffix tokens from class name → snake_case
 
     All three parts are normalized via `snake()` before returning.
     """
     if "strip_tokens" in kwargs and not __strip_tokens:
         __strip_tokens = kwargs["strip_tokens"]
 
-    o_raw = origin or module_root(cls) or "default"
-    b_raw = bucket or "default"
+    # Support new vocabulary via kwargs without breaking callers that still pass
+    # origin/bucket. New names take precedence if both are given.
+    if "namespace" in kwargs:
+        origin = kwargs.pop("namespace")
+    if "kind" in kwargs:
+        bucket = kwargs.pop("kind")
+
+    ns_raw = origin or module_root(cls) or "default"
+    kd_raw = bucket or "default"
     if name is not None:
-        n_raw = name
+        nm_raw = name
     else:
         cls_name = getattr(cls, "__name__", str(cls))
-        n_raw = derive_name_from_class(cls_name, __strip_tokens)
+        nm_raw = derive_name_from_class(cls_name, __strip_tokens)
 
-    return snake(o_raw), snake(b_raw), snake(n_raw)
+    return snake(ns_raw), snake(kd_raw), snake(nm_raw)
 
 
 def resolve_collision(
@@ -180,7 +193,7 @@ def resolve_collision(
 
     Args:
         kind: Human label for error/warn messages ("codec", "service", "prompt", etc.).
-        ident_tuple: (origin, bucket, name)
+        ident_tuple: (namespace, kind, name)
         debug: If None, falls back to SIMCORE_AI_DEBUG env var.
         exists: Callable that returns True if the identity already exists.
     """
@@ -208,7 +221,7 @@ def resolve_collision(
 
 
 def parse_dot_identity(key: str) -> Tuple[str, str, str]:
-    """Parse a dot-only identity string into (origin, bucket, name).
+    """Parse a dot-only identity string into (namespace, kind, name).
 
     Strict rules:
       - Exactly 3 non-empty components

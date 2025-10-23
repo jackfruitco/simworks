@@ -30,6 +30,7 @@ IMPORTANT: This module must not import any Django modules.
 import logging
 from typing import Any, Optional, Type, TypeVar, Callable, cast
 
+from simcore_ai.tracing import service_span_sync
 from simcore_ai.identity.base import Identity
 from simcore_ai.decorators.helpers import (
     derive_identity_core,
@@ -78,23 +79,51 @@ class BaseDecorator:
         """
 
         def _apply(cls: T) -> T:
-            identity = self.derive_identity(
+            fqcn = f"{cls.__module__}.{cls.__name__}"
+
+            # 1) Derive identity (subclasses may return (Identity, meta))
+            result = self.derive_identity(
                 cls,
                 namespace=namespace,
                 kind=kind,
                 name=name,
             )
-            # Attach identity in both forms
+            if isinstance(result, tuple) and len(result) == 2:
+                identity, meta = result  # type: ignore[misc]
+            else:
+                identity, meta = result, {}
+
+            # 2) Attach identity to class
             setattr(cls, "identity_obj", identity)
             setattr(cls, "identity", identity.as_tuple3)
 
-            # Allow subclasses to bind any extra metadata if desired
+            # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
 
-            # Perform registration (if any)
+            # 4) Register (if registry present)
             self.register(cls, identity)
+
+            # 5) Emit a single trace span *after* successful registration with rich attributes
+            final_tuple3 = ".".join(identity.as_tuple3)
+            span_attrs_raw = {
+                "ai.decorator": self.__class__.__name__,
+                "ai.class": fqcn,
+                "ai.identity": final_tuple3,
+                # Optional debug/meta provided by Django layer (e.g., ai.strip_tokens, ai.tuple3.*)
+                **({} if not isinstance(meta, dict) else meta),
+                # Echo explicit args if provided (drop None later)
+                "ai.namespace_arg": namespace,
+                "ai.kind_arg": kind,
+                "ai.name_arg": name,
+            }
+            span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
+            with service_span_sync("ai.decorator.apply", attributes=span_attrs):
+                pass
+
             return cls
 
+        # IMPORTANT: return the applied class when used as @decorator, or return
+        # the decorator function when used as @decorator(...)
         if _cls is not None:
             return _apply(cast(T, _cls))
         return _apply
@@ -118,7 +147,7 @@ class BaseDecorator:
             namespace: Optional[str],
             kind: Optional[str],
             name: Optional[str],
-    ) -> Identity:
+    ) -> tuple[Identity, dict[str, Any] | None]:
         """
         Derive and validate identity using core helpers.
 
@@ -132,6 +161,7 @@ class BaseDecorator:
         will override to call Django-aware helpers.
         """
         # Pull any class attributes if present (explicit attrs win when helpers consult them)
+
         ns_attr = getattr(cls, "namespace", None)
         kind_attr = getattr(cls, "kind", None)
         name_attr = getattr(cls, "name", None)
@@ -148,7 +178,7 @@ class BaseDecorator:
             name_tokens=(),  # core has no tokens; Django layer adds them
             lower_on_derived_name=True,
         )
-        return identity
+        return identity, None
 
     def bind_extras(self, cls: Type[Any], extras: dict[str, Any]) -> None:
         """
@@ -175,7 +205,12 @@ class BaseDecorator:
         # Registries own duplicate vs collision handling per implementation plan.
         try:
             registry.maybe_register(identity.as_tuple3, cls)
-        except Exception as exc:
+            log.info(
+                "%s.registered %s",
+                getattr(registry, "name", self.__class__.__name__.lower()),
+                ".".join(identity.as_tuple3),
+            )
+        except Exception:
             # Surface registry errors explicitly; identity validation should
             # already have run, so errors here are policy-level (e.g., collisions).
             raise
