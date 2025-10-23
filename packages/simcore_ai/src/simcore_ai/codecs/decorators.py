@@ -1,113 +1,78 @@
-# simcore_ai/codecs/decorators.py
-"""Core (non-Django) codec decorator built on the class-based base decorator.
-
-This module defines the **core** `codec` decorator using the shared,
-framework-agnostic `BaseRegistrationDecorator`. It supports decorating
-**classes only** (codecs must be class types). Function targets will raise.
-
-Identity resolution rules are provided by the base:
-- origin: first module segment or "simcore"
-- bucket: second module segment or "default"
-- name:   snake_case(class name with common affixes removed), with additional
-          affix tokens merged from the core environment variable
-          `SIMCORE_AI_IDENTITY_STRIP_TOKENS`.
-
-Registration policy:
-- Attempt to register the codec class with `CodecRegistry.register(codec_cls, replace=False)`.
-- The registry is expected to enforce tuple³ uniqueness (origin, bucket, name)
-  by raising `DuplicateCodecIdentityError` on collision.
-- On collision, this decorator appends a hyphen-int suffix to the **name** (e.g., `name-2`, `name-3`, ...) and retries until success.
-"""
+# packages/simcore_ai/src/simcore_ai/codecs/decorators.py
 from __future__ import annotations
 
-import logging
-from typing import Any
+"""
+Core (non-Django) codec decorator built on the class-based BaseDecorator.
 
-from simcore_ai.decorators.registration import BaseRegistrationDecorator
+- Uses the shared, framework-agnostic identity derivation helpers.
+- Attaches a finalized Identity to the class:
+    * cls.identity      -> (namespace, kind, name) tuple
+    * cls.identity_obj  -> Identity dataclass
+- No registration in core: get_registry() returns None, so decoration is
+  derivation-only. The Django layer provides registration and collision policy.
 
-logger = logging.getLogger(__name__)
+Domain default:
+- kind defaults to "codec" when neither decorator args nor class attributes
+  provide a value.
+"""
 
+from typing import Any, Optional, Type
 
-# Lazy, import-safe references to the registry and duplicate exception.
-# These imports are inside functions to avoid hard failures at import time
-# if the registry package is not yet available.
-def _get_registry_and_exc():
-    try:
-        from simcore_ai.codecs.registry import CodecRegistry  # type: ignore
-    except Exception:  # pragma: no cover - keep safe across environments
-        CodecRegistry = None  # type: ignore[assignment]
-    try:
-        from simcore_ai.codecs.registry import DuplicateCodecIdentityError  # type: ignore
-    except Exception:  # pragma: no cover
-        class DuplicateCodecIdentityError(Exception):  # type: ignore[no-redef]
-            """Fallback duplicate error to keep the collision loop working."""
-            pass
-    return CodecRegistry, DuplicateCodecIdentityError
-
-
-class CodecDecorator(BaseRegistrationDecorator):
-    """Codec decorator that supports class targets, registration, and collisions."""
-
-    # --- functions are not supported for codecs ---
-    # def wrap_function(self, func: Callable[..., Any]) -> NoReturn:  # type: ignore[override]
-    #     raise TypeError(
-    #         "The `@codec` decorator only supports class targets; "
-    #         f"got callable {func!r}"
-    #     )
-
-    # --- register with collision handling ---
-    def register(self, cls: type[Any], identity: tuple[str, str, str], **kwargs) -> None:
-        """Register the codec class with tuple³ uniqueness and collision suffixing."""
-        Registry, DuplicateCodecIdentityError = _get_registry_and_exc()
-        if Registry is None:
-            logger.debug("CodecRegistry unavailable; skipping registration for %s", getattr(cls, "__name__", cls))
-            return
-
-        origin, bucket, name = identity
-
-        # Ensure the resolved identity is reflected on the class prior to registration
-        setattr(cls, "origin", origin)
-        setattr(cls, "bucket", bucket)
-        setattr(cls, "name", name)
-        # Optional convenience string form if the class uses it
-        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
-
-        if not (origin and bucket and name):
-            logger.debug(
-                "Codec identity incomplete; skipping registration: origin=%r bucket=%r name=%r",
-                origin, bucket, name
-            )
-            return
-
-        while True:
-            try:
-                Registry.register(cls, replace=False)  # type: ignore[attr-defined]
-                logger.info(
-                    "Registered Codec (%s, %s, %s) -> %s",
-                    origin,
-                    bucket,
-                    name,
-                    getattr(cls, "__name__", str(cls)),
-                )
-                return
-            except DuplicateCodecIdentityError:
-                # Bump only the name portion with a numeric suffix and retry
-                new_name = self._bump_suffix(name)
-                logger.warning(
-                    "Collision for Codec identity (%s, %s, %s); renamed to (%s, %s, %s)",
-                    origin,
-                    bucket,
-                    name,
-                    origin,
-                    bucket,
-                    new_name,
-                )
-                name = new_name
-                setattr(cls, "name", name)
-                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai.decorators.helpers import (
+    derive_name,
+    derive_namespace_core,
+    derive_kind,
+    strip_name_tokens,
+    normalize_name,
+    validate_identity,
+)
+from simcore_ai.identity.base import Identity
 
 
-# Ready-to-use decorator instance
-codec = CodecDecorator()
+class CodecRegistrationDecorator(BaseDecorator):
+    """Core codec decorator: derive identity; no registration in core."""
 
-__all__ = ["codec", "CodecDecorator"]
+    def get_registry(self):
+        # Core layer does not register codecs. Django layer overrides this.
+        return None
+
+    def derive_identity(
+            self,
+            cls: Type[Any],
+            *,
+            namespace: Optional[str],
+            kind: Optional[str],
+            name: Optional[str],
+    ) -> Identity:
+        """
+        Derive (namespace, kind, name) with 'codec' as the domain default for kind.
+        Token stripping is not applied at the core layer unless tokens are provided;
+        here we pass none (Django overrides add per-app tokens on name).
+        """
+        ns_attr = getattr(cls, "namespace", None)
+        kind_attr = getattr(cls, "kind", None)
+        name_attr = getattr(cls, "name", None)
+
+        # 1) name
+        nm = derive_name(cls, name_arg=name, name_attr=name_attr, derived_lower=True)
+        nm = strip_name_tokens(nm, tokens=())  # core: no tokens
+        nm = normalize_name(nm)
+
+        # 2) namespace
+        ns = derive_namespace_core(cls, namespace_arg=namespace, namespace_attr=ns_attr)
+
+        # 3) kind (domain default = "codec")
+        kd = derive_kind(cls, kind_arg=kind, kind_attr=kind_attr, default="codec")
+
+        # 4) validate
+        validate_identity(ns, kd, nm)
+
+        return Identity(namespace=ns, kind=kd, name=nm)
+
+
+# Ready-to-use decorator instances (short and namespaced aliases)
+codec = CodecRegistrationDecorator()
+ai_codec = codec
+
+__all__ = ["codec", "ai_codec", "CodecRegistrationDecorator"]

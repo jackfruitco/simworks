@@ -1,165 +1,83 @@
-# simcore_ai/services/decorators.py
-"""Core (non-Django) LLM service decorator built on the class-based base decorator.
-
-This module defines the **core** `llm_service` decorator using the shared,
-framework-agnostic `BaseRegistrationDecorator`. It supports decorating both
-**classes** and **async functions** (functions are wrapped into a service class).
-
-Identity resolution (core defaults) is module-centric and implemented in the
-base class:
-- origin: first module segment or "simcore"
-- bucket: second module segment or "default"
-- name:   snake_case(object name with common affixes removed)
-
-Domain-specific behavior here:
-- Function targets are wrapped into a `BaseLLMService` subclass with a sensible
-  `on_success` adapter that calls the original function with `(simulation, slim)`
-  or just `(simulation)` depending on arity.
-- Service extras:
-    * `codec` -> `codec_name` (default "default")
-    * `prompt_plan` -> tuple-ized as `prompt_plan`
-- Registration:
-    * Uses `ServiceRegistry.register(service_cls, debug=None)`
-    * Enforces tuple³ uniqueness by handling `DuplicateServiceIdentityError`
-      and appending a hyphen-int suffix to the **name**: `name-2`, `name-3`, ...
-      WARNING is logged for each collision; import never crashes.
-"""
+# packages/simcore_ai/src/simcore_ai/services/decorators.py
 from __future__ import annotations
 
-import inspect
-import logging
-from typing import Any, Type
-from collections.abc import Callable
+"""
+Core (non-Django) Service decorator built on the class-based BaseDecorator.
 
-from simcore_ai.decorators.registration import BaseRegistrationDecorator
-from simcore_ai.services import BaseLLMService  # runtime dependency for function wrapping
+This module defines the **core** `llm_service` decorator using the shared,
+framework-agnostic `BaseDecorator`. It is responsible only for:
 
-# Registries are intentionally core-only here (no Django imports)
-try:
-    from simcore_ai.services.registry import ServiceRegistry  # singular per finalized plan
-except Exception:  # pragma: no cover - keep imports resilient at import time
-    ServiceRegistry = None  # type: ignore[assignment]
+- deriving a finalized Identity (namespace, kind, name) using core helpers
+  with the domain default `kind="service"`,
+- attaching the identity to the decorated class as:
+    * cls.identity      -> (namespace, kind, name) tuple
+    * cls.identity_obj  -> Identity dataclass instance
+- deferring registration: in the core package, `get_registry()` returns None,
+  so decoration skips registration (Django layer wires registries and policy).
 
-# Domain-specific duplicate error type (raised atomically by the registry)
-try:
-    from simcore_ai.services.registry import DuplicateServiceIdentityError  # type: ignore[attr-defined]
-except Exception:  # pragma: no cover
-    class DuplicateServiceIdentityError(Exception):  # fallback to ensure collision loop works
-        pass
+IMPORTANT:
+- No Django imports here.
+- No dynamic registrar lookups.
+- No collision handling; that lives in the Django registries.
+"""
 
-logger = logging.getLogger(__name__)
+from typing import Any, Optional, Type
+
+from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai.decorators.helpers import (
+    derive_name,
+    derive_namespace_core,
+    derive_kind,
+    strip_name_tokens,
+    normalize_name,
+    validate_identity,
+)
+from simcore_ai.identity.base import Identity
 
 
-class ServiceRegistrationMixin:
-    """Domain mixin for Services: function wrapping, extras binding, and registration."""
+class ServiceRegistrationDecorator(BaseDecorator):
+    """Core Service decorator: derive identity; no registration in core."""
 
-    # ----- function → class wrapping -----
-    def wrap_function(self, func: Callable[..., Any]) -> Type[Any]:
-        """Wrap an async function into a `BaseLLMService` subclass.
+    def get_registry(self):
+        # Core layer does not register services. Django layer overrides this.
+        return None
 
-        The generated service class adapts `on_success` to the function signature:
-        - (simulation, slim) -> forwarded
-        - (simulation)       -> forwarded
-        - otherwise          -> returns None
+    def derive_identity(
+            self,
+            cls: Type[Any],
+            *,
+            namespace: Optional[str],
+            kind: Optional[str],
+            name: Optional[str],
+    ) -> Identity:
         """
-        if not inspect.iscoroutinefunction(func):
-            raise TypeError(
-                "llm_service expects an async function when decorating callables; "
-                f"got {func!r}"
-            )
+        Derive (namespace, kind, name) with 'service' as the domain default for kind.
+        Token stripping is not applied at the core layer unless tokens are provided;
+        here we pass none (Django overrides add per-app tokens on name).
+        """
+        ns_attr = getattr(cls, "namespace", None)
+        kind_attr = getattr(cls, "kind", None)
+        name_attr = getattr(cls, "name", None)
 
-        class _FnService(BaseLLMService):  # type: ignore[misc]
-            async def on_success(self, simulation, slim):
-                sig = inspect.signature(func)
-                params = list(sig.parameters.values())
-                if len(params) >= 2:
-                    return await func(simulation, slim)
-                if len(params) == 1:
-                    return await func(simulation)
-                return None
+        # 1) name
+        nm = derive_name(cls, name_arg=name, name_attr=name_attr, derived_lower=True)
+        nm = strip_name_tokens(nm, tokens=())  # core: no tokens
+        nm = normalize_name(nm)
 
-        # Provide stable introspection metadata
-        _FnService.__name__ = f"{func.__name__}_Service"
-        _FnService.__module__ = getattr(func, "__module__", __name__)
+        # 2) namespace
+        ns = derive_namespace_core(cls, namespace_arg=namespace, namespace_attr=ns_attr)
 
-        return _FnService
+        # 3) kind (domain default = "service")
+        kd = derive_kind(cls, kind_arg=kind, kind_attr=kind_attr, default="service")
 
-    # ----- extras binding (domain-specific knobs) -----
-    def bind_extras(self, obj: Any, extras: dict[str, Any]) -> None:
-        """Bind optional decorator extras to the class (no-op if absent)."""
-        try:
-            codec = extras.get("codec", None)
-            if codec is not None:
-                setattr(obj, "codec_name", codec)
-            elif not hasattr(obj, "codec_name"):
-                setattr(obj, "codec_name", "default")
+        # 4) validate
+        validate_identity(ns, kd, nm)
 
-            prompt_plan = extras.get("prompt_plan", None)
-            if prompt_plan is not None:
-                try:
-                    setattr(obj, "prompt_plan", tuple(prompt_plan))
-                except Exception:
-                    setattr(obj, "prompt_plan", ())
-            elif not hasattr(obj, "prompt_plan"):
-                setattr(obj, "prompt_plan", ())
-        except Exception:  # pragma: no cover - extras must never break import
-            logger.debug("llm_service.bind_extras: suppressed extras binding error", exc_info=True)
-
-    # ----- registration with collision handling -----
-    def register(self, cls: Type[Any], identity: tuple[str, str, str], **kwargs) -> None:
-        """Register the service class with tuple³ uniqueness and collision resolution."""
-        if ServiceRegistry is None:  # registry unavailable at import time; skip safely
-            logger.debug("ServiceRegistry unavailable; skipping registration for %s", getattr(cls, "__name__", cls))
-            return
-        origin, bucket, name = identity
-
-        # Ensure the resolved identity is reflected on the class prior to registration
-        setattr(cls, "origin", origin)
-        setattr(cls, "bucket", bucket)
-        setattr(cls, "name", name)
-        # Optional convenience string form if the class uses it
-        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
-
-        if not (origin and bucket and name):
-            logger.debug(
-                "Service identity incomplete; skipping registration: origin=%r bucket=%r name=%r",
-                origin, bucket, name
-            )
-            return
-
-        while True:
-            try:
-                ServiceRegistry.register(cls)
-                logger.info(
-                    "Registered AI Service (%s, %s, %s) -> %s",
-                    origin,
-                    bucket,
-                    name,
-                    getattr(cls, "__name__", str(cls)),
-                )
-                return
-            except DuplicateServiceIdentityError:
-                # Bump only the name portion with a numeric suffix and retry
-                new_name = self._bump_suffix(name)
-                logger.warning(
-                    "Collision for service identity (%s, %s, %s); renamed to (%s, %s, %s)",
-                    origin,
-                    bucket,
-                    name,
-                    origin,
-                    bucket,
-                    new_name,
-                )
-                name = new_name
-                setattr(cls, "name", name)
-                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+        return Identity(namespace=ns, kind=kd, name=nm)
 
 
-class ServiceRegistrationDecorator(BaseRegistrationDecorator, ServiceRegistrationMixin):
-    """Core Services decorator: supports classes and async functions."""
-
-
-# Ready-to-use instance (core)
+# Ready-to-use decorator instances (short and namespaced aliases)
 llm_service = ServiceRegistrationDecorator()
+ai_service = llm_service
 
-__all__ = ["llm_service", "ServiceRegistrationDecorator", "ServiceRegistrationMixin"]
+__all__ = ["llm_service", "ai_service", "ServiceRegistrationDecorator"]

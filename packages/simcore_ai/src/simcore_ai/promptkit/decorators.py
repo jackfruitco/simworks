@@ -1,73 +1,83 @@
-import logging
-from collections.abc import Callable
-from typing import Any, TYPE_CHECKING
+# packages/simcore_ai/src/simcore_ai/promptkit/decorators.py
+from __future__ import annotations
 
-from simcore_ai.decorators.registration import BaseRegistrationDecorator
-from simcore_ai.promptkit.registry import (
-    PromptRegistry,
-    DuplicatePromptSectionIdentityError,
+"""
+Core (non-Django) Prompt Section decorator built on the class-based BaseDecorator.
+
+This module defines the **core** `prompt_section` decorator using the shared,
+framework-agnostic `BaseDecorator`. It is responsible only for:
+
+- deriving a finalized Identity (namespace, kind, name) using core helpers
+  with the domain default `kind="prompt_section"`,
+- attaching the identity to the decorated class as:
+    * cls.identity      -> (namespace, kind, name) tuple
+    * cls.identity_obj  -> Identity dataclass instance
+- deferring registration: in the core package, `get_registry()` returns None,
+  so decoration skips registration (Django layer wires registries and policy).
+
+IMPORTANT:
+- No Django imports here.
+- No dynamic registrar lookups.
+- No collision handling; that lives in the Django registries.
+"""
+
+from typing import Any, Optional, Type
+
+from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai.decorators.helpers import (
+    derive_name,
+    derive_namespace_core,
+    derive_kind,
+    strip_name_tokens,
+    normalize_name,
+    validate_identity,
 )
-
-from simcore_ai.promptkit import PromptSection
-
-logger = logging.getLogger(__name__)
+from simcore_ai.identity.base import Identity
 
 
-class PromptSectionDecorator(BaseRegistrationDecorator):
-    """Decorator for registering prompt sections with uniqueness enforcement.
+class PromptSectionRegistrationDecorator(BaseDecorator):
+    """Core Prompt Section decorator: derive identity; no registration in core."""
 
-    Ensures that registered prompt sections have unique tuple³ identities by
-    appending suffixes '-2', '-3', ... to the name on collision.
-    Function targets are rejected.
-    """
+    def get_registry(self):
+        # Core layer does not register prompt sections. Django layer overrides this.
+        return None
 
-    def wrap_function(self, func: Callable) -> Callable:
-        """Reject decorating functions."""
-        raise TypeError("PromptSectionDecorator cannot be used to decorate functions.")
-
-
-    def register(self, cls: type[PromptSection], identity: tuple[str, str, str], **kwargs) -> None:
-        """Register the prompt section object with unique name enforcement.
-
-        If the (origin, bucket, name) tuple already exists, this will append
-        a numeric suffix to the *name* (e.g., `name-2`, `name-3`, ...) and retry,
-        logging a warning on each collision. Only the `name` portion is changed.
+    def derive_identity(
+            self,
+            cls: Type[Any],
+            *,
+            namespace: Optional[str],
+            kind: Optional[str],
+            name: Optional[str],
+    ) -> Identity:
         """
-        origin, bucket, name = identity
+        Derive (namespace, kind, name) with 'prompt_section' as the domain default for kind.
+        Token stripping is not applied at the core layer unless tokens are provided;
+        here we pass none (Django overrides add per-app tokens on name).
+        """
+        ns_attr = getattr(cls, "namespace", None)
+        kind_attr = getattr(cls, "kind", None)
+        name_attr = getattr(cls, "name", None)
 
-        # Ensure the resolved identity is reflected on the class prior to registration
-        setattr(cls, "origin", origin)
-        setattr(cls, "bucket", bucket)
-        setattr(cls, "name", name)
-        # Optional convenience string form if the class uses it
-        setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+        # 1) name
+        nm = derive_name(cls, name_arg=name, name_attr=name_attr, derived_lower=True)
+        nm = strip_name_tokens(nm, tokens=())  # core: no tokens
+        nm = normalize_name(nm)
 
-        while True:
-            try:
-                PromptRegistry.register(cls)
-                logger.info(
-                    "Registered prompt section (%s, %s, %s) -> %s",
-                    origin,
-                    bucket,
-                    name,
-                    getattr(cls, "__name__", str(cls)),
-                )
-                return
-            except DuplicatePromptSectionIdentityError:
-                # Bump only the name portion with a numeric suffix and retry
-                new_name = self._bump_suffix(name)
-                logger.warning(
-                    "Collision for prompt section identity (%s, %s, %s); renamed to (%s, %s, %s)",
-                    origin,
-                    bucket,
-                    name,
-                    origin,
-                    bucket,
-                    new_name,
-                )
-                name = new_name
-                setattr(cls, "name", name)
-                setattr(cls, "identity", f"{origin}.{bucket}.{name}")
+        # 2) namespace
+        ns = derive_namespace_core(cls, namespace_arg=namespace, namespace_attr=ns_attr)
+
+        # 3) kind (domain default = "prompt_section")
+        kd = derive_kind(cls, kind_arg=kind, kind_attr=kind_attr, default="prompt_section")
+
+        # 4) validate
+        validate_identity(ns, kd, nm)
+
+        return Identity(namespace=ns, kind=kd, name=nm)
 
 
-prompt_section = PromptSectionDecorator()
+# Ready-to-use decorator instances (short and namespaced aliases)
+prompt_section = PromptSectionRegistrationDecorator()
+ai_prompt_section = prompt_section
+
+__all__ = ["prompt_section", "ai_prompt_section", "PromptSectionRegistrationDecorator"]
