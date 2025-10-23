@@ -1,68 +1,84 @@
-# simcore_ai/schemas/decorators.py
-"""Core (non-Django) response schema decorator built on the class-based base decorator.
-
-This module defines the **core** `response_schema` decorator using the shared,
-framework-agnostic `BaseRegistrationDecorator`. It supports decorating
-**classes only** (schemas must be class types). Function targets will raise.
-
-Identity resolution is provided by the base decorator:
-- origin: first module segment or "simcore"
-- bucket: second module segment or "default"
-- name:   snake_case(class name with common affixes removed), with additional
-          affix tokens merged from the core environment variable
-          `SIMCORE_AI_IDENTITY_STRIP_TOKENS`.
-
-Registration policy:
-- Attempt to register the schema class with `ResponseSchemaRegistry.register(schema_cls)`.
-- The registry is expected to enforce tuple³ uniqueness (origin, bucket, name)
-  by raising `DuplicateResponseSchemaIdentityError` on collision.
-- On collision, this decorator appends a hyphen-int suffix to the **name**
-  (e.g., `name-2`, `name-3`, ...) and retries until success.
-- Collisions are logged at WARNING level; import-time must never crash.
-"""
+# packages/simcore_ai/src/simcore_ai/schemas/decorators.py
 from __future__ import annotations
 
-import logging
-from collections.abc import Callable
-from typing import Any, NoReturn
+"""
+Core (non-Django) Schema decorator built on the class-based BaseDecorator.
 
-from simcore_ai.decorators.registration import BaseRegistrationDecorator
+This module defines the **core** `schema` decorator using the shared,
+framework-agnostic `BaseDecorator`. It is responsible only for:
 
-log = logging.getLogger(__name__)
+- deriving a finalized Identity (namespace, kind, name) using core helpers
+  with the domain default `kind="schema"`,
+- attaching the identity to the decorated class as:
+    * cls.identity      -> (namespace, kind, name) tuple
+    * cls.identity_obj  -> Identity dataclass instance
+- deferring registration: in the core package, `get_registry()` returns None,
+  so decoration skips registration (Django layer wires registries and policy).
 
+IMPORTANT:
+- No Django imports here.
+- No dynamic registrar lookups.
+- No collision handling; that lives in the Django registries.
+- This decorator is intended for class targets (e.g., Pydantic models).
+"""
 
-def _get_registry_and_exc():
-    """Import ResponseSchemaRegistry and its duplicate error lazily and safely."""
-    try:
-        from simcore_ai.schemas.registry import ResponseSchemaRegistry  # type: ignore
-    except Exception:  # pragma: no cover - resilient import
-        ResponseSchemaRegistry = None  # type: ignore[assignment]
-    try:
-        from simcore_ai.schemas.registry import DuplicateResponseSchemaIdentityError  # type: ignore
-    except Exception:  # pragma: no cover
-        class DuplicateResponseSchemaIdentityError(Exception):  # type: ignore[no-redef]
-            """Fallback duplicate error to keep the collision loop working."""
-            pass
-    return ResponseSchemaRegistry, DuplicateResponseSchemaIdentityError
+from typing import Any, Optional, Type
 
-
-class ResponseSchemaDecorator(BaseRegistrationDecorator):
-    """Response schema decorator that supports class targets and collision-safe registration."""
-
-    # --- functions are not supported for schemas ---
-    def wrap_function(self, func: Callable[..., Any]) -> NoReturn:  # type: ignore[override]
-        raise TypeError(
-            "The `@response_schema` decorator only supports class targets; "
-            f"got callable {func!r}"
-        )
-
-    # --- register---
-    def register(self, cls, identity, **kwargs):
-        """No-op; no schema registry."""
-        pass
+from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai.decorators.helpers import (
+    derive_name,
+    derive_namespace_core,
+    derive_kind,
+    strip_name_tokens,
+    normalize_name,
+    validate_identity,
+)
+from simcore_ai.identity.base import Identity
 
 
-# Ready-to-use decorator instance
-response_schema = ResponseSchemaDecorator()
+class SchemaRegistrationDecorator(BaseDecorator):
+    """Core Schema decorator: derive identity; no registration in core."""
 
-__all__ = ["response_schema", "ResponseSchemaDecorator"]
+    def get_registry(self):
+        # Core layer does not register schemas. Django layer overrides this.
+        return None
+
+    def derive_identity(
+            self,
+            cls: Type[Any],
+            *,
+            namespace: Optional[str],
+            kind: Optional[str],
+            name: Optional[str],
+    ) -> Identity:
+        """
+        Derive (namespace, kind, name) with 'schema' as the domain default for kind.
+        Token stripping is not applied at the core layer unless tokens are provided;
+        here we pass none (Django overrides add per-app tokens on name).
+        """
+        ns_attr = getattr(cls, "namespace", None)
+        kind_attr = getattr(cls, "kind", None)
+        name_attr = getattr(cls, "name", None)
+
+        # 1) name
+        nm = derive_name(cls, name_arg=name, name_attr=name_attr, derived_lower=True)
+        nm = strip_name_tokens(nm, tokens=())  # core: no tokens
+        nm = normalize_name(nm)
+
+        # 2) namespace
+        ns = derive_namespace_core(cls, namespace_arg=namespace, namespace_attr=ns_attr)
+
+        # 3) kind (domain default = "schema")
+        kd = derive_kind(cls, kind_arg=kind, kind_attr=kind_attr, default="schema")
+
+        # 4) validate
+        validate_identity(ns, kd, nm)
+
+        return Identity(namespace=ns, kind=kd, name=nm)
+
+
+# Ready-to-use decorator instances (short and namespaced aliases)
+schema = SchemaRegistrationDecorator()
+ai_schema = schema
+
+__all__ = ["schema", "ai_schema", "SchemaRegistrationDecorator"]
