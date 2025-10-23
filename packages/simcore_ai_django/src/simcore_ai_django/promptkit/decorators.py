@@ -44,4 +44,9 @@ ai_prompt_section = prompt_section
 
 prompt_scenario = prompt_section
 
-__all__ = ["prompt_section", "ai_prompt_section", "ai_prompt_section", "prompt_scenario", "DjangoPromptSectionDecorator"]
+__all__ = [
+    "prompt_section",
+    "ai_prompt_section",
+    "prompt_scenario",
+    "DjangoPromptSectionDecorator",
+]

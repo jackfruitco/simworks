@@ -124,7 +124,7 @@ class ServiceRegistry:
                 setattr(cls, "kind", kd)
                 setattr(cls, "name", nm)
                 setattr(cls, "identity", key)
-                logger.info("service.registered %s", ".".join(key))
+                logger.debug("service.registered %s", ".".join(key))
                 return
 
             if existing is cls:

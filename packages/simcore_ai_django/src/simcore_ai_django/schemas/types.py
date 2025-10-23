@@ -11,14 +11,14 @@ __all__ = [
 
 class DjangoBaseOutputSchema(DjangoIdentityMixin, BaseOutputSchema):
     """Django-aware schema base: auto-derive (origin, bucket, name) from app label."""
-    pass
+    __identity_abstract__ = True
 
 
 class DjangoBaseOutputBlock(BaseOutputSchema):
     """Re-export of BaseOutputSchema for Django-facing code paths (no identity)."""
-    pass
+    __identity_abstract__ = True
 
 
 class DjangoBaseOutputItem(BaseOutputItem):
     """Re-export of BaseOutputItem for Django-facing code paths (no identity)."""
-    pass
+    __identity_abstract__ = True

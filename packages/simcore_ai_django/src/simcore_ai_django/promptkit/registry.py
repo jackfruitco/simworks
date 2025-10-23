@@ -124,7 +124,7 @@ class PromptSectionRegistry:
                 setattr(cls, "kind", kd)
                 setattr(cls, "name", nm)
                 setattr(cls, "identity", key)
-                logger.info("prompt_section.registered %s", ".".join(key))
+                logger.debug("prompt_section.registered %s", ".".join(key))
                 return
 
             if existing is cls:
