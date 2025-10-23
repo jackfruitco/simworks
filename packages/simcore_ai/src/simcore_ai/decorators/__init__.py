@@ -23,12 +23,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # static analyzers only; avoids runtime import cycles
     from simcore_ai.services.decorators import (ServiceRegistrationDecorator as ServiceRegistrationDecorator,
                                                 llm_service as llm_service)
-    from simcore_ai.codecs.decorators import (CodecDecorator as CodecDecorator,
+    from simcore_ai.codecs.decorators import (CodecRegistrationDecorator as CodecDecorator,
                                               codec as codec)
-    from simcore_ai.promptkit.decorators import (PromptSectionDecorator as PromptSectionDecorator,
+    from simcore_ai.promptkit.decorators import (PromptSectionRegistrationDecorator as PromptSectionDecorator,
                                                  prompt_section as prompt_section)
-    from simcore_ai.schemas.decorators import (ResponseSchemaDecorator as ResponseSchemaDecorator,
-                                               response_schema as response_schema)
+    from simcore_ai.schemas.decorators import (SchemaRegistrationDecorator as ResponseSchemaDecorator,
+                                               schema as response_schema)
 
 # Import-safe: the base class does not depend on domain modules.
 from .registration import BaseRegistrationDecorator
