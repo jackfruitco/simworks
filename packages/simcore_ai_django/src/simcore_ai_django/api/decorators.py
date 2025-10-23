@@ -27,11 +27,12 @@ from simcore_ai_django.services.decorators import llm_service as llm_service
 from simcore_ai_django.promptkit.decorators import (
     prompt_section as prompt_section,
 )
-from simcore_ai_django.schemas.decorators import schema as schema
+from simcore_ai_django.schemas.decorators import schema as schema, schema as response_schema
 
 __all__ = [
     "codec",
     "llm_service",
     "prompt_section",
     "schema",
+    "response_schema",
 ]
