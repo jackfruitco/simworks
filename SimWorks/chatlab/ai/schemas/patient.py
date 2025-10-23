@@ -6,7 +6,7 @@ from pydantic import Field
 from chatlab.ai.mixins import ChatlabMixin
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem, DjangoBaseOutputBlock
-from simcore_ai_django.schemas.decorators import response_schema
+from simcore_ai_django.api.decorators import response_schema
 from simcore.ai.schemas.output_items import LLMConditionsCheckItem
 
 

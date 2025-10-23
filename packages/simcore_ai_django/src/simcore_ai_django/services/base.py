@@ -4,7 +4,6 @@ from simcore_ai.services.base import BaseLLMService
 from simcore_ai.services.exceptions import ServiceCodecResolutionError
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse
-from simcore_ai_django.codecs import get_codec as _registry_get_codec  # (origin, bucket, name) -> BaseLLMCodec
 from simcore_ai_django.execution.helpers import (
     settings_default_backend as _exec_default_backend,
     settings_default_mode as _exec_default_mode,
@@ -14,6 +13,7 @@ from simcore_ai_django.prompts.render_section import \
     render_section as _default_renderer  # async (origin, section_key, simulation) -> str
 from simcore_ai_django.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
+from simcore_ai_django.api.registry import CodecRegistry
 
 __all__ = [
     "DjangoBaseLLMService",
@@ -202,11 +202,11 @@ class DjangoBaseLLMService(BaseLLMService):
             # 3) Django registry (triple-based)
             try:
                 if origin and c_bucket and c_name:
-                    obj = _registry_get_codec(origin, c_bucket, c_name)
+                    obj = CodecRegistry.resolve(identity=tuple(origin, c_bucket, c_name))
                     if obj:
                         return obj
                 if origin:
-                    obj = _registry_get_codec(origin, "default", "default")
+                    obj = CodecRegistry.resolve(identity=tuple(origin, "default", "default"))
                     if obj:
                         return obj
             except Exception:
@@ -264,16 +264,17 @@ class DjangoBaseLLMService(BaseLLMService):
                 o, b, n = parse_dot_identity(cid)
                 if o and b and n:
                     # 1) Django registry
-                    obj = _registry_get_codec(o, b, n)
+                    obj = CodecRegistry.resolve(identity=tuple(o, b, n))
                     if obj:
                         return obj
                     # 2) Core registry
                     try:
                         from simcore_ai.codecs.registry import get_codec as _core_get_codec
+                        from simcore_ai.codecs.registry import CodecRegistry as _core_codec_registry
                     except Exception:
-                        _core_get_codec = None
-                    if _core_get_codec is not None:
-                        obj = _core_get_codec(o, b, n)
+                        _core_codec_registry = None
+                    if _core_codec_registry is not None:
+                        obj = _core_codec_registry.get(o, b, n)
                         if obj:
                             return obj
             # 3) Fallback to request-time resolution
