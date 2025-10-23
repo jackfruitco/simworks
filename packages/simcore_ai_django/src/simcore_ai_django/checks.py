@@ -1,78 +1,95 @@
-# simcore_ai_django/checks.py
+# packages/simcore_ai_django/src/simcore_ai_django/checks.py
 from __future__ import annotations
+
 """
-simcore_ai_django.checks
-========================
+Django system checks for SIMCORE AI configuration & registries.
 
-Django system checks for SIMCORE_AI configuration.
+This module hosts two groups of checks:
 
-This module validates the new single-root settings shape:
+1) Settings shape validation for the consolidated `SIMCORE_AI` dict.
+   - Ensures PROVIDERS/CLIENTS structures are mappings
+   - Surfaces type issues and missing links
+   - Gentle guidance on defaults & timeouts
 
-SIMCORE_AI = {
-    "PROVIDERS": {
-        "<prov-key>": {
-            "provider": "openai" | "anthropic" | "vertex" | "azure_openai" | "local",
-            "label": str | None,
-            "base_url": str | None,
-            "api_key": str | None,
-            "api_key_env": str | None,
-            "model": str | None,
-            "organization": str | None,
-            "timeout_s": float | int | None,
-        },
-        ...
-    },
-    "CLIENTS": {
-        "<client-name>": {
-            "provider": "<prov-key>",
-            "default": bool,
-            "enabled": bool,
-            # Overrides (optional)
-            "model": str | None,
-            "base_url": str | None,
-            "api_key": str | None,
-            "api_key_env": str | None,
-            "timeout_s": float | int | None,
-            # Runtime knobs (optional)
-            "client_config": dict | None,
-        },
-        ...
-    },
-    "CLIENT_DEFAULTS": { ... },          # runtime knobs for AIClient
-    "HEALTHCHECK_ON_START": True | False # optional, defaults True
-}
+2) Registry integrity checks (codecs/services/prompt sections/schemas).
+   - Detects identity **collisions** (same `(namespace, kind, name)` bound to different classes)
+     * Error when `SIMCORE_COLLISIONS_STRICT` is True (default)
+     * Warning when strict is False (dev mode)
+     * Check ID: `SIMCORE-ID-001`
+   - Detects **invalid identities** (empty/illegal characters) if any slipped through
+     * Error always (registries already try to prevent these)
+     * Check ID: `SIMCORE-ID-002`
 
-The goal is to surface actionable, early feedback when settings are malformed.
+These checks run at startup and can be invoked with `python manage.py check`.
 """
 
-from typing import Any, Dict, List, Optional
-from collections.abc import Iterable, Mapping
+from typing import Any, Dict, List, Optional, Iterable, Tuple
+from collections.abc import Mapping
+import logging
+import re
 
 from django.conf import settings
 from django.core import checks
 
 from simcore_ai.tracing import service_span_sync
 
+# Django-layer registries
+from simcore_ai_django.codecs.registry import codecs as codec_registry
+from simcore_ai_django.services.registry import services as service_registry
+from simcore_ai_django.promptkit.registry import prompt_sections as prompt_registry
+from simcore_ai_django.schemas.registry import schemas as schema_registry
 
+LOGGER = logging.getLogger(__name__)
 TAG = "simcore_ai"
+CHECK_ID_PREFIX = "SIMCORE-ID"
+
+_ALLOWED_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
-def _is_truthy(val: Any) -> bool:
-    """Best-effort truthiness coercion for settings-like values."""
-    if isinstance(val, bool):
-        return val
-    if isinstance(val, str):
-        return val.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(val)
-
+# ---------------------------------------------------------------------------
+# Settings validation (retained, updated docstring from legacy module)
+# ---------------------------------------------------------------------------
 
 @checks.register(checks.Tags.compatibility, checks.Tags.security, checks.Tags.settings)
 def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
     """
     Validate SIMCORE_AI settings structure and key fields.
 
-    Returns:
-        A list of Django CheckMessage instances (errors and warnings).
+    Expected shape:
+
+    SIMCORE_AI = {
+        "PROVIDERS": {
+            "<prov-key>": {
+                "provider": "openai" | "anthropic" | "vertex" | "azure_openai" | "local",
+                "label": str | None,
+                "base_url": str | None,
+                "api_key": str | None,
+                "api_key_env": str | None,
+                "model": str | None,
+                "organization": str | None,
+                "timeout_s": float | int | None,
+            },
+            ...
+        },
+        "CLIENTS": {
+            "<client-name>": {
+                "provider": "<prov-key>",
+                "default": bool,
+                "enabled": bool,
+                # Overrides (optional)
+                "model": str | None,
+                "base_url": str | None,
+                "api_key": str | None,
+                "api_key_env": str | None,
+                "timeout_s": float | int | None,
+                # Runtime knobs (optional)
+                "client_config": dict | None,
+            },
+            ...
+        },
+        "CLIENT_DEFAULTS": { ... },          # runtime knobs for AIClient
+        "HEALTHCHECK_ON_START": True | False # optional, defaults True
+    }
     """
     with service_span_sync("ai.clients.checks"):
         messages: List[checks.CheckMessage] = []
@@ -89,7 +106,7 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
             )
             return messages
 
-        # --- PROVIDERS ------------------------------------------------------------
+        # --- PROVIDERS --------------------------------------------------------
         providers: Mapping[str, Dict[str, Any]] = sim.get("PROVIDERS", {}) or {}
         if not isinstance(providers, Mapping):
             messages.append(
@@ -100,7 +117,7 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                     id=f"{TAG}.E001",
                 )
             )
-            return messages  # Cannot proceed without providers being a mapping
+            return messages
 
         if not providers:
             messages.append(
@@ -112,7 +129,6 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                 )
             )
 
-        # Validate each provider entry
         for pkey, cfg in providers.items():
             with service_span_sync("ai.clients.checks.provider", attributes={"ai.provider_key": pkey}):
                 if not isinstance(cfg, Mapping):
@@ -137,7 +153,6 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                         )
                     )
 
-                # Warn if neither api_key nor api_key_env is supplied (may still be ok in dev)
                 api_key = cfg.get("api_key")
                 api_key_env = cfg.get("api_key_env")
                 if not api_key and not api_key_env:
@@ -150,7 +165,6 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                         )
                     )
 
-                # Optional: type checks
                 base_url = cfg.get("base_url", None)
                 timeout_s = cfg.get("timeout_s", None)
                 if base_url is not None and not isinstance(base_url, str):
@@ -173,7 +187,7 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                             )
                         )
 
-        # --- CLIENTS --------------------------------------------------------------
+        # --- CLIENTS ----------------------------------------------------------
         clients: Mapping[str, Dict[str, Any]] = sim.get("CLIENTS", {}) or {}
         if not isinstance(clients, Mapping):
             messages.append(
@@ -230,7 +244,6 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                         )
                     )
 
-                # Type sanity for well-known fields
                 for key in ("model", "base_url", "api_key", "api_key_env"):
                     if key in cfg and cfg[key] is not None and not isinstance(cfg[key], str):
                         messages.append(
@@ -252,11 +265,9 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                             )
                         )
 
-                # Track defaults
                 if _is_truthy(cfg.get("default", False)):
                     default_clients.append(cname)
 
-        # --- Default guidance ------------------------------------------------------
         if clients and not default_clients:
             messages.append(
                 checks.Warning(
@@ -279,7 +290,6 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                 )
             )
 
-        # --- CLIENT_DEFAULTS sanity checks ----------------------------------------
         client_defaults = sim.get("CLIENT_DEFAULTS", {}) or {}
         if client_defaults and not isinstance(client_defaults, Mapping):
             messages.append(
@@ -327,7 +337,6 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                         )
                     )
 
-        # --- HEALTHCHECK_ON_START sanity ------------------------------------------
         if "HEALTHCHECK_ON_START" in sim:
             val = sim.get("HEALTHCHECK_ON_START")
             if not isinstance(val, bool):
@@ -338,5 +347,102 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                         id=f"{TAG}.W014",
                     )
                 )
+
+        return messages
+
+
+def _is_truthy(val: Any) -> bool:
+    """Best-effort truthiness coercion for settings-like values."""
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(val)
+
+
+# ---------------------------------------------------------------------------
+# Registry integrity checks
+# ---------------------------------------------------------------------------
+
+@checks.register(checks.Tags.models)
+def check_simcore_ai_registries(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
+    """Validate identity collisions and illegal identities across registries.
+
+    - Collisions → `SIMCORE-ID-001` (Error if strict, Warning if non-strict)
+    - Invalid identities → `SIMCORE-ID-002` (Error)
+    """
+    with service_span_sync("ai.registries.checks"):
+        messages: List[checks.CheckMessage] = []
+        strict = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", True))
+
+        registries = [
+            ("codec", codec_registry),
+            ("service", service_registry),
+            ("prompt_section", prompt_registry),
+            ("schema", schema_registry),
+        ]
+
+        # Collisions (SIMCORE-ID-001)
+        for kind, reg in registries:
+            try:
+                collisions = list(reg.collisions())
+            except Exception as exc:  # pragma: no cover - defensive
+                LOGGER.exception("registry.collisions.failed %s", kind)
+                continue
+            if not collisions:
+                continue
+            joined = ", ".join([".".join(t) for t in collisions])
+            if strict:
+                messages.append(
+                    checks.Error(
+                        f"{kind} registry has identity collisions: {joined}",
+                        hint=(
+                            "Collisions occur when different classes share the same (namespace, kind, name). "
+                            "Rename one class via its decorator or adjust your derivation tokens."
+                        ),
+                        obj=f"simcore_ai_django.{kind}.registry",
+                        id=f"{CHECK_ID_PREFIX}-001",
+                    )
+                )
+            else:
+                messages.append(
+                    checks.Warning(
+                        f"{kind} registry has identity collisions (non-strict mode): {joined}",
+                        hint=(
+                            "Enable SIMCORE_COLLISIONS_STRICT=True to fail hard, or resolve by renaming."
+                        ),
+                        obj=f"simcore_ai_django.{kind}.registry",
+                        id=f"{CHECK_ID_PREFIX}-001",
+                    )
+                )
+
+        # Invalid identities (SIMCORE-ID-002) — should not happen because registries validate,
+        # but we defensively re-check the stored keys and surface errors if any slipped through.
+        def _validate_tuple3(t: Tuple[str, str, str]) -> Optional[str]:
+            ns, kd, nm = t
+            for label, val in (("namespace", ns), ("kind", kd), ("name", nm)):
+                if not isinstance(val, str) or not val.strip():
+                    return f"{label} is empty or not a string: {val!r}"
+                if not _ALLOWED_RE.match(val):
+                    return f"{label} contains illegal characters: {val!r}"
+            return None
+
+        for kind, reg in registries:
+            try:
+                registered = list(reg.list())
+            except Exception as exc:  # pragma: no cover - defensive
+                LOGGER.exception("registry.list.failed %s", kind)
+                continue
+            for item in registered:
+                problem = _validate_tuple3(item.identity)
+                if problem:
+                    messages.append(
+                        checks.Error(
+                            f"Invalid identity in {kind} registry: {'.'.join(item.identity)} ({problem})",
+                            hint="This should have been prevented at registration time; check your decorator derivation.",
+                            obj=f"simcore_ai_django.{kind}.registry",
+                            id=f"{CHECK_ID_PREFIX}-002",
+                        )
+                    )
 
         return messages

@@ -1,50 +1,45 @@
-# simcore_ai_django/services/decorators.py
-"""Django-aware LLM service decorator.
-
-This module composes the Django identity/tokens mixins with the **core**
-service registration decorator to provide a drop-in `@llm_service` that:
-
-- Supports decorating **classes and async functions** (function targets are
-  wrapped into a `BaseLLMService` subclass by the core decorator).
-- Resolves identity using Django-aware defaults (AppConfig-aware) while
-  preserving the core precedence rules:
-    kwargs > class attrs > Django/module defaults
-- Strips affix tokens from the **name only** (case-insensitive, both ends,
-  iterative) using merged sources (core defaults + env + Django settings +
-  AppConfig contributions).
-- Registers services with the core `ServiceRegistry` and enforces tuple³
-  uniqueness. Collisions are handled by the decorator via hyphen-int suffixing
-  on the **name** (`name-2`, `-3`, ...), with WARNING logs; import-time never
-  crashes.
-
-No Django imports are required here beyond the mixins module, which is designed
-to be import-safe even when Django settings/apps are not initialized yet.
-"""
+# packages/simcore_ai_django/src/simcore_ai_django/services/decorators.py
 from __future__ import annotations
 
-import logging
+"""
+Django-aware service decorator (class-based, no factories).
 
-from simcore_ai.services.decorators import ServiceRegistrationDecorator
-from simcore_ai_django.decorators.mixins import DjangoSimcoreIdentityMixin
+This decorator composes the core domain decorator with the Django-aware base to:
 
-log = logging.getLogger(__name__)
+- derive a finalized Identity `(namespace, kind, name)` using Django-aware
+  namespace resolution (AppConfig label → app name → module root) and
+  name-only token stripping from AppConfig/global settings,
+- set the domain default `kind="service"`,
+- register the class with the Django services registry (`services`), which
+  enforces duplicate vs collision policy controlled by `SIMCORE_COLLISIONS_STRICT`.
+
+No collision rewriting is performed here; registries own policy. If you want to
+opt-in to dev-only rename-on-collision, override `allow_collision_rewrite()` in
+this subclass to return True (recommended OFF in production).
+"""
+
+from typing import Any
+
+from simcore_ai.services.decorators import (
+    ServiceRegistrationDecorator as CoreServiceDecorator,
+)
+from simcore_ai_django.decorators.base import DjangoBaseDecorator
+from simcore_ai_django.services.registry import services
 
 
-class DjangoServiceRegistrationDecorator(DjangoSimcoreIdentityMixin, ServiceRegistrationDecorator):
-    """Django-aware service decorator.
+class DjangoServiceDecorator(DjangoBaseDecorator, CoreServiceDecorator):
+    """Django-aware service decorator: identity via DjangoBaseDecorator; registry wired here."""
 
-    Inherits:
-      - Identity resolution and token merging from `DjangoSimcoreIdentityMixin`.
-      - Function wrapping, extras binding, and collision-handling registration
-        from `ServiceRegistrationDecorator`.
-    """
-    # At this point, the core behavior is sufficient. If we later need
-    # Django-specific extras (e.g., default execution backend), we can
-    # override `bind_extras` here and read from Django settings safely.
-    pass
+    # Domain default for kind
+    default_kind = "service"
+
+    def get_registry(self) -> Any | None:
+        """Return the Django services registry singleton."""
+        return services
 
 
-# Ready-to-use instance for Django apps
-llm_service = DjangoServiceRegistrationDecorator()
+# Ready-to-use decorator instances (short and namespaced aliases)
+llm_service = DjangoServiceDecorator()
+ai_service = llm_service
 
-__all__ = ["llm_service", "DjangoServiceRegistrationDecorator"]
+__all__ = ["llm_service", "ai_service", "DjangoServiceDecorator"]

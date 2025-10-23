@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import os
 
-from simcore_ai_django.decorators.helpers import gather_app_identity_tokens
-
 """
 simcore_ai_django.apps
 ======================
@@ -47,14 +45,6 @@ class SimcoreAIDjangoConfig(AppConfig):
         """
         if os.environ.get("DJANGO_SKIP_READY") == "1":
             return
-
-        from . import identity as _identity_mod
-        with service_span_sync("ai.identity.collect_tokens"):
-            try:
-                _identity_mod.APP_IDENTITY_STRIP_TOKENS = gather_app_identity_tokens()
-            except Exception:
-                # always keep startup resilient
-                logger.debug("Failed collecting APP_IDENTITY_STRIP_TOKENS", exc_info=True)
 
         from .setup import configure_ai_clients
 
