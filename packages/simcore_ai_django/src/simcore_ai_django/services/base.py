@@ -13,7 +13,7 @@ from simcore_ai_django.prompts.render_section import \
     render_section as _default_renderer  # async (origin, section_key, simulation) -> str
 from simcore_ai_django.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
-from simcore_ai_django.api.registry import CodecRegistry
+from simcore_ai_django.codecs.registry import CodecRegistry
 
 __all__ = [
     "DjangoBaseLLMService",
