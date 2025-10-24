@@ -3,15 +3,15 @@ from __future__ import annotations
 
 """Prompt section registry (AIv3 / Identity-first).
 
-- Stores **PromptSection classes** keyed by a tuple `(origin, bucket, name)`.
-- Accepts **dot-only** canonical strings ("origin.bucket.name") for lookups.
+- Stores **PromptSection classes** keyed by a tuple `(namespace, kind, name)`.
+- Accepts **dot-only** canonical strings ("namespace.kind.name") for lookups.
 - Does NOT auto-resolve or rename collisions: duplicate identities raise an error.
 
 Typical usage:
     @register_section
     class MySection(PromptSection):
-        origin = "chatlab"
-        bucket = "patient"
+        namespace = "chatlab"
+        kind = "patient"
         name = "initial"
 
     SectionCls = PromptRegistry.require_str("chatlab.patient.initial")
@@ -35,11 +35,11 @@ logger = logging.getLogger(__name__)
 
 
 def _identity_tuple_for_cls(section_cls: Type[PromptSection]) -> tuple[str, str, str]:
-    """Derives the identity tuple (origin, bucket, name) for a section class.
+    """Derives the identity tuple (namespace, kind, name) for a section class.
 
     Accepted class-level declarations:
-      1) `identity: str` in dot-only form ("origin.bucket.name")
-      2) `origin`, `bucket`, `name` class attributes (strings)
+      1) `identity: str` in dot-only form ("namespace.kind.name")
+      2) `namespace`, `kind`, `name` class attributes (strings)
 
     Raises:
         TypeError: if neither form is present or invalid.
@@ -48,20 +48,20 @@ def _identity_tuple_for_cls(section_cls: Type[PromptSection]) -> tuple[str, str,
     if isinstance(ident, str):
         return parse_dot_identity(ident)
 
-    origin = getattr(section_cls, "origin", None)
-    bucket = getattr(section_cls, "bucket", None)
+    namespace = getattr(section_cls, "namespace", None)
+    kind = getattr(section_cls, "kind", None)
     name = getattr(section_cls, "name", None)
-    if all(isinstance(x, str) and x for x in (origin, bucket, name)):
-        return (origin, bucket, name)
+    if all(isinstance(x, str) and x for x in (namespace, kind, name)):
+        return (namespace, kind, name)
 
     raise TypeError(
         f"{section_cls.__name__} must define either `identity` as a dot string "
-        f"or class attrs `origin`, `bucket`, and `name`."
+        f"or class attrs `namespace`, `kind`, and `name`."
     )
 
 
 class PromptRegistry:
-    """Global registry for `PromptSection` **classes** keyed by tuple `(origin, bucket, name)`.
+    """Global registry for `PromptSection` **classes** keyed by tuple `(namespace, kind, name)`.
 
     We keep classes (not instances) so sections can carry behavior and schemas.
     """
@@ -104,7 +104,7 @@ class PromptRegistry:
 
     @classmethod
     def get_str(cls, key: str) -> Type[PromptSection] | None:
-        """Dot-only string lookup ("origin.bucket.name")."""
+        """Dot-only string lookup ("namespace.kind.name")."""
         ident_tuple = parse_dot_identity(key)
         return cls.get(ident_tuple)
 
@@ -146,7 +146,7 @@ def register_section(section_cls: Type[PromptSection]) -> Type[PromptSection]:
     """Decorator to register a `PromptSection` class in the global registry.
 
     The class must declare either `identity` as a dot string or class attrs
-    `origin`, `bucket`, and `name`.
+    `namespace`, `kind`, and `name`.
     """
     PromptRegistry.register(section_cls)
     return section_cls

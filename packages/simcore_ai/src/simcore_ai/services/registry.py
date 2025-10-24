@@ -2,10 +2,10 @@
 Service class registry for SimCore AI.
 
 This module provides a minimal, framework-agnostic registry for service classes,
-keyed by (origin:str, bucket:str, name:str) tuples.
+keyed by (namespace:str, kind:str, name:str) tuples.
 
 Key format:
-    (origin, bucket, name): all are non-empty strings.
+    (namespace, kind, name): all are non-empty strings.
 
 Collision policy:
     When registering a service with a key that already exists and is associated
@@ -34,7 +34,7 @@ class DuplicateServiceIdentityError(Exception):
 
 class ServiceRegistry:
     """
-    Framework-agnostic registry for service classes, keyed by (origin, bucket, name).
+    Framework-agnostic registry for service classes, keyed by (namespace, kind, name).
     """
 
     _store: dict[tuple[str, str, str], Type] = {}
@@ -46,26 +46,26 @@ class ServiceRegistry:
         return bool(os.environ.get("SIMCORE_AI_DEBUG", "").strip())
 
     @classmethod
-    def has(cls, origin: str, bucket: str, name: str) -> bool:
-        """Return True if a service is registered under the given (origin, bucket, name)."""
+    def has(cls, namespace: str, kind: str, name: str) -> bool:
+        """Return True if a service is registered under the given (namespace, kind, name)."""
         with cls._lock:
-            return (origin, bucket, name) in cls._store
+            return (namespace, kind, name) in cls._store
 
     @classmethod
     def _identity_for_cls(cls, service_cls: Type) -> tuple[str, str, str]:
         """
-        Derive (origin, bucket, name) from class attributes.
-        Accepts either explicit 'origin', 'bucket', 'name' attributes,
+        Derive (namespace, kind, name) from class attributes.
+        Accepts either explicit 'namespace', 'kind', 'name' attributes,
         or a dot-separated 'identity' attribute.
         Raises TypeError if not found.
         """
-        if hasattr(service_cls, "origin") and hasattr(service_cls, "bucket") and hasattr(service_cls, "name"):
-            origin = getattr(service_cls, "origin")
-            bucket = getattr(service_cls, "bucket")
+        if hasattr(service_cls, "namespace") and hasattr(service_cls, "kind") and hasattr(service_cls, "name"):
+            namespace = getattr(service_cls, "namespace")
+            kind = getattr(service_cls, "kind")
             name = getattr(service_cls, "name")
-            if not all(isinstance(x, str) and x for x in (origin, bucket, name)):
+            if not all(isinstance(x, str) and x for x in (namespace, kind, name)):
                 raise TypeError(f"Service class {service_cls!r} has invalid identity attributes.")
-            return (origin, bucket, name)
+            return (namespace, kind, name)
         elif hasattr(service_cls, "identity"):
             ident = getattr(service_cls, "identity")
             if not isinstance(ident, str):

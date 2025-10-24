@@ -44,13 +44,13 @@ class MyService(DjangoBaseLLMService):
 ```python
 {
   "simulation_id": int,
-  "identity": "origin.bucket.name",
+  "identity": "namespace.kind.name",
   "request": {
     "correlation_id": "uuid4",
-    "origin": "origin",
-    "bucket": "bucket",
+    "namespace": "namespace",
+    "kind": "kind",
     "name": "name",
-    "codec_identity": "origin.bucket.codec_name",
+    "codec_identity": "namespace.kind.codec_name",
     "messages": [ { "role": "developer", "content": [...] }, ... ],
     "response_format": {...} | None,
     "response_format_cls": "Qualified.Class.Name" | None,
@@ -71,12 +71,12 @@ Useful for logging, auditing, and correlating with subsequent events.
 ```python
 {
   "simulation_id": int,
-  "identity": "origin.bucket.name",
+  "identity": "namespace.kind.name",
   "response": {
     "request_correlation_id": "uuid4",
-    "codec_identity": "origin.bucket.codec_name",
-    "origin": "origin",
-    "bucket": "bucket",
+    "codec_identity": "namespace.kind.codec_name",
+    "namespace": "namespace",
+    "kind": "kind",
     "name": "name",
     "content": [...],
     "usage": {...} | None,
@@ -98,7 +98,7 @@ Use this to persist final AI output, run post-processing, or update UI.
 ```python
 {
   "simulation_id": int,
-  "identity": "origin.bucket.name",
+  "identity": "namespace.kind.name",
   "correlation_id": "uuid4",
   "error": "trace or message"
 }
@@ -116,7 +116,7 @@ Best used to capture errors, retry counts, and notify monitoring systems.
 ```python
 {
   "simulation_id": int,
-  "identity": "origin.bucket.name",
+  "identity": "namespace.kind.name",
   "chunk": {
     "request_correlation_id": "uuid4",
     "delta": "text or structured piece",
@@ -138,7 +138,7 @@ You can broadcast these events over websockets to update the UI in real-time.
 ```python
 {
   "simulation_id": int,
-  "identity": "origin.bucket.name",
+  "identity": "namespace.kind.name",
   "correlation_id": "uuid4"
 }
 ```

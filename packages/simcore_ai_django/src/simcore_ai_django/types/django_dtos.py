@@ -5,7 +5,7 @@ Django-specific rich Data Transfer Objects (DTOs).
 These classes extend the core `simcore_ai.types` models with optional Django-facing metadata:
 - database primary keys (e.g., `db_pk`, `request_db_pk`, `response_db_pk`)
 - audit timestamps (`created_at`, `updated_at`)
-- identity echo (`namespace`, `bucket`, `name`) for easy filtering
+- identity echo (`namespace`, `kind`, `name`) for easy filtering
 - correlation link fields (`correlation_id`, `request_correlation_id`, `response_correlation_id`)
 - provider/client metadata for observability
 - optional rich overlays (`messages_rich`, `outputs_rich`, `usage_rich`) promoted by the glue layer
@@ -51,7 +51,7 @@ class DjangoDTOBase(StrictBaseModel):
     # Optional correlation and identity fields
     correlation_id: UUID | None = None
     namespace: str | None = None           # e.g., "chatlab"
-    bucket: str | None = None              # e.g., "sim_responses"
+    kind: str | None = None              # e.g., "sim_responses"
     name: str | None = None                # concrete leaf name (Identity.name)
 
     # Provider/client resolution captured at emit-time

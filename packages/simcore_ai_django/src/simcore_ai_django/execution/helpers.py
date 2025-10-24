@@ -52,13 +52,13 @@ def settings_default_queue_name() -> Optional[str]:
 
 def span_attrs_from_ctx(ctx: Mapping[str, Any]) -> Dict[str, Any]:
     ns = ctx.get("namespace")
-    bucket = ctx.get("bucket") or ctx.get("service_bucket")
+    kind = ctx.get("kind") or ctx.get("service_bucket")
     name = ctx.get("name") or ctx.get("service_name")
     codec_id = ctx.get("codec_identity")
     corr = ctx.get("correlation_id") or ctx.get("req_correlation_id") or ctx.get("request_correlation_id")
     attrs: Dict[str, Any] = {}
-    if ns or bucket or name:
-        attrs["ai.identity.service"] = ".".join(x for x in (ns, bucket, name) if x)
+    if ns or kind or name:
+        attrs["ai.identity.service"] = ".".join(x for x in (ns, kind, name) if x)
     if codec_id:
         attrs["ai.identity.codec"] = codec_id
     if corr:

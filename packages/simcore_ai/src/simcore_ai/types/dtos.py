@@ -90,8 +90,8 @@ class LLMRequest(StrictBaseModel):
     messages: list[LLMRequestMessage]
 
     # Identity
-    origin: str | None = None
-    bucket: str | None = None
+    namespace: str | None = None
+    kind: str | None = None
     name: str | None = None
 
     # Correlation
@@ -118,8 +118,8 @@ class LLMRequest(StrictBaseModel):
 
 class LLMResponse(StrictBaseModel):
     # Identity echoed back (operation identity)
-    origin: str | None = None
-    bucket: str | None = None
+    namespace: str | None = None
+    kind: str | None = None
     name: str | None = None
 
     # Correlation

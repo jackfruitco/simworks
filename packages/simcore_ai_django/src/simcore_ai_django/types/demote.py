@@ -46,7 +46,7 @@ def _demote_usage(usage_rich: Optional[DjangoLLMUsage], fallback: Optional[LLMUs
 def demote_request(dj_req: DjangoLLMRequest) -> LLMRequest:
     """Demote a Django-rich request back to the core LLMRequest.
 
-    Preserves identity fields (namespace, bucket, client_name).
+    Preserves identity fields (namespace, kind, client_name).
     Strips Django-only overlay fields.
     """
     base = dj_req.model_dump(mode="json")

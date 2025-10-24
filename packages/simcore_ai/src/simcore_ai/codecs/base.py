@@ -1,7 +1,7 @@
 """Base codec class for structured LLM output validation and interpretation.
 
 Identity usage:
-  The codec identity is composed of three parts: origin, bucket, and name.
+  The codec identity is composed of three parts: namespace, kind, and name.
   These are used for cross-layer registration and lookup, replacing any prior use of 'namespace'.
 
 Responsibilities:
@@ -49,7 +49,7 @@ class BaseLLMCodec(ABC):
         (that's handled by the provider/compiler layer).
 
     Identity:
-      The codec may define `origin`, `bucket`, and `name` to align with service/registry identity.
+      The codec may define `namespace`, `kind`, and `name` to align with service/registry identity.
       These correspond to the `Identity` model used for cross-layer registration and lookup.
     """
 
@@ -63,8 +63,8 @@ class BaseLLMCodec(ABC):
     schema_meta: dict[str, Any] | None = None
 
     # Optional identity parts to align with services/registries
-    origin: str = "default"
-    bucket: str = "default"
+    namespace: str = "default"
+    kind: str = "default"
 
     # ----------------------------------------------------------------------
     # Schema utilities
@@ -159,15 +159,15 @@ class BaseLLMCodec(ABC):
     # ----------------------------------------------------------------------
     @property
     def identity(self) -> Identity:
-        return Identity(origin=self.origin, bucket=self.bucket, name=self.name)
+        return Identity(namespace=self.namespace, kind=self.kind, name=self.name)
 
     @property
     def identity_key2(self) -> tuple[str, str]:
-        """Two-part key used by the core registry: (origin, f"{bucket}:{name}")"""
+        """Two-part key used by the core registry: (namespace, f"{kind}:{name}")"""
         ident = self.identity
         return ident.as_tuple2
 
     @property
     def identity_str(self) -> str:
-        """Human-friendly identity string 'origin.bucket.name'."""
+        """Human-friendly identity string 'namespace.kind.name'."""
         return self.identity.to_string()

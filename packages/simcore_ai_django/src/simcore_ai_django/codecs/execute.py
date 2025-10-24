@@ -24,7 +24,7 @@ def _as_tuple3(value: Tuple[str, str, str]) -> Tuple[str, str, str]:
 
 
 def _is_identity_like(obj: Any) -> bool:
-    return all(hasattr(obj, attr) for attr in ("namespace", "bucket", "name"))
+    return all(hasattr(obj, attr) for attr in ("namespace", "kind", "name"))
 
 
 def execute_codec(
@@ -45,9 +45,9 @@ def execute_codec(
     Accepted `codec` inputs:
       - A **codec class** (subclass of DjangoBaseLLMCodec) → will be instantiated
       - A **codec instance** (DjangoBaseLLMCodec)
-      - A **tuple3 identity**: (namespace, bucket, name)
-      - An **identity string**: "ns.bucket.name" or "ns:bucket:name"
-      - An **Identity** object (namespace/bucket/name attributes)
+      - A **tuple3 identity**: (namespace, kind, name)
+      - An **identity string**: "ns.kind.name" or "ns:kind:name"
+      - An **Identity** object (namespace/kind/name attributes)
       - **None** → resolve from `response.codec_identity`, or fall back to the response's service identity
 
     Resolution order:
@@ -55,7 +55,7 @@ def execute_codec(
       2) instance → use directly
       3) tuple3 → registry lookup
       4) identity string / Identity → registry lookup
-      5) None → resolve via response.codec_identity; if missing, use (resp.namespace, resp.bucket|default, resp.name)
+      5) None → resolve via response.codec_identity; if missing, use (resp.namespace, resp.kind|default, resp.name)
 
     Raises:
       - CodecNotFoundError if resolution fails
@@ -65,7 +65,7 @@ def execute_codec(
 
     # Precompute identities for tracing
     service_identity = ".".join(
-        x for x in (getattr(response, "namespace", None), getattr(response, "bucket", None), getattr(response, "name", None)) if x
+        x for x in (getattr(response, "namespace", None), getattr(response, "kind", None), getattr(response, "name", None)) if x
     ) or None
     resp_codec_identity = getattr(response, "codec_identity", None)
 
@@ -96,22 +96,22 @@ def execute_codec(
 
             # 4) codec is an identity string or Identity object
             elif isinstance(codec, str) or _is_identity_like(codec):
-                # Try full identity first (ns.bucket.name / ns:bucket:name)
+                # Try full identity first (ns.kind.name / ns:kind:name)
                 cls = DjangoCodecRegistry.get_by_identity(codec)  # type: ignore[arg-type]
                 if cls is not None:
                     resolved = cls
                 else:
-                    # Legacy "bucket:name" without namespace → infer namespace from response
+                    # Legacy "kind:name" without namespace → infer namespace from response
                     if isinstance(codec, str) and (":" in codec and codec.count(":") == 1):
                         ns = getattr(response, "namespace", None)
                         if ns:
                             warnings.warn(
-                                "Using legacy 'bucket:name' without namespace; inferring namespace from response.identity",
+                                "Using legacy 'kind:name' without namespace; inferring namespace from response.identity",
                                 DeprecationWarning,
                                 stacklevel=2,
                             )
-                            bucket, name = codec.split(":", 1)
-                            resolved = DjangoCodecRegistry.resolve(tuple(ns, bucket, name))
+                            kind, name = codec.split(":", 1)
+                            resolved = DjangoCodecRegistry.resolve(tuple(ns, kind, name))
 
             # 5) codec is None → resolve via response
             elif codec is None:
@@ -124,7 +124,7 @@ def execute_codec(
                 # Fallback to service identity on the response
                 if resolved is None:
                     ns = getattr(response, "namespace", None)
-                    b = getattr(response, "bucket", None) or "default"
+                    b = getattr(response, "kind", None) or "default"
                     n = getattr(response, "name", None)
                     if ns and n:
                         resolved = DjangoCodecRegistry.get_codec(ns, b, n)
@@ -158,7 +158,7 @@ def execute_codec(
                 "ai.identity.codec": ".".join(
                     x for x in (
                         getattr(instance, "namespace", None),
-                        getattr(instance, "bucket", None),
+                        getattr(instance, "kind", None),
                         getattr(instance, "name", None),
                     ) if x
                 ) or resp_codec_identity,

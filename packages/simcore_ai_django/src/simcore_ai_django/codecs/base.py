@@ -30,7 +30,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
     Key principles:
       - This base stays free of direct ORM models; apps provide them via **ctx.
       - Validation errors raise `CodecDecodeError` and should be caught by the service/UI.
-      - Idempotency is recommended inside `persist()` (e.g., unique by `(namespace, bucket, name, correlation_id)`).
+      - Idempotency is recommended inside `persist()` (e.g., unique by `(namespace, kind, name, correlation_id)`).
       - Emission should run **after commit** via `transaction.on_commit`.
 
     Usage:
@@ -50,7 +50,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
 
       @receiver(ai_response_ready)
       def on_ready(sender, **payload):
-          if (payload.get("namespace"), payload.get("bucket")) != ("chatlab", "sim_responses"):
+          if (payload.get("namespace"), payload.get("kind")) != ("chatlab", "sim_responses"):
               return
           ...
     """
@@ -117,7 +117,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
 
         Return an app-specific result (e.g., a model instance or PK).
 
-        Recommended idempotency key: (resp.namespace, resp.bucket, resp.name, resp.correlation_id).
+        Recommended idempotency key: (resp.namespace, resp.kind, resp.name, resp.correlation_id).
         Handle IntegrityError by re-fetching and returning the existing row.
         """
         raise NotImplementedError
@@ -137,7 +137,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
             def _send():
                 payload = {
                     "namespace": getattr(resp, "namespace", None),
-                    "bucket": getattr(resp, "bucket", None),
+                    "kind": getattr(resp, "kind", None),
                     "name": getattr(resp, "name", None),
                     "correlation_id": getattr(resp, "correlation_id", None),
                     "request_correlation_id": getattr(resp, "request_correlation_id", None),
@@ -167,7 +167,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
                     str(x)
                     for x in (
                         getattr(resp, "namespace", None),
-                        getattr(resp, "bucket", None),
+                        getattr(resp, "kind", None),
                         getattr(resp, "name", None),
                     )
                     if x

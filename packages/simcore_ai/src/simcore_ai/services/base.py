@@ -1,12 +1,12 @@
 # simcore_ai/services/base.py
 """
 BaseLLMService: Abstract base for LLM-backed AI services.
-Provides identity fields (origin, bucket, name) to disambiguate service identity.
-The canonical string form is `identity_str` ("origin.bucket.name").
-The legacy `namespace` field is deprecated in favor of `identity_str` and `origin`.
+Provides identity fields (namespace, kind, name) to disambiguate service identity.
+The canonical string form is `identity_str` ("namespace.kind.name").
+The legacy `namespace` field is deprecated in favor of `identity_str` and `namespace`.
 
 Prompt plan support:
-    - The `prompt_plan` is now a **list of canonical section identities ("origin:bucket:name") or PromptSection classes**
+    - The `prompt_plan` is now a **list of canonical section identities ("namespace:kind:name") or PromptSection classes**
       (no role tuples). The service uses a PromptEngine to build a single Prompt aggregate which is then converted into
       request messages (developer/user + extras).
 """
@@ -37,29 +37,29 @@ tracer = get_tracer("simcore_ai.llmservice")
 
 
 class ServiceEmitter(Protocol):
-    def emit_request(self, simulation_id: int, origin: str, request_dto: LLMRequest) -> None: ...
+    def emit_request(self, simulation_id: int, namespace: str, request_dto: LLMRequest) -> None: ...
 
-    def emit_response(self, simulation_id: int, origin: str, response_dto: LLMResponse) -> None: ...
+    def emit_response(self, simulation_id: int, namespace: str, response_dto: LLMResponse) -> None: ...
 
-    def emit_failure(self, simulation_id: int, origin: str, correlation_id, error: str) -> None: ...
+    def emit_failure(self, simulation_id: int, namespace: str, correlation_id, error: str) -> None: ...
 
-    def emit_stream_chunk(self, simulation_id: int, origin: str, chunk_dto) -> None: ...
+    def emit_stream_chunk(self, simulation_id: int, namespace: str, chunk_dto) -> None: ...
 
-    def emit_stream_complete(self, simulation_id: int, origin: str, correlation_id) -> None: ...
+    def emit_stream_complete(self, simulation_id: int, namespace: str, correlation_id) -> None: ...
 
 
 
 @dataclass
 class BaseLLMService:
     """
-    Abstract base for LLM-backed AI services. Handles identity fields (origin, bucket, name)
-    and canonical identity string (identity_str = "origin.bucket.name").
-    The legacy `namespace` field is deprecated; use `identity_str` and `origin` instead.
+    Abstract base for LLM-backed AI services. Handles identity fields (namespace, kind, name)
+    and canonical identity string (identity_str = "namespace.kind.name").
+    The legacy `namespace` field is deprecated; use `identity_str` and `namespace` instead.
     """
     simulation_id: int  # TODO: remove leak from app
     # Optional identity parts; canonical string is identity_str
-    origin: str | None = None
-    bucket: str | None = None
+    namespace: str | None = None
+    kind: str | None = None
     name: str | None = None
     identity_str: str | None = None
 
@@ -92,15 +92,15 @@ class BaseLLMService:
     def __post_init__(self):
         # Build canonical identity string from parts
         ident = Identity(
-            origin=self.origin or "app",
-            bucket=self.bucket or "service",
+            namespace=self.namespace or "app",
+            kind=self.kind or "service",
             name=(self.name or self.__class__.__name__),
         )
         self.identity_str = ident.to_string()
     async def ensure_prompt(self, simulation) -> Prompt:
         """Ensure `self.prompt` is built once via the configured PromptEngine.
 
-        The plan now contains only canonical section identities ("origin:bucket:name")
+        The plan now contains only canonical section identities ("namespace:kind:name")
         or PromptSection classes. We resolve all specs to classes and pass them to
         the engine's `build_from`/`abuild_from` method, along with a context.
         """
@@ -145,15 +145,15 @@ class BaseLLMService:
         o = parts[0] if len(parts) > 0 else None
         b = parts[1] if len(parts) > 1 else None
         n = parts[2] if len(parts) > 2 else None
-        return Identity.from_parts(origin=o, bucket=b, name=n)
+        return Identity.from_parts(namespace=o, kind=b, name=n)
 
     @property
     def origin_slug(self) -> str:
-        return self.identity.origin
+        return self.identity.namespace
 
     @property
     def bucket_slug(self) -> str:
-        return self.identity.bucket
+        return self.identity.kind
 
     @property
     def name_slug(self) -> str:
@@ -263,9 +263,9 @@ class BaseLLMService:
           1) explicitly set `codec_class` (returned directly)
           2) result of `select_codec()` (class or instance)
           3) registry lookup by identity:
-             - if `codec_name` is set, try (origin, codec_name)
-             - otherwise, assemble a composite from identity: f"{identity.bucket}:{identity.name}"
-             - try exact match, then fall back to `(origin, "default")`
+             - if `codec_name` is set, try (namespace, codec_name)
+             - otherwise, assemble a composite from identity: f"{identity.kind}:{identity.name}"
+             - try exact match, then fall back to `(namespace, "default")`
 
         Raises:
             ServiceCodecResolutionError: if no codec could be resolved.
@@ -283,19 +283,19 @@ class BaseLLMService:
         if _core_get_codec is not None:
             ident = self.identity
             # Prefer explicit codec_name if provided
-            key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
-            codec_obj = _core_get_codec(ident.origin, key_name)
+            key_name = (self.codec_name or f"{ident.kind}:{ident.name}")
+            codec_obj = _core_get_codec(ident.namespace, key_name)
             if codec_obj:
                 return codec_obj
-            # Fallback to an origin default
-            codec_obj = _core_get_codec(ident.origin, "default")
+            # Fallback to an namespace default
+            codec_obj = _core_get_codec(ident.namespace, "default")
             if codec_obj:
                 return codec_obj
 
         # Nothing found: raise
         raise ServiceCodecResolutionError(
-            origin=getattr(self.identity, 'origin', None),
-            bucket=getattr(self.identity, 'bucket', None),
+            namespace=getattr(self.identity, 'namespace', None),
+            kind=getattr(self.identity, 'kind', None),
             name=getattr(self.identity, 'name', None),
             codec_name=self.codec_name,
             service=self.__class__.__name__,
@@ -304,7 +304,7 @@ class BaseLLMService:
     async def run(self, simulation) -> LLMResponse:
         """
         Run the service for a simulation, emitting request/response events.
-        Uses identity fields (origin, bucket, name) and canonical identity_str.
+        Uses identity fields (namespace, kind, name) and canonical identity_str.
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
@@ -322,14 +322,14 @@ class BaseLLMService:
             )
             # Stamp operation identity onto request
             ident = self.identity
-            req.origin = ident.origin
-            req.bucket = ident.bucket
+            req.namespace = ident.namespace
+            req.kind = ident.kind
             req.name = ident.name
 
             # Codec resolution and attach codec identity and response format
             codec = self.get_codec(simulation)
-            key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
-            codec_identity = f"{ident.origin}.{key_name.replace(':', '.')}"
+            key_name = (self.codec_name or f"{ident.kind}:{ident.name}")
+            codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
             req.codec_identity = codec_identity
             schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(
                 codec, "output_model", None)
@@ -354,7 +354,7 @@ class BaseLLMService:
                     # Copy codec identity if missing and echo operation identity
                     if getattr(resp, "codec_identity", None) is None:
                         resp.codec_identity = req.codec_identity
-                    resp.origin, resp.bucket, resp.name = ident.origin, ident.bucket, ident.name
+                    resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
                     # Wire correlation link
                     if getattr(resp, "request_correlation_id", None) is None:
                         resp.request_correlation_id = req.correlation_id
@@ -380,7 +380,7 @@ class BaseLLMService:
     async def run_stream(self, simulation):
         """
         Run the service for a simulation, streaming responses and emitting events.
-        Uses identity fields (origin, bucket, name) and canonical identity_str.
+        Uses identity fields (namespace, kind, name) and canonical identity_str.
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
@@ -397,14 +397,14 @@ class BaseLLMService:
             )
             # Stamp operation identity onto request
             ident = self.identity
-            req.origin = ident.origin
-            req.bucket = ident.bucket
+            req.namespace = ident.namespace
+            req.kind = ident.kind
             req.name = ident.name
 
             # Codec resolution and attach codec identity and response format
             codec = self.get_codec(simulation)
-            key_name = (self.codec_name or f"{ident.bucket}:{ident.name}")
-            codec_identity = f"{ident.origin}.{key_name.replace(':', '.')}"
+            key_name = (self.codec_name or f"{ident.kind}:{ident.name}")
+            codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
             req.codec_identity = codec_identity
             schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(
                 codec, "output_model", None)
