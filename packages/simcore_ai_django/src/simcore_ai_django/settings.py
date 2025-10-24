@@ -37,7 +37,7 @@ DEFAULTS = {
 
     # Global tokens applied to the *name* part only (case-insensitive)
     # Per-app tokens should come from AppConfig.IDENTITY_STRIP_TOKENS
-    "SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL": tuple(),  # type: Tuple[str, ...]
+    "SIMCORE_IDENTITY_STRIP_TOKENS": tuple(),  # type: Tuple[str, ...]
 }
 
 
@@ -69,7 +69,7 @@ def get_bool(key: str, default: bool | None = None) -> bool:
 
 def get_tokens_global() -> Tuple[str, ...]:
     """Return global identity strip tokens as a tuple of strings (CI semantics elsewhere)."""
-    val: Any = get_setting("SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL", DEFAULTS["SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL"])
+    val: Any = get_setting("SIMCORE_IDENTITY_STRIP_TOKENS", DEFAULTS["SIMCORE_IDENTITY_STRIP_TOKENS"])
     # Normalize into a tuple[str, ...]
     if val is None:
         return tuple()
