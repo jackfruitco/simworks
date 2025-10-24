@@ -4,37 +4,24 @@ from __future__ import annotations
 """
 Core (non-Django) codec decorator built on the class-based BaseDecorator.
 
-- Uses the shared, framework-agnostic identity derivation helpers.
-- Attaches a finalized Identity to the class:
-    * cls.identity      -> (namespace, kind, name) tuple
-    * cls.identity_obj  -> Identity dataclass
-- No registration in core: get_registry() returns None, so decoration is
-  derivation-only. The Django layer provides registration and collision policy.
+This decorator is intentionally thin:
+- Delegates identity derivation to the core IdentityResolver via BaseDecorator
+- Applies the domain default `kind="codec"` when arg/attr doesn't specify kind
+- Does **not** register in core (get_registry() -> None); Django layer wires registries
 
-Domain default:
-- kind defaults to "codec" when neither decorator args nor class attributes
-  provide a value.
+No token collection or normalization logic lives here; that is owned by the resolver.
 """
 
 from typing import Any, Optional, Type
 
 from simcore_ai.decorators.base import BaseDecorator
-from simcore_ai.decorators.helpers import (
-    derive_name,
-    derive_namespace_core,
-    derive_kind,
-    strip_name_tokens,
-    normalize_name,
-    validate_identity,
-)
 from simcore_ai.identity.base import Identity
 
 
 class CodecRegistrationDecorator(BaseDecorator):
-    """Core codec decorator: derive identity; no registration in core."""
+    """Core codec decorator: delegate to resolver; no registration in core."""
 
-    def get_registry(self):
-        # Core layer does not register codecs. Django layer overrides this.
+    def get_registry(self):  # core layer does not register codecs
         return None
 
     def derive_identity(
@@ -44,31 +31,25 @@ class CodecRegistrationDecorator(BaseDecorator):
             namespace: Optional[str],
             kind: Optional[str],
             name: Optional[str],
-    ) -> Identity:
+    ) -> tuple[Identity, dict[str, Any] | None]:
+        """Use the base resolver but inject the domain default kind="codec".
+
+        Precedence becomes:
+          - kind arg (if provided) → class attr `kind` (if provided) → "codec"
+        All other behavior (explicit vs derived name, stripping, normalization)
+        is handled by the resolver.
         """
-        Derive (namespace, kind, name) with 'codec' as the domain default for kind.
-        Token stripping is not applied at the core layer unless tokens are provided;
-        here we pass none (Django overrides add per-app tokens on name).
-        """
-        ns_attr = getattr(cls, "namespace", None)
-        kind_attr = getattr(cls, "kind", None)
-        name_attr = getattr(cls, "name", None)
+        effective_kind = kind if (isinstance(kind, str) and kind.strip()) else getattr(cls, "kind", None)
+        if not (isinstance(effective_kind, str) and effective_kind.strip()):
+            effective_kind = "codec"
 
-        # 1) name
-        nm = derive_name(cls, name_arg=name, name_attr=name_attr, derived_lower=True)
-        nm = strip_name_tokens(nm, tokens=())  # core: no tokens
-        nm = normalize_name(nm)
-
-        # 2) namespace
-        ns = derive_namespace_core(cls, namespace_arg=namespace, namespace_attr=ns_attr)
-
-        # 3) kind (domain default = "codec")
-        kd = derive_kind(cls, kind_arg=kind, kind_attr=kind_attr, default="codec")
-
-        # 4) validate
-        validate_identity(ns, kd, nm)
-
-        return Identity(namespace=ns, kind=kd, name=nm)
+        identity, meta = self.resolver.resolve(
+            cls,
+            namespace=namespace,
+            kind=effective_kind,
+            name=name,
+        )
+        return identity, meta
 
 
 # Ready-to-use decorator instances (short and namespaced aliases)

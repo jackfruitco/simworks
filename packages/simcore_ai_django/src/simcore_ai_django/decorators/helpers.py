@@ -18,6 +18,8 @@ from typing import Iterable, Optional, Tuple, Type, List
 from django.apps import apps, AppConfig
 from django.conf import settings
 
+from simcore_ai.tracing import service_span_sync
+
 from simcore_ai.decorators.helpers import (
     strip_name_tokens as core_strip_name_tokens,
 )
@@ -107,30 +109,47 @@ def get_app_tokens_for_name(cls: Type) -> Tuple[str, ...]:
 
     Tokens are de-duplicated case-insensitively while preserving first occurrence order.
     """
-    tokens: List[str] = []
+    with service_span_sync(
+        "ai.django.collect_tokens",
+        attributes={
+            "ai.class": f"{cls.__module__}.{cls.__name__}",
+        },
+    ) as span:
+        tokens: List[str] = []
 
-    cfg = _get_app_config_for_class(cls)
-    if cfg is not None:
-        app_tokens = getattr(cfg, "IDENTITY_STRIP_TOKENS", None)
-        if app_tokens:
+        cfg = _get_app_config_for_class(cls)
+        if cfg is not None:
+            app_tokens = getattr(cfg, "IDENTITY_STRIP_TOKENS", None)
+            if app_tokens:
+                try:
+                    for t in app_tokens:
+                        if isinstance(t, str):
+                            tokens.append(t)
+                except Exception:
+                    # Be defensive about arbitrary iterables
+                    pass
+
+        global_tokens = getattr(settings, "SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL", None)
+        if global_tokens:
             try:
-                for t in app_tokens:
+                for t in global_tokens:
                     if isinstance(t, str):
                         tokens.append(t)
             except Exception:
-                # Be defensive about arbitrary iterables
                 pass
 
-    global_tokens = getattr(settings, "SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL", None)
-    if global_tokens:
-        try:
-            for t in global_tokens:
-                if isinstance(t, str):
-                    tokens.append(t)
-        except Exception:
-            pass
+        attrs = {
+            "ai.tokens.app_count": len(tokens),
+            "ai.tokens.global_count": len(global_tokens or []),
+        }
+        for k, v in attrs.items():
+            try:
+                span.set_attribute(k, v)
+            except Exception:
+                # never break token collection due to tracing issues
+                pass
 
-    return _dedupe_ci(tokens)
+        return _dedupe_ci(tokens)
 
 
 def strip_name_tokens_django(name: str, tokens: Iterable[str]) -> str:

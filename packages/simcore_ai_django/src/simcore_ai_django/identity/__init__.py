@@ -17,10 +17,9 @@ Notes
 
 from __future__ import annotations
 
-from typing import Tuple
-
 # Populated at runtime by `simcore_ai_django.apps.SimcoreAIDjangoConfig.ready()`
 APP_IDENTITY_STRIP_TOKENS: tuple[str, ...] = ()
+
 
 def get_app_identity_strip_tokens() -> tuple[str, ...]:
     """
@@ -31,6 +30,7 @@ def get_app_identity_strip_tokens() -> tuple[str, ...]:
     # Ensure we always return a tuple even if someone set it to None or other
     value = APP_IDENTITY_STRIP_TOKENS or ()
     return tuple(value)
+
 
 __all__ = [
     "APP_IDENTITY_STRIP_TOKENS",
