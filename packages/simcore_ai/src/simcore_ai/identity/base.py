@@ -43,7 +43,7 @@ class Identity:
     # canonical tuple for equality/hash/sorting
     @property
     def as_tuple3(self) -> Tuple[str, str, str]:
-        return (self.namespace, self.kind, self.name)
+        return self.namespace, self.kind, self.name
 
     # stable string for logs/metrics
     def to_string(self) -> str:

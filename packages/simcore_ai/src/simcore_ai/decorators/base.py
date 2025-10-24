@@ -36,7 +36,7 @@ from simcore_ai.decorators.helpers import (
     derive_identity_core,
 )
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=Type[Any])
 
@@ -100,7 +100,7 @@ class BaseDecorator:
             # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
 
-            # 4) Register (if registry present)
+            # 4) Register (if a registry is present)
             self.register(cls, identity)
 
             # 5) Emit a single trace span *after* successful registration with rich attributes
@@ -117,7 +117,7 @@ class BaseDecorator:
                 "ai.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
-            with service_span_sync("ai.decorator.apply", attributes=span_attrs):
+            with service_span_sync(f"ai.decorator.apply", attributes=span_attrs):
                 pass
 
             return cls
@@ -129,7 +129,6 @@ class BaseDecorator:
         return _apply
 
     # ---- hooks / extension points ----
-
     def get_registry(self) -> Any | None:
         """
         Return the registry singleton for this decorator's domain, or None to skip registration.
@@ -160,8 +159,8 @@ class BaseDecorator:
         implementation does not apply Django-specific behavior; Django subclasses
         will override to call Django-aware helpers.
         """
-        # Pull any class attributes if present (explicit attrs win when helpers consult them)
 
+        # Pull any class attributes if present (explicit attrs win when helpers consult them)
         ns_attr = getattr(cls, "namespace", None)
         kind_attr = getattr(cls, "kind", None)
         name_attr = getattr(cls, "name", None)
@@ -195,7 +194,7 @@ class BaseDecorator:
         """
         registry = self.get_registry()
         if registry is None:
-            log.debug(
+            logger.debug(
                 "No registry for %s; skipping registration for %s",
                 self.__class__.__name__,
                 identity.as_tuple3,
@@ -205,7 +204,7 @@ class BaseDecorator:
         # Registries own duplicate vs collision handling per implementation plan.
         try:
             registry.maybe_register(identity.as_tuple3, cls)
-            log.info(
+            logger.info(
                 "%s.registered %s",
                 getattr(registry, "name", self.__class__.__name__.lower()),
                 ".".join(identity.as_tuple3),

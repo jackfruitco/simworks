@@ -41,7 +41,6 @@ from simcore_ai_django.decorators.helpers import (
     strip_name_tokens_django,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -121,8 +120,10 @@ class DjangoBaseDecorator(BaseDecorator):
 
         else:
             tokens_used = get_app_tokens_for_name(cls)
-            trace_meta["ai.identity.name.stripped_tokens"] = ",".join(tokens_used)
-            trace_meta["ai.identity.name.stripped_tokens_list"] = list(tokens_used)
+            trace_meta.update({
+                "ai.identity.name.stripped_tokens": ",".join(tokens_used),
+                "ai.identity.name.stripped_tokens_list": list(tokens_used),
+            })
             logger.debug("Using tokens %s for %s", tokens_used, fqcn)
             stripped = strip_name_tokens_django(raw_name, tokens=tokens_used)
             post_strip = stripped or raw_name
