@@ -28,17 +28,40 @@ IMPORTANT: This module must not import any Django modules.
 """
 
 import logging
+import os
 from typing import Any, Optional, Type, TypeVar, Callable, cast
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.identity.base import Identity
-from simcore_ai.decorators.helpers import (
-    derive_identity_core,
-)
+from simcore_ai.identity.resolution import IdentityResolver
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=Type[Any])
+
+
+def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
+    level = os.getenv("SIMCORE_TRACE_LEVEL", "info").strip().lower()
+    if level not in {"debug", "info", "minimal"}:
+        level = "info"
+    if level == "debug":
+        return attrs
+    # info: keep standard subset
+    base_keys = {
+        "ai.decorator", "ai.class", "ai.identity",
+        "ai.tuple3.post_norm", "ai.identity.name.explicit",
+        # include helpful tuple3 snapshots and tokens in info
+        "ai.tuple3.raw", "ai.tuple3.post_strip",
+        "ai.strip_tokens", "ai.strip_tokens_list",
+    }
+    if level == "info":
+        return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("ai.")}
+    # minimal: essentials only
+    minimal_keys = {
+        "ai.decorator", "ai.class", "ai.identity",
+        "ai.tuple3.post_norm", "ai.identity.name.explicit",
+    }
+    return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("ai.")}
 
 
 class BaseDecorator:
@@ -58,6 +81,10 @@ class BaseDecorator:
     This base class performs *no* Django-aware inference; subclasses in
     simcore_ai_django override `derive_identity()` to add app-aware behavior.
     """
+
+    def __init__(self, *, resolver: IdentityResolver | None = None) -> None:
+        # Allow per-instance override; default to core resolver
+        self.resolver: IdentityResolver = resolver or IdentityResolver()
 
     # ---- public API: dual-form decorator ----
     def __call__(
@@ -117,6 +144,7 @@ class BaseDecorator:
                 "ai.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
+            span_attrs = _filter_trace_attrs(span_attrs)
             with service_span_sync(f"ai.decorator.apply", attributes=span_attrs):
                 pass
 
@@ -160,24 +188,13 @@ class BaseDecorator:
         will override to call Django-aware helpers.
         """
 
-        # Pull any class attributes if present (explicit attrs win when helpers consult them)
-        ns_attr = getattr(cls, "namespace", None)
-        kind_attr = getattr(cls, "kind", None)
-        name_attr = getattr(cls, "name", None)
-
-        # Note: name token stripping in core is no-op unless caller provides tokens
-        identity = derive_identity_core(
+        identity, meta = self.resolver.resolve(
             cls,
-            namespace_arg=namespace,
-            kind_arg=kind,
-            name_arg=name,
-            namespace_attr=ns_attr,
-            kind_attr=kind_attr,
-            name_attr=name_attr,
-            name_tokens=(),  # core has no tokens; Django layer adds them
-            lower_on_derived_name=True,
+            namespace=namespace,
+            kind=kind,
+            name=name,
         )
-        return identity, None
+        return identity, meta
 
     def bind_extras(self, cls: Type[Any], extras: dict[str, Any]) -> None:
         """

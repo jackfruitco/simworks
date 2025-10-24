@@ -11,23 +11,23 @@ Django layer so app code can import them from a single, stable location:
 
 These decorators:
 - derive a finalized Identity `(namespace, kind, name)` using the Django-aware
-  pipeline (AppConfig label/name, name-only token stripping),
+  pipeline (AppConfig label, segment-aware name stripping),
 - attach identity to the class (`cls.identity`, `cls.identity_obj`), and
 - **register with the Django registries**, where duplicate vs collision policy
   is enforced via `SIMCORE_COLLISIONS_STRICT`.
 
-Note: Collision rewriting (e.g., appending `-2`) is **not** performed here; that
-policy lives in the registries. Decorators may expose an
-`allow_collision_rewrite()` hint, but by default it is disabled and should not
-be used in production.
+Note: Collision rewriting (e.g., appending `-2`) is not performed here; that
+policy lives in the registries.
 """
 
-from simcore_ai_django.codecs.decorators import codec as codec
-from simcore_ai_django.services.decorators import llm_service as llm_service
-from simcore_ai_django.promptkit.decorators import (
-    prompt_section as prompt_section,
-)
-from simcore_ai_django.schemas.decorators import schema as schema, schema as response_schema
+# Import-light: avoid registry imports here to prevent cycles
+from ..codecs.decorators import codec as codec
+from ..services.decorators import llm_service as llm_service
+from ..promptkit.decorators import prompt_section as prompt_section
+from ..schemas.decorators import schema as schema
+
+# Convenience alias for legacy naming
+response_schema = schema
 
 __all__ = [
     "codec",

@@ -38,6 +38,7 @@ class DjangoPromptSectionDecorator(DjangoBaseDecorator, CorePromptSectionDecorat
         """Return the Django prompt sections registry singleton."""
         return prompt_sections
 
+
 # Ready-to-use decorator instances (short and namespaced aliases)
 prompt_section = DjangoPromptSectionDecorator()
 ai_prompt_section = prompt_section

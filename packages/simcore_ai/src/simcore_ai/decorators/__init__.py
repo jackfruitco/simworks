@@ -31,10 +31,10 @@ if TYPE_CHECKING:  # static analyzers only; avoids runtime import cycles
                                                schema as response_schema)
 
 # Import-safe: the base class does not depend on domain modules.
-from .registration import BaseRegistrationDecorator
+from .base import BaseDecorator
 
 __all__ = [
-    "BaseRegistrationDecorator",
+    "BaseDecorator",
     # Domain classes (lazy)
     "ServiceRegistrationDecorator",
     "CodecDecorator",

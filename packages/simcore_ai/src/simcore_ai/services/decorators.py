@@ -7,8 +7,9 @@ Core (non-Django) Service decorator built on the class-based BaseDecorator.
 This module defines the **core** `llm_service` decorator using the shared,
 framework-agnostic `BaseDecorator`. It is responsible only for:
 
-- deriving a finalized Identity (namespace, kind, name) using core helpers
-  with the domain default `kind="service"`,
+- deriving a finalized Identity (namespace, kind, name) via the core resolver
+  with the domain default `kind="service"` (when neither arg nor class attr
+  provide a kind),
 - attaching the identity to the decorated class as:
     * cls.identity      -> (namespace, kind, name) tuple
     * cls.identity_obj  -> Identity dataclass instance
@@ -17,29 +18,20 @@ framework-agnostic `BaseDecorator`. It is responsible only for:
 
 IMPORTANT:
 - No Django imports here.
-- No dynamic registrar lookups.
 - No collision handling; that lives in the Django registries.
+- No token collection here; stripping/normalization live in the resolver.
 """
 
 from typing import Any, Optional, Type
 
 from simcore_ai.decorators.base import BaseDecorator
-from simcore_ai.decorators.helpers import (
-    derive_name,
-    derive_namespace_core,
-    derive_kind,
-    strip_name_tokens,
-    normalize_name,
-    validate_identity,
-)
 from simcore_ai.identity.base import Identity
 
 
 class ServiceRegistrationDecorator(BaseDecorator):
-    """Core Service decorator: derive identity; no registration in core."""
+    """Core Service decorator: delegate to resolver; no registration in core."""
 
-    def get_registry(self):
-        # Core layer does not register services. Django layer overrides this.
+    def get_registry(self):  # core layer does not register services
         return None
 
     def derive_identity(
@@ -49,31 +41,26 @@ class ServiceRegistrationDecorator(BaseDecorator):
             namespace: Optional[str],
             kind: Optional[str],
             name: Optional[str],
-    ) -> Identity:
+    ) -> tuple[Identity, dict[str, Any] | None]:
+        """Use the base resolver but inject the domain default kind="service".
+
+        Precedence becomes:
+          - kind arg (if provided) → class attr `kind` (if provided) → "service"
+        All other behavior (explicit vs derived name, stripping, normalization)
+        is handled by the resolver.
         """
-        Derive (namespace, kind, name) with 'service' as the domain default for kind.
-        Token stripping is not applied at the core layer unless tokens are provided;
-        here we pass none (Django overrides add per-app tokens on name).
-        """
-        ns_attr = getattr(cls, "namespace", None)
-        kind_attr = getattr(cls, "kind", None)
-        name_attr = getattr(cls, "name", None)
+        # If neither decorator arg nor class attribute specify kind, default to "service".
+        effective_kind = kind if (isinstance(kind, str) and kind.strip()) else getattr(cls, "kind", None)
+        if not (isinstance(effective_kind, str) and effective_kind.strip()):
+            effective_kind = "service"
 
-        # 1) name
-        nm = derive_name(cls, name_arg=name, name_attr=name_attr, derived_lower=True)
-        nm = strip_name_tokens(nm, tokens=())  # core: no tokens
-        nm = normalize_name(nm)
-
-        # 2) namespace
-        ns = derive_namespace_core(cls, namespace_arg=namespace, namespace_attr=ns_attr)
-
-        # 3) kind (domain default = "service")
-        kd = derive_kind(cls, kind_arg=kind, kind_attr=kind_attr, default="service")
-
-        # 4) validate
-        validate_identity(ns, kd, nm)
-
-        return Identity(namespace=ns, kind=kd, name=nm)
+        identity, meta = self.resolver.resolve(
+            cls,
+            namespace=namespace,
+            kind=effective_kind,
+            name=name,
+        )
+        return identity, meta
 
 
 # Ready-to-use decorator instances (short and namespaced aliases)
