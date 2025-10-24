@@ -95,8 +95,8 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
             # identity / routing
             correlation_id=dj_req.correlation_id,
             namespace=dj_req.namespace,
-            origin=dj_req.origin,
-            bucket=dj_req.bucket,
+            namespace=dj_req.namespace,
+            kind=dj_req.kind,
             service_name=dj_req.service_name,
             provider_name=dj_req.provider_name,
             client_name=dj_req.client_name,
@@ -179,8 +179,8 @@ def write_response_audit(
             # identity / routing
             correlation_id=dj_resp.correlation_id,
             namespace=dj_resp.namespace,
-            origin=dj_resp.origin,
-            bucket=dj_resp.bucket,
+            namespace=dj_resp.namespace,
+            kind=dj_resp.kind,
             service_name=dj_resp.service_name,
             provider_name=dj_resp.provider_name,
             client_name=dj_resp.client_name,

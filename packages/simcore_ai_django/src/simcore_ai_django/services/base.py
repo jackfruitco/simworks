@@ -12,7 +12,7 @@ from simcore_ai_django.execution.helpers import (
     settings_default_mode as _exec_default_mode,
 )
 from simcore_ai_django.prompts.render_section import \
-    render_section as _default_renderer  # async (origin, section_key, simulation) -> str
+    render_section as _default_renderer  # async (namespace, section_key, simulation) -> str
 from simcore_ai_django.services.helpers import _kind_name_from_codec_name
 from simcore_ai_django.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
@@ -194,8 +194,8 @@ class DjangoBaseLLMService(BaseLLMService):
 
             # 5) Miss: raise rich error
             raise ServiceCodecResolutionError(
-                origin=namespace,
-                bucket=kind,
+                namespace=namespace,
+                kind=kind,
                 name=name,
                 codec=(f"{c_kind}.{c_name}" if c_kind and c_name else None),
                 service=self.__class__.__name__,

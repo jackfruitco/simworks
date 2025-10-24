@@ -84,10 +84,10 @@ class Command(BaseCommand):
             for name, (ok, detail) in results.items():
                 if by_provider:
                     prov_name = provider_map.get(name, "unknown")
-                    bucket = report.setdefault(prov_name, {"ok": True, "clients": {}})
-                    bucket["clients"][name] = {"ok": bool(ok), "detail": str(detail)}
-                    # provider bucket is ok only if all its clients are ok
-                    bucket["ok"] = bool(bucket["ok"] and ok)
+                    kind = report.setdefault(prov_name, {"ok": True, "clients": {}})
+                    kind["clients"][name] = {"ok": bool(ok), "detail": str(detail)}
+                    # provider kind is ok only if all its clients are ok
+                    kind["ok"] = bool(kind["ok"] and ok)
                 else:
                     report[name] = {"ok": bool(ok), "detail": str(detail)}
 

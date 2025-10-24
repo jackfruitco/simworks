@@ -1,5 +1,5 @@
 """
-This module stores response schema classes keyed by (origin, bucket, name) tuples.
+This module stores response schema classes keyed by (namespace, kind, name) tuples.
 It enforces uniqueness of these tuple keys by raising DuplicateResponseSchemaIdentityError on duplicates.
 """
 
@@ -10,7 +10,7 @@ _logger = logging.getLogger(__name__)
 
 
 class DuplicateResponseSchemaIdentityError(Exception):
-    """Raised when a duplicate (origin, bucket, name) key is registered with a different schema class."""
+    """Raised when a duplicate (namespace, kind, name) key is registered with a different schema class."""
 
 
 class RegistryLookupError(Exception):
@@ -26,29 +26,29 @@ class ResponseSchemaRegistry:
     _lock = threading.RLock()
 
     @classmethod
-    def _key(cls, origin: str, bucket: str, name: str) -> str:
-        return f"{origin}.{bucket}.{name}"
+    def _key(cls, namespace: str, kind: str, name: str) -> str:
+        return f"{namespace}.{kind}.{name}"
 
     @classmethod
     def _identity_for_cls(cls, schema_cls: type) -> tuple[str, str, str]:
         try:
-            origin = getattr(schema_cls, "origin")
-            bucket = getattr(schema_cls, "bucket")
+            namespace = getattr(schema_cls, "namespace")
+            kind = getattr(schema_cls, "kind")
             name = getattr(schema_cls, "name")
         except AttributeError as err:
             raise ValueError(
-                f"Schema class {schema_cls} must have 'origin', 'bucket', and 'name' attributes"
+                f"Schema class {schema_cls} must have 'namespace', 'kind', and 'name' attributes"
             ) from err
-        if not all(isinstance(x, str) for x in (origin, bucket, name)):
+        if not all(isinstance(x, str) for x in (namespace, kind, name)):
             raise ValueError(
-                f"Schema class {schema_cls} attributes 'origin', 'bucket', and 'name' must be strings"
+                f"Schema class {schema_cls} attributes 'namespace', 'kind', and 'name' must be strings"
             )
-        return origin, bucket, name
+        return namespace, kind, name
 
     @classmethod
     def register(cls, schema_cls: type) -> None:
-        origin, bucket, name = cls._identity_for_cls(schema_cls)
-        key = cls._key(origin, bucket, name)
+        namespace, kind, name = cls._identity_for_cls(schema_cls)
+        key = cls._key(namespace, kind, name)
         with cls._lock:
             if key in cls._items:
                 existing_cls = cls._items[key]
@@ -63,14 +63,14 @@ class ResponseSchemaRegistry:
             _logger.info(f"Registered response schema {schema_cls} under key {key}")
 
     @classmethod
-    def has(cls, origin: str, bucket: str, name: str = "default") -> bool:
-        key = cls._key(origin, bucket, name)
+    def has(cls, namespace: str, kind: str, name: str = "default") -> bool:
+        key = cls._key(namespace, kind, name)
         with cls._lock:
             return key in cls._items
 
     @classmethod
-    def get(cls, origin: str, bucket: str, name: str = "default") -> type:
-        key = cls._key(origin, bucket, name)
+    def get(cls, namespace: str, kind: str, name: str = "default") -> type:
+        key = cls._key(namespace, kind, name)
         with cls._lock:
             if key not in cls._items:
                 _logger.warning(f"Response schema not found for key {key}")
@@ -89,16 +89,16 @@ class ResponseSchemaRegistry:
     def get_str(cls, dot: str) -> type:
         parts = dot.split(".")
         if len(parts) != 3:
-            _logger.warning(f"Invalid schema key format: '{dot}', expected 'origin.bucket.name'")
+            _logger.warning(f"Invalid schema key format: '{dot}', expected 'namespace.kind.name'")
             raise ResponseSchemaNotFoundError(
-                f"Invalid schema key format: '{dot}', expected 'origin.bucket.name'"
+                f"Invalid schema key format: '{dot}', expected 'namespace.kind.name'"
             )
-        origin, bucket, name = parts
-        return cls.get(origin, bucket, name)
+        namespace, kind, name = parts
+        return cls.get(namespace, kind, name)
 
     @classmethod
-    def require(cls, origin: str, bucket: str, name: str = "default") -> type:
-        return cls.get(origin, bucket, name)
+    def require(cls, namespace: str, kind: str, name: str = "default") -> type:
+        return cls.get(namespace, kind, name)
 
     @classmethod
     def require_str(cls, dot: str) -> type:
@@ -116,11 +116,11 @@ class ResponseSchemaRegistry:
             _logger.debug("Cleared all response schemas from registry")
 
 
-def register_schema(origin: str, bucket: str, name: str, schema_cls: type) -> None:
-    if not hasattr(schema_cls, "origin"):
-        setattr(schema_cls, "origin", origin)
-    if not hasattr(schema_cls, "bucket"):
-        setattr(schema_cls, "bucket", bucket)
+def register_schema(namespace: str, kind: str, name: str, schema_cls: type) -> None:
+    if not hasattr(schema_cls, "namespace"):
+        setattr(schema_cls, "namespace", namespace)
+    if not hasattr(schema_cls, "kind"):
+        setattr(schema_cls, "kind", kind)
     if not hasattr(schema_cls, "name"):
         setattr(schema_cls, "name", name)
     ResponseSchemaRegistry.register(schema_cls)

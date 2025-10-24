@@ -168,7 +168,7 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, Django
 # services/patient.py
 from simcore_ai_django.api.decorators import llm_service
 
-@llm_service  # or: @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
+@llm_service  # or: @llm_service(namespace="chatlab", kind="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
     return {"ok": True}
 ```

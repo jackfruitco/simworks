@@ -5,7 +5,7 @@ from __future__ import annotations
 Service-level demotion helpers.
 
 These helpers demote Django DTOs back into core `simcore_ai` request/response
-models. They intentionally *preserve* identity (namespace/bucket/name),
+models. They intentionally *preserve* identity (namespace/kind/name),
 provider/client metadata, and `received_at` on responses, aligning with the
 core model decisions.
 """
@@ -31,7 +31,7 @@ def demote_request_for_service(dj: DjangoLLMRequest) -> LLMRequest:
         attributes={
             "dj.correlation_id": getattr(dj, "correlation_id", None),
             "dj.namespace": getattr(dj, "namespace", None),
-            "dj.bucket": getattr(dj, "bucket", None),
+            "dj.kind": getattr(dj, "kind", None),
             "dj.name": getattr(dj, "name", None),
             "dj.provider": getattr(dj, "provider_name", None),
             "dj.client": getattr(dj, "client_name", None),
@@ -55,7 +55,7 @@ def demote_response_for_service(dj: DjangoLLMResponse) -> LLMResponse:
             "dj.correlation_id": getattr(dj, "correlation_id", None),
             "dj.request_correlation_id": getattr(dj, "request_correlation_id", None),
             "dj.namespace": getattr(dj, "namespace", None),
-            "dj.bucket": getattr(dj, "bucket", None),
+            "dj.kind": getattr(dj, "kind", None),
             "dj.name": getattr(dj, "name", None),
             "dj.provider": getattr(dj, "provider_name", None),
             "dj.client": getattr(dj, "client_name", None),

@@ -61,7 +61,7 @@ class ServiceExecutionMixin:
     def execute(cls, **ctx: Any) -> Any:
         """Run the service immediately (sync) via the global entrypoint.
 
-        This wrapper adds a lightweight span so traces reveal the origin
+        This wrapper adds a lightweight span so traces reveal the namespace
         (service-level dispatch) while the entrypoint performs the detailed
         orchestration and tracing of mode/backend selection.
         """
@@ -74,7 +74,7 @@ class ServiceExecutionMixin:
                     x
                     for x in (
                         ctx.get("namespace"),
-                        ctx.get("bucket") or ctx.get("service_bucket"),
+                        ctx.get("kind") or ctx.get("service_bucket"),
                         ctx.get("name") or ctx.get("service_name"),
                     )
                     if x
@@ -82,7 +82,7 @@ class ServiceExecutionMixin:
                 if any(
                     (
                         ctx.get("namespace"),
-                        ctx.get("bucket") or ctx.get("service_bucket"),
+                        ctx.get("kind") or ctx.get("service_bucket"),
                         ctx.get("name") or ctx.get("service_name"),
                     )
                 )

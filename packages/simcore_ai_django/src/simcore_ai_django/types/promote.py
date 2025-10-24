@@ -84,7 +84,7 @@ def _promote_usage(
 def promote_request(req: LLMRequest, **overlay: Any) -> DjangoLLMRequest:
     """Promote a core LLMRequest to a Django-rich DjangoLLMRequest.
 
-    Any keyword args in **overlay are merged in and can include identity fields such as namespace, bucket, and name,
+    Any keyword args in **overlay are merged in and can include identity fields such as namespace, kind, and name,
     correlation identifiers, etc. If you already know the request audit pk,
     pass it via overlay as `db_pk` to stamp onto the DTO.
     """

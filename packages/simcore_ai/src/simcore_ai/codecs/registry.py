@@ -6,11 +6,11 @@ Codec registry (core, framework-agnostic).
 
 Stores codec *instances* keyed by their canonical identity:
 
-    key := f"{origin}.{bucket}.{name or 'default'}".lower()
+    key := f"{namespace}.{kind}.{name or 'default'}".lower()
 
 Legacy formats are removed. Codecs must expose:
-    - origin: str
-    - bucket: str
+    - namespace: str
+    - kind: str
     - name:   str (optional; defaults to "default")
 
 Collision policy:
@@ -20,16 +20,16 @@ Collision policy:
 
 Public API:
     CodecRegistry.register(codec, *, replace=False) -> None
-    CodecRegistry.get(origin, bucket, name="default") -> BaseLLMCodec
+    CodecRegistry.get(namespace, kind, name="default") -> BaseLLMCodec
     CodecRegistry.get_by_key(key: str) -> BaseLLMCodec
-    CodecRegistry.get_default_for_bucket(origin, bucket) -> BaseLLMCodec | None
-    CodecRegistry.has(origin, bucket, name="default") -> bool
+    CodecRegistry.get_default_for_bucket(namespace, kind) -> BaseLLMCodec | None
+    CodecRegistry.has(namespace, kind, name="default") -> bool
     CodecRegistry.list() -> dict[str, BaseLLMCodec]
     CodecRegistry.clear() -> None
 
 Helpers:
-    register(origin, bucket, name, codec, *, replace=False) -> None
-    get_codec(origin, bucket, name="default") -> Optional[BaseLLMCodec]
+    register(namespace, kind, name, codec, *, replace=False) -> None
+    get_codec(namespace, kind, name="default") -> Optional[BaseLLMCodec]
 """
 
 import logging
@@ -53,10 +53,10 @@ def _norm(s: Optional[str]) -> str:
     return s.strip().lower().replace(" ", "_")
 
 
-def _key(origin: str, bucket: str, name: Optional[str]) -> str:
+def _key(namespace: str, kind: str, name: Optional[str]) -> str:
     """Build the canonical registry key."""
-    o = _norm(origin) or "default"
-    b = _norm(bucket) or "default"
+    o = _norm(namespace) or "default"
+    b = _norm(kind) or "default"
     n = _norm(name or "default") or "default"
 
     # Guard a few obviously bad characters for safety.
@@ -72,14 +72,14 @@ class CodecRegistry:
     _items: Dict[str, BaseLLMCodec] = {}
 
     @classmethod
-    def has(cls, origin: str, bucket: str, name: str = "default") -> bool:
-        """Return True if a codec is already registered at (origin, bucket, name)."""
-        return _key(origin, bucket, name) in cls._items
+    def has(cls, namespace: str, kind: str, name: str = "default") -> bool:
+        """Return True if a codec is already registered at (namespace, kind, name)."""
+        return _key(namespace, kind, name) in cls._items
 
     @classmethod
     def register(cls, codec: BaseLLMCodec, *, replace: bool = False) -> None:
         """
-        Register a codec instance using its (origin, bucket, name) identity.
+        Register a codec instance using its (namespace, kind, name) identity.
 
         Collision policy:
             - If replace=True and a different codec exists at the key, it will be replaced.
@@ -91,46 +91,46 @@ class CodecRegistry:
         Raises:
             TypeError: if required attributes are missing.
         """
-        origin = getattr(codec, "origin", None)
-        bucket = getattr(codec, "bucket", None)
+        namespace = getattr(codec, "namespace", None)
+        kind = getattr(codec, "kind", None)
         name = getattr(codec, "name", None)  # optional; defaults to "default"
 
-        if not origin or not isinstance(origin, str):
-            raise TypeError(f"Codec {type(codec).__name__} missing required field 'origin'")
-        if not bucket or not isinstance(bucket, str):
-            raise TypeError(f"Codec {type(codec).__name__} missing required field 'bucket'")
+        if not namespace or not isinstance(namespace, str):
+            raise TypeError(f"Codec {type(codec).__name__} missing required field 'namespace'")
+        if not kind or not isinstance(kind, str):
+            raise TypeError(f"Codec {type(codec).__name__} missing required field 'kind'")
 
         # Collision handling (only when replace=False and different object exists)
-        initial_key = _key(origin, bucket, name)
+        initial_key = _key(namespace, kind, name)
         if not replace and initial_key in cls._items and cls._items[initial_key] is not codec:
             # Let the core resolver decide raise vs suffix; it operates on tuple then we rebuild key.
             def _exists(t: tuple[str, str, str]) -> bool:
                 return _key(*t) in cls._items
 
-            o = _norm(origin) or "default"
-            b = _norm(bucket) or "default"
+            o = _norm(namespace) or "default"
+            b = _norm(kind) or "default"
             n = _norm(name or "default") or "default"
             o, b, n = resolve_collision("codec", (o, b, n), exists=_exists)
             # Update the codec's own identity to the resolved value so downstream users see the final name.
-            setattr(codec, "origin", o)
-            setattr(codec, "bucket", b)
+            setattr(codec, "namespace", o)
+            setattr(codec, "kind", b)
             setattr(codec, "name", n)
 
-        k = _key(getattr(codec, "origin", origin), getattr(codec, "bucket", bucket), getattr(codec, "name", name))
+        k = _key(getattr(codec, "namespace", namespace), getattr(codec, "kind", kind), getattr(codec, "name", name))
 
         # If replace=True or unique key → register.
         cls._items[k] = codec
         logger.info("codec.registered %s", k)
 
     @classmethod
-    def get(cls, origin: str, bucket: str, name: str = "default") -> BaseLLMCodec:
+    def get(cls, namespace: str, kind: str, name: str = "default") -> BaseLLMCodec:
         """
         Lookup a codec by identity parts. Returns the codec or raises on miss.
 
         Raises:
             RegistryLookupError: when no codec is registered at the key.
         """
-        k = _key(origin, bucket, name)
+        k = _key(namespace, kind, name)
         try:
             return cls._items[k]
         except KeyError:
@@ -140,7 +140,7 @@ class CodecRegistry:
     @classmethod
     def get_by_key(cls, key: str) -> BaseLLMCodec:
         """
-        Lookup a codec by canonical key "origin.bucket.name".
+        Lookup a codec by canonical key "namespace.kind.name".
         """
         k = _norm(key)
         try:
@@ -150,20 +150,20 @@ class CodecRegistry:
             raise RegistryLookupError(f"No codec registered at '{k}'")
 
     @classmethod
-    def get_default_for_bucket(cls, origin: str, bucket: str) -> Optional[BaseLLMCodec]:
+    def get_default_for_bucket(cls, namespace: str, kind: str) -> Optional[BaseLLMCodec]:
         """
-        Convenience: return the 'default' codec for a given (origin, bucket), or None.
+        Convenience: return the 'default' codec for a given (namespace, kind), or None.
         """
-        k = _key(origin, bucket, "default")
+        k = _key(namespace, kind, "default")
         return cls._items.get(k)
 
     @classmethod
-    def require(cls, origin: str, bucket: str, name: str = "default") -> BaseLLMCodec:
+    def require(cls, namespace: str, kind: str, name: str = "default") -> BaseLLMCodec:
         """
         Like get(), but raises CodecNotFoundError instead of RegistryLookupError.
         """
         try:
-            return cls.get(origin, bucket, name)
+            return cls.get(namespace, kind, name)
         except RegistryLookupError as exc:
             raise CodecNotFoundError(str(exc)) from exc
 
@@ -180,23 +180,23 @@ class CodecRegistry:
 
 
 # Optional top-level helpers for manual registration / lookups
-def register(origin: str, bucket: str, name: str, codec: BaseLLMCodec, *, replace: bool = False) -> None:
+def register(namespace: str, kind: str, name: str, codec: BaseLLMCodec, *, replace: bool = False) -> None:
     """
     Manually register a codec instance when not using the @codec decorator.
     Applies collision policy if replace=False.
     """
     # Set identity attributes on the instance when provided externally.
-    codec.origin = origin  # type: ignore[attr-defined]
-    codec.bucket = bucket  # type: ignore[attr-defined]
+    codec.namespace = namespace  # type: ignore[attr-defined]
+    codec.kind = kind  # type: ignore[attr-defined]
     codec.name = name  # type: ignore[attr-defined]
     CodecRegistry.register(codec, replace=replace)
 
 
-def get_codec(origin: str, bucket: str, name: str = "default") -> Optional[BaseLLMCodec]:
+def get_codec(namespace: str, kind: str, name: str = "default") -> Optional[BaseLLMCodec]:
     """
     Safe lookup helper; returns None on miss.
     """
     try:
-        return CodecRegistry.get(origin, bucket, name)
+        return CodecRegistry.get(namespace, kind, name)
     except RegistryLookupError:
         return None

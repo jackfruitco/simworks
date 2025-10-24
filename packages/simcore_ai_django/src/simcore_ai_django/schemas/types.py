@@ -10,7 +10,7 @@ __all__ = [
 
 
 class DjangoBaseOutputSchema(DjangoIdentityMixin, BaseOutputSchema):
-    """Django-aware schema base: auto-derive (origin, bucket, name) from app label."""
+    """Django-aware schema base: auto-derive (namespace, kind, name) from app label."""
     __identity_abstract__ = True
 
 

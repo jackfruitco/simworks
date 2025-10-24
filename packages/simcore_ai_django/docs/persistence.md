@@ -120,6 +120,7 @@ Every request has a **correlation_id**. Use it to **dedupe** on retries:
 ```python
 from django.db import transaction, IntegrityError
 
+
 @codec
 class SafeCodec(DjangoBaseLLMCodec):
     def persist(self, *, response, parsed) -> dict:
@@ -130,8 +131,8 @@ class SafeCodec(DjangoBaseLLMCodec):
                 correlation_id=response.request_correlation_id,
                 defaults={
                     "simulation": response.simulation,
-                    "origin": response.origin,
-                    "bucket": response.bucket,
+                    "namespace": response.namespace,
+                    "kind": response.kind,
                     "name": response.name,
                     "payload": parsed.model_dump(),
                 },
@@ -228,7 +229,7 @@ def test_feedback_codec_persist(db, simulation):
         "simulation": simulation,
         "identity_str": "chatlab.standardized_patient.feedback",
         "request_correlation_id": "abc-123",
-        "origin": "chatlab", "bucket": "standardized_patient", "name": "feedback",
+        "namespace": "chatlab", "kind": "standardized_patient", "name": "feedback",
     })()
 
     result = codec.persist(response=resp, parsed=parsed)

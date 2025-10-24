@@ -5,7 +5,7 @@ from __future__ import annotations
 Service-level promotion helpers.
 
 These helpers promote core `simcore_ai` request/response models into Django DTOs,
-enriching them with service-derived identity (namespace/bucket/name), provider/client
+enriching them with service-derived identity (namespace/kind/name), provider/client
 metadata, and optional database PKs. They build on the lower-level DTO helpers in
 `simcore_ai_django.types.promote`.
 """
@@ -65,7 +65,7 @@ def promote_request_for_service(
     Promote a core LLMRequest into a DjangoLLMRequest, enriched with identity and metadata
     derived from the given service.
 
-    Identity comes from the service attributes: `namespace`, `bucket`, `name`.
+    Identity comes from the service attributes: `namespace`, `kind`, `name`.
     Provider/client metadata is attached when available.
 
     Args:
@@ -82,7 +82,7 @@ def promote_request_for_service(
         attributes={
             "svc.class": service.__class__.__name__,
             "svc.namespace": getattr(service, "namespace", None),
-            "svc.bucket": getattr(service, "bucket", None),
+            "svc.kind": getattr(service, "kind", None),
             "svc.name": getattr(service, "name", None),
             "svc.provider": getattr(service, "provider_name", None) or getattr(getattr(service, "client", None), "provider", None),
             "svc.client": getattr(service, "client_name", None) or getattr(getattr(service, "client", None), "name", None),
@@ -95,7 +95,7 @@ def promote_request_for_service(
         dj = DjangoLLMRequest(
             correlation_id=getattr(req, "correlation_id", None),
             namespace=getattr(service, "namespace", None),
-            bucket=getattr(service, "bucket", None),
+            kind=getattr(service, "kind", None),
             name=getattr(service, "name", None),
             provider_name=_extract_provider_client(service)[0],
             client_name=_extract_provider_client(service)[1],
@@ -137,7 +137,7 @@ def promote_response_for_service(
     Promote a core LLMResponse into a DjangoLLMResponse, enriched with identity and metadata
     derived from the given service.
 
-    Identity comes from the service attributes: `namespace`, `bucket`, `name`.
+    Identity comes from the service attributes: `namespace`, `kind`, `name`.
     Provider/client metadata is attached when available.
 
     Args:
@@ -156,7 +156,7 @@ def promote_response_for_service(
         attributes={
             "svc.class": service.__class__.__name__,
             "svc.namespace": getattr(service, "namespace", None),
-            "svc.bucket": getattr(service, "bucket", None),
+            "svc.kind": getattr(service, "kind", None),
             "svc.name": getattr(service, "name", None),
             "svc.provider": prov,
             "svc.client": cli,
@@ -171,7 +171,7 @@ def promote_response_for_service(
             correlation_id=getattr(resp, "correlation_id", None),
             request_correlation_id=getattr(resp, "request_correlation_id", None),
             namespace=getattr(service, "namespace", None),
-            bucket=getattr(service, "bucket", None),
+            kind=getattr(service, "kind", None),
             name=getattr(service, "name", None),
             provider_name=prov,
             client_name=cli,
