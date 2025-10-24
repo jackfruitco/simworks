@@ -1,4 +1,4 @@
-# simcore_ai/types/identity/base.py
+# simcore_ai/identity/base.py
 from __future__ import annotations
 
 from dataclasses import dataclass
