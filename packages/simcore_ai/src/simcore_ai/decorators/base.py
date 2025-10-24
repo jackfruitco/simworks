@@ -145,7 +145,8 @@ class BaseDecorator:
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
             span_attrs = _filter_trace_attrs(span_attrs)
-            with service_span_sync(f"ai.decorator.apply", attributes=span_attrs):
+            identity_label = f"{identity.namespace}.{identity.kind}.{identity.name}"
+            with service_span_sync(f"ai.decorator.apply ({identity_label})", attributes=span_attrs):
                 pass
 
             return cls
