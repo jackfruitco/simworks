@@ -171,7 +171,7 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, Django
         with service_span_sync(
                 "codec.persist",
                 attributes={
-                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "ai.identity.codec": f"{getattr(self, 'namespace', '?')}.{getattr(self, 'kind', '?')}.{getattr(self, 'name', '?')}",
                     "codec_class": self.__class__.__name__,
                 },
         ):
@@ -211,7 +211,7 @@ class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCod
         with service_span_sync(
                 "codec.persist",
                 attributes={
-                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "ai.identity.codec": f"{getattr(self, 'namespace', '?')}.{getattr(self, 'kind', '?')}.{getattr(self, 'name', '?')}",
                     "codec_class": self.__class__.__name__,
                 },
         ):
@@ -250,7 +250,7 @@ class PatientResultsCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMC
         with service_span_sync(
                 "codec.persist",
                 attributes={
-                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "ai.identity.codec": f"{getattr(self, 'namespace', '?')}.{getattr(self, 'kind', '?')}.{getattr(self, 'name', '?')}",
                     "codec_class": self.__class__.__name__,
                 },
         ):

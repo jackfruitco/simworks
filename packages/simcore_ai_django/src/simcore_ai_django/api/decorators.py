@@ -1,27 +1,38 @@
-# simcore_ai_django/api/decorators.py
-"""Django-aware decorator re-exports for the public SimWorks API.
-
-This module re-exports the **Django-layer** decorators so app code can import
-from a single, stable location. These decorators are dual-form (`@dec` or
-`@dec(...)`) and use the Django-aware identity resolver (leaf-class based,
-app/settings token stripping), with guarded registration/collision handling.
-
-Exports:
-    - codec          — Register a Django codec class (tuple³ identity).
-    - llm_service    — Wrap an async function as a Django service class.
-    - prompt_section — Register a PromptSection subclass.
-    - prompt_scenario — (stub) Scenario-level prompt decorator.
-"""
+# packages/simcore_ai_django/src/simcore_ai_django/api/decorators.py
 from __future__ import annotations
 
-from simcore_ai_django.services.decorators import llm_service
+"""
+Public facade for **Django-aware** decorators.
 
-from simcore_ai_django.codecs.decorators import codec
-from simcore_ai_django.promptkit.decorators import prompt_section, prompt_scenario
+This module re-exports the instantiated, class-based decorators from the
+Django layer so app code can import them from a single, stable location:
+
+    from simcore_ai_django.api.decorators import llm_service, codec, prompt_section, schema
+
+These decorators:
+- derive a finalized Identity `(namespace, kind, name)` using the Django-aware
+  pipeline (AppConfig label, segment-aware name stripping),
+- attach identity to the class (`cls.identity`, `cls.identity_obj`), and
+- **register with the Django registries**, where duplicate vs collision policy
+  is enforced via `SIMCORE_COLLISIONS_STRICT`.
+
+Note: Collision rewriting (e.g., appending `-2`) is not performed here; that
+policy lives in the registries.
+"""
+
+# Import-light: avoid registry imports here to prevent cycles
+from ..codecs.decorators import codec as codec
+from ..services.decorators import llm_service as llm_service
+from ..promptkit.decorators import prompt_section as prompt_section
+from ..schemas.decorators import schema as schema
+
+# Convenience alias for legacy naming
+response_schema = schema
 
 __all__ = [
     "codec",
     "llm_service",
     "prompt_section",
-    "prompt_scenario",
+    "schema",
+    "response_schema",
 ]

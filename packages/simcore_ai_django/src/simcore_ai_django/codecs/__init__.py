@@ -38,12 +38,11 @@ working with Django-aware codecs.
 """
 from .base import DjangoBaseLLMCodec
 from .decorators import codec
-from .registry import DjangoCodecRegistry, get_codec
+from .registry import CodecRegistry
 
 __all__ = [
     "DjangoBaseLLMCodec",
-    "DjangoCodecRegistry",
-    "get_codec",
+    "CodecRegistry",
     # decorator
     "codec"
 ]

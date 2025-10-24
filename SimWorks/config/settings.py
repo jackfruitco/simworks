@@ -130,8 +130,8 @@ else:
 # ---------------------------------------------------------------------------
 # SIMCORE_AI unified configuration (replaces AI_PROVIDERS/AI_CLIENT_DEFAULTS)
 # ---------------------------------------------------------------------------
-SIMCORE_AI_IDENTITY_STRIP_TOKENS = [
-    t for t in re.split(r"[\s,]+", os.getenv("AI_IDENTITY_STRIP_TOKENS", "").strip()) if t
+SIMCORE_IDENTITY_STRIP_TOKENS = [
+    t for t in re.split(r"[\s,]+", os.getenv("SIMCORE_IDENTITY_STRIP_TOKENS", "").strip()) if t
 ]
 
 SIMCORE_AI = {

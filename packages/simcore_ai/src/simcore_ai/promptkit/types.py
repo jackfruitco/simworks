@@ -20,7 +20,7 @@ from typing import Any, Awaitable, Optional
 import inspect
 import logging
 
-from simcore_ai_django.api.identity import Identity
+from simcore_ai.identity import Identity
 
 logger = logging.getLogger(__name__)
 

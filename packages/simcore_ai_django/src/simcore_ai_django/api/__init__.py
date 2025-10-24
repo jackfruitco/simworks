@@ -13,7 +13,7 @@ from .types import *
 __all__ = [
     # decorators
     "prompt_section",
-    "prompt_scenario",
+    # "prompt_scenario",
     "codec",
     "llm_service",
 

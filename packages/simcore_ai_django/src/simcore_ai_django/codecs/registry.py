@@ -1,145 +1,233 @@
+# packages/simcore_ai_django/src/simcore_ai_django/codecs/registry.py
 from __future__ import annotations
 
 """
-Django codec registry.
+Django Codec Registry (class registry, async-first batch helpers).
 
-Stores codec **classes** keyed by tuple identity (origin, bucket, name).
-Canonical string form is "origin.bucket.name" (dot-only). No legacy formats.
+This registry stores **codec classes** keyed by the finalized identity tuple
+`(namespace, kind, name)`. It enforces duplicate vs. collision behavior and
+exposes batch persistence helpers with async-first surfaces.
 
-Collision policy:
-  - Uses Django-aware resolver:
-      * settings.DEBUG=True → raise
-      * settings.DEBUG=False → warn and suffix the **name** with '-2', '-3', …
+Terminology & policy (per implementation plan):
+- Identity tuple is `(namespace, kind, name)`; values are assumed to be fully
+  derived/validated *before* registration (decorators perform derivation).
+- **Duplicate**: same class attempts to register with the same identity → skip
+  idempotently (DEBUG log only).
+- **Collision**: *different* class attempts to register the same identity →
+  behavior controlled by `SIMCORE_COLLISIONS_STRICT` (default True):
+    * True  → raise `IdentityCollisionError`
+    * False → log WARNING and record for Django system checks
+      (decorators may opt-in to perform deterministic rename before retrying)
+- **Invalid identity** (wrong arity / non-str / empty) → always raise
+  `IdentityValidationError`.
 
-Public API:
-    DjangoCodecRegistry.register(origin, bucket, name, codec_class) -> None
-    DjangoCodecRegistry.get_codec(origin, bucket, name) -> Type[DjangoBaseLLMCodec] | None
-    DjangoCodecRegistry.require(origin, bucket, name) -> Type[DjangoBaseLLMCodec]
-    DjangoCodecRegistry.has(origin, bucket, name) -> bool
-    DjangoCodecRegistry.names() -> Iterable[str]
-    DjangoCodecRegistry.clear() -> None
-    register(origin, bucket, name, codec_class) -> None
-    get_codec(origin, bucket, name) -> Optional[Type[DjangoBaseLLMCodec]]
+Batch helpers:
+- `apersists_batch(items, *, ctx=None)` is the primary async API. It will
+  resolve each item's codec class by its `identity` (tuple) attribute or by a
+  callable `identity_tuple()` and invoke the codec instance's `apersist` if
+  present, otherwise `persist` (wrapped via `sync_to_async`).
+- `persist_batch` is a sync adapter calling the async version via `async_to_sync`.
 
-Legacy helpers and namespace/colon forms have been removed.
+Note: No Django models or ORM are assumed in this file; we only use
+`transaction.atomic` for correctness when callers perform DB writes inside
+codecs.
 """
 
+from dataclasses import dataclass
 import logging
-from typing import Dict, Optional, Tuple, Type
-from collections.abc import Iterable
+import threading
+from typing import Any, Iterable, Optional, Tuple, Type
 
-from simcore_ai_django.identity import resolve_collision_django
-from .base import DjangoBaseLLMCodec
+from asgiref.sync import async_to_sync, sync_to_async
+from django.db import transaction
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["DjangoCodecRegistry", "register", "get_codec"]
+__all__ = [
+    "IdentityCollisionError",
+    "IdentityValidationError",
+    "Registered",
+    "CodecRegistry",
+    "codecs",
+]
 
 
-# ------------------------ helpers ------------------------
+# -------------------------
+# Exceptions
+# -------------------------
 
-def _norm(val: Optional[str]) -> str:
-    s = "" if val is None else str(val).strip().lower().replace(" ", "_")
-    return s or "default"
+class IdentityCollisionError(Exception):
+    """Raised when a different class attempts to register an existing identity."""
 
 
-# ------------------------ registry ------------------------
+class IdentityValidationError(Exception):
+    """Raised when identity is malformed (arity/empties/non-strings)."""
 
-class DjangoCodecRegistry:
-    """
-    Registry of Django codec **classes** keyed by tuple identity: (origin, bucket, name).
-    """
 
-    _by_tuple: Dict[Tuple[str, str, str], Type[DjangoBaseLLMCodec]] = {}
+# -------------------------
+# Data structures
+# -------------------------
 
-    @classmethod
-    def has(cls, origin: str, bucket: str, name: str) -> bool:
-        """Return True if a codec class is already registered at the tuple identity."""
-        key = (_norm(origin), _norm(bucket), _norm(name))
-        return key in cls._by_tuple
+@dataclass(frozen=True)
+class Registered:
+    identity: Tuple[str, str, str]
+    cls: Type[Any]
 
-    @classmethod
-    def register(cls, origin: str, bucket: str, name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
+
+# -------------------------
+# Registry
+# -------------------------
+
+class CodecRegistry:
+    """Registry of codec **classes** keyed by `(namespace, kind, name)` tuples."""
+
+    def __init__(self) -> None:
+        self._by_id: dict[Tuple[str, str, str], Type[Any]] = {}
+        self._by_cls: dict[Type[Any], Tuple[str, str, str]] = {}
+        self._collisions: set[Tuple[str, str, str]] = set()
+        self._lock = threading.RLock()
+
+        # Read strictness once per process; default True
+        strict_default = True
+        self._strict: bool = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", strict_default))
+
+    # ---- helpers ----
+    @staticmethod
+    def _validate_identity(identity: Tuple[str, str, str]) -> Tuple[str, str, str]:
+        try:
+            ns, kd, nm = identity
+        except Exception:
+            raise IdentityValidationError(
+                f"Identity must be a 3-tuple (namespace, kind, name); got {identity!r}"
+            )
+        for label, val in (("namespace", ns), ("kind", kd), ("name", nm)):
+            if not isinstance(val, str):
+                raise IdentityValidationError(f"{label} must be str; got {type(val)!r}")
+            if not val.strip():
+                raise IdentityValidationError(f"{label} cannot be empty")
+        return ns, kd, nm
+
+    # ---- registration API ----
+    def maybe_register(self, identity: Tuple[str, str, str], cls: Type[Any]) -> None:
         """
-        Register a codec class by (origin, bucket, name), applying collision policy.
+        Register a codec class if not already registered.
+
+        - Duplicate (same class + same identity): skip (DEBUG)
+        - Collision (different class + same identity): raise when strict, else warn
         """
-        ns = _norm(origin)
-        buck = _norm(bucket)
-        nm = _norm(name)
+        ns, kd, nm = self._validate_identity(identity)
+        key = (ns, kd, nm)
 
-        key = (ns, buck, nm)
-        if key in cls._by_tuple and cls._by_tuple[key] is not codec_class:
-            # Resolve collision via Django-aware policy (DEBUG vs prod).
-            def _exists(t: Tuple[str, str, str]) -> bool:
-                return t in cls._by_tuple
+        with self._lock:
+            # Same class already registered (idempotent under autoreload)
+            prev = self._by_cls.get(cls)
+            if prev == key:
+                logger.debug("codec.duplicate-class-same-identity %s %s", cls, key)
+                return
 
-            ns, buck, nm = resolve_collision_django("codec", (ns, buck, nm), exists=_exists)
-            key = (ns, buck, nm)
+            existing = self._by_id.get(key)
+            if existing is None:
+                # First registration
+                self._by_id[key] = cls
+                self._by_cls[cls] = key
+                # annotate for introspection
+                setattr(cls, "namespace", ns)
+                setattr(cls, "kind", kd)
+                setattr(cls, "name", nm)
+                setattr(cls, "identity", key)
+                logger.debug("codec.registered %s", ".".join(key))
+                return
 
-        # annotate class with identity (helpful for logging/inspection)
-        setattr(codec_class, "origin", ns)
-        setattr(codec_class, "bucket", buck)
-        setattr(codec_class, "name", nm)
+            if existing is cls:
+                # Same class attempting to register again with same key
+                self._by_cls[cls] = key  # ensure mapping is present
+                logger.debug("codec.duplicate-class-same-identity %s %s", cls, key)
+                return
 
-        cls._by_tuple[key] = codec_class
-        logger.info("django.codec.registered %s", ".".join(key))
+            # Collision: different class, same identity
+            self._collisions.add(key)
+            msg = f"Codec identity collision {key} between {existing} and {cls}"
+            if self._strict:
+                logger.error("codec.collision %s", msg)
+                raise IdentityCollisionError(msg)
+            else:
+                logger.warning("codec.collision %s", msg)
+                # In non-strict mode we do NOT mutate identity here. Decorators
+                # may choose to rewrite name and retry. We record for checks.
+                return
 
-    @classmethod
-    def get_codec(cls, origin: str, bucket: str, name: str) -> Optional[Type[DjangoBaseLLMCodec]]:
+    def resolve(self, identity: Tuple[str, str, str]) -> Optional[Type[Any]]:
+        ns, kd, nm = self._validate_identity(identity)
+        key = (ns, kd, nm)
+        with self._lock:
+            return self._by_id.get(key)
+
+    def list(self) -> Iterable[Registered]:
+        with self._lock:
+            return tuple(Registered(k, v) for k, v in self._by_id.items())
+
+    def collisions(self) -> Iterable[Tuple[str, str, str]]:
+        with self._lock:
+            return tuple(self._collisions)
+
+    # ---- batch persistence (async-first) ----
+    async def apersists_batch(self, items: Iterable[Any], *, ctx: dict | None = None) -> list[Any]:
         """
-        Return a codec class for (origin, bucket, name) if registered, with fallbacks:
-          - (origin, bucket, "default")
-          - (origin, "default", "default")
+        Persist a batch of items in a single transaction (call-order semantics).
+
+        For each item:
+          - read `identity` (tuple) attribute or call `identity_tuple()` if present
+          - resolve registered codec class and instantiate it
+          - prefer `apersist` if available; otherwise call `persist` via `sync_to_async`
         """
-        ns = _norm(origin)
-        buck = _norm(bucket)
-        nm = _norm(name)
+        ctx = ctx or {}
+        saved: list[Any] = []
 
-        # Exact
-        obj = cls._by_tuple.get((ns, buck, nm))
-        if obj:
-            return obj
+        def _read_identity(it: Any) -> Tuple[str, str, str]:
+            ident = getattr(it, "identity", None)
+            if isinstance(ident, tuple) and len(ident) == 3:
+                return ident  # type: ignore[return-value]
+            if callable(getattr(it, "identity_tuple", None)):
+                t = it.identity_tuple()  # type: ignore[attr-defined]
+                if isinstance(t, tuple) and len(t) == 3:
+                    return t
+            raise IdentityValidationError(
+                f"Item {it!r} does not expose an identity tuple"
+            )
 
-        # Fallbacks
-        obj = cls._by_tuple.get((ns, buck, "default"))
-        if obj:
-            return obj
-        obj = cls._by_tuple.get((ns, "default", "default"))
-        if obj:
-            return obj
+        async def _persist_one(it: Any) -> Any:
+            key = self._validate_identity(_read_identity(it))
+            cls = self.resolve(key)
+            if cls is None:
+                raise LookupError(f"No codec registered for identity {key}")
+            codec = cls()
+            if hasattr(codec, "apersist") and callable(codec.apersist):  # type: ignore[attr-defined]
+                return await codec.apersist(it, ctx=ctx)  # type: ignore[attr-defined]
+            # Fallback to sync persist under thread-sensitive wrapper
+            if hasattr(codec, "persist") and callable(codec.persist):  # type: ignore[attr-defined]
+                return await sync_to_async(codec.persist, thread_sensitive=True)(it,
+                                                                                 ctx=ctx)  # type: ignore[attr-defined]
+            raise AttributeError(f"Codec {cls} has neither 'apersist' nor 'persist'")
 
-        return None
+        # One DB transaction for the whole batch
+        @sync_to_async(thread_sensitive=True)
+        def _atomic_start():
+            return transaction.atomic()
 
-    @classmethod
-    def require(cls, origin: str, bucket: str, name: str) -> Type[DjangoBaseLLMCodec]:
-        obj = cls.get_codec(origin, bucket, name)
-        if obj is None:
-            available = ", ".join(sorted(f"{ns}.{b}.{n}" for (ns, b, n) in cls._by_tuple.keys())) or "<none>"
-            raise LookupError(f"Codec '{origin}.{bucket}.{name}' not registered; available: {available}")
-        return obj
+        # Use standard sync transaction context inside thread-sensitive wrapper
+        # to ensure on_commit handlers run in the right thread.
+        saved = []
+        with transaction.atomic():
+            for it in items:
+                res = await _persist_one(it)
+                saved.append(res)
+        return saved
 
-    @classmethod
-    def clear(cls) -> None:
-        """Clear all registered codec classes (useful in tests and autoreload)."""
-        cls._by_tuple.clear()
-
-    @classmethod
-    def names(cls) -> Iterable[str]:
-        """Iterate canonical codec identities ("origin.bucket.name")."""
-        return (f"{ns}.{b}.{n}" for (ns, b, n) in cls._by_tuple.keys())
-
-
-# ------------------------ API helpers ------------------------
-
-def register(origin: str, bucket: str, name: str, codec_class: Type[DjangoBaseLLMCodec]) -> None:
-    """
-    Manual registration helper mirroring the class method.
-    """
-    DjangoCodecRegistry.register(origin, bucket, name, codec_class)
+    def persist_batch(self, items: Iterable[Any], *, ctx: dict | None = None) -> list[Any]:
+        """Sync adapter for `apersists_batch` using `async_to_sync`."""
+        return async_to_sync(self.apersists_batch)(items, ctx=ctx)
 
 
-def get_codec(origin: str, bucket: str, name: str) -> Optional[Type[DjangoBaseLLMCodec]]:
-    """
-    Safe lookup; returns None on miss.
-    """
-    return DjangoCodecRegistry.get_codec(origin, bucket, name)
+# Singleton instance for Django layer
+codecs = CodecRegistry()

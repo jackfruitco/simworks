@@ -1,4 +1,4 @@
-# simcore/ai/services/__init__.py
+# chatlab/ai/services/__init__.py
 from .patient import (
     GenerateInitialResponse,
     GenerateReplyResponse,

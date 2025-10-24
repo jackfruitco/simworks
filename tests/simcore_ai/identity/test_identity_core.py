@@ -1,23 +1,23 @@
 # tests/simcore_ai/identity/test_identity_core.py
 from __future__ import annotations
 
-import os
 import types
 import pytest
 
-from simcore_ai.identity import (
-    DEFAULT_STRIP_TOKENS,
-    snake,
-    strip_tokens,
-    derive_identity_for_class,
-    parse_dot_identity,
-    resolve_collision,
-    IdentityMixin,
+from simcore_ai.identity.base import Identity
+from simcore_ai.decorators.helpers import (
+    derive_name,
+    derive_namespace_core,
+    derive_kind,
+    strip_name_tokens,
+    normalize_name,
+    validate_identity,
 )
+from simcore_ai.codecs.decorators import codec  # core decorator (no registry)
 
 
 # -----------------------------
-# snake() normalization
+# normalize_name() / derive_name() normalization
 # -----------------------------
 
 @pytest.mark.parametrize(
@@ -33,172 +33,177 @@ from simcore_ai.identity import (
         ("", ""),
     ],
 )
-def test_snake_various_cases(raw, expected):
-    assert snake(raw) == expected
+def test_normalize_and_derive_name_various_cases(raw, expected):
+    # derive_name from a synthetic class when not provided falls back to class name,
+    # but here we directly normalize explicit strings to keep the old coverage.
+    assert normalize_name(raw) == expected
 
 
 # -----------------------------
-# strip_tokens() edge behavior
+# derive_name() explicit and fallback behavior
 # -----------------------------
 
-def test_strip_tokens_edges_only_leading_and_trailing():
-    # Ensure our defaults include these (as discussed in design)
-    for tok in {"Codec", "Service", "Prompt", "PromptSection", "Section", "Response", "Generate", "Output", "Schema"}:
-        assert tok in DEFAULT_STRIP_TOKENS
+def test_derive_name_from_class_and_explicit_value():
+    class ExampleClass:
+        pass
 
-    # Leading + trailing tokens removed repeatedly
+    # When explicit name is provided, derive_name should return it as-is (no normalization here).
+    assert derive_name(ExampleClass, name_arg="CustomName", name_attr=None, derived_lower=True) == "CustomName"
+
+    # When name is not provided, derive_name should fall back to the class name.
+    # With derived_lower=True, it should lowercase the raw class name (normalization happens later).
+    assert derive_name(ExampleClass, name_arg=None, name_attr=None, derived_lower=True) == "exampleclass"
+
+    # When an empty string is provided, treat it as not provided and fall back to the class name.
+    assert derive_name(ExampleClass, name_arg="", name_attr=None, derived_lower=True) == "exampleclass"
+
+
+# -----------------------------
+# strip_name_tokens() edge behavior (name-only)
+# -----------------------------
+
+def test_strip_name_tokens_edges_only_leading_and_trailing():
+    # Leading + trailing tokens removed repeatedly (case-insensitive)
     name = "GenerateInitialResponseService"
-    stripped = strip_tokens(name)  # default: edges only, repeat=True
+    stripped = strip_name_tokens(name, tokens=("Generate", "Service", "Response"))
     # Remove leading "Generate" and trailing "Service" then trailing "Response" -> "Initial"
     assert stripped == "Initial"
 
 
-def test_strip_tokens_keeps_middle_content():
-    # "Patient" not in core defaults — also verify middle is preserved even if it were
+def test_strip_name_tokens_keeps_middle_content():
+    # Only trailing token is removed; middle content remains
     name = "OutpatientInitialSchema"
-    stripped = strip_tokens(name)
-    # Only trailing "Schema" is removed; "OutpatientInitial" remains unchanged
+    stripped = strip_name_tokens(name, tokens=("Schema",))
     assert stripped == "OutpatientInitial"
 
 
-def test_strip_tokens_repeat_and_individual_edges():
-    # Remove only leading
+def test_strip_name_tokens_repeat_and_individual_edges():
+    # Remove only leading (simulate by passing tokens but pre-trim trailing first)
     name = "GenerateGenerateInitial"
-    stripped = strip_tokens(name, strip_trailing=False)
+    stripped = strip_name_tokens(name, tokens=("Generate",))
     assert stripped == "Initial"
 
-    # Remove only trailing
+    # Remove only trailing chain
     name = "InitialResponseServiceService"
-    stripped = strip_tokens(name, strip_leading=False)
+    stripped = strip_name_tokens(name, tokens=("Response", "Service"))
     assert stripped == "Initial"
 
-    # No stripping when both disabled
-    assert strip_tokens("GenerateInitialResponse", strip_leading=False, strip_trailing=False) == "GenerateInitialResponse"
+    # No stripping when tokens do not match edges
+    assert strip_name_tokens("GenerateInitialResponse", tokens=("Foo",)) == "GenerateInitialResponse"
 
 
 # -----------------------------
-# parse_dot_identity()
-# -----------------------------
-
-@pytest.mark.parametrize(
-    "s, expected",
-    [
-        ("chatlab.standardized_patient.initial", ("chatlab", "standardized_patient", "initial")),
-        ("a.b.c", ("a", "b", "c")),
-        ("One.Two.Three", ("one", "two", "three")),  # should normalize to snake/lower
-        ("ONE.TWO.HTTP2", ("one", "two", "http2")),
-    ],
-)
-def test_parse_dot_identity_valid(s, expected):
-    assert parse_dot_identity(s) == expected
-
-
-@pytest.mark.parametrize(
-    "bad",
-    [
-        "",
-        "one",
-        "one.two",
-        "one.two.three.four",
-        "one:two:three",  # colons not allowed in dot-only parser
-        "one.two.",       # missing name
-        ".two.three",     # missing origin
-        " .. . ",         # whitespace garbage
-    ],
-)
-def test_parse_dot_identity_invalid(bad):
-    with pytest.raises(Exception):
-        parse_dot_identity(bad)
-
-
-# -----------------------------
-# derive_identity_for_class()
+# derive_namespace_core / derive_kind
 # -----------------------------
 
 def _new_class(name: str, module: str | None = None, bases: tuple[type, ...] = ()) -> type:
-    """
-    Create a new class with a specific __module__ without polluting globals.
-    """
     module = module or "myorigin.sub.module"
     def exec_body(ns):
         ns["__module__"] = module
     return types.new_class(name, bases=bases, exec_body=exec_body)
 
 
-def test_derive_identity_core_defaults_from_module_and_name_edges():
-    # Class name includes tokens "Generate", "Response", "Service" → edges will be stripped to "Initial"
-    C = _new_class("GeneratePatientInitialResponseService", module="chatlab.ai.services")
-    o, b, n = derive_identity_for_class(C)  # no overrides
-    # Core origin is module root → "chatlab"
-    # bucket defaults to "default" (core)
-    # name from class → "Initial" → snake → "initial"
-    assert (o, b, n) == ("chatlab", "default", "initial")
+def test_derive_namespace_core_from_module_and_attrs():
+    C1 = _new_class("Whatever", module="chatlab.ai.services")
+    ns = derive_namespace_core(C1, namespace_arg=None, namespace_attr=None)
+    assert ns == "chatlab"
+
+    C2 = _new_class("Whatever", module="x.y")
+    ns = derive_namespace_core(C2, namespace_arg="AppNS", namespace_attr=None)
+    assert ns == "AppNS"
+
+    class Base:
+        namespace = "FromAttr"
+    C3 = _new_class("Whatever", module="z.t", bases=(Base,))
+    ns = derive_namespace_core(C3, namespace_arg=None, namespace_attr=getattr(C3, "namespace", None))
+    assert ns == "FromAttr"
 
 
-def test_derive_identity_respects_overrides_and_normalizes():
+def test_derive_kind_default_and_overrides():
     C = _new_class("Whatever")
-    o, b, n = derive_identity_for_class(C, origin="ChatLab", bucket="Standardized_Patient", name="InitialResponse")
-    assert (o, b, n) == ("chatlab", "standardized_patient", "initial_response")
-
-
-def test_derive_identity_extra_tokens_affect_name_only():
-    # Add an extra token to remove from edges
-    C = _new_class("PatientInitialSchema", module="lab.app.schemas")
-    o, b, n = derive_identity_for_class(C, extra_strip_tokens={"Patient"})
-    assert (o, b, n) == ("lab", "default", "initial")
+    assert derive_kind(C, kind_arg=None, kind_attr=None, default="codec") == "codec"
+    class WithKind:
+        kind = "service"
+    C2 = _new_class("Whatever", bases=(WithKind,))
+    assert derive_kind(C2, kind_arg=None, kind_attr=getattr(C2, "kind", None), default="codec") == "service"
+    assert derive_kind(C2, kind_arg="schema", kind_attr=None, default="codec") == "schema"
 
 
 # -----------------------------
-# resolve_collision()
+# validate_identity()
 # -----------------------------
 
-def test_resolve_collision_debug_true_raises(monkeypatch):
-    # Simulate DEBUG/strict mode
-    monkeypatch.setenv("SIMCORE_AI_DEBUG", "1")
-    existing = {("chatlab", "standardized_patient", "initial")}
+@pytest.mark.parametrize(
+    "ns,kd,nm",
+    [
+        ("chatlab", "codec", "initial"),
+        ("a", "b", "c"),
+        ("one", "two", "http2"),
+    ],
+)
+def test_validate_identity_success(ns, kd, nm):
+    # Should not raise
+    validate_identity(ns, kd, nm)
+    Identity(namespace=ns, kind=kd, name=nm)
+
+
+@pytest.mark.parametrize(
+    "ns,kd,nm",
+    [
+        ("", "codec", "x"),
+        ("ns", "", "x"),
+        ("ns", "k", ""),
+        ("bad space", "codec", "x"),
+    ],
+)
+def test_validate_identity_fail(ns, kd, nm):
     with pytest.raises(Exception):
-        resolve_collision(("chatlab", "standardized_patient", "initial"), existing, debug=None)
-
-
-def test_resolve_collision_debug_false_suffix(monkeypatch):
-    # Simulate non-debug (production) mode
-    monkeypatch.delenv("SIMCORE_AI_DEBUG", raising=False)
-    existing = {("chatlab", "standardized_patient", "initial")}
-    # Expect suffix -2 on the name portion
-    o, b, n = resolve_collision(("chatlab", "standardized_patient", "initial"), existing, debug=None)
-    assert (o, b, n) == ("chatlab", "standardized_patient", "initial-2")
-
-
-def test_resolve_collision_multiple_increments(monkeypatch):
-    monkeypatch.delenv("SIMCORE_AI_DEBUG", raising=False)
-    existing = {
-        ("chatlab", "standardized_patient", "initial"),
-        ("chatlab", "standardized_patient", "initial-2"),
-        ("chatlab", "standardized_patient", "initial-3"),
-    }
-    o, b, n = resolve_collision(("chatlab", "standardized_patient", "initial"), existing, debug=False)
-    assert n == "initial-4"
+        validate_identity(ns, kd, nm)
 
 
 # -----------------------------
-# IdentityMixin
+# Core decorator attaches identity (no registration)
 # -----------------------------
 
-def test_identity_mixin_autoderive_core(monkeypatch):
-    # Create a class that uses IdentityMixin only (core rules)
-    C = _new_class("GeneratePatientInitialResponseService", module="myorigin.ai.services", bases=(IdentityMixin,))
-    # identity_tuple should autoderive using core rules:
-    # origin = module root "myorigin", bucket = "default",
-    # name = "PatientInitial" after stripping leading "Generate" and trailing "Service" and "Response"
-    o, b, n = C.identity_tuple()  # type: ignore[attr-defined]
-    assert (o, b, n) == ("myorigin", "default", "patient_initial")
+def test_core_codec_decorator_attaches_identity_without_registration():
+    @codec
+    class GeneratePatientInitialResponseService:
+        __module__ = "chatlab.ai.services"
+        # no explicit namespace/kind/name provided
+        pass
+
+    # Core decorator uses no strip tokens → name is derived from class directly and normalized
+    cls = GeneratePatientInitialResponseService
+    assert hasattr(cls, "identity_obj") and hasattr(cls, "identity")
+    ns, kd, nm = cls.identity
+    assert ns == "chatlab"  # module root
+    assert kd == "codec"     # domain default set in core codec decorator
+    # full normalized class name, no token stripping at core layer
+    assert nm == "generate_patient_initial_response_service"
 
 
-def test_identity_mixin_respects_explicit_attrs():
-    # If a subclass sets class attrs, those should win
-    class MyThing(IdentityMixin):  # type: ignore[misc]
-        origin = "ChatLab"
-        bucket = "Standardized_Patient"
-        name = "Initial"
+# tests/simcore_ai/identity/test_identity_parse_edgecases.py
+import pytest
+from simcore_ai.decorators.helpers import normalize_name, validate_identity
 
-    assert MyThing.identity_tuple() == ("chatlab", "standardized_patient", "initial")
+
+@pytest.mark.parametrize("raw", [
+    " a . b . c ",
+    "A. b .C",
+])
+def test_normalize_name_whitespace_and_case(raw):
+    # We no longer parse dot-joined identities in core; instead we validate parts
+    a, b, c = [normalize_name(p.strip()) for p in raw.split(".")]
+    assert (a, b, c) == ("a", "b", "c")
+    validate_identity(a, b, c)  # should not raise
+
+
+@pytest.mark.parametrize("bad_parts", [
+    ("A", "", "C"),
+    ("", "b", "c"),
+    ("a b", "c", "d"),
+])
+def test_validate_identity_missing_or_illegal_raises(bad_parts):
+    a, b, c = bad_parts
+    with pytest.raises(Exception):
+        validate_identity(a, b, c)

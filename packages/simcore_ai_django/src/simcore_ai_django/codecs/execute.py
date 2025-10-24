@@ -15,7 +15,7 @@ from simcore_ai.types.dtos import LLMResponse
 from simcore_ai.tracing import service_span_sync
 
 from .base import DjangoBaseLLMCodec
-from .registry import DjangoCodecRegistry
+from .registry import CodecRegistry as DjangoCodecRegistry
 
 
 def _as_tuple3(value: Tuple[str, str, str]) -> Tuple[str, str, str]:
@@ -92,7 +92,7 @@ def execute_codec(
             # 3) codec is a tuple3 identity
             elif isinstance(codec, tuple) and len(codec) == 3:
                 ns, b, n = _as_tuple3(codec)  # type: ignore[arg-type]
-                resolved = DjangoCodecRegistry.get_codec(ns, b, n)
+                resolved = DjangoCodecRegistry.resolve(tuple(ns, b, n))
 
             # 4) codec is an identity string or Identity object
             elif isinstance(codec, str) or _is_identity_like(codec):
@@ -111,13 +111,14 @@ def execute_codec(
                                 stacklevel=2,
                             )
                             bucket, name = codec.split(":", 1)
-                            resolved = DjangoCodecRegistry.get_codec(ns, bucket, name)
+                            resolved = DjangoCodecRegistry.resolve(tuple(ns, bucket, name))
 
             # 5) codec is None → resolve via response
             elif codec is None:
                 # Prefer explicit response codec identity
                 if resp_codec_identity:
-                    cls = DjangoCodecRegistry.get_by_identity(resp_codec_identity)
+                    tuple3 = _as_tuple3(resp_codec_identity)
+                    cls = DjangoCodecRegistry.resolve(tuple3)
                     if cls is not None:
                         resolved = cls
                 # Fallback to service identity on the response
@@ -140,7 +141,7 @@ def execute_codec(
 
         if instance is None:
             # Build available list for the error message
-            from .registry import DjangoCodecRegistry as _R
+            from .registry import CodecRegistry as _R
             available = ", ".join(sorted(_R.names())) or "<none>"
             from simcore_ai.codecs.exceptions import CodecNotFoundError
             raise CodecNotFoundError(

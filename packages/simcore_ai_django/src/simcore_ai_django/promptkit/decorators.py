@@ -1,74 +1,53 @@
-# simcore_ai_django/promptkit/decorators.py
-"""Django-aware PromptKit decorators built on the shared base factory.
-
-This module wires Django-facing prompt decorators to the core dual-form
-factory using a Django-aware identity resolver. It keeps imports one-way
-(Django ➜ core) and avoids registry or identity logic duplication.
-
-Exports:
-- `prompt_section`: dual-form decorator for `PromptSection` subclasses.
-- `prompt_scenario`: (stub) future decorator for scenario-level prompts.
-
-Identity rules (Django):
-- Uses the **leaf concrete class** for `name` (mixin-safe), with standardized
-  suffix stripping and app/settings-provided tokens.
-- `bucket` defaults to "default" when not explicitly provided or derived.
-- All parts are normalized to snake_case.
-
-Collisions:
-- Prompt section collisions are handled by the PromptRegistry implementation
-  (which may apply renames). Collision policy is intentionally *not* embedded
-  in the resolver to keep it pure and composable.
-"""
+# packages/simcore_ai_django/src/simcore_ai_django/promptkit/decorators.py
 from __future__ import annotations
 
-import warnings
-from typing import Optional, Type, Callable, Any, overload
+"""
+Django-aware prompt section decorator (class-based, no factories).
 
-from simcore_ai.decorators.base import make_class_decorator
-from simcore_ai.promptkit import PromptRegistry, PromptSection
-from simcore_ai_django.identity.resolvers import django_identity_resolver
+This decorator composes the core domain decorator with the Django-aware base to:
 
-# Build the dual-form decorator using the shared factory and Django-aware resolver.
-prompt_section = make_class_decorator(
-    identity_resolver=django_identity_resolver,
-    post_register=PromptRegistry.register,
+- derive a finalized Identity `(namespace, kind, name)` using Django-aware
+  namespace resolution (AppConfig label → app name → module root) and
+  name-only token stripping from AppConfig/global settings,
+- set the domain default `kind="prompt_section"`,
+- register the class with the Django prompt-sections registry (`prompt_sections`),
+  which enforces duplicate vs collision policy controlled by
+  `SIMCORE_COLLISIONS_STRICT`.
+
+No collision rewriting is performed here; registries own policy. If you want to
+opt-in to dev-only rename-on-collision, override `allow_collision_rewrite()` in
+this subclass to return True (recommended OFF in production).
+"""
+
+from typing import Any
+
+from simcore_ai.promptkit.decorators import (
+    PromptSectionRegistrationDecorator as CorePromptSectionDecorator,
 )
+from simcore_ai_django.decorators.base import DjangoBaseDecorator
+from simcore_ai_django.promptkit.registry import prompt_sections
 
 
-@overload
-def prompt_scenario(
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-) -> Callable[[Type[PromptSection]], Type[PromptSection]]: ...
+class DjangoPromptSectionDecorator(DjangoBaseDecorator, CorePromptSectionDecorator):
+    """Django-aware prompt section decorator: identity via DjangoBaseDecorator; registry wired here."""
+
+    # Domain default for kind
+    default_kind = "prompt_section"
+
+    def get_registry(self) -> Any | None:
+        """Return the Django prompt sections registry singleton."""
+        return prompt_sections
 
 
-@overload
-def prompt_scenario(
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-) -> Callable[[Type[PromptSection]], Type[PromptSection]]: ...
+# Ready-to-use decorator instances (short and namespaced aliases)
+prompt_section = DjangoPromptSectionDecorator()
+ai_prompt_section = prompt_section
 
+prompt_scenario = prompt_section
 
-def prompt_scenario(
-        cls: Optional[Type[PromptSection]] = None,
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-) -> Any:
-    """Stub for a future scenario-level prompt decorator.
-
-    This will likely validate additional scenario metadata and register the
-    class with a ScenarioRegistry. For now, it only warns and returns the
-    class unchanged to avoid breaking imports.
-    """
-    warnings.warn("`prompt_scenario` decorator is not yet implemented")
-    return cls
-
-
-__all__ = ["prompt_section", "prompt_scenario", "PromptSection"]
+__all__ = [
+    "prompt_section",
+    "ai_prompt_section",
+    "prompt_scenario",
+    "DjangoPromptSectionDecorator",
+]

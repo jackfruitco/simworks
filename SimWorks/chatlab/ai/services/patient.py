@@ -9,6 +9,7 @@ from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
+from simcore_ai.types import LLMTextPart
 from simcore_ai_django.api.decorators import llm_service
 # Django-aware service base and rich DTOs
 from simcore_ai_django.api.types import DjangoExecutableLLMService
@@ -44,7 +45,7 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExec
 
 
 @llm_service
-class GenerateReplyResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate a reply to a user message.
 
     Expects a user message pk (or a resolved Message) and validates against the
@@ -86,7 +87,7 @@ class GenerateReplyResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
 
 
 @llm_service
-class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate a patient image via provider tool-call.
 
     Builds a developer instruction via PromptKit and attaches a normalized image
@@ -112,7 +113,7 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
         from ..prompts import ChatlabImageSection  # local import to avoid cycles
         prompt = await PromptEngine.abuild_from(ChatlabImageSection)
         msgs: List[DjangoLLMRequestMessage] = [
-            DjangoLLMRequestMessage(role="developer", content=prompt.instruction or "")
+            DjangoLLMRequestMessage(role="developer", content=[LLMTextPart(prompt.instruction or "")])
         ]
         return msgs, None
 

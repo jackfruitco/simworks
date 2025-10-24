@@ -9,7 +9,7 @@ from simcore_ai_django.api.types import PromptSection
 
 @prompt_section
 @dataclass
-class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
+class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the LLM to generate an initial scenario."""
 
     weight: int = 10
@@ -49,7 +49,7 @@ class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPati
 
 @prompt_section
 @dataclass
-class ChatlabPatientReplySection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
+class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the patient's reply to the LLM."""
     instruction = None
 
@@ -65,7 +65,7 @@ class ChatlabPatientReplySection(PromptSection, ChatlabMixin, StandardizedPatien
 
 @prompt_section
 @dataclass
-class ChatlabImageSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
+class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the LLM to generate an image."""
     weight: int = 20
     instruction: str = (

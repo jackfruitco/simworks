@@ -1,30 +1,64 @@
-# simcore_ai_django/identity/mixins.py
+# packages/simcore_ai_django/src/simcore_ai_django/identity/mixins.py
 from __future__ import annotations
 
-from simcore_ai.identity import IdentityMixin
-from simcore_ai_django.identity import derive_django_identity_for_class
+import logging
+
+from simcore_ai.identity.mixins import IdentityMixin
+from simcore_ai_django.identity.resolution import resolve_identity_django
+
+logger = logging.getLogger(__name__)
+
 
 class DjangoIdentityMixin(IdentityMixin):
     """
-    Django-aware identity mixin.
+    Django-aware identity mixin providing read-only access to derived identities.
 
-    - origin/bucket/name may be declared as class attrs; if absent, derive
-      from Django app label (origin), default bucket, and stripped class name.
-    - All parts normalize to snake_case.
+    This mixin does not mutate or set identity fields on the class.
+    Instead, it delegates to the `DjangoIdentityResolver` to *compute*
+    an identity when requested.
+
+    Usage:
+        - Define `namespace`, `kind`, and/or `name` as optional class attributes.
+        - Call `cls.identity_tuple()` or `cls.identity_str()` to resolve the
+          effective identity using Django-aware rules.
+
+    Resolution precedence (handled by the resolver):
+        * namespace → decorator arg → class attr → AppConfig.label → module root → "default"
+        * kind      → decorator arg → class attr → "default"
+        * name      → explicit preserved, otherwise derived from class name
+                      with segment-aware stripping (core + Django tokens)
     """
+
     @classmethod
     def identity_tuple(cls) -> tuple[str, str, str]:
-        o = getattr(cls, "origin", None)
-        b = getattr(cls, "bucket", None)
-        n = getattr(cls, "name", None)
-        return derive_django_identity_for_class(cls, origin=o, bucket=b, name=n)
+        # Feed whatever the class already exposes and let the resolver apply
+        # precedence, token stripping, and normalization consistently.
+        ns_attr = getattr(cls, "namespace", None)
+        kd_attr = getattr(cls, "kind", None)
+        nm_attr = getattr(cls, "name", None)
+
+        identity, _meta = resolve_identity_django(
+            cls,
+            namespace=ns_attr,
+            kind=kd_attr,
+            name=nm_attr,
+        )
+        return identity.as_tuple3
 
     @classmethod
     def identity_str(cls) -> str:
-        o, b, n = cls.identity_tuple()
-        return f"{o}.{b}.{n}"
+        ns, kd, nm = cls.identity_tuple()
+        return f"{ns}.{kd}.{nm}"
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not getattr(cls, "origin", None) or not getattr(cls, "bucket", None) or not getattr(cls, "name", None):
-            cls.origin, cls.bucket, cls.name = cls.identity_tuple()
+        # Skip deriving identity for mixins or classes explicitly marked abstract on themselves.
+        # IMPORTANT: treat __identity_abstract__ as NON-INHERITING by consulting cls.__dict__ only.
+        if (
+                cls.__name__.endswith("Mixin")
+                or cls.__module__.endswith(".mixins")
+                or cls.__dict__.get("__identity_abstract__", False)
+        ):
+            return
+
+        # Do NOT stamp namespace/kind/name here. Let decorators/resolvers derive at registration time to avoid making 'name' look explicit.

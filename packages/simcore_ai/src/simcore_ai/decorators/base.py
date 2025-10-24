@@ -1,269 +1,233 @@
-# simcore_ai/decorators/base.py
+# packages/simcore_ai/src/simcore_ai/decorators/base.py
 from __future__ import annotations
 
 """
-Base decorator factory utilities for SimCore AI.
+Core base decorator (class-based, no factories).
 
-This module centralizes dual-form decorator behavior and identity derivation,
-so domain-specific decorators (prompts, services, codecs, etc.) can share a
-single, pluggable implementation while choosing their own identity resolver.
+This module defines `BaseDecorator`, a callable class that implements the
+dual-form decorator pattern:
 
-Key ideas:
-- Dual-form decorators: usable as `@dec` or `@dec(origin=..., bucket=..., name=...)`.
-- Pluggable identity resolvers: core keeps a pure, module-centric resolver;
-  Django layer can override with an app-aware resolver without duplicating logic.
-- Optional post-register hooks: let each domain handle registry/collision policy
-  without coupling this base module to any registry implementation.
+    @decorator
+    class Foo: ...
 
-This file must not import from any Django-specific modules.
+    @decorator(name="bar", kind="codec", namespace="chatlab")
+    class Foo: ...
+
+Key properties:
+- Uses the core derivation/validation helpers (no Django imports).
+- Attaches finalized identity to the decorated class:
+    - `cls.identity`        -> (namespace, kind, name) tuple (for fast dict/set keys)
+    - `cls.identity_obj`    -> Identity dataclass instance (for introspection)
+- Registration is delegated via `get_registry()`:
+    - Default returns None: registration is skipped (DEBUG logged).
+    - Domain decorators override `get_registry()` to return a singleton registry.
+- No token stripping or normalization logic lives here; all derivation is
+  handled by helpers per the implementation plan.
+
+IMPORTANT: This module must not import any Django modules.
 """
 
-import inspect
-from typing import Any, Callable, Optional, Protocol, Sequence, Type, TypeVar, overload, cast
+import logging
+import os
+from typing import Any, Optional, Type, TypeVar, Callable, cast
 
-from simcore_ai.identity.utils import snake  # reuse project-standard snake_case
+from simcore_ai.tracing import service_span_sync
+from simcore_ai.identity.base import Identity
+from simcore_ai.identity.resolution import IdentityResolver
 
-# ---------- Types & Protocols ----------
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=Type[Any])
 
-class IdentityResolver(Protocol):
+
+def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
+    level = os.getenv("SIMCORE_TRACE_LEVEL", "info").strip().lower()
+    if level not in {"debug", "info", "minimal"}:
+        level = "info"
+    if level == "debug":
+        return attrs
+    # info: keep standard subset
+    base_keys = {
+        "ai.decorator", "ai.class", "ai.identity",
+        "ai.tuple3.post_norm", "ai.identity.name.explicit",
+        # include helpful tuple3 snapshots and tokens in info
+        "ai.tuple3.raw", "ai.tuple3.post_strip",
+        "ai.strip_tokens", "ai.strip_tokens_list",
+    }
+    if level == "info":
+        return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("ai.")}
+    # minimal: essentials only
+    minimal_keys = {
+        "ai.decorator", "ai.class", "ai.identity",
+        "ai.tuple3.post_norm", "ai.identity.name.explicit",
+    }
+    return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("ai.")}
+
+
+class BaseDecorator:
+    """
+    Class-based decorator implementing the dual-form decorator pattern.
+
+    Subclasses may override:
+      - get_registry(self) -> Any | None
+      - derive_identity(self, cls, *, namespace, kind, name) -> Identity
+      - register(self, cls, identity: Identity) -> None  (default uses get_registry().maybe_register)
+
+    Identity semantics:
+      - Identity is computed *once* at decoration time.
+      - `cls.identity` is a (namespace, kind, name) tuple for convenient equality/hash.
+      - `cls.identity_obj` is the Identity dataclass instance.
+
+    This base class performs *no* Django-aware inference; subclasses in
+    simcore_ai_django override `derive_identity()` to add app-aware behavior.
+    """
+
+    def __init__(self, *, resolver: IdentityResolver | None = None) -> None:
+        # Allow per-instance override; default to core resolver
+        self.resolver: IdentityResolver = resolver or IdentityResolver()
+
+    # ---- public API: dual-form decorator ----
     def __call__(
-        self,
-        obj: Any,
-        *,
-        origin: Optional[str],
-        bucket: Optional[str],
-        name: Optional[str],
-    ) -> tuple[str, str, str]: ...
+            self,
+            _cls: Optional[T] = None,
+            *,
+            namespace: Optional[str] = None,
+            kind: Optional[str] = None,
+            name: Optional[str] = None,
+            **extras: Any,
+    ) -> T | Callable[[T], T]:
+        """
+        Support both forms:
+            @decorator
+            class Foo: ...
 
+            @decorator(namespace="x", kind="y", name="z")
+            class Foo: ...
+        """
 
-# ---------- Helpers ----------
-
-_CORE_AFFIX_STRIP: tuple[str, ...] = (
-    "Prompt",
-    "Section",
-    "Service",
-    "Codec",
-    "Generate",
-    "Response",
-    "Mixin",
-)
-
-def _strip_affixes(name: str, tokens: Sequence[str]) -> str:
-    """
-    Remove any of the given tokens from the start or end of `name`,
-    repeating until no further change occurs. This ensures we handle
-    stacked affixes like 'PatientInitialPrompt' -> 'Initial' and
-    'JsonCodec' -> 'Json'.
-    """
-    changed = True
-    while changed:
-        changed = False
-        for tok in tokens:
-            if name.startswith(tok) and len(name) > len(tok):
-                name = name[len(tok):]
-                changed = True
-            if name.endswith(tok) and len(name) > len(tok):
-                name = name[:-len(tok)]
-                changed = True
-    return name
-
-def _derive_from_module(obj: Any) -> tuple[str, str, str]:
-    """
-    Best-effort extraction of (origin, bucket, name) parts from module/name.
-    - origin: first module segment or 'simcore'
-    - bucket: second module segment or 'default'
-    - name:   object __name__ (un-snake-cased; caller should snake-case)
-    """
-    mod = getattr(obj, "__module__", "") or ""
-    parts = [p for p in mod.split(".") if p]
-    origin = parts[0] if parts else "simcore"
-    bucket = parts[1] if len(parts) > 1 else "default"
-    name = getattr(obj, "__name__", None) or "default"
-    return origin, bucket, name
-
-
-# ---------- Default (core) identity resolver ----------
-
-def default_identity_resolver(
-    obj: Any,
-    *,
-    origin: Optional[str],
-    bucket: Optional[str],
-    name: Optional[str],
-) -> tuple[str, str, str]:
-    """
-    Pure, module-centric identity resolver for core usage.
-
-    Resolution precedence (each part independently):
-      explicit override -> module-derived default
-
-    Defaults:
-      origin: module root or 'simcore'
-      bucket: second module segment or 'default'
-      name:   snake_case(class/function name with common affixes removed)
-
-    All returned parts are snake-cased.
-    """
-    mod_origin, mod_bucket, mod_name = _derive_from_module(obj)
-
-    raw_origin = origin or mod_origin or "simcore_ai"
-    raw_bucket = bucket or mod_bucket or "default"
-    raw_name = name or _strip_affixes(mod_name, _CORE_AFFIX_STRIP) or "default"
-
-    return snake(raw_origin), snake(raw_bucket), snake(raw_name)
-
-
-# ---------- Decorator factories ---------------------------------------------
-# Decorator factories are used to create dual-form decorators.
-# ----------------------------------------------------------------------------
-@overload
-def make_class_decorator(
-    identity_resolver: IdentityResolver,
-    *,
-    post_register: Optional[Callable[[Type[Any]], None]] = ...,
-    bind_extras: Optional[Callable[[Type[Any], dict[str, Any]], None]] = ...,
-) -> Callable[[Optional[T],], T] | Callable[..., Callable[[T], T]]: ...
-@overload
-def make_class_decorator(
-    identity_resolver: IdentityResolver,
-    *,
-    post_register: Optional[Callable[[Type[Any]], None]] = ...,
-    bind_extras: Optional[Callable[[Type[Any], dict[str, Any]], None]] = ...,
-) -> Callable[[Optional[T],], T] | Callable[..., Callable[[T], T]]: ...
-def make_class_decorator(
-    identity_resolver: IdentityResolver,
-    *,
-    post_register: Optional[Callable[[Type[Any]], None]] = None,
-    bind_extras: Optional[Callable[[Type[Any], dict[str, Any]], None]] = None,
-):
-    """
-    Return a dual-form class decorator builder using the provided identity resolver.
-
-    Usage:
-        prompt_section = make_class_decorator(default_identity_resolver, post_register=PromptRegistry.register)
-
-        @prompt_section
-        class MyPrompt(...): ...
-
-        @prompt_section(origin="chatlab", bucket="default", name="patient_initial")
-        class MyPrompt(...): ...
-    """
-    def decorator(
-        _cls: Optional[T] = None,
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-        **extras: Any,
-    ):
         def _apply(cls: T) -> T:
-            o, b, n = identity_resolver(cls, origin=origin, bucket=bucket, name=name)
-            setattr(cls, "origin", o)
-            setattr(cls, "bucket", b)
-            setattr(cls, "name", n)
+            fqcn = f"{cls.__module__}.{cls.__name__}"
 
-            if bind_extras is not None:
-                try:
-                    bind_extras(cls, extras)
-                except Exception:
-                    # Extras binding must never prevent class registration
-                    pass
+            # 1) Derive identity (subclasses may return (Identity, meta))
+            result = self.derive_identity(
+                cls,
+                namespace=namespace,
+                kind=kind,
+                name=name,
+            )
+            if isinstance(result, tuple) and len(result) == 2:
+                identity, meta = result  # type: ignore[misc]
+            else:
+                identity, meta = result, {}
 
-            if post_register is not None:
-                try:
-                    post_register(cls)
-                except Exception:
-                    # Registries may be optional or unavailable at import time
-                    pass
+            # 2) Attach identity to class
+            setattr(cls, "identity_obj", identity)
+            setattr(cls, "identity", identity.as_tuple3)
+
+            # 3) Bind any extra decorator metadata
+            self.bind_extras(cls, extras)
+
+            # 4) Register (if a registry is present)
+            self.register(cls, identity)
+
+            # 5) Emit a single trace span *after* successful registration with rich attributes
+            final_tuple3 = ".".join(identity.as_tuple3)
+            span_attrs_raw = {
+                "ai.decorator": self.__class__.__name__,
+                "ai.class": fqcn,
+                "ai.identity": final_tuple3,
+                # Optional debug/meta provided by Django layer (e.g., ai.strip_tokens, ai.tuple3.*)
+                **({} if not isinstance(meta, dict) else meta),
+                # Echo explicit args if provided (drop None later)
+                "ai.namespace_arg": namespace,
+                "ai.kind_arg": kind,
+                "ai.name_arg": name,
+            }
+            span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
+            span_attrs = _filter_trace_attrs(span_attrs)
+            identity_label = f"{identity.namespace}.{identity.kind}.{identity.name}"
+            with service_span_sync(f"ai.decorator.apply ({identity_label})", attributes=span_attrs):
+                pass
+
             return cls
 
+        # IMPORTANT: return the applied class when used as @decorator, or return
+        # the decorator function when used as @decorator(...)
         if _cls is not None:
             return _apply(cast(T, _cls))
         return _apply
-    return decorator
 
+    # ---- hooks / extension points ----
+    def get_registry(self) -> Any | None:
+        """
+        Return the registry singleton for this decorator's domain, or None to skip registration.
 
-@overload
-def make_fn_service_decorator(
-    identity_resolver: IdentityResolver,
-    *,
-    post_register: Optional[Callable[[Type[Any]], None]] = ...,
-    bind_extras: Optional[Callable[[Type[Any], dict[str, Any]], None]] = ...,
-) -> Callable[..., Type[Any]]: ...
-@overload
-def make_fn_service_decorator(
-    identity_resolver: IdentityResolver,
-    *,
-    post_register: Optional[Callable[[Type[Any]], None]] = ...,
-    bind_extras: Optional[Callable[[Type[Any], dict[str, Any]], None]] = ...,
-) -> Callable[..., Type[Any]]: ...
-def make_fn_service_decorator(
-    identity_resolver: IdentityResolver,
-    *,
-    post_register: Optional[Callable[[Type[Any]], None]] = None,
-    bind_extras: Optional[Callable[[Type[Any], dict[str, Any]], None]] = None,
-):
-    """
-    Return a dual-form decorator that turns an async function into a BaseLLMService subclass.
+        Core/base defaults to None so core decorators do not attempt registration.
+        Domain decorators in `simcore_ai/*/{domain}/decorators.py` should override
+        this to return the appropriate registry singleton.
+        """
+        return None
 
-    The identity is resolved against the **generated class**, not the function, so that
-    suffix stripping like 'Service' applies consistently in both core and Django layers.
-    """
-    # Import here to avoid import cycles on module import
-    from simcore_ai.services import BaseLLMService  # local import by design
+    def derive_identity(
+            self,
+            cls: Type[Any],
+            *,
+            namespace: Optional[str],
+            kind: Optional[str],
+            name: Optional[str],
+    ) -> tuple[Identity, dict[str, Any] | None]:
+        """
+        Derive and validate identity using core helpers.
 
-    def llm_service(
-        _func: Optional[Callable[..., Any]] = None,
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-        codec: Optional[str] = None,
-        prompt_plan: Optional[Sequence[tuple[str, str]]] = None,
-        **extras: Any,
-    ):
-        def _apply(func: Callable[..., Any]) -> Type[Any]:
-            # Create the service subclass first; then resolve identity on the class
-            class _FnService(BaseLLMService):
-                """Auto-generated service wrapper for function-level LLM services."""
+        Core precedence:
+          - name: explicit (arg/attr) preserved-as-is (trim only) OR derived from class
+          - namespace: arg -> class attr -> module root
+          - kind: arg -> class attr -> 'default'
 
-                async def on_success(self, simulation, slim):
-                    sig = inspect.signature(func)
-                    params = list(sig.parameters.values())
-                    if len(params) >= 2:
-                        return await func(simulation, slim)
-                    if len(params) == 1:
-                        return await func(simulation)
-                    return None
+        Token stripping & normalization are implemented in helpers. This core
+        implementation does not apply Django-specific behavior; Django subclasses
+        will override to call Django-aware helpers.
+        """
 
-            _FnService.__name__ = f"{func.__name__}_Service"
-            _FnService.__module__ = getattr(func, "__module__", __name__)
+        identity, meta = self.resolver.resolve(
+            cls,
+            namespace=namespace,
+            kind=kind,
+            name=name,
+        )
+        return identity, meta
 
-            o, b, n = identity_resolver(_FnService, origin=origin, bucket=bucket, name=name)
-            _FnService.origin = o
-            _FnService.bucket = b
-            _FnService.name = n
-            _FnService.codec_name = codec or "default"
-            _FnService.prompt_plan = tuple(prompt_plan or ())
+    def bind_extras(self, cls: Type[Any], extras: dict[str, Any]) -> None:
+        """
+        Optional metadata hook. Subclasses can override to bind additional
+        info from decorator kwargs onto the class (e.g., prompt plans).
+        Default is a no-op.
+        """
+        return
 
-            if bind_extras is not None:
-                try:
-                    bind_extras(_FnService, extras)
-                except Exception:
-                    pass
+    def register(self, cls: Type[Any], identity: Identity) -> None:
+        """
+        Default registration logic: call `get_registry().maybe_register((ns,kind,name), cls)`.
+        If no registry is available (None), skip and log at DEBUG.
+        """
+        registry = self.get_registry()
+        if registry is None:
+            logger.debug(
+                "No registry for %s; skipping registration for %s",
+                self.__class__.__name__,
+                identity.as_tuple3,
+            )
+            return
 
-            if post_register is not None:
-                try:
-                    post_register(_FnService)
-                except Exception:
-                    pass
-
-            return _FnService
-
-        if _func is not None:
-            return _apply(cast(Callable[..., Any], _func))
-        return _apply
-
-    return llm_service
+        # Registries own duplicate vs collision handling per implementation plan.
+        try:
+            registry.maybe_register(identity.as_tuple3, cls)
+            logger.info(
+                "%s.registered %s",
+                getattr(registry, "name", self.__class__.__name__.lower()),
+                ".".join(identity.as_tuple3),
+            )
+        except Exception:
+            # Surface registry errors explicitly; identity validation should
+            # already have run, so errors here are policy-level (e.g., collisions).
+            raise
