@@ -1,20 +1,27 @@
-# simcore_ai_django/service_runner.py
+# /packages/simcore_ai_django/src/simcore_ai_django/runner.py
 from __future__ import annotations
 
 import inspect
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 from uuid import UUID
 
 from django.conf import settings
 
 # Core DTOs and client
 from simcore_ai.client import AIClient
-from simcore_ai.types import LLMRequest, LLMResponse
 from simcore_ai.tracing import service_span_sync, service_span, extract_trace
 
+from simcore_ai.types import LLMRequest, LLMResponse
+
+from .audits import write_request_audit, update_request_audit_formats, write_response_audit
 # Codec execution helper
 from .codecs.execute import execute_codec
-
+from .dispatch import (
+    emit_request,
+    emit_response_received,
+    emit_response_ready,
+    emit_failure,
+)
 # Django overlays
 from .types import (
     promote_request,
@@ -23,16 +30,10 @@ from .types import (
     DjangoLLMRequest,
     DjangoLLMResponse,
 )
-from .audits import write_request_audit, update_request_audit_formats, write_response_audit
-from .dispatch import (
-    emit_request,
-    emit_response_received,
-    emit_response_ready,
-    emit_failure,
-)
 
 if TYPE_CHECKING:
     from simcore_ai.services import BaseLLMService
+
 
 # ------------------------------ utilities --------------------------------
 
@@ -52,27 +53,55 @@ async def _maybe_await_async(obj):
 
 
 def _resolve_namespace(service: BaseLLMService, namespace: Optional[str]) -> str:
-    # Prefer explicit; else service.namespace; else fallback
+    """Prefer explicit; else service.namespace; else fallback."""
     return namespace or getattr(service, "namespace", None) or "default"
+
+
+def _resolve_kind(service: BaseLLMService, kind: Optional[str]) -> str:
+    """Prefer explicit; else service.kind; else sensible default for services."""
+    return kind or getattr(service, "kind", None) or "service"
+
+
+def _resolve_name(service: BaseLLMService, name: Optional[str]) -> str:
+    """Prefer explicit; else service.name; else the class name."""
+    return name or getattr(service, "name", None) or service.__class__.__name__
 
 
 # ------------------------------ sync facade -------------------------------
 
 def run_service(
-    service: BaseLLMService,
-    *,
-    traceparent: Optional[str] = None,
-    namespace: Optional[str] = None,
-    client_name: Optional[str] = None,
-    provider_name: Optional[str] = None,
-    simulation_pk: Optional[int] = None,
-    correlation_id: Optional[UUID] = None,
-    origin: Optional[str] = None,
-    bucket: Optional[str] = None,
-    service_name: Optional[str] = None,
+        service: BaseLLMService,
+        *,
+        traceparent: Optional[str] = None,
+        namespace: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        simulation_pk: Optional[int] = None,
+        correlation_id: Optional[UUID] = None,
 ) -> DjangoLLMResponse:
     """
     Orchestrate a full request/response flow for a Django-rich LLM service (SYNC).
+
+    This orchestrator bridges between the pure `simcore_ai` layer and Django runtime.
+
+    Lifecycle summary:
+      1. `service.build_request()` → returns **LLMRequest** (pure provider DTO)
+      2. Promote → wrap in **DjangoLLMRequest** (adds ORM, audit, simulation, correlation info)
+      3. Write audit + emit signals → maintain Django observability
+      4. Demote → convert back to **LLMRequest** before calling the AI provider (provider-agnostic)
+      5. Provider executes → returns **LLMResponse**
+      6. Promote → wrap in **DjangoLLMResponse** for persistence, codecs, and dispatch
+
+    Notes:
+      • `LLMRequest` and `LLMResponse` remain provider-agnostic Pydantic DTOs.
+      • `DjangoLLMRequest` and `DjangoLLMResponse` are enriched overlays used only within the Django runtime.
+      • Promotion/demotion happens automatically before and after external boundaries.
+
+    About DjangoBaseLLMService:
+      - Inherits from `BaseLLMService` but adds Django-aware features (ORM access, audit hooks, signal dispatch).
+      - It still builds and consumes the same `LLMRequest` / `LLMResponse` core DTOs to preserve portability.
 
     Steps:
       - service.build_request() -> LLMRequest
@@ -89,18 +118,24 @@ def run_service(
             pass
 
     ns = _resolve_namespace(service, namespace)
+    kd = _resolve_kind(service, kind)
+    nm = _resolve_name(service, name)
     codec = service.get_codec()
     codec_name = codec.__class__.__name__ if codec else None
 
+    identity_label = f"{ns}.{kd}.{nm}"
+
     with service_span_sync(
-        "ai.run_service",
-        attributes={
-            "ai.namespace": namespace or getattr(service, "namespace", None),
-            "ai.service_name": getattr(service, "name", None),
-            "ai.provider_name": provider_name or getattr(service, "provider_name", None),
-            "ai.client_name": client_name or "default",
-            "ai.codec_name": codec_name,
-        },
+            f"ai.run_service ({identity_label})",
+            attributes={
+                "ai.identity": identity_label,
+                "ai.namespace": ns,
+                "ai.kind": kd,
+                "ai.name": nm,
+                "ai.provider_name": provider_name or getattr(service, "provider_name", None),
+                "ai.client_name": client_name or "default",
+                "ai.codec_name": codec_name,
+            },
     ):
         # 1) Build base request (service should construct messages/prompt and set response_format_cls)
         try:
@@ -109,14 +144,13 @@ def run_service(
             emit_failure(
                 error=f"{type(e).__name__}: {e}",
                 namespace=ns,
+                kind=kd,
+                name=nm,
                 client_name=client_name or getattr(service, "client_name", None),
                 provider_name=provider_name or getattr(service, "provider_name", None),
                 simulation_pk=simulation_pk,
                 correlation_id=correlation_id,
                 request_audit_pk=None,
-                origin=origin or getattr(service, "origin", None),
-                bucket=bucket or getattr(service, "bucket", None),
-                service_name=service_name or getattr(service, "name", service.__class__.__name__),
             )
             raise
 
@@ -124,13 +158,12 @@ def run_service(
         dj_req: DjangoLLMRequest = promote_request(
             base_req,
             namespace=ns,
+            kind=kd,
+            name=nm,
             client_name=client_name or getattr(service, "client_name", None),
             provider_name=provider_name or getattr(service, "provider_name", None),
             simulation_pk=simulation_pk,
             correlation_id=correlation_id,
-            origin=origin or getattr(service, "origin", None),
-            bucket=bucket or getattr(service, "bucket", None),
-            service_name=service_name or getattr(service, "name", service.__class__.__name__),
         )
 
         # 3) Persist request audit
@@ -139,20 +172,25 @@ def run_service(
 
         # 4) Emit request sent
         with service_span_sync(
-            "ai.emit.request_sent",
-            attributes={"ai.namespace": dj_req.namespace, "ai.codec_name": codec_name},
+                "ai.emit.request_sent",
+                attributes={
+                    "ai.identity": f"{dj_req.namespace}.{dj_req.kind}.{dj_req.name}",
+                    "ai.namespace": dj_req.namespace,
+                    "ai.kind": dj_req.kind,
+                    "ai.name": dj_req.name,
+                    "ai.codec_name": codec_name,
+                },
         ):
             emit_request(
                 request_dto=dj_req,
                 request_audit_pk=request_pk,
                 namespace=dj_req.namespace,
+                kind=dj_req.kind,
+                name=dj_req.name,
                 client_name=dj_req.client_name,
                 provider_name=dj_req.provider_name,
                 simulation_pk=dj_req.simulation_pk,
                 correlation_id=dj_req.correlation_id,
-                origin=dj_req.origin,
-                bucket=dj_req.bucket,
-                service_name=dj_req.service_name,
                 codec_name=codec_name,
             )
 
@@ -178,14 +216,13 @@ def run_service(
         dj_resp: DjangoLLMResponse = promote_response(
             core_resp,
             namespace=ns,
+            kind=kd,
+            name=nm,
             client_name=dj_req.client_name,
             provider_name=dj_req.provider_name,
             simulation_pk=dj_req.simulation_pk,
             correlation_id=dj_req.correlation_id,
             request_db_pk=request_pk,
-            origin=dj_req.origin,
-            bucket=dj_req.bucket,
-            service_name=dj_req.service_name,
         )
 
         # 9) Persist response audit
@@ -194,29 +231,34 @@ def run_service(
 
         # 10) Emit response received (pre-codec handling)
         with service_span_sync(
-            "ai.emit.response_received",
-            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+                "ai.emit.response_received",
+                attributes={
+                    "ai.identity": f"{dj_resp.namespace}.{dj_resp.kind}.{dj_resp.name}",
+                    "ai.namespace": dj_resp.namespace,
+                    "ai.kind": dj_resp.kind,
+                    "ai.name": dj_resp.name,
+                    "ai.codec_name": codec_name,
+                },
         ):
             emit_response_received(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
                 response_audit_pk=response_pk,
                 namespace=dj_resp.namespace,
+                kind=dj_resp.kind,
+                name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
                 simulation_pk=dj_resp.simulation_pk,
                 correlation_id=dj_resp.correlation_id,
-                origin=dj_resp.origin,
-                bucket=dj_resp.bucket,
-                service_name=dj_resp.service_name,
             )
 
         # 11) Optional codec handling (validate/parse/persist)
         if codec:
             try:
                 with service_span_sync(
-                    "ai.codec.handle",
-                    attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
+                        "ai.codec.handle",
+                        attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
                 ):
                     execute_codec(
                         codec,
@@ -233,33 +275,37 @@ def run_service(
                 emit_failure(
                     error=f"{type(e).__name__}: {e}",
                     namespace=ns,
+                    kind=kd,
+                    name=nm,
                     client_name=dj_resp.client_name,
                     provider_name=dj_resp.provider_name,
                     simulation_pk=dj_resp.simulation_pk,
                     correlation_id=dj_resp.correlation_id,
                     request_audit_pk=request_pk,
-                    origin=dj_resp.origin,
-                    bucket=dj_resp.bucket,
-                    service_name=dj_resp.service_name,
                 )
 
         # 12) Emit response ready (post-codec)
         with service_span_sync(
-            "ai.emit.response_ready",
-            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+                "ai.emit.response_ready",
+                attributes={
+                    "ai.identity": f"{dj_resp.namespace}.{dj_resp.kind}.{dj_resp.name}",
+                    "ai.namespace": dj_resp.namespace,
+                    "ai.kind": dj_resp.kind,
+                    "ai.name": dj_resp.name,
+                    "ai.codec_name": codec_name,
+                },
         ):
             emit_response_ready(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
                 response_audit_pk=response_pk,
                 namespace=dj_resp.namespace,
+                kind=dj_resp.kind,
+                name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
                 simulation_pk=dj_resp.simulation_pk,
                 correlation_id=dj_resp.correlation_id,
-                origin=dj_resp.origin,
-                bucket=dj_resp.bucket,
-                service_name=dj_resp.service_name,
             )
 
         return dj_resp
@@ -268,17 +314,16 @@ def run_service(
 # ------------------------------ async facade ------------------------------
 
 async def arun_service(
-    service: BaseLLMService,
-    *,
-    traceparent: Optional[str] = None,
-    namespace: Optional[str] = None,
-    client_name: Optional[str] = None,
-    provider_name: Optional[str] = None,
-    simulation_pk: Optional[int] = None,
-    correlation_id: Optional[UUID] = None,
-    origin: Optional[str] = None,
-    bucket: Optional[str] = None,
-    service_name: Optional[str] = None,
+        service: BaseLLMService,
+        *,
+        traceparent: Optional[str] = None,
+        namespace: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        simulation_pk: Optional[int] = None,
+        correlation_id: Optional[UUID] = None,
 ) -> DjangoLLMResponse:
     """
     Async orchestration variant of run_service (awaits all awaitables).
@@ -291,18 +336,24 @@ async def arun_service(
             pass
 
     ns = _resolve_namespace(service, namespace)
+    kd = _resolve_kind(service, kind)
+    nm = _resolve_name(service, name)
     codec = service.get_codec()
     codec_name = codec.__class__.__name__ if codec else None
 
+    identity_label = f"{ns}.{kd}.{nm}"
+
     async with service_span(
-        "ai.arun_service",
-        attributes={
-            "ai.namespace": namespace or getattr(service, "namespace", None),
-            "ai.service_name": getattr(service, "name", None),
-            "ai.provider_name": provider_name or getattr(service, "provider_name", None),
-            "ai.client_name": client_name or "default",
-            "ai.codec_name": codec_name,
-        },
+            f"ai.arun_service ({identity_label})",
+            attributes={
+                "ai.identity": identity_label,
+                "ai.namespace": ns,
+                "ai.kind": kd,
+                "ai.name": nm,
+                "ai.provider_name": provider_name or getattr(service, "provider_name", None),
+                "ai.client_name": client_name or "default",
+                "ai.codec_name": codec_name,
+            },
     ):
         # Build base request
         try:
@@ -311,14 +362,13 @@ async def arun_service(
             emit_failure(
                 error=f"{type(e).__name__}: {e}",
                 namespace=ns,
+                kind=kd,
+                name=nm,
                 client_name=client_name or getattr(service, "client_name", None),
                 provider_name=provider_name or getattr(service, "provider_name", None),
                 simulation_pk=simulation_pk,
                 correlation_id=correlation_id,
                 request_audit_pk=None,
-                origin=origin or getattr(service, "origin", None),
-                bucket=bucket or getattr(service, "bucket", None),
-                service_name=service_name or getattr(service, "name", service.__class__.__name__),
             )
             raise
 
@@ -326,32 +376,36 @@ async def arun_service(
         dj_req: DjangoLLMRequest = promote_request(
             base_req,
             namespace=ns,
+            kind=kd,
+            name=nm,
             client_name=client_name or getattr(service, "client_name", None),
             provider_name=provider_name or getattr(service, "provider_name", None),
             simulation_pk=simulation_pk,
             correlation_id=correlation_id,
-            origin=origin or getattr(service, "origin", None),
-            bucket=bucket or getattr(service, "bucket", None),
-            service_name=service_name or getattr(service, "name", service.__class__.__name__),
         )
 
         async with service_span("ai.audit.request"):
             request_pk = write_request_audit(dj_req)
         async with service_span(
-            "ai.emit.request_sent",
-            attributes={"ai.namespace": dj_req.namespace, "ai.codec_name": codec_name},
+                "ai.emit.request_sent",
+                attributes={
+                    "ai.identity": f"{dj_req.namespace}.{dj_req.kind}.{dj_req.name}",
+                    "ai.namespace": dj_req.namespace,
+                    "ai.kind": dj_req.kind,
+                    "ai.name": dj_req.name,
+                    "ai.codec_name": codec_name,
+                },
         ):
             emit_request(
                 request_dto=dj_req,
                 request_audit_pk=request_pk,
                 namespace=dj_req.namespace,
+                kind=dj_req.kind,
+                name=dj_req.name,
                 client_name=dj_req.client_name,
                 provider_name=dj_req.provider_name,
                 simulation_pk=dj_req.simulation_pk,
                 correlation_id=dj_req.correlation_id,
-                origin=dj_req.origin,
-                bucket=dj_req.bucket,
-                service_name=dj_req.service_name,
                 codec_name=codec_name,
             )
 
@@ -372,42 +426,46 @@ async def arun_service(
         dj_resp: DjangoLLMResponse = promote_response(
             core_resp,
             namespace=ns,
+            kind=kd,
+            name=nm,
             client_name=dj_req.client_name,
             provider_name=dj_req.provider_name,
             simulation_pk=dj_req.simulation_pk,
             correlation_id=dj_req.correlation_id,
             request_db_pk=request_pk,
-            origin=dj_req.origin,
-            bucket=dj_req.bucket,
-            service_name=dj_req.service_name,
         )
 
         async with service_span("ai.audit.response"):
             response_pk = write_response_audit(dj_resp, request_audit_pk=request_pk)
 
         async with service_span(
-            "ai.emit.response_received",
-            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+                "ai.emit.response_received",
+                attributes={
+                    "ai.identity": f"{dj_resp.namespace}.{dj_resp.kind}.{dj_resp.name}",
+                    "ai.namespace": dj_resp.namespace,
+                    "ai.kind": dj_resp.kind,
+                    "ai.name": dj_resp.name,
+                    "ai.codec_name": codec_name,
+                },
         ):
             emit_response_received(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
                 response_audit_pk=response_pk,
                 namespace=dj_resp.namespace,
+                kind=dj_resp.kind,
+                name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
                 simulation_pk=dj_resp.simulation_pk,
                 correlation_id=dj_resp.correlation_id,
-                origin=dj_resp.origin,
-                bucket=dj_resp.bucket,
-                service_name=dj_resp.service_name,
             )
 
         if codec:
             try:
                 async with service_span(
-                    "ai.codec.handle",
-                    attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
+                        "ai.codec.handle",
+                        attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
                 ):
                     await _maybe_await_async(
                         execute_codec(
@@ -426,32 +484,36 @@ async def arun_service(
                 emit_failure(
                     error=f"{type(e).__name__}: {e}",
                     namespace=ns,
+                    kind=kd,
+                    name=nm,
                     client_name=dj_resp.client_name,
                     provider_name=dj_resp.provider_name,
                     simulation_pk=dj_resp.simulation_pk,
                     correlation_id=dj_resp.correlation_id,
                     request_audit_pk=request_pk,
-                    origin=dj_resp.origin,
-                    bucket=dj_resp.bucket,
-                    service_name=dj_resp.service_name,
                 )
 
         async with service_span(
-            "ai.emit.response_ready",
-            attributes={"ai.namespace": dj_resp.namespace, "ai.codec_name": codec_name},
+                "ai.emit.response_ready",
+                attributes={
+                    "ai.identity": f"{dj_resp.namespace}.{dj_resp.kind}.{dj_resp.name}",
+                    "ai.namespace": dj_resp.namespace,
+                    "ai.kind": dj_resp.kind,
+                    "ai.name": dj_resp.name,
+                    "ai.codec_name": codec_name,
+                },
         ):
             emit_response_ready(
                 response_dto=dj_resp,
                 request_audit_pk=request_pk,
                 response_audit_pk=response_pk,
                 namespace=dj_resp.namespace,
+                kind=dj_resp.kind,
+                name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
                 simulation_pk=dj_resp.simulation_pk,
                 correlation_id=dj_resp.correlation_id,
-                origin=dj_resp.origin,
-                bucket=dj_resp.bucket,
-                service_name=dj_resp.service_name,
             )
 
         return dj_resp

@@ -301,7 +301,18 @@ class BaseLLMService:
             service=self.__class__.__name__,
         )
 
-    async def run(self, simulation) -> LLMResponse:
+    async def build_request(self) -> LLMRequest:
+        """Build a provider-agnostic **LLMRequest** for this service.
+
+        Django-facing services are expected to override this method to assemble
+        the final request (messages, response format, codec identity, etc.).
+
+        The base implementation exists only to satisfy type-checkers for callers
+        (e.g., the Django runner) and **must** be overridden in concrete services.
+        """
+        raise NotImplementedError("BaseLLMService.build_request() must be implemented by concrete services")
+
+    async def run(self, simulation) -> LLMResponse | None:
         """
         Run the service for a simulation, emitting request/response events.
         Uses identity fields (namespace, kind, name) and canonical identity_str.
