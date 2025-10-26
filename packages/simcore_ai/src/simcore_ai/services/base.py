@@ -16,17 +16,17 @@ import asyncio
 import logging
 from collections.abc import Sequence, Callable
 from dataclasses import dataclass, field
-from typing import Optional, Protocol
-
 from typing import Any
-from simcore_ai.promptkit.resolvers import resolve_section, PromptSectionResolutionError
+from typing import Optional, Protocol
 
 from simcore_ai.codecs import (
     BaseLLMCodec,
     get_codec as _core_get_codec
 )
 from simcore_ai.identity import Identity
-from .exceptions import ServiceConfigError, ServiceCodecResolutionError
+from simcore_ai.identity.utils import module_root
+from simcore_ai.promptkit.resolvers import resolve_section, PromptSectionResolutionError
+from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..client import AIClient
 from ..promptkit import Prompt, PromptEngine, PromptSection
 from ..tracing import get_tracer, service_span
@@ -46,7 +46,6 @@ class ServiceEmitter(Protocol):
     def emit_stream_chunk(self, simulation_id: int, namespace: str, chunk_dto) -> None: ...
 
     def emit_stream_complete(self, simulation_id: int, namespace: str, correlation_id) -> None: ...
-
 
 
 @dataclass
@@ -90,13 +89,17 @@ class BaseLLMService:
     prompt: Prompt | None = None
 
     def __post_init__(self):
+        # Normalize legacy codec hint → codec_name (if provided as `codec`)
+        if self.codec_name is None and isinstance(self.codec, str):
+            self.codec_name = self.codec
+
         # Build canonical identity string from parts
-        ident = Identity(
-            namespace=self.namespace or "app",
-            kind=self.kind or "service",
-            name=(self.name or self.__class__.__name__),
-        )
+        inferred_ns = self.namespace or module_root(getattr(self, "__module__", "")) or "default"
+        inferred_kind = self.kind or "default"
+        inferred_name = self.name or self.__class__.__name__
+        ident = Identity(namespace=inferred_ns, kind=inferred_kind, name=inferred_name)
         self.identity_str = ident.to_string()
+
     async def ensure_prompt(self, simulation) -> Prompt:
         """Ensure `self.prompt` is built once via the configured PromptEngine.
 
@@ -134,10 +137,6 @@ class BaseLLMService:
         self.prompt = prompt
         return prompt
 
-        # Backwards-compatibility: if legacy `codec` (str) was set and no explicit codec_name, copy it over.
-        if self.codec_name is None and isinstance(self.codec, str):
-            self.codec_name = self.codec
-
     # --- Identity helpers -------------------------------------------------
     @property
     def identity(self) -> Identity:
@@ -147,13 +146,95 @@ class BaseLLMService:
         n = parts[2] if len(parts) > 2 else None
         return Identity.from_parts(namespace=o, kind=b, name=n)
 
-    @property
-    def origin_slug(self) -> str:
-        return self.identity.namespace
+    async def build_request(self, *, simulation=None, **ctx) -> LLMRequest:
+        """Build a provider-agnostic **LLMRequest** for this service.
 
-    @property
-    def bucket_slug(self) -> str:
-        return self.identity.kind
+        Default implementation uses the PromptEngine output to create messages and
+        stamps identity and codec routing. Subclasses may override hooks instead of
+        replacing this whole method.
+
+        Raises
+        ------
+        ServiceBuildRequestError
+            If both the instruction and user message are empty.
+        """
+        # 1) Ensure prompt is available
+        prompt = await self.ensure_prompt(simulation)
+
+        # 2) Build messages via hooks
+        messages: list[LLMRequestMessage] = []
+        messages += await self._build_request_instructions(simulation, prompt, **ctx)
+        messages += await self._build_request_user_input(simulation, prompt, **ctx)
+        messages += await self._build_request_extras(simulation, prompt, **ctx)
+
+        # Validate: at least one of instruction or user message must be present
+        instr_present = bool(getattr(prompt, "instruction", None))
+        user_present = bool(getattr(prompt, "message", None))
+        if not (instr_present or user_present):
+            raise ServiceBuildRequestError("Prompt produced no instruction or user message; cannot build request")
+
+        # 3) Create base request and stamp identity
+        ident = self.identity
+        req = LLMRequest(messages=messages, stream=False)
+        req.namespace = ident.namespace
+        req.kind = ident.kind
+        req.name = ident.name
+
+        # 4) Resolve codec and attach response format and codec identity
+        codec = self.get_codec(simulation)
+        key_name = (self.codec_name or f"{ident.kind}:{ident.name}")
+        req.codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
+
+        # Provider-agnostic response format class: prefer `response_format_cls`, then fallbacks
+        schema_cls = (
+                getattr(codec, "response_format_cls", None)
+                or getattr(codec, "schema_cls", None)
+                or getattr(codec, "output_model", None)
+        )
+        if schema_cls is not None:
+            req.response_format_cls = schema_cls
+        if hasattr(codec, "get_response_format"):
+            try:
+                rf = codec.get_response_format()
+                if rf is not None:
+                    req.response_format = rf
+            except Exception:
+                # Best-effort; providers may not expose this
+                pass
+
+        # 5) Final customization hook
+        req = await self._finalize_request(req, simulation, **ctx)
+        return req
+
+    # --------------------------- build hooks ---------------------------
+    async def _build_request_instructions(self, simulation, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
+        """Create developer messages from prompt.instruction (if present)."""
+        messages: list[LLMRequestMessage] = []
+        instruction = getattr(prompt, "instruction", None)
+        if instruction:
+            messages.append(LLMRequestMessage(role="developer", content=[LLMTextPart(text=str(instruction))]))
+        return messages
+
+    async def _build_request_user_input(self, simulation, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
+        """Create user messages from prompt.message (if present)."""
+        messages: list[LLMRequestMessage] = []
+        message = getattr(prompt, "message", None)
+        if message:
+            messages.append(LLMRequestMessage(role="user", content=[LLMTextPart(text=str(message))]))
+        return messages
+
+    async def _build_request_extras(self, simulation, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
+        """Create extra messages from prompt.extra_messages ((role, text) pairs)."""
+        messages: list[LLMRequestMessage] = []
+        extras = getattr(prompt, "extra_messages", None) or []
+        for role, text in extras:
+            if text:
+                messages.append(LLMRequestMessage(role=str(role), content=[LLMTextPart(text=str(text))]))
+        return messages
+
+    async def _finalize_request(self, req: LLMRequest, simulation, **ctx) -> LLMRequest:
+        """Final request customization hook (no-op by default)."""
+        return req
 
     @property
     def name_slug(self) -> str:
@@ -222,21 +303,49 @@ class BaseLLMService:
         """
         return None
 
-    def _get_client(self, codec: BaseLLMCodec | None) -> AIClient:
-        """Resolve an AIClient for this service.
+    def get_client(self) -> AIClient:
+        """
+        Public accessor for the provider client.
 
-        Priority:
-          1) Explicit `self.client` injected at construction.
-          2) Registry lookup by name (`provider_name` treated as a registered client name).
-          3) Registry lookup by provider key (if unique), when `provider_name` looks like a provider slug.
-        Note: client resolution spans are emitted by caller.
+        Behavior
+        --------
+        - If an instance is already set on `self.client`, return it.
+        - Otherwise, resolve one via `_resolve_client(...)` using `provider_name`,
+          cache it on `self.client`, and return it.
+
+        Notes
+        -----
+        • Callers across core and Django layers should prefer this method.
+        • This replaces the former private `_get_client` usage.
         """
         if self.client is not None:
             return self.client
+        self.client = self._resolve_client()
+        return self.client
 
+    def _resolve_client(self, codec: BaseLLMCodec | None = None) -> AIClient:
+        """
+        Internal resolver that performs registry lookups to obtain an AIClient.
+
+        Resolution order
+        ----------------
+        1) If `provider_name` is falsy -> return the default registry client.
+        2) Try explicit client name: `get_ai_client(name=self.provider_name)`.
+        3) Fallback to provider slug: `get_ai_client(provider=self.provider_name)`.
+
+        Raises
+        ------
+        ServiceConfigError
+            If no client can be resolved via the registry.
+
+        Notes
+        -----
+        • External modules should not call this directly; use `get_client()`.
+        • `codec` is accepted for future-proofing but is unused here.
+        """
         from simcore_ai.client.registry import get_ai_client
 
-        # If no provider_name set, use default client from registry
+        # If no provider_name, use the default client from registry
         if not self.provider_name:
             return get_ai_client()
 
@@ -246,14 +355,14 @@ class BaseLLMService:
         except Exception:
             pass
 
-        # Next, treat provider_name as a provider key (e.g., "openai")
+        # Next, treat provider_name as a provider slug (e.g., "openai")
         try:
             return get_ai_client(provider=self.provider_name)
         except Exception as e:
             raise ServiceConfigError(
                 "No AI client available. Either inject `client=...` into the service, "
-                "or pre-register a client via simcore_ai.client_registry.create_client(...), "
-                "or configure via Django settings AI_PROVIDERS."
+                "pre-register a client via simcore_ai.client.registry.get_ai_client(...), "
+                "or configure providers in your runtime."
             ) from e
 
     def get_codec(self, simulation=None):
@@ -297,20 +406,9 @@ class BaseLLMService:
             namespace=getattr(self.identity, 'namespace', None),
             kind=getattr(self.identity, 'kind', None),
             name=getattr(self.identity, 'name', None),
-            codec_name=self.codec_name,
+            codec=self.codec_name,
             service=self.__class__.__name__,
         )
-
-    async def build_request(self) -> LLMRequest:
-        """Build a provider-agnostic **LLMRequest** for this service.
-
-        Django-facing services are expected to override this method to assemble
-        the final request (messages, response format, codec identity, etc.).
-
-        The base implementation exists only to satisfy type-checkers for callers
-        (e.g., the Django runner) and **must** be overridden in concrete services.
-        """
-        raise NotImplementedError("BaseLLMService.build_request() must be implemented by concrete services")
 
     async def run(self, simulation) -> LLMResponse | None:
         """
@@ -319,70 +417,45 @@ class BaseLLMService:
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
+        ident = self.identity
+        identity_label = f"{ident.namespace}.{ident.kind}.{ident.name}"
         attrs = {
-            "identity": self.identity_str,
+            "identity": identity_label,
             "simulation_id": getattr(simulation, "id", self.simulation_id),
             "codec_name": self.get_codec_name(simulation) or "unknown",
         }
         logger.info("llm.service.start", extra=attrs)
         async with service_span(f"LLMService.{self.__class__.__name__}.run", **attrs):
-            messages = await self.build_request_messages(simulation)
-            req = LLMRequest(
-                messages=messages,
-                stream=False,
-            )
-            # Stamp operation identity onto request
-            ident = self.identity
-            req.namespace = ident.namespace
-            req.kind = ident.kind
-            req.name = ident.name
+            req = await self.build_request(simulation=simulation)
+            # Ensure non-stream for this path
+            req.stream = False
 
-            # Codec resolution and attach codec identity and response format
-            codec = self.get_codec(simulation)
-            key_name = (self.codec_name or f"{ident.kind}:{ident.name}")
-            codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
-            req.codec_identity = codec_identity
-            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(
-                codec, "output_model", None)
-            if schema_cls is not None:
-                req.response_format_cls = schema_cls
-            if hasattr(codec, "get_response_format"):
-                try:
-                    rf = codec.get_response_format()
-                    if rf is not None:
-                        req.response_format = rf
-                except Exception:
-                    pass
-
-            client = self._get_client(codec)
-            self.emitter.emit_request(simulation.id, self.identity_str, req)
+            client = self.get_client()
+            self.emitter.emit_request(getattr(simulation, "id", self.simulation_id), self.identity_str, req)
 
             attempt = 1
-            last_exc: Exception | None = None
             while attempt <= max(1, self.max_attempts):
                 try:
                     resp: LLMResponse = await client.send_request(req)
-                    # Copy codec identity if missing and echo operation identity
+                    # Echo operation identity and correlation linkage
                     if getattr(resp, "codec_identity", None) is None:
                         resp.codec_identity = req.codec_identity
                     resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
-                    # Wire correlation link
                     if getattr(resp, "request_correlation_id", None) is None:
                         resp.request_correlation_id = req.correlation_id
-                    self.emitter.emit_response(simulation.id, self.identity_str, resp)
+                    self.emitter.emit_response(getattr(simulation, "id", self.simulation_id), self.identity_str, resp)
                     await self.on_success(simulation, resp)
                     logger.info("llm.service.success",
                                 extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
                     return resp
                 except Exception as e:
-                    last_exc = e
                     if attempt >= max(1, self.max_attempts):
-                        self.emitter.emit_failure(simulation.id, self.identity_str, req.correlation_id, str(e))
+                        self.emitter.emit_failure(getattr(simulation, "id", self.simulation_id), self.identity_str,
+                                                  req.correlation_id, str(e))
                         await self.on_failure(simulation, e)
                         logger.exception("llm.service.error",
                                          extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
                         raise
-                    # backoff then retry
                     logger.warning("llm.service.retrying",
                                    extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts})
                     await self._backoff_sleep(attempt)
@@ -395,42 +468,19 @@ class BaseLLMService:
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
+        ident = self.identity
+        identity_label = f"{ident.namespace}.{ident.kind}.{ident.name}"
         attrs = {
-            "identity": self.identity_str,
+            "identity": identity_label,
             "simulation_id": getattr(simulation, "id", self.simulation_id),
             "codec_name": self.get_codec_name(simulation) or "unknown",
         }
         async with service_span(f"LLMService.{self.__class__.__name__}.run_stream", **attrs):
-            messages = await self.build_request_messages(simulation)
-            req = LLMRequest(
-                messages=messages,
-                stream=True,
-            )
-            # Stamp operation identity onto request
-            ident = self.identity
-            req.namespace = ident.namespace
-            req.kind = ident.kind
-            req.name = ident.name
+            req = await self.build_request(simulation=simulation)
+            req.stream = True
 
-            # Codec resolution and attach codec identity and response format
-            codec = self.get_codec(simulation)
-            key_name = (self.codec_name or f"{ident.kind}:{ident.name}")
-            codec_identity = f"{ident.namespace}.{key_name.replace(':', '.')}"
-            req.codec_identity = codec_identity
-            schema_cls = getattr(codec, "response_format_cls", None) or getattr(codec, "schema_cls", None) or getattr(
-                codec, "output_model", None)
-            if schema_cls is not None:
-                req.response_format_cls = schema_cls
-            if hasattr(codec, "get_response_format"):
-                try:
-                    rf = codec.get_response_format()
-                    if rf is not None:
-                        req.response_format = rf
-                except Exception:
-                    pass
-
-            client = self._get_client(codec)
-            self.emitter.emit_request(simulation.id, self.identity_str, req)
+            client = self.get_client()
+            self.emitter.emit_request(getattr(simulation, "id", self.simulation_id), self.identity_str, req)
 
             attempt = 1
             started = False
@@ -438,17 +488,15 @@ class BaseLLMService:
                 try:
                     async for chunk in client.stream_request(req):
                         started = True
-                        self.emitter.emit_stream_chunk(simulation.id, self.identity_str, chunk)
-                    # completed stream without error
-                    # When stream completes, emit_stream_complete; attach codec identity and echo operation identity if possible
-                    # (If a final response object is available, set fields accordingly)
-                    # Since emit_stream_complete doesn't take a response, we can't set fields on chunk, but could emit here if needed
-                    self.emitter.emit_stream_complete(simulation.id, self.identity_str, req.correlation_id)
+                        self.emitter.emit_stream_chunk(getattr(simulation, "id", self.simulation_id), self.identity_str,
+                                                       chunk)
+                    self.emitter.emit_stream_complete(getattr(simulation, "id", self.simulation_id), self.identity_str,
+                                                      req.correlation_id)
                     return
                 except Exception as e:
-                    # If stream hasn't started yet, we can retry; otherwise treat as terminal
                     if started or attempt >= max(1, self.max_attempts):
-                        self.emitter.emit_failure(simulation.id, self.identity_str, req.correlation_id, str(e))
+                        self.emitter.emit_failure(getattr(simulation, "id", self.simulation_id), self.identity_str,
+                                                  req.correlation_id, str(e))
                         await self.on_failure(simulation, e)
                         logger.exception("llm.service.stream.error",
                                          extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
