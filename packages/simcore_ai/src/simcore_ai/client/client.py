@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import warnings
 from typing import AsyncIterator, Optional
 
 from simcore_ai.providers import BaseProvider
@@ -34,6 +35,7 @@ class AIClient:
 
         Delegates to `send_request(...)` for backward-compatibility with existing code.
         """
+        warnings.warn("AIClient.call() is deprecated; use send_request() instead", DeprecationWarning, stacklevel=2)
         return await self.send_request(req, timeout=timeout)
 
     async def send_request(
@@ -162,8 +164,8 @@ class AIClient:
                 # Best-effort soft failure: return an empty response with error metadata
                 logger.warning("AIClient returning soft-failure response due to raise_on_error=False: %s", last_exc)
                 return LLMResponse(
-                    messages=[],
-                    usage={},
+                    outputs=None,
+                    usage=None,
                     tool_calls=[],
                     provider_meta={
                         "provider": getattr(self.provider, "name", type(self.provider).__name__),
