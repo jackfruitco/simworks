@@ -1,7 +1,19 @@
 from __future__ import annotations
 
-from typing import List, Optional
-from collections.abc import Iterable
+"""
+Demotion helpers (Django → core DTOs).
+
+These functions convert Django-rich DTOs back into the core, framework-agnostic
+`simcore_ai.types` models. They preserve identity (`namespace`, `kind`, `name`),
+provider/client metadata, correlation fields, and timestamps like `received_at`
+on responses, while stripping Django-only overlay fields.
+
+This module mirrors `types/promote.py` (promotion flow) and keeps all logic
+pure (no ORM). Order of items/messages is preserved where applicable.
+"""
+
+from typing import Optional
+from collections.abc import Sequence
 
 from simcore_ai.types import (
     LLMRequest,
@@ -21,21 +33,31 @@ from .django_dtos import (
 
 # ---------------------- helpers -----------------------------------------
 
-def _demote_messages(messages_rich: Optional[Iterable[DjangoLLMRequestMessage]],
-                     fallback: Optional[Iterable[LLMRequestMessage]] = None) -> List[LLMRequestMessage]:
+def _demote_messages(
+        messages_rich: Optional[Sequence[DjangoLLMRequestMessage]],
+        fallback: Optional[Sequence[LLMRequestMessage]] = None,
+) -> list[LLMRequestMessage]:
+    """Best-effort demotion of rich request messages to core messages.
+
+    Prefers `messages_rich` (order-preserving); falls back to `fallback` if absent.
+    """
     if messages_rich:
         return [LLMRequestMessage(**m.model_dump(mode="json")) for m in messages_rich]
     return list(fallback or [])
 
 
-def _demote_response_items(items_rich: Optional[Iterable[DjangoLLMResponseItem]],
-                           fallback: Optional[Iterable[LLMResponseItem]] = None) -> List[LLMResponseItem]:
+def _demote_response_items(
+        items_rich: Optional[Sequence[DjangoLLMResponseItem]],
+        fallback: Optional[Sequence[LLMResponseItem]] = None,
+) -> list[LLMResponseItem]:
+    """Demote rich response items to core response items, preserving order."""
     if items_rich:
         return [LLMResponseItem(**it.model_dump(mode="json")) for it in items_rich]
     return list(fallback or [])
 
 
 def _demote_usage(usage_rich: Optional[DjangoLLMUsage], fallback: Optional[LLMUsage] = None) -> Optional[LLMUsage]:
+    """Demote rich usage to core usage when present; otherwise return fallback."""
     if usage_rich:
         return LLMUsage(**usage_rich.model_dump(mode="json"))
     return fallback
@@ -48,6 +70,7 @@ def demote_request(dj_req: DjangoLLMRequest) -> LLMRequest:
 
     Preserves identity fields (namespace, kind, client_name).
     Strips Django-only overlay fields.
+    Order of messages is preserved.
     """
     base = dj_req.model_dump(mode="json")
     # Remove Django-only fields
@@ -71,6 +94,7 @@ def demote_response(dj_resp: DjangoLLMResponse) -> LLMResponse:
 
     Preserves identity and provider/client name fields and received_at.
     Strips Django-only overlay fields.
+    Order of outputs is preserved. The response's `received_at` timestamp is retained if present.
     """
     base = dj_resp.model_dump(mode="json")
     for key in (

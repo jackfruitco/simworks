@@ -1,5 +1,7 @@
-# simcore_ai_django/services/base.py
+# packages/simcore_ai_django/src/simcore_ai_django/services/base.py
 from __future__ import annotations
+
+from typing import Any
 
 from simcore_ai.identity.utils import parse_dot_identity
 from simcore_ai.services.base import BaseLLMService
@@ -35,6 +37,25 @@ class DjangoBaseLLMService(BaseLLMService):
 
     You can still override any of these by passing them explicitly to __init__ or by subclassing.
 
+    Build Request (hooks)
+    ---------------------
+    `BaseLLMService` provides a concrete `build_request(simulation: Any | None = None, **ctx) -> LLMRequest`
+    that assembles the final provider-agnostic request using hooks:
+      - `_build_request_instructions(simulation, **ctx) -> list[LLMRequestMessage]` (developer/instruction parts)
+      - `_build_request_user_input(simulation, **ctx) -> list[LLMRequestMessage]` (user input parts)
+      - `_build_request_extras(simulation, **ctx) -> list[LLMRequestMessage]` (optional additional messages)
+
+    Most services should **not** override `build_request` directly. Prefer overriding the hook methods above;
+    `DjangoBaseLLMService` inherits the core behavior unchanged and simply provides Django-friendly defaults.
+
+    Identity Defaults
+    -----------------
+    Identity is resolved via the core resolver. Semantics:
+      - `namespace`: explicit arg/attr → module root → "default"
+      - `kind`: explicit arg/attr → **"default"** (never "service")
+      - `name`: explicit arg/attr (no token strip) → derived from class name with token stripping
+    The canonical string is dot-only: `namespace.kind.name`.
+
     ---
     **Codec Resolution Summary**
 
@@ -49,9 +70,9 @@ class DjangoBaseLLMService(BaseLLMService):
        will resolve a codec automatically using the Django codec registry, matching on `(namespace, kind, name)`
        tuple and falling back to `"default.default.default"` when needed.
 
-    The codec identity is stored and transmitted as a dot-only triple string `namespace.kind.name`.
+    The codec identity is **always** a dot-only triple string `namespace.kind.name` (no colons or pipes).
 
-    The result may be a codec instance, codec class, or `None` (for stateless runs).
+    The result may be a codec **class or instance**; both are supported by the runner/codec execution path.
 
     **Handling Responses**
 
@@ -80,7 +101,6 @@ class DjangoBaseLLMService(BaseLLMService):
     """
 
     # --- Execution configuration knobs (service-level defaults) ---
-    # If left as None, these fall back to Django settings and then hard defaults.
     execution_mode: str | None = None  # "sync" | "async"
     execution_backend: str | None = None  # "immediate" | "celery" | "django_tasks" (future)
     execution_priority: int | None = None  # -100..100
@@ -95,48 +115,49 @@ class DjangoBaseLLMService(BaseLLMService):
         if self.render_section is None:
             self.render_section = _default_renderer
 
-        # -----------------------------
-        # Execution defaults (resolve from service → settings → hardcoded)
-        # -----------------------------
+        # Execution defaults (service → settings → hardcoded)
         if getattr(self, "execution_mode", None) is None:
-            # settings fallback → hard default "sync"
             try:
                 self.execution_mode = _exec_default_mode()
             except Exception:
                 self.execution_mode = "sync"
 
         if getattr(self, "execution_backend", None) is None:
-            # settings fallback → hard default "immediate"
             try:
                 self.execution_backend = _exec_default_backend()
             except Exception:
                 self.execution_backend = "immediate"
 
         if getattr(self, "execution_priority", None) is None:
-            # hard default priority 0 (middle)
             self.execution_priority = 0
 
         if getattr(self, "execution_run_after", None) is None:
-            # None means "now"; callers can override per-call
             self.execution_run_after = None
 
-        # require_enqueue has a class default of False; leave as-is unless explicitly set on subclass
-
-    def get_codec(self, simulation=None):
+    def get_codec(self, simulation=None) -> Any:
         """
         Django-aware codec resolution.
 
-        ---
-        **Resolution Order**
-        1. Explicitly injected `codec_class` on the service.
+        Returns
+        -------
+        Any
+            A codec **class or instance**. Both forms are supported by the runner and by
+            codec execution helpers. Concrete services may also override this to return a
+            preconfigured instance.
+
+        Resolution order
+        ----------------
+        1. Explicit `codec_class` on the service.
         2. Result of `select_codec()` (if the subclass overrides it).
         3. Django registry via `(namespace, kind, name)` with fallbacks:
-           - (namespace, codec_kind, codec_name) if codec_name is set
+           - (namespace, codec_kind, codec_name) if `codec_name` is set
            - (namespace, "default", "default")
-        4. Core registry (if available) via `(namespace, kind, name)` with same fallbacks.
+        4. Core registry (if available) with the same fallbacks.
         5. Raise `ServiceCodecResolutionError` if no codec found.
 
-        The `codec_name` attribute may be either "default" or "kind.name" form.
+        Notes
+        -----
+        `codec_name` may be either `"default"` or `"kind.name"` (dot-only).
         """
         namespace = getattr(self, "namespace", None)
         kind = getattr(self, "kind", None) or "default"
@@ -201,18 +222,20 @@ class DjangoBaseLLMService(BaseLLMService):
                 service=self.__class__.__name__,
             )
 
-    def resolve_codec_for_response(self, resp: LLMResponse):
+    def resolve_codec_for_response(self, resp: LLMResponse) -> Any:
         """
         Resolve a codec for a received response.
 
         Preference order:
-        1) If `resp.codec_identity` is present, resolve that exact codec identity via registries.
-           - First try the Django codec registry: (namespace, kind, name) from dot-only string
-           - Then try the core registry with the same triple
+        1) If `resp.codec_identity` is present, resolve that exact codec identity via registries
+           (dot-only `namespace.kind.name`).
+           - Try Django registry first, then core registry.
         2) Fallback to this service's `get_codec()` resolution (request-time rules).
 
-        Raises:
-            ServiceCodecResolutionError if no codec can be found.
+        Raises
+        ------
+        ServiceCodecResolutionError
+            If no codec can be resolved from the response identity nor defaults.
         """
         with service_span_sync(
                 "svc.get_codec.for_response",
@@ -225,8 +248,8 @@ class DjangoBaseLLMService(BaseLLMService):
         ):
             cid = getattr(resp, "codec_identity", None)
             if cid:
-                ns, kd, nm = parse_dot_identity(cid)
-                if ns and kd and nm:
+                try:
+                    ns, kd, nm = parse_dot_identity(cid)
                     # 1) Django registry
                     obj = CodecRegistry.resolve(identity=(ns, kd, nm))
                     if obj:
@@ -240,13 +263,16 @@ class DjangoBaseLLMService(BaseLLMService):
                         obj = _core_get_codec(ns, kd, nm)
                         if obj:
                             return obj
+                except Exception:
+                    # Malformed or unresolvable codec identity; fall back to request-time rules
+                    return self.get_codec()
             # 3) Fallback to request-time resolution
             return self.get_codec()
 
     def promote_request(self, req, *, simulation_pk=None, request_db_pk=None):
         """
-        Convenience wrapper to promote a core LLMRequest into a DjangoLLMRequest using
-        this service's identity, provider/client metadata, and context.
+        Promote a core LLMRequest into a DjangoLLMRequest using this service's identity
+        and provider/client context. See `simcore_ai_django.services.promote`.
         """
         from simcore_ai_django.services.promote import promote_request_for_service
         return promote_request_for_service(
@@ -256,55 +282,21 @@ class DjangoBaseLLMService(BaseLLMService):
             request_db_pk=request_db_pk,
         )
 
-    # Optionally, you can hook success/failure for Django-ish side effects
     async def on_success(self, simulation, resp) -> None:
-        # Leave minimal by default; your signal/outbox handlers usually do the persistence.
-        # Override in concrete services if you want local side effects.
-        return
+        """Optional hook for subclasses to implement side-effects after success (no-op by default)."""
+        ...
 
     async def on_failure(self, simulation, err: Exception) -> None:
-        # Same principle as on_success
-        return
+        """Optional hook for subclasses to implement side-effects after failure (no-op by default)."""
+        ...
 
 
 class DjangoExecutableLLMService(ServiceExecutionMixin, DjangoBaseLLMService):
     """
     A Django-ready service base **with execution helpers**.
 
-    This class combines `DjangoBaseLLMService` (Django-aware defaults for
-    codec resolution, renderer, and emitter) with `ServiceExecutionMixin`
-    (ergonomic execution API). Use this when you want a drop‑in base that
-    can run **now** (sync) or **later** (async) with a single import.
-
-    Highlights
-    ----------
-    - Inherits all behavior from `DjangoBaseLLMService`.
-    - Adds `execute(**ctx)` for immediate, in‑process execution
-      (via the configured *immediate* backend).
-    - Adds a builder API: `using(**overrides)` → `.execute(**ctx)` / `.enqueue(**ctx)`
-      for per‑call control over `backend`, `run_after`, and `priority`.
-    - Honors class‑level defaults if defined on your concrete service:
-      `execution_mode`, `execution_backend`, `execution_priority`,
-      `execution_run_after`, and `require_enqueue`.
-
-    Examples
-    --------
-    Run immediately using defaults:
-
-        class PatientIntakeService(DjangoExecutableLLMService):
-            pass
-
-        PatientIntakeService.execute(user_id=123)
-
-    Enqueue with overrides (Celery):
-
-        PatientIntakeService.using(backend="celery", run_after=60, priority=50).enqueue(user_id=123)
-
-    Notes
-    -----
-    - All orchestration (mode/backend resolution, queue mapping, trace context)
-      is handled in `simcore_ai_django.execution.entrypoint.execute`.
-    - Tracing spans are emitted both here (light wrappers) and in the
-      entrypoint/backends for full visibility across the call chain.
+    Inherits Django defaults (codec/emitter/renderer) and adds `.execute(...)`
+    and builder-style `.using(...).enqueue/execute(...)`. Orchestration is handled
+    by `simcore_ai_django.execution.entrypoint`.
     """
     pass

@@ -12,6 +12,8 @@ This module defines lightweight types shared by the prompt system:
   The canonical identity string uses **dot form**: `namespace.kind.name`.
 
 Backward compatibility with legacy `namespace` or colon identities is removed.
+
+Empty instruction + message is allowed at this layer (engines may merge many sections); services/runners enforce the "not-both-empty" rule before calling providers.
 """
 
 from dataclasses import dataclass, field
@@ -35,7 +37,7 @@ __all__ = [
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class Prompt:
     """Final prompt object produced by the engine and consumed by services.
 
@@ -69,11 +71,16 @@ class Prompt:
             "meta": dict(self.meta),  # shallow copy to avoid external mutation
         }
 
+    def has_content(self) -> bool:
+        """Return True if either instruction or message has non-empty text."""
+        return bool(self.instruction) or bool(self.message)
 
+
+# Used by render methods and helpers.
 Renderable = str | None | Awaitable[str | None]
 
 
-@dataclass(order=True)
+@dataclass(order=True, slots=True)
 class PromptSection:
     """Base class for declarative prompt sections (AIv3).
 
@@ -149,7 +156,7 @@ class PromptSection:
         return out
 
     async def render(self, **ctx: Any) -> str | None:
-        """Backward-compat shim: default to instruction rendering."""
+        """Backward-compat shim: default to instruction rendering (deprecated)."""
         return await self.render_instruction(**ctx)
 
 

@@ -1,4 +1,18 @@
 # /packages/simcore_ai_django/src/simcore_ai_django/runner.py
+"""
+Django runner/orchestrator for LLM services.
+
+Bridges `simcore_ai` core services and Django runtime concerns (audits, signals,
+codec execution). Uses the core identity resolver so namespace/kind/name are
+canonical; by convention `kind` defaults to "default" unless explicitly set.
+
+Sync entry:  run_service(service, ...)
+Async entry: arun_service(service, ...)
+
+Both build a provider‑agnostic LLMRequest via `service.build_request(simulation=...)`,
+promote/demote around provider boundaries, emit audits/signals, and (optionally)
+execute a codec resolved from the response identity.
+"""
 from __future__ import annotations
 
 import inspect
@@ -9,10 +23,9 @@ from django.conf import settings
 
 # Core DTOs and client
 from simcore_ai.client import AIClient
+from simcore_ai.identity import resolve_identity
 from simcore_ai.tracing import service_span_sync, service_span, extract_trace
-
 from simcore_ai.types import LLMRequest, LLMResponse
-
 from .audits import write_request_audit, update_request_audit_formats, write_response_audit
 # Codec execution helper
 from .codecs.execute import execute_codec
@@ -52,21 +65,6 @@ async def _maybe_await_async(obj):
     return obj
 
 
-def _resolve_namespace(service: BaseLLMService, namespace: Optional[str]) -> str:
-    """Prefer explicit; else service.namespace; else fallback."""
-    return namespace or getattr(service, "namespace", None) or "default"
-
-
-def _resolve_kind(service: BaseLLMService, kind: Optional[str]) -> str:
-    """Prefer explicit; else service.kind; else sensible default for services."""
-    return kind or getattr(service, "kind", None) or "service"
-
-
-def _resolve_name(service: BaseLLMService, name: Optional[str]) -> str:
-    """Prefer explicit; else service.name; else the class name."""
-    return name or getattr(service, "name", None) or service.__class__.__name__
-
-
 # ------------------------------ sync facade -------------------------------
 
 def run_service(
@@ -102,11 +100,12 @@ def run_service(
     About DjangoBaseLLMService:
       - Inherits from `BaseLLMService` but adds Django-aware features (ORM access, audit hooks, signal dispatch).
       - It still builds and consumes the same `LLMRequest` / `LLMResponse` core DTOs to preserve portability.
+      By convention, service `kind` defaults to "default" unless explicitly set.
 
     Steps:
       - service.build_request() -> LLMRequest
       - promote -> write request audit -> emit ai_request_sent
-      - demote -> client.call(req)
+      - demote -> client.send_request(req)
       - promote response -> write response audit -> emit ai_response_received
       - codec.validate/parse/persist (optional) -> emit ai_response_ready
     """
@@ -117,13 +116,20 @@ def run_service(
         except Exception:
             pass
 
-    ns = _resolve_namespace(service, namespace)
-    kd = _resolve_kind(service, kind)
-    nm = _resolve_name(service, name)
-    codec = service.get_codec()
-    codec_name = codec.__class__.__name__ if codec else None
+    ident, _meta = resolve_identity(
+        service.__class__,
+        namespace=namespace,
+        kind=kind,
+        name=name,
+    )
+    ns, kd, nm = ident.namespace, ident.kind, ident.name
+    identity_label = ident.to_string()
 
-    identity_label = f"{ns}.{kd}.{nm}"
+    # For early spans, prefer the configured codec label without resolving a concrete codec yet
+    try:
+        codec_name = service.get_codec_name(simulation_pk)  # type: ignore[arg-type]
+    except Exception:
+        codec_name = None
 
     with service_span_sync(
             f"ai.run_service ({identity_label})",
@@ -139,7 +145,7 @@ def run_service(
     ):
         # 1) Build base request (service should construct messages/prompt and set response_format_cls)
         try:
-            base_req: LLMRequest = _maybe_await(service.build_request())
+            base_req: LLMRequest = _maybe_await(service.build_request(simulation=simulation_pk))
         except Exception as e:
             emit_failure(
                 error=f"{type(e).__name__}: {e}",
@@ -198,10 +204,10 @@ def run_service(
         core_req: LLMRequest = demote_request(dj_req)
 
         # 6) Resolve client from service (registry-backed). Provider builds final schema internally.
-        client: AIClient = service._get_client(codec)
+        client: AIClient = service.get_client()
 
         # 7) Send request (sync or async provider handled by `_maybe_await`)
-        core_resp: LLMResponse = _maybe_await(client.call(core_req))
+        core_resp: LLMResponse = _maybe_await(client.send_request(core_req))
 
         # Optional: ensure request audit has final response format (providers may attach post-compile)
         with service_span_sync("ai.audit.request_update_formats"):
@@ -253,15 +259,29 @@ def run_service(
                 correlation_id=dj_resp.correlation_id,
             )
 
-        # 11) Optional codec handling (validate/parse/persist)
-        if codec:
+        # 11) Optional codec handling (validate/parse/persist) — prefer response-driven resolution
+        codec_effective = None
+        _resolver = getattr(service, "resolve_codec_for_response", None)
+        if callable(_resolver):
+            try:
+                codec_effective = _resolver(core_resp)
+            except Exception:
+                codec_effective = None
+        if codec_effective is None:
+            try:
+                codec_effective = service.get_codec()
+            except Exception:
+                codec_effective = None
+
+        if codec_effective is not None:
+            _codec_label = getattr(codec_effective, "__name__", codec_effective.__class__.__name__)
             try:
                 with service_span_sync(
                         "ai.codec.handle",
-                        attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
+                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label},
                 ):
                     execute_codec(
-                        codec,
+                        codec_effective,
                         dj_resp,
                         context=dict(
                             request_audit_pk=request_pk,
@@ -327,6 +347,7 @@ async def arun_service(
 ) -> DjangoLLMResponse:
     """
     Async orchestration variant of run_service (awaits all awaitables).
+    By convention, service `kind` defaults to "default" unless explicitly set.
     """
     # If a traceparent was provided by the transport (e.g., Celery), extract it to continue the trace.
     if traceparent:
@@ -335,13 +356,20 @@ async def arun_service(
         except Exception:
             pass
 
-    ns = _resolve_namespace(service, namespace)
-    kd = _resolve_kind(service, kind)
-    nm = _resolve_name(service, name)
-    codec = service.get_codec()
-    codec_name = codec.__class__.__name__ if codec else None
+    ident, _meta = resolve_identity(
+        service.__class__,  # resolver works on class; instance attrs aren’t needed here
+        namespace=namespace,
+        kind=kind,
+        name=name,
+    )
+    ns, kd, nm = ident.namespace, ident.kind, ident.name
+    identity_label = ident.to_string()
 
-    identity_label = f"{ns}.{kd}.{nm}"
+    # For early spans, prefer the configured codec label without resolving a concrete codec yet
+    try:
+        codec_name = service.get_codec_name(simulation_pk)  # type: ignore[arg-type]
+    except Exception:
+        codec_name = None
 
     async with service_span(
             f"ai.arun_service ({identity_label})",
@@ -357,7 +385,7 @@ async def arun_service(
     ):
         # Build base request
         try:
-            base_req: LLMRequest = await _maybe_await_async(service.build_request())
+            base_req: LLMRequest = await _maybe_await_async(service.build_request(simulation=simulation_pk))
         except Exception as e:
             emit_failure(
                 error=f"{type(e).__name__}: {e}",
@@ -410,10 +438,10 @@ async def arun_service(
             )
 
         core_req: LLMRequest = demote_request(dj_req)
-        client: AIClient = service._get_client(codec)
+        client: AIClient = service.get_client()
 
         # Await call
-        core_resp: LLMResponse = await _maybe_await_async(client.call(core_req))
+        core_resp: LLMResponse = await _maybe_await_async(client.send_request(core_req))
 
         async with service_span("ai.audit.request_update_formats"):
             update_request_audit_formats(
@@ -461,15 +489,30 @@ async def arun_service(
                 correlation_id=dj_resp.correlation_id,
             )
 
-        if codec:
+        # Prefer response-driven codec resolution
+        codec_effective = None
+        _resolver = getattr(service, "resolve_codec_for_response", None)
+        if callable(_resolver):
+            try:
+                codec_effective = _resolver(core_resp)
+            except Exception:
+                codec_effective = None
+        if codec_effective is None:
+            try:
+                codec_effective = service.get_codec()
+            except Exception:
+                codec_effective = None
+
+        if codec_effective is not None:
+            _codec_label = getattr(codec_effective, "__name__", codec_effective.__class__.__name__)
             try:
                 async with service_span(
                         "ai.codec.handle",
-                        attributes={"ai.codec": codec_name, "ai.codec_name": codec_name},
+                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label},
                 ):
                     await _maybe_await_async(
                         execute_codec(
-                            codec,
+                            codec_effective,
                             dj_resp,
                             context=dict(
                                 request_audit_pk=request_pk,

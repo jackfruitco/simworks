@@ -16,7 +16,7 @@ of codecs and listeners.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field
@@ -29,11 +29,6 @@ from simcore_ai.types import (
     LLMResponseItem,
     LLMUsage,
     LLMToolCall,
-    LLMToolResultPart,
-    LLMToolCallPart,
-    LLMTextPart,
-    LLMImagePart,
-    LLMAudioPart,
     BaseLLMTool,
 )
 
@@ -50,13 +45,13 @@ class DjangoDTOBase(StrictBaseModel):
 
     # Optional correlation and identity fields
     correlation_id: UUID | None = None
-    namespace: str | None = None           # e.g., "chatlab"
-    kind: str | None = None              # e.g., "sim_responses"
-    name: str | None = None                # concrete leaf name (Identity.name)
+    namespace: str | None = None  # e.g., "chatlab"
+    kind: str | None = None  # e.g., "default"
+    name: str | None = None  # concrete leaf name (Identity.name)
 
     # Provider/client resolution captured at emit-time
-    provider_name: str | None = None       # e.g., "openai"
-    client_name: str | None = None         # registry name, e.g., "default", "openai-images"
+    provider_name: str | None = None  # e.g., "openai"
+    client_name: str | None = None  # registry name, e.g., "default", "openai-images"
 
     # Timestamps for auditing
     created_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -98,14 +93,14 @@ class DjangoLLMResponseItem(LLMResponseItem, DjangoDTOBase):
     Carries both request/response correlation IDs for traceability.
     """
 
-    response_db_pk: int | UUID | None = None      # parent response PK (if persisted)
-    request_db_pk: int | UUID | None = None       # originating request PK
-    sequence_index: int | None = None             # item ordering within response
+    response_db_pk: int | UUID | None = None  # parent response PK (if persisted)
+    request_db_pk: int | UUID | None = None  # originating request PK
+    sequence_index: int | None = None  # item ordering within response
     request_correlation_id: UUID | None = None
     response_correlation_id: UUID | None = None
 
 
-class DJangoLLMResponseMessage(LLMResponseItem, DjangoDTOBase):
+class DjangoLLMResponseMessage(LLMResponseItem, DjangoDTOBase):
     """Rich response message that can be persisted individually if desired."""
 
 
@@ -147,9 +142,11 @@ class DjangoLLMToolCall(LLMToolCall, DjangoDTOBase):
     request_correlation_id: UUID | None = None
     response_correlation_id: UUID | None = None
 
+
 class DjangoLLMBaseTool(BaseLLMTool, DjangoDTOBase):
     """Base tool class for Django-aware tooling."""
     pass
+
 
 # Re-export commonly used core content parts for convenience
 __all__ = [

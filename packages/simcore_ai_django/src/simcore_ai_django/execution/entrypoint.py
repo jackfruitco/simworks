@@ -27,6 +27,16 @@ Notes
 - Public API is a *single function* `execute(...)`. It decides whether to run inline or enqueue.
 - Private helpers `_execute_now(...)` and `_enqueue(...)` perform the actual backend calls.
 - Terminology uses Django Tasks style (queue_name, run_after, priority); we map to backend args.
+
+Scope & non-goals
+-----------------
+This entrypoint ONLY decides *how* a service runs (sync vs async) and *which* backend to use.
+It does **not**:
+- resolve identities (namespace.kind.name) — handled in services/resolvers and the runner,
+- build LLM requests — handled by `BaseLLMService.build_request(...)`,
+- resolve or execute codecs — handled in the Django runner (`simcore_ai_django.runner`) and codec layer.
+Backends perform scheduling/dispatch; the runner orchestrates request promotion/demotion, provider
+calls, audits, and codec handling.
 """
 
 from collections.abc import Mapping
@@ -171,6 +181,16 @@ def _execute_now(
         service_cls: Type[SupportsServiceInit],
         ctx: Mapping[str, Any],
 ) -> Any:
+    """
+    Dispatch the service to the given backend for immediate (in-process) execution.
+
+    Notes
+    -----
+    - This function does **not** instantiate the service or build requests.
+      The backend is responsible for instantiation (via SupportsServiceInit) and for calling
+      the Django runner which builds the request via `BaseLLMService.build_request(...)`.
+    - No identity/codec resolution occurs here; that happens inside the runner/services.
+    """
     with service_span_sync(
             "exec.entry.execute",
             attributes={"backend": backend.__class__.__name__.lower(),
@@ -188,7 +208,14 @@ def _enqueue(
         run_after_seconds: Optional[float],
         priority: Optional[int],
 ) -> str:
-    # Note: current backends accept (queue, delay_s); map from our canonical names
+    """
+    Enqueue the service for deferred execution using the selected backend.
+
+    - Maps our canonical names to backend args: `queue_name` → `queue`, `run_after_seconds` → `delay_s`.
+    - If a backend does not support `priority`, we mark `exec.priority.unsupported` in trace and ignore it.
+    - Does not perform identity/request/codec logic — the runner handles that at execution time.
+    """
+    # Canonical → backend mapping
     queue = queue_name  # mapping
     delay_s = run_after_seconds  # mapping
 
@@ -201,7 +228,7 @@ def _enqueue(
         **span_attrs_from_ctx(ctx),
     }
     with service_span_sync("exec.entry.enqueue", attributes=attrs):
-        # Respect backend priority support
+        # Respect backend capabilities for priority; annotate trace when ignored.
         supports_priority = getattr(backend, "supports_priority", False)
         if not supports_priority and priority is not None:
             # mark unsupported in trace; ignore priority
@@ -230,6 +257,10 @@ def execute(
     - Pass `using={...}` to provide builder-style overrides (merged with explicit kwargs; explicit wins).
     - Pass `enqueue=True` to force async, or use the builder `.enqueue(...)` on the mixin.
     - Returns the service's return value (sync) or a task id string (async).
+
+    This function is **transport-only**: it chooses mode/backend/queue and dispatches.
+    Identity derivation, request construction, client/codec resolution, and audits happen later in
+    the runner and service layers.
     """
     overrides = dict(using or {})
     if backend is not None:
@@ -293,7 +324,16 @@ def execute(
 # -------------------- Service mixin & builder --------------------
 
 class _ExecutionCall:
-    """Lightweight builder for per-call overrides; non-autostart."""
+    """Lightweight builder for per-call overrides; non-autostart.
+
+    Provides a small fluent API mirroring the service mixin:
+      - `.using(**overrides)` to stage backend/mode knobs (e.g., backend, run_after, priority),
+      - `.execute(**ctx)` to force sync now,
+      - `.enqueue(**ctx)` to force async,
+      - `.run(**ctx)` to defer the decision to resolution rules.
+
+    This builder does not instantiate the service or perform identity/codec work.
+    """
 
     def __init__(self, service_cls: Type[SupportsServiceInit], overrides: Optional[Dict[str, Any]] = None):
         self._service_cls = service_cls
@@ -304,17 +344,26 @@ class _ExecutionCall:
         return self
 
     def execute(self, **ctx: Any) -> Any:
-        """Force synchronous execution with current overrides."""
+        """Force synchronous execution with current overrides.
+
+        Transport-only: defers service instantiation and request building to the backend/runner.
+        """
         ov = dict(self._overrides)
         ov["enqueue"] = False
         return execute(self._service_cls, using=ov, **ctx)
 
     def enqueue(self, **ctx: Any) -> str:
-        """Force asynchronous execution with current overrides."""
+        """Force asynchronous execution with current overrides.
+
+        Transport-only: enqueues with resolved backend and defers work to the runner at execution time.
+        """
         ov = dict(self._overrides)
         ov["enqueue"] = True
         return execute(self._service_cls, using=ov, **ctx)  # type: ignore[return-value]
 
     def run(self, **ctx: Any) -> Any | str:
-        """Resolve mode from overrides/service/settings and execute."""
+        """Resolve mode from overrides/service/settings and execute.
+
+        Transport-only: no identity/request/codec logic here.
+        """
         return execute(self._service_cls, using=self._overrides, **ctx)
