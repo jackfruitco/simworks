@@ -1,18 +1,23 @@
-# simcore_ai/promptkit/engine.py
+# simcore_ai/src/simcore_ai/promptkit/engine.py
 from __future__ import annotations
 
-from typing import Type, Union
-from collections.abc import Iterable, Sequence
 import asyncio
 import logging
+from collections.abc import Iterable, Sequence
+from typing import Type, Union
 
-from ..tracing import service_span, service_span_sync
 from .types import PromptSection, call_maybe_async, Prompt
-
+from ..tracing import service_span, service_span_sync
 
 logger = logging.getLogger(__name__)
 
 SectionSpec = Union[Type[PromptSection], PromptSection]
+
+__all__ = [
+    "PromptEngine",
+    "merge_sections",
+    "SectionSpec",
+]
 
 
 class PromptEngine:
@@ -20,10 +25,15 @@ class PromptEngine:
     Compose prompt sections and render them in weight order.
 
     Usage:
+        # Async (preferred in ASGI or when an event loop is running)
         prompt = await PromptEngine.abuild_from(BaseSection, Guardrails, **ctx)
-        # or
+
+        # Or build an instance explicitly
         engine = PromptEngine(BaseSection).add(Guardrails)
         prompt = await engine.abuild(**ctx)
+
+        # Sync convenience (only when no event loop is running)
+        prompt = PromptEngine.build_from(BaseSection, Guardrails, **ctx)
     """
 
     def __init__(self, *sections: SectionSpec):
@@ -50,8 +60,8 @@ class PromptEngine:
     # ----- building
     async def abuild(self, **ctx) -> Prompt:
         async with service_span(
-            "ai.prompt.build",
-            attributes={"ai.section_count": len(self._sections)},
+                "ai.prompt.build",
+                attributes={"ai.section_count": len(self._sections)},
         ):
             logger.debug(f"...abuilding... [debug: {self.__class__.__name__[:20]} - {self._sections}]")
             # Preserve insertion order among sections with equal weight
@@ -67,21 +77,21 @@ class PromptEngine:
 
             for sec in ordered:
                 async with service_span(
-                    "ai.prompt.section",
-                    attributes={
-                        "ai.section": sec.label,
-                        "ai.category": getattr(sec, "category", None),
-                        "ai.name": getattr(sec, "name", None),
-                        "ai.weight": getattr(sec, "weight", None),
-                    },
+                        "ai.prompt.section",
+                        attributes={
+                            "ai.section": sec.label,
+                            "ai.category": getattr(sec, "category", None),
+                            "ai.name": getattr(sec, "name", None),
+                            "ai.weight": getattr(sec, "weight", None),
+                        },
                 ) as section_span:
                     instr = None
                     msg = None
 
                     # Render instruction
                     async with service_span(
-                        "ai.prompt.render_instruction",
-                        attributes={"ai.section": sec.label, "ai.weight": getattr(sec, "weight", None)},
+                            "ai.prompt.render_instruction",
+                            attributes={"ai.section": sec.label, "ai.weight": getattr(sec, "weight", None)},
                     ):
                         try:
                             instr = await call_maybe_async(sec.render_instruction, **ctx)
@@ -91,8 +101,8 @@ class PromptEngine:
 
                     # Render message
                     async with service_span(
-                        "ai.prompt.render_message",
-                        attributes={"ai.section": sec.label, "ai.weight": getattr(sec, "weight", None)},
+                            "ai.prompt.render_message",
+                            attributes={"ai.section": sec.label, "ai.weight": getattr(sec, "weight", None)},
                     ):
                         try:
                             msg = await call_maybe_async(sec.render_message, **ctx)
@@ -117,11 +127,11 @@ class PromptEngine:
 
             # Merge sections (sync span ok inside async)
             with service_span_sync(
-                "ai.prompt.merge",
-                attributes={
-                    "ai.sections.used_count": len(used_labels),
-                    "ai.sections.errors_count": len(errors),
-                },
+                    "ai.prompt.merge",
+                    attributes={
+                        "ai.sections.used_count": len(used_labels),
+                        "ai.sections.errors_count": len(errors),
+                    },
             ):
                 prompt = merge_sections(outputs)
 
@@ -161,6 +171,15 @@ class PromptEngine:
 def merge_sections(outputs: list[tuple[str | None, str | None]]) -> Prompt:
     """Merge section outputs into a single Prompt and annotate the current span.
 
+    Returns
+    -------
+    Prompt
+        A Prompt whose `instruction` is the concatenation of all non-empty section
+        instructions (separated by blank lines). The `message` is the concatenation
+        of all non-empty section messages, or `None` if there were none.
+
+    Observability
+    -------------
     Adds lightweight observability to the *current* span (if any):
       - ai.instruction.len / ai.message.len
       - ai.instruction.sha256 / ai.message.sha256
