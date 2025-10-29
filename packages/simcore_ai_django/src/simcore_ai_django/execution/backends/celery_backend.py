@@ -18,6 +18,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from simcore_ai.tracing import inject_trace, service_span_sync
+from simcore_ai.tracing.helpers import flatten_context as flatten_context_attrs
 from simcore_ai_django.execution.types import BaseExecutionBackend, SupportsServiceInit
 from simcore_ai_django.tasks import run_service_task
 from ..decorators import task_backend
@@ -50,11 +51,16 @@ class CeleryBackend(BaseExecutionBackend):
                     "backend": BACKEND_NAME,
                     "service_cls": f"{service_cls.__module__}.{service_cls.__name__}",
                     **self._span_attrs_from_kwargs(kwargs),
+                    **flatten_context_attrs(kwargs.get("context", {})),
                 },
         ):
             from simcore_ai_django.runner import run_service
             svc = service_cls(**kwargs)
-            return run_service(service=svc)
+            return run_service(
+                service=svc,
+                object_db_pk=kwargs.get("object_db_pk"),
+                context=kwargs.get("context"),
+            )
 
     def enqueue(
             self,
@@ -81,6 +87,7 @@ class CeleryBackend(BaseExecutionBackend):
                     "queue": queue,
                     "delay_s": delay_s,
                     **self._span_attrs_from_kwargs(kwargs),
+                    **flatten_context_attrs(kwargs.get("context", {})),
                 },
         ):
             eta = None

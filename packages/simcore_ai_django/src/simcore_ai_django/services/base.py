@@ -14,7 +14,7 @@ from simcore_ai_django.execution.helpers import (
     settings_default_mode as _exec_default_mode,
 )
 from simcore_ai_django.prompts.render_section import \
-    render_section as _default_renderer  # async (namespace, section_key, simulation) -> str
+    render_section as _default_renderer  # async (namespace, section_key, context) -> str
 from simcore_ai_django.services.helpers import _kind_name_from_codec_name
 from simcore_ai_django.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
@@ -39,11 +39,11 @@ class DjangoBaseLLMService(BaseLLMService):
 
     Build Request (hooks)
     ---------------------
-    `BaseLLMService` provides a concrete `build_request(simulation: Any | None = None, **ctx) -> LLMRequest`
+    `BaseLLMService` provides a concrete `build_request(**ctx) -> LLMRequest`
     that assembles the final provider-agnostic request using hooks:
-      - `_build_request_instructions(simulation, **ctx) -> list[LLMRequestMessage]` (developer/instruction parts)
-      - `_build_request_user_input(simulation, **ctx) -> list[LLMRequestMessage]` (user input parts)
-      - `_build_request_extras(simulation, **ctx) -> list[LLMRequestMessage]` (optional additional messages)
+      - `_build_request_instructions(prompt, **ctx) -> list[LLMRequestMessage]` (developer/instruction parts)
+      - `_build_request_user_input(prompt, **ctx) -> list[LLMRequestMessage]` (user input parts)
+      - `_build_request_extras(prompt, **ctx) -> list[LLMRequestMessage]` (optional additional messages)
 
     Most services should **not** override `build_request` directly. Prefer overriding the hook methods above;
     `DjangoBaseLLMService` inherits the core behavior unchanged and simply provides Django-friendly defaults.
@@ -107,6 +107,15 @@ class DjangoBaseLLMService(BaseLLMService):
     execution_run_after: float | None = None  # seconds (or set at call-site)
     require_enqueue: bool = False  # hard rule: force async if True
 
+    def __init__(self, context: dict | None = None, **kwargs):
+        """Constructor that passes context through without domain coupling.
+
+        This layer is intentionally generic; it does not inspect domain-specific
+        keys (e.g., "simulation_id"). Services/apps are responsible for placing
+        any required identifiers into `context` and validating them.
+        """
+        super().__init__(context=context or {}, **kwargs)
+
     def __post_init__(self):
         super().__post_init__()
         # Inject Django defaults only if not provided explicitly
@@ -134,7 +143,7 @@ class DjangoBaseLLMService(BaseLLMService):
         if getattr(self, "execution_run_after", None) is None:
             self.execution_run_after = None
 
-    def get_codec(self, simulation=None) -> Any:
+    def get_codec(self) -> Any:
         """
         Django-aware codec resolution.
 
@@ -173,6 +182,7 @@ class DjangoBaseLLMService(BaseLLMService):
                     "svc.name": name,
                     "svc.codec_kind": c_kind,
                     "svc.codec_name": c_name,
+                    **self.flatten_context(),
                 },
         ):
             # 1) explicit class wins
@@ -244,6 +254,7 @@ class DjangoBaseLLMService(BaseLLMService):
                     "resp.correlation_id": getattr(resp, "correlation_id", None),
                     "resp.request_correlation_id": getattr(resp, "request_correlation_id", None),
                     "resp.codec_identity": getattr(resp, "codec_identity", None),
+                    **self.flatten_context(),
                 },
         ):
             cid = getattr(resp, "codec_identity", None)
@@ -269,25 +280,40 @@ class DjangoBaseLLMService(BaseLLMService):
             # 3) Fallback to request-time resolution
             return self.get_codec()
 
-    def promote_request(self, req, *, simulation_pk=None, request_db_pk=None):
-        """
-        Promote a core LLMRequest into a DjangoLLMRequest using this service's identity
-        and provider/client context. See `simcore_ai_django.services.promote`.
+    def promote_request(self, req, *, context: dict | None = None):
+        """Promote a core LLMRequest into a Django-aware request using service identity.
+
+        Parameters
+        ----------
+        req : LLMRequest
+            The provider-agnostic request to promote.
+        context : dict | None
+            Optional extra context to carry through the promotion pipeline.
+            If omitted, `self.context` is used.
         """
         from simcore_ai_django.services.promote import promote_request_for_service
         return promote_request_for_service(
             self,
             req,
-            simulation_pk=simulation_pk,
-            request_db_pk=request_db_pk,
+            context=(context or self.context or {}),
         )
 
     async def on_success(self, simulation, resp) -> None:
-        """Optional hook for subclasses to implement side-effects after success (no-op by default)."""
+        """Optional hook for subclasses to implement side-effects after success (no-op by default).
+
+        Note: Upstream code is context-first. Implementations are encouraged to
+        accept a context dict (or read `self.context`) rather than relying on domain
+        objects. Signature retained for backward compatibility.
+        """
         ...
 
     async def on_failure(self, simulation, err: Exception) -> None:
-        """Optional hook for subclasses to implement side-effects after failure (no-op by default)."""
+        """Optional hook for subclasses to implement side-effects after failure (no-op by default).
+
+        Note: Upstream code is context-first. Implementations are encouraged to
+        accept a context dict (or read `self.context`) rather than relying on domain
+        objects. Signature retained for backward compatibility.
+        """
         ...
 
 

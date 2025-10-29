@@ -7,11 +7,25 @@ Backend registry & singleton factory for execution backends.
 This module centralizes registration and lookup of execution backends. It supports
 lazy autodiscovery of common backends ("immediate" and "celery") and caches
 singleton instances per backend name.
+
+Alias notes: callers may request "celery" or "celery_backend"; both resolve to the same backend. Likewise, "inline" maps to "immediate".
 """
 
 from typing import Dict, Type
 
 from .types import BaseExecutionBackend
+
+# Name normalization/aliases so callers can use friendly names
+_NAME_ALIASES = {
+    "celery_backend": "celery",
+    "inline": "immediate",
+}
+
+
+def _normalize_name(name: str) -> str:
+    key = (name or "immediate").strip().lower()
+    return _NAME_ALIASES.get(key, key)
+
 
 __all__ = [
     "register_backend",
@@ -31,7 +45,7 @@ def register_backend(name: str, backend_cls: Type[BaseExecutionBackend]) -> None
         register_backend("immediate", InlineBackend)
         register_backend("celery", CeleryBackend)
     """
-    key = name.strip().lower()
+    key = _normalize_name(name)
     _BACKEND_REGISTRY[key] = backend_cls
 
 
@@ -41,7 +55,7 @@ def get_backend_by_name(name: str) -> BaseExecutionBackend:
     Performs best-effort autodiscovery of common backends on first use.
     Falls back to the "immediate" backend if the requested backend is unknown.
     """
-    key = (name or "immediate").strip().lower()
+    key = _normalize_name(name)
     if key in _BACKEND_SINGLETONS:
         return _BACKEND_SINGLETONS[key]
     backend_cls = _BACKEND_REGISTRY.get(key)
@@ -53,7 +67,7 @@ def get_backend_by_name(name: str) -> BaseExecutionBackend:
         except Exception:
             pass
         try:
-            from .backends.celery import CeleryBackend  # noqa: F401
+            from .backends.celery_backend import CeleryBackend  # noqa: F401
             register_backend("celery", CeleryBackend)
         except Exception:
             pass
@@ -79,7 +93,7 @@ try:
 except Exception:
     pass
 try:
-    from .backends.celery import CeleryBackend  # noqa: F401
+    from .backends.celery_backend import CeleryBackend  # noqa: F401
 
     register_backend("celery", CeleryBackend)
 except Exception:

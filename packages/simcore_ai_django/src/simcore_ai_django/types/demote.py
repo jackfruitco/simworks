@@ -78,7 +78,7 @@ def demote_request(dj_req: DjangoLLMRequest) -> LLMRequest:
             "db_pk",
             "created_at",
             "updated_at",
-            "simulation_pk",
+            "object_db_pk",
             "messages_rich",
             "prompt_meta",
     ):
@@ -105,7 +105,7 @@ def demote_response(dj_resp: DjangoLLMResponse) -> LLMResponse:
             "usage_rich",
             "request_db_pk",
             "response_db_pk",
-            "simulation_pk",
+            "object_db_pk",
     ):
         base.pop(key, None)
 

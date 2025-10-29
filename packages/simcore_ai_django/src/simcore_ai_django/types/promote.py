@@ -141,8 +141,8 @@ def promote_request(req: LLMRequest, **overlay: Any) -> DjangoLLMRequest:
     Identity and correlation fields from overlay are copied verbatim.
     No normalization or resolution logic is performed here.
 
-    Any keyword args in **overlay are merged in and can include identity fields such as namespace, kind, and name,
-    correlation identifiers, etc. If you already know the request audit pk,
+    Any keyword args in **overlay are merged in and can include identity fields such as namespace, kind, name,
+    object_db_pk, correlation identifiers, etc. If you already know the request audit pk,
     pass it via overlay as `db_pk` to stamp onto the DTO.
     """
     data = req.model_dump(mode="json")
@@ -160,7 +160,7 @@ def promote_response(resp: LLMResponse, **overlay: Any) -> DjangoLLMResponse:
     Identity and correlation fields from overlay are copied verbatim.
     No normalization or resolution logic is performed here.
 
-    The overlay may include identity and correlation link fields such as request_db_pk, request_correlation_id, response_correlation_id, simulation_pk, namespace, etc.
+    The overlay may include identity and correlation link fields such as request_db_pk, request_correlation_id, response_correlation_id, object_db_pk, namespace, etc.
     """
     data = resp.model_dump(mode="json")
     dj = DjangoLLMResponse(**data, **overlay)

@@ -43,7 +43,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
 
       # In a service handler:
       codec = PatientInitialResponseCodec()
-      result = codec.handle_response(resp, context={"simulation_pk": sim.pk})
+      result = codec.handle_response(resp, context={"object_db_pk": sim.pk})
 
     Signals:
       Apps should connect to the emitter signals and filter by identity:
@@ -144,7 +144,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
                     "provider": getattr(resp, "provider_name", None),
                     "client": getattr(resp, "client_name", None),
                     # Optional DB context from ctx/result
-                    "simulation_pk": ctx.get("simulation_pk") if isinstance(ctx, dict) else None,
+                    "object_db_pk": ctx.get("object_db_pk") if isinstance(ctx, dict) else None,
                     "response_db_pk": getattr(result, "pk", None) if result is not None else None,
                 }
                 emitter.response_ready(payload)
