@@ -3,15 +3,12 @@
 Django runner/orchestrator for LLM services.
 
 Bridges `simcore_ai` core services and Django runtime concerns (audits, signals,
-codec execution). Uses the core identity resolver so namespace/kind/name are
-canonical; by convention `kind` defaults to "default" unless explicitly set.
+codec execution). Uses the core identity resolver so namespace/kind/name are canonical; by convention kind defaults to "default" unless explicitly set.
 
 Sync entry:  run_service(service, ...)
 Async entry: arun_service(service, ...)
 
-Both build a provider‑agnostic LLMRequest via `service.build_request(simulation=...)`,
-promote/demote around provider boundaries, emit audits/signals, and (optionally)
-execute a codec resolved from the response identity.
+Both build a provider‑agnostic LLMRequest via service.build_request(), promote/demote around provider boundaries, emit audits/signals, and (optionally) execute a codec resolved from the response identity.
 """
 from __future__ import annotations
 
@@ -76,8 +73,9 @@ def run_service(
         name: Optional[str] = None,
         client_name: Optional[str] = None,
         provider_name: Optional[str] = None,
-        simulation_pk: Optional[int] = None,
+        object_db_pk: Optional[int | UUID] = None,
         correlation_id: Optional[UUID] = None,
+        context: Optional[dict] = None,
 ) -> DjangoLLMResponse:
     """
     Orchestrate a full request/response flow for a Django-rich LLM service (SYNC).
@@ -109,6 +107,15 @@ def run_service(
       - promote response -> write response audit -> emit ai_response_received
       - codec.validate/parse/persist (optional) -> emit ai_response_ready
     """
+    # Merge provided context onto the service (context-first, domain-agnostic)
+    if context:
+        try:
+            base_ctx = dict(getattr(service, "context", None) or {})
+            base_ctx.update(context)
+            setattr(service, "context", base_ctx)
+        except Exception:
+            setattr(service, "context", context)
+
     # If a traceparent was provided by the transport (e.g., Celery), extract it to continue the trace.
     if traceparent:
         try:
@@ -127,7 +134,7 @@ def run_service(
 
     # For early spans, prefer the configured codec label without resolving a concrete codec yet
     try:
-        codec_name = service.get_codec_name(simulation_pk)  # type: ignore[arg-type]
+        codec_name = service.get_codec_name()  # type: ignore[arg-type]
     except Exception:
         codec_name = None
 
@@ -141,11 +148,12 @@ def run_service(
                 "ai.provider_name": provider_name or getattr(service, "provider_name", None),
                 "ai.client_name": client_name or "default",
                 "ai.codec_name": codec_name,
+                **getattr(service, "flatten_context", lambda: {})(),
             },
     ):
         # 1) Build base request (service should construct messages/prompt and set response_format_cls)
         try:
-            base_req: LLMRequest = _maybe_await(service.build_request(simulation=simulation_pk))
+            base_req: LLMRequest = _maybe_await(service.build_request())
         except Exception as e:
             emit_failure(
                 error=f"{type(e).__name__}: {e}",
@@ -154,7 +162,7 @@ def run_service(
                 name=nm,
                 client_name=client_name or getattr(service, "client_name", None),
                 provider_name=provider_name or getattr(service, "provider_name", None),
-                simulation_pk=simulation_pk,
+                simulation_pk=object_db_pk,
                 correlation_id=correlation_id,
                 request_audit_pk=None,
             )
@@ -168,7 +176,7 @@ def run_service(
             name=nm,
             client_name=client_name or getattr(service, "client_name", None),
             provider_name=provider_name or getattr(service, "provider_name", None),
-            simulation_pk=simulation_pk,
+            simulation_pk=object_db_pk,
             correlation_id=correlation_id,
         )
 
@@ -185,6 +193,7 @@ def run_service(
                     "ai.kind": dj_req.kind,
                     "ai.name": dj_req.name,
                     "ai.codec_name": codec_name,
+                    **getattr(service, "flatten_context", lambda: {})(),
                 },
         ):
             emit_request(
@@ -195,7 +204,7 @@ def run_service(
                 name=dj_req.name,
                 client_name=dj_req.client_name,
                 provider_name=dj_req.provider_name,
-                simulation_pk=dj_req.simulation_pk,
+                simulation_pk=dj_req.object_db_pk,
                 correlation_id=dj_req.correlation_id,
                 codec_name=codec_name,
             )
@@ -226,7 +235,7 @@ def run_service(
             name=nm,
             client_name=dj_req.client_name,
             provider_name=dj_req.provider_name,
-            simulation_pk=dj_req.simulation_pk,
+            object_db_pk=dj_req.object_db_pk,
             correlation_id=dj_req.correlation_id,
             request_db_pk=request_pk,
         )
@@ -244,6 +253,7 @@ def run_service(
                     "ai.kind": dj_resp.kind,
                     "ai.name": dj_resp.name,
                     "ai.codec_name": codec_name,
+                    **getattr(service, "flatten_context", lambda: {})(),
                 },
         ):
             emit_response_received(
@@ -255,7 +265,7 @@ def run_service(
                 name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
-                simulation_pk=dj_resp.simulation_pk,
+                simulation_pk=dj_resp.object_db_pk,
                 correlation_id=dj_resp.correlation_id,
             )
 
@@ -278,7 +288,8 @@ def run_service(
             try:
                 with service_span_sync(
                         "ai.codec.handle",
-                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label},
+                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label,
+                                    **getattr(service, "flatten_context", lambda: {})()},
                 ):
                     execute_codec(
                         codec_effective,
@@ -299,7 +310,7 @@ def run_service(
                     name=nm,
                     client_name=dj_resp.client_name,
                     provider_name=dj_resp.provider_name,
-                    simulation_pk=dj_resp.simulation_pk,
+                    simulation_pk=dj_resp.object_db_pk,
                     correlation_id=dj_resp.correlation_id,
                     request_audit_pk=request_pk,
                 )
@@ -313,6 +324,7 @@ def run_service(
                     "ai.kind": dj_resp.kind,
                     "ai.name": dj_resp.name,
                     "ai.codec_name": codec_name,
+                    **getattr(service, "flatten_context", lambda: {})(),
                 },
         ):
             emit_response_ready(
@@ -324,7 +336,7 @@ def run_service(
                 name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
-                simulation_pk=dj_resp.simulation_pk,
+                simulation_pk=dj_resp.object_db_pk,
                 correlation_id=dj_resp.correlation_id,
             )
 
@@ -342,13 +354,23 @@ async def arun_service(
         name: Optional[str] = None,
         client_name: Optional[str] = None,
         provider_name: Optional[str] = None,
-        simulation_pk: Optional[int] = None,
+        object_db_pk: Optional[int | UUID] = None,
         correlation_id: Optional[UUID] = None,
+        context: Optional[dict] = None,
 ) -> DjangoLLMResponse:
     """
     Async orchestration variant of run_service (awaits all awaitables).
     By convention, service `kind` defaults to "default" unless explicitly set.
     """
+    # Merge provided context onto the service (context-first, domain-agnostic)
+    if context:
+        try:
+            base_ctx = dict(getattr(service, "context", None) or {})
+            base_ctx.update(context)
+            setattr(service, "context", base_ctx)
+        except Exception:
+            setattr(service, "context", context)
+
     # If a traceparent was provided by the transport (e.g., Celery), extract it to continue the trace.
     if traceparent:
         try:
@@ -367,7 +389,7 @@ async def arun_service(
 
     # For early spans, prefer the configured codec label without resolving a concrete codec yet
     try:
-        codec_name = service.get_codec_name(simulation_pk)  # type: ignore[arg-type]
+        codec_name = service.get_codec_name()  # type: ignore[arg-type]
     except Exception:
         codec_name = None
 
@@ -381,11 +403,12 @@ async def arun_service(
                 "ai.provider_name": provider_name or getattr(service, "provider_name", None),
                 "ai.client_name": client_name or "default",
                 "ai.codec_name": codec_name,
+                **getattr(service, "flatten_context", lambda: {})(),
             },
     ):
         # Build base request
         try:
-            base_req: LLMRequest = await _maybe_await_async(service.build_request(simulation=simulation_pk))
+            base_req: LLMRequest = await _maybe_await_async(service.build_request())
         except Exception as e:
             emit_failure(
                 error=f"{type(e).__name__}: {e}",
@@ -394,7 +417,7 @@ async def arun_service(
                 name=nm,
                 client_name=client_name or getattr(service, "client_name", None),
                 provider_name=provider_name or getattr(service, "provider_name", None),
-                simulation_pk=simulation_pk,
+                simulation_pk=object_db_pk,
                 correlation_id=correlation_id,
                 request_audit_pk=None,
             )
@@ -408,7 +431,7 @@ async def arun_service(
             name=nm,
             client_name=client_name or getattr(service, "client_name", None),
             provider_name=provider_name or getattr(service, "provider_name", None),
-            simulation_pk=simulation_pk,
+            simulation_pk=object_db_pk,
             correlation_id=correlation_id,
         )
 
@@ -422,6 +445,7 @@ async def arun_service(
                     "ai.kind": dj_req.kind,
                     "ai.name": dj_req.name,
                     "ai.codec_name": codec_name,
+                    **getattr(service, "flatten_context", lambda: {})(),
                 },
         ):
             emit_request(
@@ -432,7 +456,7 @@ async def arun_service(
                 name=dj_req.name,
                 client_name=dj_req.client_name,
                 provider_name=dj_req.provider_name,
-                simulation_pk=dj_req.simulation_pk,
+                simulation_pk=dj_req.object_db_pk,
                 correlation_id=dj_req.correlation_id,
                 codec_name=codec_name,
             )
@@ -458,7 +482,7 @@ async def arun_service(
             name=nm,
             client_name=dj_req.client_name,
             provider_name=dj_req.provider_name,
-            simulation_pk=dj_req.simulation_pk,
+            object_db_pk=dj_req.object_db_pk,
             correlation_id=dj_req.correlation_id,
             request_db_pk=request_pk,
         )
@@ -474,6 +498,7 @@ async def arun_service(
                     "ai.kind": dj_resp.kind,
                     "ai.name": dj_resp.name,
                     "ai.codec_name": codec_name,
+                    **getattr(service, "flatten_context", lambda: {})(),
                 },
         ):
             emit_response_received(
@@ -485,7 +510,7 @@ async def arun_service(
                 name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
-                simulation_pk=dj_resp.simulation_pk,
+                simulation_pk=dj_resp.object_db_pk,
                 correlation_id=dj_resp.correlation_id,
             )
 
@@ -508,7 +533,8 @@ async def arun_service(
             try:
                 async with service_span(
                         "ai.codec.handle",
-                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label},
+                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label,
+                                    **getattr(service, "flatten_context", lambda: {})()},
                 ):
                     await _maybe_await_async(
                         execute_codec(
@@ -531,7 +557,7 @@ async def arun_service(
                     name=nm,
                     client_name=dj_resp.client_name,
                     provider_name=dj_resp.provider_name,
-                    simulation_pk=dj_resp.simulation_pk,
+                    simulation_pk=dj_resp.object_db_pk,
                     correlation_id=dj_resp.correlation_id,
                     request_audit_pk=request_pk,
                 )
@@ -544,6 +570,7 @@ async def arun_service(
                     "ai.kind": dj_resp.kind,
                     "ai.name": dj_resp.name,
                     "ai.codec_name": codec_name,
+                    **getattr(service, "flatten_context", lambda: {})(),
                 },
         ):
             emit_response_ready(
@@ -555,7 +582,7 @@ async def arun_service(
                 name=dj_resp.name,
                 client_name=dj_resp.client_name,
                 provider_name=dj_resp.provider_name,
-                simulation_pk=dj_resp.simulation_pk,
+                simulation_pk=dj_resp.object_db_pk,
                 correlation_id=dj_resp.correlation_id,
             )
 

@@ -39,7 +39,7 @@ def _span_attrs_from_request(dj: DjangoLLMRequest) -> Dict[str, Any]:
         "dj.name": getattr(dj, "name", None),
         "dj.provider": getattr(dj, "provider_name", None),
         "dj.client": getattr(dj, "client_name", None),
-        "db.simulation_pk": str(getattr(dj, "simulation_pk", None)) if getattr(dj, "simulation_pk", None) is not None else None,
+        "db.object_db_pk": str(getattr(dj, "object_db_pk", None)) if getattr(dj, "object_db_pk", None) is not None else None,
         "db.request_pk": str(getattr(dj, "db_pk", None)) if getattr(dj, "db_pk", None) is not None else None,
     }
 
@@ -55,7 +55,7 @@ def _span_attrs_from_response(dj: DjangoLLMResponse) -> Dict[str, Any]:
         "dj.name": getattr(dj, "name", None),
         "dj.provider": getattr(dj, "provider_name", None),
         "dj.client": getattr(dj, "client_name", None),
-        "db.simulation_pk": str(getattr(dj, "simulation_pk", None)) if getattr(dj, "simulation_pk", None) is not None else None,
+        "db.object_db_pk": str(getattr(dj, "object_db_pk", None)) if getattr(dj, "object_db_pk", None) is not None else None,
         "db.request_pk": str(getattr(dj, "request_db_pk", None)) if getattr(dj, "request_db_pk", None) is not None else None,
         "db.response_pk": str(getattr(dj, "db_pk", None)) if getattr(dj, "db_pk", None) is not None else None,
     }

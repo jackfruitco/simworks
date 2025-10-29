@@ -34,7 +34,7 @@ def _span_attributes_from_ctx(ctx: Mapping[str, Any] | None) -> Dict[str, Any]:
         "service_name",
         "provider_name",
         "client_name",
-        "simulation_pk",
+        "object_db_pk",
         "correlation_id",
         "model",
         "stream",

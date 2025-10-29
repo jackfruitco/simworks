@@ -99,7 +99,7 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
             client_name=dj_req.client_name,
 
             # domain linkage
-            simulation_pk=dj_req.simulation_pk,
+            simulation_pk=dj_req.object_db_pk,
 
             # transport flags
             model=dj_req.model,
@@ -182,7 +182,7 @@ def write_response_audit(
             client_name=dj_resp.client_name,
 
             # domain linkage
-            simulation_pk=dj_resp.simulation_pk,
+            simulation_pk=dj_resp.object_db_pk,
 
             # normalized payloads
             outputs=_dump_response_items(outputs),

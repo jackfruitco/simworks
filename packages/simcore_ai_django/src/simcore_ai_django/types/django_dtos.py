@@ -10,6 +10,9 @@ These classes extend the core `simcore_ai.types` models with optional Django-fac
 - provider/client metadata for observability
 - optional rich overlays (`messages_rich`, `outputs_rich`, `usage_rich`) promoted by the glue layer
 
+- uses generic `object_db_pk` for domain linkage
+- uses `context` for service/app context
+
 They are **not** ORM models and are safe to emit via signals. Persistence remains the responsibility
 of codecs and listeners.
 """
@@ -74,10 +77,14 @@ class DjangoLLMRequest(LLMRequest, DjangoDTOBase):
     """Rich request wrapper for Django integrations.
 
     Extends the core request with persistence and routing metadata.
+    Prefer passing app/service data in the `context` field;
     """
 
-    # Optional simulation or domain object foreign key
-    simulation_pk: int | UUID | None = None
+    # Optional object foreign key
+    object_db_pk: int | UUID | None = None
+
+    # Context
+    context: dict[str, Any] | None = None
 
     # Optional hints used by glue/persistence layers
     prompt_meta: dict[str, Any] = Field(default_factory=dict)
@@ -118,11 +125,15 @@ class DjangoLLMResponse(LLMResponse, DjangoDTOBase):
     """Rich response wrapper for Django integrations.
 
     Echoes operation identity and correlation links; includes `received_at`.
+    Includes optional `context` snapshot for auditing.
     """
 
     # Linkage
     request_db_pk: int | UUID | None = None
-    simulation_pk: int | UUID | None = None
+    object_db_pk: int | UUID | None = None
+
+    # Optional context echo; apps may persist context snapshots alongside responses
+    context: dict[str, Any] | None = None
 
     # Timestamps
     received_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))

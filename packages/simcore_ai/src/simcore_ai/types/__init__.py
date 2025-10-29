@@ -5,6 +5,7 @@ from .helpers import project_from
 from .tools import *
 
 __all__ = [
+    "StrictBaseModel",
     "project_from",
     "BaseOutputSchema",
     "Boolish",
