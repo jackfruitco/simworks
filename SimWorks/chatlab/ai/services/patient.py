@@ -9,6 +9,7 @@ from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
+from simcore_ai.types import LLMTextPart
 from simcore_ai_django.api.decorators import llm_service
 # Django-aware service base and rich DTOs
 from simcore_ai_django.api.types import DjangoExecutableLLMService
@@ -30,21 +31,19 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExec
     """
 
     # Execution defaults (service-level); None => use settings / hard defaults
-    execution_mode: Optional[str] = "sync"  # "sync" | "async"
-    execution_backend: Optional[str] = "immediate"  # "immediate" | "celery" | "django_tasks"
-    execution_priority: Optional[int] = -100  # -100..100
-    execution_run_after: Optional[float] = None  # seconds; None => now
-    require_enqueue: bool = False  # force async if True
+    # execution_mode: Optional[str] = "sync"  # "sync" | "async"
+    # execution_backend: Optional[str] = "immediate"  # "immediate" | "celery" | "django_tasks"
+    # execution_priority: Optional[int] = -100  # -100..100
+    # execution_run_after: Optional[float] = None  # seconds; None => now
+    # require_enqueue: bool = False # force async if True
 
-    model: Optional[str] = None  # allow provider default
+    # model: Optional[str] = None  # allow provider default
 
-    # Structured output schema
-    from chatlab.ai.schemas import PatientInitialOutputSchema as _Schema
-    response_format_cls = _Schema
+    required_context_keys: tuple[str, ...] = ("simulation_id",)
 
 
 @llm_service
-class GenerateReplyResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate a reply to a user message.
 
     Expects a user message pk (or a resolved Message) and validates against the
@@ -52,16 +51,18 @@ class GenerateReplyResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
     """
 
     # Execution defaults (service-level); None => use settings / hard defaults
-    execution_mode: Optional[str] = None  # "sync" | "async"
-    execution_backend: Optional[str] = None  # "immediate" | "celery" | "django_tasks"
-    execution_priority: Optional[int] = None  # -100..100
-    execution_run_after: Optional[float] = None  # seconds; None => now
-    require_enqueue: bool = False  # force async if True
+    # execution_mode: Optional[str] = None  # "sync" | "async"
+    # execution_backend: Optional[str] = None  # "immediate" | "celery" | "django_tasks"
+    # execution_priority: Optional[int] = None  # -100..100
+    # execution_run_after: Optional[float] = None  # seconds; None => now
+    # require_enqueue: bool = False  # force async if True
 
     model: Optional[str] = None
 
     from chatlab.ai.schemas import PatientReplyOutputSchema as _Schema
     response_format_cls = _Schema
+
+    required_context_keys: tuple[str, ...] = ("simulation_id",)
 
     # service ctor may receive this
     user_msg_pk: Optional[int] = None
@@ -86,7 +87,7 @@ class GenerateReplyResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
 
 
 @llm_service
-class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate a patient image via provider tool-call.
 
     Builds a developer instruction via PromptKit and attaches a normalized image
@@ -94,13 +95,15 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
     """
 
     # Execution defaults (service-level); None => use settings / hard defaults
-    execution_mode: Optional[str] = None
-    execution_backend: Optional[str] = None
-    execution_priority: Optional[int] = None
-    execution_run_after: Optional[float] = None
+    execution_mode: Optional[str] = "async"
+    # execution_backend: Optional[str] = None
+    # execution_priority: Optional[int] = None
+    # execution_run_after: Optional[float] = None
     require_enqueue: bool = True
 
     model: Optional[str] = None
+
+    required_context_keys: tuple[str, ...] = ("simulation_id",)
 
     # Tool options
     output_format: Optional[str] = None  # e.g., "png" | "jpeg"
@@ -112,7 +115,7 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
         from ..prompts import ChatlabImageSection  # local import to avoid cycles
         prompt = await PromptEngine.abuild_from(ChatlabImageSection)
         msgs: List[DjangoLLMRequestMessage] = [
-            DjangoLLMRequestMessage(role="developer", content=prompt.instruction or "")
+            DjangoLLMRequestMessage(role="developer", content=[LLMTextPart(prompt.instruction or "")])
         ]
         return msgs, None
 
@@ -122,7 +125,6 @@ class GenerateImageResponse(DjangoExecutableLLMService, ChatlabMixin, Standardiz
         })
         return [
             DjangoLLMBaseTool(
-                type="image_generation",
                 name="image_generation",
                 description="Generate an image from the prompt",
                 input_schema={

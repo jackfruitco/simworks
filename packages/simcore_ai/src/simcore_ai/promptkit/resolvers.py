@@ -4,7 +4,7 @@ from __future__ import annotations
 """
 Resolver utilities for PromptSections (AIv3).
 
-- Accepts dot identity strings ("origin.bucket.name"), tuple3 identities (origin, bucket, name),
+- Accepts dot identity strings ("namespace.kind.name"), tuple3 identities (namespace, kind, name),
   or a direct PromptSection subclass/instance.
 - Normalizes to a PromptSection *class* so callers can instantiate uniformly.
 - No legacy colon identities, no role-paired plans.
@@ -28,8 +28,8 @@ def resolve_section(entry: Any) -> Type["PromptSection"]:
     """Resolve a plan entry into a PromptSection *class*.
 
     Accepted forms:
-      - str: canonical identity "origin.bucket.name" (dot-only)
-      - tuple3: (origin, bucket, name) with non-empty strings
+      - str: canonical identity "namespace.kind.name" (dot-only)
+      - tuple3: (namespace, kind, name) with non-empty strings
       - class: a PromptSection subclass (returned as-is)
       - instance: a PromptSection instance (its class is returned)
 
@@ -40,11 +40,11 @@ def resolve_section(entry: Any) -> Type["PromptSection"]:
     from .registry import PromptRegistry
     from .types import PromptSection
 
-    # Tuple identity (origin, bucket, name)
+    # Tuple identity (namespace, kind, name)
     if isinstance(entry, tuple) and len(entry) == 3:
         o, b, n = entry
         if not all(isinstance(p, str) and p for p in (o, b, n)):
-            raise PromptSectionResolutionError("tuple identity must be (origin, bucket, name) with non-empty strings")
+            raise PromptSectionResolutionError("tuple identity must be (namespace, kind, name) with non-empty strings")
         try:
             return PromptRegistry.require((o, b, n))
         except Exception as exc:

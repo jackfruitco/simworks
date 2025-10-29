@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, Optional
 from collections.abc import Iterable
 
-from django.db import transaction
-
 from simcore_ai.tracing import service_span_sync
 
 from simcore_ai_django.models import AIRequestAudit, AIResponseAudit
@@ -95,14 +93,13 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
             # identity / routing
             correlation_id=dj_req.correlation_id,
             namespace=dj_req.namespace,
-            origin=dj_req.origin,
-            bucket=dj_req.bucket,
+            kind=dj_req.kind,
             service_name=dj_req.service_name,
             provider_name=dj_req.provider_name,
             client_name=dj_req.client_name,
 
             # domain linkage
-            simulation_pk=dj_req.simulation_pk,
+            simulation_pk=dj_req.object_db_pk,
 
             # transport flags
             model=dj_req.model,
@@ -179,14 +176,13 @@ def write_response_audit(
             # identity / routing
             correlation_id=dj_resp.correlation_id,
             namespace=dj_resp.namespace,
-            origin=dj_resp.origin,
-            bucket=dj_resp.bucket,
+            kind=dj_resp.kind,
             service_name=dj_resp.service_name,
             provider_name=dj_resp.provider_name,
             client_name=dj_resp.client_name,
 
             # domain linkage
-            simulation_pk=dj_resp.simulation_pk,
+            simulation_pk=dj_resp.object_db_pk,
 
             # normalized payloads
             outputs=_dump_response_items(outputs),

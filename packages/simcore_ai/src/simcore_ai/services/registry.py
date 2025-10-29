@@ -2,34 +2,41 @@
 Service class registry for SimCore AI.
 
 This module provides a minimal, framework-agnostic registry for service classes,
-keyed by (origin:str, bucket:str, name:str) tuples.
+keyed by (namespace:str, kind:str, name:str) tuples.
 
 Key format:
-    (origin, bucket, name): all are non-empty strings.
+    (namespace, kind, name): all are non-empty strings.
 
 Collision policy:
-    When registering a service with a key that already exists, the core resolver
-    (`resolve_collision`) is used to determine if the new class should override the old.
+    When registering a service with a key that already exists and is associated
+    with a different class, a DuplicateServiceIdentityError is raised.
+    The registry does not rename or resolve collisions automatically.
 
 Exported symbols:
-    - ServicesRegistry
+    - ServiceRegistry
+    - DuplicateServiceIdentityError
 """
 
 import logging
 import os
 import threading
-from typing import Optional, Type
 from collections.abc import Iterable
+from typing import Optional, Type
 
-from simcore_ai.identity import resolve_collision, parse_dot_identity
+from simcore_ai.identity import parse_dot_identity
 
 _logger = logging.getLogger(__name__)
 
 
-class ServicesRegistry:
+class DuplicateServiceIdentityError(Exception):
+    """Raised when attempting to register a service class with a duplicate identity."""
+
+
+class ServiceRegistry:
     """
-    Framework-agnostic registry for service classes, keyed by (origin, bucket, name).
+    Framework-agnostic registry for service classes, keyed by (namespace, kind, name).
     """
+
     _store: dict[tuple[str, str, str], Type] = {}
     _lock = threading.RLock()
 
@@ -39,26 +46,26 @@ class ServicesRegistry:
         return bool(os.environ.get("SIMCORE_AI_DEBUG", "").strip())
 
     @classmethod
-    def has(cls, origin: str, bucket: str, name: str) -> bool:
-        """Return True if a service is registered under the given (origin, bucket, name)."""
+    def has(cls, namespace: str, kind: str, name: str) -> bool:
+        """Return True if a service is registered under the given (namespace, kind, name)."""
         with cls._lock:
-            return (origin, bucket, name) in cls._store
+            return (namespace, kind, name) in cls._store
 
     @classmethod
     def _identity_for_cls(cls, service_cls: Type) -> tuple[str, str, str]:
         """
-        Derive (origin, bucket, name) from class attributes.
-        Accepts either explicit 'origin', 'bucket', 'name' attributes,
+        Derive (namespace, kind, name) from class attributes.
+        Accepts either explicit 'namespace', 'kind', 'name' attributes,
         or a dot-separated 'identity' attribute.
         Raises TypeError if not found.
         """
-        if hasattr(service_cls, "origin") and hasattr(service_cls, "bucket") and hasattr(service_cls, "name"):
-            origin = getattr(service_cls, "origin")
-            bucket = getattr(service_cls, "bucket")
+        if hasattr(service_cls, "namespace") and hasattr(service_cls, "kind") and hasattr(service_cls, "name"):
+            namespace = getattr(service_cls, "namespace")
+            kind = getattr(service_cls, "kind")
             name = getattr(service_cls, "name")
-            if not all(isinstance(x, str) and x for x in (origin, bucket, name)):
+            if not all(isinstance(x, str) and x for x in (namespace, kind, name)):
                 raise TypeError(f"Service class {service_cls!r} has invalid identity attributes.")
-            return (origin, bucket, name)
+            return (namespace, kind, name)
         elif hasattr(service_cls, "identity"):
             ident = getattr(service_cls, "identity")
             if not isinstance(ident, str):
@@ -69,25 +76,29 @@ class ServicesRegistry:
     @classmethod
     def register(cls, service_cls: Type, *, debug: Optional[bool] = None) -> None:
         """
-        Register a service class, resolving collisions if necessary.
+        Register a service class.
+
+        Raises DuplicateServiceIdentityError if a different class is already registered
+        under the same identity.
+
+        If the same class is already registered under the identity, this is a no-op.
+
         If 'debug' is not supplied, uses SIMCORE_AI_DEBUG environment variable.
         """
         ident = cls._identity_for_cls(service_cls)
         debug_mode = debug if debug is not None else cls._debug_from_env()
 
-        def exists(t):
-            return t in cls._store
-
-        new_ident = resolve_collision(
-            "service", ident, debug=debug_mode, exists=exists
-        )
         with cls._lock:
-            prev = cls._store.get(new_ident)
-            cls._store[new_ident] = service_cls
-            if prev and prev is not service_cls:
-                _logger.info(f"Service {new_ident} replaced {prev} with {service_cls}")
-            elif not prev:
-                _logger.info(f"Service {new_ident} registered: {service_cls}")
+            prev = cls._store.get(ident)
+            if prev is not None and prev is not service_cls:
+                raise DuplicateServiceIdentityError(
+                    f"Service identity {ident} already registered with a different class {prev}"
+                )
+            if prev is service_cls:
+                # already registered, no-op
+                return
+            cls._store[ident] = service_cls
+            _logger.info(f"Service {ident} registered: {service_cls}")
 
     @classmethod
     def get(cls, identity: tuple[str, str, str]) -> Optional[Type]:
@@ -127,7 +138,7 @@ class ServicesRegistry:
         """Remove all registered service classes."""
         with cls._lock:
             cls._store.clear()
-            _logger.info("ServicesRegistry cleared")
+            _logger.info("ServiceRegistry cleared")
 
 
-__all__ = ["ServicesRegistry"]
+__all__ = ["ServiceRegistry", "DuplicateServiceIdentityError"]

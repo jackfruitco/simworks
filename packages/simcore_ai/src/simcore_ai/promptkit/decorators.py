@@ -1,48 +1,59 @@
-# simcore_ai/promptkit/decorators.py
-"""Core (non-Django) decorators for PromptKit built on the base decorator factory.
-
-This module defines the **core** PromptKit decorator using the shared dual-form
-factory and the **default module-centric identity resolver**. It intentionally
-remains framework-agnostic and does not import any Django modules.
-
-Usage (dual-form):
-
-    from simcore_ai.promptkit.decorators import prompt_section
-
-    @prompt_section
-    class PatientIntro(PromptSection):
-        instruction = "Gather patient demographics."
-
-    @prompt_section(origin="chatlab", bucket="patient", name="intro")
-    class PatientIntroExplicit(PromptSection):
-        instruction = "Gather patient demographics."
-
-The identity parts are resolved with the following defaults in core:
-- origin: module root or "simcore"
-- bucket: second module segment or "default"
-- name:   snake_case(class name with common suffixes removed)
-
-Registration is performed via `PromptRegistry.register(cls)`. The decorator is
-safe to import even when registries are unavailable at import time.
-"""
+# packages/simcore_ai/src/simcore_ai/promptkit/decorators.py
 from __future__ import annotations
 
-import logging
+"""
+Core (non-Django) Prompt Section decorator built on the class-based BaseDecorator.
 
-from simcore_ai.decorators.base import (
-    make_class_decorator,
-    default_identity_resolver,
-)
-from .registry import PromptRegistry
-from .types import PromptSection
+This decorator is intentionally thin:
+- Delegates identity derivation to the core IdentityResolver via BaseDecorator
+- Applies the domain default `kind="prompt_section"` when arg/attr doesn't specify kind
+- Does **not** register in core (get_registry() -> None); Django layer wires registries
 
-logger = logging.getLogger(__name__)
+No token collection or normalization logic lives here; that is owned by the resolver.
+"""
 
-# Build the dual-form decorator using the shared factory and core resolver.
-# Registration is passed as a post hook and is guarded internally by the factory.
-prompt_section = make_class_decorator(
-    identity_resolver=default_identity_resolver,
-    post_register=PromptRegistry.register,
-)
+from typing import Any, Optional, Type
 
-__all__ = ["prompt_section", "PromptSection"]
+from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai.identity.base import Identity
+
+
+class PromptSectionRegistrationDecorator(BaseDecorator):
+    """Core Prompt Section decorator: delegate to resolver; no registration in core."""
+
+    def get_registry(self):  # core layer does not register prompt sections
+        return None
+
+    def derive_identity(
+        self,
+        cls: Type[Any],
+        *,
+        namespace: Optional[str],
+        kind: Optional[str],
+        name: Optional[str],
+    ) -> tuple[Identity, dict[str, Any] | None]:
+        """Use the base resolver but inject the domain default kind="prompt_section".
+
+        Precedence becomes:
+          - kind arg (if provided) → class attr `kind` (if provided) → "prompt_section"
+        All other behavior (explicit vs derived name, stripping, normalization)
+        is handled by the resolver.
+        """
+        effective_kind = kind if (isinstance(kind, str) and kind.strip()) else getattr(cls, "kind", None)
+        if not (isinstance(effective_kind, str) and effective_kind.strip()):
+            effective_kind = "prompt_section"
+
+        identity, meta = self.resolver.resolve(
+            cls,
+            namespace=namespace,
+            kind=effective_kind,
+            name=name,
+        )
+        return identity, meta
+
+
+# Ready-to-use decorator instances (short and namespaced aliases)
+prompt_section = PromptSectionRegistrationDecorator()
+ai_prompt_section = prompt_section
+
+__all__ = ["prompt_section", "ai_prompt_section", "PromptSectionRegistrationDecorator"]

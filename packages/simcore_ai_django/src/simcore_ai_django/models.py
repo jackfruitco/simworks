@@ -26,8 +26,7 @@ class AIRequestAudit(TimestampedModel):
     # Correlation & identity
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
     namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    origin = models.CharField(max_length=128, null=True, blank=True, db_index=True)
-    bucket = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    kind = models.CharField(max_length=128, null=True, blank=True, db_index=True)
     service_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
     # Provider & client resolution
@@ -77,8 +76,7 @@ class AIResponseAudit(TimestampedModel):
     # Correlation & identity
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
     namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    origin = models.CharField(max_length=128, null=True, blank=True, db_index=True)
-    bucket = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    kind = models.CharField(max_length=128, null=True, blank=True, db_index=True)
     service_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
     # Provider & client resolution

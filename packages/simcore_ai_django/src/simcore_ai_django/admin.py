@@ -89,8 +89,7 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
         "updated_at",
         "correlation_id",
         "namespace",
-        "origin",
-        "bucket",
+        "kind",
         "service_name",
         "provider_name",
         "client_name",
@@ -107,8 +106,8 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
 
     fields = (
         ("created_at", "updated_at"),
-        ("namespace", "service_name", "provider_name", "client_name"),
-        ("origin", "bucket", "simulation_pk", "correlation_id"),
+        ("service_name", "provider_name", "client_name"),
+        ("namespace", "kind", "simulation_pk", "correlation_id"),
         ("model", "stream"),
         "messages_pretty",
         "tools_pretty",
@@ -179,8 +178,7 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
         "received_at",
         "correlation_id",
         "namespace",
-        "origin",
-        "bucket",
+        "kind",
         "service_name",
         "provider_name",
         "client_name",
@@ -194,8 +192,8 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
 
     fields = (
         ("received_at", "request"),
-        ("namespace", "service_name", "provider_name", "client_name"),
-        ("origin", "bucket", "simulation_pk", "correlation_id"),
+        ("service_name", "provider_name", "client_name"),
+        ("namespace", "kind", "simulation_pk", "correlation_id"),
         "status_badge",
         "outputs_pretty",
         "usage_pretty",

@@ -8,10 +8,12 @@ This module defines lightweight types shared by the prompt system:
 - `Prompt`: final aggregate produced by a prompt engine. Services convert this
   to LLMRequestMessage objects (default: developer instruction + user message).
 - `PromptSection`: declarative section base class. Sections advertise identity
-  via either a class-level `identity: Identity` or class attrs `origin/bucket/name`.
-  The canonical identity string uses **dot form**: `origin.bucket.name`.
+  via either a class-level `identity: Identity` or class attrs `namespace/kind/name`.
+  The canonical identity string uses **dot form**: `namespace.kind.name`.
 
 Backward compatibility with legacy `namespace` or colon identities is removed.
+
+Empty instruction + message is allowed at this layer (engines may merge many sections); services/runners enforce the "not-both-empty" rule before calling providers.
 """
 
 from dataclasses import dataclass, field
@@ -20,7 +22,7 @@ from typing import Any, Awaitable, Optional
 import inspect
 import logging
 
-from simcore_ai_django.api.identity import Identity
+from simcore_ai.identity import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ __all__ = [
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class Prompt:
     """Final prompt object produced by the engine and consumed by services.
 
@@ -69,22 +71,27 @@ class Prompt:
             "meta": dict(self.meta),  # shallow copy to avoid external mutation
         }
 
+    def has_content(self) -> bool:
+        """Return True if either instruction or message has non-empty text."""
+        return bool(self.instruction) or bool(self.message)
 
+
+# Used by render methods and helpers.
 Renderable = str | None | Awaitable[str | None]
 
 
-@dataclass(order=True)
+@dataclass(order=True, slots=True)
 class PromptSection:
     """Base class for declarative prompt sections (AIv3).
 
     Sections provide identity **at the class level** using one of:
       1) `identity: Identity` (preferred), or
-      2) `origin`, `bucket`, and `name` string attributes.
+      2) `namespace`, `kind`, and `name` string attributes.
 
     Instances may also carry static `instruction`/`message` text, which the
     engine may use directly when present.
 
-    The canonical identity string is **dot-based**: `origin.bucket.name`.
+    The canonical identity string is **dot-based**: `namespace.kind.name`.
     """
 
     # sort key first (dataclass(order=True) sorts by this)
@@ -104,7 +111,7 @@ class PromptSection:
 
         Resolution order:
           1) class attr `identity: Identity`
-          2) class attrs `origin`, `bucket`, `name` (all truthy strings)
+          2) class attrs `namespace`, `kind`, `name` (all truthy strings)
 
         Raises:
             TypeError: if identity cannot be derived.
@@ -113,15 +120,15 @@ class PromptSection:
         if isinstance(ident, Identity):
             return ident
 
-        origin = getattr(cls, "origin", None)
-        bucket = getattr(cls, "bucket", None)
+        namespace = getattr(cls, "namespace", None)
+        kind = getattr(cls, "kind", None)
         name = getattr(cls, "name", None)
-        if all(isinstance(x, str) and x for x in (origin, bucket, name)):
-            return Identity.from_parts(origin=origin, bucket=bucket, name=name)
+        if all(isinstance(x, str) and x for x in (namespace, kind, name)):
+            return Identity.from_parts(namespace=namespace, kind=kind, name=name)
 
         raise TypeError(
             f"{cls.__name__} must define either `identity: Identity` or class attrs "
-            f"`origin`, `bucket`, and `name`.")
+            f"`namespace`, `kind`, and `name`.")
 
     @property
     def identity(self) -> Identity:
@@ -149,7 +156,7 @@ class PromptSection:
         return out
 
     async def render(self, **ctx: Any) -> str | None:
-        """Backward-compat shim: default to instruction rendering."""
+        """Backward-compat shim: default to instruction rendering (deprecated)."""
         return await self.render_instruction(**ctx)
 
 

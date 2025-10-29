@@ -54,7 +54,7 @@ Registers a **DjangoExecutableLLMService** (or compatible base) with identity, e
 ```python
 from simcore_ai_django.api.decorators import llm_service
 
-@llm_service  # or: @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
+@llm_service  # or: @llm_service(namespace="chatlab", kind="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
     """Return a model-ready message or object. Receives (simulation, slim)."""
     # your domain logic here

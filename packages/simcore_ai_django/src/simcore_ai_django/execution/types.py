@@ -18,7 +18,7 @@ Tracing:
     - `exec.backend.enqueue`
   and include attributes such as:
     - `backend`, `service_cls`, `queue`, `delay_s`
-    - `ai.identity.service`  (namespace.bucket.name, if available in kwargs)
+    - `ai.identity.service`  (namespace.kind.name, if available in kwargs)
     - `ai.identity.codec`    (response/request codec identity, if available in kwargs)
     - correlation ids where present
 
@@ -76,13 +76,13 @@ class BaseExecutionBackend(ABC):
         Subclasses should call this helper instead of duplicating logic.
         """
         ns = kwargs.get("namespace")
-        bucket = kwargs.get("bucket") or kwargs.get("service_bucket")
+        kind = kwargs.get("kind") or kwargs.get("service_bucket")
         name = kwargs.get("name") or kwargs.get("service_name")
         codec_id = kwargs.get("codec_identity")
         corr = kwargs.get("correlation_id") or kwargs.get("req_correlation_id") or kwargs.get("request_correlation_id")
         attrs: Dict[str, Any] = {}
-        if ns or bucket or name:
-            attrs["ai.identity.service"] = ".".join(x for x in (ns, bucket, name) if x)
+        if ns or kind or name:
+            attrs["ai.identity.service"] = ".".join(x for x in (ns, kind, name) if x)
         if codec_id:
             attrs["ai.identity.codec"] = codec_id
         if corr:

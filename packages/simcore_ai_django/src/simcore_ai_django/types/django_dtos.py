@@ -5,10 +5,13 @@ Django-specific rich Data Transfer Objects (DTOs).
 These classes extend the core `simcore_ai.types` models with optional Django-facing metadata:
 - database primary keys (e.g., `db_pk`, `request_db_pk`, `response_db_pk`)
 - audit timestamps (`created_at`, `updated_at`)
-- identity echo (`namespace`, `bucket`, `name`) for easy filtering
+- identity echo (`namespace`, `kind`, `name`) for easy filtering
 - correlation link fields (`correlation_id`, `request_correlation_id`, `response_correlation_id`)
 - provider/client metadata for observability
 - optional rich overlays (`messages_rich`, `outputs_rich`, `usage_rich`) promoted by the glue layer
+
+- uses generic `object_db_pk` for domain linkage
+- uses `context` for service/app context
 
 They are **not** ORM models and are safe to emit via signals. Persistence remains the responsibility
 of codecs and listeners.
@@ -16,7 +19,7 @@ of codecs and listeners.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field
@@ -29,11 +32,6 @@ from simcore_ai.types import (
     LLMResponseItem,
     LLMUsage,
     LLMToolCall,
-    LLMToolResultPart,
-    LLMToolCallPart,
-    LLMTextPart,
-    LLMImagePart,
-    LLMAudioPart,
     BaseLLMTool,
 )
 
@@ -50,13 +48,13 @@ class DjangoDTOBase(StrictBaseModel):
 
     # Optional correlation and identity fields
     correlation_id: UUID | None = None
-    namespace: str | None = None           # e.g., "chatlab"
-    bucket: str | None = None              # e.g., "sim_responses"
-    name: str | None = None                # concrete leaf name (Identity.name)
+    namespace: str | None = None  # e.g., "chatlab"
+    kind: str | None = None  # e.g., "default"
+    name: str | None = None  # concrete leaf name (Identity.name)
 
     # Provider/client resolution captured at emit-time
-    provider_name: str | None = None       # e.g., "openai"
-    client_name: str | None = None         # registry name, e.g., "default", "openai-images"
+    provider_name: str | None = None  # e.g., "openai"
+    client_name: str | None = None  # registry name, e.g., "default", "openai-images"
 
     # Timestamps for auditing
     created_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -79,10 +77,14 @@ class DjangoLLMRequest(LLMRequest, DjangoDTOBase):
     """Rich request wrapper for Django integrations.
 
     Extends the core request with persistence and routing metadata.
+    Prefer passing app/service data in the `context` field;
     """
 
-    # Optional simulation or domain object foreign key
-    simulation_pk: int | UUID | None = None
+    # Optional object foreign key
+    object_db_pk: int | UUID | None = None
+
+    # Context
+    context: dict[str, Any] | None = None
 
     # Optional hints used by glue/persistence layers
     prompt_meta: dict[str, Any] = Field(default_factory=dict)
@@ -98,14 +100,14 @@ class DjangoLLMResponseItem(LLMResponseItem, DjangoDTOBase):
     Carries both request/response correlation IDs for traceability.
     """
 
-    response_db_pk: int | UUID | None = None      # parent response PK (if persisted)
-    request_db_pk: int | UUID | None = None       # originating request PK
-    sequence_index: int | None = None             # item ordering within response
+    response_db_pk: int | UUID | None = None  # parent response PK (if persisted)
+    request_db_pk: int | UUID | None = None  # originating request PK
+    sequence_index: int | None = None  # item ordering within response
     request_correlation_id: UUID | None = None
     response_correlation_id: UUID | None = None
 
 
-class DJangoLLMResponseMessage(LLMResponseItem, DjangoDTOBase):
+class DjangoLLMResponseMessage(LLMResponseItem, DjangoDTOBase):
     """Rich response message that can be persisted individually if desired."""
 
 
@@ -123,11 +125,15 @@ class DjangoLLMResponse(LLMResponse, DjangoDTOBase):
     """Rich response wrapper for Django integrations.
 
     Echoes operation identity and correlation links; includes `received_at`.
+    Includes optional `context` snapshot for auditing.
     """
 
     # Linkage
     request_db_pk: int | UUID | None = None
-    simulation_pk: int | UUID | None = None
+    object_db_pk: int | UUID | None = None
+
+    # Optional context echo; apps may persist context snapshots alongside responses
+    context: dict[str, Any] | None = None
 
     # Timestamps
     received_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -147,9 +153,11 @@ class DjangoLLMToolCall(LLMToolCall, DjangoDTOBase):
     request_correlation_id: UUID | None = None
     response_correlation_id: UUID | None = None
 
+
 class DjangoLLMBaseTool(BaseLLMTool, DjangoDTOBase):
     """Base tool class for Django-aware tooling."""
     pass
+
 
 # Re-export commonly used core content parts for convenience
 __all__ = [

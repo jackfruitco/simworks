@@ -29,12 +29,12 @@ def _span_attributes_from_ctx(ctx: Mapping[str, Any] | None) -> Dict[str, Any]:
     # Whitelist common attributes to avoid leaking large objects
     keys = (
         "namespace",
-        "origin",
-        "bucket",
+        "namespace",
+        "kind",
         "service_name",
         "provider_name",
         "client_name",
-        "simulation_pk",
+        "object_db_pk",
         "correlation_id",
         "model",
         "stream",

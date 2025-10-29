@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 
 from django.conf import settings
 
+from simcore_ai.tracing.helpers import flatten_context as flatten_context_attrs
+
 from .registry import register_backend
 
 __all__ = [
@@ -25,25 +27,18 @@ __all__ = [
 
 
 # -------------------- Settings helpers --------------------
-
 def get_settings_dict() -> Dict[str, Any]:
-    return getattr(settings, "AI_EXECUTION_BACKENDS", {}) or {}
-
+    return getattr(settings, "SIMCORE_AI_EXECUTION", {}) or {}
 
 def settings_default_backend() -> str:
-    cfg = get_settings_dict()
-    return str(cfg.get("DEFAULT_BACKEND", "immediate")).strip().lower()
-
+    return str(get_settings_dict().get("DEFAULT_BACKEND", "immediate")).strip().lower()
 
 def settings_default_mode() -> str:
-    cfg = get_settings_dict()
-    mode = str(cfg.get("DEFAULT_MODE", "sync")).strip().lower()
-    return "async" if mode == "async" else "sync"
-
+    return str(get_settings_dict().get("DEFAULT_MODE", "sync")).strip().lower()
 
 def settings_default_queue_name() -> Optional[str]:
-    cfg = get_settings_dict()
-    celery_cfg = cfg.get("CELERY", {}) or {}
+    backends = get_settings_dict().get("BACKENDS", {}) or {}
+    celery_cfg = backends.get("celery", {}) or {}
     q = celery_cfg.get("queue_default")
     return str(q).strip() if q else None
 
@@ -52,17 +47,18 @@ def settings_default_queue_name() -> Optional[str]:
 
 def span_attrs_from_ctx(ctx: Mapping[str, Any]) -> Dict[str, Any]:
     ns = ctx.get("namespace")
-    bucket = ctx.get("bucket") or ctx.get("service_bucket")
+    kind = ctx.get("kind") or ctx.get("service_bucket")
     name = ctx.get("name") or ctx.get("service_name")
     codec_id = ctx.get("codec_identity")
     corr = ctx.get("correlation_id") or ctx.get("req_correlation_id") or ctx.get("request_correlation_id")
     attrs: Dict[str, Any] = {}
-    if ns or bucket or name:
-        attrs["ai.identity.service"] = ".".join(x for x in (ns, bucket, name) if x)
+    if ns or kind or name:
+        attrs["ai.identity.service"] = ".".join(x for x in (ns, kind, name) if x)
     if codec_id:
         attrs["ai.identity.codec"] = codec_id
     if corr:
         attrs["req.correlation_id"] = corr
+    attrs.update(flatten_context_attrs(ctx.get("context", {})))
     return attrs
 
 

@@ -1,18 +1,18 @@
 # chatlab/utils.py
 import inspect
 import logging
-import warnings
 
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.layers import get_channel_layer
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import QuerySet
+from django.utils.timezone import now
+
 from chatlab.models import ChatSession
 from chatlab.models import Message
 from chatlab.models import MessageMediaLink
 from core.utils import remove_null_keys
-from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import QuerySet
-from django.utils.timezone import now
 from simcore.models import LabResult
 from simcore.models import RadResult
 from simcore.models import Simulation
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 async def create_new_simulation(
-    user, modifiers: list = None, force: bool = False
+        user, modifiers: list = None, force: bool = False
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
     from .ai.services import GenerateInitialResponse
@@ -50,7 +50,8 @@ async def create_new_simulation(
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
-    GenerateInitialResponse().execute()
+    context = {"simulation_id": simulation.id} #, "user_id": user.id}
+    GenerateInitialResponse(context=context).execute()
 
     return simulation
 
@@ -73,12 +74,12 @@ def add_message_media(message_id, media_id):
 
 
 async def socket_send(
-    __type: str,
-    __group: str = None,
-    __simulation_id: int = None,
-    __payload: dict = None,
-    __status: str = None,
-    **kwargs,
+        __type: str,
+        __group: str = None,
+        __simulation_id: int = None,
+        __payload: dict = None,
+        __status: str = None,
+        **kwargs,
 ) -> None:
     """
     Sends an arbitrary payload to the specified WebSocket group.
@@ -124,11 +125,11 @@ async def socket_send(
 
 
 async def broadcast_event(
-    __type: str,
-    __simulation: Simulation | int,
-    __payload: dict | None = None,
-    __status: str = None,
-    **kwargs,
+        __type: str,
+        __simulation: Simulation | int,
+        __payload: dict | None = None,
+        __status: str = None,
+        **kwargs,
 ) -> None:
     """Broadcasts an event to the specified group layer.
 
@@ -170,8 +171,8 @@ async def broadcast_event(
 
 
 async def broadcast_patient_results(
-    __source:  list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
-    __status: str = None
+        __source: list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
+        __status: str = None
 ) -> None:
     """Broadcasts a patient results event to the specified group layer.
 

@@ -162,7 +162,7 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, Django
       and any `metadata` (patient history/demographics/etc.)
 
     Context expectations (from service request):
-    - `simulation` or `simulation_id`: Simulation instance or pk
+    - `simulation_id`: Simulation primary key (int)
     - Optional `sender_id`: user pk to attribute the assistant message (else simulation.user)
     """
 
@@ -171,14 +171,15 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, Django
         with service_span_sync(
                 "codec.persist",
                 attributes={
-                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "ai.identity.codec": f"{getattr(self, 'namespace', '?')}.{getattr(self, 'kind', '?')}.{getattr(self, 'name', '?')}",
                     "codec_class": self.__class__.__name__,
                 },
         ):
-            sim = _resolve_simulation(
-                response.request.context.get("simulation")
-                or response.request.context.get("simulation_id")
-            )
+            ctx = response.request.context or {}
+            sim_id = ctx.get("simulation_id")
+            if not sim_id:
+                raise ValueError("PatientInitialResponseCodec requires context.simulation_id")
+            sim = _resolve_simulation(sim_id)
             msg_text = _first_message_text(parsed.messages)
 
             normalized = parsed.model_dump()
@@ -204,6 +205,10 @@ class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCod
 
     - Validates against `PatientReplyOutputSchema`
     - Persists `AIResponse` and an assistant `Message` (first message content)
+
+    Context expectations (from service request):
+    - `simulation_id`: Simulation primary key (int)
+    - Optional `sender_id`: user pk to attribute the assistant message (else simulation.user)
     """
 
     @transaction.atomic
@@ -211,14 +216,15 @@ class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCod
         with service_span_sync(
                 "codec.persist",
                 attributes={
-                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "ai.identity.codec": f"{getattr(self, 'namespace', '?')}.{getattr(self, 'kind', '?')}.{getattr(self, 'name', '?')}",
                     "codec_class": self.__class__.__name__,
                 },
         ):
-            sim = _resolve_simulation(
-                response.request.context.get("simulation")
-                or response.request.context.get("simulation_id")
-            )
+            ctx = response.request.context or {}
+            sim_id = ctx.get("simulation_id")
+            if not sim_id:
+                raise ValueError("PatientReplyCodec requires context.simulation_id")
+            sim = _resolve_simulation(sim_id)
             msg_text = _first_message_text(parsed.messages)
 
             normalized = parsed.model_dump()
@@ -250,14 +256,15 @@ class PatientResultsCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMC
         with service_span_sync(
                 "codec.persist",
                 attributes={
-                    "ai.identity.codec": f"{getattr(self, 'origin', '?')}.{getattr(self, 'bucket', '?')}.{getattr(self, 'name', '?')}",
+                    "ai.identity.codec": f"{getattr(self, 'namespace', '?')}.{getattr(self, 'kind', '?')}.{getattr(self, 'name', '?')}",
                     "codec_class": self.__class__.__name__,
                 },
         ):
-            sim = _resolve_simulation(
-                response.request.context.get("simulation")
-                or response.request.context.get("simulation_id")
-            )
+            ctx = response.request.context or {}
+            sim_id = ctx.get("simulation_id")
+            if not sim_id:
+                raise ValueError("PatientResultsCodec requires context.simulation_id")
+            sim = _resolve_simulation(sim_id)
 
             normalized = parsed.model_dump()
             ai_resp = _persist_ai_response(

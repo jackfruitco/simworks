@@ -1,6 +1,7 @@
+from typing import Optional
+
 from simcore_ai.codecs.exceptions import CodecNotFoundError
 from simcore_ai.exceptions.base import SimCoreError
-from typing import Optional
 
 
 class ServiceError(SimCoreError): ...
@@ -15,10 +16,10 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
 
     Parameters (all keyword-only)
     -----------------------------
-    origin: str
-        The resolved origin for the service (e.g., 'chatlab', 'simcore').
-    bucket: str
-        The resolved bucket/namespace for the service (e.g., 'default').
+    namespace: str
+        The resolved namespace for the service (e.g., 'chatlab', 'simcore').
+    kind: str
+        The resolved kind/namespace for the service (e.g., 'default').
     name: str
         The resolved service leaf name (snake_case).
     codec: str | None
@@ -27,16 +28,16 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
         The concrete service class name (for diagnostics).
     """
 
-    def __init__(self, *, origin: str, bucket: str, name: str, codec: Optional[str], service: str):
+    def __init__(self, *, namespace: str, kind: str, name: str, codec: Optional[str], service: str):
         msg = (
             "Could not resolve service codec "
-            f"(origin={origin!r}, bucket={bucket!r}, name={name!r}, "
+            f"(namespace={namespace!r}, kind={kind!r}, name={name!r}, "
             f"requested_codec={codec!r}, service={service})"
         )
         super().__init__(msg)
         # Attach context for callers/logs to inspect programmatically.
-        self.origin = origin
-        self.bucket = bucket
+        self.namespace = namespace
+        self.kind = kind
         self.name = name
         self.codec = codec
         self.service = service

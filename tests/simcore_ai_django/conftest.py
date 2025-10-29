@@ -79,3 +79,23 @@ def DummyService():
         __name__ = "DummyService"
 
     return _DummyService
+
+@pytest.fixture(autouse=True)
+def dummy_test_app(settings):
+    """
+    Ensure a dummy Django app is registered during Django-identity tests.
+    """
+    from django.apps import apps
+    from tests.simcore_ai_django.fixtures.dummyapp.apps import DummyappConfig
+
+    if "tests.simcore_ai_django.fixtures.dummyapp" not in settings.INSTALLED_APPS:
+        settings.INSTALLED_APPS += ["tests.simcore_ai_django.fixtures.dummyapp"]
+
+    # Explicitly register if not already loaded
+    if not apps.is_installed("tests.simcore_ai_django.fixtures.dummyapp"):
+        apps.app_configs["dummyapp"] = DummyappConfig("tests.simcore_ai_django.fixtures.dummyapp", None)
+        apps.app_configs["dummyapp"].ready()
+        apps.clear_cache()
+
+    yield
+    # Teardown not usually required; Django test runner resets apps between tests

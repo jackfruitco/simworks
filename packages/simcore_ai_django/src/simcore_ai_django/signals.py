@@ -2,9 +2,13 @@
 """Django signals for simcore_ai_django glue.
 
 Provides typed payload contracts (TypedDict) for clarity and forwards-compatibility.
+
+This module is context‑first and domain‑agnostic:
+- prefer generic `object_db_pk` (kept `simulation_pk` for back‑compat)
+- include optional `context` dict on all payloads
 """
 
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Union, Dict, Any
 from uuid import UUID
 
 from django.dispatch import Signal
@@ -14,14 +18,17 @@ class RequestSentPayload(TypedDict, total=False):
     request: dict
     request_audit_pk: Optional[int]
     namespace: Optional[str]
-    origin: Optional[str]
-    bucket: Optional[str]
+    kind: Optional[str]
     service_name: Optional[str]
     client_name: Optional[str]
     provider_name: Optional[str]
-    simulation_pk: Optional[int]
+    # DB linkage
+    object_db_pk: Optional[Union[int, UUID]]
+    # Correlation / codec
     correlation_id: Optional[UUID]
     codec_name: Optional[str]
+    # Context-first
+    context: Optional[Dict[str, Any]]
 
 
 class ResponseReceivedPayload(TypedDict, total=False):
@@ -29,14 +36,17 @@ class ResponseReceivedPayload(TypedDict, total=False):
     response_audit_pk: Optional[int]
     request_audit_pk: Optional[int]
     namespace: Optional[str]
-    origin: Optional[str]
-    bucket: Optional[str]
+    kind: Optional[str]
     service_name: Optional[str]
     client_name: Optional[str]
     provider_name: Optional[str]
-    simulation_pk: Optional[int]
+    # Optional Generic DB linkage
+    object_db_pk: Optional[Union[int, UUID]]
+    # Correlation / codec
     correlation_id: Optional[UUID]
     codec_name: Optional[str]
+    # Context-first
+    context: Optional[Dict[str, Any]]
 
 
 class ResponseReadyPayload(TypedDict, total=False):
@@ -44,33 +54,45 @@ class ResponseReadyPayload(TypedDict, total=False):
     response_audit_pk: Optional[int]
     request_audit_pk: Optional[int]
     namespace: Optional[str]
-    origin: Optional[str]
-    bucket: Optional[str]
+    kind: Optional[str]
     service_name: Optional[str]
     client_name: Optional[str]
     provider_name: Optional[str]
+    # Generic DB linkage (preferred) + legacy name for back-compat
+    object_db_pk: Optional[Union[int, UUID]]
     simulation_pk: Optional[int]
+    # Correlation / codec
     correlation_id: Optional[UUID]
     codec_name: Optional[str]
+    # Context-first
+    context: Optional[Dict[str, Any]]
 
 
 class ResponseFailedPayload(TypedDict, total=False):
     error: str
     request_audit_pk: Optional[int]
     namespace: Optional[str]
-    origin: Optional[str]
-    bucket: Optional[str]
+    kind: Optional[str]
     service_name: Optional[str]
     client_name: Optional[str]
     provider_name: Optional[str]
+    # Generic DB linkage (preferred) + legacy name for back-compat
+    object_db_pk: Optional[Union[int, UUID]]
     simulation_pk: Optional[int]
+    # Correlation
     correlation_id: Optional[UUID]
+    # Context-first
+    context: Optional[Dict[str, Any]]
 
 
 class OutboxDispatchPayload(TypedDict, total=False):
     message: dict
     namespace: Optional[str]
+    # Generic DB linkage (preferred) + legacy name for back-compat
+    object_db_pk: Optional[Union[int, UUID]]
     simulation_pk: Optional[int]
+    # Context-first
+    context: Optional[Dict[str, Any]]
 
 
 ai_request_sent = Signal()
@@ -78,6 +100,7 @@ ai_response_received = Signal()
 ai_response_ready = Signal()
 ai_response_failed = Signal()
 ai_outbox_dispatch = Signal()
+
 
 # -----------------------------------------------------------------------------
 # Default emitter that forwards events to Django signals
@@ -103,6 +126,7 @@ class DjangoSignalEmitter:
 
     def outbox_dispatch(self, payload: OutboxDispatchPayload) -> None:
         ai_outbox_dispatch.send_robust(sender=self.__class__, **payload)
+
 
 # shared instance used by default in DjangoBaseLLMService
 emitter = DjangoSignalEmitter()

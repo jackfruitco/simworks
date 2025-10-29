@@ -40,7 +40,7 @@ from typing import Any, Dict
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai_django.execution.entrypoint import execute as _execute
-
+from simcore_ai.tracing import flatten_context
 
 class ServiceExecutionMixin:
     """Mixin that adds ergonomic execution helpers to Django LLM services.
@@ -61,7 +61,7 @@ class ServiceExecutionMixin:
     def execute(cls, **ctx: Any) -> Any:
         """Run the service immediately (sync) via the global entrypoint.
 
-        This wrapper adds a lightweight span so traces reveal the origin
+        This wrapper adds a lightweight span so traces reveal the namespace
         (service-level dispatch) while the entrypoint performs the detailed
         orchestration and tracing of mode/backend selection.
         """
@@ -74,7 +74,7 @@ class ServiceExecutionMixin:
                     x
                     for x in (
                         ctx.get("namespace"),
-                        ctx.get("bucket") or ctx.get("service_bucket"),
+                        ctx.get("kind") or ctx.get("service_bucket"),
                         ctx.get("name") or ctx.get("service_name"),
                     )
                     if x
@@ -82,7 +82,7 @@ class ServiceExecutionMixin:
                 if any(
                     (
                         ctx.get("namespace"),
-                        ctx.get("bucket") or ctx.get("service_bucket"),
+                        ctx.get("kind") or ctx.get("service_bucket"),
                         ctx.get("name") or ctx.get("service_name"),
                     )
                 )
@@ -91,6 +91,7 @@ class ServiceExecutionMixin:
                 "req.correlation_id": ctx.get("correlation_id")
                 or ctx.get("req_correlation_id")
                 or ctx.get("request_correlation_id"),
+                **flatten_context(ctx),
             },
         ):
             return _execute(cls, **ctx)
@@ -114,6 +115,7 @@ class ServiceExecutionMixin:
             attributes={
                 "service_cls": getattr(cls, "__name__", str(cls)),
                 "overrides.keys": ",".join(sorted(map(str, overrides.keys()))) if overrides else "",
+                **flatten_context(overrides),
             },
         ):
             return _ExecutionCall(cls, dict(overrides or {}))

@@ -130,8 +130,8 @@ else:
 # ---------------------------------------------------------------------------
 # SIMCORE_AI unified configuration (replaces AI_PROVIDERS/AI_CLIENT_DEFAULTS)
 # ---------------------------------------------------------------------------
-SIMCORE_AI_IDENTITY_STRIP_TOKENS = [
-    t for t in re.split(r"[\s,]+", os.getenv("AI_IDENTITY_STRIP_TOKENS", "").strip()) if t
+SIMCORE_IDENTITY_STRIP_TOKENS = [
+    t for t in re.split(r"[\s,]+", os.getenv("SIMCORE_IDENTITY_STRIP_TOKENS", "").strip()) if t
 ]
 
 SIMCORE_AI = {
@@ -183,12 +183,15 @@ SIMCORE_AI = {
     "HEALTHCHECK_ON_START": True,
 }
 
-AI_EXECUTION_BACKEND = os.getenv("AI_EXECUTION_BACKEND", "celery")  # or "immediate"
-
-AI_EXECUTION_BACKENDS = {
-    "DEFAULT_BACKEND": "celery",
-    "DEFAULT_MODE": "async",
-    # "CELERY": {"queue_default": "ai-default"},
+SIMCORE_AI_EXECUTION = {
+    "DEFAULT_BACKEND": os.getenv("AI_EXECUTION_DEFAULT_BACKEND", "celery"),  # "celery" or "immediate"
+    "DEFAULT_MODE": os.getenv("AI_EXECUTION_DEFAULT_MODE", "async"),          # "async" or "sync"
+    "BACKENDS": {
+        "celery": {
+            "queue_default": os.getenv("AI_EXECUTION_DEFAULT_QUEUE", None),
+        },
+        "immediate": {},
+    },
 }
 
 
@@ -220,7 +223,6 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
-AUTH_USER_MODEL = "accounts.CustomUser"
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",

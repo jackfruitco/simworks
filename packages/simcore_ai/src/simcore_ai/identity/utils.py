@@ -1,22 +1,23 @@
 # simcore_ai/identity/utils.py
 """
-Core identity utilities for SimCore AI.
+Core identity utilities for SimCore AI (framework-agnostic).
 
-This module provides framework-agnostic helpers and primitives used for identity derivation
-across AI components. It includes:
+This module provides pure helpers used by the identity *resolver*:
 
 - Name normalization (`snake`)
-- Class-name token stripping (`strip_tokens`)
-- Name derivation from class names (`derive_name_from_class`)
+- Segment-aware token stripping for class names (`strip_tokens`)
 - Module root extraction (`module_root`)
-- Identity derivation (`derive_identity_for_class`)
 - Identity collision resolution (`resolve_collision`)
 - Strict dot-identity parsing (`parse_dot_identity`)
 
 Design:
 - Pure-Python; no Django dependencies.
-- Canonical identity is a tuple3: (origin, bucket, name).
-- Canonical string form is dot-only: "origin.bucket.name".
+- Canonical identity uses the vocabulary `(namespace, kind, name)`.
+- Canonical string form is dot-only: "namespace.kind.name".
+
+Notes:
+- *Derivation* of identities is handled by `simcore_ai.identity.resolution.IdentityResolver`.
+  This module intentionally no longer exposes `derive_identity_for_class`.
 """
 
 from __future__ import annotations
@@ -28,23 +29,34 @@ from collections.abc import Iterable, Callable
 from typing import Optional, Tuple, Union
 
 __all__ = [
-    "DEFAULT_STRIP_TOKENS",
-    "snake",
+    "DEFAULT_IDENTITY_STRIP_TOKENS",
     "strip_tokens",
-    "derive_name_from_class",
+    "snake",
     "module_root",
-    "derive_identity_for_class",
     "resolve_collision",
     "parse_dot_identity",
 ]
 
 logger = logging.getLogger(__name__)
 
-# Default suffix tokens to strip from class names when deriving identity "name"
-DEFAULT_STRIP_TOKENS = {
-    "Codec", "Service", "Prompt", "PromptSection", "Section", "Response",
-    "Generate", "Output", "Schema",
-}
+# Default tokens to strip from class names when deriving a *name*.
+# These are *segments* (e.g., CamelCase parts or underscore/hyphen tokens).
+DEFAULT_IDENTITY_STRIP_TOKENS: tuple[str, ...] = (
+    "Codec",
+    "Service",
+    "Prompt",
+    "PromptSection",
+    "Section",
+    "Response",
+    "Generate",
+    "Generation",
+    "Output",
+    "Schema",
+    "Mixin",
+)
+
+# Backwards-compat alias (deprecated). Remove after all imports are migrated.
+DEFAULT_STRIP_TOKENS = DEFAULT_IDENTITY_STRIP_TOKENS  # pragma: no cover
 
 
 def _env_truthy(value: str | None) -> bool:
@@ -64,63 +76,68 @@ def snake(s: str) -> str:
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
 
 
-def strip_tokens(
-        name: str,
-        extra_tokens: Iterable[str] = (),
-        *,
-        strip_leading: bool = True,
-        strip_trailing: bool = True,
-        repeat: bool = True,
-) -> str:
-    """Remove provided tokens from the *edges* of a class name.
+# ---------------- segment-aware stripping ----------------
 
-    - Strips tokens from the **leading** and/or **trailing** edge(s) (configurable).
-    - If `repeat=True` (default), keeps stripping while any token still matches either edge.
-    - Longest tokens are tried first to avoid partial overlaps.
-    - Trims leftover underscores/spaces/hyphens at the edges.
+_CAMEL_BOUNDARY_RE = re.compile(r"(?<=[0-9a-z])([A-Z])")
+_NON_ALNUM_SEP_RE = re.compile(r"[\W_\-]+")
 
-    Notes:
-        • Matching is case-sensitive. Provide the exact-cased tokens you expect
-          (Django utils already adds app-label variants).
-        • Only edges are stripped — interior occurrences are preserved.
+
+def _split_segments(name: str) -> list[str]:
+    """Split a class name into segments by CamelCase boundaries and `_`/`-`/non-alnum.
+
+    Examples:
+        "CodecStrippedResponse" -> ["Codec", "Stripped", "Response"]
+        "Special_Response-Custom" -> ["Special", "Response", "Custom"]
     """
-    tokens = list(DEFAULT_STRIP_TOKENS) + list(extra_tokens)
-    # Try longest first to avoid partial matches swallowing each other.
-    tokens.sort(key=len, reverse=True)
-
-    out = name or ""
-    if not out or (not strip_leading and not strip_trailing):
-        return out
-
-    def _strip_once(s: str) -> tuple[str, bool]:
-        changed_ = False
-        for tok in tokens:
-            if strip_leading and s.startswith(tok):
-                s = s[len(tok):]
-                changed_ = True
-            if strip_trailing and s.endswith(tok):
-                s = s[:-len(tok)]
-                changed_ = True
-        return s, changed_
-
-    if repeat:
-        while True:
-            out, changed = _strip_once(out)
-            if not changed:
-                break
-    else:
-        out, _ = _strip_once(out)
-
-    # Clean padding artifacts produced by token removal.
-    out = out.strip("_- ").strip()
-    # Guard: if we stripped everything, fall back to the original name.
-    return out or name
+    if not name:
+        return []
+    # Put spaces before CamelCase transitions and replace separators with spaces
+    s = _CAMEL_BOUNDARY_RE.sub(r" \1", name)
+    s = re.sub(r"[\-_]+", " ", s)
+    parts = [p for p in _NON_ALNUM_SEP_RE.split(s) if p]
+    return parts
 
 
-def derive_name_from_class(cls_name: str, extra_tokens: Iterable[str] = ()) -> str:
-    """Derive a normalized name from a class name by stripping common suffix tokens then snake-casing."""
-    return snake(strip_tokens(cls_name, extra_tokens))
+def _normalize_segments_to_name(segments: list[str], *, lower: bool = True) -> str:
+    """Join segments with '-' and normalize repeated separators and edges."""
+    if not segments:
+        return ""
+    s = "-".join(segments)
+    s = re.sub(r"[\._\s\-]+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return s.lower() if lower else s
 
+
+def strip_tokens(name: str, extra_tokens: Iterable[str] = ()) -> str:
+    """Segment-aware token stripping (case-insensitive, prefix/middle/suffix).
+
+    - Splits the input into *segments* using CamelCase boundaries and `_`/`-`/non-alnum
+    - Drops any segment that *fully matches* one of the tokens (case-insensitive)
+    - Re-joins remaining segments with `-` (normalization will collapse further)
+
+    This function is intended for **derived names only**. If a name was explicitly
+    provided via decorator arg or class attribute, callers should *not* apply
+    token stripping, only normalization.
+    """
+    if not name:
+        return ""
+
+    # Build the case-insensitive token set. Include default tokens first, then extras.
+    token_set = {t.casefold() for t in DEFAULT_IDENTITY_STRIP_TOKENS}
+    for t in (extra_tokens or ()):  # type: ignore[union-attr]
+        if isinstance(t, str) and t:
+            token_set.add(t.casefold())
+
+    segs = _split_segments(name)
+    if not segs:
+        return name
+
+    kept = [s for s in segs if s.casefold() not in token_set]
+    # If everything was stripped, fall back to the original name (normalized in resolver)
+    return _normalize_segments_to_name(kept, lower=False) if kept else ""
+
+
+# ---------------- misc helpers ----------------
 
 def module_root(cls_or_module: Union[str, type]) -> Optional[str]:
     """Return the root module name for a class or module string (first segment before a dot)."""
@@ -131,38 +148,6 @@ def module_root(cls_or_module: Union[str, type]) -> Optional[str]:
         if module_name is None:
             return None
     return module_name.split(".", 1)[0] if module_name else None
-
-
-def derive_identity_for_class(
-        cls: type,
-        *,
-        origin: Optional[str] = None,
-        bucket: Optional[str] = None,
-        name: Optional[str] = None,
-        __strip_tokens: Iterable[str] = (),
-        **kwargs,
-) -> Tuple[str, str, str]:
-    """Derive a tuple identity (origin, bucket, name) for a class.
-
-    Rules:
-      - origin: explicit → module_root(cls) → "default"
-      - bucket: explicit → "default"
-      - name:   explicit → strip suffix tokens from class name → snake_case
-
-    All three parts are normalized via `snake()` before returning.
-    """
-    if "strip_tokens" in kwargs and not __strip_tokens:
-        __strip_tokens = kwargs["strip_tokens"]
-
-    o_raw = origin or module_root(cls) or "default"
-    b_raw = bucket or "default"
-    if name is not None:
-        n_raw = name
-    else:
-        cls_name = getattr(cls, "__name__", str(cls))
-        n_raw = derive_name_from_class(cls_name, __strip_tokens)
-
-    return snake(o_raw), snake(b_raw), snake(n_raw)
 
 
 def resolve_collision(
@@ -176,18 +161,18 @@ def resolve_collision(
 
     If `exists(ident_tuple)` is True:
       - In debug mode → raise RuntimeError.
-      - In non-debug → append "-2", "-3", … to the name until unique.
+      - In non-debug → append "-2", "-3", … to the **name** until unique.
 
     Args:
         kind: Human label for error/warn messages ("codec", "service", "prompt", etc.).
-        ident_tuple: (origin, bucket, name)
+        ident_tuple: (namespace, kind, name)
         debug: If None, falls back to SIMCORE_AI_DEBUG env var.
         exists: Callable that returns True if the identity already exists.
     """
     if debug is None:
         debug = _DEBUG_FALLBACK
 
-    origin, bucket, name = ident_tuple
+    namespace, kind_part, name = ident_tuple
     if not exists(ident_tuple):
         return ident_tuple
 
@@ -197,7 +182,7 @@ def resolve_collision(
     # Append name suffixes until unique
     suffix = 2
     while True:
-        candidate = (origin, bucket, f"{name}-{suffix}")
+        candidate = (namespace, kind_part, f"{name}-{suffix}")
         if not exists(candidate):
             logger.warning(
                 "Collision detected for %s identity %s, renaming to %s.",
@@ -208,7 +193,7 @@ def resolve_collision(
 
 
 def parse_dot_identity(key: str) -> Tuple[str, str, str]:
-    """Parse a dot-only identity string into (origin, bucket, name).
+    """Parse a dot-only identity string into (namespace, kind, name).
 
     Strict rules:
       - Exactly 3 non-empty components
@@ -219,8 +204,12 @@ def parse_dot_identity(key: str) -> Tuple[str, str, str]:
         ValueError: if the string is not a valid dot identity.
     """
     if ":" in key:
-        raise ValueError(f"Invalid identity '{key}': colons are not allowed. Use 'origin.bucket.name' only.")
+        raise ValueError(
+            f"Invalid identity '{key}': colons are not allowed. Use 'namespace.kind.name' only."
+        )
     parts = [p.strip() for p in key.split(".")]
     if len(parts) != 3 or not all(parts):
-        raise ValueError(f"Invalid identity '{key}': expected exactly three dot-separated parts.")
+        raise ValueError(
+            f"Invalid identity '{key}': expected exactly three dot-separated parts."
+        )
     return parts[0], parts[1], parts[2]

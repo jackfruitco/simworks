@@ -6,76 +6,185 @@
 
 ## Overview
 
-`simcore_ai_django` ships with a **signal-based emitter** so your app can observe and react to AI activity (requests, responses, failures, streaming) without tightly coupling business logic to the service layer.
+`simcore_ai_django` ships with a **signal-based emitter** so your app can observe
+and react to AI activity (requests, streaming chunks, failures) without tightly
+coupling business logic to the service layer.
 
-The default emitter instance lives at `simcore_ai_django.signals.emitter` and is wired automatically by `DjangoBaseLLMService`.
+This is ideal for:
+- Auditing and telemetry
+- Persisting request/response metadata
+- Realtime UI updates (websockets, SSE)
+- Side effects (notifications, counters, etc.)
 
 ---
 
 ## Signal Emitter
 
+A default emitter instance is provided and used by `DjangoBaseLLMService`:
+
 ```python
 from simcore_ai_django.signals import emitter  # DjangoSignalEmitter
 ```
 
-The emitter exposes methods mirroring signal names:
-
-| Method | Signal | Description |
-|--------|--------|-------------|
-| `request_sent(payload)` | `ai_request_sent` | Fired before an LLM request is dispatched. |
-| `response_received(payload)` | `ai_response_received` | Fired when a provider response arrives. |
-| `response_ready(payload)` | `ai_response_ready` | Fired after codec validation/persistence succeeds. |
-| `response_failed(payload)` | `ai_response_failed` | Fired when request or codec processing fails. |
-| `outbox_dispatch(payload)` | `ai_outbox_dispatch` | Fired when an outbox event is emitted. |
-
-Payloads are `TypedDict`s defined in `simcore_ai_django.signals`.
+Services set this automatically unless overridden:
+```python
+class MyService(DjangoBaseLLMService):
+    pass  # self.emitter is set to the default DjangoSignalEmitter
+```
 
 ---
 
-## Payload Shape
+## Emitted Events
 
-Example payload for `ai_request_sent`:
+### 1) `emit_request(simulation_id, identity, request_dto)`
+
+**When:** Just before sending the LLM request.  
+**Payload:**
 
 ```python
 {
-  "request": {...},           # serialized request DTO
-  "simulation_pk": 42,
-  "origin": "chatlab",
-  "bucket": "standardized_patient",
-  "service_name": "initial",
-  "codec_name": "standardized_patient.initial",
-  "correlation_id": UUID(...),
+  "simulation_id": int,
+  "identity": "namespace.kind.name",
+  "request": {
+    "correlation_id": "uuid4",
+    "namespace": "namespace",
+    "kind": "kind",
+    "name": "name",
+    "codec_identity": "namespace.kind.codec_name",
+    "messages": [ { "role": "developer", "content": [...] }, ... ],
+    "response_format": {...} | None,
+    "response_format_cls": "Qualified.Class.Name" | None,
+    "meta": {...}
+  }
 }
 ```
 
-`response_received` and `response_ready` include `response` dictionaries with provider metadata, usage stats, and persisted identifiers. `response_failed` contains an `error` string and correlation details.
+Useful for logging, auditing, and correlating with subsequent events.
+
+---
+
+### 2) `emit_response(simulation_id, identity, response_dto)`
+
+**When:** After a successful non-streaming completion.  
+**Payload:**
+
+```python
+{
+  "simulation_id": int,
+  "identity": "namespace.kind.name",
+  "response": {
+    "request_correlation_id": "uuid4",
+    "codec_identity": "namespace.kind.codec_name",
+    "namespace": "namespace",
+    "kind": "kind",
+    "name": "name",
+    "content": [...],
+    "usage": {...} | None,
+    "provider": "openai" | "anthropic" | ...,
+    "metadata": {...}
+  }
+}
+```
+
+Use this to persist final AI output, run post-processing, or update UI.
+
+---
+
+### 3) `emit_failure(simulation_id, identity, correlation_id, error)`
+
+**When:** After an exception (request/stream).  
+**Payload:**
+
+```python
+{
+  "simulation_id": int,
+  "identity": "namespace.kind.name",
+  "correlation_id": "uuid4",
+  "error": "trace or message"
+}
+```
+
+Best used to capture errors, retry counts, and notify monitoring systems.
+
+---
+
+### 4) `emit_stream_chunk(simulation_id, identity, chunk_dto)`
+
+**When:** During streaming responses (tokens/segments).  
+**Payload:**
+
+```python
+{
+  "simulation_id": int,
+  "identity": "namespace.kind.name",
+  "chunk": {
+    "request_correlation_id": "uuid4",
+    "delta": "text or structured piece",
+    "index": 42,     # optional order
+    "done": False    # if the provider marks a final partial
+  }
+}
+```
+
+You can broadcast these events over websockets to update the UI in real-time.
+
+---
+
+### 5) `emit_stream_complete(simulation_id, identity, correlation_id)`
+
+**When:** After a stream ends gracefully.  
+**Payload:**
+
+```python
+{
+  "simulation_id": int,
+  "identity": "namespace.kind.name",
+  "correlation_id": "uuid4"
+}
+```
+
+Use this to close UI streams or finalize partial persistence.
 
 ---
 
 ## Connecting Receivers
 
-Register receivers in `apps.py.ready()` or another import-on-startup module:
+Add receivers in any `apps.py` `ready()` or module import path:
 
 ```python
 # myapp/ai/signals.py
 from django.dispatch import receiver
 from simcore_ai_django.signals import (
-    ai_request_sent,
-    ai_response_received,
-    ai_response_ready,
-    ai_response_failed,
+    request_signal,
+    response_signal,
+    failure_signal,
+    stream_chunk_signal,
+    stream_complete_signal,
 )
 
-@receiver(ai_request_sent)
+@receiver(request_signal)
 def on_ai_request(sender, **payload):
-    print("AI request", payload.get("origin"), payload.get("request"))
+    # sender is the service class
+    print("AI request:", payload["identity"], payload.get("request"))
 
-@receiver(ai_response_ready)
-def on_ai_response_ready(sender, **payload):
-    print("AI response ready", payload.get("response"))
+@receiver(response_signal)
+def on_ai_response(sender, **payload):
+    print("AI response:", payload["identity"], payload.get("response"))
+
+@receiver(failure_signal)
+def on_ai_failure(sender, **payload):
+    print("AI failure:", payload["identity"], payload.get("error"))
+
+@receiver(stream_chunk_signal)
+def on_ai_stream_chunk(sender, **payload):
+    print("AI chunk:", payload["identity"], payload.get("chunk"))
+
+@receiver(stream_complete_signal)
+def on_ai_stream_complete(sender, **payload):
+    print("AI stream complete:", payload["identity"], payload.get("correlation_id"))
 ```
 
-Wire the module in your app config:
+Wire them up in `apps.py`:
 
 ```python
 class MyAppConfig(AppConfig):
@@ -84,36 +193,57 @@ class MyAppConfig(AppConfig):
         import myapp.ai.signals  # noqa: F401
 ```
 
-Signals are sent with `send_robust`, so receiver exceptions are isolated and logged.
-
 ---
 
 ## Correlation IDs & Ordering
 
-- Every request carries a **correlation_id** (UUID) stored on request/response payloads.
-- Streaming flows emit `ai_response_received` chunks followed by `ai_response_ready` when final persistence completes.
-- Use the correlation ID to tie together request, streaming chunks, and final persistence events.
+- Every request has a **correlation_id** (UUID)
+- The same ID is propagated into responses and stream chunks
+- For streaming, your receiver may add an **index** if the provider does not supply ordering
+
+This makes it safe to join chunks and completions later.
 
 ---
 
-## Custom Emitters
+## Idempotency & Retries
 
-You can override the emitter on a per-service basis:
+Your receivers might be called more than once in error scenarios.  
+Use `request_correlation_id` + identity to dedupe persisted records.
+
+Example pattern:
 
 ```python
-class MyService(DjangoBaseLLMService):
-    emitter = MyCustomEmitter()
+# Guard by correlation_id
+AIResponse.objects.get_or_create(
+    correlation_id=payload["response"]["request_correlation_id"],
+    defaults={...},
+)
 ```
 
-Custom emitters should implement the same methods as `DjangoSignalEmitter` (`request_sent`, `response_received`, etc.).
+---
+
+## Security Tips
+
+- Avoid logging **full** prompts or responses in production.
+- Scrub PII before persistence.
+- Use settings to disable streaming when necessary for sensitive domains.
+
+---
+
+## Troubleshooting
+
+- Signals not firing? Ensure the module that registers receivers is **imported** on startup (`apps.py:ready()`).
+- Missing identity fields? Confirm your classes derive identity via mixins or class attributes.
+- Out-of-order chunks? Buffer by `request_correlation_id` and index before assembling.
 
 ---
 
 ## Summary
 
-- Five Django signals expose the full service lifecycle.
-- Payloads are structured dictionaries (TypedDict contracts) for type safety.
-- Replace the emitter to integrate with websockets, message buses, or other systems.
+✅ Observe every step of the AI request lifecycle  
+✅ Integrates with Django signals seamlessly  
+✅ Correlate requests, streams, responses, and failures  
+✅ Ideal for telemetry, persistence, and realtime UX
 
 ---
 
