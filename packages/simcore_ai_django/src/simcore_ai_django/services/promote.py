@@ -63,8 +63,7 @@ def promote_request_for_service(
         service: Any,
         req: LLMRequest,
         *,
-        simulation_pk: int | UUID | None = None,
-        request_db_pk: int | UUID | None = None,
+        context: dict | None = None,
 ) -> DjangoLLMRequest:
     """
     Promote a core LLMRequest into a DjangoLLMRequest, enriched with identity and metadata
@@ -79,8 +78,7 @@ def promote_request_for_service(
     Args:
         service: The DjangoBaseLLMService (or compatible) instance.
         req: Core LLMRequest to promote.
-        simulation_pk: Optional Simulation primary key (int or UUID).
-        request_db_pk: Optional DB PK for the request row (int or UUID).
+        context: Optional extra context to carry through the promotion pipeline.
 
     Returns:
         DjangoLLMRequest populated with rich `messages_rich` and metadata.
@@ -101,8 +99,7 @@ def promote_request_for_service(
                 "svc.provider": prov,
                 "svc.client": cli,
                 "req.correlation_id": getattr(req, "correlation_id", None),
-                "db.simulation_pk": str(simulation_pk) if simulation_pk is not None else None,
-                "db.request_pk": str(request_db_pk) if request_db_pk is not None else None,
+                **service.flatten_context(),
             },
     ):
         # Build the base Django DTO, letting the DTO promotion helper enrich messages_rich.
@@ -113,8 +110,7 @@ def promote_request_for_service(
             name=nm,
             provider_name=prov,
             client_name=cli,
-            simulation_pk=simulation_pk,
-            db_pk=request_db_pk,
+            context=context,
         )
 
         # Promote messages into rich overlay; also propagate request correlation id to sub-objects.
@@ -143,7 +139,7 @@ def promote_response_for_service(
         service: Any,
         resp: LLMResponse,
         *,
-        simulation_pk: int | UUID | None = None,
+        object_db_pk: int | UUID | None = None,
         request_db_pk: int | UUID | None = None,
         response_db_pk: int | UUID | None = None,
 ) -> DjangoLLMResponse:
@@ -160,7 +156,7 @@ def promote_response_for_service(
     Args:
         service: The DjangoBaseLLMService (or compatible) instance.
         resp: Core LLMResponse to promote.
-        simulation_pk: Optional Simulation primary key (int or UUID).
+        object_db_pk: Optional Simulation primary key (int or UUID).
         request_db_pk: Optional DB PK for the originating request (int or UUID).
         response_db_pk: Optional DB PK for this response (int or UUID).
 
@@ -184,9 +180,10 @@ def promote_response_for_service(
                 "svc.client": cli,
                 "resp.correlation_id": getattr(resp, "correlation_id", None),
                 "resp.request_correlation_id": getattr(resp, "request_correlation_id", None),
-                "db.simulation_pk": str(simulation_pk) if simulation_pk is not None else None,
+                "db.object_db_pk": str(object_db_pk) if object_db_pk is not None else None,
                 "db.request_pk": str(request_db_pk) if request_db_pk is not None else None,
                 "db.response_pk": str(response_db_pk) if response_db_pk is not None else None,
+                **service.flatten_context(),
             },
     ):
         dj = DjangoLLMResponse(
@@ -198,7 +195,7 @@ def promote_response_for_service(
             provider_name=prov,
             client_name=cli,
             received_at=getattr(resp, "received_at", None),
-            simulation_pk=simulation_pk,
+            object_db_pk=object_db_pk,
             request_db_pk=request_db_pk,
             db_pk=response_db_pk,
         )

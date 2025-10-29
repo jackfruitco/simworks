@@ -292,6 +292,7 @@ def execute(
                     "from": "sync",
                     "to": "async",
                     "service_cls": getattr(service_cls, "__name__", str(service_cls)),
+                    **span_attrs_from_ctx(ctx),
                 },
         ):
             resolved_mode = "async"

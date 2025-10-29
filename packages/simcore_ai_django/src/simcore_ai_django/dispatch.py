@@ -26,17 +26,19 @@ def _ident_label(namespace: Optional[str], kind: Optional[str], name: Optional[s
 
 
 def emit_request(
-    *,
-    request_dto,
-    namespace: Optional[str] = None,
-    kind: Optional[str] = None,
-    name: Optional[str] = None,
-    client_name: Optional[str] = None,
-    provider_name: Optional[str] = None,
-    simulation_pk: Optional[int] = None,
-    correlation_id: Optional[UUID] = None,
-    codec_name: Optional[str] = None,
-    request_audit_pk: Optional[int] = None,
+        *,
+        request_dto,
+        namespace: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        simulation_pk: Optional[int] = None,
+        object_db_pk: Optional[int | UUID] = None,
+        context: Optional[dict] = None,
+        correlation_id: Optional[UUID] = None,
+        codec_name: Optional[str] = None,
+        request_audit_pk: Optional[int] = None,
 ) -> None:
     """Emit "request sent" with canonical identity fields.
 
@@ -51,6 +53,8 @@ def emit_request(
         client_name=client_name,
         provider_name=provider_name,
         simulation_pk=simulation_pk,
+        object_db_pk=object_db_pk if object_db_pk is not None else simulation_pk,
+        context=context,
         correlation_id=correlation_id,
         codec_name=codec_name,
     )
@@ -65,18 +69,20 @@ def emit_request(
 
 
 def emit_response_received(
-    *,
-    response_dto,
-    namespace: Optional[str] = None,
-    kind: Optional[str] = None,
-    name: Optional[str] = None,
-    client_name: Optional[str] = None,
-    provider_name: Optional[str] = None,
-    simulation_pk: Optional[int] = None,
-    correlation_id: Optional[UUID] = None,
-    codec_name: Optional[str] = None,
-    response_audit_pk: Optional[int] = None,
-    request_audit_pk: Optional[int] = None,
+        *,
+        response_dto,
+        namespace: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        simulation_pk: Optional[int] = None,
+        object_db_pk: Optional[int | UUID] = None,
+        context: Optional[dict] = None,
+        correlation_id: Optional[UUID] = None,
+        codec_name: Optional[str] = None,
+        response_audit_pk: Optional[int] = None,
+        request_audit_pk: Optional[int] = None,
 ) -> None:
     """Emit "response received" with canonical identity fields."""
     payload = dict(
@@ -89,6 +95,8 @@ def emit_response_received(
         client_name=client_name,
         provider_name=provider_name,
         simulation_pk=simulation_pk,
+        object_db_pk=object_db_pk if object_db_pk is not None else simulation_pk,
+        context=context,
         correlation_id=correlation_id,
         codec_name=codec_name,
     )
@@ -103,18 +111,20 @@ def emit_response_received(
 
 
 def emit_response_ready(
-    *,
-    response_dto,
-    namespace: Optional[str] = None,
-    kind: Optional[str] = None,
-    name: Optional[str] = None,
-    client_name: Optional[str] = None,
-    provider_name: Optional[str] = None,
-    simulation_pk: Optional[int] = None,
-    correlation_id: Optional[UUID] = None,
-    codec_name: Optional[str] = None,
-    response_audit_pk: Optional[int] = None,
-    request_audit_pk: Optional[int] = None,
+        *,
+        response_dto,
+        namespace: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        simulation_pk: Optional[int] = None,
+        object_db_pk: Optional[int | UUID] = None,
+        context: Optional[dict] = None,
+        correlation_id: Optional[UUID] = None,
+        codec_name: Optional[str] = None,
+        response_audit_pk: Optional[int] = None,
+        request_audit_pk: Optional[int] = None,
 ) -> None:
     """Emit "response ready" with canonical identity fields."""
     payload = dict(
@@ -127,6 +137,8 @@ def emit_response_ready(
         client_name=client_name,
         provider_name=provider_name,
         simulation_pk=simulation_pk,
+        object_db_pk=object_db_pk if object_db_pk is not None else simulation_pk,
+        context=context,
         correlation_id=correlation_id,
         codec_name=codec_name,
     )
@@ -141,16 +153,18 @@ def emit_response_ready(
 
 
 def emit_failure(
-    *,
-    error: str,
-    namespace: Optional[str] = None,
-    kind: Optional[str] = None,
-    name: Optional[str] = None,
-    client_name: Optional[str] = None,
-    provider_name: Optional[str] = None,
-    simulation_pk: Optional[int] = None,
-    correlation_id: Optional[UUID] = None,
-    request_audit_pk: Optional[int] = None,
+        *,
+        error: str,
+        namespace: Optional[str] = None,
+        kind: Optional[str] = None,
+        name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        provider_name: Optional[str] = None,
+        simulation_pk: Optional[int] = None,
+        object_db_pk: Optional[int | UUID] = None,
+        context: Optional[dict] = None,
+        correlation_id: Optional[UUID] = None,
+        request_audit_pk: Optional[int] = None,
 ) -> None:
     """Emit "response failed" with canonical identity fields."""
     payload = dict(
@@ -162,6 +176,8 @@ def emit_failure(
         client_name=client_name,
         provider_name=provider_name,
         simulation_pk=simulation_pk,
+        object_db_pk=object_db_pk if object_db_pk is not None else simulation_pk,
+        context=context,
         correlation_id=correlation_id,
     )
     logger.debug(

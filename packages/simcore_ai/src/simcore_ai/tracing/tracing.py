@@ -29,10 +29,31 @@ def get_tracer(name: str | None = None) -> Tracer:
 def _apply_attributes(span: Span, attrs: Mapping[str, Any] | None) -> None:
     if not attrs:
         return
+    # OpenTelemetry allows only: bool, str, bytes, int, float, or sequences of those.
+    ALLOWED = (bool, str, bytes, int, float)
     for k, v in attrs.items():
         try:
-            span.set_attribute(k, v)
-        except Exception:  # defensive: never break tracing on attr errors
+            if v is None:
+                # Skip Nones entirely to avoid warnings like
+                # "Invalid type NoneType for attribute ..."
+                continue
+            # Accept plain scalars of allowed types
+            if isinstance(v, ALLOWED):
+                span.set_attribute(k, v)
+                continue
+            # Accept sequences of allowed scalars (but not str/bytes themselves)
+            from collections.abc import Sequence
+            if isinstance(v, Sequence) and not isinstance(v, (str, bytes)):
+                cleaned = [x for x in v if isinstance(x, ALLOWED)]
+                if cleaned:
+                    span.set_attribute(k, cleaned)
+                # If nothing valid remains, skip silently
+                continue
+            # Unsupported type: skip silently
+            continue
+        except Exception:
+            # Defensive: never let tracing raise or log noisy errors here.
+            # Use DEBUG so we can inspect locally without polluting prod logs.
             logger.debug("trace.attr.set_failed", extra={"key": k}, exc_info=True)
 
 
