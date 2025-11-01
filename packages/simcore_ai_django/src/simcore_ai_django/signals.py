@@ -4,7 +4,7 @@
 Provides typed payload contracts (TypedDict) for clarity and forwards-compatibility.
 
 This module is context‑first and domain‑agnostic:
-- prefer generic `object_db_pk` (kept `simulation_pk` for back‑compat)
+- prefer generic `object_db_pk`
 - include optional `context` dict on all payloads
 """
 
@@ -40,7 +40,7 @@ class ResponseReceivedPayload(TypedDict, total=False):
     service_name: Optional[str]
     client_name: Optional[str]
     provider_name: Optional[str]
-    # Optional Generic DB linkage
+    # Optional generic DB linkage
     object_db_pk: Optional[Union[int, UUID]]
     # Correlation / codec
     correlation_id: Optional[UUID]
@@ -60,7 +60,6 @@ class ResponseReadyPayload(TypedDict, total=False):
     provider_name: Optional[str]
     # Generic DB linkage (preferred) + legacy name for back-compat
     object_db_pk: Optional[Union[int, UUID]]
-    simulation_pk: Optional[int]
     # Correlation / codec
     correlation_id: Optional[UUID]
     codec_name: Optional[str]
@@ -78,7 +77,6 @@ class ResponseFailedPayload(TypedDict, total=False):
     provider_name: Optional[str]
     # Generic DB linkage (preferred) + legacy name for back-compat
     object_db_pk: Optional[Union[int, UUID]]
-    simulation_pk: Optional[int]
     # Correlation
     correlation_id: Optional[UUID]
     # Context-first
@@ -90,7 +88,6 @@ class OutboxDispatchPayload(TypedDict, total=False):
     namespace: Optional[str]
     # Generic DB linkage (preferred) + legacy name for back-compat
     object_db_pk: Optional[Union[int, UUID]]
-    simulation_pk: Optional[int]
     # Context-first
     context: Optional[Dict[str, Any]]
 

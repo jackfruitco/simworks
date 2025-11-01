@@ -191,11 +191,13 @@ def _execute_now(
       the Django runner which builds the request via `BaseLLMService.build_request(...)`.
     - No identity/codec resolution occurs here; that happens inside the runner/services.
     """
-    with service_span_sync(
-            "exec.entry.execute",
-            attributes={"backend": backend.__class__.__name__.lower(),
-                        "service_cls": getattr(service_cls, "__name__", str(service_cls)), **span_attrs_from_ctx(ctx)},
-    ):
+    attrs = {
+        "backend": backend.__class__.__name__.lower(),
+        "service_cls": getattr(service_cls, "__name__", str(service_cls)),
+        **span_attrs_from_ctx(ctx),
+    }
+    attrs = {k: v for k, v in attrs.items() if v is not None}
+    with service_span_sync("exec.entry.execute", attributes=attrs):
         return backend.execute(service_cls=service_cls, kwargs=ctx)
 
 
@@ -227,14 +229,18 @@ def _enqueue(
         "priority": priority,
         **span_attrs_from_ctx(ctx),
     }
-    with service_span_sync("exec.entry.enqueue", attributes=attrs):
+    attrs = {k: v for k, v in attrs.items() if v is not None}
+    with service_span_sync("exec.entry.enqueue", attributes=attrs) as span:
         # Respect backend capabilities for priority; annotate trace when ignored.
         supports_priority = getattr(backend, "supports_priority", False)
         if not supports_priority and priority is not None:
             # mark unsupported in trace; ignore priority
-            attrs["exec.priority.unsupported"] = True
+            if span is not None:
+                try:
+                    span.set_attribute("exec.priority.unsupported", True)
+                except Exception:
+                    pass
             priority = None
-        # Current concrete backends don't accept `priority`; ignore if unsupported.
         return backend.enqueue(service_cls=service_cls, kwargs=ctx, delay_s=delay_s, queue=queue)
 
 
@@ -285,31 +291,29 @@ def execute(
 
     # Enforce service-level requirement
     if resolved_mode == "sync" and getattr(service_cls, "require_enqueue", False):
-        with service_span_sync(
-                "exec.entry.override",
-                attributes={
-                    "reason": "service.require_enqueue",
-                    "from": "sync",
-                    "to": "async",
-                    "service_cls": getattr(service_cls, "__name__", str(service_cls)),
-                    **span_attrs_from_ctx(ctx),
-                },
-        ):
+        _ov_attrs = {
+            "reason": "service.require_enqueue",
+            "from": "sync",
+            "to": "async",
+            "service_cls": getattr(service_cls, "__name__", str(service_cls)),
+            **span_attrs_from_ctx(ctx),
+        }
+        _ov_attrs = {k: v for k, v in _ov_attrs.items() if v is not None}
+        with service_span_sync("exec.entry.override", attributes=_ov_attrs):
             resolved_mode = "async"
 
     # Top-level trace
-    with service_span_sync(
-            "exec.entry",
-            attributes={
-                "resolved.mode": resolved_mode,
-                "resolved.backend": resolved_backend_name,
-                "queue_name": resolved_queue_name,
-                "run_after": resolved_run_after,
-                "priority": resolved_priority,
-                **span_attrs_from_ctx(ctx),
-                "service_cls": getattr(service_cls, "__name__", str(service_cls)),
-            },
-    ):
+    _top_attrs = {
+        "resolved.mode": resolved_mode,
+        "resolved.backend": resolved_backend_name,
+        "queue_name": resolved_queue_name,
+        "run_after": resolved_run_after,
+        "priority": resolved_priority,
+        **span_attrs_from_ctx(ctx),
+        "service_cls": getattr(service_cls, "__name__", str(service_cls)),
+    }
+    _top_attrs = {k: v for k, v in _top_attrs.items() if v is not None}
+    with service_span_sync("exec.entry", attributes=_top_attrs):
         if resolved_mode == "async":
             return _enqueue(
                 backend=backend_inst,

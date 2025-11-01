@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Union, Tuple, Type
+from typing import Any, Optional, Union, Tuple, Type, Awaitable, cast
 
 from simcore_ai.identity.utils import parse_dot_identity
 
@@ -10,8 +10,11 @@ try:
 except Exception:  # pragma: no cover - optional import
     Identity = object  # type: ignore[misc,assignment]
 
+import inspect
+
 from simcore_ai.types.dtos import LLMResponse
-from simcore_ai.tracing import service_span_sync
+from simcore_ai.tracing import service_span_sync, flatten_context
+from asgiref.sync import sync_to_async
 
 from .base import DjangoBaseLLMCodec
 from .registry import CodecRegistry as DjangoCodecRegistry
@@ -42,7 +45,7 @@ def _identity_like_to_tuple3(obj: Any) -> Optional[Tuple[str, str, str]]:
     return ns, kd, nm
 
 
-def execute_codec(
+async def execute_codec(
         codec: Union[
             Type[DjangoBaseLLMCodec],
             DjangoBaseLLMCodec,
@@ -55,26 +58,10 @@ def execute_codec(
         *,
         context: Optional[dict[str, Any]] = None,
 ) -> Any:
-    """Execute a Django-aware codec end-to-end (validate → restructure → persist → emit).
+    """Async entrypoint to execute a Django-aware codec (validate → restructure → persist → emit).
 
-    Accepted `codec` inputs:
-      - A **codec class** (subclass of DjangoBaseLLMCodec) → will be instantiated
-      - A **codec instance** (DjangoBaseLLMCodec)
-      - A **tuple3 identity**: (namespace, kind, name)
-      - An **identity string**: "ns.kind.name" (dot-delimited; no colons)
-      - An **Identity** object (namespace/kind/name attributes)
-      - **None** → resolve from `response.codec_identity`, or fall back to the response's service identity
-
-    Resolution order:
-      1) class → instantiate
-      2) instance → use directly
-      3) tuple3 → registry lookup
-      4) identity string / Identity → registry lookup
-      5) None → resolve via response.codec_identity; if missing, use (resp.namespace, resp.kind|default, resp.name)
-
-    Raises:
-      - CodecNotFoundError if resolution fails
-      - TypeError if `codec` is of an unexpected type
+    This function is **async-first**. If the resolved codec's `handle_response` is sync,
+    it will be offloaded via `sync_to_async` automatically.
     """
     ctx = context or {}
 
@@ -85,14 +72,17 @@ def execute_codec(
     ) or None
     resp_codec_identity = getattr(response, "codec_identity", None)
 
+    _attrs = {
+        "ai.identity.service": service_identity,
+        "ai.identity.codec": resp_codec_identity,
+        "resp.correlation_id": getattr(response, "correlation_id", None),
+        "resp.request_correlation_id": getattr(response, "request_correlation_id", None),
+        **flatten_context(ctx),
+    }
+    _attrs = {k: v for k, v in _attrs.items() if v is not None}
     with service_span_sync(
             "ai.codec.execute",
-            attributes={
-                "ai.identity.service": service_identity,
-                "ai.identity.codec": resp_codec_identity,
-                "resp.correlation_id": getattr(response, "correlation_id", None),
-                "resp.request_correlation_id": getattr(response, "request_correlation_id", None),
-            },
+            attributes=_attrs,
     ):
         resolved: Union[DjangoBaseLLMCodec, Type[DjangoBaseLLMCodec], None] = None
 
@@ -181,7 +171,11 @@ def execute_codec(
                     ) or resp_codec_identity,
                 },
         ):
-            return instance.handle_response(response, context=ctx)
+            # Execute the codec's handler (async-first; sync is offloaded)
+            handler = getattr(instance, "handle_response")
+            if inspect.iscoroutinefunction(handler):
+                return await cast(Awaitable[Any], handler(response, context=ctx))
+            return await sync_to_async(handler)(response, context=ctx)
 
 
 __all__ = ["execute_codec"]

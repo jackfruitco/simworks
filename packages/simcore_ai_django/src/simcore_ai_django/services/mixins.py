@@ -36,11 +36,12 @@ Implementation notes
   and trace context propagation) is handled by the entrypoint.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai_django.execution.entrypoint import execute as _execute
 from simcore_ai.tracing import flatten_context
+
 
 class ServiceExecutionMixin:
     """Mixin that adds ergonomic execution helpers to Django LLM services.
@@ -65,34 +66,31 @@ class ServiceExecutionMixin:
         (service-level dispatch) while the entrypoint performs the detailed
         orchestration and tracing of mode/backend selection.
         """
+        # Build span attrs and drop None to avoid OTel NoneType warnings
+        _identity = ".".join(
+            x
+            for x in (
+                ctx.get("namespace"),
+                ctx.get("kind") or ctx.get("service_bucket"),
+                ctx.get("name") or ctx.get("service_name"),
+            )
+            if x
+        ) or None
+
+        attrs = {
+            "service_cls": getattr(cls, "__name__", str(cls)),
+            "ai.identity.service": _identity,
+            "ai.identity.codec": ctx.get("codec_identity"),
+            "req.correlation_id": ctx.get("correlation_id")
+                                  or ctx.get("req_correlation_id")
+                                  or ctx.get("request_correlation_id"),
+            **flatten_context(ctx),
+        }
+        attrs = {k: v for k, v in attrs.items() if v is not None}
+
         with service_span_sync(
-            "exec.mux.execute",
-            attributes={
-                "service_cls": getattr(cls, "__name__", str(cls)),
-                # include identity/correlation if provided by caller
-                "ai.identity.service": ".".join(
-                    x
-                    for x in (
-                        ctx.get("namespace"),
-                        ctx.get("kind") or ctx.get("service_bucket"),
-                        ctx.get("name") or ctx.get("service_name"),
-                    )
-                    if x
-                )
-                if any(
-                    (
-                        ctx.get("namespace"),
-                        ctx.get("kind") or ctx.get("service_bucket"),
-                        ctx.get("name") or ctx.get("service_name"),
-                    )
-                )
-                else None,
-                "ai.identity.codec": ctx.get("codec_identity"),
-                "req.correlation_id": ctx.get("correlation_id")
-                or ctx.get("req_correlation_id")
-                or ctx.get("request_correlation_id"),
-                **flatten_context(ctx),
-            },
+                "exec.mux.execute",
+                attributes=attrs,
         ):
             return _execute(cls, **ctx)
 
@@ -109,13 +107,17 @@ class ServiceExecutionMixin:
         """
         from simcore_ai_django.execution.entrypoint import _ExecutionCall  # lazy import to avoid cycles
 
+        keys = ",".join(sorted(map(str, overrides.keys()))) if overrides else ""
+        uattrs = {
+            "service_cls": getattr(cls, "__name__", str(cls)),
+            "overrides.keys": keys,
+            **flatten_context(overrides),
+        }
+        uattrs = {k: v for k, v in uattrs.items() if v is not None}
+
         # Tiny span so traces show builder creation in service context
         with service_span_sync(
-            "exec.mux.using",
-            attributes={
-                "service_cls": getattr(cls, "__name__", str(cls)),
-                "overrides.keys": ",".join(sorted(map(str, overrides.keys()))) if overrides else "",
-                **flatten_context(overrides),
-            },
+                "exec.mux.using",
+                attributes=uattrs,
         ):
             return _ExecutionCall(cls, dict(overrides or {}))

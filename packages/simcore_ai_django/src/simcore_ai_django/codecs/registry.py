@@ -36,7 +36,7 @@ codecs.
 from dataclasses import dataclass
 import logging
 import threading
-from typing import Any, Iterable, Optional, Tuple, Type
+from typing import Any, Iterable, Optional, Tuple, Type, List
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db import transaction
@@ -172,7 +172,7 @@ class CodecRegistry:
             return tuple(self._collisions)
 
     # ---- batch persistence (async-first) ----
-    async def apersists_batch(self, items: Iterable[Any], *, ctx: dict | None = None) -> list[Any]:
+    async def apersists_batch(self, items: Iterable[Any], *, ctx: dict | None = None) -> List[Any]:
         """
         Persist a batch of items in a single transaction (call-order semantics).
 
@@ -184,29 +184,29 @@ class CodecRegistry:
         ctx = ctx or {}
         saved: list[Any] = []
 
-        def _read_identity(it: Any) -> Tuple[str, str, str]:
-            ident = getattr(it, "identity", None)
+        def _read_identity(it_: Any) -> Tuple[str, str, str]:
+            ident = getattr(it_, "identity", None)
             if isinstance(ident, tuple) and len(ident) == 3:
                 return ident  # type: ignore[return-value]
-            if callable(getattr(it, "identity_tuple", None)):
-                t = it.identity_tuple()  # type: ignore[attr-defined]
+            if callable(getattr(it_, "identity_tuple", None)):
+                t: tuple[str, str, str] = it_.identity_tuple()  # type: ignore[attr-defined]
                 if isinstance(t, tuple) and len(t) == 3:
                     return t
             raise IdentityValidationError(
-                f"Item {it!r} does not expose an identity tuple"
+                f"Item {it_!r} does not expose an identity tuple"
             )
 
-        async def _persist_one(it: Any) -> Any:
-            key = self._validate_identity(_read_identity(it))
+        async def _persist_one(it_: Any) -> Any:
+            key = self._validate_identity(_read_identity(it_))
             cls = self.resolve(key)
             if cls is None:
                 raise LookupError(f"No codec registered for identity {key}")
             codec = cls()
             if hasattr(codec, "apersist") and callable(codec.apersist):  # type: ignore[attr-defined]
-                return await codec.apersist(it, ctx=ctx)  # type: ignore[attr-defined]
+                return await codec.apersist(it_, ctx=ctx)  # type: ignore[attr-defined]
             # Fallback to sync persist under thread-sensitive wrapper
             if hasattr(codec, "persist") and callable(codec.persist):  # type: ignore[attr-defined]
-                return await sync_to_async(codec.persist, thread_sensitive=True)(it,
+                return await sync_to_async(codec.persist, thread_sensitive=True)(it_,
                                                                                  ctx=ctx)  # type: ignore[attr-defined]
             raise AttributeError(f"Codec {cls} has neither 'apersist' nor 'persist'")
 
@@ -224,7 +224,7 @@ class CodecRegistry:
                 saved.append(res)
         return saved
 
-    def persist_batch(self, items: Iterable[Any], *, ctx: dict | None = None) -> list[Any]:
+    def persist_batch(self, items: Iterable[Any], *, ctx: dict | None = None) -> List[Any]:
         """Sync adapter for `apersists_batch` using `async_to_sync`."""
         return async_to_sync(self.apersists_batch)(items, ctx=ctx)
 

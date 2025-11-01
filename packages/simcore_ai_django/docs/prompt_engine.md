@@ -41,8 +41,8 @@ prompt = await PromptEngine.abuild_from(
 
 ```python
 engine = PromptEngine()
-engine.add(PatientInitialSection)
-engine.add(PatientFollowupSection(weight=50))
+engine._add_section(PatientInitialSection)
+engine._add_section(PatientFollowupSection(weight=50))
 prompt = await engine.abuild(simulation=my_sim, service=my_service)
 ```
 

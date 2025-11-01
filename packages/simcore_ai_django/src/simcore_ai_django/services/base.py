@@ -1,7 +1,7 @@
-# packages/simcore_ai_django/src/simcore_ai_django/services/base.py
+# simcore_ai_django/services/base.py
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, Awaitable
 
 from simcore_ai.identity.utils import parse_dot_identity
 from simcore_ai.services.base import BaseLLMService
@@ -24,8 +24,11 @@ __all__ = [
     "DjangoExecutableLLMService",
 ]
 
+RenderSection = Callable[[str, str, dict], Awaitable[str]]
+
 
 class DjangoBaseLLMService(BaseLLMService):
+    # NOTE: Uses BaseLLMService.get_or_build_prompt for prompt assembly.
     """
     Django-aware convenience subclass of BaseLLMService.
 
@@ -44,6 +47,8 @@ class DjangoBaseLLMService(BaseLLMService):
       - `_build_request_instructions(prompt, **ctx) -> list[LLMRequestMessage]` (developer/instruction parts)
       - `_build_request_user_input(prompt, **ctx) -> list[LLMRequestMessage]` (user input parts)
       - `_build_request_extras(prompt, **ctx) -> list[LLMRequestMessage]` (optional additional messages)
+
+    Prompt assembly is delegated to BaseLLMService.get_or_build_prompt(), which uses the PromptEngine and (optional) PromptPlan.
 
     Most services should **not** override `build_request` directly. Prefer overriding the hook methods above;
     `DjangoBaseLLMService` inherits the core behavior unchanged and simply provides Django-friendly defaults.
@@ -100,6 +105,8 @@ class DjangoBaseLLMService(BaseLLMService):
     `.using(...).enqueue/execute(...)` helpers out of the box.
     """
 
+    render_section: RenderSection | None = None
+
     # --- Execution configuration knobs (service-level defaults) ---
     execution_mode: str | None = None  # "sync" | "async"
     execution_backend: str | None = None  # "immediate" | "celery" | "django_tasks" (future)
@@ -107,7 +114,7 @@ class DjangoBaseLLMService(BaseLLMService):
     execution_run_after: float | None = None  # seconds (or set at call-site)
     require_enqueue: bool = False  # hard rule: force async if True
 
-    def __init__(self, context: dict | None = None, **kwargs):
+    def __init__(self, context: dict[str, Any] | None = None, **kwargs):
         """Constructor that passes context through without domain coupling.
 
         This layer is intentionally generic; it does not inspect domain-specific
@@ -121,7 +128,10 @@ class DjangoBaseLLMService(BaseLLMService):
         # Inject Django defaults only if not provided explicitly
         if self.emitter is None:
             self.emitter = _default_emitter
-        if self.render_section is None:
+
+        # Check if a custom renderer is provided (e.g. render from template or reqest)
+        renderer = getattr(self, "render_section", None)
+        if renderer is None:
             self.render_section = _default_renderer
 
         # Execution defaults (service → settings → hardcoded)
@@ -298,23 +308,39 @@ class DjangoBaseLLMService(BaseLLMService):
             context=(context or self.context or {}),
         )
 
-    async def on_success(self, simulation, resp) -> None:
-        """Optional hook for subclasses to implement side-effects after success (no-op by default).
+    async def on_success_ctx(self, *, context: dict[str, Any], resp) -> None:
+        """Context-first success hook (preferred).
 
-        Note: Upstream code is context-first. Implementations are encouraged to
-        accept a context dict (or read `self.context`) rather than relying on domain
-        objects. Signature retained for backward compatibility.
+        Override this in subclasses instead of `on_success`. The default
+        implementation is a no-op.
         """
-        ...
+        return None
+
+    async def on_failure_ctx(self, *, context: dict[str, Any], err: Exception) -> None:
+        """Context-first failure hook (preferred).
+
+        Override this in subclasses instead of `on_failure`. The default
+        implementation is a no-op.
+        """
+        return None
+
+    async def on_success(self, simulation, resp) -> None:
+        """Deprecated: domain-coupled signature.
+
+        Kept for backward compatibility. Subclasses should override
+        `on_success_ctx(self, *, context: dict[str, Any], resp)` instead.
+        This shim delegates to the context-first hook.
+        """
+        await self.on_success_ctx(context=self.context or {}, resp=resp)
 
     async def on_failure(self, simulation, err: Exception) -> None:
-        """Optional hook for subclasses to implement side-effects after failure (no-op by default).
+        """Deprecated: domain-coupled signature.
 
-        Note: Upstream code is context-first. Implementations are encouraged to
-        accept a context dict (or read `self.context`) rather than relying on domain
-        objects. Signature retained for backward compatibility.
+        Kept for backward compatibility. Subclasses should override
+        `on_failure_ctx(self, *, context: dict[str, Any], err: Exception)` instead.
+        This shim delegates to the context-first hook.
         """
-        ...
+        await self.on_failure_ctx(context=self.context or {}, err=err)
 
 
 class DjangoExecutableLLMService(ServiceExecutionMixin, DjangoBaseLLMService):
