@@ -9,7 +9,7 @@ from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
-from simcore_ai.types import LLMTextPart
+from simcore_ai.types import LLMTextPart, LLMRole
 from simcore_ai_django.api.decorators import llm_service
 # Django-aware service base and rich DTOs
 from simcore_ai_django.api.types import DjangoExecutableLLMService
@@ -38,6 +38,10 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExec
     # require_enqueue: bool = False # force async if True
 
     # model: Optional[str] = None  # allow provider default
+    # from ..prompts import ChatlabPatientInitialSection
+    # prompt_plan = (
+    #     ChatlabPatientInitialSection,
+    # )
 
     required_context_keys: tuple[str, ...] = ("simulation_id",)
 
@@ -82,7 +86,10 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecut
 
         msgs: List[DjangoLLMRequestMessage] = []
         if user_msg and user_msg.content:
-            msgs.append(DjangoLLMRequestMessage(role="user", content=user_msg.content))
+            msgs.append(DjangoLLMRequestMessage(
+                role=LLMRole.USER,
+                content=[LLMTextPart(text=user_msg.content)])
+            )
         return msgs, self.response_format_cls
 
 
@@ -115,7 +122,10 @@ class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecut
         from ..prompts import ChatlabImageSection  # local import to avoid cycles
         prompt = await PromptEngine.abuild_from(ChatlabImageSection)
         msgs: List[DjangoLLMRequestMessage] = [
-            DjangoLLMRequestMessage(role="developer", content=[LLMTextPart(prompt.instruction or "")])
+            DjangoLLMRequestMessage(
+                role=LLMRole.DEVELOPER,
+                content=[LLMTextPart(text=prompt.instruction or "")]
+            )
         ]
         return msgs, None
 
