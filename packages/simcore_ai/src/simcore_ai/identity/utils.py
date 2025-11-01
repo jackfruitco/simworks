@@ -26,7 +26,9 @@ import logging
 import os
 import re
 from collections.abc import Iterable, Callable
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
+
+from .base import IdentityKey, Identity
 
 __all__ = [
     "DEFAULT_IDENTITY_STRIP_TOKENS",
@@ -35,6 +37,7 @@ __all__ = [
     "module_root",
     "resolve_collision",
     "parse_dot_identity",
+    "coerce_identity_key",
 ]
 
 logger = logging.getLogger(__name__)
@@ -103,7 +106,7 @@ def _normalize_segments_to_name(segments: list[str], *, lower: bool = True) -> s
     if not segments:
         return ""
     s = "-".join(segments)
-    s = re.sub(r"[\._\s\-]+", "-", s)
+    s = re.sub(r"[._\s\-]+", "-", s)
     s = re.sub(r"-{2,}", "-", s).strip("-")
     return s.lower() if lower else s
 
@@ -152,11 +155,11 @@ def module_root(cls_or_module: Union[str, type]) -> Optional[str]:
 
 def resolve_collision(
         kind: str,
-        ident_tuple: Tuple[str, str, str],
+        ident_tuple: tuple[str, str, str],
         *,
         debug: Optional[bool] = None,
-        exists: Callable[[Tuple[str, str, str]], bool],
-) -> Tuple[str, str, str]:
+        exists: Callable[[tuple[str, str, str]], bool],
+) -> tuple[str, str, str]:
     """Resolve identity collisions.
 
     If `exists(ident_tuple)` is True:
@@ -192,7 +195,7 @@ def resolve_collision(
         suffix += 1
 
 
-def parse_dot_identity(key: str) -> Tuple[str, str, str]:
+def parse_dot_identity(key: str) -> tuple[str, str, str]:
     """Parse a dot-only identity string into (namespace, kind, name).
 
     Strict rules:
@@ -203,6 +206,7 @@ def parse_dot_identity(key: str) -> Tuple[str, str, str]:
     Raises:
         ValueError: if the string is not a valid dot identity.
     """
+    key = key.strip()
     if ":" in key:
         raise ValueError(
             f"Invalid identity '{key}': colons are not allowed. Use 'namespace.kind.name' only."
@@ -213,3 +217,22 @@ def parse_dot_identity(key: str) -> Tuple[str, str, str]:
             f"Invalid identity '{key}': expected exactly three dot-separated parts."
         )
     return parts[0], parts[1], parts[2]
+
+
+def coerce_identity_key(value: IdentityKey) -> Optional[tuple[str, str, str]]:
+    """Coerce (tuple | Identity | 'ns.kind.name' str) to a (ns, kind, name) tuple.
+
+    Returns None if `value` cannot be coerced (bad string, wrong type, etc.).
+    """
+    if isinstance(value, tuple) and len(value) == 3:
+        ns, kd, nm = value
+        # Optionally: basic type/emptiness guards
+        return (str(ns), str(kd), str(nm))
+    if isinstance(value, Identity):
+        return value.as_tuple3
+    if isinstance(value, str):
+        try:
+            return parse_dot_identity(value)
+        except Exception:
+            return None
+    return None

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Union
 
 from .exceptions import IdentityError
 
@@ -27,6 +27,8 @@ Decorators are responsible for:
 before constructing this Identity.
 """
 
+IdentityKey = Union[Tuple[str, str, str], str, "Identity"]
+
 
 @dataclass(frozen=True, slots=True)
 class Identity:
@@ -45,10 +47,11 @@ class Identity:
     def as_tuple3(self) -> Tuple[str, str, str]:
         return self.namespace, self.kind, self.name
 
-    # stable string for logs/metrics
-    def to_string(self) -> str:
+    @property
+    def as_str(self) -> str:
         """Returns the dot-separated string 'namespace.kind.name'."""
         return f"{self.namespace}.{self.kind}.{self.name}"
+
 
     # Let Python dict/set use this efficiently
     def __hash__(self) -> int:

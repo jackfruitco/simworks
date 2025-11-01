@@ -129,7 +129,7 @@ class DjangoBaseLLMService(BaseLLMService):
         if self.emitter is None:
             self.emitter = _default_emitter
 
-        # Check if a custom renderer is provided (e.g. render from template or reqest)
+        # Check if a custom renderer is provided (e.g. render from template or request)
         renderer = getattr(self, "render_section", None)
         if renderer is None:
             self.render_section = _default_renderer

@@ -1,14 +1,21 @@
-# simcore_ai/services/base.py
 """
 BaseLLMService: Abstract base for LLM-backed AI services.
-Provides identity fields (namespace, kind, name) to disambiguate service identity.
-The canonical string form is `identity_str` ("namespace.kind.name").
-The legacy `namespace` field is deprecated in favor of `identity_str` and `namespace`.
 
-Prompt plan support:
-    - The `prompt_plan` is now a **list of canonical section identities ("namespace.kind.name") or PromptSection classes/instances**.
-      The **PromptEngine** is solely responsible for resolving, normalizing, and validating specs in the plan. Services should
-      not attempt per-item resolution or legacy rendering fallbacks.
+Identity
+--------
+• Each service exposes a single authoritative `identity: Identity`, resolved in `__post_init__`
+  via `identity_resolver` (core by default; Django layer overrides to a Django-aware resolver).
+• Class attributes `namespace`, `kind`, and `name` are treated as **hints** passed to the resolver.
+  They may be omitted; the resolver derives sensible defaults.
+• Prefer `self.identity.as_str` ("namespace.kind.name") or `self.identity.as_tuple3` anywhere a
+  label/tuple is needed. Avoid carrying separate string copies.
+
+Prompt plans
+------------
+• `prompt_plan` may be a `PromptPlan` or an iterable of section specs (canonical dot strings or
+  `PromptSection` classes/instances). The `PromptEngine` performs resolution/normalization.
+• If no explicit plan is provided, the service falls back to a single section whose identity matches
+  the service identity (looked up in `PromptRegistry`).
 """
 from __future__ import annotations
 
@@ -24,9 +31,9 @@ from simcore_ai.codecs import (
     get_codec as _core_get_codec
 )
 from simcore_ai.identity import Identity
-from simcore_ai.identity.utils import module_root
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..client import AIClient
+from ..identity.resolvers import IdentityResolver
 from ..promptkit import Prompt, PromptEngine, PromptRegistry
 from ..promptkit.plans import PromptPlan, SectionSpec
 from ..tracing import get_tracer, service_span
@@ -51,20 +58,23 @@ class ServiceEmitter(Protocol):
 @dataclass
 class BaseLLMService:
     """
-    Abstract base for LLM-backed AI services. Handles identity fields (namespace, kind, name)
-    and canonical identity string (identity_str = "namespace.kind.name").
-    The legacy `namespace` field is deprecated; use `identity_str` and `namespace` instead.
+    Abstract base for LLM-backed AI services.
+
+    • Identity is exposed as `self.identity: Identity`, resolved once in `__post_init__` using
+      `identity_resolver`. Class attributes `namespace/kind/name` serve only as resolver hints.
+    • The canonical string form is `self.identity.as_str` ("namespace.kind.name").
+    • Older patterns that rebuilt identity strings or stored separate `identity_str` values are removed.
     """
     # Arbitrary metadata preserved end-to-end (e.g., user_msg, source_view, etc.)
     # Services may declare required keys that must be present in `context`.
     required_context_keys: tuple[str, ...] = ()
     context: dict = field(default_factory=dict)
 
-    # Optional identity parts; canonical string is identity_str
-    namespace: str | None = None
-    kind: str | None = None
-    name: str | None = None
-    identity_str: str | None = None
+    # Identity resolver (can be overridden)
+    identity_resolver: type[IdentityResolver] = IdentityResolver
+
+    # Identity (final identity set by resolver)
+    _identity: Identity | None = field(default=None, init=False, repr=False)
 
     # --- Codec configuration (framework-agnostic) ---
     # Prefer setting codec_class or injecting a codec instance; codec_name is a hint for adapter layers.
@@ -96,12 +106,17 @@ class BaseLLMService:
         if self.codec_name is None and isinstance(self.codec, str):
             self.codec_name = self.codec
 
-        # Build canonical identity string from parts
-        inferred_ns = self.namespace or module_root(getattr(self, "__module__", "")) or "default"
-        inferred_kind = self.kind or "default"
-        inferred_name = self.name or self.__class__.__name__
-        ident = Identity(namespace=inferred_ns, kind=inferred_kind, name=inferred_name)
-        self.identity_str = ident.to_string()
+        # Derive identity using the configured resolver
+        cls = type(self)
+        resolver = self.identity_resolver()  # instantiate
+        ident, _meta = resolver.resolve(
+            cls,
+            namespace=getattr(cls, "namespace", None),
+            kind=getattr(cls, "kind", None),
+            name=getattr(cls, "name", None),
+            context=(self.context or {}),
+        )
+        self.identity = ident
 
         # Normalize `context` to a plain dict for future consumption
         if not isinstance(self.context, dict):
@@ -112,6 +127,15 @@ class BaseLLMService:
 
         # Fail fast if required context keys are missing
         self.check_required_context()
+
+    @property
+    def identity(self) -> Identity:
+        assert self._identity is not None
+        return self._identity
+
+    @identity.setter
+    def identity(self, value: Identity) -> None:
+        self._identity = value
 
     def check_required_context(self) -> None:
         """Validate that required context keys are present.
@@ -137,9 +161,8 @@ class BaseLLMService:
         self.check_required_context()
 
     async def _backoff_sleep(self, attempt: int) -> None:
-        """Exponential backoff with jitter between retries.
-
-        `attempt` starts at 1.
+        """
+        Exponential backoff with jitter between retries. `attempt` starts at 1.
         """
         try:
             base = max(0.0, float(self.backoff_initial))
@@ -164,8 +187,7 @@ class BaseLLMService:
 
     def _get_cached_prompt_or_none(self) -> Prompt | None:
         """
-        Return cached prompt if present; otherwise None.
-        Pure lookup; no logging and no exceptions.
+        Return the cached prompt if present; otherwise None. Pure lookup; no exceptions.
         """
         return self.prompt
 
@@ -181,10 +203,10 @@ class BaseLLMService:
 
     def _get_registry_section_or_none(self) -> SectionSpec | None:
         """
-        Resolve a single PromptSection class from the registry using this service's identity.
-        Returns None if not found. Pure lookup; no exceptions.
+        Return a `PromptSection` class from the registry using `self.identity.as_str`, or None if not found.
+        Pure lookup; no exceptions.
         """
-        ident_str = self.identity_str or self.identity.to_string()
+        ident_str = self.identity.as_str or self.identity.to_string()
         try:
             # Prefer string lookup; registry handles parsing
             section_cls = PromptRegistry.get_str(ident_str)
@@ -195,6 +217,8 @@ class BaseLLMService:
     def _normalize_plan_or_raise(self, plan: PromptPlan | list[SectionSpec]) -> PromptPlan:
         """
         Coerce a list-like plan into a `PromptPlan`, or validate an existing `PromptPlan`.
+
+        Accepts a `PromptPlan` as-is or coerces an iterable of `SectionSpec` into a `PromptPlan`.
 
         Raises:
             ServiceBuildRequestError: if the plan cannot be normalized.
@@ -207,12 +231,13 @@ class BaseLLMService:
             raise ServiceBuildRequestError(f"Invalid prompt plan: {e}") from e
 
     async def get_or_build_prompt(self) -> Prompt:
-        """Get or build `self.prompt` once via the configured PromptEngine.
+        """
+        Get or build `self.prompt` using the configured `PromptEngine`.
 
         Resolution order:
-          1) cached self.prompt
-          2) explicit self.prompt_plan
-          3) fallback to single registry section matching this service identity
+          1) Use cached `self.prompt` if present
+          2) Use explicit `self.prompt_plan` (normalized by the engine)
+          3) Fallback to a single registry section matching `self.identity`
         """
         async with service_span(
             f"LLMService.{self.__class__.__name__}.get_or_build_prompt",
@@ -231,7 +256,7 @@ class BaseLLMService:
             if not plan:
                 section_cls = self._get_registry_section_or_none()
                 if section_cls is None:
-                    ident_str = self.identity_str or self.identity.to_string()
+                    ident_str = self.identity.as_str or self.identity.to_string()
                     raise ServiceBuildRequestError(
                         f"No prompt plan provided and no PromptSection registered for identity '{ident_str}'."
                     )
@@ -258,16 +283,10 @@ class BaseLLMService:
             return prompt
 
     # --- Identity helpers -------------------------------------------------
-    @property
-    def identity(self) -> Identity:
-        parts = (self.identity_str or "").split(".")
-        o = parts[0] if len(parts) > 0 else None
-        b = parts[1] if len(parts) > 1 else None
-        n = parts[2] if len(parts) > 2 else None
-        return Identity.from_parts(namespace=o, kind=b, name=n)
 
     async def build_request(self, **ctx) -> LLMRequest:
-        """Build a provider-agnostic **LLMRequest** for this service.
+        """
+        Build a provider-agnostic `LLMRequest` for this service from the engine-produced `Prompt`.
 
         Default implementation uses the PromptEngine output to create messages and
         stamps identity and codec routing. Subclasses may override hooks instead of
@@ -538,7 +557,7 @@ class BaseLLMService:
         Notes
         -----
         • Callers across core and Django layers should prefer this method.
-        • This replaces the former private `_get_client` usage.
+        • Replaces the former private `_get_client` usage.
         """
         if self.client is not None:
             return self.client
@@ -589,9 +608,8 @@ class BaseLLMService:
 
     async def run(self) -> LLMResponse | None:
         """
-        Run the service, emitting request/response events.
-
-        This method is domain-agnostic: it relies on `self.context` only.
+        Execute the service (non-streaming) and emit request/response events via the configured emitter.
+        Uses only `self.context` for domain data; identity is read from `self.identity`.
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
@@ -610,7 +628,7 @@ class BaseLLMService:
             req.stream = False
 
             client = self.get_client()
-            self.emitter.emit_request(self.context, self.identity_str, req)
+            self.emitter.emit_request(self.context, self.identity.as_str, req)
 
             attempt = 1
             while attempt <= max(1, self.max_attempts):
@@ -621,14 +639,14 @@ class BaseLLMService:
                     resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
                     if getattr(resp, "request_correlation_id", None) is None:
                         resp.request_correlation_id = req.correlation_id
-                    self.emitter.emit_response(self.context, self.identity_str, resp)
+                    self.emitter.emit_response(self.context, self.identity.as_str, resp)
                     await self.on_success(self.context, resp)  # pass context to app hooks
                     logger.info("llm.service.success",
                                 extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
                     return resp
                 except Exception as e:
                     if attempt >= max(1, self.max_attempts):
-                        self.emitter.emit_failure(self.context, self.identity_str, req.correlation_id, str(e))
+                        self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
                         await self.on_failure(self.context, e)
                         logger.exception("llm.service.error",
                                          extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
@@ -640,9 +658,8 @@ class BaseLLMService:
 
     async def run_stream(self):
         """
-        Run the service with streaming, emitting events.
-
-        This method is domain-agnostic: it relies on `self.context` only.
+        Execute the service with streaming and emit stream events via the configured emitter.
+        Uses only `self.context` for domain data; identity is read from `self.identity`.
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
@@ -659,7 +676,7 @@ class BaseLLMService:
             req.stream = True
 
             client = self.get_client()
-            self.emitter.emit_request(self.context, self.identity_str, req)
+            self.emitter.emit_request(self.context, self.identity.as_str, req)
 
             attempt = 1
             started = False
@@ -667,12 +684,12 @@ class BaseLLMService:
                 try:
                     async for chunk in client.stream_request(req):
                         started = True
-                        self.emitter.emit_stream_chunk(self.context, self.identity_str, chunk)
-                    self.emitter.emit_stream_complete(self.context, self.identity_str, req.correlation_id)
+                        self.emitter.emit_stream_chunk(self.context, self.identity.as_str, chunk)
+                    self.emitter.emit_stream_complete(self.context, self.identity.as_str, req.correlation_id)
                     return
                 except Exception as e:
                     if started or attempt >= max(1, self.max_attempts):
-                        self.emitter.emit_failure(self.context, self.identity_str, req.correlation_id, str(e))
+                        self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
                         await self.on_failure(self.context, e)
                         logger.exception("llm.service.stream.error",
                                          extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})

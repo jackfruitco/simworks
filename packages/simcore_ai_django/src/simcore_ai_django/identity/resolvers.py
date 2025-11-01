@@ -21,12 +21,13 @@ from typing import Any, Optional
 from django.apps import apps
 from django.conf import settings
 
-from simcore_ai.identity.resolution import IdentityResolver
+from simcore_ai.identity.resolvers import IdentityResolver
 from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS, snake, module_root
 
 __all__ = [
     "DjangoIdentityResolver",
     "resolve_identity_django",
+    "DJANGO_BASE_STRIP_TOKENS",
 ]
 
 # Base Django tokens to always strip for *derived* names

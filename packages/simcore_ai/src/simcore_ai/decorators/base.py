@@ -33,7 +33,7 @@ from typing import Any, Optional, Type, TypeVar, Callable, cast
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.identity.base import Identity
-from simcore_ai.identity.resolution import IdentityResolver
+from simcore_ai.identity.resolvers import IdentityResolver
 
 logger = logging.getLogger(__name__)
 

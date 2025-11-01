@@ -1,5 +1,6 @@
 # simcore_ai/promptkit/types.py
 from __future__ import annotations
+
 """
 Core promptkit types (AIv3).
 
@@ -24,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Optional
 import logging
 
-from simcore_ai.identity import Identity
+from simcore_ai.identity.mixins import IdentityMixin
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class ConfidenceNote:
 # ---------------- Section base -------------------------------------------
 
 @dataclass(order=True, slots=True)
-class PromptSection:
+class PromptSection(IdentityMixin):
     """Base class for declarative prompt sections (AIv3).
 
     Sections provide identity **at the class level** using:
@@ -149,35 +150,12 @@ class PromptSection:
     tags: frozenset[str] = field(default_factory=frozenset, compare=False, repr=False)
 
     def __repr__(self) -> str:
-        return f"<PromptSection {self.identity_str} tags={self.tags or 'None'}>"
-
-    # ---------------- Identity helpers (class + instance) -----------------
-    @classmethod
-    def get_cls_identity(cls) -> Identity:
-        """Return the class identity as an `Identity`.
-
-        A class-level `identity: Identity` attribute is required.
-
-        Raises:
-            TypeError: if identity cannot be derived.
-        """
-        ident = getattr(cls, "identity", None)
-        if isinstance(ident, Identity):
-            return ident
-        raise TypeError(
-            f"{cls.__name__} must define a class-level `identity: Identity`. "
-            f"The legacy `namespace/kind/name` attributes are no longer supported."
-        )
-
-    @property
-    def identity(self) -> Identity:
-        """Instance view of the class identity."""
-        return type(self).get_cls_identity()
+        return f"<PromptSection {self.identity.as_str} tags={self.tags or 'None'}>"
 
     @property
     def identity_str(self) -> str:
         """Canonical dot identity string (e.g., 'chatlab.patient.initial')."""
-        return self.identity.to_string()
+        return self.identity.as_str
 
     # ---------------- Rendering helpers ----------------------------------
     async def render_instruction(self, **ctx: Any) -> str | None:

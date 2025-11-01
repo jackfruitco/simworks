@@ -24,7 +24,7 @@ from typing import Any
 import logging
 
 from simcore_ai.decorators.base import BaseDecorator
-from simcore_ai_django.identity.resolution import DjangoIdentityResolver
+from simcore_ai_django.identity.resolvers import DjangoIdentityResolver
 
 logger = logging.getLogger(__name__)
 
