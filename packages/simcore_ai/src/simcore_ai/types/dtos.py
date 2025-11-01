@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional, Literal, TypeAlias
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, Optional, Literal, TypeAlias
 from uuid import UUID, uuid4
 
 from pydantic import Field
@@ -15,6 +16,17 @@ from .base import StrictBaseModel
 
 
 # ---------- Content Parts (DTO) -------------------------------------------------------
+class LLMRole(str, Enum):
+    SYSTEM = "system"
+    USER = "user"
+    DEVELOPER = "developer"
+    ASSISTANT = "assistant"
+    PATIENT = "patient"
+    INSTRUCTOR = "instructor"
+    FACILITATOR = "facilitator"
+    TOOL = "tool"
+
+
 class LLMTextPart(StrictBaseModel):
     type: Literal["text"] = "text"
     text: str
@@ -61,13 +73,16 @@ LLMContentPart: TypeAlias = (
 # ---------- LLM Types (DTO) -------------------------------------------------------
 # Input (request)
 class LLMRequestMessage(StrictBaseModel):
-    role: Literal["system", "user", "developer", "assistant", "patient", "instructor", "facilitator"]
+    role: LLMRole
     content: list[LLMTextPart | LLMImagePart | LLMAudioPart]  # no tool parts
 
 
 # Output (response)
 class LLMResponseItem(StrictBaseModel):
-    content: list[LLMTextPart | LLMToolCallPart | LLMToolResultPart | LLMImagePart | LLMAudioPart]
+    role: LLMRole
+    content: list[
+        LLMTextPart | LLMToolCallPart | LLMToolResultPart | LLMImagePart | LLMAudioPart
+        ]
     item_meta: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -101,7 +116,7 @@ class LLMRequest(StrictBaseModel):
     codec_identity: str | None = None
 
     # Response format (provider-agnostic)
-    response_format_cls: Any = None   # renamed from response_format_cls
+    response_format_cls: Any = None  # renamed from response_format_cls
     response_format: dict | None = None
 
     # Tooling

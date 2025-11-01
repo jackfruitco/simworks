@@ -6,15 +6,15 @@ The canonical string form is `identity_str` ("namespace.kind.name").
 The legacy `namespace` field is deprecated in favor of `identity_str` and `namespace`.
 
 Prompt plan support:
-    - The `prompt_plan` is now a **list of canonical section identities ("namespace:kind:name") or PromptSection classes**
-      (no role tuples). The service uses a PromptEngine to build a single Prompt aggregate which is then converted into
-      request messages (developer/user + extras).
+    - The `prompt_plan` is now a **list of canonical section identities ("namespace.kind.name") or PromptSection classes/instances**.
+      The **PromptEngine** is solely responsible for resolving, normalizing, and validating specs in the plan. Services should
+      not attempt per-item resolution or legacy rendering fallbacks.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence, Callable
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 from typing import Optional, Protocol
@@ -25,12 +25,12 @@ from simcore_ai.codecs import (
 )
 from simcore_ai.identity import Identity
 from simcore_ai.identity.utils import module_root
-from simcore_ai.promptkit.resolvers import resolve_section, PromptSectionResolutionError
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..client import AIClient
-from ..promptkit import Prompt, PromptEngine, PromptSection
+from ..promptkit import Prompt, PromptEngine, PromptRegistry
+from ..promptkit.plans import PromptPlan, SectionSpec
 from ..tracing import get_tracer, service_span
-from ..types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart
+from ..types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.llmservice")
@@ -86,7 +86,6 @@ class BaseLLMService:
     client: Optional[AIClient] = None
 
     emitter: ServiceEmitter | None = None
-    render_section: Callable[[str, str, object], "asyncio.Future[str]"] | None = None
 
     # Prompt building (via existing Promptkit engine)
     prompt_engine: PromptEngine | None = None
@@ -114,7 +113,6 @@ class BaseLLMService:
         # Fail fast if required context keys are missing
         self.check_required_context()
 
-
     def check_required_context(self) -> None:
         """Validate that required context keys are present.
 
@@ -141,7 +139,7 @@ class BaseLLMService:
     async def _backoff_sleep(self, attempt: int) -> None:
         """Exponential backoff with jitter between retries.
 
-        attempt starts at 1.
+        `attempt` starts at 1.
         """
         try:
             base = max(0.0, float(self.backoff_initial))
@@ -164,44 +162,97 @@ class BaseLLMService:
         from simcore_ai.tracing import flatten_context as flatten_context_
         return flatten_context_(self.context)
 
-    async def ensure_prompt(self) -> Prompt:
-        """Ensure `self.prompt` is built once via the configured PromptEngine.
-
-        The plan contains canonical section identities ("namespace:kind:name")
-        or PromptSection classes. We resolve all specs to classes and pass them to
-        the engine's build method with a context dict, never domain objects.
+    def _get_cached_prompt_or_none(self) -> Prompt | None:
         """
-        async with service_span(f"LLMService.{self.__class__.__name__}.ensure_prompt", **self.flatten_context()):
-            if self.prompt is not None:
-                return self.prompt
+        Return cached prompt if present; otherwise None.
+        Pure lookup; no logging and no exceptions.
+        """
+        return self.prompt
 
-            plan = self.get_prompt_plan()
-            section_classes: list[type[PromptSection]] = []
-            for spec in plan:
-                try:
-                    SectionCls = resolve_section(spec)
-                except PromptSectionResolutionError as exc:
-                    # Legacy fallback path (string key + render_section)
-                    if self.render_section and isinstance(spec, str):
-                        # Build a synthetic Prompt from the rendered text
-                        text = await self.render_section(self.identity_str, spec, self.context)
-                        self.prompt = Prompt(instruction=text, message="", extra_messages=[], meta={"fallback": True})
-                        return self.prompt
-                    raise
-                section_classes.append(SectionCls)
+    def _get_explicit_plan_or_none(self) -> PromptPlan | list[SectionSpec] | None:
+        """
+        Return the explicit prompt plan if present; otherwise None.
+        Does not normalize to PromptPlan here (deferred to caller).
+        """
+        plan = self.get_prompt_plan()
+        if plan:
+            return plan  # may be PromptPlan or a list of specs
+        return None
+
+    def _get_registry_section_or_none(self) -> SectionSpec | None:
+        """
+        Resolve a single PromptSection class from the registry using this service's identity.
+        Returns None if not found. Pure lookup; no exceptions.
+        """
+        ident_str = self.identity_str or self.identity.to_string()
+        try:
+            # Prefer string lookup; registry handles parsing
+            section_cls = PromptRegistry.get_str(ident_str)
+            return section_cls
+        except Exception:
+            return None
+
+    def _normalize_plan_or_raise(self, plan: PromptPlan | list[SectionSpec]) -> PromptPlan:
+        """
+        Coerce a list-like plan into a `PromptPlan`, or validate an existing `PromptPlan`.
+
+        Raises:
+            ServiceBuildRequestError: if the plan cannot be normalized.
+        """
+        if isinstance(plan, PromptPlan):
+            return plan
+        try:
+            return PromptPlan.from_specs(plan)  # type: ignore[arg-type]
+        except Exception as e:
+            raise ServiceBuildRequestError(f"Invalid prompt plan: {e}") from e
+
+    async def get_or_build_prompt(self) -> Prompt:
+        """Get or build `self.prompt` once via the configured PromptEngine.
+
+        Resolution order:
+          1) cached self.prompt
+          2) explicit self.prompt_plan
+          3) fallback to single registry section matching this service identity
+        """
+        async with service_span(
+            f"LLMService.{self.__class__.__name__}.get_or_build_prompt",
+            **self.flatten_context(),
+        ):
+            # 1) cached
+            cached = self._get_cached_prompt_or_none()
+            if cached is not None:
+                logger.debug("prompt cache hit")
+                return cached
+
+            # 2) explicit plan
+            plan = self._get_explicit_plan_or_none()
+
+            # 3) fallback to single section matching identity
+            if not plan:
+                section_cls = self._get_registry_section_or_none()
+                if section_cls is None:
+                    ident_str = self.identity_str or self.identity.to_string()
+                    raise ServiceBuildRequestError(
+                        f"No prompt plan provided and no PromptSection registered for identity '{ident_str}'."
+                    )
+                plan = PromptPlan.from_sections([section_cls])
+
+            # Normalize plan to PromptPlan if it's a raw spec list
+            plan = self._normalize_plan_or_raise(plan)  # type: ignore[arg-type]
+
+            logger.debug("prompt plan resolved: %s", getattr(plan, "describe", lambda: plan)())
 
             engine = self.prompt_engine or PromptEngine
             ctx = {"context": self.context, "service": self}
 
-            # Prefer async engine if available
             abuild = getattr(engine, "abuild_from", None)
-            build = getattr(engine, "build_from", None)
             if callable(abuild):
-                prompt: Prompt = await abuild(section_classes, context=ctx)  # type: ignore[arg-type]
-            elif callable(build):
-                prompt = build(section_classes, context=ctx)  # type: ignore[arg-type]
+                prompt: Prompt = await abuild(plan=plan, **ctx)  # type: ignore[arg-type]
             else:
-                raise ServiceBuildRequestError("PromptEngine has no build_from/abuild_from callable")
+                build = getattr(engine, "build_from", None)
+                if not callable(build):
+                    raise ServiceBuildRequestError("PromptEngine has no build_from/abuild_from callable")
+                prompt = build(plan=plan, **ctx)  # type: ignore[arg-type]
 
             self.prompt = prompt
             return prompt
@@ -228,8 +279,8 @@ class BaseLLMService:
             If both the instruction and user message are empty.
         """
         async with service_span(f"LLMService.{self.__class__.__name__}.build_request", **self.flatten_context()):
-            # 1) Ensure prompt is available
-            prompt = await self.ensure_prompt()
+            # 1) Get or build prompt is available
+            prompt = await self.get_or_build_prompt()
 
             # 2) Build messages via hooks
             messages: list[LLMRequestMessage] = []
@@ -249,6 +300,8 @@ class BaseLLMService:
             req.namespace = ident.namespace
             req.kind = ident.kind
             req.name = ident.name
+            # attach context for downstream tracing/providers
+            req.context = dict(self.context)
 
             # 4) Resolve codec and attach response format and codec identity
             codec = self.get_codec()
@@ -276,26 +329,37 @@ class BaseLLMService:
             return req
 
     # --------------------------- build hooks ---------------------------
-    # Allowed role literal set for type-checkers and validation
-    _ALLOWED_ROLES = {
-        "system", "user", "developer", "assistant", "patient", "instructor", "facilitator",
-    }
+    def _coerce_role(self, value: str | LLMRole) -> LLMRole:
+        """Coerce an arbitrary role input to a valid `LLMRole` Enum.
 
-    def _coerce_role(self, value: str) -> str:
-        """Validate role to allowed set; default to 'system' if unknown.
-
-        This keeps runtime safe and makes static checkers happy when combined with
-        defensive validation.
+        Rules:
+        - If an `LLMRole` is passed, return it unchanged.
+        - If a string is passed, try value-based lookup case-insensitively (e.g., "user" → LLMRole.USER).
+        - If that fails, try name-based lookup (e.g., "USER" → LLMRole.USER).
+        - Fallback to `LLMRole.SYSTEM` on unknown inputs.
         """
-        v = str(value or "").strip().lower()
-        return v if v in self._ALLOWED_ROLES else "system"
+        if isinstance(value, LLMRole):
+            return value
+        v = str(value or "").strip()
+        if not v:
+            return LLMRole.SYSTEM
+        # Prefer value-based, case-insensitive
+        try:
+            return LLMRole(v.lower())
+        except Exception:
+            pass
+        # Fallback: name-based, case-insensitive (Enum names are upper-case)
+        try:
+            return LLMRole[v.upper()]
+        except Exception:
+            return LLMRole.SYSTEM
 
     async def _build_request_instructions(self, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
         """Create developer messages from prompt.instruction (if present)."""
         messages: list[LLMRequestMessage] = []
         instruction = getattr(prompt, "instruction", None)
         if instruction:
-            messages.append(LLMRequestMessage(role="developer", content=[LLMTextPart(text=str(instruction))]))
+            messages.append(LLMRequestMessage(role=LLMRole.DEVELOPER, content=[LLMTextPart(text=str(instruction))]))
         return messages
 
     async def _build_request_user_input(self, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
@@ -303,7 +367,7 @@ class BaseLLMService:
         messages: list[LLMRequestMessage] = []
         message = getattr(prompt, "message", None)
         if message:
-            messages.append(LLMRequestMessage(role="user", content=[LLMTextPart(text=str(message))]))
+            messages.append(LLMRequestMessage(role=LLMRole.USER, content=[LLMTextPart(text=str(message))]))
         return messages
 
     async def _build_request_extras(self, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
@@ -312,8 +376,8 @@ class BaseLLMService:
         extras = getattr(prompt, "extra_messages", None) or []
         for role, text in extras:
             if text:
-                LLMM_role = self._coerce_role(str(role))
-                messages.append(LLMRequestMessage(role=LLMM_role, content=[LLMTextPart(text=str(text))]))
+                llm_role: LLMRole = self._coerce_role(role)
+                messages.append(LLMRequestMessage(role=llm_role, content=[LLMTextPart(text=str(text))]))
         return messages
 
     async def _finalize_request(self, req: LLMRequest, **ctx) -> LLMRequest:
@@ -428,7 +492,7 @@ class BaseLLMService:
             service=self.__class__.__name__,
         )
 
-    def get_prompt_plan(self) -> Sequence[Any]:
+    def get_prompt_plan(self) -> Sequence[Any] | PromptPlan | None:
         """Return the prompt plan for this invocation.
 
         Defaults to the class/instance `prompt_plan` attribute.
@@ -444,7 +508,7 @@ class BaseLLMService:
         Emits `developer` from `prompt.instruction`, `user` from `prompt.message`,
         and any `(role, text)` pairs from `prompt.extra_messages`.
         """
-        prompt = await self.ensure_prompt()
+        prompt: Prompt = await self.get_or_build_prompt()
         messages: list[LLMRequestMessage] = []
 
         instruction = getattr(prompt, "instruction", None) or ""
@@ -452,12 +516,12 @@ class BaseLLMService:
         extras = getattr(prompt, "extra_messages", None) or []
 
         if instruction:
-            messages.append(LLMRequestMessage(role="developer", content=[LLMTextPart(text=str(instruction))]))
+            messages.append(LLMRequestMessage(role=LLMRole.DEVELOPER, content=[LLMTextPart(text=str(instruction))]))
         if message:
-            messages.append(LLMRequestMessage(role="user", content=[LLMTextPart(text=str(message))]))
+            messages.append(LLMRequestMessage(role=LLMRole.USER, content=[LLMTextPart(text=str(message))]))
         for role, text in extras:
             if text:
-                messages.append(LLMRequestMessage(role=str(role), content=[LLMTextPart(text=str(text))]))
+                messages.append(LLMRequestMessage(role=self._coerce_role(role), content=[LLMTextPart(text=str(text))]))
 
         return messages
 
@@ -618,8 +682,8 @@ class BaseLLMService:
                     await self._backoff_sleep(attempt)
                     attempt += 1
 
-    async def on_success(self, simulation, resp: LLMResponse) -> None:
+    async def on_success(self, context: dict, resp: LLMResponse) -> None:
         ...
 
-    async def on_failure(self, simulation, err: Exception) -> None:
+    async def on_failure(self, context: dict, err: Exception) -> None:
         ...

@@ -1,7 +1,7 @@
 # simcore_ai/types/tools.py
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import Field
 
@@ -20,6 +20,7 @@ class BaseLLMTool(StrictBaseModel):
     input_schema: dict[str, Any] = Field(default_factory=dict)
     strict: bool | None = None
     examples: list[dict[str, Any]] | None = None
+    arguments: Optional[dict[str, Any]] = None
 
 
 LLMToolChoice = Literal["auto", "none"] | str

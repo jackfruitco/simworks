@@ -1,5 +1,6 @@
 # simcore_ai/providers/openai/base.py
 from __future__ import annotations
+
 """
 OpenAIProvider
 ==============
@@ -37,7 +38,7 @@ from openai import NOT_GIVEN, AsyncOpenAI
 from openai.types.responses import Response as OpenAIResponse, EasyInputMessageParam
 from openai.types.responses.response_output_item import ImageGenerationCall
 
-from simcore_ai.tracing import service_span, service_span_sync
+from simcore_ai.tracing import service_span, service_span_sync, flatten_context as _flatten_context
 from simcore_ai.types import (
     LLMToolResultPart,
     LLMToolCall,
@@ -174,6 +175,9 @@ class OpenAIProvider(BaseProvider):
                     "ai.client_name": getattr(self, "name", self.__class__.__name__),
                     "ai.model": req.model or self.default_model or "<unspecified>",
                     "ai.stream": bool(getattr(req, "stream", False)),
+                    "ai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
+                    "ai.codec_identity": getattr(req, "codec_identity", None),
+                    **_flatten_context(getattr(req, "context", {}) or {}),
                 },
         ):
             # Adapt tools (child span)
@@ -188,17 +192,19 @@ class OpenAIProvider(BaseProvider):
             async with service_span("ai.prompt.serialize", attributes={"ai.msg.count": len(req.messages or [])}):
                 input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
 
+            model_name = req.model or self.default_model or "gpt-4o-mini"
+
             # Provider request (child span)
             async with service_span("ai.provider.send", attributes={"ai.provider_name": self.name}):
                 resp: OpenAIResponse = await self._client.responses.create(
-                    model=req.model or NOT_GIVEN,
+                    model=model_name,
                     input=input_,
                     previous_response_id=req.previous_response_id or NOT_GIVEN,
                     tools=native_tools or NOT_GIVEN,
                     tool_choice=req.tool_choice or NOT_GIVEN,
                     max_output_tokens=req.max_output_tokens or NOT_GIVEN,
                     timeout=timeout or self.timeout_s or NOT_GIVEN,
-                    response_format=req.response_format or NOT_GIVEN,
+                    text=req.response_format or NOT_GIVEN,
                 )
 
             logger.debug(
@@ -224,6 +230,9 @@ class OpenAIProvider(BaseProvider):
                     "ai.client_name": getattr(self, "name", self.__class__.__name__),
                     "ai.model": req.model or self.default_model or "<unspecified>",
                     "ai.stream": True,
+                    "ai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
+                    "ai.codec_identity": getattr(req, "codec_identity", None),
+                    **_flatten_context(getattr(req, "context", {}) or {}),
                 },
         ) as span:
             try:
