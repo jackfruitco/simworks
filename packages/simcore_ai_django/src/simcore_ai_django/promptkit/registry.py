@@ -1,152 +1,159 @@
-# simcore_ai_django/promptkit/registry.py
+# packages/simcore_ai_django/src/simcore_ai_django/promptkit/registry.py
 from __future__ import annotations
 
-from simcore_ai.identity.exceptions import IdentityCollisionError
-
-"""
-Django Prompt Section Registry (class registry).
-
-This registry stores **prompt section classes** keyed by the finalized identity
-`(namespace, kind, name)`. It enforces duplicate vs collision behavior and
-exposes a simple resolution API.
-
-Policy (per implementation plan):
-- Identity key is `(namespace, kind, name)`; values are assumed to be fully
-  derived/validated *before* registration by decorators/resolvers.
-- **Duplicate**: same class attempts to register with the same identity → skip
-  idempotently (DEBUG log only).
-- **Collision**: *different* class attempts to register the same identity →
-  behavior controlled by `SIMCORE_COLLISIONS_STRICT` (default True):
-    * True  → raise `IdentityCollisionError`
-    * False → log WARNING and record for Django system checks (no mutation).
-- **Invalid identity** (wrong arity / non-str / empty) → always raise
-  `IdentityValidationError`.
-
-IMPORTANT:
-- This registry **does not mutate** the registered classes (no stamping of
-  `namespace/kind/name/identity`). Identity is owned by resolvers/decorators.
-- No Django ORM is used here; this is a pure in-process registry.
-"""
-
-from dataclasses import dataclass
 import logging
 import threading
-from typing import Any, Iterable, Optional, Tuple, Type
+from typing import Type, ClassVar
 
-from django.conf import settings
-
-# Identity primitives/utilities (centralized in core)
-from simcore_ai.identity import IdentityKey, coerce_identity_key
+from simcore_ai.identity import Identity, coerce_identity_key, IdentityKey
+from simcore_ai.tracing import service_span_sync
+from .types import PromptSection
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    "Registered",
-    "PromptSectionRegistry",
-    "prompt_sections",
-]
+
+class DuplicatePromptSectionIdentityError(Exception):
+    """Raised when a duplicate identity key is registered with a different section class."""
 
 
-# -------------------------
-# Data structures
-# -------------------------
+class PromptSectionNotFoundError(KeyError):
+    """Raised when a prompt section is not found in the registry."""
 
-@dataclass(frozen=True)
-class Registered:
-    identity: Tuple[str, str, str]
-    cls: Type[Any]
-
-
-# -------------------------
-# Registry
-# -------------------------
 
 class PromptSectionRegistry:
-    """Registry of prompt section **classes** keyed by `(namespace, kind, name)` tuples."""
+    """Global registry for `PromptSection` **classes** keyed by (namespace, kind, name)."""
 
-    def __init__(self) -> None:
-        self._by_id: dict[IdentityKey, Type[Any]] = {}
-        self._by_cls: dict[Type[Any], IdentityKey] = {}
-        self._collisions: set[IdentityKey] = set()
-        self._lock = threading.RLock()
+    _store: dict[tuple[str, str, str], Type[PromptSection]] = {}
+    _lock: ClassVar[threading.RLock] = threading.RLock()
 
-        # Read strictness once per process; default True
-        strict_default = True
-        self._strict: bool = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", strict_default))
+    # ------------------------------------------------------------------
+    # Registration (public) → strict + idempotent
+    # ------------------------------------------------------------------
+    @classmethod
+    def register(
+        cls,
+        candidate: type[PromptSection],
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Register a Prompt Section **class**.
 
-    # ---- registration API ----
-    def maybe_register(self, identity: IdentityKey, cls: Type[Any]) -> None:
+        Requirements:
+          • `candidate.identity` MUST be an `Identity` (stamped by decorator).
         """
-        Register a prompt section class if not already registered.
+        ident = getattr(candidate, "identity", None)
+        if not isinstance(ident, Identity):
+            raise TypeError(
+                f"{getattr(candidate, '__name__', candidate)!r} must define `identity: Identity`."
+            )
+        cls._register(candidate, replace=replace)
 
-        - Duplicate (same class + same identity): skip (DEBUG)
-        - Collision (different class + same identity): raise when strict, else warn
-        """
-        key = coerce_identity_key(identity)
+    # ------------------------------------------------------------------
+    # Registration (private write path)
+    # ------------------------------------------------------------------
+    @classmethod
+    def _register(
+        cls,
+        candidate: type[PromptSection],
+        *,
+        replace: bool = False,
+    ) -> None:
+        with cls._lock:
+            identity_: Identity = candidate.identity  # type: ignore[attr-defined]
+            key = identity_.as_tuple3
+            ident_str = identity_.as_str
 
-        with self._lock:
-            # Same class already registered (idempotent under autoreload)
-            prev = self._by_cls.get(cls)
-            if prev == key:
-                logger.debug("prompt_section.duplicate-class-same-identity %s %s", cls, key)
-                return
+            existing = cls._store.get(key)
 
-            existing = self._by_id.get(key)
             if existing is None:
-                # First registration
-                self._by_id[key] = cls
-                self._by_cls[cls] = key
-                logger.debug("prompt_section.registered %s", ".".join(key))
+                cls._store[key] = candidate
+                logger.info("prompt.register %s -> %s", ident_str, candidate.__name__)
                 return
 
-            if existing is cls:
-                # Same class attempting to register again with same key
-                self._by_cls[cls] = key  # ensure mapping is present
-                logger.debug("prompt_section.duplicate-class-same-identity %s %s", cls, key)
+            if existing is candidate:
+                if replace:
+                    logger.info("prompt.register.replace %s (same class)", ident_str)
+                    cls._store[key] = candidate
                 return
 
-            # Collision: different class, same identity
-            self._collisions.add(key)
-            msg = f"Prompt section identity collision {key} between {existing} and {cls}"
-            if self._strict:
-                logger.error("prompt_section.collision %s", msg)
-                raise IdentityCollisionError(msg)
-            else:
-                logger.warning("prompt_section.collision %s", msg)
-                # In non-strict mode we do NOT mutate or replace. We record for checks.
+            if replace:
+                logger.warning(
+                    "prompt.register.replace.collision %s (old=%s, new=%s)",
+                    ident_str, getattr(existing, "__name__", existing), candidate.__name__,
+                )
+                cls._store[key] = candidate
                 return
 
-    def resolve(self, identity: IdentityKey) -> Optional[Type[Any]]:
-        key = coerce_identity_key(identity)
-        with self._lock:
-            return self._by_id.get(key)
+            raise DuplicatePromptSectionIdentityError(
+                f"PromptSection identity already registered: {ident_str} "
+                f"(existing={getattr(existing, '__name__', existing)}, new={candidate.__name__})"
+            )
 
-    def require(self, identity: IdentityKey) -> Type[Any]:
-        key = coerce_identity_key(identity)
-        with self._lock:
-            cls = self._by_id.get(key)
-            if cls is None:
-                raise KeyError(f"PromptSection not registered: {'.'.join(key)}")
-            return cls
+    # ------------------------------------------------------------------
+    # Lookup
+    # ------------------------------------------------------------------
+    @classmethod
+    def get(cls, identity: IdentityKey) -> Type[PromptSection] | None:
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            logger.warning("%s could not resolve PromptSection from identity %r", cls.__name__, identity)
+            return None
 
-    def resolve_str(self, identity_str: str) -> Optional[Type[Any]]:
-        return self.resolve(identity_str)
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.prompt.registry.get", attributes={"identity": ident_str}):
+            with cls._lock:
+                return cls._store.get(ident_tuple3)
 
-    def list(self) -> Iterable[Registered]:
-        with self._lock:
-            return tuple(Registered(k, v) for k, v in self._by_id.items())
+    @classmethod
+    def require(cls, identity: IdentityKey) -> Type[PromptSection]:
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            raise PromptSectionNotFoundError(f"Invalid identity key: {identity!r}")
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.prompt.registry.require", attributes={"identity": ident_str}):
+            section = cls.get(ident_tuple3)
+            if section is None:
+                raise PromptSectionNotFoundError(f"PromptSection not registered: {ident_str}")
+            return section
 
-    def collisions(self) -> Iterable[IdentityKey]:
-        with self._lock:
-            return tuple(self._collisions)
+    # ------------------------------------------------------------------
+    # Introspection / maintenance
+    # ------------------------------------------------------------------
+    @classmethod
+    def all(cls) -> tuple[Type[PromptSection], ...]:
+        with cls._lock:
+            return tuple(cls._store.values())
 
-    def clear(self) -> None:
-        """Testing helper to wipe the registry safely."""
-        with self._lock:
-            self._by_id.clear()
-            self._by_cls.clear()
-            self._collisions.clear()
+    @classmethod
+    def identities(cls) -> tuple[tuple[str, str, str], ...]:
+        with cls._lock:
+            return tuple(cls._store.keys())
+
+    @classmethod
+    def clear(cls) -> None:
+        with cls._lock:
+            count = len(cls._store)
+            cls._store.clear()
+            logger.debug("prompt.registry.clear count=%d", count)
 
 
-# Singleton instance for the Django layer
-prompt_sections = PromptSectionRegistry()
+# Keep a legacy alias in case any import uses the old name
+PromptRegistry = PromptSectionRegistry
+
+# initialize singleton registry instance
+prompts = PromptSectionRegistry()
+
+def register_section(section_cls: Type[PromptSection]) -> Type[PromptSection]:
+    """Decorator to register a `PromptSection` class in the global registry."""
+    PromptSectionRegistry.register(candidate=section_cls)
+    return section_cls
+
+
+__all__ = [
+    "PromptSectionRegistry",
+    "PromptRegistry",
+    "register_section",
+    "DuplicatePromptSectionIdentityError",
+    "PromptSectionNotFoundError",
+    "prompts"
+]

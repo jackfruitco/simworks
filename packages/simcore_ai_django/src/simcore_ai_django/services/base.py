@@ -72,8 +72,7 @@ class DjangoBaseLLMService(BaseLLMService):
        ```
     2. **Custom selection** – Override `select_codec()` in your subclass to return a codec class or instance.
     3. **Default registry lookup** – If neither of the above is defined, the base `get_codec()` method
-       will resolve a codec automatically using the Django codec registry, matching on `(namespace, kind, name)`
-       tuple and falling back to `"default.default.default"` when needed.
+       resolves via the Django codec registry using the service `identity` (namespace.kind.name). If `codec_name` is set, it maps to `(codec_kind, codec_name)`; otherwise `(kind, name)` is used. Then it falls back to `(namespace, 'default', 'default')`.
 
     The codec identity is **always** a dot-only triple string `namespace.kind.name` (no colons or pipes).
 
@@ -84,7 +83,7 @@ class DjangoBaseLLMService(BaseLLMService):
     When handling a response object, call `resolve_codec_for_response(resp)` to prefer the codec
     encoded on the response via `resp.codec_identity` (dot-only triple string). This guarantees that deferred or replayed
     responses use the same intended codec even if the service's defaults have changed. If no
-    `codec_identity` is present, it falls back to `get_codec()`.
+    `codec_identity` is present, it falls back to `get_codec()` (which uses `CodecRegistry.get(...)`).
 
     **Execution Configuration**
 
@@ -179,16 +178,21 @@ class DjangoBaseLLMService(BaseLLMService):
         `codec_name` may be either `"default"` or `"kind.name"` (dot-only).
         """
         ident = getattr(self, "identity", None)
-        namespace = ident.namespace if ident else getattr(self, "namespace", None)
-        kind = ident.kind if ident else (getattr(self, "kind", None) or "default")
-        name = ident.name if ident else getattr(self, "name", None)
+        if ident is None:
+            raise ServiceCodecResolutionError(
+                namespace="unknown", kind="unknown", name=getattr(self, "__class__", type(self)).__name__,
+                codec=self.codec_name, service=self.__class__.__name__
+            )
+        namespace = ident.namespace
+        kind = ident.kind
+        name = ident.name
         c_kind, c_name = _kind_name_from_codec_name(getattr(self, "codec_name", None), kind, name)
 
         with service_span_sync(
                 "svc.get_codec",
                 attributes={
                     "svc.class": self.__class__.__name__,
-                    "ai.identity": ident.as_str if ident else None,
+                    "ai.identity": ident.as_str,
                     "svc.codec_kind": c_kind,
                     "svc.codec_name": c_name,
                     **self.flatten_context(),
@@ -206,11 +210,11 @@ class DjangoBaseLLMService(BaseLLMService):
             # 3) Django registry (triple-based)
             try:
                 if namespace and c_kind and c_name:
-                    obj = CodecRegistry.resolve(identity=(namespace, c_kind, c_name))
+                    obj = CodecRegistry.get(identity=(namespace, c_kind, c_name))
                     if obj:
                         return obj
                 if namespace:
-                    obj = CodecRegistry.resolve(identity=(namespace, "default", "default"))
+                    obj = CodecRegistry.get(identity=(namespace, "default", "default"))
                     if obj:
                         return obj
             except Exception:
@@ -226,9 +230,9 @@ class DjangoBaseLLMService(BaseLLMService):
             if _core_get_codec is not None and namespace:
                 obj = None
                 if c_kind and c_name:
-                    obj = _core_get_codec(namespace, c_kind, c_name)
+                    obj = _core_get_codec((namespace, c_kind, c_name))
                 if not obj:
-                    obj = _core_get_codec(namespace, "default", "default")
+                    obj = _core_get_codec((namespace, "default", "default"))
                 if obj:
                     return obj
 
@@ -275,7 +279,7 @@ class DjangoBaseLLMService(BaseLLMService):
                     else:
                         raise ValueError("invalid codec_identity")
                     # 1) Django registry
-                    obj = CodecRegistry.resolve(identity=(ns, kd, nm))
+                    obj = CodecRegistry.get(identity=(ns, kd, nm))
                     if obj:
                         return obj
                     # 2) Core registry
@@ -284,7 +288,7 @@ class DjangoBaseLLMService(BaseLLMService):
                     except Exception:
                         _core_get_codec = None
                     if _core_get_codec is not None:
-                        obj = _core_get_codec(ns, kd, nm)
+                        obj = _core_get_codec((ns, kd, nm))
                         if obj:
                             return obj
                 except Exception:

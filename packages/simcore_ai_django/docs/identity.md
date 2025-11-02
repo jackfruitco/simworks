@@ -183,7 +183,7 @@ async def generate_initial(simulation, slim):
 > Provide `bucket="triage"` on the decorator or mix it in via `DjangoIdentityMixin`.
 
 **Can I see all registered identities?**
-> Use registry helpers such as `PromptRegistry.all()` or `DjangoCodecRegistry.names()`.
+> Use registry helpers such as `PromptRegistry.all()` or `CodecRegistry.names()`.
 
 **Do schemas require decorators?**
 > No. Schemas inherit from `DjangoBaseOutputSchema` and autoderive identity based on mixins/class name.

@@ -36,7 +36,7 @@ from simcore_ai.tracing import service_span_sync
 # Django-layer registries
 from simcore_ai_django.codecs.registry import codecs as codec_registry
 from simcore_ai_django.services.registry import services as service_registry
-from simcore_ai_django.promptkit.registry import prompt_sections as prompt_registry
+from simcore_ai_django.promptkit.registry import prompts as prompt_registry
 from simcore_ai_django.schemas.registry import schemas as schema_registry
 
 LOGGER = logging.getLogger(__name__)
@@ -444,5 +444,187 @@ def check_simcore_ai_registries(app_configs: Optional[Iterable] = None, **kwargs
                             id=f"{CHECK_ID_PREFIX}-002",
                         )
                     )
+
+        return messages
+
+# ---------------------------------------------------------------------------
+# Pairing checks: Service → (Codec required, Schema optional, Prompt optional)
+# ---------------------------------------------------------------------------
+
+@checks.register(checks.Tags.models)
+def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
+    """
+    For each registered Service:
+      - Ensure a Codec can be resolved (ERROR on failure).
+      - If the service declares `response_schema_identity`, ensure it resolves (WARNING if missing).
+      - If the service declares `required_prompt_sections` (tuple of IdentityKey), ensure each resolves (WARNING on misses).
+
+    Notes:
+      - We intentionally do NOT warn about prompts globally unless the service declares requirements,
+        to avoid noise for services that synthesize prompts or use engines that select dynamically.
+      - Codec resolution mirrors runtime: try exact service.identity, then bucket default `(ns, kind, "default")`,
+        then an explicit `default_codec_identity` attribute if present.
+    """
+    from simcore_ai.identity import Identity, coerce_identity_key, IdentityKey  # lazy import
+    from simcore_ai_django.codecs.registry import codecs as _codecs
+    from simcore_ai_django.promptkit.registry import prompts as _prompts
+    from simcore_ai_django.schemas.registry import schemas as _schemas
+
+    with service_span_sync("ai.services.pairing.checks"):
+        messages: List[checks.CheckMessage] = []
+
+        try:
+            svc_classes = list(service_registry.all())  # registered Service classes
+        except Exception:  # pragma: no cover
+            LOGGER.exception("service.registry.all failed")
+            return messages
+
+        for svc_cls in svc_classes:
+            try:
+                ident: Identity = svc_cls.identity  # stamped by IdentityMixin/decorator
+                ns, kd, nm = ident.as_tuple3
+                ident_str = ident.as_str
+            except Exception as exc:
+                messages.append(
+                    checks.Error(
+                        f"Service {getattr(svc_cls, '__name__', svc_cls)!r} lacks a valid identity: {exc}",
+                        obj=svc_cls,
+                        id=f"{CHECK_ID_PREFIX}-010",
+                    )
+                )
+                continue
+
+            # ---- CODEC (required) ----
+            with service_span_sync("ai.services.pairing.codec", attributes={"service": ident_str}):
+                codec_ok = False
+
+                # 1) exact service.identity
+                if _codecs.get((ns, kd, nm)) is not None:
+                    codec_ok = True
+                # 2) bucket default
+                elif _codecs.get((ns, kd, "default")) is not None:
+                    codec_ok = True
+                else:
+                    # 3) explicit hint on the class (optional)
+                    hinted = getattr(svc_cls, "default_codec_identity", None)
+                    if hinted is not None:
+                        t3 = coerce_identity_key(hinted)
+                        if t3 and _codecs.get(t3) is not None:
+                            codec_ok = True
+
+                if not codec_ok:
+                    messages.append(
+                        checks.Error(
+                            f"Service has no resolvable codec: {ident_str}",
+                            hint=(
+                                "Register a codec at the same identity, or a bucket default "
+                                f"({ns}.{kd}.default), or set `default_codec_identity` on the service."
+                            ),
+                            obj=svc_cls,
+                            id=f"{CHECK_ID_PREFIX}-011",
+                        )
+                    )
+
+            # ---- SCHEMA (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
+            with service_span_sync("ai.services.pairing.schema", attributes={"service": ident_str}):
+                explicit_schema_hint: IdentityKey | None = getattr(svc_cls, "response_schema_identity", None)
+                auto_candidates: tuple[tuple[str, str, str], ...] = ((ns, kd, nm), (ns, kd, "default"))
+
+                # Helper: attempt auto resolve by identity
+                def _auto_schema_resolved() -> bool:
+                    for cand in auto_candidates:
+                        if _schemas.get(cand) is not None:
+                            return True
+                    return False
+
+                if explicit_schema_hint is not None:
+                    t3 = coerce_identity_key(explicit_schema_hint)
+                    ok = bool(t3) and (_schemas.get(t3) is not None)
+                    if not ok:
+                        display = ".".join(t3) if t3 else repr(explicit_schema_hint)
+                        LOGGER.error("service.schema.missing (explicit) service=%s schema=%s", ident_str, display)
+                        messages.append(
+                            checks.Error(
+                                f"Service declares response schema but it is not registered: {display}",
+                                hint="Register the schema at that identity or adjust `response_schema_identity`.",
+                                obj=svc_cls,
+                                id=f"{CHECK_ID_PREFIX}-012",
+                            )
+                        )
+                else:
+                    # Not explicitly explicit: warn if automatic resolution fails
+                    if not _auto_schema_resolved():
+                        LOGGER.warning(
+                            "service.schema.unresolved (implicit) service=%s tried=(%s, %s)",
+                            ident_str,
+                            ".".join(auto_candidates[0]),
+                            ".".join(auto_candidates[1]),
+                        )
+                        messages.append(
+                            checks.Warning(
+                                "Service has no resolvable response schema via identity.",
+                                hint=(
+                                    "If this service should emit structured output, register a schema at the "
+                                    f"service identity ({ns}.{kd}.{nm}) or bucket default ({ns}.{kd}.default), "
+                                    "or set `response_schema_identity` on the service."
+                                ),
+                                obj=svc_cls,
+                                id=f"{CHECK_ID_PREFIX}-012A",
+                            )
+                        )
+
+            # ---- PROMPTS (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
+            with service_span_sync("ai.services.pairing.prompts", attributes={"service": ident_str}):
+                required_prompts: Tuple[IdentityKey, ...] | None = getattr(svc_cls, "required_prompt_sections", None)
+
+                # Helper: auto resolve prompt by identity (exact or bucket default)
+                def _auto_prompt_resolved() -> bool:
+                    if _prompts.get((ns, kd, nm)) is not None:
+                        return True
+                    if _prompts.get((ns, kd, "default")) is not None:
+                        return True
+                    return False
+
+                if required_prompts:
+                    missing: list[str] = []
+                    for req in required_prompts:
+                        t3 = coerce_identity_key(req)
+                        if not t3 or _prompts.get(t3) is None:
+                            missing.append(".".join(t3) if t3 else repr(req))
+                    if missing:
+                        LOGGER.error(
+                            "service.prompts.missing (explicit) service=%s missing=%s",
+                            ident_str,
+                            ", ".join(missing),
+                        )
+                        messages.append(
+                            checks.Error(
+                                f"Service is missing required PromptSections: {', '.join(missing)}",
+                                hint="Register the sections or update `required_prompt_sections`.",
+                                obj=svc_cls,
+                                id=f"{CHECK_ID_PREFIX}-013",
+                            )
+                        )
+                else:
+                    # No explicit requirements: warn only if none can be resolved by identity
+                    if not _auto_prompt_resolved():
+                        LOGGER.warning(
+                            "service.prompts.unresolved (implicit) service=%s tried=(%s, %s)",
+                            ident_str,
+                            ".".join((ns, kd, nm)),
+                            ".".join((ns, kd, "default")),
+                        )
+                        messages.append(
+                            checks.Warning(
+                                "Service has no resolvable PromptSection via identity.",
+                                hint=(
+                                    "If this service should include prompts, register a section at the service identity "
+                                    f"({ns}.{kd}.{nm}) or bucket default ({ns}.{kd}.default), "
+                                    "or declare `required_prompt_sections` on the service."
+                                ),
+                                obj=svc_cls,
+                                id=f"{CHECK_ID_PREFIX}-013A",
+                            )
+                        )
 
         return messages

@@ -2,177 +2,185 @@
 from __future__ import annotations
 
 """
-Django Service Registry (class registry).
+Django Service Registry (class registry; Identity-first).
 
-This registry stores **service classes** keyed by the finalized identity tuple
-`(namespace, kind, name)`. It enforces duplicate vs collision behavior and
-exposes a simple resolution API.
+- Stores **service classes** keyed by canonical identity tuple (namespace, kind, name).
+- Classes MUST expose `identity: Identity` (stamped by the decorator via IdentityMixin.pin_identity).
+- Registration is strict + idempotent:
+    • Same class + same identity: no-op
+    • Different class + same identity: raises DuplicateServiceIdentityError
+      unless `replace=True`, in which case it overwrites with a warning.
 
-Policy (per implementation plan):
-- Identity tuple is `(namespace, kind, name)`; values are assumed to be fully
-  derived/validated *before* registration (decorators perform derivation).
-- **Duplicate**: same class attempts to register with the same identity → skip
-  idempotently (DEBUG log only).
-- **Collision**: *different* class attempts to register the same identity →
-  behavior controlled by `SIMCORE_COLLISIONS_STRICT` (default True):
-    * True  → raise `IdentityCollisionError`
-    * False → log WARNING and record for Django system checks (no mutation).
-- **Invalid identity** (wrong arity / non-str / empty) → always raise
-  `IdentityValidationError`.
-- Validation is delegated to simcore_ai.identity (Identity/coerce_identity_key); this module does not implement its own validators.
+Public API (mirrors other registries):
+    ServiceRegistry.register(cls, *, replace=False)
+    ServiceRegistry.get(identity)        # tuple3 | "ns.kind.name" | Identity
+    ServiceRegistry.require(identity)
+    ServiceRegistry.all()                # -> tuple[type, ...]
+    ServiceRegistry.identities()         # -> tuple[tuple[str, str, str], ...]
+    ServiceRegistry.clear()
 
-Note: No Django ORM is used here; this is a pure in-process registry.
+Notes
+-----
+- No Django ORM imports; registry is pure in-process.
+- Identity parsing/coercion is centralized in `simcore_ai.identity`.
 """
 
-from dataclasses import dataclass
 import logging
 import threading
-from typing import Any, Iterable, Optional, Tuple, Type
+from typing import Type, ClassVar
 
-from simcore_ai.identity import Identity
-from django.conf import settings
+from simcore_ai.identity import Identity, coerce_identity_key, IdentityKey
+from simcore_ai.tracing import service_span_sync
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    "IdentityCollisionError",
-    "IdentityValidationError",
-    "Registered",
-    "ServiceRegistry",
-    "services",
-]
+
+# -------------------- Errors --------------------
+
+class DuplicateServiceIdentityError(Exception):
+    """Raised when a duplicate identity key is registered with a different service class."""
 
 
-# -------------------------
-# Exceptions
-# -------------------------
-
-class IdentityCollisionError(Exception):
-    """Raised when a different class attempts to register an existing identity."""
+class ServiceNotFoundError(KeyError):
+    """Raised when a service is not found in the registry."""
 
 
-class IdentityValidationError(Exception):
-    """Raised when identity is malformed (arity/empties/non-strings)."""
-
-
-# -------------------------
-# Data structures
-# -------------------------
-
-@dataclass(frozen=True)
-class Registered:
-    identity: Tuple[str, str, str]
-    cls: Type[Any]
-
-
-# -------------------------
-# Registry
-# -------------------------
+# -------------------- Registry --------------------
 
 class ServiceRegistry:
-    """Registry of service **classes** keyed by `(namespace, kind, name)` tuples."""
+    """Global registry for service **classes** keyed by (namespace, kind, name)."""
 
-    def __init__(self) -> None:
-        self._by_id: dict[Tuple[str, str, str], Type[Any]] = {}
-        self._by_cls: dict[Type[Any], Tuple[str, str, str]] = {}
-        self._collisions: set[Tuple[str, str, str]] = set()
-        self._lock = threading.RLock()
+    _store: dict[tuple[str, str, str], Type] = {}
+    _lock: ClassVar[threading.RLock] = threading.RLock()
 
-        # Read strictness once per process; default True
-        strict_default = True
-        self._strict: bool = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", strict_default))
+    # ------------------------------------------------------------------
+    # Registration (public) → strict + idempotent
+    # ------------------------------------------------------------------
+    @classmethod
+    def register(
+        cls,
+        candidate: type,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Register a Service **class**.
 
-    # ---- helpers ----
-    @staticmethod
-    def _validate_identity(identity: Tuple[str, str, str] | str | Identity) -> Tuple[str, str, str]:
-        """Coerce and validate an identity via the centralized Identity API.
-
-        Accepts tuple3, canonical dot string, or Identity object.
-        Returns the normalized (namespace, kind, name) tuple.
-        Raises IdentityValidationError on failure.
+        Requirements:
+          • `candidate.identity` MUST be an `Identity` instance.
         """
-        try:
-            ident = Identity.get_for(identity)  # strict coercion + validation
-        except Exception as e:
-            raise IdentityValidationError(
-                f"Invalid identity {identity!r}: {e}"
-            ) from e
-        return ident.as_tuple3
+        ident = getattr(candidate, "identity", None)
+        if not isinstance(ident, Identity):
+            raise TypeError(
+                f"{getattr(candidate, '__name__', candidate)!r} must define `identity: Identity`."
+            )
+        cls._register(candidate, replace=replace)
 
-    # ---- registration API ----
-    def maybe_register(self, identity: Tuple[str, str, str] | str | Identity, cls: Type[Any]) -> None:
-        """
-        Register a service class if not already registered.
+    # ------------------------------------------------------------------
+    # Registration (private write path)
+    # ------------------------------------------------------------------
+    @classmethod
+    def _register(
+        cls,
+        candidate: type,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Private single write path with dupe detection."""
+        with cls._lock:
+            identity_: Identity = candidate.identity  # type: ignore[attr-defined]
+            key = identity_.as_tuple3
+            ident_str = identity_.as_str
 
-        - Duplicate (same class + same identity): skip (DEBUG)
-        - Collision (different class + same identity): raise when strict, else warn
-        """
-        ns, kd, nm = self._validate_identity(identity)
-        key = (ns, kd, nm)
+            existing = cls._store.get(key)
 
-        with self._lock:
-            # Same class already registered (idempotent under autoreload)
-            prev = self._by_cls.get(cls)
-            if prev == key:
-                logger.debug("service.duplicate-class-same-identity %s %s", cls, key)
-                return
-
-            existing = self._by_id.get(key)
             if existing is None:
-                # First registration
-                self._by_id[key] = cls
-                self._by_cls[cls] = key
-                logger.debug("service.registered %s -> %s", ".".join(key), cls.__name__)
+                cls._store[key] = candidate
+                logger.info("service.register %s -> %s", ident_str, candidate.__name__)
                 return
 
-            if existing is cls:
-                # Same class attempting to register again with same key
-                self._by_cls[cls] = key  # ensure mapping is present
-                logger.debug("service.duplicate-class-same-identity %s %s", cls, key)
+            if existing is candidate:
+                if replace:
+                    logger.info("service.register.replace %s (same class)", ident_str)
+                    cls._store[key] = candidate
+                # else no-op
                 return
 
-            # Collision: different class, same identity
-            self._collisions.add(key)
-            msg = f"Service identity collision {key} between {existing} and {cls}"
-            if self._strict:
-                logger.error("service.collision %s", msg)
-                raise IdentityCollisionError(msg)
-            else:
-                logger.warning("service.collision %s", msg)
-                # In non-strict mode we do NOT mutate identity here. Decorators
-                # may choose to rewrite name and retry. We record for checks.
+            # Collision with a different class
+            if replace:
+                logger.warning(
+                    "service.register.replace.collision %s (old=%s, new=%s)",
+                    ident_str, getattr(existing, "__name__", existing), candidate.__name__,
+                )
+                cls._store[key] = candidate
                 return
 
-    def resolve(self, identity: Tuple[str, str, str] | str | Identity) -> Optional[Type[Any]]:
-        ns, kd, nm = self._validate_identity(identity)
-        key = (ns, kd, nm)
-        with self._lock:
-            return self._by_id.get(key)
+            raise DuplicateServiceIdentityError(
+                f"Service identity already registered: {ident_str} "
+                f"(existing={getattr(existing, '__name__', existing)}, new={candidate.__name__})"
+            )
 
-    def resolve_str(self, identity: str) -> Optional[Type[Any]]:
-        key = self._validate_identity(identity)
-        with self._lock:
-            return self._by_id.get(key)
+    # ------------------------------------------------------------------
+    # Lookup
+    # ------------------------------------------------------------------
+    @classmethod
+    def get(cls, identity: IdentityKey) -> Type | None:
+        """Retrieve a registered service class by identity.
 
-    def require(self, identity: Tuple[str, str, str] | str | Identity) -> Type[Any]:
-        key = self._validate_identity(identity)
-        with self._lock:
-            cls = self._by_id.get(key)
-            if cls is None:
-                raise KeyError(f"Service not registered for identity: {'.'.join(key)}")
-            return cls
+        Accepts:
+          • tuple[str, str, str] (namespace, kind, name)
+          • Identity (object exposing `.as_tuple3`)
+          • str ("namespace.kind.name")
+        """
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            logger.warning("%s could not resolve Service from identity %r", cls.__name__, identity)
+            return None
 
-    def require_str(self, identity: str) -> Type[Any]:
-        return self.require(identity)
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.service.registry.get", attributes={"identity": ident_str}):
+            with cls._lock:
+                return cls._store.get(ident_tuple3)
 
-    def list(self) -> Iterable[Registered]:
-        with self._lock:
-            return tuple(Registered(k, v) for k, v in self._by_id.items())
+    @classmethod
+    def require(cls, identity: IdentityKey) -> Type:
+        """Like `get` but raises `ServiceNotFoundError` if not found."""
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            raise ServiceNotFoundError(f"Invalid identity key: {identity!r}")
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.service.registry.require", attributes={"identity": ident_str}):
+            svc_cls = cls.get(ident_tuple3)
+            if svc_cls is None:
+                raise ServiceNotFoundError(f"Service not registered: {ident_str}")
+            return svc_cls
 
-    def collisions(self) -> Iterable[Tuple[str, str, str]]:
-        with self._lock:
-            return tuple(self._collisions)
+    # ------------------------------------------------------------------
+    # Introspection / maintenance
+    # ------------------------------------------------------------------
+    @classmethod
+    def all(cls) -> tuple[Type, ...]:
+        with cls._lock:
+            return tuple(cls._store.values())
+
+    @classmethod
+    def identities(cls) -> tuple[tuple[str, str, str], ...]:
+        with cls._lock:
+            return tuple(cls._store.keys())
+
+    @classmethod
+    def clear(cls) -> None:
+        with cls._lock:
+            count = len(cls._store)
+            cls._store.clear()
+            logger.debug("service.registry.clear count=%d", count)
 
 
-# Singleton instance for Django layer
+# Singleton instance for Django layer (symmetry with other registries)
 services = ServiceRegistry()
+
+__all__ = [
+    "ServiceRegistry",
+    "services",
+    "DuplicateServiceIdentityError",
+    "ServiceNotFoundError",
+]

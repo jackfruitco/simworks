@@ -1,36 +1,30 @@
+# packages/simcore_ai_django/src/simcore_ai_django/schemas/registry.py
 from __future__ import annotations
 
 """
-Django schema registry (facade).
+Django response schema registry (facade).
 
-This module intentionally delegates to the core registry in
-`simcore_ai.schemas.registry` so that identity resolution and storage
-live in a single place.
-
-Why a facade?
-- Keeps imports stable for Django callers (`simcore_ai_django.schemas.registry`)
-- Avoids code/config drift between core and Django layers
-- Honors the centralized Identity system (IdentityMixin + resolvers)
+This module delegates to the core registry in
+`simcore_ai.schemas.registry` so identity handling and storage live
+in one place. Keeping a Django-facing facade preserves import paths
+(e.g., `simcore_ai_django.schemas.registry`) without duplicating logic.
 
 Exports:
-- SchemaRegistry: the core registry class
-- register_schema: decorator alias to core helper
+- SchemaRegistry: alias of the core ResponseSchemaRegistry
+- schemas: Django-layer singleton instance
 """
 
-from typing import Iterable, Optional, Type
-
-# Import the core primitives and re-expose them here
-from simcore_ai.schemas.registry import (  # noqa: F401
-    ResponseSchemaRegistry as _CoreSchemaRegistry,
+from simcore_ai.schemas.registry import (
+    ResponseSchemaRegistry as _CoreResponseSchemaRegistry,
 )
 
-# Public aliases (Django callers can continue to import from this module)
-SchemaRegistry = _CoreSchemaRegistry
+# Public alias for Django callers
+SchemaRegistry = _CoreResponseSchemaRegistry
 
 __all__ = [
     "SchemaRegistry",
     "schemas",
 ]
 
-# Singleton instance for Django layer
+# Django-layer singleton
 schemas = SchemaRegistry()

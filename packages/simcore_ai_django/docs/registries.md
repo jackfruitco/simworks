@@ -46,11 +46,13 @@ all_sections = list(PromptRegistry.all())
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import DjangoCodecRegistry, get_codec
+from simcore_ai_django.codecs import CodecRegistry, get_codec
+
 
 @codec
 class PatientInitialCodec(DjangoBaseLLMCodec):
     ...
+
 
 codec_cls = get_codec("chatlab", "standardized_patient", "initial")
 assert codec_cls is PatientInitialCodec
@@ -60,7 +62,7 @@ assert codec_cls is PatientInitialCodec
 
 1. Explicit `codec_class` attribute or injected codec instance.
 2. `select_codec()` override return value.
-3. `DjangoCodecRegistry.get_codec(origin, bucket, name)` (with fallbacks).
+3. `CodecRegistry.get_codec(origin, bucket, name)` (with fallbacks).
 4. Core `simcore_ai.codecs.registry` as a final fallback.
 5. Raise `ServiceCodecResolutionError` if nothing matches.
 
@@ -96,11 +98,13 @@ The Django `@llm_service` decorator calls `resolve_collision_django` before regi
 ```python
 # Prompt sections
 from simcore_ai_django.promptkit import PromptRegistry
+
 print([cls.identity_static().to_string() for cls in PromptRegistry.all()])
 
 # Codecs
-from simcore_ai_django.codecs import DjangoCodecRegistry
-print(list(DjangoCodecRegistry.names()))
+from simcore_ai_django.codecs import CodecRegistry
+
+print(list(CodecRegistry.names()))
 ```
 
 Ensure your app imports modules containing decorated classes inside `AppConfig.ready()` so they register on startup.
@@ -131,7 +135,7 @@ from simcore_ai_django.identity import resolve_collision_django
 origin, bucket, name = resolve_collision_django(
     "codec",
     ("chatlab", "standardized_patient", "initial"),
-    exists=DjangoCodecRegistry.has,
+    exists=CodecRegistry.has,
 )
 ```
 

@@ -145,10 +145,10 @@ print(MyCodec.identity_str())    # 'chatlab.standardized_patient.initial'
 To see all registered codecs:
 
 ```python
-from simcore_ai_django.codecs.registry import DjangoCodecRegistry
+from simcore_ai_django.codecs.registry import CodecRegistry
 
 # Check whether a codec is registered by identity
-print(DjangoCodecRegistry.has("chatlab", "standardized_patient", "initial"))
+print(CodecRegistry.has("chatlab", "standardized_patient", "initial"))
 ```
 
 ---

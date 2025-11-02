@@ -11,7 +11,7 @@ Main components
   validate → restructure → persist (atomic) → emit.
 - **codec** – Class decorator that registers codecs using a tuple3 identity
   `(namespace, kind, name)`. Supports both `@codec` and `@codec(namespace=..., ...)`.
-- **DjangoCodecRegistry** – Central registry storing codec *classes*, keyed by
+- **CodecRegistry** – Central registry storing codec *classes*, keyed by
   their tuple3 identity. Used internally by services and executors.
 - **get_codec** – Convenience access to the registry lookup.
 
