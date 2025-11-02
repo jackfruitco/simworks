@@ -70,11 +70,10 @@ from . import backends as _backends  # noqa: F401
 from .decorators import task_backend
 from .entrypoint import execute
 # Public API re-exports
-from .registry import register_backend, get_backend_by_name
+from .registry import register_backend
 
 __all__ = [
     "register_backend",
-    "get_backend_by_name",
     "task_backend",
     "execute",
 ]

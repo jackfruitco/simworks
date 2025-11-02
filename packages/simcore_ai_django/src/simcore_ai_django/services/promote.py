@@ -2,21 +2,26 @@
 from __future__ import annotations
 
 """
-Service-level promotion helpers.
+Service-level promotion helpers (Django layer).
 
 These helpers promote core `simcore_ai` request/response models into Django DTOs,
-enriching them with service-derived identity (namespace/kind/name), provider/client
+enriching them with **service-derived identity** (namespace/kind/name), provider/client
 metadata, and optional database PKs. They build on the lower-level DTO helpers in
 `simcore_ai_django.types.promote`.
 
-Identity triples are expected to be dot-only strings and are resolved/stripped upstream
-(e.g., in identity resolver/decorators). This module does not perform token stripping or normalization.
+Identity is resolved **upstream** (decorators / identity resolvers). This module assumes
+`service.identity` is an `Identity` instance and does **not** perform token stripping or
+normalization. When `service.identity` is unavailable, we make a best-effort fallback to
+`service.namespace/kind/name` without mutating the service.
 """
 
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 from uuid import UUID
 
 from simcore_ai.types import LLMRequest, LLMResponse
+from simcore_ai.tracing import service_span_sync
+from simcore_ai.identity import Identity
+
 from simcore_ai_django.types import (
     DjangoLLMRequest,
     DjangoLLMResponse,
@@ -25,28 +30,60 @@ from simcore_ai_django.types.promote import (
     promote_request as _dto_promote_request,
     promote_response as _dto_promote_response,
 )
-from simcore_ai.tracing import service_span_sync
 
 __all__ = ["promote_request_for_service", "promote_response_for_service"]
 
 
-def _extract_provider_client(service: Any) -> Tuple[Optional[str], Optional[str]]:
+# ---------------------------------------------------------------------------
+# identity helpers
+# ---------------------------------------------------------------------------
+
+def _svc_identity_str(service: Any) -> Optional[str]:
+    """Return canonical `namespace.kind.name` string for a service if available."""
+    ident: Optional[Identity] = getattr(service, "identity", None)
+    if isinstance(ident, Identity) and all((ident.namespace, ident.kind, ident.name)):
+        return ident.as_str
+    ns = getattr(service, "namespace", None)
+    kd = getattr(service, "kind", None)
+    nm = getattr(service, "name", None)
+    if ns and kd and nm:
+        return f"{ns}.{kd}.{nm}"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+def _svc_identity_tuple3(service: Any) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Return (namespace, kind, name) for a service, preferring `service.identity`.
+
+    We *do not* mutate the service or synthesize an Identity. This is a read-only
+    extraction for tracing/DTO enrichment.
     """
-    Best-effort extraction of provider/client names from a DjangoBaseLLMService instance.
+    ident: Optional[Identity] = getattr(service, "identity", None)
+    if isinstance(ident, Identity):
+        ns, kd, nm = ident.namespace, ident.kind, ident.name
+        return ns, kd, nm
+    # best-effort fallbacks for legacy callers
+    ns = getattr(service, "namespace", None)
+    kd = getattr(service, "kind", None)
+    nm = getattr(service, "name", None)
+    return ns, kd, nm
+
+
+def _extract_provider_client(service: Any) -> tuple[Optional[str], Optional[str]]:
+    """Best-effort extraction of provider/client names from a service instance.
+
     Both values are optional; absence is acceptable for environments that don't register
     provider/client metadata.
     """
-    provider_name: Optional[str] = None
-    client_name: Optional[str] = None
-
-    # Preferred: explicit attributes on the service
-    provider_name = getattr(service, "provider_name", None) or getattr(service, "provider", None)
-    client_name = getattr(service, "client_name", None) or getattr(service, "client_id", None)
+    provider_name: Optional[str] = getattr(service, "provider_name", None) or getattr(service, "provider", None)
+    client_name: Optional[str] = getattr(service, "client_name", None) or getattr(service, "client_id", None)
 
     # Fallback: inspect a bound client object if present
     client_obj = getattr(service, "client", None)
     if client_obj is not None:
-        # Common names used across provider/client implementations
         provider_name = getattr(client_obj, "provider", None) or getattr(client_obj, "provider_name", provider_name)
         client_name = getattr(client_obj, "name", None) or getattr(client_obj, "client_name", client_name)
 
@@ -59,51 +96,49 @@ def _extract_provider_client(service: Any) -> Tuple[Optional[str], Optional[str]
     return provider_name, client_name
 
 
+# ---------------------------------------------------------------------------
+# promotions
+# ---------------------------------------------------------------------------
+
 def promote_request_for_service(
         service: Any,
         req: LLMRequest,
         *,
         context: dict | None = None,
 ) -> DjangoLLMRequest:
+    """Promote a core LLMRequest into a DjangoLLMRequest with identity + metadata.
+
+    Identity comes from `service.identity` (preferred) or legacy `namespace/kind/name`.
+    Identities are expected to be already normalized (dot-only triples) upstream.
+    This function does not perform token stripping or normalization.
+
+    Parameters
+    ----------
+    service: DjangoBaseLLMService (or compatible) instance.
+    req: Core LLMRequest to promote.
+    context: Optional extra context to carry through the promotion pipeline.
+
+    Returns
+    -------
+    DjangoLLMRequest populated with rich `messages_rich` and metadata.
     """
-    Promote a core LLMRequest into a DjangoLLMRequest, enriched with identity and metadata
-    derived from the given service.
-
-    Identity comes from the service attributes: `namespace`, `kind`, `name`.
-    Provider/client metadata is attached when available.
-
-    Identities are expected to be already normalized (dot-only triples) by the identity resolver/decorators;
-    this module does not perform token stripping or normalization.
-
-    Args:
-        service: The DjangoBaseLLMService (or compatible) instance.
-        req: Core LLMRequest to promote.
-        context: Optional extra context to carry through the promotion pipeline.
-
-    Returns:
-        DjangoLLMRequest populated with rich `messages_rich` and metadata.
-    """
-    ident = getattr(service, "identity", None)
-    ns = getattr(service, "namespace", None) or getattr(ident, "namespace", None)
-    kd = getattr(service, "kind", None) or getattr(ident, "kind", None)
-    nm = getattr(service, "name", None) or getattr(ident, "name", None)
+    ns, kd, nm = _svc_identity_tuple3(service)
     prov, cli = _extract_provider_client(service)
 
     with service_span_sync(
             "svc.promote_request_for_service",
             attributes={
                 "svc.class": service.__class__.__name__,
-                "svc.namespace": ns,
-                "svc.kind": kd,
-                "svc.name": nm,
+                "ai.identity.service": _svc_identity_str(service),
+                "ai.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
                 "svc.provider": prov,
                 "svc.client": cli,
                 "req.correlation_id": getattr(req, "correlation_id", None),
-                **service.flatten_context(),
+                **getattr(service, "flatten_context", lambda: {})(),
             },
     ):
-        # Build the base Django DTO, letting the DTO promotion helper enrich messages_rich.
-        dj = DjangoLLMRequest(
+        dj = _dto_promote_request(
+            req,
             correlation_id=getattr(req, "correlation_id", None),
             namespace=ns,
             kind=kd,
@@ -112,26 +147,6 @@ def promote_request_for_service(
             client_name=cli,
             context=context,
         )
-
-        # Promote messages into rich overlay; also propagate request correlation id to sub-objects.
-        _dto_promote_request(
-            req,
-            dj,
-        )
-
-        # Provide the request_correlation_id to rich message rows if available.
-        req_corr = getattr(req, "correlation_id", None)
-        try:
-            from simcore_ai_django.types.promote import _promote_messages as _pm  # type: ignore
-            _pm(  # type: ignore
-                req,
-                dj,
-                request_db_pk=dj.db_pk,
-                request_correlation_id=req_corr,
-            )
-        except Exception:
-            pass
-
         return dj
 
 
@@ -143,39 +158,33 @@ def promote_response_for_service(
         request_db_pk: int | UUID | None = None,
         response_db_pk: int | UUID | None = None,
 ) -> DjangoLLMResponse:
+    """Promote a core LLMResponse into a DjangoLLMResponse with identity + metadata.
+
+    Identity comes from `service.identity` (preferred) or legacy `namespace/kind/name`.
+    Identities are expected to be already normalized (dot-only triples) upstream.
+    This function does not perform token stripping or normalization.
+
+    Parameters
+    ----------
+    service: DjangoBaseLLMService (or compatible) instance.
+    resp: Core LLMResponse to promote.
+    object_db_pk: Optional Simulation primary key (int or UUID).
+    request_db_pk: Optional DB PK for the originating request (int or UUID).
+    response_db_pk: Optional DB PK for this response (int or UUID).
+
+    Returns
+    -------
+    DjangoLLMResponse populated with rich `outputs_rich`/`usage_rich` and metadata.
     """
-    Promote a core LLMResponse into a DjangoLLMResponse, enriched with identity and metadata
-    derived from the given service.
-
-    Identity comes from the service attributes: `namespace`, `kind`, `name`.
-    Provider/client metadata is attached when available.
-
-    Identities are expected to be already normalized (dot-only triples) by the identity resolver/decorators;
-    this module does not perform token stripping or normalization.
-
-    Args:
-        service: The DjangoBaseLLMService (or compatible) instance.
-        resp: Core LLMResponse to promote.
-        object_db_pk: Optional Simulation primary key (int or UUID).
-        request_db_pk: Optional DB PK for the originating request (int or UUID).
-        response_db_pk: Optional DB PK for this response (int or UUID).
-
-    Returns:
-        DjangoLLMResponse populated with rich `outputs_rich`/`usage_rich` and metadata.
-    """
-    ident = getattr(service, "identity", None)
-    ns = getattr(service, "namespace", None) or getattr(ident, "namespace", None)
-    kd = getattr(service, "kind", None) or getattr(ident, "kind", None)
-    nm = getattr(service, "name", None) or getattr(ident, "name", None)
-
+    ns, kd, nm = _svc_identity_tuple3(service)
     prov, cli = _extract_provider_client(service)
+
     with service_span_sync(
             "svc.promote_response_for_service",
             attributes={
                 "svc.class": service.__class__.__name__,
-                "svc.namespace": ns,
-                "svc.kind": kd,
-                "svc.name": nm,
+                "ai.identity.service": _svc_identity_str(service),
+                "ai.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
                 "svc.provider": prov,
                 "svc.client": cli,
                 "resp.correlation_id": getattr(resp, "correlation_id", None),
@@ -183,10 +192,11 @@ def promote_response_for_service(
                 "db.object_db_pk": str(object_db_pk) if object_db_pk is not None else None,
                 "db.request_pk": str(request_db_pk) if request_db_pk is not None else None,
                 "db.response_pk": str(response_db_pk) if response_db_pk is not None else None,
-                **service.flatten_context(),
+                **getattr(service, "flatten_context", lambda: {})(),
             },
     ):
-        dj = DjangoLLMResponse(
+        dj = _dto_promote_response(
+            resp,
             correlation_id=getattr(resp, "correlation_id", None),
             request_correlation_id=getattr(resp, "request_correlation_id", None),
             namespace=ns,
@@ -199,30 +209,4 @@ def promote_response_for_service(
             request_db_pk=request_db_pk,
             db_pk=response_db_pk,
         )
-
-        _dto_promote_response(resp, dj)
-
-        req_corr = getattr(resp, "request_correlation_id", None)
-        resp_corr = getattr(resp, "correlation_id", None)
-        try:
-            from simcore_ai_django.types.promote import _promote_response_items as _pri  # type: ignore
-            from simcore_ai_django.types.promote import _promote_usage as _pu  # type: ignore
-            _pri(  # type: ignore
-                resp,
-                dj,
-                response_db_pk=response_db_pk,
-                request_db_pk=request_db_pk,
-                request_correlation_id=req_corr,
-                response_correlation_id=resp_corr,
-            )
-            _pu(  # type: ignore
-                resp,
-                dj,
-                response_db_pk=response_db_pk,
-                request_correlation_id=req_corr,
-                response_correlation_id=resp_corr,
-            )
-        except Exception:
-            pass
-
         return dj

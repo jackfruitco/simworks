@@ -16,17 +16,21 @@ No decorator/registry imports here to avoid cycles.
 
 import os
 import re
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 from django.apps import apps
 from django.conf import settings
 
-from simcore_ai.identity.resolution import IdentityResolver
+from simcore_ai.identity.resolvers import IdentityResolver
 from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS, snake, module_root
+
+if TYPE_CHECKING:  # type-only import to avoid runtime cycles
+    from simcore_ai.identity.base import Identity  # noqa: F401
 
 __all__ = [
     "DjangoIdentityResolver",
     "resolve_identity_django",
+    "DJANGO_BASE_STRIP_TOKENS",
 ]
 
 # Base Django tokens to always strip for *derived* names
@@ -100,7 +104,7 @@ class DjangoIdentityResolver(IdentityResolver):
         tokens.extend(DJANGO_BASE_STRIP_TOKENS)
 
         # Project-level settings (any of CSV/list/tuple)
-        project_tokens = []
+        project_tokens: list[str] = []
         if hasattr(settings, "SIMCORE_IDENTITY_STRIP_TOKENS"):
             project_tokens = _as_list_from_maybe_csv(getattr(settings, "SIMCORE_IDENTITY_STRIP_TOKENS"))
         tokens.extend(project_tokens)
@@ -132,7 +136,6 @@ class DjangoIdentityResolver(IdentityResolver):
 
 
 # Convenience helper mirroring the core one
-
 def resolve_identity_django(
         cls: type,
         *,

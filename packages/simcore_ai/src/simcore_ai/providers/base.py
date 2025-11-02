@@ -1,10 +1,11 @@
 # simcore_ai/providers/base.py
 from __future__ import annotations
 
+import inspect
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Optional, Protocol
 from collections.abc import Iterable
+from typing import Any, AsyncIterator, Optional, Protocol
 
 from .exceptions import ProviderError, ProviderSchemaUnsupported
 from ..tracing import service_span_sync
@@ -15,7 +16,7 @@ from ..types import (
     LLMStreamChunk,
     LLMTextPart,
     LLMToolResultPart,
-    LLMToolCall,
+    LLMToolCall, LLMRole,
 )
 from ..types.tools import BaseLLMTool
 
@@ -92,19 +93,39 @@ class BaseProvider(ABC):
     _tool_adapter: Optional["BaseProvider.ToolAdapter"] = None
 
     # ---------------------------------------------------------------------
-    # Public provider API
+    # Public provider API (async-first contracts)
     # ---------------------------------------------------------------------
+    # Providers should implement **async** methods for both non-stream and stream modes.
+    # If you have a sync-only SDK, you may still integrate by running the sync call in a thread
+    # (the AIClient will do this via `asyncio.to_thread` when it detects a sync `call`).
+    #
+    # Streaming MUST be async: `async def stream(self, req) -> AsyncIterator[LLMStreamChunk]`.
+    # Sync streaming is not supported by the client adapter.
+
     @abstractmethod
     async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+        """Canonical async, non-streaming request.
+
+        Implementations MUST be async when subclassing BaseProvider. If your concrete
+        provider relies on a sync-only SDK, consider not subclassing or ensure your
+        implementation awaits on an internal `asyncio.to_thread(...)` call to offload
+        the blocking work. The `AIClient` also provides a safety net when interacting
+        with provider-like objects that expose a sync `call(...)` by running them in a
+        worker thread to avoid blocking the event loop.
+        """
         ...
 
     @abstractmethod
     async def stream(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
+        """Canonical async streaming interface.
+
+        MUST be implemented as an async generator yielding `LLMStreamChunk` items.
+        The core client requires an async `stream(...)` and will raise if missing.
+        """
         ...
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<AIProvider {self.name}>"
-
 
     async def healthcheck(self, *, timeout: float | None = None) -> tuple[bool, str]:
         """
@@ -169,7 +190,7 @@ class BaseProvider(ABC):
             # 1) Primary assistant text
             text_out = self._extract_text(resp)
             if text_out:
-                messages.append(LLMResponseItem(role="assistant", content=[LLMTextPart(text=text_out)]))
+                messages.append(LLMResponseItem(role=LLMRole.ASSISTANT, content=[LLMTextPart(text=text_out)]))
 
             # 2) Optional schema parse (best-effort); does not alter normalized message parts
             parsed = None
@@ -185,7 +206,7 @@ class BaseProvider(ABC):
                     if pair is not None:
                         call, part = pair
                         tool_calls.append(call)
-                        messages.append(LLMResponseItem(role="assistant", content=[part]))
+                        messages.append(LLMResponseItem(role=LLMRole.ASSISTANT, content=[part]))
                         continue
 
                     # 3b) Generic fallback: image-like results
@@ -197,7 +218,7 @@ class BaseProvider(ABC):
                         if b64:
                             messages.append(
                                 LLMResponseItem(
-                                    role="assistant",
+                                    role=LLMRole.ASSISTANT,
                                     content=[LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64)],
                                 )
                             )
@@ -219,9 +240,19 @@ class BaseProvider(ABC):
             except Exception:
                 pass
 
+            from ..types.dtos import LLMUsage
+
+            usage_data = self._extract_usage(resp)
+            usage = None
+            if usage_data:
+                try:
+                    usage = LLMUsage.model_validate(usage_data)
+                except Exception:
+                    usage = LLMUsage(**usage_data) if isinstance(usage_data, dict) else None
+
             return LLMResponse(
-                messages=messages,
-                usage=self._extract_usage(resp),
+                outputs=messages,
+                usage=usage,
                 tool_calls=tool_calls,
                 provider_meta=self._extract_provider_meta(resp),
             )
@@ -392,12 +423,31 @@ class BaseProvider(ABC):
     # ---------------------------------------------------------------------
     @staticmethod
     def _maybe_parse_to_schema(text: str, schema_cls: type) -> Any:
-        """Best-effort parse of `text` into `schema_cls` via Pydantic v2 API."""
+        """Best-effort parse of `text` into a Pydantic-style schema class.
+
+        Compatible with Pydantic v2 (`model_validate_json` / `model_validate`).
+        Uses attribute checks to avoid static type errors when `schema_cls` is
+        not explicitly typed as a Pydantic BaseModel subclass.
+        """
+        # Try v2 JSON path first if available
         try:
-            # Prefer JSON if schema expects JSON; fall back to plain model_validate
-            return schema_cls.model_validate_json(text)
+            mvj = getattr(schema_cls, "model_validate_json", None)
+            if callable(mvj):
+                return mvj(text)
         except Exception:
-            try:
-                return schema_cls.model_validate(text)
-            except Exception:
-                return None
+            pass
+        # Fallback to generic model_validate if available
+        try:
+            mv = getattr(schema_cls, "model_validate", None)
+            if callable(mv):
+                return mv(text)
+        except Exception:
+            pass
+        return None
+
+    def supports_streaming(self) -> bool:
+        """Return True if this provider exposes an async `stream` method."""
+        try:
+            return inspect.iscoroutinefunction(getattr(self, "stream", None))
+        except Exception:
+            return False

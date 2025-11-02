@@ -1,8 +1,10 @@
+# simcore_ai/codecs/base.py
 """Base codec class for structured LLM output validation and interpretation.
 
 Identity usage:
   The codec identity is composed of three parts: namespace, kind, and name.
   These are used for cross-layer registration and lookup, replacing any prior use of 'namespace'.
+  Identity resolution is centralized via `IdentityMixin`; codecs no longer construct `Identity` manually.
 
 Responsibilities:
   - Declare the structured output contract via `schema_cls` (a BaseOutputSchema subclass).
@@ -26,12 +28,11 @@ from pydantic import BaseModel, ValidationError
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import LLMResponse, LLMTextPart, LLMToolResultPart
 from simcore_ai.types import BaseOutputSchema
-# Identity model for framework-agnostic codec keys
-from simcore_ai.identity import Identity
 from .exceptions import CodecDecodeError, CodecSchemaError
+from simcore_ai.identity.mixins import IdentityMixin
 
 
-class BaseLLMCodec(ABC):
+class BaseLLMCodec(IdentityMixin, ABC):
     """Base class for codecs that validate and interpret structured LLM outputs.
 
     Responsibilities in the core package:
@@ -49,22 +50,18 @@ class BaseLLMCodec(ABC):
         (that's handled by the provider/compiler layer).
 
     Identity:
-      The codec may define `namespace`, `kind`, and `name` to align with service/registry identity.
-      These correspond to the `Identity` model used for cross-layer registration and lookup.
+      This class now inherits from `IdentityMixin` and participates in the centralized
+      identity resolution pipeline. You may provide class-level hints
+      (`namespace`, `kind`, `name`) or leave them as `None` and let the resolver derive
+      canonical values. Access the resolved identity via `self.identity`
+      (an `Identity` object with `.as_str`, `.as_tuple3`, etc.).
     """
-
-    #: Unique registry key for this codec (e.g., "feedback_v1_chatlab")
-    name: str
-
     #: Pydantic model class describing the expected structured output
     schema_cls: type[BaseOutputSchema]
 
     #: Optional metadata to guide provider wrapping (e.g., name/strict flags)
     schema_meta: dict[str, Any] | None = None
 
-    # Optional identity parts to align with services/registries
-    namespace: str = "default"
-    kind: str = "default"
 
     # ----------------------------------------------------------------------
     # Schema utilities
@@ -154,20 +151,3 @@ class BaseLLMCodec(ABC):
 
             return None
 
-    # ----------------------------------------------------------------------
-    # Identity helpers (framework-agnostic)
-    # ----------------------------------------------------------------------
-    @property
-    def identity(self) -> Identity:
-        return Identity(namespace=self.namespace, kind=self.kind, name=self.name)
-
-    @property
-    def identity_key2(self) -> tuple[str, str]:
-        """Two-part key used by the core registry: (namespace, f"{kind}:{name}")"""
-        ident = self.identity
-        return ident.as_tuple2
-
-    @property
-    def identity_str(self) -> str:
-        """Human-friendly identity string 'namespace.kind.name'."""
-        return self.identity.to_string()

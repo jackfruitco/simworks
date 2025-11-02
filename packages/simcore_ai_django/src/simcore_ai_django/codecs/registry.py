@@ -1,4 +1,4 @@
-# packages/simcore_ai_django/src/simcore_ai_django/codecs/registry.py
+# simcore_ai_django/codecs/registry.py
 from __future__ import annotations
 
 """
@@ -36,11 +36,13 @@ codecs.
 from dataclasses import dataclass
 import logging
 import threading
-from typing import Any, Iterable, Optional, Tuple, Type
+from typing import Any, Iterable
 
 from asgiref.sync import async_to_sync, sync_to_async
 from django.db import transaction
 from django.conf import settings
+
+from simcore_ai.identity import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -71,8 +73,8 @@ class IdentityValidationError(Exception):
 
 @dataclass(frozen=True)
 class Registered:
-    identity: Tuple[str, str, str]
-    cls: Type[Any]
+    identity: tuple[str, str, str]
+    cls: type[Any]
 
 
 # -------------------------
@@ -83,9 +85,9 @@ class CodecRegistry:
     """Registry of codec **classes** keyed by `(namespace, kind, name)` tuples."""
 
     def __init__(self) -> None:
-        self._by_id: dict[Tuple[str, str, str], Type[Any]] = {}
-        self._by_cls: dict[Type[Any], Tuple[str, str, str]] = {}
-        self._collisions: set[Tuple[str, str, str]] = set()
+        self._by_id: dict[tuple[str, str, str], type[Any]] = {}
+        self._by_cls: dict[type[Any], tuple[str, str, str]] = {}
+        self._collisions: set[tuple[str, str, str]] = set()
         self._lock = threading.RLock()
 
         # Read strictness once per process; default True
@@ -94,7 +96,7 @@ class CodecRegistry:
 
     # ---- helpers ----
     @staticmethod
-    def _validate_identity(identity: Tuple[str, str, str]) -> Tuple[str, str, str]:
+    def _validate_identity(identity: tuple[str, str, str]) -> tuple[str, str, str]:
         try:
             ns, kd, nm = identity
         except Exception:
@@ -109,7 +111,7 @@ class CodecRegistry:
         return ns, kd, nm
 
     # ---- registration API ----
-    def maybe_register(self, identity: Tuple[str, str, str], cls: Type[Any]) -> None:
+    def maybe_register(self, identity: tuple[str, str, str], cls: type[Any]) -> None:
         """
         Register a codec class if not already registered.
 
@@ -131,11 +133,20 @@ class CodecRegistry:
                 # First registration
                 self._by_id[key] = cls
                 self._by_cls[cls] = key
-                # annotate for introspection
-                setattr(cls, "namespace", ns)
-                setattr(cls, "kind", kd)
-                setattr(cls, "name", nm)
-                setattr(cls, "identity", key)
+
+                # Optional guard: if the class exposes a derived identity tuple, warn on mismatch
+                try:
+                    derived = None
+                    if hasattr(cls, "identity_as_tuple3") and callable(getattr(cls, "identity_as_tuple3")):
+                        derived = cls.identity_as_tuple3()  # type: ignore[attr-defined]
+                    elif hasattr(cls, "identity") and isinstance(getattr(cls, "identity"), Identity):
+                        derived = getattr(cls, "identity").as_tuple3  # type: ignore[assignment]
+                    if isinstance(derived, tuple) and len(derived) == 3 and derived != key:
+                        logger.warning("codec.identity.mismatch class=%s registered=%s derived=%s", cls, key, derived)
+                except Exception:
+                    # Best effort only
+                    pass
+
                 logger.debug("codec.registered %s", ".".join(key))
                 return
 
@@ -157,7 +168,7 @@ class CodecRegistry:
                 # may choose to rewrite name and retry. We record for checks.
                 return
 
-    def resolve(self, identity: Tuple[str, str, str]) -> Optional[Type[Any]]:
+    def resolve(self, identity: tuple[str, str, str]) -> type[Any] | None:
         ns, kd, nm = self._validate_identity(identity)
         key = (ns, kd, nm)
         with self._lock:
@@ -167,7 +178,7 @@ class CodecRegistry:
         with self._lock:
             return tuple(Registered(k, v) for k, v in self._by_id.items())
 
-    def collisions(self) -> Iterable[Tuple[str, str, str]]:
+    def collisions(self) -> Iterable[tuple[str, str, str]]:
         with self._lock:
             return tuple(self._collisions)
 
@@ -184,39 +195,33 @@ class CodecRegistry:
         ctx = ctx or {}
         saved: list[Any] = []
 
-        def _read_identity(it: Any) -> Tuple[str, str, str]:
-            ident = getattr(it, "identity", None)
-            if isinstance(ident, tuple) and len(ident) == 3:
+        def _read_identity(it_: Any) -> tuple[str, str, str]:
+            ident = getattr(it_, "identity", None)
+            if isinstance(ident, Identity):
+                return ident.as_tuple3
+            if isinstance(ident, tuple) and len(ident) == 3 and all(isinstance(x, str) for x in ident):
                 return ident  # type: ignore[return-value]
-            if callable(getattr(it, "identity_tuple", None)):
-                t = it.identity_tuple()  # type: ignore[attr-defined]
-                if isinstance(t, tuple) and len(t) == 3:
+            if callable(getattr(it_, "identity_tuple", None)):
+                t = it_.identity_tuple()  # type: ignore[attr-defined]
+                if isinstance(t, tuple) and len(t) == 3 and all(isinstance(x, str) for x in t):
                     return t
-            raise IdentityValidationError(
-                f"Item {it!r} does not expose an identity tuple"
-            )
+            raise IdentityValidationError(f"Item {it_!r} does not expose an identity tuple")
 
-        async def _persist_one(it: Any) -> Any:
-            key = self._validate_identity(_read_identity(it))
+        async def _persist_one(it_: Any) -> Any:
+            key = self._validate_identity(_read_identity(it_))
             cls = self.resolve(key)
             if cls is None:
                 raise LookupError(f"No codec registered for identity {key}")
             codec = cls()
             if hasattr(codec, "apersist") and callable(codec.apersist):  # type: ignore[attr-defined]
-                return await codec.apersist(it, ctx=ctx)  # type: ignore[attr-defined]
+                return await codec.apersist(it_, ctx=ctx)  # type: ignore[attr-defined]
             # Fallback to sync persist under thread-sensitive wrapper
             if hasattr(codec, "persist") and callable(codec.persist):  # type: ignore[attr-defined]
-                return await sync_to_async(codec.persist, thread_sensitive=True)(it,
+                return await sync_to_async(codec.persist, thread_sensitive=True)(it_,
                                                                                  ctx=ctx)  # type: ignore[attr-defined]
             raise AttributeError(f"Codec {cls} has neither 'apersist' nor 'persist'")
 
         # One DB transaction for the whole batch
-        @sync_to_async(thread_sensitive=True)
-        def _atomic_start():
-            return transaction.atomic()
-
-        # Use standard sync transaction context inside thread-sensitive wrapper
-        # to ensure on_commit handlers run in the right thread.
         saved = []
         with transaction.atomic():
             for it in items:

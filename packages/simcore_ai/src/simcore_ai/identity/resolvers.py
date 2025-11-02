@@ -43,12 +43,9 @@ from simcore_ai.identity.utils import (
     snake,
     module_root,
 )
+from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS as _DEFAULT_TOKENS
 
-# Try to import the renamed constant; fall back to legacy name if needed until utils is patched.
-try:  # pragma: no cover - transitional alias until utils is patched
-    from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS as _DEFAULT_TOKENS
-except Exception:  # pragma: no cover - transitional alias until utils is patched
-    from simcore_ai.identity.utils import DEFAULT_STRIP_TOKENS as _DEFAULT_TOKENS  # type: ignore
+__all__ = ["IdentityResolver", "NameResolution", "resolve_identity"]
 
 
 # ------------------------- helpers (pure) -------------------------
@@ -184,7 +181,7 @@ class IdentityResolver:
         meta: dict[str, Any] = {
             "ai.tuple3.raw": f"{ns_value}.{kd_value}.{name_res.raw}",
             "ai.tuple3.post_strip": f"{ns_value}.{kd_value}.{name_res.post_strip}",
-            "ai.tuple3.post_norm": ident.to_string(),
+            "ai.tuple3.post_norm": ident.as_str,
             "ai.identity.name.explicit": name_res.explicit,
             "ai.identity.source.name": name_res.source,
             "ai.identity.source.namespace": ns_source,

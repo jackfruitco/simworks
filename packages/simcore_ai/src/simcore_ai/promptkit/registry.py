@@ -1,6 +1,8 @@
 # simcore_ai/promptkit/registry.py
 from __future__ import annotations
 
+from ..identity import Identity, coerce_identity_key
+
 """Prompt section registry (AIv3 / Identity-first).
 
 - Stores **PromptSection classes** keyed by a tuple `(namespace, kind, name)`.
@@ -10,19 +12,19 @@ from __future__ import annotations
 Typical usage:
     @register_section
     class MySection(PromptSection):
-        namespace = "chatlab"
-        kind = "patient"
-        name = "initial"
+        from simcore_ai.identity import Identity
+        identity = Identity.from_parts(namespace="chatlab", kind="patient", name="initial")
 
     SectionCls = PromptRegistry.require_str("chatlab.patient.initial")
 """
 
 from typing import Type
-from collections.abc import Iterable
 import logging
 import threading
 
-from ..identity import parse_dot_identity
+from simcore_ai.identity.utils import parse_dot_identity
+from simcore_ai.tracing import service_span_sync
+
 from .types import PromptSection
 
 
@@ -32,32 +34,6 @@ class DuplicatePromptSectionIdentityError(Exception):
 
 
 logger = logging.getLogger(__name__)
-
-
-def _identity_tuple_for_cls(section_cls: Type[PromptSection]) -> tuple[str, str, str]:
-    """Derives the identity tuple (namespace, kind, name) for a section class.
-
-    Accepted class-level declarations:
-      1) `identity: str` in dot-only form ("namespace.kind.name")
-      2) `namespace`, `kind`, `name` class attributes (strings)
-
-    Raises:
-        TypeError: if neither form is present or invalid.
-    """
-    ident = getattr(section_cls, "identity", None)
-    if isinstance(ident, str):
-        return parse_dot_identity(ident)
-
-    namespace = getattr(section_cls, "namespace", None)
-    kind = getattr(section_cls, "kind", None)
-    name = getattr(section_cls, "name", None)
-    if all(isinstance(x, str) and x for x in (namespace, kind, name)):
-        return (namespace, kind, name)
-
-    raise TypeError(
-        f"{section_cls.__name__} must define either `identity` as a dot string "
-        f"or class attrs `namespace`, `kind`, and `name`."
-    )
 
 
 class PromptRegistry:
@@ -77,48 +53,64 @@ class PromptRegistry:
             cls,
             section_cls: type[PromptSection]
     ) -> None:
-        ident_tuple = _identity_tuple_for_cls(section_cls)
-        with cls._lock:
-            if ident_tuple not in cls._store:
-                cls._store[ident_tuple] = section_cls
-                logger.info(
-                    "Registered prompt section %s: %s",
-                    ".".join(ident_tuple),
-                    section_cls.__name__,
-                )
-            elif cls._store[ident_tuple] is section_cls:
-                # Already registered, no-op
-                pass
-            else:
-                raise DuplicatePromptSectionIdentityError(
-                    f"{'.'.join(ident_tuple)}"
-                )
+        ident_obj = getattr(section_cls, "identity", None)
+        if ident_obj is None or not hasattr(ident_obj, "as_tuple3") or not hasattr(ident_obj, "as_str"):
+            raise TypeError(
+                f"{section_cls.__name__} must expose a class-level `identity` supporting `as_tuple3` and `as_str` "
+                "(e.g., via IdentityMixin or an Identity instance with those properties)."
+            )
+        ident_tuple = ident_obj.as_tuple3  # (namespace, kind, name)
+        ident_str = ident_obj.as_str  # "namespace.kind.name"
+        with service_span_sync(
+                "ai.prompt.registry.register",
+                attributes={"identity": ident_str, "section_cls": section_cls.__name__},
+        ):
+            with cls._lock:
+                if ident_tuple not in cls._store:
+                    cls._store[ident_tuple] = section_cls
+                    logger.info("Registered prompt section %s: %s", ident_str, section_cls.__name__)
+                elif cls._store[ident_tuple] is section_cls:
+                    # Already registered, no-op
+                    pass
+                else:
+                    raise DuplicatePromptSectionIdentityError(ident_str)
 
     # ------------------------------------------------------------------
     # Lookup
     # ------------------------------------------------------------------
     @classmethod
-    def get(cls, identity: tuple[str, str, str]) -> Type[PromptSection] | None:
-        with cls._lock:
-            return cls._store.get(identity)
+    def get(cls, identity: tuple[str, str, str] | str | Identity) -> Type[PromptSection] | None:
+        """Retrieve a registered `PromptSection` class by identity.
 
-    @classmethod
-    def get_str(cls, key: str) -> Type[PromptSection] | None:
-        """Dot-only string lookup ("namespace.kind.name")."""
-        ident_tuple = parse_dot_identity(key)
-        return cls.get(ident_tuple)
+        Accepts:
+          - tuple[str, str, str] (namespace, kind, name)
+          - Identity (object exposing `.as_tuple3`)
+          - str ("namespace.kind.name")
+        """
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            logger.warning("%s could not resolve PromptSection from identity %r", cls.__name__, identity)
+            return None
+
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.prompt.registry.get", attributes={"identity": ident_str}):
+            with cls._lock:
+                return cls._store.get(ident_tuple3)
 
     @classmethod
     def require(cls, identity: tuple[str, str, str]) -> Type[PromptSection]:
-        section = cls.get(identity)
-        if section is None:
-            raise KeyError(f"PromptSection not registered: {'.'.join(identity)}")
-        return section
+        ident_str = ".".join(identity)
+        with service_span_sync("ai.prompt.registry.require", attributes={"identity": ident_str}):
+            section = cls.get(identity)
+            if section is None:
+                raise KeyError(f"PromptSection not registered: {ident_str}")
+            return section
 
     @classmethod
     def require_str(cls, key: str) -> Type[PromptSection]:
-        ident_tuple = parse_dot_identity(key)
-        return cls.require(ident_tuple)
+        with service_span_sync("ai.prompt.registry.require_str", attributes={"identity": key}):
+            ident_tuple = parse_dot_identity(key)
+            return cls.require(ident_tuple)
 
     # ----------------------------------------------------------------------
     # Decorator (registration helper)
@@ -128,12 +120,20 @@ class PromptRegistry:
     # Introspection / maintenance
     # ------------------------------------------------------------------
     @classmethod
-    def all(cls) -> Iterable[Type[PromptSection]]:
+    def all(cls) -> tuple[Type[PromptSection], ...]:
+        """Return all registered `PromptSection` classes."""
         with cls._lock:
             return tuple(cls._store.values())
 
     @classmethod
+    def identities(cls) -> tuple[tuple[str, str, str], ...]:
+        """Return all registered `PromptSection` as identity tuple3's."""
+        with cls._lock:
+            return tuple(cls._store.keys())
+
+    @classmethod
     def clear(cls) -> None:
+        """Remove all registered `PromptSection` classes."""
         with cls._lock:
             cls._store.clear()
 
@@ -145,8 +145,8 @@ class PromptRegistry:
 def register_section(section_cls: Type[PromptSection]) -> Type[PromptSection]:
     """Decorator to register a `PromptSection` class in the global registry.
 
-    The class must declare either `identity` as a dot string or class attrs
-    `namespace`, `kind`, and `name`.
+    The class must expose a class-level `identity` that yields an `Identity`
+    (e.g., via `IdentityMixin` or by assigning an `Identity` instance directly).
     """
     PromptRegistry.register(section_cls)
     return section_cls

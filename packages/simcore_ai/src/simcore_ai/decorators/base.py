@@ -1,5 +1,7 @@
-# packages/simcore_ai/src/simcore_ai/decorators/base.py
+# simcore_ai/decorators/base.py
 from __future__ import annotations
+
+from simcore_ai.identity.resolvers import IdentityResolver
 
 """
 Core base decorator (class-based, no factories).
@@ -16,8 +18,9 @@ dual-form decorator pattern:
 Key properties:
 - Uses the core derivation/validation helpers (no Django imports).
 - Attaches finalized identity to the decorated class:
-    - `cls.identity`        -> (namespace, kind, name) tuple (for fast dict/set keys)
-    - `cls.identity_obj`    -> Identity dataclass instance (for introspection)
+    - `cls._identity_final` -> Identity dataclass instance (for mixins/resolvers to read)
+    - `cls.identity_obj`    -> Identity dataclass instance (for introspection/back-compat)
+    - `cls.identity_key`    -> (namespace, kind, name) tuple (for fast dict/set keys)
 - Registration is delegated via `get_registry()`:
     - Default returns None: registration is skipped (DEBUG logged).
     - Domain decorators override `get_registry()` to return a singleton registry.
@@ -32,8 +35,7 @@ import os
 from typing import Any, Optional, Type, TypeVar, Callable, cast
 
 from simcore_ai.tracing import service_span_sync
-from simcore_ai.identity.base import Identity
-from simcore_ai.identity.resolution import IdentityResolver
+from simcore_ai.identity import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +77,9 @@ class BaseDecorator:
 
     Identity semantics:
       - Identity is computed *once* at decoration time.
-      - `cls.identity` is a (namespace, kind, name) tuple for convenient equality/hash.
-      - `cls.identity_obj` is the Identity dataclass instance.
+      - `cls._identity_final` is the Identity dataclass instance for mixins/resolvers.
+      - `cls.identity_obj` is the Identity dataclass instance (for introspection).
+      - `cls.identity_key` is a (namespace, kind, name) tuple for convenient equality/hash.
 
     This base class performs *no* Django-aware inference; subclasses in
     simcore_ai_django override `derive_identity()` to add app-aware behavior.
@@ -120,9 +123,12 @@ class BaseDecorator:
             else:
                 identity, meta = result, {}
 
-            # 2) Attach identity to class
-            setattr(cls, "identity_obj", identity)
-            setattr(cls, "identity", identity.as_tuple3)
+            # 2) Attach identity to class (non‑conflicting with IdentityMixin)
+            # Store the final Identity on a private attribute expected by IdentityMixin.
+            # Also expose a stable tuple key for registries without shadowing .identity property.
+            setattr(cls, "_identity_final", identity)
+            setattr(cls, "identity_obj", identity)  # compat: introspection
+            setattr(cls, "identity_key", identity.as_tuple3)  # compat: fast dict/set key
 
             # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
@@ -131,7 +137,7 @@ class BaseDecorator:
             self.register(cls, identity)
 
             # 5) Emit a single trace span *after* successful registration with rich attributes
-            final_tuple3 = ".".join(identity.as_tuple3)
+            final_tuple3 = identity.as_str
             span_attrs_raw = {
                 "ai.decorator": self.__class__.__name__,
                 "ai.class": fqcn,
@@ -225,7 +231,7 @@ class BaseDecorator:
             logger.info(
                 "%s.registered %s",
                 getattr(registry, "name", self.__class__.__name__.lower()),
-                ".".join(identity.as_tuple3),
+                identity.as_str,
             )
         except Exception:
             # Surface registry errors explicitly; identity validation should

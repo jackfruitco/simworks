@@ -1,13 +1,15 @@
+# simcore_ai/client/client.py
 import asyncio
+import inspect
 import logging
 import warnings
 from typing import AsyncIterator, Optional
 
+from simcore_ai.client.schemas import AIClientConfig
 from simcore_ai.providers import BaseProvider
 from simcore_ai.providers.exceptions import ProviderCallError
 from simcore_ai.tracing import service_span
 from simcore_ai.types import LLMResponse, LLMRequest, LLMStreamChunk
-from simcore_ai.client.schemas import AIClientConfig
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,8 @@ class AIClient:
         effective_timeout = (
             timeout
             if timeout is not None
-            else (self.config.timeout_s if self.config.timeout_s is not None else getattr(self.provider, "timeout_s", None))
+            else (self.config.timeout_s if self.config.timeout_s is not None else getattr(self.provider, "timeout_s",
+                                                                                          None))
         )
 
         async with service_span(
@@ -116,7 +119,11 @@ class AIClient:
                                 "ai.max_attempts": attempts,
                             },
                     ):
-                        resp: LLMResponse = await self.provider.call(req, effective_timeout)
+                        if inspect.iscoroutinefunction(self.provider.call):
+                            resp: LLMResponse = await self.provider.call(req, effective_timeout)
+                        else:
+                            # Provider is sync; run in a worker thread to avoid blocking the event loop
+                            resp: LLMResponse = await asyncio.to_thread(self.provider.call, req, effective_timeout)
                     last_exc = None
                     break
                 except Exception as e:  # noqa: BLE001
@@ -164,7 +171,7 @@ class AIClient:
                 # Best-effort soft failure: return an empty response with error metadata
                 logger.warning("AIClient returning soft-failure response due to raise_on_error=False: %s", last_exc)
                 return LLMResponse(
-                    outputs=None,
+                    outputs=[],
                     usage=None,
                     tool_calls=[],
                     provider_meta={
@@ -195,5 +202,8 @@ class AIClient:
                     "ai.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
+            if not hasattr(self.provider, "stream") or not inspect.iscoroutinefunction(
+                    getattr(self.provider, "stream")):
+                raise ProviderCallError("Provider does not support async streaming via 'stream(req)'.")
             async for chunk in self.provider.stream(req):
                 yield chunk

@@ -10,6 +10,7 @@ __all__ = [
     "BaseOutputSchema",
     "Boolish",
     "BaseLLMTool",
+    "LLMRole",
     "LLMRequestMessage",
     "LLMResponseItem",
     "LLMTextPart",
