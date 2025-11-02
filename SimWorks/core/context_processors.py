@@ -1,26 +1,30 @@
 # core/context_processors.py
+from typing import Any
+
 from django.conf import settings
+from django.http import HttpRequest
+
 
 def debug_flag(request):
     return {"debug": settings.DEBUG}
 
-def site_info(request):
+def site_info(request: HttpRequest) -> dict[str, Any]:
     """
-    Adds core site context to every template.
+    Adds site metadata to every template.
 
-    This context processor expects that settings.SITE_ADMIN is a dictionary, for example:
-
-        SITE_ADMIN = {
-            "NAME": "John Doe",
-            "EMAIL": "john.doe@example.com",
-            # Additional keys as needed...
-        }
-
-    It also reads SITE_NAME from settings.
+    Expects (in settings):
+        SITE_NAME: str
+        SITE_ADMIN: dict with keys NAME, EMAIL
     """
-    # Get the SITE_ADMIN dict if available, or use an empty dict as default.
-    site_admin = getattr(settings, "SITE_ADMIN", {})
+    site_admin_raw = getattr(settings, "SITE_ADMIN", {}) or {}
+    site_admin = site_admin_raw if isinstance(site_admin_raw, dict) else {}
+
     return {
-        "SITE_ADMIN": site_admin,
-        "SITE_NAME": getattr(settings, "SITE_NAME", "My Site"),
+        "site": {
+            "name": getattr(settings, "SITE_NAME", "SimWorks"),
+            "admin": {
+                "name": site_admin.get("NAME", "SimWorks"),
+                "email": site_admin.get("EMAIL", ""),
+            },
+        },
     }
