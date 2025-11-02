@@ -1,4 +1,3 @@
-# simcore_ai/identity/base.py
 from __future__ import annotations
 
 """
@@ -14,23 +13,31 @@ Terminology:
 - kind:      functional group/type within the namespace (e.g., codec, service)
 - name:      specific identifier within the (namespace, kind)
 """
+
 import logging
 import re
 from dataclasses import dataclass
-from typing import Tuple, Union, Any
+from typing import Any, Union
 
 from .exceptions import IdentityValidationError, IdentityError
 from .registry_resolvers import try_resolve_from_ident
 
-logger = logging.getLogger(__name__)
+__all__ = [
+    "Identity",
+    "IdentityKey",
+    "IdentityError",
+    "IdentityValidationError",
+    "parse_identity_str",
+]
 
-# Public input type accepted by utilities
-IdentityKey = Union[Tuple[str, str, str], str, "Identity"]
+logger = logging.getLogger(__name__)
 
 # Validation constraints (kept here as single source of truth)
 _MAX_LEN = 128
 _ALLOWED_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
+# For checking
+IdentityKey = Union[str, tuple[str, str, str], "Identity"]
 
 def _validate_label(value: str, field: str) -> str:
     """
@@ -68,6 +75,7 @@ class Identity:
     - Validation is enforced in `__post_init__` so any Identity instance
       created by any constructor is guaranteed valid.
     """
+
     namespace: str
     kind: str
     name: str
@@ -78,9 +86,10 @@ class Identity:
         _validate_label(self.kind, "kind")
         _validate_label(self.name, "name")
 
-    # canonical tuple for equality/hash/sorting
+    # ------------------- Canonical forms -------------------
     @property
-    def as_tuple3(self) -> Tuple[str, str, str]:
+    def as_tuple3(self) -> tuple[str, str, str]:
+        """Return the canonical (namespace, kind, name) triple."""
         return self.namespace, self.kind, self.name
 
     @property
@@ -103,18 +112,10 @@ class Identity:
             return NotImplemented
         return self.as_tuple3 == other.as_tuple3
 
+    # ------------------- Constructors -------------------
     @classmethod
-    def from_parts(
-            cls,
-            namespace: str,
-            kind: str,
-            name: str,
-    ) -> "Identity":
-        """
-        Construct an Identity directly from parts.
-
-        Validation is applied by `__post_init__`; no normalization occurs here.
-        """
+    def from_parts(cls, namespace: str, kind: str, name: str) -> "Identity":
+        """Construct an Identity directly from parts (validated)."""
         return cls(namespace=namespace, kind=kind, name=name)
 
     @classmethod
@@ -135,24 +136,18 @@ class Identity:
             raise IdentityError("Identity string cannot be empty")
         parts = raw.split(".")
         if len(parts) != 3:
-            raise IdentityError(f"Invalid identity format {value!r}; expected 'namespace.kind.name'")
+            raise IdentityError(
+                f"Invalid identity format {value!r}; expected 'namespace.kind.name'"
+            )
         namespace, kind, name = parts
         return cls.from_parts(namespace, kind, name)
 
     @classmethod
     def validate(cls, namespace: str, kind: str, name: str) -> None:
-        """Validate identity parts by attempting construction.
-
-        :param namespace: namespace
-        :param kind: kind
-        :param name: name
-
-        :return: None
-
-        :raises: IdentityError or IdentityValidationError if validation fails.
-        """
+        """Validate identity parts by attempting construction (raises on failure)."""
         cls(namespace=namespace, kind=kind, name=name)
 
+    # ------------------- Coercion helpers -------------------
     @classmethod
     def get_for(cls, value: "Identity | tuple[str, str, str] | str") -> "Identity":
         """
@@ -162,9 +157,6 @@ class Identity:
           • Identity          -> returned as-is
           • (ns, kind, name)  -> validated via from_parts(...)
           • "ns.kind.name"    -> parsed via from_string(...)
-
-        Raises:
-            IdentityError / IdentityValidationError on bad input.
         """
         if isinstance(value, Identity):
             return value
@@ -180,23 +172,20 @@ class Identity:
         """Alias of `get_for` (preferred: use `get_for` in new code)."""
         return cls.get_for(value)
 
-    # Backwards-compat alias for older code paths
     @classmethod
     def coerce_key(cls, value: "Identity | tuple[str, str, str] | str") -> "Identity":
         """Alias of `get_for` kept for transitional callers."""
         return cls.get_for(value)
 
     @classmethod
-    def try_get(cls, value: "Identity | tuple[str, str, str] | str") -> "Identity | None":
-        """
-        Best-effort coercion. Returns None instead of raising on failure.
-        Useful for optional/lenient call sites.
-        """
+    def try_get(cls, value: "Identity | tuple[str, str, str] | str") -> Identity | None:
+        """Best-effort coercion. Returns None instead of raising on failure."""
         try:
             return cls.get_for(value)
         except Exception:
             return None
 
+    # ------------------- Registry resolution (delegating) -------------------
     @classmethod
     def try_resolve(
             cls,
@@ -206,28 +195,13 @@ class Identity:
         """
         Best-effort lookup of a registry item by identity.
 
-        This is a thin wrapper that **defers** to the centralized resolver
-        `identity.registry_resolvers.try_resolve_from_ident(...)` so there is a
-        single source of truth for how identity-like inputs and registry-like
-        objects are coerced.
-
-        Parameters
-        ----------
-        target : Identity | (ns, kind, name) | "ns.kind.name" | type
-            The identity-like object or a class/type that can supply an identity
-            (and possibly expose its own registry via `get_registry()`).
-        registry_or_type : Any, optional
-            A registry instance exposing `.get(tuple3) -> T | None`, or a type
-            exposing `.get_registry() -> registry`. If omitted and `target` is a
-            type, the resolver will attempt to extract a registry from it.
-
-        Returns
-        -------
-        Any | None
-            The resolved registry entry or `None` if not found / not coercible.
+        Thin wrapper that **defers** to `identity.registry_resolvers.try_resolve_from_ident(...)`
+        so there is a single source of truth for coercion and lookup.
         """
         return try_resolve_from_ident(target, registry_or_type=registry_or_type)
 
+
+# ------------------- Free helpers -------------------
 
 def parse_identity_str(value: str) -> Identity:
     """Strictly parse 'namespace.kind.name' into an Identity (no normalization)."""

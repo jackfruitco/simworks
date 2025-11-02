@@ -1,3 +1,4 @@
+# simcore_ai/exceptions/registry_exceptions.py
 """Registry exceptions"""
 from .base import SimCoreError
 

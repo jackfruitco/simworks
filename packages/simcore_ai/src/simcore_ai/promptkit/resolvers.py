@@ -20,7 +20,7 @@ import logging
 from simcore_ai.identity.utils import parse_dot_identity
 from simcore_ai.tracing import service_span_sync
 
-from .exceptions import PromptSectionResolutionError
+from .exceptions import PromptSectionNotFoundError
 
 if TYPE_CHECKING:
     from .types import PromptSection
@@ -71,13 +71,13 @@ def resolve_section(entry: Any) -> Type["PromptSection"]:
         if isinstance(entry, tuple) and len(entry) == 3:
             o, b, n = entry
             if not all(isinstance(p, str) and p for p in (o, b, n)):
-                raise PromptSectionResolutionError(
+                raise PromptSectionNotFoundError(
                     "tuple identity must be (namespace, kind, name) with non-empty strings"
                 )
             try:
                 return PromptRegistry.require((o, b, n))
             except Exception as exc:
-                raise PromptSectionResolutionError(
+                raise PromptSectionNotFoundError(
                     f"failed to resolve section identity tuple: {(o, b, n)}"
                 ) from exc
 
@@ -87,7 +87,7 @@ def resolve_section(entry: Any) -> Type["PromptSection"]:
                 o, b, n = parse_dot_identity(entry)
                 return PromptRegistry.require((o, b, n))
             except Exception as exc:
-                raise PromptSectionResolutionError(
+                raise PromptSectionNotFoundError(
                     f"failed to resolve section identity '{entry}' (dot-only)"
                 ) from exc
 
@@ -99,6 +99,6 @@ def resolve_section(entry: Any) -> Type["PromptSection"]:
         if isinstance(entry, PromptSection):
             return entry.__class__
 
-        raise PromptSectionResolutionError(
+        raise PromptSectionNotFoundError(
             f"unsupported prompt section entry type: {type(entry).__name__} (supported: str (dot identity), tuple3, PromptSection class or instance)"
         )

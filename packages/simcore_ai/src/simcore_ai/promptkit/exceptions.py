@@ -15,5 +15,10 @@ class PromptPlanResolutionError(PromptResolutionError):
     """Raised when a prompt plan cannot be resolved from a prompt template."""
 
 
-class PromptSectionResolutionError(PromptPlanResolutionError):
+class PromptSectionNotFoundError(PromptPlanResolutionError):
     """Raised when a prompt section cannot be resolved from a plan entry."""
+
+
+class DuplicatePromptSectionIdentityError(Exception):
+    """Raised when a prompt section identity is already taken by a different class."""
+    ...

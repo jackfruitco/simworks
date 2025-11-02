@@ -26,7 +26,7 @@ import logging
 import os
 import re
 from collections.abc import Iterable, Callable
-from typing import Optional, Union, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from .base import IdentityKey, Identity
@@ -221,19 +221,44 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
 
 
 def coerce_identity_key(value: "IdentityKey") -> Optional[tuple[str, str, str]]:
-    """Coerce (tuple | Identity | 'ns.kind.name' str) to a (ns, kind, name) tuple.
+    """Coerce (tuple | Identity | 'ns.kind.name' str) to a normalized (ns, kind, name) tuple.
 
-    Returns None if `value` cannot be coerced (bad string, wrong type, etc.).
+    This is a thin compatibility wrapper around the centralized Identity API.
+    It prefers `Identity.get_for(...)` when available and falls back to
+    strict dot parsing. Returns ``None`` on failure rather than raising.
     """
+    # Local import to avoid import cycles at module import time
+    try:
+        from .base import Identity  # type: ignore
+    except Exception:
+        Identity = None  # type: ignore
+
+    # Fast path: already a triple
     if isinstance(value, tuple) and len(value) == 3:
-        ns, kd, nm = value
-        # Optionally: basic type/emptiness guards
+        ns, kd, nm = value  # type: ignore[misc]
         return (str(ns), str(kd), str(nm))
-    if isinstance(value, Identity):
-        return value.as_tuple3
+
+    # Identity instance
+    if Identity is not None and isinstance(value, Identity):  # type: ignore[arg-type]
+        return value.as_tuple3  # type: ignore[union-attr]
+
+    # Dot-string → prefer Identity.get_for, else strict parser fallback
     if isinstance(value, str):
         try:
+            if Identity is not None:
+                ident = Identity.get_for(value)  # strict coercion; may raise
+                return ident.as_tuple3
+            # Fallback: strict parse to tuple3
             return parse_dot_identity(value)
         except Exception:
             return None
+
+    # Last resort: if Identity API is available, attempt strict coercion
+    if Identity is not None:
+        try:
+            ident = Identity.get_for(value)  # may raise for unsupported types
+            return ident.as_tuple3
+        except Exception:
+            return None
+
     return None

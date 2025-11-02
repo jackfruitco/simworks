@@ -4,26 +4,41 @@ from __future__ import annotations
 """
 Core (non-Django) codec decorator built on the class-based BaseDecorator.
 
-This decorator is intentionally thin:
-- Delegates identity derivation to the core IdentityResolver via BaseDecorator
-- Applies the domain default `kind="codec"` when arg/attr doesn't specify kind
-- Does **not** register in core (get_registry() -> None); Django layer wires registries
+Goals (v3):
+- Centralize identity logic in the Identity package & resolvers
+- Use unified registry API: `register(...)` (strict + idempotent) which calls
+  private `._register(...)` under the hood. No legacy maybe_register paths.
 
-No token collection or normalization logic lives here; that is owned by the resolver.
+Behavior:
+- Derives identity via the resolver with domain default `kind="codec"` when
+  not explicitly provided via arg/attr
+- Registers the class in the **core** CodecRegistry (idempotent). The Django
+  layer may additionally mirror/bridge to its registry if desired, but this
+  core decorator does register now to satisfy the unified plan.
+- No token collection or normalization lives here; that is owned by the resolver.
 """
 
 from typing import Any, Optional, Type
 
 from simcore_ai.decorators.base import BaseDecorator
 from simcore_ai.identity.base import Identity
+from simcore_ai.codecs.registry import CodecRegistry
 
 
 class CodecRegistrationDecorator(BaseDecorator):
-    """Core codec decorator: delegate to resolver; no registration in core."""
+    """Core codec decorator: resolve identity, then register in the core registry.
 
-    def get_registry(self):  # core layer does not register codecs
-        return None
+    This class is intentionally thin: all identity parsing/validation is
+    delegated to the configured resolver (from BaseDecorator). Registration
+    is routed through `CodecRegistry.register(...)` which is strict but
+    idempotent (re-registering the same class/key is a no-op).
+    """
 
+    # --- registry wiring -------------------------------------------------
+    def get_registry(self):  # type: ignore[override]
+        return CodecRegistry
+
+    # --- identity derivation --------------------------------------------
     def derive_identity(
             self,
             cls: Type[Any],

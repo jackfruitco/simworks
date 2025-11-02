@@ -3,28 +3,15 @@
 Response schema registry (AIv3 / Identity-first).
 
 - Stores **response schema classes** keyed by canonical identity tuple (namespace, kind, name).
-- Requires classes to expose an `identity` (Identity object). For transitional compatibility,
-  if a class lacks `identity` but exposes string attrs `namespace/kind/name`, we coerce them
-  to an Identity (and stamp it back on the class) once at registration time.
+- Classes MUST expose `identity: Identity`. No legacy fallbacks are supported.
 
-Public API mirrors other registries (prompt, codec):
+Public API (mirrors other registries):
     ResponseSchemaRegistry.register(cls)
-    ResponseSchemaRegistry.get(tuple3) / .get_str("ns.kind.name")
-    ResponseSchemaRegistry.require(tuple3) / .require_str("ns.kind.name")
-    ResponseSchemaRegistry.all()        # returns a tuple of classes
-    ResponseSchemaRegistry.identities() # returns a tuple of tuple3 keys
+    ResponseSchemaRegistry.get(identity)       # tuple3 | "ns.kind.name" | Identity
+    ResponseSchemaRegistry.require(identity)
+    ResponseSchemaRegistry.all()               # -> tuple[type, ...]
+    ResponseSchemaRegistry.identities()        # -> tuple[tuple[str, str, str], ...]
     ResponseSchemaRegistry.clear()
-
-Decorators:
-    @register_response_schema
-    def class ...
-
-    @response_schema(namespace="...", kind="...", name="...")
-    def class ...
-
-Notes:
-- Keys are stored internally as tuple3 to avoid accidental string canonicalization bugs.
-- Logging is conservative; tracing (if desired) should be done by callers at definition time.
 """
 
 from __future__ import annotations
@@ -33,9 +20,12 @@ import logging
 import threading
 from typing import ClassVar
 
-from simcore_ai.identity.base import Identity
+from simcore_ai.identity import coerce_identity_key
+from simcore_ai.identity.base import Identity, IdentityKey
+from simcore_ai.identity.exceptions import IdentityValidationError
+from simcore_ai.tracing import service_span_sync
 
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # -------------------- Errors --------------------
@@ -56,136 +46,111 @@ class ResponseSchemaRegistry:
     _store: dict[tuple[str, str, str], type] = {}
     _lock: ClassVar[threading.RLock] = threading.RLock()
 
-    # ---- registration ----
+    # ------------------------------------------------------------------
+    # Registration (public) → strict + idempotent
+    # ------------------------------------------------------------------
     @classmethod
-    def register(cls, schema_cls: type) -> None:
-        """
-        Register a schema class under its canonical identity.
+    def register(
+        cls,
+        candidate: type,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Register a Response Schema **class**.
 
-        The class must have an `identity: Identity`. For transitional compatibility,
-        if `identity` is missing but `namespace/kind/name` string attributes exist,
-        they will be coerced to an Identity and stamped onto the class.
+        Requirements:
+          • `candidate.identity` MUST be an `Identity` instance.
+
+        Semantics:
+          • Idempotent if the same class is re-registered at the same identity.
+          • If a different class owns the same identity:
+              - replace=True  → overwrite (warn)
+              - replace=False → raise DuplicateResponseSchemaIdentityError
         """
-        ident = cls._identity_for_cls(schema_cls)  # may stamp schema_cls.identity
-        key = ident.as_tuple3
+        # Hard requirement: no legacy paths
+        ident = getattr(candidate, "identity", None)
+        if not isinstance(ident, Identity):
+            raise TypeError(
+                f"{getattr(candidate, '__name__', candidate)!r} must define `identity: Identity`."
+            )
+        cls._register(candidate, replace=replace)
+
+    # ------------------------------------------------------------------
+    # Registration (private write path)
+    # ------------------------------------------------------------------
+    @classmethod
+    def _register(
+        cls,
+        candidate: type,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Private single write path with dupe detection."""
         with cls._lock:
+            identity: Identity = candidate.identity  # type: ignore[attr-defined]
+            key = identity.as_tuple3
+            ident_str = identity.as_str
+
             existing = cls._store.get(key)
+
             if existing is None:
-                cls._store[key] = schema_cls
-                _logger.info("Registered response schema %s as %s", schema_cls.__name__, ident.as_str)
+                cls._store[key] = candidate
+                logger.info("schema.register %s -> %s", ident_str, candidate.__name__)
                 return
-            if existing is schema_cls:
-                # idempotent
+
+            if existing is candidate:
+                if replace:
+                    logger.info("schema.register.replace %s (same class)", ident_str)
+                    cls._store[key] = candidate
+                # else no-op
                 return
-            raise DuplicateResponseSchemaIdentityError(
-                f"Identity already registered by a different class: {ident.as_str} -> {existing!r} vs {schema_cls!r}"
-            )
 
-    @classmethod
-    def maybe_register(cls, key: tuple[str, str, str] | str | Identity, schema_cls: type) -> None:
-        """
-        Idempotent register that accepts a decorator‑supplied identity (tuple3/str/Identity).
-
-        If a decorator provided a concrete identity, we trust it and register directly
-        under that key without requiring the class to already expose `identity`.
-        If the class also exposes an Identity and it disagrees with the provided key,
-        we log a warning and still prefer the provided (decorator) key to avoid drift.
-
-        This makes decorators the single source of truth at definition time, while
-        keeping `register()` strict (it still requires the class identity).
-        """
-        # Coerce the provided key to a canonical tuple3
-        try:
-            if isinstance(key, Identity):
-                provided_ident = key
-                key_t3 = key.as_tuple3
-            elif isinstance(key, tuple):
-                provided_ident = Identity.from_parts(*key)
-                key_t3 = provided_ident.as_tuple3
-            elif isinstance(key, str):
-                provided_ident = Identity.from_string(key)
-                key_t3 = provided_ident.as_tuple3
-            else:
-                raise TypeError(f"Unsupported identity key type: {type(key)!r}")
-        except Exception as e:
-            raise TypeError(f"Invalid identity key {key!r}: {e}") from e
-
-        # If the class already has an identity, compare and warn on mismatch
-        class_ident = getattr(schema_cls, "identity", None)
-        if isinstance(class_ident, Identity) and class_ident.as_tuple3 != key_t3:
-            _logger.warning(
-                "Response schema identity mismatch; decorator provided %s but class exposes %s. "
-                "Proceeding with decorator identity.",
-                provided_ident.as_str,
-                class_ident.as_str,
-            )
-
-        # Best effort: stamp identity onto the class if missing
-        if not isinstance(class_ident, Identity):
-            try:
-                setattr(schema_cls, "identity", provided_ident)
-            except Exception:
-                # Not fatal; continue with registry state only
-                pass
-
-        # Perform the actual insertion atomically
-        with cls._lock:
-            existing = cls._store.get(key_t3)
-            if existing is None:
-                cls._store[key_t3] = schema_cls
-                _logger.info(
-                    "Registered response schema %s as %s (via decorator)",
-                    schema_cls.__name__,
-                    provided_ident.as_str,
+            # Collision with a different class
+            if replace:
+                logger.warning(
+                    "schema.register.replace.collision %s (old=%s, new=%s)",
+                    ident_str, getattr(existing, "__name__", existing), candidate.__name__,
                 )
+                cls._store[key] = candidate
                 return
-            if existing is schema_cls:
-                # idempotent
-                return
+
             raise DuplicateResponseSchemaIdentityError(
-                f"Identity already registered by a different class: {provided_ident.as_str} "
-                f"-> {existing!r} vs {schema_cls!r}"
+                f"Response schema identity already registered: {ident_str} "
+                f"(existing={getattr(existing, '__name__', existing)}, new={candidate.__name__})"
             )
 
     # ---- lookup ----
     @classmethod
-    def get(cls, key: tuple[str, str, str]) -> type | None:
-        with cls._lock:
-            return cls._store.get(key)
+    def get(cls, identity: IdentityKey) -> type | None:
+        """Retrieve a registered response schema class by identity.
 
-    @classmethod
-    def require(cls, key: tuple[str, str, str]) -> type:
-        out = cls.get(key)
-        if out is None:
-            raise ResponseSchemaNotFoundError("Schema not found for key: %s" % (".".join(key)))
-        return out
-
-    @classmethod
-    def get_str(cls, dot: str) -> type | None:
-        try:
-            ident = Identity.from_string(dot)
-        except Exception:
+        Accepts:
+          • tuple[str, str, str] (namespace, kind, name)
+          • Identity (object exposing `.as_tuple3`)
+          • str ("namespace.kind.name")
+        """
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            logger.warning("%s could not resolve ResponseSchema from identity %r", cls.__name__, identity)
             return None
-        return cls.get(ident.as_tuple3)
+
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.schema.registry.get", attributes={"identity": ident_str}):
+            with cls._lock:
+                return cls._store.get(ident_tuple3)
 
     @classmethod
-    def require_str(cls, dot: str) -> type:
-        ident = Identity.from_string(dot)
-        return cls.require(ident.as_tuple3)
-
-    # ---- thin backward-compat helpers (namespace/kind/name) ----
-    @classmethod
-    def has(cls, namespace: str, kind: str, name: str = "default") -> bool:
-        with cls._lock:
-            return (namespace, kind, name) in cls._store
-
-    @classmethod
-    def get_legacy(cls, namespace: str, kind: str, name: str = "default") -> type | None:
-        return cls.get((namespace, kind, name))
-
-    @classmethod
-    def require_legacy(cls, namespace: str, kind: str, name: str = "default") -> type:
-        return cls.require((namespace, kind, name))
+    def require(cls, identity: IdentityKey) -> type:
+        """Like `get` but raises `ResponseSchemaNotFoundError` if not found."""
+        ident_tuple3 = coerce_identity_key(identity)
+        if ident_tuple3 is None:
+            raise IdentityValidationError(f"Invalid identity key: {identity!r}")
+        ident_str = ".".join(ident_tuple3)
+        with service_span_sync("ai.schema.registry.require", attributes={"identity": ident_str}):
+            schema_cls = cls.get(ident_tuple3)
+            if schema_cls is None:
+                raise ResponseSchemaNotFoundError(f"ResponseSchema not registered: {ident_str}")
+            return schema_cls
 
     # ---- introspection ----
     @classmethod
@@ -201,40 +166,9 @@ class ResponseSchemaRegistry:
     @classmethod
     def clear(cls) -> None:
         with cls._lock:
+            count = len(cls._store)
             cls._store.clear()
-            _logger.debug("Cleared all response schemas from registry")
-
-    # ---- internals ----
-    @classmethod
-    def _identity_for_cls(cls, schema_cls: type) -> Identity:
-        """
-        Resolve/validate the class identity.
-        Preferred: class exposes `identity: Identity` (via IdentityMixin or decorator).
-        Transitional: accept legacy string attrs (`namespace/kind/name`) and coerce.
-        """
-        # Preferred path
-        ident = getattr(schema_cls, "identity", None)
-        if isinstance(ident, Identity):
-            return ident
-
-        # Transitional fallback: legacy attrs → Identity, then stamp back
-        ns = getattr(schema_cls, "namespace", None)
-        kd = getattr(schema_cls, "kind", None)
-        nm = getattr(schema_cls, "name", None)
-        if all(isinstance(x, str) and x for x in (ns, kd, nm)):
-            coerced = Identity.from_parts(namespace=ns, kind=kd, name=nm)
-            try:
-                # If class uses IdentityMixin with a setter, this will normalize.
-                setattr(schema_cls, "identity", coerced)
-            except Exception:
-                # Best effort: not fatal if class blocks attribute set; registry still uses coerced
-                pass
-            return coerced
-
-        raise TypeError(
-            f"{schema_cls.__name__} must define an `identity: Identity` or legacy string attrs "
-            f"`namespace/kind/name` for transitional compatibility."
-        )
+            logger.debug("schema.registry.clear count=%d", count)
 
 
 __all__ = [
