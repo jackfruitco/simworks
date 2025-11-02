@@ -114,14 +114,23 @@ async def arun_service(
         except Exception:
             pass
 
-    ident, _meta = resolve_identity(
-        service.__class__,  # resolver works on class; instance attrs aren’t needed here
-        namespace=namespace,
-        kind=kind,
-        name=name,
-    )
-    ns, kd, nm = ident.namespace, ident.kind, ident.name
-    identity_label = ident.to_string()
+    # Resolve identity: prefer the instance's derived identity unless explicit overrides are provided
+    if namespace or kind or name:
+        ident, _meta = resolve_identity(
+            service.__class__,
+            namespace=namespace,
+            kind=kind,
+            name=name,
+        )
+    else:
+        ident = getattr(service, "identity", None)
+        if ident is None:
+            # Fallback to resolver if the instance hasn't derived identity yet (unlikely with new IdentityMixin)
+            ident, _meta = resolve_identity(service.__class__)
+        else:
+            _meta = {}
+    ns, kd, nm = ident.as_tuple3
+    identity_label = ident.as_str
 
     # For early spans, prefer the configured codec label without resolving a concrete codec yet
     try:

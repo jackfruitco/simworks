@@ -81,6 +81,72 @@ class ResponseSchemaRegistry:
                 f"Identity already registered by a different class: {ident.as_str} -> {existing!r} vs {schema_cls!r}"
             )
 
+    @classmethod
+    def maybe_register(cls, key: tuple[str, str, str] | str | Identity, schema_cls: type) -> None:
+        """
+        Idempotent register that accepts a decorator‑supplied identity (tuple3/str/Identity).
+
+        If a decorator provided a concrete identity, we trust it and register directly
+        under that key without requiring the class to already expose `identity`.
+        If the class also exposes an Identity and it disagrees with the provided key,
+        we log a warning and still prefer the provided (decorator) key to avoid drift.
+
+        This makes decorators the single source of truth at definition time, while
+        keeping `register()` strict (it still requires the class identity).
+        """
+        # Coerce the provided key to a canonical tuple3
+        try:
+            if isinstance(key, Identity):
+                provided_ident = key
+                key_t3 = key.as_tuple3
+            elif isinstance(key, tuple):
+                provided_ident = Identity.from_parts(*key)
+                key_t3 = provided_ident.as_tuple3
+            elif isinstance(key, str):
+                provided_ident = Identity.from_string(key)
+                key_t3 = provided_ident.as_tuple3
+            else:
+                raise TypeError(f"Unsupported identity key type: {type(key)!r}")
+        except Exception as e:
+            raise TypeError(f"Invalid identity key {key!r}: {e}") from e
+
+        # If the class already has an identity, compare and warn on mismatch
+        class_ident = getattr(schema_cls, "identity", None)
+        if isinstance(class_ident, Identity) and class_ident.as_tuple3 != key_t3:
+            _logger.warning(
+                "Response schema identity mismatch; decorator provided %s but class exposes %s. "
+                "Proceeding with decorator identity.",
+                provided_ident.as_str,
+                class_ident.as_str,
+            )
+
+        # Best effort: stamp identity onto the class if missing
+        if not isinstance(class_ident, Identity):
+            try:
+                setattr(schema_cls, "identity", provided_ident)
+            except Exception:
+                # Not fatal; continue with registry state only
+                pass
+
+        # Perform the actual insertion atomically
+        with cls._lock:
+            existing = cls._store.get(key_t3)
+            if existing is None:
+                cls._store[key_t3] = schema_cls
+                _logger.info(
+                    "Registered response schema %s as %s (via decorator)",
+                    schema_cls.__name__,
+                    provided_ident.as_str,
+                )
+                return
+            if existing is schema_cls:
+                # idempotent
+                return
+            raise DuplicateResponseSchemaIdentityError(
+                f"Identity already registered by a different class: {provided_ident.as_str} "
+                f"-> {existing!r} vs {schema_cls!r}"
+            )
+
     # ---- lookup ----
     @classmethod
     def get(cls, key: tuple[str, str, str]) -> type | None:

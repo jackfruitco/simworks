@@ -4,19 +4,26 @@ from __future__ import annotations
 """
 Django-aware prompt section decorator (class-based, no factories).
 
-This decorator composes the core domain decorator with the Django-aware base to:
+This decorator composes the **core** prompt-section decorator with the Django
+base decorator so that identity resolution and registration are consistent with
+the centralized Identity system:
 
-- derive a finalized Identity `(namespace, kind, name)` using Django-aware
-  namespace resolution (AppConfig label → app name → module root) and
-  name-only token stripping from AppConfig/global settings,
-- set the domain default `kind="prompt_section"`,
-- register the class with the Django prompt-sections registry (`prompt_sections`),
-  which enforces duplicate vs collision policy controlled by
-  `SIMCORE_COLLISIONS_STRICT`.
+- Identity is **derived via resolver** (no class attribute stamping). For Django,
+  the namespace preference is: decorator arg → class attr → AppConfig.label →
+  module root → "default". Name derivation applies Django-aware strip tokens.
+- Sets the domain default `kind="prompt_section"` when none is provided.
+- Registers the class with the Django prompt-sections **registry** (`prompt_sections`),
+  which enforces duplicate/collision policy (see `SIMCORE_COLLISIONS_STRICT`).
 
-No collision rewriting is performed here; registries own policy. If you want to
-opt-in to dev-only rename-on-collision, override `allow_collision_rewrite()` in
-this subclass to return True (recommended OFF in production).
+Notes
+-----
+- This decorator does **not** mutate `namespace/kind/name` on your class.
+  It relies on resolvers and registries that operate on `identity.as_tuple3`
+  and `identity.as_str` obtained from the class via the mixins/resolvers.
+- Collision rewriting is not performed here. Registries own the policy.
+  If you want to opt-in to dev-only rename-on-collision, override
+  `allow_collision_rewrite()` in the base decorator subclass (recommended OFF
+  in production).
 """
 
 from typing import Any
@@ -29,13 +36,16 @@ from simcore_ai_django.promptkit.registry import prompt_sections
 
 
 class DjangoPromptSectionDecorator(DjangoBaseDecorator, CorePromptSectionDecorator):
-    """Django-aware prompt section decorator: identity via DjangoBaseDecorator; registry wired here."""
+    """Django-aware prompt section decorator:
+    - identity resolution via DjangoBaseDecorator (resolver-backed, no stamping)
+    - registry wiring to `prompt_sections`
+    """
 
-    # Domain default for kind
+    # Domain default for kind (used only if the caller/class supplies none)
     default_kind = "prompt_section"
 
-    def get_registry(self) -> Any | None:
-        """Return the Django prompt sections registry singleton."""
+    def get_registry(self) -> Any | None:  # narrow protocol: must expose .register(cls)
+        """Return the Django prompt-sections registry singleton."""
         return prompt_sections
 
 
@@ -43,6 +53,7 @@ class DjangoPromptSectionDecorator(DjangoBaseDecorator, CorePromptSectionDecorat
 prompt_section = DjangoPromptSectionDecorator()
 ai_prompt_section = prompt_section
 
+# Historical alias; scenarios are sections in AIv3
 prompt_scenario = prompt_section
 
 __all__ = [

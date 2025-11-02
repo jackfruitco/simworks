@@ -26,9 +26,10 @@ import logging
 import os
 import re
 from collections.abc import Iterable, Callable
-from typing import Optional, Union
+from typing import Optional, Union, TYPE_CHECKING
 
-from .base import IdentityKey, Identity
+if TYPE_CHECKING:
+    from .base import IdentityKey, Identity
 
 __all__ = [
     "DEFAULT_IDENTITY_STRIP_TOKENS",
@@ -219,7 +220,7 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
-def coerce_identity_key(value: IdentityKey) -> Optional[tuple[str, str, str]]:
+def coerce_identity_key(value: "IdentityKey") -> Optional[tuple[str, str, str]]:
     """Coerce (tuple | Identity | 'ns.kind.name' str) to a (ns, kind, name) tuple.
 
     Returns None if `value` cannot be coerced (bad string, wrong type, etc.).

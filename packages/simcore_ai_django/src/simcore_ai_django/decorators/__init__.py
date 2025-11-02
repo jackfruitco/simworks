@@ -1,5 +1,5 @@
-from .helpers import *
+from .base import DjangoBaseDecorator
 
 __all__ = [
-
+    "DjangoBaseDecorator"
 ]

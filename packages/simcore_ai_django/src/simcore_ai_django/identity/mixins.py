@@ -12,8 +12,6 @@ Compatibility helpers `identity_tuple()` and `identity_str()` are kept as thin
 wrappers that delegate to the new unified API on `IdentityMixin`.
 """
 
-from typing import Tuple
-
 from simcore_ai.identity.mixins import IdentityMixin
 from simcore_ai_django.identity.resolvers import DjangoIdentityResolver
 
@@ -40,3 +38,6 @@ class DjangoIdentityMixin(IdentityMixin):
     @classmethod
     def identity_str(cls) -> str:
         return cls.identity_as_str()
+
+
+__all__ = ["DjangoIdentityMixin"]

@@ -1,9 +1,9 @@
-
 # simcore_ai_django/models.py
 from __future__ import annotations
 
 from django.db import models
 from django.utils import timezone
+from simcore_ai.identity import Identity
 
 
 class TimestampedModel(models.Model):
@@ -16,6 +16,8 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
+# Identity fields now use the centralized tuple3 (namespace, kind, name).
+# The 'service_name' field has been migrated to 'name' for consistency.
 class AIRequestAudit(TimestampedModel):
     """Audit row for an outbound AI request.
 
@@ -27,7 +29,7 @@ class AIRequestAudit(TimestampedModel):
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
     namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
     kind = models.CharField(max_length=128, null=True, blank=True, db_index=True)
-    service_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
     # Provider & client resolution
     provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
@@ -56,13 +58,30 @@ class AIRequestAudit(TimestampedModel):
         db_table = "ai_request_audit"
         indexes = [
             models.Index(fields=["provider_name", "client_name"]),
-            models.Index(fields=["namespace", "service_name"]),
+            models.Index(fields=["namespace", "name"]),
             models.Index(fields=["correlation_id"]),
         ]
 
     def __str__(self) -> str:  # pragma: no cover
         ns = self.namespace or "?"
-        return f"AIRequestAudit(id={self.pk}, ns={ns}, provider={self.provider_name}, model={self.model})"
+        return f"AIRequestAudit(id={self.pk}, ns={ns}, name={self.name or '?'}, provider={self.provider_name}, model={self.model})"
+
+    # ---- identity conveniences (read-side) ---------------------------------
+    @property
+    def identity(self) -> Identity:
+        return Identity(
+            namespace=self.namespace or "default",
+            kind=self.kind or "default",
+            name=self.name or "default",
+        )
+
+    @property
+    def identity_tuple(self) -> tuple[str, str, str]:
+        return self.identity.as_tuple3
+
+    @property
+    def identity_str(self) -> str:
+        return self.identity.as_str
 
 
 class AIResponseAudit(TimestampedModel):
@@ -77,7 +96,7 @@ class AIResponseAudit(TimestampedModel):
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
     namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
     kind = models.CharField(max_length=128, null=True, blank=True, db_index=True)
-    service_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
     # Provider & client resolution
     provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
@@ -101,7 +120,7 @@ class AIResponseAudit(TimestampedModel):
         db_table = "ai_response_audit"
         indexes = [
             models.Index(fields=["provider_name", "client_name"]),
-            models.Index(fields=["namespace", "service_name"]),
+            models.Index(fields=["namespace", "name"]),
             models.Index(fields=["correlation_id"]),
             models.Index(fields=["received_at"]),
         ]
@@ -109,7 +128,24 @@ class AIResponseAudit(TimestampedModel):
     def __str__(self) -> str:  # pragma: no cover
         ns = self.namespace or "?"
         status = "ok" if not self.error else "error"
-        return f"AIResponseAudit(id={self.pk}, ns={ns}, status={status})"
+        return f"AIResponseAudit(id={self.pk}, ns={ns}, name={self.name or '?'}, status={status})"
+
+    # ---- identity conveniences (read-side) ---------------------------------
+    @property
+    def identity(self) -> Identity:
+        return Identity(
+            namespace=self.namespace or "default",
+            kind=self.kind or "default",
+            name=self.name or "default",
+        )
+
+    @property
+    def identity_tuple(self) -> tuple[str, str, str]:
+        return self.identity.as_tuple3
+
+    @property
+    def identity_str(self) -> str:
+        return self.identity.as_str
 
 
 class AIOutbox(TimestampedModel):
@@ -128,6 +164,8 @@ class AIOutbox(TimestampedModel):
     event_type = models.CharField(max_length=64, choices=EVENT_CHOICES, db_index=True)
     correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
     namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
+    kind = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
     provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     client_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
@@ -144,12 +182,30 @@ class AIOutbox(TimestampedModel):
         db_table = "ai_outbox"
         indexes = [
             models.Index(fields=["event_type", "dispatched_at"]),
+            models.Index(fields=["namespace", "kind", "name"]),
             models.Index(fields=["namespace", "correlation_id"]),
         ]
+
+    # ---- identity conveniences (read-side) ---------------------------------
+    @property
+    def identity(self) -> Identity:
+        return Identity(
+            namespace=self.namespace or "default",
+            kind=self.kind or "default",
+            name=self.name or "default",
+        )
+
+    @property
+    def identity_tuple(self) -> tuple[str, str, str]:
+        return self.identity.as_tuple3
+
+    @property
+    def identity_str(self) -> str:
+        return self.identity.as_str
 
     def mark_dispatched(self) -> None:
         self.dispatched_at = timezone.now()
         self.save(update_fields=["dispatched_at", "updated_at"])
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"AIOutbox(id={self.pk}, event={self.event_type}, dispatched={bool(self.dispatched_at)})"
+        return f"AIOutbox(id={self.pk}, event={self.event_type}, ident={self.identity_str}, dispatched={bool(self.dispatched_at)})"

@@ -1,4 +1,4 @@
-# packages/simcore_ai/src/simcore_ai/decorators/helpers.py
+# simcore_ai/decorators/helpers.py
 """
 Lightweight, framework-agnostic helpers for decorators.
 
@@ -6,17 +6,16 @@ Lightweight, framework-agnostic helpers for decorators.
 -------------------
 All *identity derivation* logic has moved to
 `simcore_ai.identity.resolution.IdentityResolver`.
-
-This module intentionally contains only small string utilities that some
-call sites may still import. New code should rely on the resolver and on
-`simcore_ai.identity.utils` for low-level helpers.
+This module now delegates identity validation to the centralized Identity class and prefers core utils for name transforms.
 """
+
 from __future__ import annotations
 
 import re
+import warnings
 from typing import Iterable
 
-from simcore_ai.identity.exceptions import IdentityError
+from simcore_ai.identity import Identity
 from simcore_ai.identity.utils import strip_tokens as _strip_tokens  # segment-aware
 
 __all__ = [
@@ -31,16 +30,14 @@ _SEP_RE = re.compile(r"[._\-\s]+")
 
 
 def camel_to_snake(name: str) -> str:
-    """Convert CamelCase / PascalCase to snake_case-ish (underscored).
+    """Convert CamelCase / PascalCase to snake_case using core utility.
 
-    This is kept for a few legacy call sites; most callers should prefer
-    `snake()` from `simcore_ai.identity.utils`.
+    Kept for legacy call sites; prefer `snake()` from `simcore_ai.identity.utils`.
     """
+    from simcore_ai.identity.utils import snake as _snake  # local import to avoid legacy cycles
     if not name:
         return ""
-    s = re.sub(r"(?<=[0-9a-z])([A-Z])", r"_\1", name)
-    s = re.sub(r"__+", "_", s)
-    return s
+    return _snake(name)
 
 
 def normalize_name(name: str) -> str:
@@ -68,20 +65,10 @@ def strip_name_tokens(name: str, tokens: Iterable[str]) -> str:
 
 
 def validate_identity(namespace: str, kind: str, name: str) -> None:
-    """Basic structural validation of identity parts.
-
-    - Non-empty strings
-    - Allowed characters: A–Z, a–z, 0–9, '.', '_', '-'
-    - Max length 128
-    """
-    allowed = re.compile(r"^[A-Za-z0-9._-]+$")
-    for label, value in (("namespace", namespace), ("kind", kind), ("name", name)):
-        if not isinstance(value, str):
-            raise IdentityError(f"{label} must be a string (got {type(value)!r})")
-        v = value.strip()
-        if not v:
-            raise IdentityError(f"{label} cannot be empty")
-        if len(v) > 128:
-            raise IdentityError(f"{label} too long (>128)")
-        if not allowed.match(v):
-            raise IdentityError(f"{label} contains illegal characters: {value!r}")
+    warnings.warn(
+        "validate_identity() is deprecated; use Identity.validate(namespace, kind, name) "
+        "or construct Identity(...) directly.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    Identity.validate(namespace, kind, name)

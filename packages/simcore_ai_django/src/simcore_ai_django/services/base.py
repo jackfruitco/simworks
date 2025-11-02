@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Awaitable
 
-from simcore_ai.identity.utils import parse_dot_identity
+from simcore_ai.identity import coerce_identity_key
 from simcore_ai.services.base import BaseLLMService
 from simcore_ai.services.exceptions import ServiceCodecResolutionError
 from simcore_ai.tracing import service_span_sync
@@ -55,11 +55,11 @@ class DjangoBaseLLMService(BaseLLMService):
 
     Identity Defaults
     -----------------
-    Identity is resolved via the core resolver. Semantics:
-      - `namespace`: explicit arg/attr → module root → "default"
-      - `kind`: explicit arg/attr → **"default"** (never "service")
+    Identity is resolved via the class's `identity_resolver_cls` (Django variant). Semantics:
+      - `namespace`: resolver arg/attr → Django AppConfig.label → module root → "default"
+      - `kind`: resolver arg/attr → "default"
       - `name`: explicit arg/attr (no token strip) → derived from class name with token stripping
-    The canonical string is dot-only: `namespace.kind.name`.
+    The canonical string is dot-only: `namespace.kind.name` accessible via `self.identity.as_str`.
 
     ---
     **Codec Resolution Summary**
@@ -178,18 +178,17 @@ class DjangoBaseLLMService(BaseLLMService):
         -----
         `codec_name` may be either `"default"` or `"kind.name"` (dot-only).
         """
-        namespace = getattr(self, "namespace", None)
-        kind = getattr(self, "kind", None) or "default"
-        name = getattr(self, "name", None)
+        ident = getattr(self, "identity", None)
+        namespace = ident.namespace if ident else getattr(self, "namespace", None)
+        kind = ident.kind if ident else (getattr(self, "kind", None) or "default")
+        name = ident.name if ident else getattr(self, "name", None)
         c_kind, c_name = _kind_name_from_codec_name(getattr(self, "codec_name", None), kind, name)
 
         with service_span_sync(
                 "svc.get_codec",
                 attributes={
                     "svc.class": self.__class__.__name__,
-                    "svc.namespace": namespace,
-                    "svc.kind": kind,
-                    "svc.name": name,
+                    "ai.identity": ident.as_str if ident else None,
                     "svc.codec_kind": c_kind,
                     "svc.codec_name": c_name,
                     **self.flatten_context(),
@@ -270,7 +269,11 @@ class DjangoBaseLLMService(BaseLLMService):
             cid = getattr(resp, "codec_identity", None)
             if cid:
                 try:
-                    ns, kd, nm = parse_dot_identity(cid)
+                    key = coerce_identity_key(cid)
+                    if key is not None:
+                        ns, kd, nm = key
+                    else:
+                        raise ValueError("invalid codec_identity")
                     # 1) Django registry
                     obj = CodecRegistry.resolve(identity=(ns, kd, nm))
                     if obj:

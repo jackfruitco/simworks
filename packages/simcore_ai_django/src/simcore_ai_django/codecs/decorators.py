@@ -1,21 +1,29 @@
-# packages/simcore_ai_django/src/simcore_ai_django/codecs/decorators.py
 from __future__ import annotations
 
 """
-Django-aware codec decorator (class-based, no factories).
+Django-aware codec decorator (class-based; no factory functions).
 
-This decorator composes the core domain decorator with the Django-aware base to:
+This decorator composes the **core** codec decorator with the **Django** base
+so that codec classes get a unified, Django-aware identity and are registered
+in the Django codecs registry without mutating class attributes.
 
-- derive a finalized Identity `(namespace, kind, name)` using Django-aware
-  namespace resolution (AppConfig label → app name → module root) and
-  name-only token stripping from AppConfig/global settings,
-- set the domain default `kind="codec"`,
-- register the class with the Django codecs registry (`codecs`), which
-  enforces duplicate vs collision policy controlled by `SIMCORE_COLLISIONS_STRICT`.
+Key behaviors
+-------------
+- Identity derivation is delegated to the resolver selected by the mixin stack
+  (here: `DjangoIdentityResolver` via `DjangoBaseDecorator`). That resolver:
+  • infers `namespace` from (arg → class attr → AppConfig.label → module root → "default")
+  • uses segment-aware name derivation and token stripping sourced from
+    AppConfig / Django settings / core defaults (no stamping on the class)
+- Domain default: `kind="codec"` unless explicitly provided.
+- Registration: the resolved identity tuple3 is handed to the Django codecs
+  registry (`simcore_ai_django.codecs.registry.codecs`). Collision policy is
+  enforced by the registry (respecting `SIMCORE_COLLISIONS_STRICT` if configured).
 
-No collision rewriting is performed here; registries own policy. If you want to
-opt-in to dev-only rename-on-collision, override `allow_collision_rewrite()` in
-this subclass to return True (recommended OFF in production).
+Notes
+-----
+- No collision rewriting is performed here; registries own the policy.
+- If you need dev-only rename-on-collision, implement that in the registry layer,
+  not in decorators.
 """
 
 from typing import Any
@@ -34,7 +42,7 @@ class DjangoCodecDecorator(DjangoBaseDecorator, CoreCodecDecorator):
     default_kind = "codec"
 
     def get_registry(self) -> Any | None:
-        """Return the Django codecs registry singleton."""
+        """Return the Django codecs registry singleton (or None to skip registration)."""
         return codecs
 
 

@@ -17,22 +17,14 @@ Notes
 
 from __future__ import annotations
 
-# Populated at runtime by `simcore_ai_django.apps.SimcoreAIDjangoConfig.ready()`
-APP_IDENTITY_STRIP_TOKENS: tuple[str, ...] = ()
-
-
-def get_app_identity_strip_tokens() -> tuple[str, ...]:
-    """
-    Return the app-contributed identity strip tokens as a tuple of strings.
-
-    The return type is stable (always a tuple); callers should not mutate it.
-    """
-    # Ensure we always return a tuple even if someone set it to None or other
-    value = APP_IDENTITY_STRIP_TOKENS or ()
-    return tuple(value)
-
+from .mixins import DjangoIdentityMixin
+from .resolvers import DjangoIdentityResolver
+from .utils import APP_IDENTITY_STRIP_TOKENS, get_app_identity_strip_tokens, infer_namespace_from_module
 
 __all__ = [
+    "DjangoIdentityMixin",
+    "DjangoIdentityResolver",
     "APP_IDENTITY_STRIP_TOKENS",
     "get_app_identity_strip_tokens",
+    "infer_namespace_from_module"
 ]

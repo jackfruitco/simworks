@@ -17,6 +17,62 @@ from simcore_ai.tracing import service_span_sync
 from simcore_ai_django.signals import emitter
 
 
+"""
+Django-aware codec base.
+
+Pipeline (sync):
+  1) `validate_from_response(resp)`  → optional schema validation/parsing
+  2) `restructure(candidate, resp)`  → normalize/coerce into app model (default: Pydantic model)
+  3) `persist_atomic(resp=resp, structured=..., **ctx)` → apps override to write ORM records (atomic)
+  4) `emit(result=result, resp=resp, **ctx)` → optional post-commit signals/outbox/websockets
+
+Key principles:
+  - This base stays free of direct ORM models; apps provide them via **ctx.
+  - Validation errors raise `CodecDecodeError` and should be caught by the service/UI.
+  - Idempotency is recommended inside `persist()` (e.g., unique by `(namespace, kind, name, correlation_id)`).
+  - Emission runs **after commit** via `transaction.on_commit`.
+  - Identity for tracing prefers `resp.codec_identity` when present; otherwise we synthesize `<namespace>.<kind>.<name>`.
+
+Usage:
+  class PatientInitialResponseCodec(DjangoBaseLLMCodec):
+      response_format_cls = PatientInitialOutputSchema  # optional
+
+      def persist(self, *, resp: LLMResponse, structured: Any | None = None, **ctx) -> Any:
+          # Implement idempotent writes using resp.identity + resp.correlation_id
+          ...
+
+  # In a service handler:
+  codec = PatientInitialResponseCodec()
+  result = codec.handle_response(resp, context={"object_db_pk": sim.pk})
+
+Signals:
+  Apps should connect to the emitter signals and filter by identity:
+
+  @receiver(ai_response_ready)
+  def on_ready(sender, **payload):
+      if (payload.get("namespace"), payload.get("kind")) != ("chatlab", "sim_responses"):
+          return
+      ...
+"""
+
+
+def _resp_identity_label(resp: LLMResponse) -> str | None:
+    """
+    Prefer a provider/codec-supplied identity label if available, otherwise synthesize.
+    """
+    try:
+        label = getattr(resp, "codec_identity", None)
+        if isinstance(label, str) and label.strip():
+            return label.strip()
+    except Exception:
+        pass
+    ns = getattr(resp, "namespace", None)
+    kd = getattr(resp, "kind", None)
+    nm = getattr(resp, "name", None)
+    parts = [p for p in (ns, kd, nm) if isinstance(p, str) and p]
+    return ".".join(parts) if parts else None
+
+
 class DjangoBaseLLMCodec(BaseLLMCodec):
     """
     Django-aware codec base.
@@ -143,6 +199,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
                     "request_correlation_id": getattr(resp, "request_correlation_id", None),
                     "provider": getattr(resp, "provider_name", None),
                     "client": getattr(resp, "client_name", None),
+                    "identity": _resp_identity_label(resp),
                     # Optional DB context from ctx/result
                     "object_db_pk": ctx.get("object_db_pk") if isinstance(ctx, dict) else None,
                     "response_db_pk": getattr(result, "pk", None) if result is not None else None,
@@ -150,7 +207,11 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
                 emitter.response_ready(payload)
 
             # ensure emission only fires if the transaction commits
-            transaction.on_commit(_send)
+            try:
+                transaction.on_commit(_send)
+            except Exception:
+                # Fallback: if no transaction is active, emit immediately.
+                _send()
 
     # Convenience orchestration for codecs --------------------------------
     def handle_response(self, resp: LLMResponse, *, context: Optional[dict[str, Any]] = None) -> Any:
@@ -163,15 +224,7 @@ class DjangoBaseLLMCodec(BaseLLMCodec):
             "ai.codec.handle",
             attributes={
                 "ai.codec": self.__class__.__name__,
-                "ai.identity.codec": ".".join(
-                    str(x)
-                    for x in (
-                        getattr(resp, "namespace", None),
-                        getattr(resp, "kind", None),
-                        getattr(resp, "name", None),
-                    )
-                    if x
-                ),
+                "ai.identity.codec": _resp_identity_label(resp),
                 "ai.corr.request": getattr(resp, "request_correlation_id", None),
                 "ai.corr.response": getattr(resp, "correlation_id", None),
                 "ai.provider": getattr(resp, "provider_name", None),

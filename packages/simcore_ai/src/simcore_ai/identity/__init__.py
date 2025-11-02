@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from .base import Identity, IdentityKey
 from .resolvers import resolve_identity  # convenience helper (uses IdentityResolver)
+from .registry_resolvers import try_resolve_from_ident
 from .utils import (
     DEFAULT_IDENTITY_STRIP_TOKENS,
     strip_tokens,
@@ -38,6 +39,7 @@ __all__ = [
     "resolve_collision",
     "parse_dot_identity",
     "coerce_identity_key",
+    "try_resolve_from_ident"
 ]
 
 # Only expose IdentityMixin if it exists locally.

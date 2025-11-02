@@ -72,9 +72,10 @@ class IdentityMixin:
         from simcore_ai.identity.base import Identity
         from simcore_ai.identity.resolvers import IdentityResolver, resolve_identity
 
-        # Determine resolver class: framework layer can override this attribute
-        resolver_cls: Type[IdentityResolver] = cls.identity_resolver_cls or IdentityResolver()
-        resolver: IdentityResolver = resolver_cls if isinstance(resolver_cls, IdentityResolver) else resolver_cls()  # type: ignore[arg-type]
+        # Determine resolver class
+        resolver_cls = cls.identity_resolver_cls or IdentityResolver
+        # Instantiate if needed
+        resolver = resolver_cls() if isinstance(resolver_cls, type) else resolver_cls
 
         with cls.__identity_lock:
             if cls.__identity_cached is not None:
@@ -97,12 +98,12 @@ class IdentityMixin:
     @classmethod
     def identity_as_tuple3(cls) -> tuple[str, str, str]:
         ident = cls.identity_resolved()
-        return (ident.namespace, ident.kind, ident.name)
+        return ident.as_tuple3
 
     @classmethod
     def identity_as_str(cls) -> str:
         ident = cls.identity_resolved()
-        return ident.to_string()
+        return ident.as_str
 
     @classmethod
     def pin_identity(cls, identity: "Identity") -> None:

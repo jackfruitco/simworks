@@ -1,4 +1,4 @@
-# packages/simcore_ai_django/src/simcore_ai_django/schemas/decorators.py
+# simcore_ai_django/schemas/decorators.py
 from __future__ import annotations
 
 """
@@ -13,9 +13,7 @@ This decorator composes the core domain decorator with the Django-aware base to:
 - register the class with the Django schemas registry (`schemas`), which
   enforces duplicate vs collision policy controlled by `SIMCORE_COLLISIONS_STRICT`.
 
-No collision rewriting is performed here; registries own policy. If you want to
-opt-in to dev-only rename-on-collision, override `allow_collision_rewrite()` in
-this subclass to return True (recommended OFF in production).
+No collision rewriting is performed here; registries own policy. If you want to opt-in to dev-only rename-on-collision, override `allow_collision_rewrite()` in a subclass to return True (recommended OFF in production).
 """
 
 from typing import Any
@@ -24,7 +22,7 @@ from simcore_ai.schemas.decorators import (
     SchemaRegistrationDecorator as CoreSchemaDecorator,
 )
 from simcore_ai_django.decorators.base import DjangoBaseDecorator
-from simcore_ai_django.schemas.registry import schemas
+from simcore_ai_django.schemas.registry import SchemaRegistry
 
 
 class DjangoSchemaDecorator(DjangoBaseDecorator, CoreSchemaDecorator):
@@ -34,8 +32,8 @@ class DjangoSchemaDecorator(DjangoBaseDecorator, CoreSchemaDecorator):
     default_kind = "schema"
 
     def get_registry(self) -> Any | None:
-        """Return the Django schemas registry singleton."""
-        return schemas
+        """Return the Django schemas registry (class with classmethods)."""
+        return SchemaRegistry
 
 
 # Ready-to-use decorator instances (short and namespaced aliases)

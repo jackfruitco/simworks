@@ -39,9 +39,11 @@ Backends perform scheduling/dispatch; the runner orchestrates request promotion/
 calls, audits, and codec handling.
 """
 
+__all__ = ["execute", "_ExecutionCall"]
+
 from collections.abc import Mapping
-from typing import Any, Optional, Dict, Union, Type
-from datetime import datetime
+from typing import Any, Optional, Dict, Union, TYPE_CHECKING
+from datetime import datetime, timezone
 
 from simcore_ai.tracing import service_span_sync
 
@@ -54,14 +56,21 @@ from .helpers import (
     settings_default_queue_name,
     span_attrs_from_ctx,
 )
-from .registry import get_backend_by_name
+from .registry import require_backend_instance
 
 from .backends.immediate import ImmediateBackend  # for type mapping only
 
+# Keep runtime var for availability checks; avoid Optional class leakage to type system
 try:
-    from .backends.celery import CeleryBackend  # type: ignore
+    from .backends.celery import CeleryBackend as _CeleryBackend  # type: ignore
+
+    _HAVE_CELERY = True
 except Exception:  # pragma: no cover
-    CeleryBackend = None  # type: ignore
+    _CeleryBackend = None  # type: ignore
+    _HAVE_CELERY = False
+
+if TYPE_CHECKING:  # help the checker “see” the class without forcing runtime import
+    from .backends.celery import CeleryBackend  # noqa: F401
 
 
 # -------------------- Option resolution --------------------
@@ -76,7 +85,13 @@ def _normalize_run_after(value: Optional[Union[float, int, datetime]]) -> Option
     if isinstance(value, (int, float)):
         return float(value) if value > 0 else None
     if isinstance(value, datetime):
-        now = datetime.utcnow()
+        # If value is timezone-aware, compute delay using aware "now" in the same zone.
+        if value.tzinfo is not None:
+            now = datetime.now(value.tzinfo)
+        else:
+            # Treat naive as UTC to avoid local-time ambiguity
+            now = datetime.now(timezone.utc)
+            value = value.replace(tzinfo=timezone.utc)
         delta = (value - now).total_seconds()
         return delta if delta > 0 else None
     return None
@@ -99,7 +114,7 @@ def _normalize_priority(value: Optional[int]) -> Optional[int]:
 def _resolve_mode(
         *,
         enqueue: Optional[bool],
-        service_cls: Type[SupportsServiceInit],
+        service_cls: type,
 ) -> str:
     # 1) explicit call intent
     if enqueue is not None:
@@ -114,17 +129,17 @@ def _resolve_mode(
 
 def _resolve_backend_name(
         *,
-        backend: Optional[Union[str, Type[BaseExecutionBackend]]],
-        service_cls: Type[SupportsServiceInit],
+        backend: Optional[Union[str, type[BaseExecutionBackend]]],
+        service_cls: type,
 ) -> str:
     if isinstance(backend, str):
         return backend.strip().lower()
     if isinstance(backend, type) and issubclass(backend, BaseExecutionBackend):
-        # Allow passing the class directly
-        name_map = {
-            ImmediateBackend: "immediate",
-            CeleryBackend: "celery",
-        }
+        # Allow passing the class directly (map class -> canonical name)
+        name_map: dict[type[BaseExecutionBackend], str] = {ImmediateBackend: "immediate"}
+        # Only add Celery mapping if the concrete class is actually available at runtime
+        if _HAVE_CELERY and isinstance(_CeleryBackend, type):
+            name_map[_CeleryBackend] = "celery"  # type: ignore[assignment]
         return name_map.get(backend, settings_default_backend())
     # service default
     svc_backend = getattr(service_cls, "execution_backend", None)
@@ -149,7 +164,7 @@ def _resolve_queue_name(
 def _resolve_priority(
         *,
         priority: Optional[int],
-        service_cls: Type[SupportsServiceInit],
+        service_cls: type,
 ) -> int:
     if priority is not None:
         return _normalize_priority(priority) or 0
@@ -162,7 +177,7 @@ def _resolve_priority(
 def _resolve_run_after(
         *,
         run_after: Optional[Union[float, int, datetime]],
-        service_cls: Type[SupportsServiceInit],
+        service_cls: type,
 ) -> Optional[float]:
     if run_after is not None:
         return _normalize_run_after(run_after)
@@ -178,7 +193,7 @@ def _resolve_run_after(
 def _execute_now(
         *,
         backend: BaseExecutionBackend,
-        service_cls: Type[SupportsServiceInit],
+        service_cls: type[SupportsServiceInit],
         ctx: Mapping[str, Any],
 ) -> Any:
     """
@@ -187,8 +202,7 @@ def _execute_now(
     Notes
     -----
     - This function does **not** instantiate the service or build requests.
-      The backend is responsible for instantiation (via SupportsServiceInit) and for calling
-      the Django runner which builds the request via `BaseLLMService.build_request(...)`.
+      The backend is responsible for instantiation and for calling the Django runner.
     - No identity/codec resolution occurs here; that happens inside the runner/services.
     """
     attrs = {
@@ -204,7 +218,7 @@ def _execute_now(
 def _enqueue(
         *,
         backend: BaseExecutionBackend,
-        service_cls: Type[SupportsServiceInit],
+        service_cls: type[SupportsServiceInit],
         ctx: Mapping[str, Any],
         queue_name: Optional[str],
         run_after_seconds: Optional[float],
@@ -234,10 +248,10 @@ def _enqueue(
         # Respect backend capabilities for priority; annotate trace when ignored.
         supports_priority = getattr(backend, "supports_priority", False)
         if not supports_priority and priority is not None:
-            # mark unsupported in trace; ignore priority
             if span is not None:
                 try:
                     span.set_attribute("exec.priority.unsupported", True)
+                    span.set_attribute("exec.priority.requested", True)
                 except Exception:
                     pass
             priority = None
@@ -247,11 +261,11 @@ def _enqueue(
 # -------------------- Public API --------------------
 
 def execute(
-        service_cls: Type[SupportsServiceInit],
+        service_cls: type[SupportsServiceInit],
         *,
         using: Optional[Dict[str, Any]] = None,
         enqueue: Optional[bool] = None,
-        backend: Optional[Union[str, Type[BaseExecutionBackend]]] = None,
+        backend: Optional[Union[str, type[BaseExecutionBackend]]] = None,
         queue_name: Optional[str] = None,
         run_after: Optional[Union[float, int, datetime]] = None,
         priority: Optional[int] = None,
@@ -264,9 +278,8 @@ def execute(
     - Pass `enqueue=True` to force async, or use the builder `.enqueue(...)` on the mixin.
     - Returns the service's return value (sync) or a task id string (async).
 
-    This function is **transport-only**: it chooses mode/backend/queue and dispatches.
-    Identity derivation, request construction, client/codec resolution, and audits happen later in
-    the runner and service layers.
+    Transport-only: chooses mode/backend/queue and dispatches. Identity derivation, prompt building,
+    client/codec resolution, and audits happen in the runner/service layers.
     """
     overrides = dict(using or {})
     if backend is not None:
@@ -283,7 +296,7 @@ def execute(
     # Resolve mode/backend/options
     resolved_mode = _resolve_mode(enqueue=overrides.get("enqueue"), service_cls=service_cls)
     resolved_backend_name = _resolve_backend_name(backend=overrides.get("backend"), service_cls=service_cls)
-    backend_inst = get_backend_by_name(resolved_backend_name)
+    backend_inst = require_backend_instance(resolved_backend_name)
     resolved_queue_name = _resolve_queue_name(queue_name=overrides.get("queue_name"),
                                               backend_name=resolved_backend_name)
     resolved_priority = _resolve_priority(priority=overrides.get("priority"), service_cls=service_cls)
@@ -326,6 +339,8 @@ def execute(
         return _execute_now(backend=backend_inst, service_cls=service_cls, ctx=ctx)
 
 
+# The builder is intentionally transport-only: it never instantiates services nor resolves identity.
+
 # -------------------- Service mixin & builder --------------------
 
 class _ExecutionCall:
@@ -340,7 +355,7 @@ class _ExecutionCall:
     This builder does not instantiate the service or perform identity/codec work.
     """
 
-    def __init__(self, service_cls: Type[SupportsServiceInit], overrides: Optional[Dict[str, Any]] = None):
+    def __init__(self, service_cls: type[SupportsServiceInit], overrides: Optional[Dict[str, Any]] = None):
         self._service_cls = service_cls
         self._overrides: Dict[str, Any] = dict(overrides or {})
 
