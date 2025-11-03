@@ -1,5 +1,4 @@
 # chatlab/utils.py
-import inspect
 import logging
 
 from asgiref.sync import sync_to_async
@@ -9,26 +8,23 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
 
-from chatlab.models import ChatSession
-from chatlab.models import Message
-from chatlab.models import MessageMediaLink
+from chatlab.models import ChatSession, Message, MessageMediaLink
 from core.utils import remove_null_keys
-from simcore.models import LabResult
-from simcore.models import RadResult
-from simcore.models import Simulation
-from simcore.models import SimulationMetadata
-from simcore.utils import generate_fake_name
-from simcore.utils import get_user_initials
+from simcore.models import (
+    LabResult, RadResult, Simulation, SimulationMetadata,
+)
+from simcore.utils import get_user_initials, generate_fake_name
+from .apps import ChatLabConfig
 
 logger = logging.getLogger(__name__)
+
+APP_NAME = getattr(ChatLabConfig, "name") or getattr(ChatLabConfig, "label") or "<unknown>"
 
 
 async def create_new_simulation(
         user, modifiers: list = None, force: bool = False
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
-    from .ai.services import GenerateInitialResponse
-
     logger.debug(
         f"received request to create new simulation for {user.username!r} "
         f"with modifiers {modifiers!r} (force {force!r})"
@@ -39,10 +35,9 @@ async def create_new_simulation(
     # Create base Simulation
     simulation = await Simulation.abuild(
         user=user,
-        lab="chatlab",
+        app_=APP_NAME,
         sim_patient_full_name=sim_patient_full_name,
         modifiers=modifiers,
-        include_default=True,
     )
     logger.debug(f"simulation #{simulation.id} created")
 
@@ -50,7 +45,8 @@ async def create_new_simulation(
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
-    context = {"simulation_id": simulation.id} #, "user_id": user.id}
+    from .ai.services import GenerateInitialResponse
+    context = {"simulation_id": simulation.id, "user_id": user.id}
     GenerateInitialResponse(context=context).execute()
 
     return simulation
@@ -329,91 +325,3 @@ async def broadcast_message(
     return await socket_send(
         __payload=payload, __group=group, __type="chat.message_created"
     )
-
-
-async def broadcast_chat_message(message: Message | int, status: str = None):
-    """Broadcasts a message to all connected clients."""
-    # warnings.warn(DeprecationWarning("Use `broadcast_message` instead."))
-    raise DeprecationWarning("Use `broadcast_message` instead.")
-
-    func_name = inspect.currentframe().f_code.co_name
-
-    async def _log(level=logging.DEBUG, msg_=""):
-        logger.log(level=level, msg=f"[{func_name}]: {msg_}")
-
-    # Get Message instance if provided ID
-    if not isinstance(message, Message):
-        try:
-            message = await Message.objects.select_related("sender").prefetch_related("media").aget(id=message)
-        except Message.DoesNotExist:
-            await _log(
-                level=logging.ERROR,
-                msg=f"Message ID {message} not found. Skipping broadcast.",
-            )
-            return
-
-    # Get Simulation instance from Message FK
-    try:
-        simulation = await sync_to_async(Simulation.objects.get)(
-            id=message.simulation_id
-        )
-    except Simulation.DoesNotExist:
-        await _log(
-            level=logging.ERROR,
-            msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast.",
-        )
-        return
-
-    await _log(
-        msg=f"Broadcasting message #{message.id} (Sim#{message.simulation.id}, MsgType={message.message_type}) to all connected clients."
-    )
-
-    # Set channel and group layers to broadcast to
-    channel_layer = get_channel_layer()
-    group = f"simulation_{message.simulation_id}"
-
-    has_sender = message.sender is not None
-    if has_sender:
-        sender_username = message.sender.username
-        display_name = message.display_name or message.sender.username
-        display_initials = get_user_initials(message.sender)
-    else:
-        sender_username = "System"
-        display_name = simulation.sim_patient_display_name
-        display_initials = simulation.sim_patient_initials
-
-    media_list = await sync_to_async(lambda: list(message.media.all()))()
-    _media = [
-        {
-            "id": media.id,
-            "url": media.thumbnail.url,
-        }
-        for media in media_list
-    ]
-
-    payload = {
-        "type": "chat.message",
-        "id": message.id,
-        "role": message.role,
-        "content": message.content or None,
-        "media": [m["id"] for m in _media] or None,
-        "mediaList": _media or None,
-        "timestamp": message.timestamp.isoformat(),
-        "status": status or None,
-        "messageType": message.message_type,
-        "senderId": sender_username or None,
-        "displayName": display_name or None,
-        "displayInitials": display_initials or None,
-        "isFromAi": message.is_from_ai or None,
-    }
-    payload = await sync_to_async(remove_null_keys)(payload)
-
-    try:
-        await channel_layer.group_send(group, payload)
-    except Exception as e:
-        await _log(level=logging.ERROR, msg=f"broadcast failed: {e}")
-
-    msg = f"'{payload['type']}' message broadcasted to group '{group}'"
-    if logger.isEnabledFor(logging.DEBUG):
-        msg = f"{msg}  (payload={payload})"
-    await _log(level=logging.INFO, msg=msg)

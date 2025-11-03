@@ -9,6 +9,7 @@ from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
+from simcore_ai.promptkit.plans import PromptPlan
 from simcore_ai.types import LLMTextPart, LLMRole
 from simcore_ai_django.api.decorators import llm_service
 # Django-aware service base and rich DTOs
@@ -38,10 +39,10 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExec
     # require_enqueue: bool = False # force async if True
 
     # model: Optional[str] = None  # allow provider default
-    # from ..prompts import ChatlabPatientInitialSection
-    # prompt_plan = (
-    #     ChatlabPatientInitialSection,
-    # )
+    from ..prompts import ChatlabPatientInitialSection
+    prompt_plan: PromptPlan = (
+        ChatlabPatientInitialSection,
+    )
 
     required_context_keys: tuple[str, ...] = ("simulation_id",)
 

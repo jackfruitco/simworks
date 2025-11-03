@@ -38,6 +38,7 @@ import os
 from typing import Dict, Tuple
 
 from django.conf import settings
+from django.utils.module_loading import autodiscover_modules
 
 from simcore_ai.client.registry import (
     create_client,
@@ -178,3 +179,25 @@ def configure_ai_clients() -> None:
 
         # Mark configured for idempotency
         _CONFIGURED_SIGNATURE = current_sig
+
+
+def autodiscover_all() -> None:
+    """
+    Idempotent autodiscovery of AI integration modules across INSTALLED_APPS.
+
+    Mirrors the calls in `SimcoreAIDjangoConfig.ready()` so that non-Django
+    entrypoints (e.g., Celery workers/beat or management commands) can opt in
+    to the same registration flow.
+    """
+    with service_span_sync("ai.autodiscover.identity"):
+        autodiscover_modules("ai.identity")
+    with service_span_sync("ai.autodiscover.receivers"):
+        autodiscover_modules("ai.receivers")
+    with service_span_sync("ai.autodiscover.task_backends"):
+        autodiscover_modules("ai.task_backends")
+    with service_span_sync("ai.autodiscover.prompts"):
+        autodiscover_modules("ai.prompts")
+    with service_span_sync("ai.autodiscover.services"):
+        autodiscover_modules("ai.services")
+    with service_span_sync("ai.autodiscover.codecs"):
+        autodiscover_modules("ai.codecs")

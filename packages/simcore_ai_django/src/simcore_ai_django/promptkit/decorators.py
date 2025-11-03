@@ -25,7 +25,7 @@ from simcore_ai.promptkit.decorators import (
 from simcore_ai_django.decorators.base import DjangoBaseDecorator
 
 
-class DjangoPromptSectionDecorator(DjangoBaseDecorator, CorePromptSectionDecorator):
+class DjangoPromptSectionDecorator(CorePromptSectionDecorator, DjangoBaseDecorator):
     """Django-aware prompt section decorator:
     - identity resolution via DjangoBaseDecorator (resolver-backed, no stamping)
     - registry wiring to `prompt_sections`

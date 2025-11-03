@@ -27,6 +27,7 @@ from django.utils.safestring import mark_safe
 register = template.Library()
 
 # Optional integration hooks
+# TODO: PromptRegistry
 try:
     from simcore_ai.promptkit import PromptRegistry  # type: ignore
 except Exception:

@@ -1,9 +1,11 @@
 # simcore_ai_django/services/base.py
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Awaitable
 
 from simcore_ai.identity import coerce_identity_key
+from simcore_ai.promptkit.engine import SectionSpec
 from simcore_ai.services.base import BaseLLMService
 from simcore_ai.services.exceptions import ServiceCodecResolutionError
 from simcore_ai.tracing import service_span_sync
@@ -23,6 +25,8 @@ __all__ = [
     "DjangoBaseLLMService",
     "DjangoExecutableLLMService",
 ]
+
+logger = logging.getLogger(__name__)
 
 RenderSection = Callable[[str, str, dict], Awaitable[str]]
 
@@ -348,6 +352,22 @@ class DjangoBaseLLMService(BaseLLMService):
         This shim delegates to the context-first hook.
         """
         await self.on_failure_ctx(context=self.context or {}, err=err)
+
+    def _get_registry_section_or_none(self) -> SectionSpec | None:
+        """
+        Return a `PromptSection` class from the registry using `self.identity.as_str`, or None if not found.
+        Pure lookup; no exceptions.
+        """
+        logger.debug("Getting registry section via `simcore_ai_django` for %s", self.identity)
+        ident_ = self.identity or self.identity.as_str
+
+        try:
+            # Prefer string lookup; registry handles parsing
+            from simcore_ai.promptkit import PromptRegistry
+            section_cls = PromptRegistry.get(ident_)
+            return section_cls
+        except Exception:
+            return None
 
 
 class DjangoExecutableLLMService(ServiceExecutionMixin, DjangoBaseLLMService):

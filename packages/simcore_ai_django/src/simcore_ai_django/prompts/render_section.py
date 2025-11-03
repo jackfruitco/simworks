@@ -13,11 +13,15 @@ from django.template.loader import select_template
 from django.utils import timezone
 
 # Optional integration with the core prompt engine
+# TODO: PromptRegistry
 try:
     # Prefer a stable import path; adjust if your project uses a different module layout
-    from simcore_ai.promptkit import PromptRegistry  # type: ignore
+    from simcore_ai_django.promptkit import PromptRegistry  # type: ignore
 except Exception:  # pragma: no cover - registry optional
-    PromptRegistry = None  # type: ignore
+    try:
+        from simcore_ai.promptkit import PromptRegistry
+    except Exception:
+        PromptRegistry = None  # type: ignore
 
 async def render_section(
     namespace: str,
