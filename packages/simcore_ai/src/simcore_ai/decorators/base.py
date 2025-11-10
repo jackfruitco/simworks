@@ -21,12 +21,11 @@ Key behaviors
 - Identity derivation is delegated to `IdentityResolver` (core). Subclasses in
   other packages (e.g., Django) override `derive_identity()` to use a different
   resolver.
-- The finalized identity is attached to the class as **`_identity_final`** for
-  `IdentityMixin` to consume. Compatibility attributes `identity_obj` and
-  `identity_key` are also set (non-conflicting with the mixin's read-only
-  `identity` property).
+- The finalized identity is pinned to the class via `IdentityMixin.pin_identity()`.
+  Compatibility attributes `identity_obj` and `identity_key` are not set here to
+  avoid clobbering the mixin's read-only `identity` property.
 - Registration is delegated to a domain registry returned by `get_registry()`.
-  The base class calls **`registry.register(candidate=cls)`** (strict + idempotent). There is no `maybe_register` here. Registries read the stamped identity via the class's `identity` property (backed by `_identity_final`).
+  The base class calls **`registry.register(candidate=cls)`** (strict + idempotent). There is no `maybe_register` here. Registries read the stamped identity via the class's `identity` property (backed by the pinned identity).
 - No token stripping or name normalization logic lives here; all of that is in
   the Identity layer (resolvers/utils).
 """
@@ -78,13 +77,12 @@ class BaseDecorator:
     Identity semantics
     ------------------
     - Identity is computed *once* at decoration time by the configured resolver.
-    - We attach `cls._identity_final = Identity(...)` for IdentityMixin to read.
-    - For compatibility, we also set:
-        * `cls.identity_obj = Identity(...)` (introspection)
-        * `cls.identity_key = identity.as_tuple3` (fast dict/set keys)
-
-    This base class performs **no Django-aware** inference; Django packages
-    subclass and override `derive_identity()` to call their resolver.
+    - The identity is pinned to the class using `IdentityMixin.pin_identity()`.
+    - The class's `.identity` descriptor from `IdentityMixin` is preserved and not overwritten.
+    - Compatibility attributes `identity_obj` and `identity_key` are not set here.
+    - As a fallback, private cache attributes `_IdentityMixin__identity_cached` and
+      `_IdentityMixin__identity_meta_cached` are set to avoid importing the mixin.
+    - Subclasses in other packages (e.g., Django) may override `derive_identity()` to call their resolver.
     """
 
     def __init__(self, *, resolver: IdentityResolver | None = None) -> None:
@@ -125,13 +123,14 @@ class BaseDecorator:
             else:
                 identity, meta = result, {}
 
-            # 2) Attach identity to class (non‑conflicting with IdentityMixin)
-            # Store the final Identity on a private attribute expected by IdentityMixin.
-            # Also expose optional compatibility attrs for legacy call sites.
-            setattr(cls, "_identity_final", identity)
-            setattr(cls, "identity", identity)
-            setattr(cls, "identity_obj", identity)           # compat: introspection
-            setattr(cls, "identity_key", identity.as_tuple3)  # compat: fast dict/set key
+            # 2) Pin identity to class (avoid clobbering .identity descriptor)
+            pin_func = getattr(cls, "pin_identity", None)
+            if callable(pin_func):
+                pin_func(identity, meta)
+            else:
+                # fallback: set private cache attributes to avoid importing IdentityMixin here
+                setattr(cls, "_IdentityMixin__identity_cached", identity)
+                setattr(cls, "_IdentityMixin__identity_meta_cached", meta)
 
             # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
@@ -155,13 +154,10 @@ class BaseDecorator:
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
             span_attrs = _filter_trace_attrs(span_attrs)
             with service_span_sync(f"ai.decorator.apply ({final_label})", attributes=span_attrs):
-                pass
-
-            logger.info(
-                "%s.registered %s",
-                getattr(self.get_registry(), "name", self.__class__.__name__.lower()),
-                identity.as_str,
-            )
+                msg = f"✅ registered `{fqcn}` (ident: `{identity.as_str}`)"
+                if logger.isEnabledFor(logging.DEBUG):
+                    msg += f"\n\tattributes: {span_attrs!r}"
+                logger.info(msg)
 
             return cls
 
@@ -227,7 +223,7 @@ class BaseDecorator:
             return
 
         # Registries own duplicate vs collision handling; they are strict + idempotent
-        registry.register(candidate=candidate)
+        registry.register(candidate)
         logger.info(
             "%s.registered %s",
             getattr(registry, "name", self.__class__.__name__.lower()),

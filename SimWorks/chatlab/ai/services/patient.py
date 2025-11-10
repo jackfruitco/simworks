@@ -1,4 +1,4 @@
-# chatlab/ai/services/patient.py (v3 services)
+# chatlab/ai/services/patient.py
 from __future__ import annotations
 
 import logging
@@ -9,21 +9,15 @@ from chatlab.models import Message
 from core.utils import remove_null_keys
 from simcore.ai.mixins import StandardizedPatientMixin
 from simcore.models import Simulation
-from simcore_ai.promptkit.plans import PromptPlan
-from simcore_ai.types import LLMTextPart, LLMRole
-from simcore_ai_django.api.decorators import llm_service
-# Django-aware service base and rich DTOs
-from simcore_ai_django.api.types import DjangoExecutableLLMService
-# PromptKit v3 (used for the image case)
-from simcore_ai_django.promptkit import PromptEngine
-# Tool DTO (provider-agnostic)
+from simcore_ai_django.api import simcore
+from simcore_ai_django.api.types import DjangoExecutableLLMService, PromptEngine, PromptPlan, LLMTextPart, LLMRole
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
 
 logger = logging.getLogger(__name__)
 
 
 # ----------------------------- services ------------------------------------------
-@llm_service
+@simcore.service
 class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate the initial patient response.
 
@@ -39,15 +33,15 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExec
     # require_enqueue: bool = False # force async if True
 
     # model: Optional[str] = None  # allow provider default
-    from ..prompts import ChatlabPatientInitialSection
-    prompt_plan: PromptPlan = (
-        ChatlabPatientInitialSection,
-    )
+    # from ..prompts import ChatlabPatientInitialSection
+    # prompt_plan: PromptPlan = (
+    #     ChatlabPatientInitialSection,
+    # )
 
     required_context_keys: tuple[str, ...] = ("simulation_id",)
 
 
-@llm_service
+@simcore.service
 class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate a reply to a user message.
 
@@ -94,7 +88,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecut
         return msgs, self.response_format_cls
 
 
-@llm_service
+@simcore.service
 class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
     """Generate a patient image via provider tool-call.
 

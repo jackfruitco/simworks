@@ -2,8 +2,7 @@
 """
 Django runner/orchestrator for LLM services.
 
-Bridges `simcore_ai` core services and Django runtime concerns (audits, signals,
-codec execution). Uses the core identity resolver so namespace/kind/name are canonical; by convention kind defaults to "default" unless explicitly set.
+Bridges `simcore_ai` core services and Django runtime concerns (audits, signals, optional codec). Uses the core identity resolver so namespace/kind/name are canonical; by convention kind defaults to "default" unless explicitly set.
 
 Sync entry:  run_service(service, ...)
 Async entry: arun_service(service, ...)
@@ -15,16 +14,13 @@ from __future__ import annotations
 from typing import Optional, TYPE_CHECKING
 from uuid import UUID
 
-from django.conf import settings
-
 # Core DTOs and client
 from simcore_ai.client import AIClient
-from simcore_ai.identity import resolve_identity
+from simcore_ai.identity import resolve_identity, Identity
 from simcore_ai.tracing import service_span, extract_trace
 from simcore_ai.types import LLMRequest, LLMResponse
 from .audits import write_request_audit, update_request_audit_formats, write_response_audit
-# Codec execution helper
-from .codecs.execute import execute_codec
+from .components import DjangoBaseCodec, DjangoBaseService
 from .dispatch import (
     aemit_request,
     aemit_response_received,
@@ -41,7 +37,7 @@ from .types import (
 )
 
 if TYPE_CHECKING:
-    from simcore_ai.services import BaseLLMService
+    from simcore_ai.components import BaseService, BaseCodec
 
 from asgiref.sync import async_to_sync, sync_to_async
 
@@ -49,7 +45,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 # ------------------------------ sync facade -------------------------------
 
 def run_service(
-        service: BaseLLMService,
+        service: BaseService,
         *,
         traceparent: Optional[str] = None,
         namespace: Optional[str] = None,
@@ -82,7 +78,7 @@ def run_service(
 # ------------------------------ async runner ------------------------------
 
 async def arun_service(
-        service: BaseLLMService,
+        service: DjangoBaseService,
         *,
         traceparent: Optional[str] = None,
         namespace: Optional[str] = None,
@@ -98,6 +94,7 @@ async def arun_service(
     Async orchestration variant of run_service (awaits all awaitables).
     By convention, service `kind` defaults to "default" unless explicitly set.
     """
+
     # Merge provided context onto the service (context-first, domain-agnostic)
     if context:
         try:
@@ -114,21 +111,23 @@ async def arun_service(
         except Exception:
             pass
 
-    # Resolve identity: prefer the instance's derived identity unless explicit overrides are provided
+    # Resolve identity: use explicit overrides if provided; otherwise use the class's resolver-backed identity
     if namespace or kind or name:
         ident, _meta = resolve_identity(
             service.__class__,
             namespace=namespace,
             kind=kind,
             name=name,
+            context=None,
         )
     else:
-        ident = getattr(service, "identity", None)
-        if ident is None:
-            # Fallback to resolver if the instance hasn't derived identity yet (unlikely with new IdentityMixin)
+        # Leverage IdentityMixin cache on the class
+        try:
+            ident = service.__class__.resolve_identity()  # type: ignore[attr-defined]
+            _meta = service.__class__.identity_meta()  # type: ignore[attr-defined]
+        except Exception:
+            # Final guard: resolve via helper without overrides
             ident, _meta = resolve_identity(service.__class__)
-        else:
-            _meta = {}
     ns, kd, nm = ident.as_tuple3
     identity_label = ident.as_str
 
@@ -153,7 +152,7 @@ async def arun_service(
     ):
         # Build base request
         try:
-            base_req: LLMRequest = await service.build_request()
+            base_req: LLMRequest = await service.abuild_request()
         except Exception as e:
             await aemit_failure(
                 error=f"{type(e).__name__}: {e}",
@@ -259,39 +258,27 @@ async def arun_service(
                 correlation_id=dj_resp.correlation_id,
             )
 
-        # Prefer response-driven codec resolution
-        codec_effective = None
-        _resolver = getattr(service, "resolve_codec_for_response", None)
-        if callable(_resolver):
-            try:
-                codec_effective = _resolver(core_resp)
-            except Exception:
-                codec_effective = None
-        if codec_effective is None:
-            try:
-                codec_effective = service.get_codec()
-            except Exception:
-                codec_effective = None
+        codec: type[DjangoBaseCodec] | None = None
+        if codec := Identity.resolve.try_for_(DjangoBaseCodec, dj_resp.identity):
+            pass
+        elif codec := Identity.resolve.try_for_(DjangoBaseCodec, service.codec):
+            pass
+        elif codec := Identity.resolve.try_for_(DjangoBaseCodec, service.identity):
+            pass
+        else:
+            codec = None
 
-        if codec_effective is not None:
-            _codec_label = getattr(codec_effective, "__name__", codec_effective.__class__.__name__)
+        if codec is not None and issubclass(codec, DjangoBaseCodec):
             try:
                 async with service_span(
-                        "ai.codec.handle",
-                        attributes={"ai.codec": _codec_label, "ai.codec_name": _codec_label,
-                                    **getattr(service, "flatten_context", lambda: {})()},
+                        "ai.codec.run",
+                        attributes={
+                            "ai.codec": codec.identity.as_str,
+                            "ai.codec_cls": codec.identity.__class__.__name__,
+                            **getattr(service, "flatten_context", lambda: {})(),
+                        },
                 ):
-                    await execute_codec(
-                        codec_effective,
-                        dj_resp,
-                        context=dict(
-                            request_audit_pk=request_pk,
-                            response_audit_pk=response_pk,
-                            namespace=ns,
-                            service=service,
-                            settings=settings,
-                        ),
-                    )
+                    await codec.arun(resp=dj_resp)
             except Exception as e:
                 await aemit_failure(
                     error=f"{type(e).__name__}: {e}",

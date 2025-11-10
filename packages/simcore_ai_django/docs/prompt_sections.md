@@ -132,7 +132,7 @@ Each service may define a **prompt_plan**, a sequence of sections (identities or
 ## Registry Helpers
 
 ```python
-from simcore_ai_django.promptkit import PromptRegistry
+from simcore_ai_django.components.promptkit import PromptRegistry
 
 print([cls.identity_static().to_string() for cls in PromptRegistry.all()])
 SectionCls = PromptRegistry.require_str("chatlab.standardized_patient.initial")

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from ..components import ComponentNotFoundError
+from ..registry.exceptions import RegistryNotFoundError
+from ..types.protocols import RegistryProtocol
+
 """
 Identity resolution (core).
 
@@ -23,7 +27,7 @@ Key behaviors
 - Token sources (core):
   * DEFAULT_IDENTITY_STRIP_TOKENS (core constant)
   * SIMCORE_IDENTITY_STRIP_TOKENS (env; comma/space-delimited)
-  (The Django resolver will extend this with Django-specific sources.)
+  (Framework layers may extend this with additional sources.)
 - Meta for tracing (flat keys):
   * ai.tuple3.raw, ai.tuple3.post_strip, ai.tuple3.post_norm
   * ai.identity.name.explicit (bool)
@@ -36,16 +40,21 @@ This module must not import any decorator or registry code to avoid cycles.
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional, Any, TypeVar
 
-from simcore_ai.identity.base import Identity
-from simcore_ai.identity.utils import (
-    snake,
-    module_root,
-)
+from .identity import Identity, IdentityLike
+from . import registry_resolvers as _rr
+
+# Utilities (pure functions) from your identity utils
+from simcore_ai.identity.utils import snake, module_root
 from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS as _DEFAULT_TOKENS
 
-__all__ = ["IdentityResolver", "NameResolution", "resolve_identity"]
+__all__ = [
+    "IdentityResolver",
+    "NameResolution",
+    "resolve_identity",
+    "Resolve",
+]
 
 
 # ------------------------- helpers (pure) -------------------------
@@ -92,7 +101,7 @@ def _normalize_name(name: str, *, lower: bool = True) -> str:
     """Collapse separators to single '-', trim edges, optionally lowercase."""
     if name is None:
         return ""
-    s = re.sub(r"[\._\s\-]+", "-", str(name).strip())
+    s = re.sub(r"[._\s\-]+", "-", str(name).strip())
     s = re.sub(r"-{2,}", "-", s).strip("-")
     return s.lower() if lower else s
 
@@ -154,11 +163,15 @@ class IdentityResolver:
         context = context or {}
 
         # Namespace
-        ns_value, ns_source = self._resolve_namespace(cls, namespace, getattr(cls, "namespace", None))
+        ns_value, ns_source = self._resolve_namespace(
+            cls, namespace, getattr(cls, "namespace", None)
+        )
         ns_value = snake(ns_value or "default")
 
         # Kind
-        kd_value, kd_source = self._resolve_kind(cls, kind, getattr(cls, "kind", None))
+        kd_value, kd_source = self._resolve_kind(
+            cls, kind, getattr(cls, "kind", None)
+        )
         kd_value = snake(kd_value or "default")
 
         # Tokens (core)
@@ -291,3 +304,65 @@ def resolve_identity(
     """Public helper to resolve identity using a provided or default resolver."""
     r = resolver or IdentityResolver()
     return r.resolve(cls, namespace=namespace, kind=kind, name=name, context=context)
+
+
+# ------------------------- facade (ergonomic sugar) -------------------------
+
+T = TypeVar("T")
+
+
+class Resolve:
+    """Namespaced helpers exposed at Identity.resolve.
+
+    This facade delegates to registry_resolvers to avoid import cycles.
+    """
+
+    @staticmethod
+    def for_(
+        component: type[T],
+        identity: IdentityLike,
+        *,
+        __from: RegistryProtocol | None = None,
+    ) -> T:
+        """Strict resolver: resolve a registered component by identity.
+
+          Returns the resolved component or raises if not found.
+          """
+        return _rr.for_(component, identity, __from=__from)
+
+    @staticmethod
+    def try_for_(
+        component: type[T],
+        identity: IdentityLike,
+        *,
+        __from: RegistryProtocol | None = None,
+    ) -> T | None:
+        """Safe resolver: never raises on lookup failure; returns None instead."""
+        return _rr.try_for_(component, identity, __from=__from)
+
+    @staticmethod
+    def as_tuple3(ident: IdentityLike) -> tuple[str, str, str]:
+        """Return (namespace, kind, name) for any `IdentityLike`."""
+        return _rr.tuple3(ident)
+
+    @staticmethod
+    def as_label(ident: IdentityLike) -> str:
+        """Return 'namespace.kind.name' for any `IdentityLike`."""
+        return _rr.label(ident)
+
+    @staticmethod
+    def label_from_component(comp: Any) -> str:
+        """Return the canonical label for a component that exposes `.identity`."""
+        return getattr(comp, "identity").as_str
+
+    @staticmethod
+    def with_meta(
+            component: type[T],
+            *,
+            namespace: Optional[str] = None,
+            kind: Optional[str] = None,
+            name: Optional[str] = None,
+            context: Optional[dict[str, Any]] = None,
+    ) -> tuple[T, dict[str, Any]]:
+        """Resolve a registered component by `IdentityLike` and component type."""
+        return _rr.from_meta(component, namespace=namespace, kind=kind, name=name, context=context)

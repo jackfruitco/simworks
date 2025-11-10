@@ -111,7 +111,7 @@ def span_attrs_from_ctx(ctx: Mapping[str, Any]) -> Dict[str, Any]:
     if service_ident:
         attrs["ai.identity.service"] = service_ident
 
-    codec_id = ctx.get("codec_identity")
+    codec_id = ctx.get("codec")
     if codec_id:
         attrs["ai.identity.codec"] = codec_id
 

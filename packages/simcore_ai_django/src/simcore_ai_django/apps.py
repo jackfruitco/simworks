@@ -52,5 +52,7 @@ class SimcoreAIDjangoConfig(AppConfig):
             with service_span_sync("ai.clients.setup"):
                 configure_ai_clients()
 
-            with service_span_sync("ai.autodiscover.identity"):
-                autodiscover_modules("ai.identity")
+            with service_span_sync("ai.autodiscover"):
+                autodiscover_all()
+
+

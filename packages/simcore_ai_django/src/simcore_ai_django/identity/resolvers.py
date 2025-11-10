@@ -25,7 +25,7 @@ from simcore_ai.identity.resolvers import IdentityResolver
 from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS, snake, module_root
 
 if TYPE_CHECKING:  # type-only import to avoid runtime cycles
-    from simcore_ai.identity.base import Identity  # noqa: F401
+    from simcore_ai.identity import Identity
 
 __all__ = [
     "DjangoIdentityResolver",

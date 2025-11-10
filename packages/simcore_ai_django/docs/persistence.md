@@ -36,10 +36,11 @@ Service.execute()
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseCodec
+
 
 @codec
-class PatientInitialCodec(DjangoBaseLLMCodec):
+class PatientInitialCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         # example: save one message
         from chatlab.models import Message
@@ -65,7 +66,7 @@ Use **atomic transactions** to ensure consistency:
 from django.db import transaction
 
 @codec
-class PatientResultsCodec(DjangoBaseLLMCodec):
+class PatientResultsCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         from chatlab.models import Result
 
@@ -91,7 +92,7 @@ the entire persistence operation **rolls back**.
 
 ```python
 @codec
-class EncounterCodec(DjangoBaseLLMCodec):
+class EncounterCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         from chatlab.models import Encounter, Observation
 
@@ -122,7 +123,7 @@ from django.db import transaction, IntegrityError
 
 
 @codec
-class SafeCodec(DjangoBaseLLMCodec):
+class SafeCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         from chatlab.models import AIResponse
 
@@ -153,7 +154,7 @@ from django.dispatch import Signal
 encounter_saved = Signal()
 
 @codec
-class EncounterCodec(DjangoBaseLLMCodec):
+class EncounterCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         from chatlab.models import Encounter
         enc = Encounter.objects.create(...)
@@ -189,7 +190,7 @@ Or handle the built-in **emitter** signals elsewhere to react to responses.
 
 ```python
 @codec
-class PatientFeedbackCodec(DjangoBaseLLMCodec):
+class PatientFeedbackCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         from django.db import transaction
         from chatlab.models import Feedback, FeedbackMetric

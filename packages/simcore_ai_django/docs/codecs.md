@@ -20,8 +20,8 @@ it is discovered and linked automatically.
 
 | Class | Description |
 |:--|:--|
-| `BaseLLMCodec` | Provider‑agnostic logic (in `simcore_ai`) |
-| `DjangoBaseLLMCodec` | Django‑aware codec base (with persistence hooks and identity autoderivation) |
+| `BaseCodec` | Provider‑agnostic logic (in `simcore_ai`) |
+| `DjangoBaseCodec` | Django‑aware codec base (with persistence hooks and identity autoderivation) |
 
 ---
 
@@ -43,11 +43,12 @@ The `@codec` decorator:
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseCodec
+
 
 @codec
 # dev: if SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER is true, a shallow instantiation is attempted
-class PatientInitialResponseCodec(DjangoBaseLLMCodec):
+class PatientInitialResponseCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         # Save AI messages, metadata, or computed results
         return {"ok": True}
@@ -76,7 +77,7 @@ Token stripping includes core tokens (Prompt, Section, Service, Codec, Generate,
 from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 @codec
-class PatientInitialResponseCodec(DjangoBaseLLMCodec, ChatlabMixin, StandardizedPatientMixin):
+class PatientInitialResponseCodec(DjangoBaseCodec, ChatlabMixin, StandardizedPatientMixin):
     pass
 ```
 
@@ -123,10 +124,11 @@ You can override `validate_response()` if you need to preprocess data first.
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseCodec
+
 
 @codec
-class PatientResultsCodec(DjangoBaseLLMCodec):
+class PatientResultsCodec(DjangoBaseCodec):
     async def persist(self, *, response, parsed):
         for item in parsed.metadata.results:
             await persist_result(response.simulation, item)
@@ -145,7 +147,7 @@ print(MyCodec.identity_str())    # 'chatlab.standardized_patient.initial'
 To see all registered codecs:
 
 ```python
-from simcore_ai_django.codecs.registry import CodecRegistry
+from simcore_ai_django.components.codecs import CodecRegistry
 
 # Check whether a codec is registered by identity
 print(CodecRegistry.has("chatlab", "standardized_patient", "initial"))
@@ -156,7 +158,7 @@ print(CodecRegistry.has("chatlab", "standardized_patient", "initial"))
 ## Summary
 
 ✅ **Minimum required**
-- Subclass `DjangoBaseLLMCodec`
+- Subclass `DjangoBaseCodec`
 - Decorate with `@codec`
 - Implement a `persist()` method
 

@@ -342,7 +342,7 @@ class BaseProvider(ABC):
                     "output_schema_cls must be a Pydantic model class or a JSON Schema dict")
 
             # Run provider adapters
-            from ..schemas.compiler import compile_schema
+            from simcore_ai.components.schemas.compiler import compile_schema
             compiled = compile_schema(base_schema, provider=self.name)
             if not isinstance(compiled, dict):
                 raise ProviderSchemaUnsupported("compile_schema must return a dict JSON Schema")

@@ -111,20 +111,24 @@ The resulting `Prompt` can be converted to `LLMRequestMessage` instances using t
 
 ## Codecs (`simcore_ai.codecs`)
 
-Codecs transform normalized responses into typed models. Subclass `BaseLLMCodec` or decorate a class with `@codecs.codec` to register it.
+Codecs transform normalized responses into typed models. Subclass `BaseCodec` or decorate a class with `@codecs.codec` to register it.
 
 ```python
-from simcore_ai.codecs import BaseLLMCodec
-from simcore_ai.types import BaseOutputSchema
+
+from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.schemas.base import BaseOutputSchema
+
 
 class KeywordPlan(BaseOutputSchema):
     keywords: list[str]
 
-class KeywordCodec(BaseLLMCodec):
+
+class KeywordCodec(BaseCodec):
     name = "keyword-plan"
     origin = "guides"
     bucket = "services"
     schema_cls = KeywordPlan
+
 
 codec = KeywordCodec()
 
@@ -170,19 +174,19 @@ For streaming, set `stream=True` on the request and iterate over `client.stream_
 
 ## Services (`simcore_ai.services`)
 
-`BaseLLMService` wraps prompt rendering, codec selection, retries, telemetry, and event emission around an `AIClient`. Services expect two collaborators:
+`BaseService` wraps prompt rendering, codec selection, retries, telemetry, and event emission around an `AIClient`. Services expect two collaborators:
 
 - a **simulation** object carrying runtime context (at minimum an `id` attribute)
 - a **ServiceEmitter** implementation that records requests, responses, failures, and streaming chunks
 
-### Subclassing `BaseLLMService`
+### Subclassing `BaseService`
 
 ```python
 from dataclasses import dataclass
 
 from simcore_ai.client import get_default_client
 from simcore_ai.promptkit import Prompt
-from simcore_ai.services import BaseLLMService
+from simcore_ai.services import BaseService
 from simcore_ai.types import LLMRequestMessage, LLMTextPart
 
 # reuse `codec = KeywordCodec()` from the codecs section above
@@ -204,14 +208,14 @@ class ConsoleEmitter:
         print("stream complete", identity)
 
 
-class KeywordService(BaseLLMService):
+class KeywordService(BaseService):
     origin = "guides"
     bucket = "services"
     name = "keyword"
     provider_name = "openai"  # resolved by client registry
 
     def select_codec(self):
-        return codec  # return an instance or class of BaseLLMCodec
+        return codec  # return an instance or class of BaseCodec
 
     async def build_request_messages(self, simulation) -> list[LLMRequestMessage]:
         prompt = Prompt(

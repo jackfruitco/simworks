@@ -125,7 +125,7 @@ class DjangoSignalEmitter:
         ai_outbox_dispatch.send_robust(sender=self.__class__, **payload)
 
 
-# shared instance used by default in DjangoBaseLLMService
+# shared instance used by default in DjangoBaseService
 emitter = DjangoSignalEmitter()
 
 __all__ = [

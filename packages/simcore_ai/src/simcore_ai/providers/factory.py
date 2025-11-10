@@ -24,7 +24,7 @@ Notes:
 from typing import Dict, Type
 
 from .base import BaseProvider
-from ..exceptions.registry_exceptions import (
+from simcore_ai.registry.exceptions import (
     RegistryError,
     RegistryDuplicateError,
     RegistryLookupError,

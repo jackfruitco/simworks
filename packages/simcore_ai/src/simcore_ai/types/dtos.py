@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Literal, TypeAlias
@@ -112,8 +113,10 @@ class LLMRequest(StrictBaseModel):
     # Correlation
     correlation_id: UUID = Field(default_factory=uuid4)
 
-    # Codec routing
-    codec_identity: str | None = None
+    @property
+    def codec(self) -> None:
+        warnings.warn("Deprecated. Use `BaseService().codec` instead instead")
+        return None
 
     # Response format (provider-agnostic)
     response_format_cls: Any = None  # renamed from response_format_cls
@@ -146,14 +149,15 @@ class LLMResponse(StrictBaseModel):
     client_name: str | None = None
     received_at: datetime | None = None
 
-    # Codec routing
-    codec_identity: str | None = None
-
     outputs: list[LLMResponseItem] = Field(default_factory=list)
     usage: LLMUsage | None = None
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
     provider_meta: dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def codec(self) -> None:
+        warnings.warn("Deprecated. Use `BaseService().codec` instead instead")
+        return None
 
 class LLMStreamChunk(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)

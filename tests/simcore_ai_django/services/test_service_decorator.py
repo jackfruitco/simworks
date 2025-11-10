@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import pytest
 
-from simcore_ai_django.services.registry import (
+from simcore_ai_django.components.services.registry import (
     services as service_registry,
     IdentityCollisionError,
 )
-from simcore_ai_django.services.decorators import llm_service
+from simcore_ai_django.components.services.decorators import ai_service
 
 
 @pytest.mark.django_db(transaction=False)
@@ -16,7 +16,7 @@ def test_llm_service_decorator_derives_and_registers(settings):
     settings.SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL = ["Generate", "Service"]
     settings.SIMCORE_COLLISIONS_STRICT = True
 
-    @llm_service
+    @ai_service
     class GeneratePatientService:
         __module__ = "telemed.chat.entry"
 
@@ -37,7 +37,7 @@ def test_llm_service_decorator_duplicate_is_idempotent(settings):
     settings.SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL = []
     settings.SIMCORE_COLLISIONS_STRICT = True
 
-    @llm_service
+    @ai_service
     class EchoService:
         __module__ = "ns.echo"
 
@@ -53,7 +53,7 @@ def test_llm_service_decorator_collision_strict_vs_non_strict(settings):
     settings.SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL = []
     settings.SIMCORE_COLLISIONS_STRICT = True
 
-    @llm_service
+    @ai_service
     class UniqueService:
         __module__ = "acme.x"
         name = "fixed_name"   # explicit forces stable identity to collide later

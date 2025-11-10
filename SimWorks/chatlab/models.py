@@ -5,6 +5,8 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+from core.models import PersistModel
 from simcore.models import BaseSession
 from simcore.models import Simulation
 from simcore.models import SimulationImage
@@ -26,7 +28,7 @@ class ChatSession(BaseSession):
     pass
 
 
-class Message(models.Model):
+class Message(PersistModel):
 
     class MessageType(models.TextChoices):
         TEXT = "text", "Text"
@@ -146,7 +148,7 @@ class Message(models.Model):
         return f"ChatLab Sim#{self.simulation.pk} {self.get_message_type_display()} by {self.sender} at {self.timestamp:%H:%M:%S}"
 
 
-class MessageMediaLink(models.Model):
+class MessageMediaLink(PersistModel):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 

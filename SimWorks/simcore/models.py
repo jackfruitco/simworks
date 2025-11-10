@@ -21,6 +21,7 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
+from core.models import PersistModel
 from simcore.utils import randomize_display_name
 from simcore_ai_django.api.types import Prompt
 
@@ -289,10 +290,10 @@ class Simulation(models.Model):
     async def abuild(
             cls,
             *,
-            user = None,
+            user=None,
             prompt: Prompt = None,
-            app_name = None,
-            from_scenario = False,
+            app_name=None,
+            from_scenario=False,
             **kwargs
     ):
         """Class method factory for creating simulations"""
@@ -317,7 +318,7 @@ class Simulation(models.Model):
                 pk = int(user)
             except (TypeError, ValueError):
                 raise ValueError("`user` must be a User instance or an integer primary key")
-            User = get_user_model()     # noqa: 8106
+            User = get_user_model()  # noqa: 8106
             user = await User.objects.select_related("role").aget(pk=pk)
 
         create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
@@ -327,7 +328,6 @@ class Simulation(models.Model):
         )
 
         return instance
-
 
     @classmethod
     def resolve(cls, _simulation: "Simulation | int") -> "Simulation":
@@ -391,7 +391,7 @@ class Simulation(models.Model):
         return base
 
 
-class SimulationMetadata(PolymorphicModel):
+class SimulationMetadata(PersistModel, PolymorphicModel):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 

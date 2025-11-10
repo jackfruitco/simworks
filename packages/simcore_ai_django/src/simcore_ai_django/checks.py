@@ -33,11 +33,12 @@ from django.core import checks
 
 from simcore_ai.tracing import service_span_sync
 
-# Django-layer registries
-from simcore_ai_django.codecs.registry import codecs as codec_registry
-from simcore_ai_django.services.registry import services as service_registry
-from simcore_ai_django.promptkit.registry import prompts as prompt_registry
-from simcore_ai_django.schemas.registry import schemas as schema_registry
+from simcore_ai.registry import (
+    codecs as codec_registry,
+    services as service_registry,
+    prompt_sections as prompt_registry,
+    schemas as schema_registry,
+)
 
 LOGGER = logging.getLogger(__name__)
 TAG = "simcore_ai"
@@ -50,7 +51,7 @@ _ALLOWED_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 # Settings validation (retained, updated docstring from legacy module)
 # ---------------------------------------------------------------------------
 
-@checks.register(checks.Tags.compatibility, checks.Tags.security, checks.Tags.settings)
+@checks.register(checks.Tags.compatibility, checks.Tags.security) #, checks.Tags.settings)
 def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
     """
     Validate SIMCORE_AI settings structure and key fields.
@@ -457,7 +458,7 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
     For each registered Service:
       - Ensure a Codec can be resolved (ERROR on failure).
       - If the service declares `response_schema_identity`, ensure it resolves (WARNING if missing).
-      - If the service declares `required_prompt_sections` (tuple of IdentityKey), ensure each resolves (WARNING on misses).
+      - If the service declares `required_prompt_sections` (tuple of IdentityLike), ensure each resolves (WARNING on misses).
 
     Notes:
       - We intentionally do NOT warn about prompts globally unless the service declares requirements,
@@ -465,10 +466,9 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
       - Codec resolution mirrors runtime: try exact service.identity, then bucket default `(ns, kind, "default")`,
         then an explicit `default_codec_identity` attribute if present.
     """
-    from simcore_ai.identity import Identity, coerce_identity_key, IdentityKey  # lazy import
-    from simcore_ai_django.codecs.registry import codecs as _codecs
-    from simcore_ai_django.promptkit.registry import prompts as _prompts
-    from simcore_ai_django.schemas.registry import schemas as _schemas
+    from simcore_ai.identity import coerce_identity_key  # lazy import
+    from simcore_ai.identity import Identity
+    from simcore_ai.identity import IdentityLike
 
     with service_span_sync("ai.services.pairing.checks"):
         messages: List[checks.CheckMessage] = []
@@ -481,7 +481,7 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
 
         for svc_cls in svc_classes:
             try:
-                ident: Identity = svc_cls.identity  # stamped by IdentityMixin/decorator
+                ident: Identity = Identity.get_for(svc_cls)
                 ns, kd, nm = ident.as_tuple3
                 ident_str = ident.as_str
             except Exception as exc:
@@ -499,17 +499,17 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
                 codec_ok = False
 
                 # 1) exact service.identity
-                if _codecs.get((ns, kd, nm)) is not None:
+                if codec_registry.get((ns, kd, nm)) is not None:
                     codec_ok = True
                 # 2) bucket default
-                elif _codecs.get((ns, kd, "default")) is not None:
+                elif codec_registry.get((ns, kd, "default")) is not None:
                     codec_ok = True
                 else:
                     # 3) explicit hint on the class (optional)
                     hinted = getattr(svc_cls, "default_codec_identity", None)
                     if hinted is not None:
                         t3 = coerce_identity_key(hinted)
-                        if t3 and _codecs.get(t3) is not None:
+                        if t3 and codec_registry.get(t3) is not None:
                             codec_ok = True
 
                 if not codec_ok:
@@ -527,19 +527,19 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
 
             # ---- SCHEMA (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
             with service_span_sync("ai.services.pairing.schema", attributes={"service": ident_str}):
-                explicit_schema_hint: IdentityKey | None = getattr(svc_cls, "response_schema_identity", None)
+                explicit_schema_hint: IdentityLike | None = getattr(svc_cls, "response_schema_identity", None)
                 auto_candidates: tuple[tuple[str, str, str], ...] = ((ns, kd, nm), (ns, kd, "default"))
 
                 # Helper: attempt auto resolve by identity
                 def _auto_schema_resolved() -> bool:
                     for cand in auto_candidates:
-                        if _schemas.get(cand) is not None:
+                        if schema_registry.get(cand) is not None:
                             return True
                     return False
 
                 if explicit_schema_hint is not None:
                     t3 = coerce_identity_key(explicit_schema_hint)
-                    ok = bool(t3) and (_schemas.get(t3) is not None)
+                    ok = bool(t3) and (schema_registry.get(t3) is not None)
                     if not ok:
                         display = ".".join(t3) if t3 else repr(explicit_schema_hint)
                         LOGGER.error("service.schema.missing (explicit) service=%s schema=%s", ident_str, display)
@@ -575,13 +575,13 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
 
             # ---- PROMPTS (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
             with service_span_sync("ai.services.pairing.prompts", attributes={"service": ident_str}):
-                required_prompts: Tuple[IdentityKey, ...] | None = getattr(svc_cls, "required_prompt_sections", None)
+                required_prompts: Tuple[IdentityLike, ...] | None = getattr(svc_cls, "required_prompt_sections", None)
 
                 # Helper: auto resolve prompt by identity (exact or bucket default)
                 def _auto_prompt_resolved() -> bool:
-                    if _prompts.get((ns, kd, nm)) is not None:
+                    if prompt_registry.get((ns, kd, nm)) is not None:
                         return True
-                    if _prompts.get((ns, kd, "default")) is not None:
+                    if prompt_registry.get((ns, kd, "default")) is not None:
                         return True
                     return False
 
@@ -589,7 +589,7 @@ def check_simcore_ai_service_pairings(app_configs: Optional[Iterable] = None, **
                     missing: list[str] = []
                     for req in required_prompts:
                         t3 = coerce_identity_key(req)
-                        if not t3 or _prompts.get(t3) is None:
+                        if not t3 or prompt_registry.get(t3) is None:
                             missing.append(".".join(t3) if t3 else repr(req))
                     if missing:
                         LOGGER.error(

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from simcore_ai_django.services.decorators import llm_service
-from simcore_ai_django.services.registry import services as service_registry
+from simcore_ai_django.components.services.decorators import ai_service
+from simcore_ai_django.components.services.registry import services as service_registry
 
 
 @pytest.mark.django_db(transaction=False)
@@ -11,7 +11,7 @@ def test_llm_service_uses_app_label_and_app_tokens(settings):
     # ensure globals don't interfere; rely solely on AppConfig tokens
     settings.SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL = []
 
-    @llm_service
+    @ai_service
     class GeneratePatientService:
         __module__ = "tests.simcore_ai_django.fixtures.dummyapp.feature"
 
@@ -36,7 +36,7 @@ def test_llm_service_explicit_name_should_not_be_stripped(settings):
     # This codifies the desired behavior: explicit names should be used verbatim
     settings.SIMCORE_IDENTITY_STRIP_TOKENS_GLOBAL = ["Service"]
 
-    @llm_service
+    @ai_service
     class GeneratePatientServiceExplicit:
         __module__ = "tests.simcore_ai_django.fixtures.dummyapp.feature"
         name = "MyService"  # expected to be preserved without stripping

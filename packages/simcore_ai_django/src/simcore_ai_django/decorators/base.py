@@ -1,6 +1,4 @@
 # packages/simcore_ai_django/src/simcore_ai_django/decorators/base.py
-from __future__ import annotations
-
 """
 Django-aware base decorator (class-based, no factories).
 
@@ -16,17 +14,14 @@ Key properties
   • name: segment-aware token stripping (core + Django tokens/settings/env)
 - Registration policy is owned by domain registries (collisions, rewrites).
 - No Django ORM imports; remains framework-light.
-
-Notes
------
-- Prefer `Identity.as_str` and `Identity.as_tuple3` downstream. This decorator
-  does not assume or stamp legacy `identity_str` attributes.
 """
+from __future__ import annotations
 
-from typing import Any
 import logging
+from typing import Any
 
 from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai.identity import IdentityResolverProtocol
 from simcore_ai_django.identity.resolvers import DjangoIdentityResolver
 
 __all__ = ["DjangoBaseDecorator"]
@@ -35,9 +30,14 @@ logger = logging.getLogger(__name__)
 
 
 class DjangoBaseDecorator(BaseDecorator):
-    """Django-aware identity pipeline; registration is deferred to domain subclasses."""
+    """Thin Django-aware decorator.
 
-    def __init__(self, *, resolver: DjangoIdentityResolver | None = None) -> None:
+    - Delegates identity derivation/pinning to core BaseDecorator
+    - Resolves registries via simcore_ai_django.api (the blessed facade)
+    - Avoids importing core registries directly
+    """
+
+    def __init__(self, *, resolver: IdentityResolverProtocol | None = None) -> None:
         # Inject the Django resolver by default; allow override for tests/customization.
         super().__init__(resolver=resolver or DjangoIdentityResolver())
 
@@ -56,4 +56,5 @@ class DjangoBaseDecorator(BaseDecorator):
         If this returns True, a registry MAY apply a deterministic rename (e.g., `name-2`).
         The base returns False; decisions are left to concrete domain decorators.
         """
-        return False
+        from simcore_ai_django.settings import STRICT_COLLISIONS
+        return STRICT_COLLISIONS or False

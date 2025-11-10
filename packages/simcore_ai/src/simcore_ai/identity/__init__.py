@@ -9,37 +9,25 @@ Exports intentionally avoid wildcard imports to keep the surface explicit.
 """
 from __future__ import annotations
 
-from .base import Identity, IdentityKey
+from .identity import IdentityLike, Identity
+from .mixins import IdentityMixin
+from .resolvers import Resolve as _Resolve, IdentityResolver
 from .resolvers import resolve_identity  # convenience helper (uses IdentityResolver)
-from .registry_resolvers import try_resolve_from_ident
-from .utils import (
-    DEFAULT_IDENTITY_STRIP_TOKENS,
-    strip_tokens,
-    snake,
-    module_root,
-    resolve_collision,
-    parse_dot_identity,
-    coerce_identity_key,
-)
+from .protocols import IdentityResolverProtocol, IdentityProtocol
+from .utils import DEFAULT_IDENTITY_STRIP_TOKENS, coerce_identity_key
 
-# Optional: keep IdentityMixin export if available in this package.
-try:  # pragma: no cover - optional convenience export
-    from .mixins import IdentityMixin  # type: ignore
-except Exception:  # pragma: no cover
-    IdentityMixin = None  # sentinel for projects not using core mixins
+# Ergonomic namespace without coupling the dataclass to registries:
+Identity.resolve = _Resolve  # type: ignore[attr-defined]
 
 __all__ = [
-    "Identity",
-    "IdentityKey",
-    "resolve_identity",
+    # Types
+    "Identity", "IdentityLike", "IdentityResolver",
+    # Constants
     "DEFAULT_IDENTITY_STRIP_TOKENS",
-    "strip_tokens",
-    "snake",
-    "module_root",
-    "resolve_collision",
-    "parse_dot_identity",
+    # Protocols
+    "IdentityResolverProtocol", "IdentityProtocol",
+    # Convenience helpers
     "coerce_identity_key",
-    "try_resolve_from_ident"
 ]
 
 # Only expose IdentityMixin if it exists locally.

@@ -1,107 +1,197 @@
 # simcore_ai/identity/registry_resolvers.py
-"""
-Central helper utilities for resolving registry entries by identity.
-
-This module provides internal helpers to extract registries and resolve entries
-based on identity-like inputs. It is the single implementation used by
-`Identity.try_resolve(...)` to avoid duplicating coercion logic.
-
-Accepted identity inputs:
-  • Identity instance
-  • dot string "namespace.kind.name"
-  • tuple[str, str, str]  (namespace, kind, name)
-  • any object with an `.identity` attribute containing one of the above
-"""
-
 from __future__ import annotations
 
-import logging
-from typing import TypeVar, runtime_checkable, Protocol, Optional, Any
+import importlib
+import inspect
+from typing import TypeVar, Optional
 
-from simcore_ai.identity.utils import coerce_identity_key
-
-logger = logging.getLogger(__name__)
+from simcore_ai.components import ComponentNotFoundError
+from simcore_ai.registry.exceptions import RegistryNotFoundError
+from .identity import Identity, IdentityLike
+from ..types.protocols import RegistryProtocol
 
 T = TypeVar("T")
 
 
-@runtime_checkable
-class _RegistryProto(Protocol[T]):
-    """Private protocol describing a registry with a get((ns, kind, name)) -> Optional[T]."""
+def coerce_identity(value: IdentityLike) -> Identity:
+    return Identity.get_for(value)
 
 
-@runtime_checkable
-class _HasRegistry(Protocol):
-    """Private protocol describing a type that exposes a registry."""
-
-    @classmethod
-    def get_registry(cls) -> _RegistryProto[Any]: ...
+def label(ident: IdentityLike) -> str:
+    return Identity.get_for(ident).as_str
 
 
-def _extract_registry(obj: Any) -> Optional[_RegistryProto[Any]]:
+def tuple3(ident: IdentityLike) -> tuple[str, str, str]:
+    return Identity.get_for(ident).as_tuple3
+
+
+def from_(ident: IdentityLike) -> Identity:
+    return Identity.get_for(ident)
+
+
+def _resolve_component_type(component_type: type[T] | str) -> type[T]:
     """
-    Private helper to extract a registry instance from the given object.
+    Normalize `component_type` into a concrete class.
 
-    Accepts either a registry instance (has a callable .get method) or a class/type
-    exposing a registry via a callable .get_registry() class method.
-
-    Returns the registry instance or None if extraction fails (no exceptions raised).
+    Accepts:
+        - A class (BaseComponent subclass)
+        - A string "path.to.module:ClassName" or "path.to.module.ClassName"
     """
-    # Concrete registry instance?
-    if hasattr(obj, "get") and callable(getattr(obj, "get")):
-        return obj  # type: ignore[return-value]
-    # A class/type that exposes a registry?
-    if hasattr(obj, "get_registry") and callable(getattr(obj, "get_registry")):
+    # Already a class
+    if inspect.isclass(component_type):
+        return component_type  # type: ignore[return-value]
+
+    if not isinstance(component_type, str):
+        raise TypeError(f"Invalid component_type: {component_type!r}")
+
+    # Support "module:Class" and "module.Class"
+    if ":" in component_type:
+        module_path, class_name = component_type.split(":", 1)
+    else:
+        module_path, _, class_name = component_type.rpartition(".")
+
+    if not module_path or not class_name:
+        raise ComponentNotFoundError(
+            f"Invalid component reference {component_type!r}; "
+            "expected 'mod.path:ClassName' or 'mod.path.ClassName'"
+        )
+
+    module = importlib.import_module(module_path)
+    try:
+        cls = getattr(module, class_name)
+    except AttributeError as e:
+        raise ComponentNotFoundError(
+            f"No component class {class_name!r} in module {module_path!r}"
+        ) from e
+
+    if not inspect.isclass(cls):
+        raise ComponentNotFoundError(
+            f"Resolved {component_type!r} but it is not a class"
+        )
+
+    return cls  # type: ignore[return-value]
+
+
+def for_(
+        component_type: type[T] | str,
+        ident: IdentityLike,
+        *,
+        __from: RegistryProtocol | None = None,
+) -> T:
+    """
+    Resolve a registered component of the given type by identity.
+
+    Resolution order:
+      1) `__from` registry (if provided)
+      2) component_type.get / component_type.try_get        # classmethods on component
+      3) component_type.registry.get / .try_get             # attached registry on class
+      4) get_registry_for(component_type).get / .try_get    # global registry dispatcher
+
+    :param component_type: BaseComponent subclass object or name string
+    :param ident: IdentityLike object
+    :param __from: RegistryProtocol subclass object or name string
+
+    :returns BaseComponent instance
+    :raises RegistryNotFoundError: if no registry is found
+    :raises ComponentNotFoundError: if no component is found
+    """
+    identity = Identity.get_for(ident)
+    ident_key = identity.as_str
+
+    # Normalize component type to a concrete class
+    Component = _resolve_component_type(component_type)
+
+    # Helper to prefer try_get() when present, otherwise fall back to get()
+    def _resolve_via_registry(registry: RegistryProtocol) -> T | None:
+        try_get = getattr(registry, "try_get", None)
+        if callable(try_get):
+            found = try_get(identity) or try_get(ident_key)
+            if found is not None:
+                return found
+        get_fn = getattr(registry, "get", None)
+        if callable(get_fn):
+            try:
+                return get_fn(identity)
+            except (ComponentNotFoundError, RegistryNotFoundError, KeyError, AttributeError):
+                pass
+            try:
+                return get_fn(ident_key)
+            except (ComponentNotFoundError, RegistryNotFoundError, KeyError, AttributeError):
+                pass
+        return None
+
+    # 1) Explicit registry (__from)
+    if from_ is not None:
+        found = _resolve_via_registry(__from)
+        if found is not None:
+            return found
+        else:
+            raise RegistryNotFoundError()
+
+    # 2) Component.get / Component.try_get
+    get_fn = getattr(Component, "get", None)
+    try_get_fn = getattr(Component, "try_get", None)
+
+    if callable(try_get_fn):
+        found = try_get_fn(identity) or try_get_fn(ident_key)
+        if found is not None:
+            return found
+
+    if callable(get_fn):
         try:
-            reg = obj.get_registry()  # type: ignore[attr-defined]
-            if hasattr(reg, "get") and callable(getattr(reg, "get")):
-                return reg
-        except Exception:
-            logger.debug("Failed to obtain registry from %r", obj, exc_info=True)
-    return None
+            found = get_fn(identity)
+        except (ComponentNotFoundError, RegistryNotFoundError, KeyError, AttributeError):
+            found = None
+        if found is not None:
+            return found
+
+        try:
+            found = get_fn(ident_key)
+        except (ComponentNotFoundError, RegistryNotFoundError, KeyError, AttributeError):
+            found = None
+        if found is not None:
+            return found
+
+    # 3) Attached registry on the component class
+    registry = getattr(Component, "registry", None)
+    if registry is not None:
+        found = _resolve_via_registry(registry)
+        if found is not None:
+            return found
+
+    # 4) Global registry dispatcher
+    from simcore_ai.registry.singletons import get_registry_for
+
+    try:
+        global_registry = get_registry_for(Component)
+    except RegistryNotFoundError:
+        global_registry = None
+
+    if global_registry is not None:
+        found = _resolve_via_registry(global_registry)
+        if found is not None:
+            return found
+
+    # Not found anywhere: hard failure for strict resolver
+    raise ComponentNotFoundError(
+        f"No component found for {ident!r} ({Component.__name__})"
+    )
 
 
-def try_resolve_from_ident(target: Any, registry_or_type: Any) -> Optional[Any]:
+def try_for_(
+        component_type: type[T] | str,
+        ident: IdentityLike,
+        *,
+        __from: RegistryProtocol | None = None,
+) -> Optional[T]:
     """
-    Resolve a registry entry from an identity-like input.
-
-    Args:
-        target:
-            Identity-like input:
-              - Identity instance
-              - "namespace.kind.name" string
-              - (namespace, kind, name) tuple
-              - object with `.identity` containing one of the above
-        registry_or_type:
-            A registry instance exposing `.get(tuple[str, str, str]) -> Optional[Any]`,
-            or a class/type that provides `@classmethod get_registry() -> registry`.
+    Safe resolver variant.
 
     Returns:
-        The resolved registry entry or None if resolution fails.
+        - The resolved component if found.
+        - None if not found or if a registry/component lookup error occurs.
     """
-    # 1) Extract a registry instance
-    registry = _extract_registry(registry_or_type)
-    if registry is None:
-        return None
-
-    # 2) Coerce the identity-like input to (ns, kind, name)
-    key = None
-
-    # If object has an `.identity`, prefer that first
-    if hasattr(target, "identity"):
-        ident_val = getattr(target, "identity")
-        key = coerce_identity_key(ident_val)
-
-    # Fallback: coerce the target itself
-    if key is None:
-        key = coerce_identity_key(target)
-
-    if key is None:
-        return None
-
-    # 3) Query the registry
     try:
-        return registry.get(key)
-    except Exception:
-        logger.debug("Failed to resolve key %r from registry %r", key, registry, exc_info=True)
+        return for_(component_type, ident, __from=__from)
+    except (ComponentNotFoundError, RegistryNotFoundError, NotImplementedError, TypeError):
         return None

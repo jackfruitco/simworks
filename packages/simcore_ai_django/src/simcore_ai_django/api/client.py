@@ -1,6 +1,5 @@
 # simcore_ai_django/client.py
 from __future__ import annotations
-
 """
 simcore_ai_django.api
 =====================
@@ -70,4 +69,4 @@ def call_default(request: LLMRequest, *, timeout: Optional[float] = None) -> LLM
     # The AIClient.call is async or sync depending on your implementation.
     # If it's async-only, the caller should use their async runtime.
     # Here we assume a synchronous facade that forwards through the client's `.call`.
-    return client.call(request, timeout=timeout)  # type: ignore[call-arg]
+    return client.send_request(request, timeout=timeout)  # type: ignore[call-arg]

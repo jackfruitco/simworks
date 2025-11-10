@@ -78,7 +78,7 @@ class BaseExecutionBackend(ABC):
         ns = kwargs.get("namespace")
         kind = kwargs.get("kind") or kwargs.get("service_bucket")
         name = kwargs.get("name") or kwargs.get("service_name")
-        codec_id = kwargs.get("codec_identity")
+        codec_id = kwargs.get("codec")
         corr = kwargs.get("correlation_id") or kwargs.get("req_correlation_id") or kwargs.get("request_correlation_id")
         attrs: Dict[str, Any] = {}
         if ns or kind or name:

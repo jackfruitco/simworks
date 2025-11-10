@@ -33,6 +33,10 @@ from .django_dtos import (
     DjangoLLMUsage,
 )
 
+__all__ = [
+    "promote_request",
+    "promote_response",
+]
 
 # ---------------------- helpers -----------------------------------------
 
@@ -180,8 +184,3 @@ def promote_response(resp: LLMResponse, **overlay: Any) -> DjangoLLMResponse:
                                    response_correlation_id=resp_corr)
     return dj
 
-
-__all__ = [
-    "promote_request",
-    "promote_response",
-]

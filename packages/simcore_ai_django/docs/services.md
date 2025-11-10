@@ -25,8 +25,8 @@ Identity derivation is **Django-aware** and **collision-safe**, automatically us
 
 | Class | Description |
 |:--|:--|
-| `BaseLLMService` | Core provider-agnostic logic (in `simcore_ai`) |
-| `DjangoBaseLLMService` | Adds Django-specific defaults (signals, renderers, codecs) |
+| `BaseService` | Core provider-agnostic logic (in `simcore_ai`) |
+| `DjangoBaseService` | Adds Django-specific defaults (signals, renderers, codecs) |
 | `DjangoExecutableLLMService` | Adds `.execute()` and `.enqueue()` builder helpers |
 
 ---

@@ -9,7 +9,7 @@
 Registries map **tuple³ identities** to concrete classes so the framework can wire components automatically. In `simcore_ai_django`, the important registries are:
 
 - **Prompt Registry** — maps identities → `PromptSection` classes.
-- **Codec Registry** — maps identities → `DjangoBaseLLMCodec` classes.
+- **Codec Registry** — maps identities → `DjangoBaseCodec` classes.
 - **(Optional) Services Registry** — discovery and collision control for services (dev tooling).
 
 ---
@@ -23,7 +23,7 @@ Registries map **tuple³ identities** to concrete classes so the framework can w
 - Used by `PromptEngine` and services to resolve section classes.
 
 ```python
-from simcore_ai_django.promptkit import PromptRegistry
+from simcore_ai_django.components.promptkit import PromptRegistry
 
 # Lookup
 Section = PromptRegistry.require_str("chatlab.standardized_patient.initial")
@@ -46,11 +46,11 @@ all_sections = list(PromptRegistry.all())
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import CodecRegistry, get_codec
+from simcore_ai_django.components.codecs import CodecRegistry, get_codec
 
 
 @codec
-class PatientInitialCodec(DjangoBaseLLMCodec):
+class PatientInitialCodec(DjangoBaseCodec):
     ...
 
 
@@ -97,12 +97,12 @@ The Django `@llm_service` decorator calls `resolve_collision_django` before regi
 
 ```python
 # Prompt sections
-from simcore_ai_django.promptkit import PromptRegistry
+from simcore_ai_django.components.promptkit import PromptRegistry
 
 print([cls.identity_static().to_string() for cls in PromptRegistry.all()])
 
 # Codecs
-from simcore_ai_django.codecs import CodecRegistry
+from simcore_ai_django.components.codecs import CodecRegistry
 
 print(list(CodecRegistry.names()))
 ```

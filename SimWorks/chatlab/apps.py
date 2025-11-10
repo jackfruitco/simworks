@@ -27,8 +27,3 @@ class ChatLabConfig(AppConfig):
             ]
 
         register_history_provider("chatlab", chatlab_history)
-
-        try:
-            import chatlab.ai.prompts  # noqa: F401
-        except ImportError:
-            pass

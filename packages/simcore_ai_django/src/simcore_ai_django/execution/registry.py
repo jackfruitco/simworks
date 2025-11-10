@@ -42,6 +42,7 @@ __all__ = [
     "get_backend_class",
     "require_backend_class",
     "list_backends",
+    "list_backend_names",
 ]
 
 # Registered backend classes by normalized name
@@ -132,6 +133,11 @@ def list_backends() -> Dict[str, str]:
     """Return a snapshot mapping of name -> class __name__ for diagnostics."""
     with _LOCK:
         return {k: v.__name__ for k, v in _BACKEND_REGISTRY.items()}
+
+def list_backend_names() -> list[str]:
+    """Return list of names of all registered backends (normalized)."""
+    with _LOCK:
+        return list(_BACKEND_REGISTRY.keys())
 
 
 # -------------------- lazy discovery helpers --------------------

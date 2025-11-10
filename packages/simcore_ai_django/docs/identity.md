@@ -145,7 +145,8 @@ class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, Standardi
 ```python
 # prompts/chatlab_base.py
 from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.promptkit import PromptSection
+from simcore_ai_django.components.promptkit import PromptSection
+
 
 @prompt_section
 class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):
@@ -155,10 +156,11 @@ class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPati
 ```python
 # codecs/patient.py
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.codecs import DjangoBaseLLMCodec
+from simcore_ai_django.components.codecs import DjangoBaseCodec
+
 
 @codec
-class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseLLMCodec):
+class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         # Persist response & first assistant message...
         return {"ok": True}

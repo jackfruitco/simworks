@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from typing import Any, ClassVar, Mapping, TypeVar, Callable
+
+from core.models import PersistModel
+from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.exceptions import CodecDecodeError
+from simcore_ai.types import LLMResponse
+
+M = TypeVar("M", bound=PersistModel)
+
+@dataclass
+class DjangoBaseCodec(BaseCodec):
+    """
+    Async-first Django codec that can fan-out persistence to multiple models.
+
+    Two patterns are supported:
+
+    1) Simple section→model:
+         schema_model_map = {"messages": Message, "metadata": SimulationMetadata}
+
+    2) Routed by item "kind":
+         schema_model_map = {"metadata": {"lab_result": LabResult, "rad_result": RadResult, "__default__": SimulationMetadata}}
+         section_kind_field = {"metadata": "kind"}  # defaults to "kind" if not provided
+
+    Optional key translations may be either flat per-section or routed per-kind:
+         schema_key_translations = {
+             "metadata": {"result_value": "value"},
+             # or routed
+             "metadata": {
+                 "__default__": {"value": "value"},
+                 "lab_result": {"result_value": "value", "flag": "result_flag"},
+                 "rad_result": {"flag": "result_flag"},
+             }
+         }
+
+    Section defaults allow pre-seeding fields (e.g., FKs) on each instance before apersist():
+         section_defaults = {
+             "messages": {"role": "A", "is_from_ai": True},
+             "metadata": lambda item: {"simulation": sim},  # callable per-item OK
+         }
+    """
+    abstract: ClassVar[bool] = True
+
+    # Map a section key in the validated payload to either:
+    #   - a PersistModel subclass, or
+    #   - a dict[str, PersistModelSubclass] that routes by item "kind".
+    schema_model_map: dict[str, type[M] | dict[str, type[M]]] | None = None
+
+    # Per-section key translation. Either flat dict[str,str] or routed dict[kind][src->dest].
+    schema_key_translations: dict[str, dict[str, str] | dict[str, dict[str, str]]] | None = None
+
+    # Which field on items holds the "kind" discriminator (per section)
+    section_kind_field: dict[str, str] | None = None
+
+    # Static defaults to set on new instances per section.
+    # Values may be dicts or callables taking the item and returning a dict.
+    section_defaults: dict[str, Mapping[str, Any] | Callable[[Mapping[str, Any]], Mapping[str, Any]]] | None = None
+
+    # ---- registry override (use facade) ----
+    @classmethod
+    def get_registry(cls):
+        from simcore_ai_django.api import codecs as dj_codecs
+        return dj_codecs
+
+    # ---- public entrypoints ------------------------------------------------
+    async def arun(self, resp: LLMResponse):
+        validated = self.validate_from_response(resp)
+        if validated is None:
+            return None
+
+        # normalize to plain dict for section access
+        if hasattr(validated, "model_dump"):
+            vdict: Mapping[str, Any] = validated.model_dump(mode="python", exclude_none=True)  # type: ignore
+        elif isinstance(validated, dict):
+            vdict = validated
+        else:
+            raise CodecDecodeError(f"{self.__class__.__name__}: unknown validated payload type")
+
+        if not self.schema_model_map:
+            # no persistence map -> just return the validated object
+            return validated
+
+        results = await self.persist_sections(vdict)
+        return validated, results
+
+    def run(self, resp: LLMResponse):
+        # Sync wrapper for convenience; prefer arun() in async contexts.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            return asyncio.get_event_loop().run_until_complete(self.arun(resp))
+        return asyncio.run(self.arun(resp))
+
+    # ---- core persistence --------------------------------------------------
+    async def persist_sections(self, vdict: Mapping[str, Any]) -> list[PersistModel]:
+        tasks: list[asyncio.Task] = []
+        instances: list[PersistModel] = []
+
+        for section_key, target in (self.schema_model_map or {}).items():
+            items = vdict.get(section_key)
+            if items is None:
+                continue
+
+            # normalize to sequence
+            if isinstance(items, Mapping):
+                seq = [items]
+            elif isinstance(items, (list, tuple)):
+                seq = list(items)
+            else:
+                raise CodecDecodeError(f"Section '{section_key}' must be object or list")
+
+            # Router setup (if mapping by kind)
+            kind_field = (self.section_kind_field or {}).get(section_key, "kind")
+            routed = isinstance(target, dict)
+
+            for item in seq:
+                if not isinstance(item, Mapping):
+                    raise CodecDecodeError(f"Items in section '{section_key}' must be mappings, not {type(item)!r}")
+
+                # choose model class
+                model_cls: type[M]
+                if routed:
+                    kind_val = str(item.get(kind_field, "__default__"))
+                    model_cls = (target.get(kind_val) or target.get("__default__"))  # type: ignore[assignment]
+                    if model_cls is None:
+                        raise CodecDecodeError(
+                            f"No model mapping for section '{section_key}' kind='{kind_val}' and no '__default__'"
+                        )
+                else:
+                    model_cls = target  # type: ignore[assignment]
+
+                # choose translations (flat or routed by kind)
+                translate_map = None
+                sec_trans = (self.schema_key_translations or {}).get(section_key)
+                if isinstance(sec_trans, dict):
+                    # either flat {"a":"b"} or routed {"__default__": {...}, "lab_result": {...}}
+                    # detect routed shape by inner value types
+                    if sec_trans and all(isinstance(v, dict) for v in sec_trans.values()):
+                        kind_val = str(item.get(kind_field, "__default__"))
+                        translate_map = sec_trans.get(kind_val) or sec_trans.get("__default__")  # type: ignore[assignment]
+                    else:
+                        translate_map = sec_trans  # type: ignore[assignment]
+
+                # build instance with defaults (dict or callable)
+                base_defaults = {}
+                if self.section_defaults and section_key in self.section_defaults:
+                    defaults_or_callable = self.section_defaults[section_key]
+                    base_defaults = (
+                        defaults_or_callable(item)  # type: ignore[arg-type]
+                        if callable(defaults_or_callable)
+                        else dict(defaults_or_callable)
+                    )
+
+                instance = model_cls(**base_defaults)  # type: ignore[call-arg]
+                instances.append(instance)
+
+                tasks.append(asyncio.create_task(
+                    instance.apersist(item, translate_keys=translate_map)
+                ))
+
+        if not tasks:
+            return []
+
+        await asyncio.gather(*tasks, return_exceptions=False)
+        return instances

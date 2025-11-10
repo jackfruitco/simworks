@@ -6,9 +6,11 @@ All identity-related helpers should be imported from this module by SimWorks Dja
 """
 
 from simcore_ai.identity import Identity, IdentityMixin
+from simcore_ai_django.identity import DjangoIdentityMixin, DjangoIdentityResolver
 
 __all__ = [
-    "Identity",
     # Mixins
-    "IdentityMixin",
+    "Identity",
+    "DjangoIdentityMixin",
+    "DjangoIdentityResolver",
 ]

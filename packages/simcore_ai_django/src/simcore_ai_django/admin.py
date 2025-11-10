@@ -111,12 +111,7 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
         ("name", "provider_name", "client_name"),
         ("namespace", "kind", "simulation_pk", "correlation_id"),
         ("model", "stream"),
-        "messages_pretty",
-        "tools_pretty",
         "response_format_cls",
-        "response_format_adapted_pretty",
-        "response_format_pretty",
-        "prompt_meta_pretty",
     )
 
     inlines = [AIResponseAuditInline]

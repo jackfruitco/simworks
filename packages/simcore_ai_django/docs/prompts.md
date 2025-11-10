@@ -81,7 +81,7 @@ print(prompt.meta["sections"])  # labels rendered in order
 ## Working with PromptRegistry
 
 ```python
-from simcore_ai_django.promptkit import PromptRegistry
+from simcore_ai_django.components.promptkit import PromptRegistry
 
 sections = [cls.__name__ for cls in PromptRegistry.all()]
 print(sections)

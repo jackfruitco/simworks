@@ -4,7 +4,7 @@ from __future__ import annotations
 import types
 import pytest
 
-from simcore_ai_django.services.registry import (
+from simcore_ai_django.components.services.registry import (
     services as service_registry,
     IdentityCollisionError,
     IdentityValidationError,

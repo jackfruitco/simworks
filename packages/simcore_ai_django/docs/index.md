@@ -36,7 +36,7 @@ Matching identities allow components to discover one another automatically. See 
 | Component | Purpose | Decorator | Base Class |
 |-----------|---------|-----------|------------|
 | **Service** | Defines an executable AI workflow | `@llm_service` | `DjangoExecutableLLMService` |
-| **Codec** | Validates & persists AI responses | `@codec` | `DjangoBaseLLMCodec` |
+| **Codec** | Validates & persists AI responses | `@codec` | `DjangoBaseCodec` |
 | **Prompt Section** | Builds prompt content or messages | `@prompt_section` | `PromptSection` |
 | **Response Schema** | Defines structured output schema | *(decorator optional)* | `DjangoBaseOutputSchema` |
 

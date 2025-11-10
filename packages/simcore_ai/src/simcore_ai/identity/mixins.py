@@ -1,13 +1,20 @@
 # packages/simcore_ai/src/simcore_ai/identity/mixins.py
 from __future__ import annotations
 
-from typing import ClassVar, Optional, Type, Any
 from threading import RLock
+from typing import ClassVar, Optional, Any
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # avoid import cycles at import time
-    from simcore_ai.identity.base import Identity
-    from simcore_ai.identity.resolvers import IdentityResolver
+    from simcore_ai.identity import Identity
+
+class _IdentityAccessor:
+    """Descriptor that returns the resolved Identity for a class or instance."""
+    def __get__(self, obj, owner):
+        cls = owner if obj is not None else owner  # explicit for readability
+        # Late import to avoid cycles
+        # Call through to the mixin's resolver-backed method
+        return cls.resolve_identity()
 
 class IdentityMixin:
     """Centralized, resolver-driven class identity.
@@ -18,24 +25,21 @@ class IdentityMixin:
     Design:
       - Identity is *class-level* semantics: derive once per class and cache.
       - Instances read `self.identity` (read-only) which returns the class identity.
-      - Resolution is pluggable via `identity_resolver_cls` (core vs Django).
+      - Resolution is delegated to Identity.resolve.for_(...). Mixins delegate to that API.
       - Decorators/registration may *pin* identity via `pin_identity(...)`.
 
     Class attributes (hints only):
       namespace/kind/name: Optional[str]
         Hints consumed by the resolver. They are not required.
 
-    Override points:
-      identity_resolver_cls: ClassVar[Type[IdentityResolver]]
-        Defaults to core resolver in core; Django layers can override on their mixin.
+    Resolution:
+      Centralized via Identity.resolve.for_(...). Mixins delegate to that API.
 
     Public API:
       - cls.identity_resolved() -> Identity
       - cls.identity_meta() -> dict[str, Any]
-      - cls.identity_as_tuple3() -> tuple[str, str, str]
-      - cls.identity_as_str() -> str
       - cls.pin_identity(identity: Identity) -> None
-      - instance.identity -> Identity  (read-only)
+      - instance/class .identity -> Identity  (read-only descriptor)
     """
 
     # ----- identity hints (optional) -----
@@ -45,46 +49,42 @@ class IdentityMixin:
 
     __identity_abstract__: ClassVar[bool] = False
 
-    # ----- resolver selection (override in framework mixins, e.g., Django) -----
-    identity_resolver_cls: ClassVar[Optional[Type["IdentityResolver"]]] = None  # set in core/django layers
-
     # ----- internal cache (per-class) -----
     __identity_cached: ClassVar[Optional["Identity"]] = None
     __identity_meta_cached: ClassVar[Optional[dict[str, Any]]] = None
     __identity_lock: ClassVar[RLock] = RLock()
 
+    # Expose a single, simple surface: ExampleCodec.identity -> Identity
+    identity = _IdentityAccessor()
+
     # ------------------------- class utilities -------------------------
 
-    @classmethod
-    def identity_key(cls) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """Raw hints as declared on the class (no derivation)."""
-        return (cls.namespace, cls.kind, cls.name)
 
     @classmethod
-    def identity_resolved(cls) -> "Identity":
-        """Resolve (or return cached) class identity via the configured resolver."""
-        # Fast path
+    def resolve_identity(cls) -> "Identity":
+        """Resolve and cache the class identity via Identity.resolve.for_()."""
         cached = cls.__identity_cached
         if cached is not None:
             return cached
 
-        # Late imports to avoid cycles
-        from simcore_ai.identity.base import Identity
-        from simcore_ai.identity.resolvers import IdentityResolver, resolve_identity
-
-        # Determine resolver class
-        resolver_cls = cls.identity_resolver_cls or IdentityResolver
-        # Instantiate if needed
-        resolver = resolver_cls() if isinstance(resolver_cls, type) else resolver_cls
+        # Late import to avoid cycles
+        from simcore_ai.identity.identity import Identity as _Identity
 
         with cls.__identity_lock:
             if cls.__identity_cached is not None:
-                return cls.__identity_cached  # another thread won the race
+                return cls.__identity_cached
 
-            # Build kwargs from hints; let resolver apply precedence
-            ns, kd, nm = cls.namespace, cls.kind, cls.name
-            ident, meta = resolver.resolve(cls, namespace=ns, kind=kd, name=nm, context=None)
+            # Support both legacy (namespace/kind/name) and newer (origin/bucket/name) hints.
+            # Prefer explicit hints present on the class; fall back to legacy names.
+            hints = {}
 
+            hints.update(
+                namespace=getattr(cls, "namespace", None),
+                kind=getattr(cls, "kind", None),
+                name=getattr(cls, "name", None),
+            )
+
+            ident, meta = _Identity.resolve.for_(cls, **hints, context=None)
             cls.__identity_cached = ident
             cls.__identity_meta_cached = dict(meta or {})
             return ident
@@ -92,18 +92,9 @@ class IdentityMixin:
     @classmethod
     def identity_meta(cls) -> dict[str, Any]:
         """Return resolver meta for tracing/debugging (cached)."""
-        _ = cls.identity_resolved()  # ensure resolved
+        _ = cls.resolve_identity()  # ensure resolved
         return dict(cls.__identity_meta_cached or {})
 
-    @classmethod
-    def identity_as_tuple3(cls) -> tuple[str, str, str]:
-        ident = cls.identity_resolved()
-        return ident.as_tuple3
-
-    @classmethod
-    def identity_as_str(cls) -> str:
-        ident = cls.identity_resolved()
-        return ident.as_str
 
     @classmethod
     def pin_identity(cls, identity: "Identity") -> None:
@@ -115,17 +106,6 @@ class IdentityMixin:
         with cls.__identity_lock:
             cls.__identity_cached = identity
             cls.__identity_meta_cached = {"ai.identity.source": "pinned"}
-
-    # ------------------------- instance surface -------------------------
-
-    @property
-    def identity(self) -> "Identity":
-        """Read-only instance view of the class identity."""
-        return type(self).identity_resolved()
-
-    # Convenience (human-friendly) string for instances
-    def __str__(self) -> str:  # pragma: no cover - convenience only
-        return f"{type(self).__name__}<{type(self).identity_as_str()}>"
 
     def __init_subclass__(cls, **kwargs) -> None:  # pragma: no cover - light guardrails
         super().__init_subclass__(**kwargs)

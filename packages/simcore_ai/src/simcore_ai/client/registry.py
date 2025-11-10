@@ -1,6 +1,4 @@
 # simcore_ai/client/registry.py
-from __future__ import annotations
-
 """
 simcore_ai.client.registry
 ==========================
@@ -22,20 +20,21 @@ Notes
 - Default selection policy is orchestrated in the Django setup layer; `make_default`
   remains supported but is best avoided in application code.
 """
+from __future__ import annotations
 
+from collections.abc import Mapping
 from threading import RLock
 from typing import Dict, Optional, Any
-from collections.abc import Mapping
 
-from .client import AIClient
-from simcore_ai.exceptions.registry_exceptions import (
+from simcore_ai.client.schemas import AIProviderConfig, AIClientConfig
+from simcore_ai.providers.factory import create_provider
+from simcore_ai.registry.exceptions import (
     RegistryError,
     RegistryDuplicateError,
     RegistryLookupError,
 )
-from simcore_ai.providers.factory import create_provider
-from simcore_ai.client.schemas import AIProviderConfig, AIClientConfig
 from simcore_ai.tracing import service_span_sync
+from .client import AIClient
 
 _clients: Dict[str, AIClient] = {}
 _default_name: Optional[str] = None

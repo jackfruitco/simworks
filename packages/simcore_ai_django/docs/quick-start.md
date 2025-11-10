@@ -60,17 +60,18 @@ class InitialSection(PromptSection):
 ## 3️⃣ Codec
 
 ### Base Class
-`DjangoBaseLLMCodec`
+`DjangoBaseCodec`
 
 ### Minimum Definition
 Implement a `persist()` method.
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseCodec
+
 
 @codec
-class InitialCodec(DjangoBaseLLMCodec):
+class InitialCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         # Persist messages, metadata, results, etc.
         return {"ai_response_id": 123}

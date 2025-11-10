@@ -176,7 +176,7 @@ class OpenAIProvider(BaseProvider):
                     "ai.model": req.model or self.default_model or "<unspecified>",
                     "ai.stream": bool(getattr(req, "stream", False)),
                     "ai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
-                    "ai.codec_identity": getattr(req, "codec_identity", None),
+                    "ai.codec": getattr(req, "codec", None),
                     **_flatten_context(getattr(req, "context", {}) or {}),
                 },
         ):
@@ -231,7 +231,7 @@ class OpenAIProvider(BaseProvider):
                     "ai.model": req.model or self.default_model or "<unspecified>",
                     "ai.stream": True,
                     "ai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
-                    "ai.codec_identity": getattr(req, "codec_identity", None),
+                    "ai.codec": getattr(req, "codec", None),
                     **_flatten_context(getattr(req, "context", {}) or {}),
                 },
         ) as span:

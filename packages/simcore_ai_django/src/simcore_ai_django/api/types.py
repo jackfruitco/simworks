@@ -1,21 +1,51 @@
 # simcore_ai_django/api/types.py
-from ..codecs import DjangoBaseLLMCodec
-from ..promptkit import PromptSection, PromptScenario, Prompt
-from ..schemas import DjangoBaseOutputSchema, DjangoBaseOutputItem, DjangoBaseOutputBlock
-from ..services import DjangoExecutableLLMService, DjangoBaseLLMService
-from ..types import DjangoLLMResponseItem, DjangoLLMBaseTool, DjangoLLMToolCall
+from simcore_ai_django.components.codecs import *
+from simcore_ai_django.components.promptkit import *
+from simcore_ai_django.components.schemas import *
+from simcore_ai_django.components.services import *
+from ..types import *
 
 __all__ = [
     "DjangoBaseOutputSchema",
     "DjangoBaseOutputItem",
-    "DjangoBaseOutputBlock",         # use for schemas without identity
+    "DjangoBaseOutputBlock",  # use for schemas without identity
     "DjangoLLMResponseItem",
+
+    "DjangoDTOBase",
+    "DjangoLLMBaseTool",
+
+    "DjangoLLMRequest",
+    "DjangoLLMRequestMessage",
+    "LLMRole",
+
+    "DjangoLLMResponseItem",
+    "DjangoLLMResponse",
+    "DjangoLLMUsage",
+
+    "DjangoLLMToolCall",
+
+    "LLMTextPart",
+    "LLMImagePart",
+    "LLMAudioPart",
+    "LLMToolCallPart",
+    "LLMToolResultPart",
+
+    "demote_request",
+    "demote_response",
+    "promote_request",
+    "promote_response",
+
+    "PromptEngine",
+    "Prompt",
+    "PromptPlan",
+    "PromptSection",
+    "PromptSectionSpec",
     "PromptSection",
     "PromptScenario",
-    "Prompt",
-    "DjangoBaseLLMCodec",
+
+    "DjangoBaseCodec",
     "DjangoExecutableLLMService",
-    "DjangoBaseLLMService",
+    "DjangoBaseService",
     "DjangoLLMBaseTool",
     "DjangoLLMToolCall",
 ]

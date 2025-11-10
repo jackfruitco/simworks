@@ -73,7 +73,7 @@ def build_prompt(payload: SummaryRequest) -> Prompt:
 
 ## 5. Convert the prompt to normalized messages
 
-`AIClient` expects a list of `LLMRequestMessage` objects. The helper below mirrors the conversion performed by `BaseLLMService`.
+`AIClient` expects a list of `LLMRequestMessage` objects. The helper below mirrors the conversion performed by `BaseService`.
 
 ```python
 from simcore_ai.types import LLMRequestMessage, LLMTextPart
@@ -113,16 +113,20 @@ def prompt_to_messages(prompt: Prompt) -> list[LLMRequestMessage]:
 Create a codec to validate the JSON payload, send the request through the client, and convert the response into your typed model.
 
 ```python
-from simcore_ai.codecs import BaseLLMCodec
+
+from simcore_ai.components.codecs.base import BaseCodec
 from simcore_ai.types import LLMRequest
 
-class SummaryCodec(BaseLLMCodec):
+
+class SummaryCodec(BaseCodec):
     name = "summary"
     origin = "guides"
     bucket = "quickstart"
     schema_cls = SummaryResponse
 
+
 summary_codec = SummaryCodec()
+
 
 async def summarize(payload: SummaryRequest) -> SummaryResponse:
     prompt = build_prompt(payload)

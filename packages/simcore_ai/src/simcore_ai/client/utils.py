@@ -1,6 +1,4 @@
 # simcore_ai/client/utils.py
-from __future__ import annotations
-
 """
 simcore_ai.client.utils
 =======================
@@ -27,9 +25,10 @@ Core Responsibilities:
 - Resolve API keys from environment variables when required.
 - Generate consistent provider identity names for observability.
 """
+from __future__ import annotations
 
-import os
 import logging
+import os
 from typing import Optional
 
 from simcore_ai.client.schemas import AIProviderConfig, AIClientRegistration, semantic_provider_name
@@ -38,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 
 def effective_provider_config(
-    provider: AIProviderConfig,
-    client: Optional[AIClientRegistration] = None,
+        provider: AIProviderConfig,
+        client: Optional[AIClientRegistration] = None,
 ) -> AIProviderConfig:
     """
     Construct an *effective* provider configuration by merging a provider definition
@@ -80,9 +79,9 @@ def effective_provider_config(
 
     # Resolve API key with precedence
     key = (
-        (client.api_key if client and client.api_key else None)
-        or provider.api_key
-        or _resolve_from_env(client, provider)
+            (client.api_key if client and client.api_key else None)
+            or provider.api_key
+            or _resolve_from_env(client, provider)
     )
 
     merged.api_key = key
@@ -105,8 +104,8 @@ def effective_provider_config(
 
 
 def _resolve_from_env(
-    client: Optional[AIClientRegistration],
-    provider: AIProviderConfig,
+        client: Optional[AIClientRegistration],
+        provider: AIProviderConfig,
 ) -> Optional[str]:
     """
     Resolve an API key from environment variables following precedence.
@@ -120,8 +119,8 @@ def _resolve_from_env(
         is defined or contains a non-empty value.
     """
     for env_key in (
-        getattr(client, "api_key_env", None),
-        getattr(provider, "api_key_env", None),
+            getattr(client, "api_key_env", None),
+            getattr(provider, "api_key_env", None),
     ):
         if env_key:
             val = os.getenv(env_key)

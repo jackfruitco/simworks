@@ -7,7 +7,7 @@ Public facade for **Django-aware** decorators.
 This module re-exports the instantiated, class-based decorators from the
 Django layer so app code can import them from a single, stable location:
 
-    from simcore_ai_django.api.decorators import llm_service, codec, prompt_section, schema
+    from simcore_ai_django.api.decorators import ai_service, codec, prompt_section, schema
 
 These decorators:
 - derive a finalized Identity `(namespace, kind, name)` using the Django-aware
@@ -21,18 +21,20 @@ policy lives in the registries.
 """
 
 # Import-light: avoid registry imports here to prevent cycles
-from ..codecs.decorators import codec as codec
-from ..services.decorators import llm_service as llm_service
-from ..promptkit.decorators import prompt_section as prompt_section
-from ..schemas.decorators import schema as schema
+from simcore_ai_django.decorators import *
 
-# Convenience alias for legacy naming
-response_schema = schema
+ai_codec = codec
+ai_schema = schema
+ai_service = service
+ai_prompt_section = prompt_section
 
 __all__ = [
     "codec",
-    "llm_service",
-    "prompt_section",
     "schema",
-    "response_schema",
+    "service",
+    "prompt_section",
+    "ai_codec",             # alias
+    "ai_service",           # alias
+    "ai_prompt_section",    # alias
+    "ai_schema",            # alias
 ]

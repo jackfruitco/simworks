@@ -35,7 +35,7 @@ except Exception:
 
 try:
     # Prefer the Django renderer if available
-    from simcore_ai_django.prompts.render_section import render_section  # type: ignore
+    from simcore_ai_django.components.promptkit.render_section import render_section  # type: ignore
 except Exception:
     render_section = None  # type: ignore
 

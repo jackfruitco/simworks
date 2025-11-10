@@ -29,7 +29,7 @@ from collections.abc import Iterable, Callable
 from typing import Optional, Union, TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
-    from .base import IdentityKey, Identity
+    from . import IdentityLike, Identity
 
 __all__ = [
     "DEFAULT_IDENTITY_STRIP_TOKENS",
@@ -58,10 +58,6 @@ DEFAULT_IDENTITY_STRIP_TOKENS: tuple[str, ...] = (
     "Schema",
     "Mixin",
 )
-
-# Backwards-compat alias (deprecated). Remove after all imports are migrated.
-DEFAULT_STRIP_TOKENS = DEFAULT_IDENTITY_STRIP_TOKENS  # pragma: no cover
-
 
 def _env_truthy(value: str | None) -> bool:
     """Return True if the string looks truthy ("1", "true", "yes", case-insensitive)."""
@@ -220,7 +216,7 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
-def coerce_identity_key(value: "IdentityKey") -> Optional[tuple[str, str, str]]:
+def coerce_identity_key(value: "IdentityLike") -> Optional[tuple[str, str, str]]:
     """Coerce (tuple | Identity | 'ns.kind.name' str) to a normalized (ns, kind, name) tuple.
 
     This is a thin compatibility wrapper around the centralized Identity API.
@@ -228,18 +224,15 @@ def coerce_identity_key(value: "IdentityKey") -> Optional[tuple[str, str, str]]:
     strict dot parsing. Returns ``None`` on failure rather than raising.
     """
     # Local import to avoid import cycles at module import time
-    try:
-        from .base import Identity  # type: ignore
-    except Exception:
-        Identity = None  # type: ignore
+    from .identity import Identity
 
     # Fast path: already a triple
     if isinstance(value, tuple) and len(value) == 3:
         ns, kd, nm = value  # type: ignore[misc]
-        return (str(ns), str(kd), str(nm))
+        return str(ns), str(kd), str(nm)
 
     # Identity instance
-    if Identity is not None and isinstance(value, Identity):  # type: ignore[arg-type]
+    if isinstance(value, Identity):  # type: ignore[arg-type]
         return value.as_tuple3  # type: ignore[union-attr]
 
     # Dot-string → prefer Identity.get_for, else strict parser fallback
