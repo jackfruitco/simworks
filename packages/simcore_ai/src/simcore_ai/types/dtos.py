@@ -119,8 +119,8 @@ class LLMRequest(StrictBaseModel):
         return None
 
     # Response format (provider-agnostic)
-    response_format_cls: Any = None  # renamed from response_format_cls
-    response_format: dict | None = None
+    output_schema_cls: Any = None  # renamed from output_schema_cls
+    output_schema: dict | None = None
 
     # Tooling
     tools: list[BaseLLMTool] = Field(default_factory=list)
@@ -154,10 +154,6 @@ class LLMResponse(StrictBaseModel):
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
     provider_meta: dict[str, Any] = Field(default_factory=dict)
 
-    @property
-    def codec(self) -> None:
-        warnings.warn("Deprecated. Use `BaseService().codec` instead instead")
-        return None
 
 class LLMStreamChunk(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)

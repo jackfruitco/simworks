@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import importlib
 import inspect
-from typing import TypeVar, Optional
+from typing import TypeVar, Optional, Any
 
 from simcore_ai.components import ComponentNotFoundError
 from simcore_ai.registry.exceptions import RegistryNotFoundError
 from .identity import Identity, IdentityLike
+from ..registry import BaseRegistry
 from ..types.protocols import RegistryProtocol
 
 T = TypeVar("T")
@@ -102,13 +103,13 @@ def for_(
     Component = _resolve_component_type(component_type)
 
     # Helper to prefer try_get() when present, otherwise fall back to get()
-    def _resolve_via_registry(registry: RegistryProtocol) -> T | None:
-        try_get = getattr(registry, "try_get", None)
+    def _resolve_via_registry(registry_: BaseRegistry) -> T | None:
+        try_get = getattr(registry_, "try_get", None)
         if callable(try_get):
             found = try_get(identity) or try_get(ident_key)
             if found is not None:
                 return found
-        get_fn = getattr(registry, "get", None)
+        get_fn = getattr(registry_, "get", None)
         if callable(get_fn):
             try:
                 return get_fn(identity)
@@ -153,9 +154,9 @@ def for_(
             return found
 
     # 3) Attached registry on the component class
-    registry = getattr(Component, "registry", None)
-    if registry is not None:
-        found = _resolve_via_registry(registry)
+    registry_ = getattr(Component, "registry", None)
+    if registry_ is not None:
+        found = _resolve_via_registry(registry_)
         if found is not None:
             return found
 
@@ -195,3 +196,4 @@ def try_for_(
         return for_(component_type, ident, __from=__from)
     except (ComponentNotFoundError, RegistryNotFoundError, NotImplementedError, TypeError):
         return None
+

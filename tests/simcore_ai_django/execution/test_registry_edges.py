@@ -15,7 +15,7 @@ def test_unknown_backend_falls_back_to_immediate(monkeypatch):
 
 def test_duplicate_registration_last_write_wins(monkeypatch):
     from simcore_ai_django.execution.registry import register_backend, get_backend_by_name
-    from simcore_ai_django.execution.types import BaseExecutionBackend
+    from simcore_ai_django.execution.base import BaseExecutionBackend
 
     class A(BaseExecutionBackend):
         def execute(self, *, service_cls, kwargs): return "A"

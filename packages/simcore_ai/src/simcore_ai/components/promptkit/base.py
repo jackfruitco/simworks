@@ -157,11 +157,6 @@ class PromptSection(IdentityMixin, BaseComponent, ABC):
     def __repr__(self) -> str:
         return f"<PromptSection {self.identity.as_str} tags={self.tags or 'None'}>"
 
-    @property
-    def identity_str(self) -> str:
-        """Canonical dot identity string (e.g., 'chatlab.patient.initial')."""
-        return self.identity.as_str
-
     async def arun(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         """
         Async lifecycle entrypoint required by BaseComponent.
@@ -183,14 +178,14 @@ class PromptSection(IdentityMixin, BaseComponent, ABC):
         """Return developer/system instructions for this section, if any."""
         text = self.instruction if self.instruction is not None else getattr(type(self), "instruction", None)
         out = _normalize(text)
-        logger.debug("promptkit.render_instruction: ident=%s present=%s", self.identity_str, bool(out))
+        logger.debug("promptkit.render_instruction: ident=%s present=%s", self.identity.as_str, bool(out))
         return out
 
     async def render_message(self, **ctx: Any) -> str | None:
         """Return end-user message content for this section, if any."""
         text = self.message if self.message is not None else getattr(type(self), "message", None)
         out = _normalize(text)
-        logger.debug("promptkit.render_message: ident=%s present=%s", self.identity_str, bool(out))
+        logger.debug("promptkit.render_message: ident=%s present=%s", self.identity.as_str, bool(out))
         return out
 
     # ---------------- Confidence (advisory; optional) ---------------------

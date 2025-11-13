@@ -127,7 +127,7 @@ class KeywordCodec(BaseCodec):
     name = "keyword-plan"
     origin = "guides"
     bucket = "services"
-    schema_cls = KeywordPlan
+    output_schema_cls = KeywordPlan
 
 
 codec = KeywordCodec()
@@ -325,9 +325,11 @@ Because services operate on DTOs and dependency injection, unit testing stays st
 ```python
 from simcore_ai.types import LLMResponse
 
+
 class FakeClient:
     async def send_request(self, request):
         return LLMResponse(outputs=[], usage=None)
+
 
 fake_service = KeywordService(
     simulation_id=1,
@@ -335,7 +337,7 @@ fake_service = KeywordService(
     client=FakeClient(),
 )
 
-await fake_service.run(Simulation(id=1, text="Example payload"))
+await fake_service.run_all(Simulation(id=1, text="Example payload"))
 ```
 
 ## Next steps

@@ -1,6 +1,8 @@
 # simcore_ai/promptkit/plans.py
 from __future__ import annotations
 
+from ...identity import Identity
+
 """
 Prompt plans.
 
@@ -107,19 +109,61 @@ class PromptPlan:
 
     @classmethod
     def from_sections(
-            cls, sections: Iterable[PromptSectionSpec], *, context: dict[str, Any] | None = None,
-            meta: dict[str, Any] | None = None
+            cls,
+            sections: Iterable[PromptSectionSpec],
+            *,
+            context: dict[str, Any] | None = None,
+            meta: dict[str, Any] | None = None,
     ) -> "PromptPlan":
+        """Get PromptPlan object from list of PromptSections."""
         plan = cls(context=dict(context or {}), meta=dict(meta or {}))
         plan.add_many(sections)
         return plan
 
     @classmethod
-    def from_section(
-            cls, sections: Iterable[PromptSectionSpec], *, context: dict[str, Any] | None = None,
-            meta: dict[str, Any] | None = None
+    def from_any(
+            cls,
+            sections: Iterable[PromptSectionSpec | str],
+            *,
+            context: dict[str, Any] | None = None,
+            meta: dict[str, Any] | None = None,
     ) -> "PromptPlan":
-        return cls.from_sections(sections, context=context, meta=meta)
+        """Get PromptPlan object from any PromptSpec-like list."""
+        resolved: list[PromptSectionSpec] = []
+
+        for raw in sections:
+            sec = raw
+
+            # Already a PromptSection instance or valid spec
+            if isinstance(sec, PromptSection):
+                resolved.append(sec)
+                continue
+
+            # Try identity resolution (assuming PromptSection kind)
+            cand = Identity.resolve.try_for_("PromptSection", sec)
+            if cand is None:
+                logger.warning("Could not resolve prompt section from input %r", raw)
+                continue
+
+            # Optional: enforce type/shape of cand
+            # if not isinstance(cand, PromptSection) and not (
+            #     isinstance(cand, type) and issubclass(cand, PromptSection)
+            # ):
+            #     logger.warning("Resolved %r to invalid PromptSection %r", raw, cand)
+            #     continue
+
+            resolved.append(cand)
+
+        if not resolved:
+            # Either raise, or explicitly allow empty
+            raise ValueError("No valid prompt sections resolved from input")
+
+        return cls.from_sections(resolved, context=context, meta=meta)
+
+
+        plan = cls(context=dict(context or {}), meta=dict(meta or {}))
+        plan.add_many(sections)
+        return plan
 
     # ---------- core operations ------------------------------------------
 

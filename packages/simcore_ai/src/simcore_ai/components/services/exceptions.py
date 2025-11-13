@@ -12,8 +12,7 @@ __all__ = [
     "MissingRequiredContextKeys",
 ]
 
-from simcore_ai.identity import Identity
-from simcore_ai.identity.exceptions import IdentityResolutionError
+from simcore_ai.identity import Identity, IdentityLike
 
 
 class ServiceError(SimCoreError): ...
@@ -46,25 +45,28 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
     The canonical service identity is dot-only: "namespace.kind.name".
     """
 
-    def __init__(self, *, namespace, kind, name, codec: Optional[str], service: str):
-        try:
-            I: Identity = Identity.resolve(identity=(namespace, kind, name))
-        except ValueError as err:
-            raise IdentityResolutionError from err
+    def __init__(self, *, ident: IdentityLike = None, codec: Optional[str], service: str):
+        I: Identity | None = None
+        if ident is not None:
+            try:
+                I = Identity.resolve(identity=ident)
+            except ValueError:
+                pass
 
         msg = (
-            "Could not resolve service codec "
-            f"(namespace={I.namespace}, kind={I.kind}, name={I.name}), "
-            f"requested_codec={codec!r}, service={service})"
+            "Could not resolve service codec"
         )
+        if isinstance(I, Identity):
+            msg += " using Identity=%s" % str(I)
+
         super().__init__(msg)
         # Attach context for callers/logs to inspect programmatically.
-        self.namespace = namespace
-        self.kind = kind
-        self.name = name
-        self.codec = codec
-        self.service = service
-        self.identity_str = f"{namespace}.{kind}.{name}"
+        self.IdentityLie = ident
+        self.kind = I.kind if I is not None else None
+        self.name = I.name if I is not None else None
+        self.codec = codec if codec is not None else None
+        self.service = service if service is not None else None
+        self.identity_str = I.as_str if isinstance(I, Identity) else None
 
 
 class MissingRequiredContextKeys(ServiceConfigError):

@@ -192,15 +192,15 @@ class IdentityResolver:
 
         # Build meta (full; caller may filter by trace level)
         meta: dict[str, Any] = {
-            "ai.tuple3.raw": f"{ns_value}.{kd_value}.{name_res.raw}",
-            "ai.tuple3.post_strip": f"{ns_value}.{kd_value}.{name_res.post_strip}",
-            "ai.tuple3.post_norm": ident.as_str,
-            "ai.identity.name.explicit": name_res.explicit,
-            "ai.identity.source.name": name_res.source,
-            "ai.identity.source.namespace": ns_source,
-            "ai.identity.source.kind": kd_source,
-            "ai.strip_tokens": tokens_csv,
-            "ai.strip_tokens_list": tokens_list,
+            "simcore.tuple3.raw": f"{ns_value}.{kd_value}.{name_res.raw}",
+            "simcore.tuple3.post_strip": f"{ns_value}.{kd_value}.{name_res.post_strip}",
+            "simcore.tuple3.post_norm": ident.as_str,
+            "simcore.identity.name.explicit": name_res.explicit,
+            "simcore.identity.source.name": name_res.source,
+            "simcore.identity.source.namespace": ns_source,
+            "simcore.identity.source.kind": kd_source,
+            "simcore.strip_tokens": tokens_csv,
+            "simcore.strip_tokens_list": tokens_list,
         }
 
         # Validate last to keep meta available for debugging on failure
@@ -354,15 +354,3 @@ class Resolve:
     def label_from_component(comp: Any) -> str:
         """Return the canonical label for a component that exposes `.identity`."""
         return getattr(comp, "identity").as_str
-
-    @staticmethod
-    def with_meta(
-            component: type[T],
-            *,
-            namespace: Optional[str] = None,
-            kind: Optional[str] = None,
-            name: Optional[str] = None,
-            context: Optional[dict[str, Any]] = None,
-    ) -> tuple[T, dict[str, Any]]:
-        """Resolve a registered component by `IdentityLike` and component type."""
-        return _rr.from_meta(component, namespace=namespace, kind=kind, name=name, context=context)

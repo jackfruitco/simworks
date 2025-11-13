@@ -27,7 +27,7 @@ Example
 
     @codec(namespace="chatlab", kind="sim_responses")
     class PatientInitialResponseCodec(DjangoBaseCodec):
-        response_format_cls = PatientInitialOutputSchema
+        output_schema_cls = PatientInitialOutputSchema
 
         def persist(self, *, resp, structured=None, **ctx):
             # Write ORM records here (atomic, idempotent)

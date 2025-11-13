@@ -1,6 +1,5 @@
 # simcore_ai_django/execution/types.py
 from __future__ import annotations
-
 """
 Execution backend contract.
 
@@ -8,18 +7,16 @@ Backends are responsible for *how* a service is run:
   - `execute(...)` runs the service *synchronously* in-process and returns the service's return value.
   - `enqueue(...)` schedules the service *asynchronously* out-of-process and returns a task id `str`.
 
-This sits behind the executor façade (e.g., `execute_service`, `enqueue_service`) and ahead of the runner
-(which actually invokes the service's `run`/`handle` logic). Concrete backends (Inline, Celery, future
-Django Tasks) implement this ABC.
+This sits behind the execution façade (e.g., `dispatch.execute`, `dispatch.enqueue`) and ahead of the service instance
+(which actually instantiates the service and invokes its async entrypoint, e.g. `arun` or a streaming variant).
 
 Tracing:
   Concrete backends should wrap both operations with spans:
     - `exec.backend.execute`
     - `exec.backend.enqueue`
   and include attributes such as:
-    - `backend`, `service_cls`, `queue`, `delay_s`
-    - `ai.identity.service`  (namespace.kind.name, if available in kwargs)
-    - `ai.identity.codec`    (response/request codec identity, if available in kwargs)
+    - `simcore.identity.service`  (namespace.kind.name, if available in kwargs)
+    - `simcore.identity.codec`    (response/request codec identity, if available in kwargs)
     - correlation ids where present
 
   Backends should use the protected helper `_span_attrs_from_kwargs` instead of duplicating logic.
@@ -32,7 +29,11 @@ from typing import Any, Optional, Protocol, runtime_checkable, Dict
 
 @runtime_checkable
 class SupportsServiceInit(Protocol):
-    """A minimal constructor protocol for services executed by backends."""
+    """A minimal constructor protocol for services executed by backends.
+
+    Backends are expected to construct services as `service_cls(**kwargs)` using the kwargs passed to
+    `BaseExecutionBackend.execute` / `BaseExecutionBackend.enqueue`.
+    """
     def __init__(self, **kwargs: Any) -> None: ...
 
 
@@ -49,6 +50,10 @@ class BaseExecutionBackend(ABC):
       - `execute` MUST block and return the service's actual return value.
       - `enqueue` MUST NOT block and MUST return a transport-specific task id (string).
       - Backends may inject/propagate tracing contexts; the runner should extract/continue them.
+
+    This sits behind the execution façade (e.g., `dispatch.execute`, `dispatch.enqueue`) and ahead of the service
+    instance (which is constructed and then has its async entrypoint, such as `arun` or a streaming variant,
+    invoked by the backend or a thin runner).
     """
 
     # ---------- Public API ----------
@@ -72,8 +77,8 @@ class BaseExecutionBackend(ABC):
     # ---------- Protected helpers (optional overrides) ----------
     def _span_attrs_from_kwargs(self, kwargs: Mapping[str, Any]) -> Dict[str, Any]:
         """
-        Extract common tracing attributes from kwargs.
-        Subclasses should call this helper instead of duplicating logic.
+        Extract common tracing attributes from kwargs using the standard simcore trace key names.
+        Subclasses should call this helper instead of duplicating identity/correlation-id extraction.
         """
         ns = kwargs.get("namespace")
         kind = kwargs.get("kind") or kwargs.get("service_bucket")
@@ -82,9 +87,9 @@ class BaseExecutionBackend(ABC):
         corr = kwargs.get("correlation_id") or kwargs.get("req_correlation_id") or kwargs.get("request_correlation_id")
         attrs: Dict[str, Any] = {}
         if ns or kind or name:
-            attrs["ai.identity.service"] = ".".join(x for x in (ns, kind, name) if x)
+            attrs["simcore.identity.service"] = ".".join(x for x in (ns, kind, name) if x)
         if codec_id:
-            attrs["ai.identity.codec"] = codec_id
+            attrs["simcore.identity.codec"] = codec_id
         if corr:
             attrs["req.correlation_id"] = corr
         return attrs
@@ -101,7 +106,10 @@ class BaseExecutionBackend(ABC):
 
     def _prepare_kwargs_for_transport(self, kwargs: Mapping[str, Any]) -> Mapping[str, Any]:
         """
-        Default passthrough for kwargs; transport backends (e.g. Celery) should override to ensure
-        all kwargs are safely serializable for the transport.
+        Default passthrough for kwargs.
+        Transport backends (e.g. Celery) should override this to coerce the mapping into a transport-
+        safe shape (e.g. plain dict, JSON-serializable values). Callers should treat the returned
+        mapping as the canonical version to send to the transport and not rely on the original
+        object being preserved.
         """
         return kwargs

@@ -76,7 +76,7 @@ def service_span_sync(name: str, *, attributes: Mapping[str, Any] | None = None)
     """Synchronous span context for service orchestration.
 
     Usage:
-        with service_span_sync("ai.compile_schema", attributes={"ai.namespace": ns}):
+        with service_span_sync("simcore.compile_schema", attributes={"simcore.namespace": ns}):
             ...
     """
     tracer = get_tracer()
@@ -96,7 +96,7 @@ async def service_span(name: str, *, attributes: Mapping[str, Any] | None = None
     """Async span context for service orchestration.
 
     Usage:
-        async with service_span("ai.provider.call", attributes={"ai.provider": "openai"}):
+        async with service_span("simcore.provider.call", attributes={"simcore.provider": "openai"}):
             ...
     """
     tracer = get_tracer()

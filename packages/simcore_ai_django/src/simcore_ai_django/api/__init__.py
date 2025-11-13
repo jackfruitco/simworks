@@ -3,12 +3,7 @@
 
 from __future__ import annotations
 
-from simcore_ai.registry.singletons import (
-    services as services,
-    codecs as codecs,
-    schemas as schemas,
-    prompt_sections as prompt_sections,
-)
+from .registry import *
 from .client import *
 from .decorators import *
 from .identity import *
@@ -18,7 +13,7 @@ from .types import *
 
 __all__ = [
     # registry
-    "services", "codecs", "schemas", "prompt_sections",
+    "services", "codecs", "schemas", "prompt_sections", "BaseRegistry", "get_registry_for",
 
     # decorators
     "ai_prompt_section", "ai_codec", "ai_service", "ai_schema",  # "prompt_scenario",

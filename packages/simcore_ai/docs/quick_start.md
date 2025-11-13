@@ -122,7 +122,7 @@ class SummaryCodec(BaseCodec):
     name = "summary"
     origin = "guides"
     bucket = "quickstart"
-    schema_cls = SummaryResponse
+    output_schema_cls = SummaryResponse
 
 
 summary_codec = SummaryCodec()

@@ -129,8 +129,8 @@ def promote_request_for_service(
             "svc.promote_request_for_service",
             attributes={
                 "svc.class": service.__class__.__name__,
-                "ai.identity.service": _svc_identity_str(service),
-                "ai.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
+                "simcore.identity.service": _svc_identity_str(service),
+                "simcore.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
                 "svc.provider": prov,
                 "svc.client": cli,
                 "req.correlation_id": getattr(req, "correlation_id", None),
@@ -183,8 +183,8 @@ def promote_response_for_service(
             "svc.promote_response_for_service",
             attributes={
                 "svc.class": service.__class__.__name__,
-                "ai.identity.service": _svc_identity_str(service),
-                "ai.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
+                "simcore.identity.service": _svc_identity_str(service),
+                "simcore.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
                 "svc.provider": prov,
                 "svc.client": cli,
                 "resp.correlation_id": getattr(resp, "correlation_id", None),

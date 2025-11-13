@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Any, Optional, Type
 
 from simcore_ai.tracing import inject_trace, extract_trace, service_span_sync
-from ..types import BaseExecutionBackend, SupportsServiceInit
+from ..base import BaseExecutionBackend, SupportsServiceInit
 from ..decorators import task_backend
 
 BACKEND_NAME = "django_tasks"

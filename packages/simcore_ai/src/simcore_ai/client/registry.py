@@ -81,13 +81,13 @@ def create_client(
         The newly registered `AIClient`.
     """
     with service_span_sync(
-            "ai.clients.create",
+            "simcore.clients.create",
             attributes={
-                "ai.provider_name": cfg.provider,
-                "ai.model": cfg.model or "<unspecified>",
-                "ai.client_name": name or _default_name_for(cfg),
-                "ai.make_default": bool(make_default),
-                "ai.replace": bool(replace),
+                "simcore.provider_name": cfg.provider,
+                "simcore.model": cfg.model or "<unspecified>",
+                "simcore.client_name": name or _default_name_for(cfg),
+                "simcore.make_default": bool(make_default),
+                "simcore.replace": bool(replace),
             },
     ):
         provider = create_provider(cfg)
@@ -123,11 +123,11 @@ def create_client_from_dict(
         is retained for convenience and test helpers.
     """
     with service_span_sync(
-            "ai.clients.create_from_dict",
+            "simcore.clients.create_from_dict",
             attributes={
-                "ai.client_name": name or "<auto>",
-                "ai.make_default": bool(make_default),
-                "ai.replace": bool(replace),
+                "simcore.client_name": name or "<auto>",
+                "simcore.make_default": bool(make_default),
+                "simcore.replace": bool(replace),
             },
     ):
         cfg = AIProviderConfig(**cfg_dict)  # type: ignore[arg-type]
@@ -173,10 +173,10 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
         provider: The semantic provider name (e.g., "openai" or "openai:prod").
     """
     with service_span_sync(
-            "ai.client.resolve",
+            "simcore.client.resolve",
             attributes={
-                "ai.client_name": name or "",
-                "ai.provider_name": provider or "",
+                "simcore.client_name": name or "",
+                "simcore.provider_name": provider or "",
             },
     ) as span:
         with _lock:
@@ -184,9 +184,9 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
                 try:
                     resolved = _clients[name]
                     try:
-                        span.set_attribute("ai.client.resolved_name", name)
+                        span.set_attribute("simcore.client.resolved_name", name)
                         span.set_attribute(
-                            "ai.provider.resolved",
+                            "simcore.provider.resolved",
                             getattr(resolved.provider, "name", None) or "",
                         )
                     except Exception:
@@ -203,9 +203,9 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
                         # find its registry name (reverse lookup)
                         for k, v in _clients.items():
                             if v is resolved:
-                                span.set_attribute("ai.client.resolved_name", k)
+                                span.set_attribute("simcore.client.resolved_name", k)
                                 break
-                        span.set_attribute("ai.provider.resolved", provider)
+                        span.set_attribute("simcore.provider.resolved", provider)
                     except Exception:
                         pass
                     return resolved
@@ -218,9 +218,9 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
 
             resolved = _get_default_client_locked()
             try:
-                span.set_attribute("ai.client.resolved_name", _default_name or "")
+                span.set_attribute("simcore.client.resolved_name", _default_name or "")
                 span.set_attribute(
-                    "ai.provider.resolved",
+                    "simcore.provider.resolved",
                     getattr(resolved.provider, "name", None) or "",
                 )
             except Exception:
@@ -231,14 +231,14 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> AICli
 def list_clients() -> Dict[str, AIClient]:
     """Return a shallow copy of the registered clients mapping."""
     with _lock:
-        with service_span_sync("ai.clients.list", attributes={"ai.clients.count": len(_clients)}):
+        with service_span_sync("simcore.clients.list", attributes={"simcore.clients.count": len(_clients)}):
             return dict(_clients)
 
 
 def set_default_client(name: str) -> None:
     """Set the default client by registry name."""
     with _lock:
-        with service_span_sync("ai.clients.set_default", attributes={"ai.client_name": name}):
+        with service_span_sync("simcore.clients.set_default", attributes={"simcore.client_name": name}):
             if name not in _clients:
                 raise RegistryLookupError(f"No AI client named '{name}'")
             global _default_name
@@ -248,7 +248,7 @@ def set_default_client(name: str) -> None:
 def clear_clients() -> None:
     """Clear all clients and default — useful in tests."""
     with _lock:
-        with service_span_sync("ai.clients.clear", attributes={"ai.clients.prev_count": len(_clients)}):
+        with service_span_sync("simcore.clients.clear", attributes={"simcore.clients.prev_count": len(_clients)}):
             _clients.clear()
             global _default_name
             _default_name = None

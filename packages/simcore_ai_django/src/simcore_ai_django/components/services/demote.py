@@ -32,7 +32,7 @@ def _identity_str(ns: str | None, kd: str | None, nm: str | None) -> str | None:
     parts = [p.strip() for p in (ns or "", kd or "", nm or "") if p and p.strip()]
     if len(parts) == 3:
         try:
-            ident = Identity.from_parts(namespace=parts[0], kind=parts[1], name=parts[2])
+            ident = Identity.get_for(value=(parts[0], parts[1], parts[2]))
             return ident.as_str
         except Exception:
             # Fall through to best-effort join if validation fails
@@ -43,7 +43,7 @@ def _identity_str(ns: str | None, kd: str | None, nm: str | None) -> str | None:
 def _span_attrs_from_request(dj: DjangoLLMRequest) -> dict[str, Any]:
     ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
     return {
-        "ai.identity": ident or None,
+        "simcore.identity": ident or None,
         "dj.correlation_id": getattr(dj, "correlation_id", None),
         "dj.namespace": getattr(dj, "namespace", None),
         "dj.kind": getattr(dj, "kind", None),
@@ -58,7 +58,7 @@ def _span_attrs_from_request(dj: DjangoLLMRequest) -> dict[str, Any]:
 def _span_attrs_from_response(dj: DjangoLLMResponse) -> dict[str, Any]:
     ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
     return {
-        "ai.identity": ident or None,
+        "simcore.identity": ident or None,
         "dj.correlation_id": getattr(dj, "correlation_id", None),
         "dj.request_correlation_id": getattr(dj, "request_correlation_id", None),
         "dj.namespace": getattr(dj, "namespace", None),

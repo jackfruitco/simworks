@@ -48,11 +48,11 @@ class SimcoreAIDjangoConfig(AppConfig):
 
         from .setup import configure_ai_clients, autodiscover_all
 
-        with service_span_sync("ai.django_app.ready"):
-            with service_span_sync("ai.clients.setup"):
+        with service_span_sync("simcore.django_app.ready"):
+            with service_span_sync("simcore.clients.setup"):
                 configure_ai_clients()
 
-            with service_span_sync("ai.autodiscover"):
+            with service_span_sync("simcore.autodiscover"):
                 autodiscover_all()
 
 

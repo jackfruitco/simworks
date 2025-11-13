@@ -44,6 +44,6 @@ def __getattr__(name: str):
         "PromptRegistry",
         "PromptSection",
     }:
-        from simcore_ai import promptkit as _core_promptkit
+        from simcore_ai.components import promptkit as _core_promptkit
         return getattr(_core_promptkit, name)
     raise AttributeError(name)

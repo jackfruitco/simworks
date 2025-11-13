@@ -18,22 +18,4 @@ class BaseOutputSchema(StrictBaseModel, IdentityMixin):
 
     Async-first registry access with a sync convenience wrapper.
     """
-
-    @classmethod
-    async def aget_registry(cls) -> BaseRegistry:
-        """
-        Async registry accessor for output schemas.
-
-        Returns the shared schema registry for this schema type.
-        """
-        from simcore_ai.registry.singletons import schemas
-        return schemas
-
-    @classmethod
-    def get_registry(cls) -> BaseRegistry:
-        """
-        Sync wrapper for `aget_registry`.
-
-        Use in sync-only contexts (e.g. __init_subclass__, migrations, tests).
-        """
-        return async_to_sync(cls.aget_registry)()
+    pass

@@ -89,11 +89,11 @@ def configure_ai_clients() -> None:
         return
 
     with service_span_sync(
-        "ai.clients.configure",
+        "simcore.clients.configure",
         attributes={
-            "ai.providers.count": len(providers_cfg),
-            "ai.clients.count": len(clients_cfg),
-            "ai.healthcheck_on_start": bool(health_on_start),
+            "simcore.providers.count": len(providers_cfg),
+            "simcore.clients.count": len(clients_cfg),
+            "simcore.healthcheck_on_start": bool(health_on_start),
         },
     ):
         # --- Validate and build provider objects ---------------------------------
@@ -170,7 +170,7 @@ def configure_ai_clients() -> None:
 
         # --- Optional healthcheck -------------------------------------------------
         if health_on_start:
-            with service_span_sync("ai.clients.healthcheck"):
+            with service_span_sync("simcore.clients.healthcheck"):
                 health_results = healthcheck_all_registered()
                 # Summarize counts
                 ok = sum(1 for _, (ok, _) in health_results.items() if ok)
@@ -189,15 +189,15 @@ def autodiscover_all() -> None:
     entrypoints (e.g., Celery workers/beat or management commands) can opt in
     to the same registration flow.
     """
-    with service_span_sync("ai.autodiscover.identity"):
-        autodiscover_modules("ai.identity")
-    with service_span_sync("ai.autodiscover.receivers"):
-        autodiscover_modules("ai.receivers")
-    with service_span_sync("ai.autodiscover.task_backends"):
-        autodiscover_modules("ai.task_backends")
-    with service_span_sync("ai.autodiscover.prompts"):
-        autodiscover_modules("ai.prompts")
-    with service_span_sync("ai.autodiscover.services"):
-        autodiscover_modules("ai.services")
-    with service_span_sync("ai.autodiscover.codecs"):
-        autodiscover_modules("ai.codecs")
+    with service_span_sync("simcore.autodiscover.identity"):
+        autodiscover_modules("simcore.identity")
+    with service_span_sync("simcore.autodiscover.receivers"):
+        autodiscover_modules("simcore.receivers")
+    with service_span_sync("simcore.autodiscover.task_backends"):
+        autodiscover_modules("simcore.task_backends")
+    with service_span_sync("simcore.autodiscover.prompts"):
+        autodiscover_modules("simcore.prompts")
+    with service_span_sync("simcore.autodiscover.services"):
+        autodiscover_modules("simcore.services")
+    with service_span_sync("simcore.autodiscover.codecs"):
+        autodiscover_modules("simcore.codecs")

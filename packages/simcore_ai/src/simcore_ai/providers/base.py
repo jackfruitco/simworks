@@ -34,26 +34,26 @@ class BaseProvider(ABC):
             retry_after_ms: int | None = None,
             detail: str | None = None,
     ) -> None:
-        """Emit a short span when a rate limit is encountered.
+        """Emit a short spaxn when a rate limit is encountered.
 
         Providers may call this directly; the AIClient also tries to call it when
         it detects a 429-like error from the SDK/HTTP layer.
         """
         try:
             attrs = {
-                "ai.provider_name": getattr(self, "name", self.__class__.__name__),
+                "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
                 "http.status_code": status_code if status_code is not None else 429,
             }
             pk = getattr(self, "provider_key", None)
             pl = getattr(self, "provider_label", None)
             if pk is not None:
-                attrs["ai.provider_key"] = pk
+                attrs["simcore.provider_key"] = pk
             if pl is not None:
-                attrs["ai.provider_label"] = pl
+                attrs["simcore.provider_label"] = pl
             if retry_after_ms is not None:
                 attrs["retry_after_ms"] = retry_after_ms
 
-            with service_span_sync("ai.provider.ratelimit", attributes=attrs):
+            with service_span_sync("simcore.provider.ratelimit", attributes=attrs):
                 if detail:
                     logger.debug("%s rate-limited: %s", self.name, detail)
         except Exception:  # pragma: no cover - never break on tracing errors
@@ -159,7 +159,7 @@ class BaseProvider(ABC):
     # Normalization/adaptation (provider-agnostic core + provider hooks)
     # ---------------------------------------------------------------------
     def adapt_response(
-            self, resp: Any, *, schema_cls: type | None = None
+            self, resp: Any, *, output_schema_cls: type | None = None
     ) -> LLMResponse:
         """
         Provider-agnostic response construction pipeline.
@@ -174,14 +174,14 @@ class BaseProvider(ABC):
 
         Args:
             resp: Provider-specific response object
-            schema_cls: Optional Pydantic model class to parse structured text into
+            output_schema_cls: Optional Pydantic model class to parse structured text into
         """
         with service_span_sync(
-                "ai.response.normalize",
+                "simcore.response.normalize",
                 attributes={
-                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                    "ai.provider_key": getattr(self, "provider_key", None),
-                    "ai.provider_label": getattr(self, "provider_label", None),
+                    "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "simcore.provider_key": getattr(self, "provider_key", None),
+                    "simcore.provider_label": getattr(self, "provider_label", None),
                 },
         ) as span:
             messages: list[LLMResponseItem] = []
@@ -194,8 +194,8 @@ class BaseProvider(ABC):
 
             # 2) Optional schema parse (best-effort); does not alter normalized message parts
             parsed = None
-            if schema_cls is not None and text_out:
-                parsed = self._maybe_parse_to_schema(text_out, schema_cls)
+            if output_schema_cls is not None and text_out:
+                parsed = self._maybe_parse_to_schema(text_out, output_schema_cls)
 
             # 3) Provider outputs -> tool results / attachments
             from uuid import uuid4
@@ -234,9 +234,9 @@ class BaseProvider(ABC):
 
             # Attach summary attributes for observability
             try:
-                span.set_attribute("ai.parts.count", len(messages))
-                span.set_attribute("ai.tool_calls.count", len(tool_calls))
-                span.set_attribute("ai.text.present", bool(text_out))
+                span.set_attribute("simcore.parts.count", len(messages))
+                span.set_attribute("simcore.tool_calls.count", len(tool_calls))
+                span.set_attribute("simcore.text.present", bool(text_out))
             except Exception:
                 pass
 
@@ -266,32 +266,32 @@ class BaseProvider(ABC):
         """Compile adapters for the request's response format and attach back to the request.
 
         Flow:
-            - Read `req.response_format_cls`
+            - Read `req.output_schema_cls`
             - Apply provider-specific adapters via the central compiler
-            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `response_format`)
-            - Attach the final result to the `req.response_format` field.
+            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `output_schema`)
+            - Attach the final result to the `req.output_schema` field.
 
         Args:
-            req: LLMRequest with `response_format_cls` set
+            req: LLMRequest with `output_schema_cls` set
 
         Returns:
             None (modifies `req` in-place)
         """
         with service_span_sync(
-                "ai.schema.build_final",
+                "simcore.schema.build_final",
                 attributes={
-                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                    "ai.provider_key": getattr(self, "provider_key", None),
-                    "ai.provider_label": getattr(self, "provider_label", None),
+                    "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "simcore.provider_key": getattr(self, "provider_key", None),
+                    "simcore.provider_label": getattr(self, "provider_label", None),
                 },
         ):
             try:
                 # Compile/adapt into provider-friendly JSON Schema
-                with service_span_sync("ai.schema.adapters",
+                with service_span_sync("simcore.schema.adapters",
                                        attributes={
-                                           "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                                           "ai.provider_key": getattr(self, "provider_key", None),
-                                           "ai.provider_label": getattr(self, "provider_label", None),
+                                           "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
+                                           "simcore.provider_key": getattr(self, "provider_key", None),
+                                           "simcore.provider_label": getattr(self, "provider_label", None),
                                        }):
                     adapted = self._apply_schema_adapters(req)
                 if adapted is None:
@@ -308,7 +308,7 @@ class BaseProvider(ABC):
                 # If provider returns None (no envelope), use adapted schema as-is
                 if wrapped is not None and not isinstance(wrapped, dict):
                     raise ProviderError(f"{self.name}._wrap_schema must return dict|None, got {type(wrapped).__name__}")
-                req.response_format = wrapped or adapted
+                req.output_schema = wrapped or adapted
             except Exception:
                 logger.exception("provider '%s':: build_final_schema failed", getattr(self, "name", self))
 
@@ -318,17 +318,17 @@ class BaseProvider(ABC):
         This is the central point for provider-specific schema adaptation/override.
         """
         # Prefer new field; allow legacy alias for transition
-        source = getattr(req, "response_format_cls", None) or getattr(req, "schema_cls", None)
+        source = getattr(req, "output_schema_cls", None) or getattr(req, "output_schema_cls", None)
         if source is None:
             return None
 
         with service_span_sync(
-                "ai.schema.compile",
+                "simcore.schema.compile",
                 attributes={
-                    "ai.provider_name": getattr(self, "name", self.__class__.__name__),
-                    "ai.provider_key": getattr(self, "provider_key", None),
-                    "ai.provider_label": getattr(self, "provider_label", None),
-                    "ai.output_schema_cls": getattr(source, "__name__", type(source).__name__),
+                    "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
+                    "simcore.provider_key": getattr(self, "provider_key", None),
+                    "simcore.provider_label": getattr(self, "provider_label", None),
+                    "simcore.output_schema_cls": getattr(source, "__name__", type(source).__name__),
                 },
         ):
             # Derive base JSON Schema
@@ -351,8 +351,8 @@ class BaseProvider(ABC):
     def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
         """
         Default no-op wrapper. Providers that support structured output envelopes should override this
-        to return a provider-specific payload (e.g., OpenAI Responses `response_format`). If None is
-        returned, the caller will use `compiled_schema` directly.
+        to return a provider-specific payload (e.g., OpenAI Responses `output_schema`). If None is
+        returned, the caller will use `adapted_schema` directly.
         """
         return None
 
@@ -426,7 +426,7 @@ class BaseProvider(ABC):
         """Best-effort parse of `text` into a Pydantic-style schema class.
 
         Compatible with Pydantic v2 (`model_validate_json` / `model_validate`).
-        Uses attribute checks to avoid static type errors when `schema_cls` is
+        Uses attribute checks to avoid static type errors when `output_schema_cls` is
         not explicitly typed as a Pydantic BaseModel subclass.
         """
         # Try v2 JSON path first if available

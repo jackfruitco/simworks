@@ -50,19 +50,19 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
     if level == "debug":
         return attrs
     base_keys = {
-        "ai.decorator", "ai.class", "ai.identity",
-        "ai.tuple3.post_norm", "ai.identity.name.explicit",
+        "simcore.decorator", "simcore.class", "simcore.identity",
+        "simcore.tuple3.post_norm", "simcore.identity.name.explicit",
         # helpful snapshots when present
-        "ai.tuple3.raw", "ai.tuple3.post_strip",
-        "ai.strip_tokens", "ai.strip_tokens_list",
+        "simcore.tuple3.raw", "simcore.tuple3.post_strip",
+        "simcore.strip_tokens", "simcore.strip_tokens_list",
     }
     if level == "info":
-        return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("ai.")}
+        return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("simcore.")}
     minimal_keys = {
-        "ai.decorator", "ai.class", "ai.identity",
-        "ai.tuple3.post_norm", "ai.identity.name.explicit",
+        "simcore.decorator", "simcore.class", "simcore.identity",
+        "simcore.tuple3.post_norm", "simcore.identity.name.explicit",
     }
-    return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("ai.")}
+    return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("simcore.")}
 
 
 class BaseDecorator:
@@ -141,19 +141,19 @@ class BaseDecorator:
             # 5) Emit a single trace span *after* successful registration with rich attributes
             final_label = identity.as_str
             span_attrs_raw = {
-                "ai.decorator": self.__class__.__name__,
-                "ai.class": fqcn,
-                "ai.identity": final_label,
+                "simcore.decorator": self.__class__.__name__,
+                "simcore.class": fqcn,
+                "simcore.identity": final_label,
                 # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple3.*)
                 **({} if not isinstance(meta, dict) else meta),
                 # Echo explicit args if provided (drop Nones below)
-                "ai.namespace_arg": namespace,
-                "ai.kind_arg": kind,
-                "ai.name_arg": name,
+                "simcore.namespace_arg": namespace,
+                "simcore.kind_arg": kind,
+                "simcore.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
             span_attrs = _filter_trace_attrs(span_attrs)
-            with service_span_sync(f"ai.decorator.apply ({final_label})", attributes=span_attrs):
+            with service_span_sync(f"simcore.decorator.apply ({final_label})", attributes=span_attrs):
                 msg = f"✅ registered `{fqcn}` (ident: `{identity.as_str}`)"
                 if logger.isEnabledFor(logging.DEBUG):
                     msg += f"\n\tattributes: {span_attrs!r}"

@@ -98,15 +98,15 @@ class ServiceExecutionMixin:
 
         attrs = {
             "service_cls": getattr(cls, "__name__", str(cls)),
-            "ai.identity.service": _identity,
-            "ai.identity.codec": ctx.get("codec"),
+            "simcore.identity.service": _identity,
+            "simcore.identity.codec": ctx.get("codec"),
             "req.correlation_id": ctx.get("correlation_id")
                                   or ctx.get("req_correlation_id")
                                   or ctx.get("request_correlation_id"),
             **flatten_context(ctx),
         }
         if _identity_tuple3:
-            attrs["ai.identity.service.tuple3"] = _identity_tuple3
+            attrs["simcore.identity.service.tuple3"] = _identity_tuple3
         attrs = {k: v for k, v in attrs.items() if v is not None}
 
         with service_span_sync(

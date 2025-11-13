@@ -52,8 +52,8 @@ class MyService(DjangoBaseService):
     "name": "name",
     "codec": "namespace.kind.codec_name",
     "messages": [ { "role": "developer", "content": [...] }, ... ],
-    "response_format": {...} | None,
-    "response_format_cls": "Qualified.Class.Name" | None,
+    "output_schema": {...} | None,
+    "output_schema_cls": "Qualified.Class.Name" | None,
     "meta": {...}
   }
 }

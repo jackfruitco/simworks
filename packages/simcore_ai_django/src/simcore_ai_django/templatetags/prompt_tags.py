@@ -1,5 +1,6 @@
 # simcore_ai_django/templatetags/prompt_tags.py
 """
+TODO: needs lots of updating
 Template tag for rendering registered prompts via the core PromptRegistry.
 
 Usage examples:
@@ -27,11 +28,7 @@ from django.utils.safestring import mark_safe
 register = template.Library()
 
 # Optional integration hooks
-# TODO: PromptRegistry
-try:
-    from simcore_ai.promptkit import PromptRegistry  # type: ignore
-except Exception:
-    PromptRegistry = None  # type: ignore
+from simcore_ai.registry import prompt_sections
 
 try:
     # Prefer the Django renderer if available
@@ -78,9 +75,9 @@ def render_prompt_tag(
 
     text = None
 
-    if PromptRegistry is not None:
+    if prompt_sections is not None:
         try:
-            prompt_obj = PromptRegistry.get(key)
+            prompt_obj = prompt_sections.get(key)
             if prompt_obj is not None:
                 # Priority: explicit text first
                 if getattr(prompt_obj, "text", None):

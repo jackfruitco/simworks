@@ -1,6 +1,8 @@
 # simcore_ai_django/execution/entrypoint.py
 from __future__ import annotations
 
+import warnings
+
 """
 Single public entrypoint for executing services (sync or async) with optional per-call overrides.
 
@@ -42,14 +44,14 @@ calls, audits, and codec handling.
 __all__ = ["execute", "_ExecutionCall"]
 
 from collections.abc import Mapping
-from typing import Any, Optional, Dict, Union, TYPE_CHECKING, cast
+from typing import Any, Optional, Dict, Union, TYPE_CHECKING
 from datetime import datetime, timezone
 import logging
 
 from simcore_ai.tracing import service_span_sync
 
 # Backend types / ABC
-from .types import BaseExecutionBackend, SupportsServiceInit
+from .base import BaseExecutionBackend
 
 from .helpers import (
     settings_default_backend,
@@ -260,7 +262,8 @@ def _enqueue(
                 except Exception:
                     pass
             priority = None
-        return backend.enqueue(service_cls=service_cls, kwargs=ctx, delay_s=delay_s, queue=queue)  # type: ignore[arg-type]  # PyCharm protocol quirk
+        return backend.enqueue(service_cls=service_cls, kwargs=ctx, delay_s=delay_s,
+                               queue=queue)  # type: ignore[arg-type]  # PyCharm protocol quirk
 
 
 from typing import overload, Literal
@@ -400,13 +403,17 @@ def execute(
 # -------------------- Service mixin & builder --------------------
 
 class _ExecutionCall:
-    """Lightweight builder for per-call overrides; non-autostart.
+    """
+    Lightweight builder for per-call overrides; non-autostart.
 
-    Provides a small fluent API mirroring the service mixin:
-      - `.using(**overrides)` to stage backend/mode knobs (e.g., backend, run_after, priority),
-      - `.execute(**ctx)` to force sync now,
-      - `.enqueue(**ctx)` to force async,
-      - `.run(**ctx)` to defer the decision to resolution rules.
+    Created via `MyService.using(...)` on the service class. The resulting
+    builder also supports `.using(...)` to further adjust backend/mode knobs
+    (backend, queue_name, run_after, priority, enqueue) before dispatch.
+
+    Provides a small fluent API:
+      - `MyService.using(...).execute(**ctx)`  -> force sync now
+      - `MyService.using(...).enqueue(**ctx)`  -> force async
+      - `MyService.using(...).dispatch(**ctx)` -> let resolution rules pick sync/async
 
     This builder does not instantiate the service or perform identity/codec work.
     """
@@ -437,9 +444,14 @@ class _ExecutionCall:
         ov["enqueue"] = True
         return execute(self._service_cls, using=ov, **ctx)  # type: ignore[return-value]
 
-    def run(self, **ctx: Any) -> Any | str:
+    def dispatch(self, **ctx: Any) -> Any | str:
         """Resolve mode from overrides/service/settings and execute.
 
         Transport-only: no identity/request/codec logic here.
         """
         return execute(self._service_cls, using=self._overrides, **ctx)
+
+    def run(self, **ctx: Any) -> Any | str:
+        """Deprecated alias for `dispatch(**ctx)`; prefer `.dispatch(**ctx)`."""
+        warnings.warn("service.run() is deprecated; use .dispatch() instead", DeprecationWarning)
+        return self.dispatch(**ctx)

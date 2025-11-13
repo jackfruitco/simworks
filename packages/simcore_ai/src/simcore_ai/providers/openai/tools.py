@@ -24,12 +24,12 @@ class OpenAIToolAdapter(BaseProvider.ToolAdapter):
         """
         ctx = getattr(tool, "context", {}) or {}
         with service_span_sync(
-                "ai.tools.adapt",
+                "simcore.tools.adapt",
                 attributes={
-                    "ai.provider_name": self.provider,
-                    "ai.tool": tool.name,
-                    "ai.tool.has_params": bool(getattr(tool, "input_schema", None)),
-                    "ai.tool.strict": bool(getattr(tool, "strict", False)),
+                    "simcore.provider_name": self.provider,
+                    "simcore.tool": tool.name,
+                    "simcore.tool.has_params": bool(getattr(tool, "input_schema", None)),
+                    "simcore.tool.strict": bool(getattr(tool, "strict", False)),
                     **_flatten_context(ctx),
                 },
         ):
@@ -57,8 +57,8 @@ class OpenAIToolAdapter(BaseProvider.ToolAdapter):
         """
         from ...types.tools import BaseLLMTool  # local import to avoid cycles
         with service_span_sync(
-                "ai.tools.reverse_adapt",
-                attributes={"ai.provider_name": self.provider},
+                "simcore.tools.reverse_adapt",
+                attributes={"simcore.provider_name": self.provider},
         ):
             if isinstance(raw, dict):
                 t = raw.get("type")

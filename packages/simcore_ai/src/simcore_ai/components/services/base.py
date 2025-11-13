@@ -5,8 +5,7 @@ Identity
 --------
 • Identity is a class-level concept provided by `IdentityMixin`.
   Each concrete service class has a stable `identity: Identity`.
-• Instances read `self.identity`, which mirrors the class identity unless overridden
-  via `_identity_override` by higher-level builder APIs.
+• Instances read `self.identity`, which mirrors the class identity.
 • Class attributes `namespace`, `kind`, and `name` are treated as hints passed to the resolver.
 • Prefer `self.identity.as_str` ("namespace.kind.name") or `self.identity.as_tuple3` anywhere a
   label/tuple is needed. Avoid carrying separate string copies.
@@ -25,9 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC
-from dataclasses import dataclass, field
-from typing import Any, ClassVar, Union
-from typing import Optional, Protocol
+from typing import Any, ClassVar, Union, Optional, Protocol
 
 from asgiref.sync import async_to_sync
 
@@ -39,9 +36,10 @@ from simcore_ai.identity import Identity, IdentityLike, IdentityMixin
 from simcore_ai.tracing import get_tracer, service_span
 from simcore_ai.types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
+from ..mixins import LifecyleMixin
 
 logger = logging.getLogger(__name__)
-tracer = get_tracer("simcore_ai.llmservice")
+tracer = get_tracer("simcore_ai.service")
 
 
 class ServiceEmitter(Protocol):
@@ -59,48 +57,106 @@ class ServiceEmitter(Protocol):
 CodecLike = Union[type[BaseCodec], BaseCodec, IdentityLike]
 
 
-@dataclass
-class BaseService(IdentityMixin, BaseComponent, ABC):
+class BaseService(IdentityMixin, LifecyleMixin, BaseComponent, ABC):
     """
     Abstract base for LLM-backed AI services.
 
-    • Identity is exposed as `self.identity: Identity`, resolved once in `__post_init__` using
-      `identity_resolver`. Class attributes `namespace/kind/name` serve only as resolver hints.
-    • The canonical string form is `self.identity.as_str` ("namespace.kind.name").
-    • Older patterns that rebuilt identity strings or stored separate `identity_str` values are removed.
+    • Identity is exposed as `self.identity: Identity`, resolved by `IdentityMixin`.
+    • Class attributes (namespace/kind/name) are resolver hints only.
+    • Concrete services should rely on `self.identity.as_str` etc. instead of duplicating labels.
+    Codec precedence
+    ----------------
+    1) Per-call override provided at init (`codec=...`)
+    2) Explicit codec class (`codec_cls` arg) or class-level default (`BaseService.codec_cls`)
+    3) Registry by service identity
     """
     abstract: ClassVar[bool] = True
 
-    # Optional per-instance identity override (used by builder-style APIs like using(...)).
-    _identity_override: Identity | None = field(default=None, init=False, repr=False)
+    # Class-level configuration / hints
+    required_context_keys: ClassVar[tuple[str, ...]] = ()
+    codec_cls: ClassVar[type[BaseCodec] | None] = None
+    prompt_plan: ClassVar[PromptPlan | list[PromptSectionSpec] | list[str] | None] = None
+    prompt_engine: ClassVar[PromptEngine | None] = None
+    provider_name: ClassVar[str | None] = None
 
-    # Arbitrary metadata preserved end-to-end (e.g., user_msg, source_view, etc.)
-    # Services may declare required keys that must be present in `context`.
-    required_context_keys: tuple[str, ...] = ()
-    context: dict = field(default_factory=dict)
-
-    # --- Codec pairing (explicit override) ---
-    # May be set per-instance to override default resolution.
-    _codec_override: type[BaseCodec] | None = None
-
-    provider_name: str | None = None
-
-    # Retry/backoff config
+    # Retry/backoff defaults (may be overridden per-instance if needed)
     max_attempts: int = 3
     backoff_initial: float = 0.5  # seconds
     backoff_factor: float = 2.0
     backoff_jitter: float = 0.1  # +/- seconds
 
-    _prompt_plan: PromptPlan | None = None  # setter allows input as PromptPlan or list[PromptSections]
-    _prompt_cache: Prompt | None = None  # only caches if all prompt sections have `is_dynamic=False`
+    def __init__(
+            self,
+            *,
+            context: Optional[dict[str, Any]] = None,
+            codec: CodecLike | None = None,
+            codec_cls: CodecLike | None = None,
+            prompt_plan: PromptPlan | list[PromptSectionSpec | str] | IdentityLike | None = None,
+            client: AIClient | None = None,
+            emitter: ServiceEmitter | None = None,
+            prompt_engine: PromptEngine | None = None,
+            prompt_instruction_override: str | None = None,
+            prompt_message_override: str | None = None,
+            **kwargs: Any,
+    ) -> None:
+        """
+        BaseService constructor.
 
-    # Prompt overrides
-    prompt_engine: PromptEngine | None = None  # override PromptEngine for this service
-    prompt_instruction_override: str | None = None  # override full prompt instruction
-    prompt_message_override: str | None = None  # override prompt user message
+        Notes
+        -----
+        - `context` is stored as a shallow dict copy.
+        - `codec` / `codec_cls` / `prompt_plan` may be provided as flexible specs and are normalized.
+        - Class-level `codec_cls` / `prompt_plan` / `prompt_engine` act as defaults.
+        """
+        super().__init__(**kwargs)
 
-    client: Optional[AIClient] = None
-    emitter: ServiceEmitter | None = None
+        # Context
+        if context is None:
+            self.context: dict[str, Any] = {}
+        elif isinstance(context, dict):
+            self.context = dict(context)
+        else:
+            try:
+                self.context = dict(context)  # type: ignore[arg-type]
+            except Exception:
+                logger.warning(
+                    "Invalid context for %s; expected mapping-like, got %r",
+                    self.__class__.__name__,
+                    type(context),
+                )
+                self.context = {}
+
+        # Client / emitter
+        self.client: AIClient | None = client
+        self.emitter: ServiceEmitter | None = emitter
+
+        # Prompt configuration / overrides
+        self._prompt_engine: PromptEngine | None = prompt_engine or type(self).prompt_engine
+        self.prompt_instruction_override: str | None = prompt_instruction_override
+        self.prompt_message_override: str | None = prompt_message_override
+
+        # Codec override (per-instance) and codec class
+        self._codec_override: type[BaseCodec] | None = None
+        if codec is not None:
+            self._codec_override = self._coerce_codec_override(codec)
+
+        # Resolve codec class from arg or class default; store per-instance override
+        self._codec_cls: type[BaseCodec] | None = None
+        base_codec_spec = codec_cls if codec_cls is not None else type(self).codec_cls
+        if base_codec_spec is not None:
+            self._codec_cls = self._coerce_codec_cls(base_codec_spec)
+
+        # Prompt plan instance (from arg or class-level default)
+        self._prompt_plan: PromptPlan | None = None
+        plan_spec = prompt_plan if prompt_plan is not None else type(self).prompt_plan
+        if plan_spec is not None:
+            self._prompt_plan = self._coerce_prompt_plan_spec(plan_spec)
+
+        # Cached prompt (only used when all sections are non-dynamic)
+        self._prompt_cache: Prompt | None = None
+
+        # Validate required context keys
+        self.check_required_context()
 
     @property
     def slug(self) -> str:
@@ -108,92 +164,8 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
         return self.identity.as_str
 
     @property
-    def codec(self) -> type[BaseCodec]:
-        """
-        Effective codec for this service.
-
-        Resolution order:
-          1) Per-instance override set via `service.codec = ...`.
-          2) Default resolution via `resolve_codec()` / `aresolve_codec()`.
-
-        Always returns a `BaseCodec` subclass or raises ServiceCodecResolutionError.
-        """
-        if self._codec_override is not None:
-            return self._codec_override
-        return self.resolve_codec()
-
-    @codec.setter
-    def codec(self, value: CodecLike | None) -> None:
-        """
-        Configure an explicit codec override for this service instance.
-
-        Accepts:
-          - BaseCodec subclass
-          - BaseCodec instance
-          - Identity-like (resolved once to a BaseCodec subclass)
-          - None (to clear the override)
-        """
-        if value is None:
-            self._codec_override = None
-            return
-
-        try:
-            if isinstance(value, type) and issubclass(value, BaseCodec):
-                self._codec_override = value
-                return
-
-            if isinstance(value, BaseCodec):
-                self._codec_override = type(value)
-                return
-
-            # Treat as identity-like
-            resolved = Identity.resolve.for_(BaseCodec, value)
-            if resolved is None:
-                raise ServiceCodecResolutionError(
-                    f"Could not resolve codec from {value!r}"
-                )
-            self._codec_override = resolved
-        except Exception as err:
-            raise ServiceCodecResolutionError(
-                f"Invalid codec assignment for {self.__class__.__name__}"
-            ) from err
-
-    @property
-    def prompt_plan(self) -> PromptPlan | None:
-        """Get PromptPlan."""
-        return self._prompt_plan
-
-    @prompt_plan.setter
-    def prompt_plan(self, plan_: Any) -> None:
-        """Set prompt plan for Service. Accepts any PromptPlan-like value.
-
-        Accepts:
-          - None: clears the plan
-          - PromptPlan: stored as-is
-          - iterable of PromptSectionSpec / section identifiers: coerced via PromptPlan.from_sections
-        """
-        # Clear Plan
-        if plan_ is None:
-            self._prompt_plan = None
-            self._prompt_cache = None
-            return
-
-        # Set attr if provided as PromptPlan already
-        if isinstance(plan_, PromptPlan):
-            self._prompt_plan = plan_
-            if hasattr(self, "prompt"):
-                setattr(self, "prompt", None)
-            return
-
-        # Coerce from raw sections / specs, then set attr
-        try:
-            built_ = PromptPlan.from_sections(plan_)  # type: ignore[arg-type]
-        except Exception as e:
-            raise ServiceBuildRequestError(f"Invalid prompt plan: {e}") from e
-
-        self._prompt_plan = built_
-        if hasattr(self, "prompt"):
-            setattr(self, "prompt", None)
+    def codec(self) -> BaseCodec:
+        raise RuntimeError("Codec property is not available; codecs are instantiated per-call.")
 
     @property
     def prompt(self) -> Prompt:
@@ -212,33 +184,22 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
 
     @property
     def has_dynamic_prompt(self) -> bool:
-        """If prompt plan includes dynamic sections."""
+        """True if any section in the active plan is dynamic."""
         plan = self._prompt_plan
         if not plan:
-            return True  # no plan configured; treat as dynamic / non-cacheable
+            # No explicit plan -> treat as dynamic / non-cacheable
+            return True
         sections = getattr(plan, "items", None) or getattr(plan, "sections", None) or ()
         return any(getattr(section, "is_dynamic", False) for section in sections)
 
-    def __post_init__(self) -> None:
-        """
-        Post-init normalization.
-
-        Identity is class-level via `IdentityMixin`; this method only normalizes
-        context and enforces required context keys.
-        """
-        if not isinstance(self.context, dict):
-            try:
-                self.context = dict(self.context)  # type: ignore[arg-type]
-            except Exception:
-                self.context = {}
-        self.check_required_context()
-
+    # ----------------------------------------------------------------------
+    # Context validation
+    # ----------------------------------------------------------------------
     def check_required_context(self) -> None:
         """Validate that required context keys are present.
 
-        Subclasses may override `required_context_keys` or this method entirely
-        to enforce richer validation rules. By default, it ensures each key in
-        `required_context_keys` is present and not `None` in `self.context`.
+        This enforces that each key listed in `required_context_keys` exists in `self.context`
+        and is not None. Subclasses may override to implement stricter validation.
         """
         required = getattr(self, "required_context_keys", ()) or ()
         if not required:
@@ -252,9 +213,84 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
                 f"Missing required context keys: {', '.join(missing)}",
             )
 
-    # Backwards-compat alias
-    def check_required_overrides(self) -> None:  # pragma: no cover
+    # ----------------------------------------------------------------------
+    # Internal coercion helpers
+    # ----------------------------------------------------------------------
+    def _coerce_codec_cls(self, value: CodecLike) -> type[BaseCodec]:
+        """
+        Normalize a CodecLike into a BaseCodec subclass.
+
+        Accepts:
+          - BaseCodec subclass -> returned as-is
+          - BaseCodec instance -> its type
+          - IdentityLike / str -> resolved via Identity
+        """
+        if isinstance(value, type) and issubclass(value, BaseCodec):
+            return value
+        if isinstance(value, BaseCodec):
+            return type(value)
+
+        resolved = Identity.resolve.try_for_(BaseCodec, value)
+        if resolved is None:
+            raise ServiceCodecResolutionError(ident=value, codec=None, service=self.__class__.__name__)
+        return resolved
+
+    def _coerce_codec_override(self, value: CodecLike) -> type[BaseCodec]:
+        """
+        Normalize a CodecLike into a BaseCodec subclass for use as `_codec_override`.
+        """
+        return self._coerce_codec_cls(value)
+
+    def _coerce_prompt_plan_spec(
+            self,
+            spec: PromptPlan | list[PromptSectionSpec | str] | IdentityLike,
+    ) -> PromptPlan:
+        """
+        Normalize various prompt plan specs into a PromptPlan instance.
+
+        Accepts:
+          - PromptPlan -> returned as-is
+          - list/tuple of PromptSectionSpec|str -> resolved via PromptPlan.from_any(...)
+          - IdentityLike -> resolved via Identity into PromptPlan or PromptSection, then wrapped
+        """
+        if isinstance(spec, PromptPlan):
+            return spec
+
+        if isinstance(spec, (list, tuple)):
+            return PromptPlan.from_any(spec)
+
+        # Treat anything else as identity-like
+        resolved = Identity.resolve.try_for_("PromptPlan", spec)
+        if resolved is None:
+            raise ServiceBuildRequestError(
+                f"Invalid prompt_plan spec for {self.__class__.__name__}: {spec!r}"
+            )
+
+        if isinstance(resolved, PromptPlan):
+            return resolved
+
+        # If resolution returns a PromptSection or similar, wrap it
+        return PromptPlan.from_sections([resolved])
+
+    # ----------------------------------------------------------------------
+    # LifecyleMixin lifecycle integration
+    # ----------------------------------------------------------------------
+    def setup(self, **ctx):
+        """Merge incoming context into `self.context` and validate required keys."""
+        incoming = ctx.get("context") if "context" in ctx else ctx
+        if isinstance(incoming, dict) and incoming:
+            # Shallow merge; explicit values win
+            self.context.update(incoming)
         self.check_required_context()
+        return self
+
+    def teardown(self, **ctx):
+        """Teardown hook (no-op by default)."""
+        return self
+
+    async def afinalize(self, result, **ctx):
+        """Post-processing hook (passthrough by default)."""
+        return result
 
     async def _backoff_sleep(self, attempt: int) -> None:
         """
@@ -274,19 +310,16 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
         await asyncio.sleep(delay)
 
     def flatten_context(self) -> dict:
-        """Flatten `self.context` into trace-friendly attrs as `context.<key>`.
-
-        Uses tracing.flatten_context() to flatten the context dict.
-        """
+        """Flatten `self.context` to `context.*` keys for tracing/logging."""
         from simcore_ai.tracing import flatten_context as flatten_context_
         return flatten_context_(self.context)
 
     # ----------------------------------------------------------------------
     # Prompt resolution (async-first)
     # ----------------------------------------------------------------------
-    def _get_registry_section_or_none(self) -> PromptSectionSpec | None:
+    def _try_get_matching_prompt_section(self) -> PromptSectionSpec | None:
         """
-        Return a `PromptSection` class from the registry using `self.identity`, or None if not found.
+        Return the PromptSection class with matching Identity for this service, or None if not found.
         Pure lookup; no exceptions.
         """
         try:
@@ -306,7 +339,7 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
 
         Respects `has_dynamic_prompt`:
           - If no dynamic sections and a cached Prompt exists, returns it.
-          - Otherwise builds a fresh Prompt via `_get_prompt()` and caches it
+          - Otherwise builds a fresh Prompt via `_aget_prompt()` and caches it
             when safe.
         """
         # If we have a cached prompt and it's safe to reuse, return it
@@ -326,7 +359,7 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
         Build a Prompt using the configured PromptEngine.
 
         This is a pure builder: it does not read or write the prompt cache.
-        Use `get_prompt()` / `prompt` for cache-aware access.
+        Use `aget_prompt()` / `prompt` for cache-aware access.
         """
         async with service_span(
                 f"LLMService.{self.__class__.__name__}._build_prompt",
@@ -344,7 +377,7 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
 
             # 3) Fallback: single section matching identity
             if not plan:
-                section_cls = self._get_registry_section_or_none()
+                section_cls = self._try_get_matching_prompt_section()
                 if section_cls is None:
                     ident_str = self.identity.as_str
                     raise ServiceBuildRequestError(
@@ -360,7 +393,11 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
                 getattr(plan, "describe", lambda: plan)(),
             )
 
-            engine = self.prompt_engine or PromptEngine
+            engine = (
+                    self._prompt_engine
+                    or type(self).prompt_engine
+                    or PromptEngine
+            )
             ctx = {"context": self.context, "service": self}
 
             abuild = getattr(engine, "abuild_from", None)
@@ -396,51 +433,121 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Codec resolution (async-first)
     # ----------------------------------------------------------------------
-    async def aresolve_codec(self) -> type[BaseCodec]:
+    async def aresolve_codec(self) -> tuple[type[BaseCodec], str]:
         """
-        Async-first codec resolver used behind `codec`.
+        Async-first codec resolver used by `resolve_codec()`.
 
-        Order:
-          1) Per-instance override (`_codec_override`) if set.
-          2) Registry by `self.identity`.
-          3) Registry by ("default", kind, name).
+        Precedence:
+          1) Per-call override (`codec=` at init) via `_codec_override`
+          2) Explicit codec class (`codec_cls` arg) or class-level default (`codec_cls` on the class)
+          3) Registry by this service's identity
 
-        Always returns a `BaseCodec` subclass.
+        Always returns a tuple with `BaseCodec` subclass on success and its identity label.
 
         Raises:
           ServiceCodecResolutionError if no codec can be resolved.
         """
+        # 1) Explicit per-call override
         if self._codec_override is not None:
-            return self._codec_override
+            return self._codec_override, self._codec_override.identity.label
 
+        # 2) Explicit codec_cls for this instance, then class-level default
+        if self._codec_cls is not None:
+            return self._codec_cls, self._codec_cls.identity.label
+        if type(self).codec_cls is not None:
+            return type(self).codec_cls, type(self).codec_cls.identity.label
+
+        # 3) Registry by service identity only
         ident = self.identity
-        candidates: tuple[IdentityLike, ...] = (
-            ident,
-            Identity(namespace="default", kind=ident.kind, name=ident.name),
-        )
+        codec_cls = Identity.resolve.try_for_(BaseCodec, ident)
+        if codec_cls is not None:
+            return codec_cls, codec_cls.identity.label
 
-        for candidate in candidates:
-            codec_cls = Identity.resolve.try_for_(BaseCodec, candidate)
-            if codec_cls is not None:
-                return codec_cls
-
+        # Nothing matched
         raise ServiceCodecResolutionError(
-            namespace=ident.namespace,
-            kind=ident.kind,
-            name=ident.name,
-            codec=None,
-            service=self.__class__.__name__,
+            ident=ident, codec=None, service=self.__class__.__name__
         )
 
-    def resolve_codec(self) -> type[BaseCodec]:
+    def resolve_codec(self) -> tuple[type[BaseCodec], str]:
         """Sync wrapper around aresolve_codec()."""
         return async_to_sync(self.aresolve_codec)()
 
+    # ------------------------------------------------------------------------
+    # Service run helpers
+    # ------------------------------------------------------------------------
+    async def _aprepare_request(
+            self, *, stream: bool, **ctx: Any
+    ) -> LLMRequest:
+        """
+        Internal helper to build a base LLMRequest and stamp the stream flag.
 
-    # --- Identity helpers -------------------------------------------------
+        Delegates to `abuild_request(**ctx)` and sets `req.stream` accordingly.
+        """
+        req = await self.abuild_request(**ctx)
+        req.stream = stream
+        return req
+
+    async def _aprepare_codec(self) -> tuple[BaseCodec | None, str | None]:
+        """
+        Internal helper to resolve and instantiate a codec for this service call.
+
+        Returns:
+            (codec_instance_or_None, codec_label_or_None)
+        """
+        codec_cls, codec_label = await self.aresolve_codec()
+
+        codec: BaseCodec | None
+        try:
+            codec = codec_cls(service=self)  # type: ignore[call-arg]
+        except TypeError:
+            codec = codec_cls()  # type: ignore[call-arg]
+
+        return codec, codec_label
+
+    async def aprepare(self, *, stream: bool, **ctx: Any) -> tuple[LLMRequest, BaseCodec | None, dict[str, Any]]:
+        """
+        Prepare a request + codec instance + tracing attrs for a single service call.
+
+        Responsibilities:
+          - Build the LLMRequest using the current prompt plan and context.
+          - Set the `stream` flag on the request.
+          - Resolve and instantiate a codec instance (if available).
+          - Attach codec identity to the request when available.
+          - Build a shared `attrs` dict for logging/tracing.
+
+        Returns:
+            (request, codec_instance_or_None, attrs_dict)
+        """
+        ident: Identity = self.identity
+
+        # Resolve codec and instantiate per-call instance
+        codec, codec_label = await self._aprepare_codec()
+
+        # Base attributes for logging/tracing
+        attrs: dict[str, Any] = {
+            "identity": ident.label,
+            "codec": codec_label or "<unknown>",
+        }
+        attrs.update(self.flatten_context())
+
+        # Build request and stamp stream flag
+        req = await self._aprepare_request(stream=stream, **ctx)
+
+        # Attach codec identity to the request when available; schema hints are handled by the codec.
+        if codec_label:
+            try:
+                req.codec_identity = codec_label  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+        return req, codec, attrs
+
+    # ----------------------------------------------------------------------
+    # Request construction
+    # ----------------------------------------------------------------------
     async def abuild_request(self, **ctx) -> LLMRequest:
         """
-        Build a provider-agnostic `LLMRequest` for this service from the engine-produced `Prompt`.
+        Build a provider-agnostic `LLMRequest` for this service from the resolved `Prompt`.
 
         Default implementation uses the PromptEngine output to create messages and
         stamps identity and codec routing. Subclasses may override hooks instead of
@@ -476,27 +583,7 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
             # attach context for downstream tracing/providers
             req.context = dict(self.context)
 
-            # 4) Resolve codec and attach response format and codec identity
-            codec = self.resolve_codec()
-            req.codec_identity = codec.identity.as_str
-
-            # Provider-agnostic response format class
-            schema_cls = (
-                    getattr(codec, "response_format_cls", None)
-                    or getattr(codec, "schema_cls", None)
-                    or getattr(codec, "output_model", None)
-            )
-            if schema_cls is not None:
-                req.response_format_cls = schema_cls
-            if hasattr(codec, "get_response_format"):
-                try:
-                    rf = codec.get_response_format()
-                    if rf is not None:
-                        req.response_format = rf
-                except Exception:
-                    pass
-
-            # 5) Final customization hook
+            # 4) Final customization hook (codec/schema are handled later in `arun` via the codec)
             req = await self._afinalize_request(req, **ctx)
             return req
 
@@ -556,6 +643,9 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
         """Final request customization hook (no-op by default)."""
         return req
 
+    # ----------------------------------------------------------------------
+    # Client resolution
+    # ----------------------------------------------------------------------
     def get_client(self) -> AIClient:
         """
         Public accessor for the provider client.
@@ -618,109 +708,160 @@ class BaseService(IdentityMixin, BaseComponent, ABC):
                 "or configure providers in your runtime."
             ) from e
 
-    async def run(self) -> LLMResponse | None:
+    # ----------------------------------------------------------------------
+    # Execution
+    # ----------------------------------------------------------------------
+    async def arun(self, **ctx) -> LLMResponse | None:
         """
-        Execute the service (non-streaming) and emit request/response events via the configured emitter.
-        Uses only `self.context` for domain data; identity is read from `self.identity`.
+        Core async execution path for this service.
+
+        Builds the request, lets the codec prepare/encode, sends via the resolved client,
+        lets the codec decode the response, emits events, and returns the final `LLMResponse`.
+        A fresh codec instance is created per call and torn down in a finally block.
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
-        ident = self.identity
-        identity_label = f"{ident.namespace}.{ident.kind}.{ident.name}"
-        try:
-            codec_label = Identity.get_for(self.codec).as_str if self.codec is not None else Identity.get_for(
-                self.resolve_codec()).as_str
-        except Exception:
-            codec_label = "unknown"
-        attrs = {
-            "identity": identity_label,
-            "codec": codec_label,
-        }
-        # include a shallow context snapshot for tracing
-        attrs.update(self.flatten_context())
 
-        logger.info("llm.service.start", extra=attrs)
-        async with service_span(f"LLMService.{self.__class__.__name__}.run", **attrs):
-            req = await self.abuild_request()
-            req.stream = False
+        ident: Identity = self.identity
 
-            client = self.get_client()
-            self.emitter.emit_request(self.context, self.identity.as_str, req)
+        # Prepare request + codec instance + attrs for this call
+        req, codec, attrs = await self.aprepare(stream=False, **ctx)
 
-            attempt = 1
-            while attempt <= max(1, self.max_attempts):
-                try:
-                    resp: LLMResponse = await client.send_request(req)
-                    if getattr(resp, "codec", None) is None:
-                        resp.codec = req.codec_identity
-                    resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
-                    if getattr(resp, "request_correlation_id", None) is None:
-                        resp.request_correlation_id = req.correlation_id
-                    self.emitter.emit_response(self.context, self.identity.as_str, resp)
-                    await self.on_success(self.context, resp)  # pass context to app hooks
-                    logger.info("llm.service.success",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
-                    return resp
-                except Exception as e:
-                    if attempt >= max(1, self.max_attempts):
-                        self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
-                        await self.on_failure(self.context, e)
-                        logger.exception("llm.service.error",
-                                         extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
-                        raise
-                    logger.warning("llm.service.retrying",
-                                   extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts})
-                    await self._backoff_sleep(attempt)
-                    attempt += 1
+        logger.info("simcore.service.%s.run" % self.__class__.__name__, extra=attrs)
+        async with service_span(f"simcore.service.{self.__class__.__name__}.run", **attrs):
+            try:
+                if codec is not None:
+                    await codec.asetup(context=self.context)
+                    await codec.aencode(req)
+
+                client = self.get_client()
+                self.emitter.emit_request(self.context, self.identity.as_str, req)
+
+                attempt = 1
+                while attempt <= max(1, self.max_attempts):
+                    try:
+                        resp: LLMResponse = await client.send_request(req)
+
+                        # Tag response identity/correlation
+                        resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
+                        if getattr(resp, "request_correlation_id", None) is None:
+                            resp.request_correlation_id = req.correlation_id
+
+                        # Attach codec identity if missing (write-safe fields only)
+                        if hasattr(resp, "codec_identity"):
+                            if not getattr(resp, "codec_identity", None):
+                                try:
+                                    resp.codec_identity = req.codec_identity  # type: ignore[attr-defined]
+                                except Exception:
+                                    pass
+
+                        # Let the codec decode/shape the response
+                        if codec is not None:
+                            await codec.adecode(resp)
+
+                        self.emitter.emit_response(self.context, self.identity.as_str, resp)
+                        await self.on_success(self.context, resp)
+
+                        logger.info(
+                            "llm.service.success",
+                            extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                        )
+                        return resp
+                    except Exception as e:
+                        if attempt >= max(1, self.max_attempts):
+                            self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
+                            await self.on_failure(self.context, e)
+                            logger.exception(
+                                "llm.service.error",
+                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                            )
+                            raise
+                        logger.warning(
+                            "llm.service.retrying",
+                            extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts},
+                        )
+                        await self._backoff_sleep(attempt)
+                        attempt += 1
+            finally:
+                if codec is not None:
+                    try:
+                        await codec.ateardown()
+                    except Exception:
+                        logger.debug("codec teardown failed; continuing", exc_info=True)
+        return None
 
     async def run_stream(self):
         """
-        Execute the service with streaming and emit stream events via the configured emitter.
-        Uses only `self.context` for domain data; identity is read from `self.identity`.
+        Execute the service with streaming enabled.
+
+        The codec is constructed per call, used to prepare the request, decode chunks,
+        and finalize the stream, then torn down.
         """
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
-        ident = self.identity
-        identity_label = f"{ident.namespace}.{ident.kind}.{ident.name}"
-        try:
-            codec_label = Identity.get_for(self.codec).as_str if self.codec is not None else Identity.get_for(
-                self.resolve_codec()).as_str
-        except Exception:
-            codec_label = "unknown"
-        attrs = {
-            "identity": identity_label,
-            "codec": codec_label,
-        }
-        attrs.update(self.flatten_context())
 
-        async with service_span(f"LLMService.{self.__class__.__name__}.run_stream", **attrs):
-            req = await self.abuild_request()
-            req.stream = True
+        # Prepare request + codec instance + attrs for this call
+        req, codec, attrs = await self.aprepare(stream=True)
 
-            client = self.get_client()
-            self.emitter.emit_request(self.context, self.identity.as_str, req)
+        logger.info("simcore.service.%s.run_stream" % self.__class__.__name__, extra=attrs)
+        async with service_span(f"simcore.service.{self.__class__.__name__}.run_stream", **attrs):
+            try:
+                if codec is not None:
+                    await codec.asetup(context=self.context)
+                    await codec.aencode(req)
 
-            attempt = 1
-            started = False
-            while attempt <= max(1, self.max_attempts) and not started:
-                try:
-                    async for chunk in client.stream_request(req):
-                        started = True
-                        self.emitter.emit_stream_chunk(self.context, self.identity.as_str, chunk)
-                    self.emitter.emit_stream_complete(self.context, self.identity.as_str, req.correlation_id)
-                    return
-                except Exception as e:
-                    if started or attempt >= max(1, self.max_attempts):
-                        self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
-                        await self.on_failure(self.context, e)
-                        logger.exception("llm.service.stream.error",
-                                         extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt})
-                        raise
-                    logger.warning("llm.service.stream.retrying",
-                                   extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts})
-                    await self._backoff_sleep(attempt)
-                    attempt += 1
+                client = self.get_client()
+                self.emitter.emit_request(self.context, self.identity.as_str, req)
 
+                attempt = 1
+                started = False
+                while attempt <= max(1, self.max_attempts) and not started:
+                    try:
+                        async for chunk in client.stream_request(req):
+                            started = True
+                            # Let the codec inspect/transform chunks
+                            if codec is not None:
+                                try:
+                                    await codec.adecode_chunk(chunk)
+                                except AttributeError:
+                                    # Older codecs may not implement the hook
+                                    pass
+                            self.emitter.emit_stream_chunk(self.context, self.identity.as_str, chunk)
+
+                        # Allow codec to finalize any stream-level state
+                        if codec is not None:
+                            try:
+                                await codec.afinalize_stream()
+                            except AttributeError:
+                                pass
+
+                        self.emitter.emit_stream_complete(self.context, self.identity.as_str, req.correlation_id)
+                        return
+                    except Exception as e:
+                        if started or attempt >= max(1, self.max_attempts):
+                            self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
+                            await self.on_failure(self.context, e)
+                            logger.exception(
+                                "llm.service.stream.error",
+                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                            )
+                            raise
+                        logger.warning(
+                            "llm.service.stream.retrying",
+                            extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts},
+                        )
+                        await self._backoff_sleep(attempt)
+                        attempt += 1
+            finally:
+                if codec is not None:
+                    try:
+                        await codec.ateardown()
+                    except Exception:
+                        logger.debug("codec teardown failed; continuing", exc_info=True)
+
+    # ----------------------------------------------------------------------
+    # Result hooks
+    # ----------------------------------------------------------------------
     async def on_success(self, context: dict, resp: LLMResponse) -> None:
         ...
 

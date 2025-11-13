@@ -21,7 +21,7 @@ Design:
 from threading import RLock
 from typing import Dict, Optional, Type
 
-from .types import BaseExecutionBackend
+from .base import BaseExecutionBackend
 
 # -------------------- name normalization / aliases --------------------
 _NAME_ALIASES = {

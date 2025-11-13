@@ -109,11 +109,11 @@ def span_attrs_from_ctx(ctx: Mapping[str, Any]) -> Dict[str, Any]:
 
     service_ident = _coerce_service_identity_from_ctx(ctx)
     if service_ident:
-        attrs["ai.identity.service"] = service_ident
+        attrs["simcore.identity.service"] = service_ident
 
     codec_id = ctx.get("codec")
     if codec_id:
-        attrs["ai.identity.codec"] = codec_id
+        attrs["simcore.identity.codec"] = codec_id
 
     corr = (
             ctx.get("correlation_id")

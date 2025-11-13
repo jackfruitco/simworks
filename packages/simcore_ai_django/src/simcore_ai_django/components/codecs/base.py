@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import logging
 from typing import Any, ClassVar, Mapping, TypeVar, Callable
+from asgiref.sync import async_to_sync
 
 from core.models import PersistModel
 from simcore_ai.components.codecs.base import BaseCodec
 from simcore_ai.components.codecs.exceptions import CodecDecodeError
 from simcore_ai.types import LLMResponse
 
+logger = logging.getLogger(__name__)
+
 M = TypeVar("M", bound=PersistModel)
 
-@dataclass
 class DjangoBaseCodec(BaseCodec):
     """
-    Async-first Django codec that can fan-out persistence to multiple models.
+    Async-first Django codec that can fan-out a validated payload into Django model instances.
 
     Two patterns are supported:
 
@@ -59,46 +61,68 @@ class DjangoBaseCodec(BaseCodec):
     # Values may be dicts or callables taking the item and returning a dict.
     section_defaults: dict[str, Mapping[str, Any] | Callable[[Mapping[str, Any]], Mapping[str, Any]]] | None = None
 
-    # ---- registry override (use facade) ----
-    @classmethod
-    def get_registry(cls):
-        from simcore_ai_django.api import codecs as dj_codecs
-        return dj_codecs
-
     # ---- public entrypoints ------------------------------------------------
-    async def arun(self, resp: LLMResponse):
-        validated = self.validate_from_response(resp)
+    async def adecode(self, resp: LLMResponse) -> Any:
+        """
+        Decode a full LLMResponse, validate to the output schema (if any),
+        and optionally persist sections via Django models.
+
+        Returns:
+            - None if there is no output schema / nothing to validate.
+            - The validated payload if no persistence mapping is configured.
+            - (validated, instances) tuple when persistence occurs.
+        """
+        # Let BaseCodec handle schema-aware validation / parsing first
+        validated = await super().adecode(resp)
         if validated is None:
             return None
 
-        # normalize to plain dict for section access
-        if hasattr(validated, "model_dump"):
-            vdict: Mapping[str, Any] = validated.model_dump(mode="python", exclude_none=True)  # type: ignore
-        elif isinstance(validated, dict):
-            vdict = validated
-        else:
-            raise CodecDecodeError(f"{self.__class__.__name__}: unknown validated payload type")
+        vdict = self._normalize_validated_payload(validated)
 
+        # If there is no mapping configured, just return the validated object
         if not self.schema_model_map:
-            # no persistence map -> just return the validated object
             return validated
 
+        # Fan-out persistence to configured models
         results = await self.persist_sections(vdict)
+        logger.debug(
+            "%s.persist_sections completed; sections=%s instances=%d",
+            self.__class__.__name__,
+            ", ".join((self.schema_model_map or {}).keys()),
+            len(results),
+        )
         return validated, results
 
-    def run(self, resp: LLMResponse):
-        # Sync wrapper for convenience; prefer arun() in async contexts.
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop and loop.is_running():
-            return asyncio.get_event_loop().run_until_complete(self.arun(resp))
-        return asyncio.run(self.arun(resp))
+    def decode(self, resp: LLMResponse) -> Any:
+        """
+        Sync wrapper for `adecode`. Prefer `adecode` in async call sites.
+        """
+        return async_to_sync(self.adecode)(resp)
+
+    # Backwards-friendly aliases (arun/run) for callers that still use the old name.
+    async def arun(self, resp: LLMResponse) -> Any:
+        """Alias for `adecode` to support legacy call sites."""
+        return await self.adecode(resp)
+
+    def run(self, resp: LLMResponse) -> Any:
+        """Alias for `decode` to support legacy call sites."""
+        return self.decode(resp)
+
+    # ---- internal helpers --------------------------------------------------
+    def _normalize_validated_payload(self, validated: Any) -> Mapping[str, Any]:
+        """
+        Normalize a validated payload into a plain mapping suitable for section access.
+        """
+        if hasattr(validated, "model_dump"):
+            # Pydantic v2 model
+            return validated.model_dump(mode="python", exclude_none=True)  # type: ignore[return-value]
+        if isinstance(validated, Mapping):
+            return validated
+        raise CodecDecodeError(f"{self.__class__.__name__}: unknown validated payload type {type(validated)!r}")
 
     # ---- core persistence --------------------------------------------------
     async def persist_sections(self, vdict: Mapping[str, Any]) -> list[PersistModel]:
-        tasks: list[asyncio.Task] = []
+        coros: list[asyncio.Future] = []
         instances: list[PersistModel] = []
 
         for section_key, target in (self.schema_model_map or {}).items():
@@ -159,12 +183,12 @@ class DjangoBaseCodec(BaseCodec):
                 instance = model_cls(**base_defaults)  # type: ignore[call-arg]
                 instances.append(instance)
 
-                tasks.append(asyncio.create_task(
+                coros.append(
                     instance.apersist(item, translate_keys=translate_map)
-                ))
+                )
 
-        if not tasks:
+        if not coros:
             return []
 
-        await asyncio.gather(*tasks, return_exceptions=False)
+        await asyncio.gather(*coros, return_exceptions=False)
         return instances
