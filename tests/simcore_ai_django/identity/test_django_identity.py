@@ -5,8 +5,8 @@ import types
 
 import pytest
 
-from simcore_ai_django.codecs.decorators import codec as django_codec
-from simcore_ai_django.codecs.registry import (
+from simcore_ai_django.components.codecs.decorators import codec as django_codec
+from simcore_ai_django.components.codecs import (
     codecs as codec_registry,
     IdentityCollisionError,
 )

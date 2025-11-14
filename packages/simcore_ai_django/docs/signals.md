@@ -20,7 +20,7 @@ This is ideal for:
 
 ## Signal Emitter
 
-A default emitter instance is provided and used by `DjangoBaseLLMService`:
+A default emitter instance is provided and used by `DjangoBaseService`:
 
 ```python
 from simcore_ai_django.signals import emitter  # DjangoSignalEmitter
@@ -28,7 +28,7 @@ from simcore_ai_django.signals import emitter  # DjangoSignalEmitter
 
 Services set this automatically unless overridden:
 ```python
-class MyService(DjangoBaseLLMService):
+class MyService(DjangoBaseService):
     pass  # self.emitter is set to the default DjangoSignalEmitter
 ```
 
@@ -50,10 +50,10 @@ class MyService(DjangoBaseLLMService):
     "namespace": "namespace",
     "kind": "kind",
     "name": "name",
-    "codec_identity": "namespace.kind.codec_name",
+    "codec": "namespace.kind.codec_name",
     "messages": [ { "role": "developer", "content": [...] }, ... ],
-    "response_format": {...} | None,
-    "response_format_cls": "Qualified.Class.Name" | None,
+    "output_schema": {...} | None,
+    "output_schema_cls": "Qualified.Class.Name" | None,
     "meta": {...}
   }
 }
@@ -74,7 +74,7 @@ Useful for logging, auditing, and correlating with subsequent events.
   "identity": "namespace.kind.name",
   "response": {
     "request_correlation_id": "uuid4",
-    "codec_identity": "namespace.kind.codec_name",
+    "codec": "namespace.kind.codec_name",
     "namespace": "namespace",
     "kind": "kind",
     "name": "name",

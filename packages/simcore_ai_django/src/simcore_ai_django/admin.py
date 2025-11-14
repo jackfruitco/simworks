@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from django.contrib import admin
+from django.utils import timezone as tz_
 from django.utils.html import format_html
 
 from .models import AIRequestAudit, AIResponseAudit, AIOutbox
@@ -57,7 +58,7 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
         "id",
         "created_at",
         "namespace",
-        "service_name",
+        "name",
         "provider_name",
         "client_name",
         "model",
@@ -68,7 +69,8 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
         "provider_name",
         "client_name",
         "namespace",
-        "service_name",
+        "kind",
+        "name",
         "stream",
         ("created_at", admin.DateFieldListFilter),
     )
@@ -76,7 +78,8 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
         "id",
         "correlation_id",
         "namespace",
-        "service_name",
+        "kind",
+        "name",
         "provider_name",
         "client_name",
     )
@@ -90,7 +93,7 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
         "correlation_id",
         "namespace",
         "kind",
-        "service_name",
+        "name",
         "provider_name",
         "client_name",
         "simulation_pk",
@@ -106,15 +109,10 @@ class AIRequestAuditAdmin(admin.ModelAdmin):
 
     fields = (
         ("created_at", "updated_at"),
-        ("service_name", "provider_name", "client_name"),
+        ("name", "provider_name", "client_name"),
         ("namespace", "kind", "simulation_pk", "correlation_id"),
         ("model", "stream"),
-        "messages_pretty",
-        "tools_pretty",
         "response_format_cls",
-        "response_format_adapted_pretty",
-        "response_format_pretty",
-        "prompt_meta_pretty",
     )
 
     inlines = [AIResponseAuditInline]
@@ -147,7 +145,7 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
         "received_at",
         "status_badge",
         "namespace",
-        "service_name",
+        "name",
         "provider_name",
         "client_name",
         "correlation_id",
@@ -157,7 +155,7 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
         "provider_name",
         "client_name",
         "namespace",
-        "service_name",
+        "name",
         ("received_at", admin.DateFieldListFilter),
         ("error", admin.EmptyFieldListFilter),
     )
@@ -165,10 +163,9 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
         "id",
         "correlation_id",
         "namespace",
-        "service_name",
+        "name",
         "provider_name",
         "client_name",
-        "request__id",
     )
     date_hierarchy = "received_at"
     ordering = ("-received_at", "-id")
@@ -179,7 +176,7 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
         "correlation_id",
         "namespace",
         "kind",
-        "service_name",
+        "name",
         "provider_name",
         "client_name",
         "simulation_pk",
@@ -192,12 +189,8 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
 
     fields = (
         ("received_at", "request"),
-        ("service_name", "provider_name", "client_name"),
+        ("name", "provider_name", "client_name"),
         ("namespace", "kind", "simulation_pk", "correlation_id"),
-        "status_badge",
-        "outputs_pretty",
-        "usage_pretty",
-        "provider_meta_pretty",
         "error",
     )
 
@@ -269,7 +262,6 @@ class AIOutboxAdmin(admin.ModelAdmin):
     fields = (
         ("created_at", "updated_at"),
         ("event_type", "namespace", "provider_name", "client_name", "correlation_id"),
-        "payload_pretty",
         ("dispatched_at", "attempts", "next_attempt_at"),
         "last_error",
     )
@@ -281,7 +273,7 @@ class AIOutboxAdmin(admin.ModelAdmin):
 
     @admin.action(description="Mark as dispatched")
     def mark_selected_dispatched(self, request, queryset):
-        updated = queryset.update(dispatched_at=admin.timezone.now())
+        updated = queryset.update(dispatched_at=tz_.now())
         self.message_user(request, f"Marked {updated} row(s) as dispatched.")
 
     @admin.action(description="Reset for retry (clear dispatched, +1 attempts)")

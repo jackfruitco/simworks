@@ -4,7 +4,7 @@ from __future__ import annotations
 import types
 import pytest
 
-from simcore_ai.identity.base import Identity
+from simcore_ai.identity import Identity
 from simcore_ai.decorators.helpers import (
     derive_name,
     derive_namespace_core,

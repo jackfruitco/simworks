@@ -1,5 +1,10 @@
 from .base import DjangoBaseDecorator
+from .components import *
 
 __all__ = [
-    "DjangoBaseDecorator"
+    "DjangoBaseDecorator",
+    "service",
+    "codec",
+    "schema",
+    "prompt_section"
 ]

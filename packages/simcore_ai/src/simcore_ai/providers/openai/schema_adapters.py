@@ -2,7 +2,7 @@
 from typing import Any, Dict
 
 from .base import PROVIDER_NAME
-from ...schemas.compiler import schema_adapter
+from simcore_ai.components.schemas.compiler import schema_adapter
 
 
 @schema_adapter(PROVIDER_NAME, order=50)

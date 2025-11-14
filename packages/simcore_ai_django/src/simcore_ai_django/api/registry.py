@@ -1,14 +1,15 @@
 # simcore_ai_django/api/registry.py
-from __future__ import annotations
+from simcore_ai.registry import (
+    BaseRegistry,
+    codecs, services, schemas, prompt_sections,
+    get_registry_for
+)
 
-from ..services.registry import ServiceRegistry
-from ..codecs.registry import CodecRegistry
-from ..schemas.registry import SchemaRegistry
-from ..promptkit.registry import PromptSectionRegistry
-
-__all__ = [
-    "ServiceRegistry",
-    "CodecRegistry",
-    "SchemaRegistry",
-    "PromptSectionRegistry",
-]
+__all__ = (
+    "BaseRegistry",
+    "codecs",
+    "services",
+    "schemas",
+    "prompt_sections",
+    "get_registry_for",
+)

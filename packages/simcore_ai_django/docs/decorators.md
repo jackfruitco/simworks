@@ -84,16 +84,18 @@ async def generate_initial(simulation, slim):
 ## `@codec`
 
 ### Purpose
-Registers a **DjangoBaseLLMCodec** that validates model output against a schema and persists it.
+Registers a **DjangoBaseCodec** that validates model output against a schema and persists it.
 
 ### Usage
+
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseCodec
 from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
+
 @codec
-class PatientInitialCodec(DjangoBaseLLMCodec, ChatlabMixin, StandardizedPatientMixin):
+class PatientInitialCodec(DjangoBaseCodec, ChatlabMixin, StandardizedPatientMixin):
     def persist(self, *, response, parsed) -> dict:
         # create domain objects; return summary info
         return {"ok": True}
@@ -154,7 +156,7 @@ class PatientFollowupSection(PromptSection, ChatlabMixin):
   ```
 - **Registries**:
   ```python
-  from simcore_ai.promptkit.registry import PromptRegistry
+  from simcore_ai.components.promptkit.registry import PromptRegistry
   print([c.__name__ for c in PromptRegistry.all()])
   ```
 
@@ -168,7 +170,7 @@ class PatientFollowupSection(PromptSection, ChatlabMixin):
   - Keep imports via the `api` facade for forward compatibility:
     ```python
     from simcore_ai_django.api.decorators import llm_service, codec, prompt_section
-    from simcore_ai_django.api.types import DjangoExecutableLLMService, DjangoBaseLLMCodec, PromptSection, DjangoStrictSchema
+    from simcore_ai_django.api.types import DjangoExecutableLLMService, DjangoBaseCodec, PromptSection, DjangoStrictSchema
     ```
   - Always import decorators via the Django API facade: 
     

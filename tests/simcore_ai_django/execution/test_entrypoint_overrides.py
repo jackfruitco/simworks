@@ -8,7 +8,7 @@ from simcore_ai_django.execution.entrypoint import execute
 
 @pytest.fixture
 def FakeBackend():
-    from simcore_ai_django.execution.types import BaseExecutionBackend, SupportsServiceInit
+    from simcore_ai_django.execution.base import BaseExecutionBackend, SupportsServiceInit
 
     class _FakeBackend(BaseExecutionBackend):
         supports_priority = False

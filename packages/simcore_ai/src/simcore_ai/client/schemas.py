@@ -26,7 +26,6 @@ from typing import Any, Dict, Optional, Literal
 from pydantic import BaseModel
 from pydantic.config import ConfigDict
 
-
 __all__ = [
     "AIProviderConfig",
     "AIClientRegistration",

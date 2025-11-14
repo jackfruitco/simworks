@@ -5,9 +5,9 @@ from typing import Any, Dict, Optional, Type
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.tracing.helpers import flatten_context as flatten_context_attrs
-from simcore_ai_django.execution.types import BaseExecutionBackend, SupportsServiceInit
-from simcore_ai_django.runner import run_service
+from simcore_ai_django.execution.base import BaseExecutionBackend
 from ..decorators import task_backend
+from ...components import DjangoExecutableLLMService
 
 BACKEND_NAME = "immediate"
 
@@ -16,7 +16,7 @@ BACKEND_NAME = "immediate"
 class ImmediateBackend(BaseExecutionBackend):
     supports_priority: bool = False
 
-    def execute(self, *, service_cls: Type[SupportsServiceInit], kwargs: Dict[str, Any]) -> Any:
+    def execute(self, *, service_cls: Type[DjangoExecutableLLMService], kwargs: Dict[str, Any]) -> Any:
         with service_span_sync(
                 "exec.backend.execute",
                 attributes={
@@ -26,17 +26,14 @@ class ImmediateBackend(BaseExecutionBackend):
                     **flatten_context_attrs(kwargs.get("context", {})),
                 },
         ):
-            svc = service_cls(**kwargs)
-            return run_service(
-                service=svc,
-                object_db_pk=kwargs.get("object_db_pk"),
-                context=kwargs.get("context"),
-            )
+            svc: DjangoExecutableLLMService = service_cls(**kwargs)
+            ctx_ = kwargs.get("context") or {}
+            return svc.execute(context=ctx_)
 
     def enqueue(
             self,
             *,
-            service_cls: Type[SupportsServiceInit],
+            service_cls: Type[DjangoExecutableLLMService],
             kwargs: Dict[str, Any],
             delay_s: Optional[float] = None,
             queue: Optional[str] = None,
@@ -54,7 +51,7 @@ class ImmediateBackend(BaseExecutionBackend):
         ):
             # Fallback: run inline but still return a synthetic id
             svc = service_cls(**kwargs)
-            run_service(
+            dispatch(
                 service=svc,
                 object_db_pk=kwargs.get("object_db_pk"),
                 context=kwargs.get("context"),

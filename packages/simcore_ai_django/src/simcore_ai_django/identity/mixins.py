@@ -30,14 +30,4 @@ class DjangoIdentityMixin(IdentityMixin):
     # Use the Django resolver for all subclasses that include this mixin
     identity_resolver_cls = DjangoIdentityResolver
 
-    # ---- Compatibility shims (delegate to the unified class API) ----
-    @classmethod
-    def identity_tuple(cls) -> tuple[str, str, str]:
-        return cls.identity_as_tuple3()
-
-    @classmethod
-    def identity_str(cls) -> str:
-        return cls.identity_as_str()
-
-
 __all__ = ["DjangoIdentityMixin"]

@@ -3,35 +3,31 @@
 
 from __future__ import annotations
 
+from .registry import *
 from .client import *
 from .decorators import *
-from .mixins import *
 from .identity import *
+from .mixins import *
 from .tracing import *
 from .types import *
 
 __all__ = [
-    # decorators
-    "prompt_section",
-    # "prompt_scenario",
-    "codec",
-    "llm_service",
+    # registry
+    "services", "codecs", "schemas", "prompt_sections", "BaseRegistry", "get_registry_for",
 
-    # mixins
-    "DjangoIdentityMixin",
+    # decorators
+    "ai_prompt_section", "ai_codec", "ai_service", "ai_schema",  # "prompt_scenario",
+
+    # identity
+    "Identity", "DjangoIdentityMixin", "DjangoIdentityResolver",
 
     # client
     "get_ai_client",
     "get_default_client",
     "call_default",
 
-    # identity
-    "derive_django_identity_for_class",
-    "get_app_label_for_class",
-    "resolve_collision_django",
-
     # services
-    "DjangoBaseLLMService",
+    "DjangoBaseService",
     "DjangoExecutableLLMService",
 
     # tracing

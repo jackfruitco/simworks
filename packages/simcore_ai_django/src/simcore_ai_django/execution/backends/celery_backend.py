@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from simcore_ai.tracing import inject_trace, service_span_sync
 from simcore_ai.tracing.helpers import flatten_context as flatten_context_attrs
-from simcore_ai_django.execution.types import BaseExecutionBackend, SupportsServiceInit
+from simcore_ai_django.execution.base import BaseExecutionBackend, SupportsServiceInit
 from simcore_ai_django.tasks import run_service_task
 from ..decorators import task_backend
 

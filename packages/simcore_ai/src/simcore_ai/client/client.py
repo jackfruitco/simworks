@@ -74,14 +74,14 @@ class AIClient:
         )
 
         async with service_span(
-                "ai.client.send_request",
+                "simcore.client.send_request",
                 attributes={
-                    "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
-                    "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
-                    "ai.stream": bool(getattr(req, "stream", False)),
-                    "ai.timeout": effective_timeout,
-                    "ai.provider_key": getattr(self.provider, "provider_key", None),
-                    "ai.provider_label": getattr(self.provider, "provider_label", None),
+                    "simcore.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
+                    "simcore.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
+                    "simcore.stream": bool(getattr(req, "stream", False)),
+                    "simcore.timeout": effective_timeout,
+                    "simcore.provider_key": getattr(self.provider, "provider_key", None),
+                    "simcore.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
             logger.debug(f"client received normalized request:\n(request:\t{req})")
@@ -95,9 +95,9 @@ class AIClient:
                     logger.debug(
                         "No explicit model provided and provider has no default_model; proceeding without explicit model")
 
-            # Let the provider compile + wrap into a final payload on req.response_format
+            # Let the provider compile + wrap into a final payload on req.output_schema
             try:
-                async with service_span("ai.client.build_final_schema"):
+                async with service_span("simcore.client.build_final_schema"):
                     self.provider.build_final_schema(req)
             except Exception:
                 logger.exception(
@@ -113,10 +113,10 @@ class AIClient:
             for attempt in range(1, attempts + 1):
                 try:
                     async with service_span(
-                            "ai.client.provider_call",
+                            "simcore.client.provider_call",
                             attributes={
-                                "ai.attempt": attempt,
-                                "ai.max_attempts": attempts,
+                                "simcore.attempt": attempt,
+                                "simcore.max_attempts": attempts,
                             },
                     ):
                         if inspect.iscoroutinefunction(self.provider.call):
@@ -153,12 +153,12 @@ class AIClient:
 
                     # Retry with backoff
                     async with service_span(
-                            "ai.client.retry",
+                            "simcore.client.retry",
                             attributes={
-                                "ai.attempt": attempt + 1,
-                                "ai.backoff_ms": backoff_ms,
-                                "ai.error.class": type(e).__name__,
-                                "ai.rate_limited": bool(is_rl),
+                                "simcore.attempt": attempt + 1,
+                                "simcore.backoff_ms": backoff_ms,
+                                "simcore.error.class": type(e).__name__,
+                                "simcore.rate_limited": bool(is_rl),
                             },
                     ):
                         await asyncio.sleep(backoff_ms / 1000.0)
@@ -193,13 +193,13 @@ class AIClient:
     async def stream_request(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
         """Pass-through streaming; providers may yield LLMStreamChunk deltas."""
         async with service_span(
-                "ai.client.stream_request",
+                "simcore.client.stream_request",
                 attributes={
-                    "ai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
-                    "ai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
-                    "ai.stream": True,
-                    "ai.provider_key": getattr(self.provider, "provider_key", None),
-                    "ai.provider_label": getattr(self.provider, "provider_label", None),
+                    "simcore.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
+                    "simcore.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
+                    "simcore.stream": True,
+                    "simcore.provider_key": getattr(self.provider, "provider_key", None),
+                    "simcore.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
             if not hasattr(self.provider, "stream") or not inspect.iscoroutinefunction(

@@ -24,7 +24,7 @@ Notes:
 from typing import Dict, Type
 
 from .base import BaseProvider
-from ..exceptions.registry_exceptions import (
+from simcore_ai.registry.exceptions import (
     RegistryError,
     RegistryDuplicateError,
     RegistryLookupError,
@@ -44,10 +44,10 @@ def register_provider(name: str, provider_cls: Type[BaseProvider]) -> None:
     class is registered again under the same key; raises on collisions.
     """
     with service_span_sync(
-            "ai.providers.register",
+            "simcore.providers.register",
             attributes={
-                "ai.provider_name": name,
-                "ai.provider_cls": f"{provider_cls.__module__}.{provider_cls.__name__}",
+                "simcore.provider_name": name,
+                "simcore.provider_cls": f"{provider_cls.__module__}.{provider_cls.__name__}",
             },
     ):
         key = (name or "").lower().strip()
@@ -72,8 +72,8 @@ def get_provider_class(name: str) -> Type[BaseProvider]:
     """
     key = (name or "").lower().strip()
     with service_span_sync(
-            "ai.providers.get_class",
-            attributes={"ai.provider_name": name},
+            "simcore.providers.get_class",
+            attributes={"simcore.provider_name": name},
     ):
         try:
             return _PROVIDER_REGISTRY[key]
@@ -101,13 +101,13 @@ def create_provider(config: AIProviderConfig) -> BaseProvider:
         BaseProvider: an instantiated provider ready for use.
     """
     with service_span_sync(
-            "ai.providers.create",
+            "simcore.providers.create",
             attributes={
-                "ai.provider_name": config.provider,
-                "ai.model": getattr(config, "model", None) or "<unspecified>",
-                "ai.base_url.set": bool(getattr(config, "base_url", None)),
-                "ai.timeout": getattr(config, "timeout_s", None),
-                "ai.provider_label": getattr(config, "label", None) or "",
+                "simcore.provider_name": config.provider,
+                "simcore.model": getattr(config, "model", None) or "<unspecified>",
+                "simcore.base_url.set": bool(getattr(config, "base_url", None)),
+                "simcore.timeout": getattr(config, "timeout_s", None),
+                "simcore.provider_label": getattr(config, "label", None) or "",
             },
     ):
         cls = get_provider_class(config.provider)

@@ -11,7 +11,7 @@ from simcore_ai_django.api.types import PromptSection
 
 @prompt_section
 @dataclass
-class PatientNameSection(PromptSection, SimcoreMixin, StandardizedPatientMixin):
+class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, PromptSection):
     # name = "name"
 
     # weight = 100

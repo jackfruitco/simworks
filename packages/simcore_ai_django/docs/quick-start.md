@@ -60,17 +60,18 @@ class InitialSection(PromptSection):
 ## 3️⃣ Codec
 
 ### Base Class
-`DjangoBaseLLMCodec`
+`DjangoBaseCodec`
 
 ### Minimum Definition
 Implement a `persist()` method.
 
 ```python
 from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseLLMCodec
+from simcore_ai_django.api.types import DjangoBaseCodec
+
 
 @codec
-class InitialCodec(DjangoBaseLLMCodec):
+class InitialCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         # Persist messages, metadata, results, etc.
         return {"ai_response_id": 123}
@@ -108,7 +109,7 @@ async def generate_initial(simulation, slim):
 ## ⚙️ Execution Flow
 
 ```python
-await generate_initial.execute(simulation=my_sim)
+await generate_initial.run_all(simulation=my_sim)
 ```
 
 1. Identity auto-derives (e.g., chatlab.standardized_patient.initial)  

@@ -25,8 +25,8 @@ Identity derivation is **Django-aware** and **collision-safe**, automatically us
 
 | Class | Description |
 |:--|:--|
-| `BaseLLMService` | Core provider-agnostic logic (in `simcore_ai`) |
-| `DjangoBaseLLMService` | Adds Django-specific defaults (signals, renderers, codecs) |
+| `BaseService` | Core provider-agnostic logic (in `simcore_ai`) |
+| `DjangoBaseService` | Adds Django-specific defaults (signals, renderers, codecs) |
 | `DjangoExecutableLLMService` | Adds `.execute()` and `.enqueue()` builder helpers |
 
 ---
@@ -100,7 +100,7 @@ chatlab.standardized_patient.initial
 ## Execution
 
 ```python
-await generate_initial.execute(simulation=my_sim)
+await generate_initial.run_all(simulation=my_sim)
 ```
 
 By default:
@@ -217,8 +217,9 @@ async def generate_differential(simulation):
 - Add prompt plan, codec overrides, or lifecycle hooks
 
 ✅ **Execution**
+
 ```python
-await generate_initial.execute(simulation=my_sim)
+await generate_initial.run_all(simulation=my_sim)
 ```
 
 ---

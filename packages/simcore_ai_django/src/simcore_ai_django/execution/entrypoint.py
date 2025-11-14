@@ -1,6 +1,8 @@
 # simcore_ai_django/execution/entrypoint.py
 from __future__ import annotations
 
+import warnings
+
 """
 Single public entrypoint for executing services (sync or async) with optional per-call overrides.
 
@@ -12,7 +14,7 @@ MyService.execute(user_id=123)
 
 # Builder-style overrides (recommended)
 MyService.using(backend="celery", run_after=60, priority=50).enqueue(user_id=123)
-execute(MyService, using={"backend": "celery", "run_after": 60}).execute(user_id=123)
+MyService.using(backend="celery", run_after=60).enqueue(user_id=123)
 
 Resolution order
 ----------------
@@ -33,22 +35,23 @@ Scope & non-goals
 This entrypoint ONLY decides *how* a service runs (sync vs async) and *which* backend to use.
 It does **not**:
 - resolve identities (namespace.kind.name) — handled in services/resolvers and the runner,
-- build LLM requests — handled by `BaseLLMService.build_request(...)`,
+- build LLM requests — handled by `BaseService.build_request(...)`,
 - resolve or execute codecs — handled in the Django runner (`simcore_ai_django.runner`) and codec layer.
 Backends perform scheduling/dispatch; the runner orchestrates request promotion/demotion, provider
 calls, audits, and codec handling.
 """
 
-__all__ = ["execute", "_ExecutionCall"]
+__all__ = ["execute", "ServiceCall"]
 
 from collections.abc import Mapping
 from typing import Any, Optional, Dict, Union, TYPE_CHECKING
 from datetime import datetime, timezone
+import logging
 
 from simcore_ai.tracing import service_span_sync
 
 # Backend types / ABC
-from .types import BaseExecutionBackend, SupportsServiceInit
+from .base import BaseExecutionBackend
 
 from .helpers import (
     settings_default_backend,
@@ -71,6 +74,8 @@ except Exception:  # pragma: no cover
 
 if TYPE_CHECKING:  # help the checker “see” the class without forcing runtime import
     from .backends.celery import CeleryBackend  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 
 # -------------------- Option resolution --------------------
@@ -193,7 +198,7 @@ def _resolve_run_after(
 def _execute_now(
         *,
         backend: BaseExecutionBackend,
-        service_cls: type[SupportsServiceInit],
+        service_cls: type[Any],
         ctx: Mapping[str, Any],
 ) -> Any:
     """
@@ -212,13 +217,13 @@ def _execute_now(
     }
     attrs = {k: v for k, v in attrs.items() if v is not None}
     with service_span_sync("exec.entry.execute", attributes=attrs):
-        return backend.execute(service_cls=service_cls, kwargs=ctx)
+        return backend.execute(service_cls=service_cls, kwargs=ctx)  # type: ignore[arg-type]  # PyCharm protocol quirk
 
 
 def _enqueue(
         *,
         backend: BaseExecutionBackend,
-        service_cls: type[SupportsServiceInit],
+        service_cls: type[Any],
         ctx: Mapping[str, Any],
         queue_name: Optional[str],
         run_after_seconds: Optional[float],
@@ -248,6 +253,8 @@ def _enqueue(
         # Respect backend capabilities for priority; annotate trace when ignored.
         supports_priority = getattr(backend, "supports_priority", False)
         if not supports_priority and priority is not None:
+            logger.debug("exec.entry: backend %s does not support priority; requested=%s will be ignored",
+                         backend.__class__.__name__, priority)
             if span is not None:
                 try:
                     span.set_attribute("exec.priority.unsupported", True)
@@ -255,13 +262,43 @@ def _enqueue(
                 except Exception:
                     pass
             priority = None
-        return backend.enqueue(service_cls=service_cls, kwargs=ctx, delay_s=delay_s, queue=queue)
+        return backend.enqueue(service_cls=service_cls, kwargs=ctx, delay_s=delay_s,
+                               queue=queue)  # type: ignore[arg-type]  # PyCharm protocol quirk
 
 
-# -------------------- Public API --------------------
+from typing import overload, Literal
+
+
+@overload
+def execute(
+        service_cls: type[Any],
+        *,
+        using: Optional[Dict[str, Any]] = ...,
+        enqueue: Literal[True],
+        backend: Optional[Union[str, type[BaseExecutionBackend]]] = ...,
+        queue_name: Optional[str] = ...,
+        run_after: Optional[Union[float, int, datetime]] = ...,
+        priority: Optional[int] = ...,
+        **ctx: Any,
+) -> str: ...
+
+
+@overload
+def execute(
+        service_cls: type[Any],
+        *,
+        using: Optional[Dict[str, Any]] = ...,
+        enqueue: Literal[False] | None = ...,
+        backend: Optional[Union[str, type[BaseExecutionBackend]]] = ...,
+        queue_name: Optional[str] = ...,
+        run_after: Optional[Union[float, int, datetime]] = ...,
+        priority: Optional[int] = ...,
+        **ctx: Any,
+) -> Any: ...
+
 
 def execute(
-        service_cls: type[SupportsServiceInit],
+        service_cls: type[Any],
         *,
         using: Optional[Dict[str, Any]] = None,
         enqueue: Optional[bool] = None,
@@ -293,10 +330,32 @@ def execute(
     if enqueue is not None:
         overrides["enqueue"] = enqueue
 
+    ALLOWED_USING_KEYS = {"backend", "queue_name", "run_after", "priority", "enqueue"}
+    unknown_keys = set(overrides.keys()) - ALLOWED_USING_KEYS
+    if unknown_keys:
+        logger.debug("exec.entry: ignoring unknown `using` keys: %s", sorted(unknown_keys))
+        # Optionally drop them so they don't leak further
+        for k in list(unknown_keys):
+            overrides.pop(k, None)
+
     # Resolve mode/backend/options
     resolved_mode = _resolve_mode(enqueue=overrides.get("enqueue"), service_cls=service_cls)
     resolved_backend_name = _resolve_backend_name(backend=overrides.get("backend"), service_cls=service_cls)
-    backend_inst = require_backend_instance(resolved_backend_name)
+    try:
+        with service_span_sync("exec.entry.backend", attributes={"backend.name": resolved_backend_name}):
+            backend_inst = require_backend_instance(resolved_backend_name)
+    except Exception as e:
+        avail = None
+        try:
+            from .registry import list_backend_names as available_backend_names  # alias for clarity
+            avail = ", ".join(sorted(available_backend_names()))
+        except Exception:
+            pass
+        msg = f"Unknown or unavailable backend '{resolved_backend_name}'"
+        if avail:
+            msg += f" (available: {avail})"
+        logger.error("%s: %s", msg, e)
+        raise RuntimeError(msg) from e
     resolved_queue_name = _resolve_queue_name(queue_name=overrides.get("queue_name"),
                                               backend_name=resolved_backend_name)
     resolved_priority = _resolve_priority(priority=overrides.get("priority"), service_cls=service_cls)
@@ -343,47 +402,47 @@ def execute(
 
 # -------------------- Service mixin & builder --------------------
 
-class _ExecutionCall:
-    """Lightweight builder for per-call overrides; non-autostart.
+class ServiceCall:
+    """
+    Lightweight builder for per-call overrides; non-autostart.
 
-    Provides a small fluent API mirroring the service mixin:
-      - `.using(**overrides)` to stage backend/mode knobs (e.g., backend, run_after, priority),
-      - `.execute(**ctx)` to force sync now,
-      - `.enqueue(**ctx)` to force async,
-      - `.run(**ctx)` to defer the decision to resolution rules.
+    Created via `MyService.using(...)` on the service class. The resulting
+    builder also supports `.using(...)` to further adjust backend/mode knobs
+    (backend, queue_name, run_after, priority, enqueue) before dispatch.
+
+    Provides a small fluent API:
+      - `MyService.using(...).execute(**ctx)`  -> force sync now
+      - `MyService.using(...).enqueue(**ctx)`  -> force async
+      - `MyService.using(...).dispatch(**ctx)` -> let resolution rules pick sync/async
 
     This builder does not instantiate the service or perform identity/codec work.
     """
 
-    def __init__(self, service_cls: type[SupportsServiceInit], overrides: Optional[Dict[str, Any]] = None):
+    def __init__(self, service_cls: type[Any], overrides: Optional[Dict[str, Any]] = None):
         self._service_cls = service_cls
         self._overrides: Dict[str, Any] = dict(overrides or {})
 
-    def using(self, **more: Any) -> "_ExecutionCall":
+    def using(self, **more: Any) -> "ServiceCall":
         self._overrides.update(more)
         return self
 
     def execute(self, **ctx: Any) -> Any:
-        """Force synchronous execution with current overrides.
-
-        Transport-only: defers service instantiation and request building to the backend/runner.
-        """
+        """Force synchronous execution with current overrides."""
         ov = dict(self._overrides)
         ov["enqueue"] = False
         return execute(self._service_cls, using=ov, **ctx)
 
     def enqueue(self, **ctx: Any) -> str:
-        """Force asynchronous execution with current overrides.
-
-        Transport-only: enqueues with resolved backend and defers work to the runner at execution time.
-        """
+        """Force asynchronous execution with current overrides."""
         ov = dict(self._overrides)
         ov["enqueue"] = True
         return execute(self._service_cls, using=ov, **ctx)  # type: ignore[return-value]
 
-    def run(self, **ctx: Any) -> Any | str:
-        """Resolve mode from overrides/service/settings and execute.
-
-        Transport-only: no identity/request/codec logic here.
-        """
+    def dispatch(self, **ctx: Any) -> Any | str:
+        """Resolve mode from overrides/service/settings and execute."""
         return execute(self._service_cls, using=self._overrides, **ctx)
+
+    def run(self, **ctx: Any) -> Any | str:
+        """Deprecated alias for `dispatch(**ctx)`; prefer `.dispatch(**ctx)`."""
+        warnings.warn("service.run() is deprecated; use .dispatch() instead", DeprecationWarning)
+        return self.dispatch(**ctx)

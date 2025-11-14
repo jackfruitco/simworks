@@ -22,7 +22,7 @@ The **Prompt Engine** takes one or more `PromptSection` classes/instances and pr
 ### Build from sections
 
 ```python
-from simcore_ai_django.promptkit import PromptEngine
+from simcore_ai_django.components.promptkit import PromptEngine
 from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
 
 prompt = await PromptEngine.abuild_from(
@@ -54,7 +54,7 @@ prompt = await engine.abuild(simulation=my_sim, service=my_service)
 The resulting prompt is a dataclass:
 
 ```python
-from simcore_ai_django.promptkit import Prompt
+from simcore_ai_django.components.promptkit import Prompt
 
 print(prompt.instruction)
 print(prompt.message)
@@ -88,7 +88,7 @@ Sections can opt into any subset of these by signature. The engine never mutates
 
 ## Integration with Services
 
-`BaseLLMService.ensure_prompt()` (and therefore `DjangoBaseLLMService`) uses `PromptEngine` under the hood:
+`BaseService.ensure_prompt()` (and therefore `DjangoBaseService`) uses `PromptEngine` under the hood:
 
 1. Resolve the service’s `prompt_plan` (list of section specs).
 2. Call `PromptEngine.abuild_from(...)` with the resolved classes.
@@ -103,7 +103,8 @@ If a section spec cannot be resolved, the service falls back to Django template 
 `PromptEngine` is a regular class, so you can subclass it for advanced behavior:
 
 ```python
-from simcore_ai_django.promptkit import PromptEngine
+from simcore_ai_django.components.promptkit import PromptEngine
+
 
 class CustomPromptEngine(PromptEngine):
     async def abuild(self, **ctx):
@@ -114,7 +115,7 @@ class CustomPromptEngine(PromptEngine):
 Inject your custom engine into a service by overriding `prompt_engine`:
 
 ```python
-class MyService(DjangoBaseLLMService):
+class MyService(DjangoBaseService):
     prompt_engine = CustomPromptEngine
 ```
 

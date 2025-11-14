@@ -108,25 +108,25 @@ class OpenAIProvider(BaseProvider):
             self.record_rate_limit(status_code=getattr(exc, "status_code", None), detail=str(exc))
             return False, f"openai error: {exc!s}"
 
-    def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
+    def _wrap_schema(self, adapted_schema: dict, meta: dict | None = None) -> dict | None:
         """
-        Wrap a compiled JSON Schema into the OpenAI Responses `response_format` envelope.
+        Wrap a compiled JSON Schema into the OpenAI Responses `output_schema` envelope.
 
         Args:
-            compiled_schema: Provider-adapted JSON Schema dictionary.
+            adapted_schema: Provider-adapted JSON Schema dictionary.
             meta: Optional metadata (`name`, `strict`) derived from the request.
 
         Returns:
-            A dict payload suitable for `response_format`, or None to use the schema directly.
+            A dict payload suitable for `output_schema`, or None to use the schema directly.
         """
-        if not compiled_schema:
+        if not adapted_schema:
             return None
         meta = meta or {}
         return {
             "type": "json_schema",
             "json_schema": {
                 "name": meta.get("name", "response"),
-                "schema": compiled_schema,
+                "schema": adapted_schema,
                 "strict": bool(meta.get("strict", True)),
             },
         }
@@ -139,10 +139,10 @@ class OpenAIProvider(BaseProvider):
             - ImageGenerationCall -> (LLMToolCall, LLMToolResultPart)
         """
         with service_span_sync(
-                "ai.tools.handle_output",
+                "simcore.tools.handle_output",
                 attributes={
-                    "ai.provider_name": self.name,
-                    "ai.output.type": type(item).__name__,
+                    "simcore.provider_name": self.name,
+                    "simcore.output.type": type(item).__name__,
                 },
         ):
             if isinstance(item, ImageGenerationCall):
@@ -169,19 +169,19 @@ class OpenAIProvider(BaseProvider):
         logger.debug("provider '%s':: received request call", self.name)
 
         async with service_span(
-                "ai.client.call",
+                "simcore.client.call",
                 attributes={
-                    "ai.provider_name": self.name,
-                    "ai.client_name": getattr(self, "name", self.__class__.__name__),
-                    "ai.model": req.model or self.default_model or "<unspecified>",
-                    "ai.stream": bool(getattr(req, "stream", False)),
-                    "ai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
-                    "ai.codec_identity": getattr(req, "codec_identity", None),
+                    "simcore.provider_name": self.name,
+                    "simcore.client_name": getattr(self, "name", self.__class__.__name__),
+                    "simcore.model": req.model or self.default_model or "<unspecified>",
+                    "simcore.stream": bool(getattr(req, "stream", False)),
+                    "simcore.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
+                    "simcore.codec": getattr(req, "codec", None),
                     **_flatten_context(getattr(req, "context", {}) or {}),
                 },
         ):
             # Adapt tools (child span)
-            async with service_span("ai.tools.adapt", attributes={"ai.provider_name": self.name}):
+            async with service_span("simcore.tools.adapt", attributes={"simcore.provider_name": self.name}):
                 native_tools = self._tools_to_provider(req.tools)
                 if native_tools:
                     logger.debug("provider '%s':: adapted tools: %s", self.name, native_tools)
@@ -189,13 +189,13 @@ class OpenAIProvider(BaseProvider):
                     logger.debug("provider '%s':: no tools to adapt", self.name)
 
             # Serialize input messages (child span)
-            async with service_span("ai.prompt.serialize", attributes={"ai.msg.count": len(req.messages or [])}):
+            async with service_span("simcore.prompt.serialize", attributes={"simcore.msg.count": len(req.messages or [])}):
                 input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
 
             model_name = req.model or self.default_model or "gpt-4o-mini"
 
             # Provider request (child span)
-            async with service_span("ai.provider.send", attributes={"ai.provider_name": self.name}):
+            async with service_span("simcore.provider.send", attributes={"simcore.provider_name": self.name}):
                 resp: OpenAIResponse = await self._client.responses.create(
                     model=model_name,
                     input=input_,
@@ -204,7 +204,7 @@ class OpenAIProvider(BaseProvider):
                     tool_choice=req.tool_choice or NOT_GIVEN,
                     max_output_tokens=req.max_output_tokens or NOT_GIVEN,
                     timeout=timeout or self.timeout_s or NOT_GIVEN,
-                    text=req.response_format or NOT_GIVEN,
+                    text=req.output_schema or NOT_GIVEN,
                 )
 
             logger.debug(
@@ -214,7 +214,7 @@ class OpenAIProvider(BaseProvider):
             )
 
             # Normalize/Adapt (core BaseProvider handles nested spans for normalize)
-            return self.adapt_response(resp, schema_cls=req.response_format_cls)
+            return self.adapt_response(resp, output_schema_cls=req.output_schema_cls)
 
     async def stream(self, req: LLMRequest):  # pragma: no cover - streaming not implemented yet
         """
@@ -224,25 +224,25 @@ class OpenAIProvider(BaseProvider):
             Streaming is not yet implemented and will raise ProviderError.
         """
         async with service_span(
-                "ai.client.stream",
+                "simcore.client.stream",
                 attributes={
-                    "ai.provider_name": self.name,
-                    "ai.client_name": getattr(self, "name", self.__class__.__name__),
-                    "ai.model": req.model or self.default_model or "<unspecified>",
-                    "ai.stream": True,
-                    "ai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
-                    "ai.codec_identity": getattr(req, "codec_identity", None),
+                    "simcore.provider_name": self.name,
+                    "simcore.client_name": getattr(self, "name", self.__class__.__name__),
+                    "simcore.model": req.model or self.default_model or "<unspecified>",
+                    "simcore.stream": True,
+                    "simcore.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
+                    "simcore.codec": getattr(req, "codec", None),
                     **_flatten_context(getattr(req, "context", {}) or {}),
                 },
         ) as span:
             try:
                 # When streaming is implemented, emit per-chunk events here, e.g.:
-                # span.add_event("ai.client.stream_chunk", {"type": "text", "bytes": len(delta)})
+                # span.add_event("simcore.client.stream_chunk", {"type": "text", "bytes": len(delta)})
                 pass
             finally:
                 # For now, note unimplemented to aid observability
                 try:
-                    span.add_event("ai.client.stream.unimplemented", {"reason": "not yet implemented"})
+                    span.add_event("simcore.client.stream.unimplemented", {"reason": "not yet implemented"})
                 except Exception:
                     pass
             raise ProviderError("OpenAIProvider.stream is not implemented yet")

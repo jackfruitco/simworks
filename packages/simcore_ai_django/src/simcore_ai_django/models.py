@@ -21,7 +21,7 @@ class TimestampedModel(models.Model):
 class AIRequestAudit(TimestampedModel):
     """Audit row for an outbound AI request.
 
-    Stores the normalized request payload (messages/tools/response_format) and routing metadata.
+    Stores the normalized request payload (messages/tools/output_schema) and routing metadata.
     This is append-only; do not update after creation except for bookkeeping fields.
     """
 
@@ -156,9 +156,9 @@ class AIOutbox(TimestampedModel):
     """
 
     EVENT_CHOICES = [
-        ("ai.request.sent", "AI request sent"),
-        ("ai.response.received", "AI response received"),
-        ("ai.response.ready", "AI response ready"),
+        ("simcore.request.sent", "AI request sent"),
+        ("simcore.response.received", "AI response received"),
+        ("simcore.response.ready", "AI response ready"),
     ]
 
     event_type = models.CharField(max_length=64, choices=EVENT_CHOICES, db_index=True)
@@ -208,4 +208,4 @@ class AIOutbox(TimestampedModel):
         self.save(update_fields=["dispatched_at", "updated_at"])
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"AIOutbox(id={self.pk}, event={self.event_type}, ident={self.identity_str}, dispatched={bool(self.dispatched_at)})"
+        return f"AIOutbox(id={self.pk}, event={self.event_type}, ident={self.identity.as_str}, dispatched={bool(self.dispatched_at)})"

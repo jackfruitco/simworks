@@ -43,7 +43,7 @@ def _span_attributes_from_ctx(ctx: Mapping[str, Any] | None) -> Dict[str, Any]:
     for k in keys:
         v = ctx.get(k)
         if v is not None:
-            out[f"ai.{k}"] = str(v)
+            out[f"simcore.{k}"] = str(v)
     return out
 
 
@@ -52,7 +52,7 @@ def service_span(name: str, *, attributes: Mapping[str, Any] | None = None) -> I
     """Create a root/parent span for a full AI service run (sync).
 
     Example:
-        with service_span("ai.run_service", attributes={"ai.namespace": ns, ...}):
+        with service_span("simcore.run_service", attributes={"simcore.namespace": ns, ...}):
             ...
     """
     tracer = get_tracer()

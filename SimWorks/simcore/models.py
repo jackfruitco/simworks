@@ -21,6 +21,7 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
+from core.models import PersistModel
 from simcore.utils import randomize_display_name
 from simcore_ai_django.api.types import Prompt
 
@@ -291,25 +292,21 @@ class Simulation(models.Model):
             *,
             user=None,
             prompt: Prompt = None,
-            app_=None,
-            is_template=False,
+            app_name=None,
+            from_scenario=False,
             **kwargs
     ):
         """Class method factory for creating simulations"""
-        # TODO app-specific in simcore
-        from chatlab.ai.services import GenerateInitialResponse
 
-        if not user and not is_template:
-            raise ValueError("Simulation must have a user unless marked as template.")
+        if not user and not from_scenario:
+            raise ValueError("Simulation must have a user")
 
-        if is_template:
-            # TODO: pending deprecation (simulation.is_template - use PromptScenario instead)
-            warnings.warn("`is_template` is deprecated. Use `PromptScenario` instead.", PendingDeprecationWarning)
+        if from_scenario:
+            # TODO: add `Simulation.abuild(from_scenario=True) feature
+            logger.error("Simulation.abuild() called with `from_scenario=True`, but feature is not implemented yet.")
 
-        logger.info(f"starting Simulation build for {app_} (user={user})")
-        logger.debug("... abuild(%s, %s, %s, %s, %s)", user, prompt, app_, is_template, kwargs)
-
-        app_ = str(app_).lower().strip() if app_ else None
+        logger.info(f"starting Simulation build for {app_name} (user={user})")
+        logger.debug("... abuild(%s, %s, %s, %s, %s)", user, prompt, app_name, from_scenario, kwargs)
 
         # Collect valid concrete field names to avoid passing stray kwargs to .acreate()
         model_field_names = {f.name for f in cls._meta.get_fields() if
@@ -321,7 +318,7 @@ class Simulation(models.Model):
                 pk = int(user)
             except (TypeError, ValueError):
                 raise ValueError("`user` must be a User instance or an integer primary key")
-            User = get_user_model()
+            User = get_user_model()  # noqa: 8106
             user = await User.objects.select_related("role").aget(pk=pk)
 
         create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
@@ -330,11 +327,7 @@ class Simulation(models.Model):
             **create_kwargs,
         )
 
-        # Execute LLM service
-        GenerateInitialResponse.execute(simulation_id=instance.pk)
-
         return instance
-
 
     @classmethod
     def resolve(cls, _simulation: "Simulation | int") -> "Simulation":
@@ -398,7 +391,7 @@ class Simulation(models.Model):
         return base
 
 
-class SimulationMetadata(PolymorphicModel):
+class SimulationMetadata(PersistModel, PolymorphicModel):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 

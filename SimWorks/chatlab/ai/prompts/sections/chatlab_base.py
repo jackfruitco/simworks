@@ -3,11 +3,11 @@ from typing import Any
 
 from chatlab.ai.mixins import ChatlabMixin
 from simcore.ai.mixins import StandardizedPatientMixin
-from simcore_ai_django.api.decorators import prompt_section
+from simcore_ai_django.api import simcore
 from simcore_ai_django.api.types import PromptSection
 
 
-@prompt_section
+@simcore.prompt_section
 @dataclass
 class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the LLM to generate an initial scenario."""
@@ -47,7 +47,7 @@ class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, Promp
     )
 
 
-@prompt_section
+@simcore.prompt_section
 @dataclass
 class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the patient's reply to the LLM."""
@@ -63,7 +63,7 @@ class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, PromptS
         raise ValueError("user_msg must be provided")
 
 
-@prompt_section
+@simcore.prompt_section
 @dataclass
 class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the LLM to generate an image."""

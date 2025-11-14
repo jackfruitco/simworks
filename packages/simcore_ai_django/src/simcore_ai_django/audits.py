@@ -74,16 +74,16 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
     Persist an audit row for an outbound request and return its PK.
 
     - Stores normalized request messages (prefer rich messages if available).
-    - Stores response_format* fields if they are already attached at emit time.
+    - Stores output_schema* fields if they are already attached at emit time.
     """
     with service_span_sync(
-        "ai.audit.request",
+        "simcore.audit.request",
         attributes={
-            "ai.namespace": getattr(dj_req, "namespace", None),
-            "ai.provider_name": getattr(dj_req, "provider_name", None),
-            "ai.client_name": getattr(dj_req, "client_name", None),
-            "ai.model": getattr(dj_req, "model", None),
-            "ai.stream": bool(getattr(dj_req, "stream", False)),
+            "simcore.namespace": getattr(dj_req, "namespace", None),
+            "simcore.provider_name": getattr(dj_req, "provider_name", None),
+            "simcore.client_name": getattr(dj_req, "client_name", None),
+            "simcore.model": getattr(dj_req, "model", None),
+            "simcore.stream": bool(getattr(dj_req, "stream", False)),
         },
     ):
         messages = dj_req.messages_rich or dj_req.messages or []
@@ -110,10 +110,10 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
             tools=_dump_json(tools),
 
             # response format (may be filled later by the client/provider)
-            response_format_cls=getattr(dj_req, "response_format_cls", None).__name__
-                if getattr(dj_req, "response_format_cls", None) else None,
+            response_format_cls=getattr(dj_req, "output_schema_cls", None).__name__
+                if getattr(dj_req, "output_schema_cls", None) else None,
             response_format_adapted=_dump_json(getattr(dj_req, "response_format_adapted", None)),
-            response_format=_dump_json(getattr(dj_req, "response_format", None)),
+            response_format=_dump_json(getattr(dj_req, "output_schema", None)),
 
             # prompt metadata (optional)
             prompt_meta=_dump_json(getattr(dj_req, "prompt_meta", None)),
@@ -132,7 +132,7 @@ def update_request_audit_formats(
     Backfill/refresh the request audit row with final response format details
     (e.g., after provider-specific adapters/wrappers are applied).
     """
-    with service_span_sync("ai.audit.request_update_formats"):
+    with service_span_sync("simcore.audit.request_update_formats"):
         cls_name = response_format_cls.__name__ if response_format_cls else None
         AIRequestAudit.objects.filter(pk=request_audit_pk).update(
             response_format_cls=cls_name,
@@ -153,13 +153,13 @@ def write_response_audit(
     - Links to AIRequestAudit via FK when provided.
     """
     with service_span_sync(
-        "ai.audit.response",
+        "simcore.audit.response",
         attributes={
-            "ai.namespace": getattr(dj_resp, "namespace", None),
-            "ai.provider_name": getattr(dj_resp, "provider_name", None),
-            "ai.client_name": getattr(dj_resp, "client_name", None),
-            "ai.model": getattr(dj_resp, "model", None),
-            "ai.error.present": bool(getattr(dj_resp, "error", None)),
+            "simcore.namespace": getattr(dj_resp, "namespace", None),
+            "simcore.provider_name": getattr(dj_resp, "provider_name", None),
+            "simcore.client_name": getattr(dj_resp, "client_name", None),
+            "simcore.model": getattr(dj_resp, "model", None),
+            "simcore.error.present": bool(getattr(dj_resp, "error", None)),
         },
     ):
         request_row = None

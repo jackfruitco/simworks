@@ -3,7 +3,7 @@ import importlib
 def test_task_backend_decorator_registers_backend():
     from simcore_ai_django.execution.registry import get_backend_by_name
     from simcore_ai_django.execution.decorators import task_backend
-    from simcore_ai_django.execution.types import BaseExecutionBackend
+    from simcore_ai_django.execution.base import BaseExecutionBackend
 
     @task_backend("example")
     class ExampleBackend(BaseExecutionBackend):

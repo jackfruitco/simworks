@@ -3,7 +3,7 @@ import logging
 from typing import Type, TypeVar
 
 from .registry import register_backend
-from .types import BaseExecutionBackend
+from .base import BaseExecutionBackend
 
 logger = logging.getLogger(__name__)
 

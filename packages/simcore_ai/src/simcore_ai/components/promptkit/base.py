@@ -1,0 +1,203 @@
+# simcore_ai/promptkit/types.py
+from __future__ import annotations
+
+from abc import ABC
+
+from simcore_ai.components import BaseComponent
+
+"""
+Core promptkit types (AIv3).
+
+This module defines lightweight types shared by the prompt system:
+
+- `Prompt`: final aggregate produced by a prompt engine. Services convert this
+  to LLMRequestMessage objects (default: developer instruction + user message).
+- `PromptSection`: declarative section base class. Sections advertise identity
+  via a class-level `identity: Identity`. The canonical identity string uses
+  dot form: `namespace.kind.name`.
+- `context` (on `Prompt`): a plain dict passed through by services/engines so
+  downstream layers (runner/client/provider) can enrich telemetry or perform
+  app-specific logic without coupling. The core does not interpret these keys.
+
+Backward compatibility with legacy `namespace` or colon identities is removed.
+
+Empty instruction + message is allowed at this layer (engines may merge many
+sections); services/runners enforce the "not-both-empty" rule before providers.
+"""
+
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Optional, ClassVar
+import logging
+
+from simcore_ai.identity.mixins import IdentityMixin
+
+logger = logging.getLogger(__name__)
+
+PROMPT_VERSION = 3
+
+__all__ = [
+    "PROMPT_VERSION",
+    "Prompt",
+    "PromptSection",
+    "Renderable",
+    "ConfidenceNote",
+]
+
+
+# ---------------- Prompt (final aggregate) --------------------------------
+
+@dataclass(slots=True)
+class Prompt:
+    """Final prompt object produced by the engine and consumed by services.
+
+    Attributes:
+        instruction: Developer/system guidance for the model (maps to role="developer").
+        message: End-user message for the model (maps to role="user").
+        extra_messages: Optional list of (role, text) pairs for additional context.
+        context: Arbitrary context carried alongside the prompt (propagated to tracing).
+        meta: Arbitrary metadata for traceability/debugging.
+    """
+    instruction: str = ""
+    message: Optional[str] = None
+    extra_messages: list[tuple[str, str]] = field(default_factory=list)
+    context: dict[str, Any] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.instruction = (self.instruction or "").strip()
+        if self.message is not None:
+            self.message = self.message.strip()
+        # basic normalization for extras
+        self.extra_messages = [
+            (str(role), str(text))
+            for role, text in (self.extra_messages or [])
+            if str(text).strip()
+        ]
+        # ensure context is a shallow dict for safe propagation
+        if not isinstance(self.context, dict):
+            try:
+                self.context = dict(self.context)  # type: ignore[arg-type]
+            except Exception:
+                self.context = {}
+        self.meta.setdefault("version", PROMPT_VERSION)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "instruction": self.instruction,
+            "message": self.message,
+            "extra_messages": list(self.extra_messages),
+            "context": dict(self.context),
+            "meta": dict(self.meta),  # shallow copy to avoid external mutation
+        }
+
+    def with_context(self, **more: Any) -> "Prompt":
+        """Return a new Prompt with context updated by `more` (shallow copy)."""
+        new_ctx = dict(self.context)
+        new_ctx.update(more)
+        return Prompt(
+            instruction=self.instruction,
+            message=self.message,
+            extra_messages=list(self.extra_messages),
+            context=new_ctx,
+            meta=dict(self.meta),
+        )
+
+    def has_content(self) -> bool:
+        """Return True if either instruction or message has non-empty text."""
+        return bool(self.instruction) or bool(self.message)
+
+
+# Used by render methods and helpers.
+Renderable = str | None | Awaitable[str | None]
+
+
+# ---------------- Confidence plumbing (not used yet; safe to add) --------
+
+@dataclass(slots=True)
+class ConfidenceNote:
+    """Optional confidence signal a section can expose for future planners.
+
+    score: 0.0..1.0 (advisory weight; not a probability)
+    note: short human-readable explanation for debugging
+    """
+    score: float
+    note: str = ""
+
+
+# ---------------- Section base -------------------------------------------
+
+@dataclass(order=True, slots=True)
+class PromptSection(IdentityMixin, BaseComponent, ABC):
+    """Base class for declarative prompt sections (AIv3).
+
+    Sections provide identity **at the class level** using:
+      • `identity: Identity`  (required).
+
+    Instances may also carry static `instruction`/`message` text, which an
+    engine may use directly when present.
+
+    The canonical identity string is dot-based: `namespace.kind.name`.
+
+    Subclasses may optionally override `assess_confidence(context=...)` to
+    provide an advisory ConfidenceNote for future auto-planners. This is not
+    invoked by core today; it’s here to keep section signatures stable.
+    """
+    abstract: ClassVar[bool] = True
+
+    weight: int = field(default=100, compare=True)  # to order/sort during Prompt build
+    is_dynamic: ClassVar[bool] = False              # to enable/disable prompt caching
+
+    # optional static content (instance- or class-level)
+    instruction: Optional[str] = field(default=None, compare=False)
+    message: Optional[str] = field(default=None, compare=False)
+
+    # optional tags (non-functional; for selection or debugging)
+    tags: frozenset[str] = field(default_factory=frozenset, compare=False, repr=False)
+
+    def __repr__(self) -> str:
+        return f"<PromptSection {self.identity.as_str} tags={self.tags or 'None'}>"
+
+    async def arun(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+        """
+        Async lifecycle entrypoint required by BaseComponent.
+
+        Prompt sections are declarative; they do not define a standalone `arun`
+        behavior by default. Prompt engines should call `render_instruction`
+        and `render_message` instead of `arun`.
+
+        Subclasses MAY override this if they want to behave as executable
+        components, but typical sections only implement renderers.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not implement `arun`; "
+            "use render_instruction/render_message via a PromptEngine."
+        )
+
+    # ---------------- Rendering helpers ----------------------------------
+    async def render_instruction(self, **ctx: Any) -> str | None:
+        """Return developer/system instructions for this section, if any."""
+        text = self.instruction if self.instruction is not None else getattr(type(self), "instruction", None)
+        out = _normalize(text)
+        logger.debug("promptkit.render_instruction: ident=%s present=%s", self.identity.as_str, bool(out))
+        return out
+
+    async def render_message(self, **ctx: Any) -> str | None:
+        """Return end-user message content for this section, if any."""
+        text = self.message if self.message is not None else getattr(type(self), "message", None)
+        out = _normalize(text)
+        logger.debug("promptkit.render_message: ident=%s present=%s", self.identity.as_str, bool(out))
+        return out
+
+    # ---------------- Confidence (advisory; optional) ---------------------
+    async def assess_confidence(self, *, context: dict[str, Any]) -> ConfidenceNote | None:  # pragma: no cover
+        """Optional advisory signal for future planners. Not used in core yet."""
+        return None
+
+
+# ---------------- Utilities ----------------------------------------------
+
+def _normalize(out: str | None) -> str | None:
+    if out is None:
+        return None
+    s = str(out).strip()
+    return s or None

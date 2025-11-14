@@ -30,6 +30,8 @@ from .django_dtos import (
     DjangoLLMUsage,
 )
 
+__all__ = ("demote_request", "demote_response")
+
 
 # ---------------------- helpers -----------------------------------------
 
@@ -112,9 +114,3 @@ def demote_response(dj_resp: DjangoLLMResponse) -> LLMResponse:
     base["outputs"] = _demote_response_items(dj_resp.outputs_rich, fallback=dj_resp.outputs)
     base["usage"] = _demote_usage(dj_resp.usage_rich, fallback=dj_resp.usage)
     return LLMResponse(**base)
-
-
-__all__ = [
-    "demote_request",
-    "demote_response",
-]

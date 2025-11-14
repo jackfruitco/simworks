@@ -31,7 +31,7 @@ def reset_backend_registry():
 # A tiny fake backend for asserting entrypoint routing without running services
 @pytest.fixture
 def FakeBackend():
-    from simcore_ai_django.execution.types import BaseExecutionBackend, SupportsServiceInit
+    from simcore_ai_django.execution.base import BaseExecutionBackend, SupportsServiceInit
 
     class _FakeBackend(BaseExecutionBackend):
         supports_priority = False
