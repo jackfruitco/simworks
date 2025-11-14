@@ -1,7 +1,7 @@
 # simcore_ai_django/components/services/base.py
 import logging
 from abc import ABC
-from typing import Any, Callable, Awaitable
+from typing import Any, Callable, Awaitable, ClassVar
 
 from simcore_ai.components import BaseService, PromptSection
 from simcore_ai.components.promptkit.engine import SectionSpec
@@ -54,6 +54,9 @@ class DjangoBaseService(BaseService, ABC):
     it inherits the async-first resolver from `BaseService` and the per-call
     codec lifecycle (`aprepare` + `arun` / `run_stream`).
     """
+
+    # Attribute to attach Django "Task" class
+    task: ClassVar[Any]
 
     # Optional async renderer for PromptSection → string
     render_section: RenderSection | None = None
