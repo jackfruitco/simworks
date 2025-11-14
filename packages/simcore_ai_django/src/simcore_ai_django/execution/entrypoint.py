@@ -41,7 +41,7 @@ Backends perform scheduling/dispatch; the runner orchestrates request promotion/
 calls, audits, and codec handling.
 """
 
-__all__ = ["execute", "_ExecutionCall"]
+__all__ = ["execute", "ServiceCall"]
 
 from collections.abc import Mapping
 from typing import Any, Optional, Dict, Union, TYPE_CHECKING
@@ -402,7 +402,7 @@ def execute(
 
 # -------------------- Service mixin & builder --------------------
 
-class _ExecutionCall:
+class ServiceCall:
     """
     Lightweight builder for per-call overrides; non-autostart.
 
@@ -422,33 +422,24 @@ class _ExecutionCall:
         self._service_cls = service_cls
         self._overrides: Dict[str, Any] = dict(overrides or {})
 
-    def using(self, **more: Any) -> "_ExecutionCall":
+    def using(self, **more: Any) -> "ServiceCall":
         self._overrides.update(more)
         return self
 
     def execute(self, **ctx: Any) -> Any:
-        """Force synchronous execution with current overrides.
-
-        Transport-only: defers service instantiation and request building to the backend/runner.
-        """
+        """Force synchronous execution with current overrides."""
         ov = dict(self._overrides)
         ov["enqueue"] = False
         return execute(self._service_cls, using=ov, **ctx)
 
     def enqueue(self, **ctx: Any) -> str:
-        """Force asynchronous execution with current overrides.
-
-        Transport-only: enqueues with resolved backend and defers work to the runner at execution time.
-        """
+        """Force asynchronous execution with current overrides."""
         ov = dict(self._overrides)
         ov["enqueue"] = True
         return execute(self._service_cls, using=ov, **ctx)  # type: ignore[return-value]
 
     def dispatch(self, **ctx: Any) -> Any | str:
-        """Resolve mode from overrides/service/settings and execute.
-
-        Transport-only: no identity/request/codec logic here.
-        """
+        """Resolve mode from overrides/service/settings and execute."""
         return execute(self._service_cls, using=self._overrides, **ctx)
 
     def run(self, **ctx: Any) -> Any | str:

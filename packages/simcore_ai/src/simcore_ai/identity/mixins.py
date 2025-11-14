@@ -105,7 +105,7 @@ class IdentityMixin:
         """
         with cls.__identity_lock:
             cls.__identity_cached = identity
-            cls.__identity_meta_cached = {"ai.identity.source": "pinned"}
+            cls.__identity_meta_cached = {"simcore.identity.source": "pinned"}
 
     def __init_subclass__(cls, **kwargs) -> None:  # pragma: no cover - light guardrails
         super().__init_subclass__(**kwargs)

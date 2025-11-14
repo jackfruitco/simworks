@@ -30,7 +30,7 @@ class SetupTeardownMixin:
         return self
 
 
-class LifecyleMixin(SetupTeardownMixin):
+class LifecycleMixin(SetupTeardownMixin):
     """
     Async-first execution lifecycle:
 

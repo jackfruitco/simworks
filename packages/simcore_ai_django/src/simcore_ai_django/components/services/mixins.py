@@ -1,6 +1,4 @@
 # simcore_ai_django/services/mixins.py
-from __future__ import annotations
-
 """
 Execution conveniences for Django services.
 
@@ -36,12 +34,13 @@ Implementation notes
   and trace context propagation) is handled by the entrypoint.
 - Identity in tracing prefers the class-resolved identity (via IdentityMixin) and falls back to context-derived pieces if unavailable.
 """
+from __future__ import annotations
 
 from typing import Any
 
-from simcore_ai.tracing import service_span_sync
-from simcore_ai_django.execution.entrypoint import execute as _execute
 from simcore_ai.tracing import flatten_context
+from simcore_ai.tracing import service_span_sync
+from simcore_ai_django.execution.entrypoint import ServiceCall
 
 
 class ServiceExecutionMixin:
@@ -53,7 +52,7 @@ class ServiceExecutionMixin:
         Execute the service immediately (sync) using resolved defaults.
         See `simcore_ai_django.execution.entrypoint.execute` for full resolution rules.
 
-    using(**overrides) -> _ExecutionCall:
+    using(**overrides) -> ServiceCall:
         Return a builder that captures per-call overrides (e.g., backend,
         run_after, priority). Call `.execute(**ctx)` or `.enqueue(**ctx)` on the
         builder to perform the action explicitly.
@@ -113,10 +112,10 @@ class ServiceExecutionMixin:
                 "exec.mux.execute",
                 attributes=attrs,
         ):
-            return _execute(cls, **ctx)
+            return ServiceCall(cls).dispatch(**ctx)
 
     @classmethod
-    def using(cls, **overrides: Any):  # -> _ExecutionCall (runtime import to avoid cycle)
+    def using(cls, **overrides: Any):  # -> ServiceCall (runtime import to avoid cycle)
         """Return a builder that applies per-call execution overrides. Identity in traces is resolved from the class (via IdentityMixin) when available.
 
         Parameters
@@ -126,7 +125,7 @@ class ServiceExecutionMixin:
             `run_after` (seconds or datetime), `priority` (-100..100), and
             optional `enqueue` if you want to force async here.
         """
-        from simcore_ai_django.execution.entrypoint import _ExecutionCall  # lazy import to avoid cycles
+        from simcore_ai_django.execution.entrypoint import ServiceCall  # lazy import to avoid cycles
 
         keys = ",".join(sorted(map(str, overrides.keys()))) if overrides else ""
         uattrs = {
@@ -141,4 +140,4 @@ class ServiceExecutionMixin:
                 "exec.mux.using",
                 attributes=uattrs,
         ):
-            return _ExecutionCall(cls, dict(overrides or {}))
+            return ServiceCall(cls, dict(overrides or {}))

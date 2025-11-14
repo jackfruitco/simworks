@@ -5,8 +5,7 @@ from typing import Any, Dict, Optional, Type
 
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.tracing.helpers import flatten_context as flatten_context_attrs
-from simcore_ai_django.execution.base import BaseExecutionBackend, SupportsServiceInit
-from simcore_ai_django.execution.dispatch import dispatch
+from simcore_ai_django.execution.base import BaseExecutionBackend
 from ..decorators import task_backend
 from ...components import DjangoExecutableLLMService
 

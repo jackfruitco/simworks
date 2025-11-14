@@ -1,3 +1,4 @@
+# simcore_ai/components/services/base.py
 """
 BaseService: Abstract base for LLM-backed AI services.
 
@@ -36,7 +37,7 @@ from simcore_ai.identity import Identity, IdentityLike, IdentityMixin
 from simcore_ai.tracing import get_tracer, service_span
 from simcore_ai.types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
-from ..mixins import LifecyleMixin
+from ..mixins import LifecycleMixin
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
@@ -57,7 +58,7 @@ class ServiceEmitter(Protocol):
 CodecLike = Union[type[BaseCodec], BaseCodec, IdentityLike]
 
 
-class BaseService(IdentityMixin, LifecyleMixin, BaseComponent, ABC):
+class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     """
     Abstract base for LLM-backed AI services.
 
@@ -273,7 +274,7 @@ class BaseService(IdentityMixin, LifecyleMixin, BaseComponent, ABC):
         return PromptPlan.from_sections([resolved])
 
     # ----------------------------------------------------------------------
-    # LifecyleMixin lifecycle integration
+    # LifecycleMixin lifecycle integration
     # ----------------------------------------------------------------------
     def setup(self, **ctx):
         """Merge incoming context into `self.context` and validate required keys."""
