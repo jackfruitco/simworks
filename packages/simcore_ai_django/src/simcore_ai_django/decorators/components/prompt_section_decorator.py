@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=Type[Any])
 
 
-class DjangoPromptSectionDecorator(BaseDecorator):
+class DjangoPromptSectionDecorator(DjangoBaseDecorator):
     """
     Codec decorator specialized for DjangoPromptSectionDecorator subclasses.
 

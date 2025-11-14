@@ -159,6 +159,27 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         # Validate required context keys
         self.check_required_context()
 
+    @classmethod
+    def using(cls, **overrides: Any) -> "BaseService":
+        """
+        Construct a new service instance with per-call configuration overrides.
+
+        This helper is intentionally backend-agnostic. It simply forwards the given
+        keyword arguments to the service constructor. Typical overrides include:
+
+            - context: dict[str, Any]
+            - codec / codec_cls: CodecLike
+            - prompt_plan: PromptPlan | list[PromptSectionSpec | str] | IdentityLike
+            - prompt_engine: PromptEngine
+            - client: AIClient
+            - emitter: ServiceEmitter
+            - prompt_instruction_override / prompt_message_override: str
+
+        Task-level concerns (priority, queue, retries, etc.) are handled by the
+        Django Tasks layer and MUST NOT be passed here.
+        """
+        return cls(**overrides)
+
     @property
     def slug(self) -> str:
         """Get slug for Service (from identity string)."""

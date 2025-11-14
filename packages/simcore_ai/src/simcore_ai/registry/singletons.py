@@ -1,4 +1,4 @@
-# simcore_ai/types/singletons.py
+# simcore_ai/registry/singletons.py
 
 from typing import overload, TypeVar, cast, Any
 

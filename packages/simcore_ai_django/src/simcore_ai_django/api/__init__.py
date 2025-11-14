@@ -28,7 +28,6 @@ __all__ = [
 
     # services
     "DjangoBaseService",
-    "DjangoExecutableLLMService",
 
     # tracing
     "service_span_sync",

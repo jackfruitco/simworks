@@ -24,12 +24,12 @@ All exports are explicitly defined to ensure clarity regarding provided utilitie
 """
 from .codecs import DjangoBaseCodec
 from .schemas import DjangoBaseOutputSchema, DjangoBaseOutputBlock, DjangoBaseOutputItem
-from .services import DjangoBaseService, DjangoExecutableLLMService
+from .services import DjangoBaseService
 from .promptkit import Prompt, PromptEngine, PromptSection, PromptScenario
 
 __all__ = [
     "DjangoBaseCodec",
-    "DjangoExecutableLLMService", "DjangoBaseService",
+    "DjangoBaseService",
     "DjangoBaseOutputSchema", "DjangoBaseOutputBlock", "DjangoBaseOutputItem",
     "Prompt", "PromptEngine", "PromptSection", "PromptScenario",
 ]

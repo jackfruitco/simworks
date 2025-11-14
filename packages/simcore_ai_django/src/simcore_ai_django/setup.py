@@ -193,8 +193,7 @@ def autodiscover_all() -> None:
         autodiscover_modules("simcore.identity")
     with service_span_sync("simcore.autodiscover.receivers"):
         autodiscover_modules("simcore.receivers")
-    with service_span_sync("simcore.autodiscover.task_backends"):
-        autodiscover_modules("simcore.task_backends")
+    # Removed simcore.autodiscover.task_backends autodiscovery
     with service_span_sync("simcore.autodiscover.prompts"):
         autodiscover_modules("simcore.prompts")
     with service_span_sync("simcore.autodiscover.services"):

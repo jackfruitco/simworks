@@ -38,7 +38,7 @@ class LifecycleMixin(SetupTeardownMixin):
 
     Exposes:
         - arun_all(**ctx): async orchestration
-        - run_all(**ctx): sync wrapper around `arun(**ctx)`
+        - run_all(**ctx): sync wrapper around `arun_all(**ctx)`
     """
 
     async def arun(self, **ctx):

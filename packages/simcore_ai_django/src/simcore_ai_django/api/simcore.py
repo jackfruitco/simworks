@@ -12,7 +12,7 @@ __all__ = [
     "codec", "service", "schema", "prompt_section",
 
     "DjangoBaseCodec",
-    "DjangoExecutableLLMService", "DjangoBaseService",
+    "DjangoBaseService",
     "DjangoBaseOutputSchema", "DjangoBaseOutputBlock", "DjangoBaseOutputItem",
     "Prompt", "PromptEngine", "PromptSection", "PromptScenario",
 ]

@@ -1,3 +1,4 @@
+# simcore_ai/registry/__init__.py
 from .base import BaseRegistry
 from .singletons import codecs,services,schemas,prompt_sections,get_registry_for
 

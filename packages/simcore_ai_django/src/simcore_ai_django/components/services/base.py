@@ -1,3 +1,4 @@
+# simcore_ai_django/components/services/base.py
 import logging
 from abc import ABC
 from typing import Any, Callable, Awaitable
@@ -8,13 +9,8 @@ from simcore_ai.identity import Identity
 from simcore_ai.registry import get_registry_for
 from simcore_ai.registry.exceptions import RegistryError
 from simcore_ai.types import LLMResponse
-from simcore_ai_django.components.services.mixins import ServiceExecutionMixin
 from simcore_ai_django.components.promptkit.render_section import \
     render_section as _default_renderer  # async (namespace, section_key, context) -> str
-from simcore_ai_django.execution.helpers import (
-    settings_default_backend as _exec_default_backend,
-    settings_default_mode as _exec_default_mode,
-)
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
 
 logger = logging.getLogger(__name__)
@@ -62,13 +58,6 @@ class DjangoBaseService(BaseService, ABC):
     # Optional async renderer for PromptSection → string
     render_section: RenderSection | None = None
 
-    # --- Execution configuration knobs (service-level defaults) ---
-    execution_mode: str | None = None  # "sync" | "async"
-    execution_backend: str | None = None  # "immediate" | "celery" | "django_tasks" (future)
-    execution_priority: int | None = None  # -100..100
-    execution_run_after: float | None = None  # seconds (or set at call-site)
-    require_enqueue: bool = False  # hard rule: force async if True
-
     def __init__(self, context: dict[str, Any] | None = None, **kwargs: Any) -> None:
         """Constructor that passes context through without domain coupling.
 
@@ -85,25 +74,6 @@ class DjangoBaseService(BaseService, ABC):
         # Renderer default: async section renderer that can hit Django models/templates
         if getattr(self, "render_section", None) is None:
             self.render_section = _default_renderer
-
-        # Execution defaults (service → settings → hardcoded)
-        if getattr(self, "execution_mode", None) is None:
-            try:
-                self.execution_mode = _exec_default_mode()
-            except Exception:
-                self.execution_mode = "sync"
-
-        if getattr(self, "execution_backend", None) is None:
-            try:
-                self.execution_backend = _exec_default_backend()
-            except Exception:
-                self.execution_backend = "immediate"
-
-        if getattr(self, "execution_priority", None) is None:
-            self.execution_priority = 0
-
-        if getattr(self, "execution_run_after", None) is None:
-            self.execution_run_after = None
 
     # ------------------------------------------------------------------
     # Promotion helpers
@@ -197,13 +167,3 @@ class DjangoBaseService(BaseService, ABC):
 
         return None
 
-
-class DjangoExecutableLLMService(ServiceExecutionMixin, DjangoBaseService, ABC):
-    """A Django-ready service base **with execution helpers**.
-
-    Inherits Django defaults (emitter/renderer) and adds `.execute(...)`
-    and builder-style `.using(...).enqueue/execute(...)`. Orchestration is handled
-    by `simcore_ai_django.execution.entrypoint`.
-    """
-
-    pass
