@@ -1,6 +1,6 @@
 [project]
 name = "simcore-ai"
-version = "0.3.0"
+version = "0.4.0"
 description = "Provider-agnostic AI engine for SimWorks (pure Python)."
 readme = "README.md"
 requires-python = ">=3.13"
