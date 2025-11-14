@@ -29,15 +29,15 @@ from typing import Any, ClassVar, Union, Optional, Protocol
 
 from asgiref.sync import async_to_sync
 
-from simcore_ai.client import AIClient
-from simcore_ai.components import BaseComponent
-from simcore_ai.components.codecs.base import BaseCodec
-from simcore_ai.components.promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
-from simcore_ai.identity import Identity, IdentityLike, IdentityMixin
-from simcore_ai.tracing import get_tracer, service_span
-from simcore_ai.types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
+from ..base import BaseComponent
+from ..codecs.base import BaseCodec
 from ..mixins import LifecycleMixin
+from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
+from ...client import AIClient
+from ...identity import Identity, IdentityLike, IdentityMixin
+from ...tracing import get_tracer, service_span
+from ...types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")

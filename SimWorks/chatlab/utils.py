@@ -47,7 +47,7 @@ async def create_new_simulation(
 
     from .ai.services import GenerateInitialResponse
     context = {"simulation_id": simulation.id, "user_id": user.id}
-    GenerateInitialResponse(context=context).execute()
+    GenerateInitialResponse.task.enqueue(**context)
 
     return simulation
 

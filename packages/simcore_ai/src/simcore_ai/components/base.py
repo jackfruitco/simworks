@@ -8,9 +8,9 @@ from uuid import UUID, uuid4
 
 from asgiref.sync import async_to_sync
 
-from simcore_ai.components import ComponentNotFoundError
-from simcore_ai.identity import IdentityLike
-from simcore_ai.registry.exceptions import RegistryNotFoundError
+from .exceptions import ComponentNotFoundError
+from ..identity import IdentityLike
+from ..registry.exceptions import RegistryNotFoundError
 
 if TYPE_CHECKING:
     from simcore_ai.registry import BaseRegistry

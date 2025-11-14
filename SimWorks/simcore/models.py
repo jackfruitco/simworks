@@ -254,7 +254,7 @@ class Simulation(models.Model):
     def generate_feedback(self):
         """Generate feedback for this simulation."""
         from .ai.services import GenerateHotwashInitialResponse
-        GenerateHotwashInitialResponse.execute(simulation_id=self.pk)
+        GenerateHotwashInitialResponse.task.enqueue(simulation_id=self.pk)
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256

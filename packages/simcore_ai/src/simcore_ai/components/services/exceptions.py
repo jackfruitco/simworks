@@ -1,7 +1,7 @@
 from typing import Optional, Iterable
 
-from simcore_ai.components.codecs.exceptions import CodecNotFoundError
-from simcore_ai.exceptions.base import SimCoreError
+from ..codecs.exceptions import CodecNotFoundError
+from ...exceptions.base import SimCoreError
 
 __all__ = [
     "ServiceError",

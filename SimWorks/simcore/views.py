@@ -1,6 +1,5 @@
 import json
 
-from core.utils import Formatter
 from django.http import HttpResponseNotFound
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -9,12 +8,14 @@ from django.template import TemplateDoesNotExist
 from django.template.loader import get_template
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
+
+from core.utils import Formatter
 from simcore.models import Simulation
 from simcore.tools import get_tool
 
 
 def download_simulation_transcript(
-    request, simulation_id, format_type="sim_transcript_txt"
+        request, simulation_id, format_type="sim_transcript_txt"
 ):
     sim = get_object_or_404(Simulation, id=simulation_id)
     formatter = Formatter(sim.history)
@@ -72,16 +73,9 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from simcore.ai_v1.tasks import acall_connector
-            from simcore.ai_v1.connectors import generate_patient_results
+            from simcore.ai.services import GenerateHotwashInitialResponse
+            GenerateHotwashInitialResponse.task.enqueue(_simulation_id=simulation_id, _lab_orders=submitted_orders)
 
-            await acall_connector(
-                generate_patient_results,
-                simulation_id=simulation_id,
-                submitted_orders=submitted_orders,
-            )
-
-            # g.delay(_simulation_id=simulation_id, _lab_orders=submitted_orders)
             return JsonResponse({"status": "ok", "orders": submitted_orders})
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)

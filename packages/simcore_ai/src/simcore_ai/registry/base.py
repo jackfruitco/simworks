@@ -7,8 +7,8 @@ from typing import Callable, Generic, TypeVar, Any, Tuple, Dict
 
 from asgiref.sync import async_to_sync
 
-from simcore_ai.components import ComponentNotFoundError
-from simcore_ai.registry.exceptions import RegistryDuplicateError, RegistryCollisionError, RegistryFrozenError
+from .exceptions import RegistryDuplicateError, RegistryCollisionError, RegistryFrozenError
+from ..components.exceptions import ComponentNotFoundError
 
 logger = logging.getLogger(__name__)
 

@@ -1,15 +1,14 @@
 # simcore/ai/services/feedback.py
 from simcore_ai_django.api.types import DjangoBaseService
-from simcore_ai_django.api.decorators import ai_service
+from simcore_ai_django.api import simcore
 from ..mixins import FeedbackMixin
 
-@ai_service
-class GenerateHotwashInitialResponse(DjangoBaseService, FeedbackMixin):
+@simcore.service
+class GenerateHotwashInitialResponse(FeedbackMixin, DjangoBaseService):
     """Generate the initial patient feedback."""
-    execution_mode = "async"
 
 
-@ai_service
-class GenerateHotwashContinuationResponse(DjangoBaseService, FeedbackMixin):
+@simcore.service
+class GenerateHotwashContinuationResponse(FeedbackMixin, DjangoBaseService):
     """Generate the continuation feedback."""
     pass
