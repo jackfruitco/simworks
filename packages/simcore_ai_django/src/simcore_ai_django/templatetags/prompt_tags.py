@@ -20,7 +20,6 @@ If the prompt defines templates or text, it renders them. If Django's
 through that helper for full context support.
 """
 
-from __future__ import annotations
 from typing import Optional
 from django import template
 from django.utils.safestring import mark_safe

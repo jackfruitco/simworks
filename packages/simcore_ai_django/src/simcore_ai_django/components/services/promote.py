@@ -1,5 +1,5 @@
 # simcore_ai_django/services/promote.py
-from __future__ import annotations
+
 
 """
 Service-level promotion helpers (Django layer).

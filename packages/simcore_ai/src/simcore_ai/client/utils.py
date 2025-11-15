@@ -25,7 +25,7 @@ Core Responsibilities:
 - Resolve API keys from environment variables when required.
 - Generate consistent provider identity names for observability.
 """
-from __future__ import annotations
+
 
 import logging
 import os

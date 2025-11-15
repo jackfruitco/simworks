@@ -1,5 +1,5 @@
 # packages/simcore_ai_django/src/simcore_ai_django/settings.py
-from __future__ import annotations
+
 
 """
 Package-level configuration helpers & defaults for `simcore_ai_django`.

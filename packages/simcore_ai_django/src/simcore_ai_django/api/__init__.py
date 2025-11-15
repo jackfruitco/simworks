@@ -1,7 +1,7 @@
 # simcore_ai_django/api/__init__.py
 """Stable API facade for SimWorks."""
 
-from __future__ import annotations
+
 
 from .registry import *
 from .client import *

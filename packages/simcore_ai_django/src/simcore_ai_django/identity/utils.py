@@ -1,5 +1,5 @@
 # simcore_ai_django/identity/utils.py
-from __future__ import annotations
+
 
 from django.apps import apps
 

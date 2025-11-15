@@ -1,5 +1,5 @@
 # simcore_ai/promptkit/resolvers.py
-from __future__ import annotations
+
 
 from .. import ComponentNotFoundError
 from ...identity import Identity, IdentityLike

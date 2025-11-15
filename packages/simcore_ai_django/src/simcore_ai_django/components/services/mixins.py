@@ -1,5 +1,5 @@
 # simcore_ai_django/components/services/mixins.py
-from __future__ import annotations
+
 
 """
 Legacy execution mixins for Django services have been removed.

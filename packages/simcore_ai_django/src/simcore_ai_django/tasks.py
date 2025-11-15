@@ -15,6 +15,6 @@ To enqueue work, call:
 and rely on the configured Django TASKS backend (ImmediateBackend for now)
 instead of Celery's @shared_task entrypoints.
 """
-from __future__ import annotations
+
 
 __all__: list[str] = []

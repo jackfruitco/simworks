@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 """
 Demotion helpers (Django → core DTOs).

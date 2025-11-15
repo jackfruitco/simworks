@@ -1,5 +1,5 @@
 # simcore_ai/dispatch.py
-from __future__ import annotations
+
 
 import logging
 from functools import partial

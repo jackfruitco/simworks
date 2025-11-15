@@ -1,15 +1,16 @@
 # simcore_ai/identity/protocols.py
-from __future__ import annotations
 
-from typing import Protocol, Any, runtime_checkable, ClassVar
 
-from .identity import Identity
+from typing import Protocol, Any, runtime_checkable, ClassVar, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .identity import Identity
 
 __all__ = ["IdentityResolverProtocol", "IdentityProtocol"]
 
 
 class IdentityResolverProtocol(Protocol):
-    def resolve(self, candidate: type, **hints: Any) -> Identity: ...
+    def resolve(self, candidate: type, **hints: Any) -> "Identity": ...
 
 
 @runtime_checkable
@@ -26,8 +27,8 @@ class IdentityProtocol(Protocol):
     # class-level identity (e.g., via descriptor)
     identity: ClassVar[Identity]  # ensures classes are compatible
     # instance-level identity (optional)
-    identity: Identity
+    identity: "Identity"
 
     # Optional helpers to make type checkers happy with dynamic access
     @classmethod
-    def resolve_identity(cls) -> Identity: ...
+    def resolve_identity(cls) -> "Identity": ...

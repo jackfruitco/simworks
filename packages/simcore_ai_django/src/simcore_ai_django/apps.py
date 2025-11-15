@@ -1,5 +1,5 @@
 # simcore_ai_django/apps.py
-from __future__ import annotations
+
 
 import os
 

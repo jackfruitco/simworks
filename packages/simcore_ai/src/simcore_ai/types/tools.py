@@ -1,5 +1,5 @@
 # simcore_ai/types/tools.py
-from __future__ import annotations
+
 
 from typing import Any, Literal, Optional
 

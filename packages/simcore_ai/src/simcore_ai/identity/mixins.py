@@ -1,5 +1,5 @@
 # packages/simcore_ai/src/simcore_ai/identity/mixins.py
-from __future__ import annotations
+
 
 from threading import RLock
 from typing import ClassVar, Optional, Any

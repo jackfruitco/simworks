@@ -1,5 +1,5 @@
 # config/ai/codecs.py
-from __future__ import annotations
+
 
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, Callable, ClassVar

@@ -1,5 +1,4 @@
 # simcore_ai_django/setup.py
-from __future__ import annotations
 """
 simcore_ai_django.setup
 =======================

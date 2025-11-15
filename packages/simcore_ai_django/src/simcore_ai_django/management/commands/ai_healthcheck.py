@@ -1,5 +1,5 @@
 # simcore_ai_django/management/commands/ai_healthcheck.py
-from __future__ import annotations
+
 
 """
 Django management command to run AI client/provider healthchecks.

@@ -1,5 +1,5 @@
 # simcore_ai/providers/openai/base.py
-from __future__ import annotations
+
 
 """
 OpenAIProvider

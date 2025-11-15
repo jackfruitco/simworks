@@ -1,5 +1,5 @@
 # simcore_ai/components/base.py
-from __future__ import annotations
+
 
 import logging
 from abc import ABC

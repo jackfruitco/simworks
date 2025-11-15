@@ -1,5 +1,5 @@
 # simcore_ai/decorators/base.py
-from __future__ import annotations
+
 
 """
 Core base decorator (class-based, no factories).

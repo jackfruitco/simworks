@@ -1,5 +1,5 @@
 # simcore_ai/registry/base.py
-from __future__ import annotations
+
 
 import logging
 from threading import RLock

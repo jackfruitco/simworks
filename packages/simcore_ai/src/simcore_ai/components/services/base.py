@@ -20,7 +20,7 @@ Prompt plans
 • Optional 'override_prompt' string replaces the built prompt.message after build.
 • The cached prompt is available at the read/write property: service.prompt
 """
-from __future__ import annotations
+
 
 import asyncio
 import logging

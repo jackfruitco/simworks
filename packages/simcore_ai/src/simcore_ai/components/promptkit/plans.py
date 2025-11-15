@@ -1,5 +1,5 @@
 # simcore_ai/promptkit/plans.py
-from __future__ import annotations
+
 
 from ...identity import Identity
 

@@ -5,7 +5,6 @@ This module attempts to use the core PromptRegistry to influence template resolu
 if it is present, allowing project-level prompt definitions to participate in Django
 template selection.
 """
-from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Optional
 from asgiref.sync import sync_to_async

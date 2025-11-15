@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 from simcore_ai.registry import BaseRegistry
 from simcore_ai_django.decorators import DjangoBaseDecorator

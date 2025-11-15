@@ -1,9 +1,4 @@
-from __future__ import annotations
-
-from ..components import ComponentNotFoundError
-from ..registry.exceptions import RegistryNotFoundError
-from ..types.protocols import RegistryProtocol
-
+# simcore_ai/identity/resolvers.py
 """
 Identity resolution (core).
 
@@ -37,17 +32,16 @@ Key behaviors
 This module must not import any decorator or registry code to avoid cycles.
 """
 
+
 import os
 import re
 from dataclasses import dataclass
 from typing import Iterable, Optional, Any, TypeVar
 
-from .identity import Identity, IdentityLike
 from . import registry_resolvers as _rr
-
-# Utilities (pure functions) from your identity utils
-from simcore_ai.identity.utils import snake, module_root
-from simcore_ai.identity.utils import DEFAULT_IDENTITY_STRIP_TOKENS as _DEFAULT_TOKENS
+from .identity import Identity, IdentityLike
+from .utils import snake, module_root, DEFAULT_IDENTITY_STRIP_TOKENS as _DEFAULT_TOKENS
+from ..types.protocols import RegistryProtocol
 
 __all__ = [
     "IdentityResolver",
@@ -319,10 +313,10 @@ class Resolve:
 
     @staticmethod
     def for_(
-        component: type[T],
-        identity: IdentityLike,
-        *,
-        __from: RegistryProtocol | None = None,
+            component: type[T],
+            identity: IdentityLike,
+            *,
+            __from: RegistryProtocol | None = None,
     ) -> T:
         """Strict resolver: resolve a registered component by identity.
 
@@ -332,10 +326,10 @@ class Resolve:
 
     @staticmethod
     def try_for_(
-        component: type[T],
-        identity: IdentityLike,
-        *,
-        __from: RegistryProtocol | None = None,
+            component: type[T],
+            identity: IdentityLike,
+            *,
+            __from: RegistryProtocol | None = None,
     ) -> T | None:
         """Safe resolver: never raises on lookup failure; returns None instead."""
         return _rr.try_for_(component, identity, __from=__from)

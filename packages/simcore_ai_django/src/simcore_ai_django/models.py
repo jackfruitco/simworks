@@ -1,5 +1,5 @@
 # simcore_ai_django/models.py
-from __future__ import annotations
+
 
 from django.db import models
 from django.utils import timezone

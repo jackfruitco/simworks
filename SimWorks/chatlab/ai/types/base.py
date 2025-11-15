@@ -1,5 +1,5 @@
 # simcore/ai/types/base.py
-from __future__ import annotations
+
 
 import logging
 from importlib import import_module

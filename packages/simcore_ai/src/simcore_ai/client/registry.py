@@ -20,7 +20,7 @@ Notes
 - Default selection policy is orchestrated in the Django setup layer; `make_default`
   remains supported but is best avoided in application code.
 """
-from __future__ import annotations
+
 
 from collections.abc import Mapping
 from threading import RLock

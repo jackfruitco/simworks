@@ -1,5 +1,5 @@
 # simcore/ai/mixins/ident_kind.py
-from __future__ import annotations
+
 
 from simcore_ai_django.api.mixins import DjangoIdentityMixin
 

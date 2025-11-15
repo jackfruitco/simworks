@@ -6,7 +6,7 @@ Core service decorator.
 - Registers the class in the global `codecs` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
-from __future__ import annotations
+
 
 import logging
 from typing import Any, Type, TypeVar

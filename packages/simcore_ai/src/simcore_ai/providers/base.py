@@ -1,5 +1,5 @@
 # simcore_ai/providers/base.py
-from __future__ import annotations
+
 
 import inspect
 import logging

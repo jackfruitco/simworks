@@ -1,5 +1,5 @@
 # simcore_ai/components/schemas/base.py
-from __future__ import annotations
+
 
 from asgiref.sync import async_to_sync
 

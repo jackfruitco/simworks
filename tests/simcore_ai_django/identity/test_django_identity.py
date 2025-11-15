@@ -5,18 +5,9 @@ import types
 
 import pytest
 
-from simcore_ai_django.components.codecs.decorators import codec as django_codec
-from simcore_ai_django.components.codecs import (
-    codecs as codec_registry,
-    IdentityCollisionError,
-)
-from simcore_ai_django.decorators.base import DjangoBaseDecorator
-from simcore_ai_django.decorators.helpers import (
-    derive_namespace_django,
-    get_app_tokens_for_name,
-    strip_name_tokens_django,
-)
+from simcore_ai_django.api import simcore
 
+from simcore_ai_django.decorators.base import DjangoBaseDecorator
 
 # -----------------------------
 # Helper: synthesize classes with custom __module__

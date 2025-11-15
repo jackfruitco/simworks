@@ -13,7 +13,7 @@ Behavior:
 - All extra fields are passed via `**overlay` verbatim.
 """
 
-from __future__ import annotations
+
 
 from typing import Any, List, Optional, Sequence
 from uuid import UUID

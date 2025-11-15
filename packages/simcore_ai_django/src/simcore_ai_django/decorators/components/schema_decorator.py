@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 from simcore_ai.registry import BaseRegistry
 

@@ -1,5 +1,5 @@
 # packages/simcore_ai_django/src/simcore_ai_django/checks.py
-from __future__ import annotations
+
 
 """
 Django system checks for SIMCORE AI configuration & registries.

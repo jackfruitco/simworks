@@ -1,5 +1,5 @@
 # chatlab/ai/services/patient.py
-from __future__ import annotations
+
 
 import logging
 from typing import Type, Optional, Tuple, List, ClassVar
