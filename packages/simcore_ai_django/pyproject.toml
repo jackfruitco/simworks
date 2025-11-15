@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Tyler J", email = "tyler@jackfruit.me" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
   "django>=5.2",
   "simcore-ai>=0.2.0",
