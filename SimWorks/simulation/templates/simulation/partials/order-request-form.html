@@ -23,7 +23,7 @@
     <!-- Submit signed orders -->
     <form
       id="sign-orders-form"
-      hx-post="{% url 'simcore:sign_orders' simulation.id %}"
+      hx-post="{% url 'simulation:sign_orders' simulation.id %}"
       hx-trigger="submit"
       hx-headers='{"Content-Type": "application/json"}'
     >

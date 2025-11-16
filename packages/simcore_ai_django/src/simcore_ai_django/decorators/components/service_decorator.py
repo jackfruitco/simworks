@@ -16,6 +16,65 @@ from simcore_ai.registry import BaseRegistry
 from simcore_ai.registry.singletons import services as _Registry
 from simcore_ai_django.decorators.base import DjangoBaseDecorator
 
+# Add Django task import at the module level
+from django.tasks import task as django_task
+
+# --- Shared module-level task entrypoint and adapter for Django tasks ---
+from functools import wraps
+
+@django_task
+async def _run_service_task(identity_str: str, ctx: dict | None = None, overrides: dict | None = None):
+    """
+    Generic Django Task entrypoint for all simcore services.
+
+    Django's task backend requires the task function to be defined at module
+    level. We use this single entrypoint and let per-service adapters pass
+    the Identity string and execution context.
+    """
+    from simcore_ai.registry.singletons import services as services_registry
+
+    ctx = ctx or {}
+    overrides = overrides or {}
+
+    svc_cls = services_registry.get(identity_str)
+    svc = svc_cls.using(**overrides)
+    return await svc.arun(**ctx)
+
+
+class ServiceTaskAdapter:
+    """
+    Thin adapter that exposes a per-service `.task` interface while delegating
+    to the shared module-level `_run_service_task` Task.
+
+    This satisfies Django's requirement that the underlying Task function is
+    module-level, while still letting callers do:
+
+        GenerateInitialResponse.task.enqueue(**ctx)
+    """
+
+    def __init__(self, base_task, identity_str: str):
+        self._base_task = base_task
+        self._identity_str = identity_str
+
+    def enqueue(self, **ctx):
+        overrides = ctx.pop("service_overrides", {})
+        return self._base_task.enqueue(self._identity_str, ctx, overrides)
+
+    async def aenqueue(self, **ctx):
+        overrides = ctx.pop("service_overrides", {})
+        return await self._base_task.aenqueue(self._identity_str, ctx, overrides)
+
+    def using(self, *args, **kwargs):
+        """
+        Forward `.using()` to the underlying Task and wrap the result in a new adapter.
+        """
+        new_task = self._base_task.using(*args, **kwargs)
+        return ServiceTaskAdapter(new_task, self._identity_str)
+
+    def __getattr__(self, item):
+        # Delegate any other attributes (e.g. backend, priority) to the base Task.
+        return getattr(self._base_task, item)
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=Type[Any])
@@ -63,14 +122,11 @@ class DjangoServiceDecorator(DjangoBaseDecorator):
     def _attach_task(candidate: Type[Any]) -> None:
         """Attach a Django Task to the given service class, if appropriate."""
         # Attach Django Task for each concrete service if not already present
-        if getattr(candidate, "abstract", False):
+        # Treat a class as abstract only if it defines `abstract` on itself, not just via inheritance.
+        is_abstract = getattr(candidate, "abstract", False) and "abstract" in candidate.__dict__
+        if is_abstract:
             return
         if getattr(candidate, "task", None) is not None:
-            return
-        try:
-            from django.tasks import task as django_task
-        except Exception:
-            logger.exception("Failed to import django.tasks; skipping task registration for %s", candidate)
             return
         identity = getattr(candidate, "identity", None)
         if identity is not None and hasattr(identity, "as_str"):
@@ -78,11 +134,13 @@ class DjangoServiceDecorator(DjangoBaseDecorator):
         else:
             task_name = f"{candidate.__module__}.{candidate.__name__}"
 
-        async def _runner(**ctx):
-            overrides = ctx.pop("service_overrides", {})
-            svc = candidate.using(**overrides)
-            return await svc.arun(**ctx)
+        # Attach a per-service adapter around the shared module-level task.
+        if identity is not None and hasattr(identity, "as_str"):
+            identity_str = identity.as_str
+        else:
+            # Fallback: use module + class name as a pseudo-identity.
+            identity_str = task_name
 
-        django_task_obj = django_task(name=task_name)(_runner)
-        setattr(candidate, "task", django_task_obj)
-        logger.info("Attached Django Task %s to service %s", task_name, candidate)
+        candidate_task = ServiceTaskAdapter(_run_service_task, identity_str)
+        setattr(candidate, "task", candidate_task)
+        logger.info("Attached Django Task adapter %s to service %s", task_name, candidate)
