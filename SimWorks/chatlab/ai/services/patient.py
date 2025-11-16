@@ -4,14 +4,14 @@
 import logging
 from typing import Type, Optional, Tuple, List, ClassVar
 
-from chatlab.ai.mixins import ChatlabMixin
-from chatlab.models import Message
 from core.utils import remove_null_keys
-from simcore.ai.mixins import StandardizedPatientMixin
-from simulation.models import Simulation
 from simcore_ai_django.api import simcore
 from simcore_ai_django.api.types import DjangoBaseService, PromptEngine, LLMTextPart, LLMRole
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
+from simulation.ai.mixins import StandardizedPatientMixin
+from simulation.models import Simulation
+from ..mixins import ChatlabMixin
+from ...models import Message
 
 logger = logging.getLogger(__name__)
 
