@@ -1,6 +1,5 @@
 # simcore/tools/feedback.py
-from simcore.tools import GenericTool
-from simcore.tools import register_tool
+from simulation.tools import GenericTool, register_tool
 
 
 @register_tool
@@ -8,7 +7,7 @@ class SimulationFeedbackTool(GenericTool):
     tool_name = "simulation_feedback"
 
     def get_data(self):
-        from simcore.models import SimulationFeedback
+        from simulation.models import SimulationFeedback
 
         return self.simulation.metadata.instance_of(SimulationFeedback)
 

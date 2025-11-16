@@ -4,8 +4,8 @@ import logging
 from django.apps import apps
 from django.contrib.auth import get_user_model
 
-from simcore.models import Simulation
-from simcore.utils import generate_fake_name
+from simulation.models import Simulation
+from simulation.utils import generate_fake_name
 from trainerlab.models import TrainerSession
 
 User = get_user_model()

@@ -7,11 +7,7 @@ from strawberry import auto
 
 from accounts.schema import UserType
 from chatlab.schema import MessageType
-from simcore.models import Simulation
-from simcore.models import (
-    SimulationImage,
-    SimulationMetadata
-)
+from simulation.models import Simulation, SimulationImage, SimulationMetadata
 
 logger = logging.getLogger(__name__)
 

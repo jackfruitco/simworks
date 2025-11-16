@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from chatlab.models import Message, RoleChoices
-from simcore.models import Simulation, AIResponse
+from simulation.models import Simulation, AIResponse
 from simcore_ai_django.components.codecs.base import DjangoBaseCodec
 
 

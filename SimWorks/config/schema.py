@@ -3,7 +3,7 @@ from strawberry_django.optimizer import DjangoOptimizerExtension
 
 from accounts.schema import AccountsQuery, AccountsMutation
 from chatlab.schema import ChatLabQuery, ChatLabMutation
-from simcore.schema import SimCoreQuery, SimCoreMutation
+from simulation.schema import SimCoreQuery, SimCoreMutation
 from trainerlab.schema import TrainerLabQuery, TrainerLabMutation
 
 

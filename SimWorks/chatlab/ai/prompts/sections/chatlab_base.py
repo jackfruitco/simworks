@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from chatlab.ai.mixins import ChatlabMixin
-from simcore.ai.mixins import StandardizedPatientMixin
+from simulation.ai.mixins import StandardizedPatientMixin
 from simcore_ai_django.api import simcore
 from simcore_ai_django.api.types import PromptSection
 

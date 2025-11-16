@@ -10,10 +10,10 @@ from django.utils.timezone import now
 
 from chatlab.models import ChatSession, Message, MessageMediaLink
 from core.utils import remove_null_keys
-from simcore.models import (
+from simulation.models import (
     LabResult, RadResult, Simulation, SimulationMetadata,
 )
-from simcore.utils import get_user_initials, generate_fake_name
+from simulation.utils import get_user_initials, generate_fake_name
 from .apps import ChatLabConfig
 
 logger = logging.getLogger(__name__)

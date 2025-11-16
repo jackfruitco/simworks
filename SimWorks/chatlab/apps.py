@@ -9,7 +9,7 @@ class ChatLabConfig(AppConfig):
     AI_IDENTITY_STRIP_TOKENS = ("Patient","Chatlab","chatlab")
 
     def ready(self):
-        from simcore.history_registry import register_history_provider
+        from simulation.history_registry import register_history_provider
         from .models import Message
 
         def chatlab_history(simulation):

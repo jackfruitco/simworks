@@ -2,8 +2,8 @@
 from chatlab.ai.mixins import ChatlabMixin
 from config.ai.codecs import SimWorksCodec
 from chatlab.models import Message, RoleChoices
-from simcore.ai.mixins import StandardizedPatientMixin
-from simcore.models import SimulationMetadata, PatientHistory, PatientDemographics, LabResult, RadResult
+from simulation.ai.mixins import StandardizedPatientMixin
+from simulation.models import SimulationMetadata, PatientHistory, PatientDemographics, LabResult, RadResult
 from simcore_ai_django.api import simcore
 
 @simcore.codec

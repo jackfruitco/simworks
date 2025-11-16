@@ -1,6 +1,5 @@
 # simcore/tools/metadata.py
-from simcore.tools import GenericTool
-from simcore.tools import register_tool
+from simulation.tools import GenericTool, register_tool
 
 
 @register_tool
@@ -8,7 +7,7 @@ class SimulationMetadataTool(GenericTool):
     tool_name = "simulation_metadata"
 
     def get_data(self):
-        from simcore.models import PatientDemographics
+        from simulation.models import PatientDemographics
 
         return self.simulation.metadata.instance_of(PatientDemographics)
 

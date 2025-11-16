@@ -21,7 +21,7 @@ class CustomUser(AbstractUser):
             within_weeks: float | None = None,
             within_months: float | None = None,
     ) -> models.QuerySet:
-        from simcore.models import Simulation
+        from simulation.models import Simulation
 
         # Normalize the time window (days > weeks > months)
         if within_days is None:

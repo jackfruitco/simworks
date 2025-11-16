@@ -1,15 +1,12 @@
 # chatlab/models.py
 import logging
 
-from channels.db import database_sync_to_async
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from core.models import PersistModel
-from simcore.models import BaseSession
-from simcore.models import Simulation
-from simcore.models import SimulationImage
+from simulation.models import BaseSession, Simulation, SimulationImage
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +26,6 @@ class ChatSession(BaseSession):
 
 
 class Message(PersistModel):
-
     class MessageType(models.TextChoices):
         TEXT = "text", "Text"
         IMAGE = "image", "Image"
@@ -70,7 +66,7 @@ class Message(PersistModel):
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
 
     response = models.ForeignKey(
-        "simcore.AIResponse",
+        "simulation.AIResponse",
         on_delete=models.CASCADE,
         verbose_name="AI Response",
         related_name="messages",
@@ -153,7 +149,7 @@ class MessageMediaLink(PersistModel):
     modified = models.DateTimeField(auto_now=True)
 
     message = models.ForeignKey("chatlab.Message", on_delete=models.CASCADE)
-    media = models.ForeignKey("simcore.SimulationImage", on_delete=models.CASCADE)
+    media = models.ForeignKey("simulation.SimulationImage", on_delete=models.CASCADE)
 
     class Meta:
         unique_together = ("message", "media")

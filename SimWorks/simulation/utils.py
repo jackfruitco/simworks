@@ -10,7 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from faker import Faker
 
 if TYPE_CHECKING:
-    from simcore.models import Simulation
+    from simulation.models import Simulation
 
 fake = Faker()
 

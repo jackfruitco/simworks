@@ -1,9 +1,7 @@
 # simcore/tools/patient.py
 import logging
 
-from simcore.tools import BaseTool
-from simcore.tools import register_tool
-
+from simulation.tools import BaseTool, register_tool
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +11,7 @@ class PatientHistoryTool(BaseTool):
     display_name = "Patient History"
 
     def get_data(self) -> list:
-        from simcore.models import PatientHistory
+        from simulation.models import PatientHistory
 
         return [
             history.to_dict()
@@ -35,7 +33,7 @@ class PatientResultsTool(BaseTool):
         pass
 
     def get_data(self) -> list:
-        from simcore.models import LabResult
+        from simulation.models import LabResult
 
         return [
             result.serialize()

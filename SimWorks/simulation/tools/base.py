@@ -5,9 +5,7 @@ import json
 import logging
 import pprint
 
-from asgiref.sync import async_to_sync
 from asgiref.sync import sync_to_async
-from simcore.tools.registry import register_tool
 
 logger = logging.getLogger(__name__)
 

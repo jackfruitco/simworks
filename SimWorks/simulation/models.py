@@ -20,8 +20,8 @@ from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from core.models import PersistModel
-from simcore.utils import randomize_display_name
 from simcore_ai_django.api.types import Prompt
+from .utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class BaseSession(models.Model):
     """
 
     simulation = models.OneToOneField(
-        "simcore.Simulation",
+        "simulation.Simulation",
         on_delete=models.CASCADE,
         related_name="%(app_label)s_session",
         related_query_name="%(app_label)s_session",
@@ -161,7 +161,7 @@ class Simulation(models.Model):
         """
         Returns combined simulation history from all registered apps.
         """
-        from simcore.history_registry import get_sim_history
+        from .history_registry import get_sim_history
 
         return get_sim_history(self, _format)
 
@@ -201,7 +201,7 @@ class Simulation(models.Model):
         return bool(self.time_limit and now() > self.start_timestamp + self.time_limit)
 
     @property
-    def length(self) -> timedelta or None:
+    def length(self) -> timedelta | None:
         """Return timedelta from simulation start_timestamp to finish, or None if not ended"""
         if self.start_timestamp and self.end_timestamp:
             return self.end_timestamp - self.start_timestamp
@@ -236,20 +236,20 @@ class Simulation(models.Model):
         return 0
 
     @property
-    def time_limit_ms(self):
+    def time_limit_ms(self) -> int:
         if self.time_limit:
             return int(self.time_limit.total_seconds() * 1000)
         return 0
 
-    def end(self):
-        self.end_timestamp = now()
+    def end(self) -> None:
+        self.end_timestamp = now()   # type: ignore[assignment]
         self.save()
         self.generate_feedback()
 
-    async def aend(self):
+    async def aend(self) -> None:
         await sync_to_async(self.end)()
 
-    def generate_feedback(self):
+    def generate_feedback(self) -> None:
         """Generate feedback for this simulation."""
         from .ai.services import GenerateHotwashInitialResponse
         GenerateHotwashInitialResponse.task.enqueue(simulation_id=self.pk)
@@ -271,9 +271,10 @@ class Simulation(models.Model):
         return sha256(data.encode("utf-8")).hexdigest()
 
     @property
-    def formatted_patient_history(self):
-        raw = self.metadata.filter(attribute="patient history")
-        return SimulationMetadata.format_patient_history(raw)
+    def formatted_patient_history(self) -> list[dict]:
+        """Return all Patient History metadata as a list of dicts for this Simulation."""
+        qs = self.metadata.instance_of(PatientHistory)
+        return [hx.to_dict() for hx in qs]
 
     @classmethod
     def build(cls, **kwargs):
@@ -330,7 +331,7 @@ class Simulation(models.Model):
     @classmethod
     def resolve(cls, _simulation: "Simulation | int") -> "Simulation":
         """
-        Accept either a Simulation instance or its primary-key integer,
+        Accept either a Simulation instance or its primary-key integer
         and return the corresponding Simulation instance.
 
         :param _simulation: Simulation instance or primary-key integer
@@ -347,7 +348,7 @@ class Simulation(models.Model):
     @classmethod
     async def aresolve(cls, _simulation: "Simulation | int") -> "Simulation":
         """
-        Async accept either a Simulation instance or its primary-key integer,
+        Async accept either a Simulation instance or its primary-key integer
         and return the corresponding Simulation instance.
 
         :param _simulation: Simulation instance or primary-key integer
@@ -590,7 +591,7 @@ class SimulationImage(models.Model):
     def openai_id(self) -> str:
         """Return the OpenAI image ID, if available.
 
-        For backwards compatibility, this method is deprecated and will be removed in future.
+        For backwards compatibility, this method is deprecated and will be removed in the future.
         """
         logger.warning(
             "`openai_id` is deprecated. Use `provider_id` instead.",

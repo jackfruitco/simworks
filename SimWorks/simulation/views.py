@@ -10,8 +10,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from core.utils import Formatter
-from simcore.models import Simulation
-from simcore.tools import get_tool
+from simulation.models import Simulation
+from simulation.tools import get_tool
 
 
 def download_simulation_transcript(
@@ -73,7 +73,7 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from simcore.ai.services import GenerateHotwashInitialResponse
+            from simulation.ai.services import GenerateHotwashInitialResponse
             GenerateHotwashInitialResponse.task.enqueue(_simulation_id=simulation_id, _lab_orders=submitted_orders)
 
             return JsonResponse({"status": "ok", "orders": submitted_orders})

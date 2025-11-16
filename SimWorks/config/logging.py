@@ -80,9 +80,9 @@ LOGGING = {
             "level": check_env("NOTIFY_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "simcore": {
+        "simulation": {
             "handlers": ["console", "logfire"],
-            "level": check_env("SIMCORE_LOG_LEVEL", None) or LOG_LEVEL,
+            "level": check_env("SIMULATION_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
 

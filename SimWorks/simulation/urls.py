@@ -3,7 +3,7 @@ from django.urls import path
 
 from . import views
 
-app_name = "simcore"
+app_name = "simulation"
 
 urlpatterns = [
     path(

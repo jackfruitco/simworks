@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from simcore.ai.mixins import SimcoreMixin, StandardizedPatientMixin
-from simcore.models import Simulation
+from simulation.ai.mixins import SimcoreMixin, StandardizedPatientMixin
+from simulation.models import Simulation
 from simcore_ai_django.api.decorators import prompt_section
 from simcore_ai_django.api.types import PromptSection
 
