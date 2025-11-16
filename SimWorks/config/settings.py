@@ -58,7 +58,7 @@ INSTALLED_APPS = [
     "django_htmx",
     "simcore_ai_django",
     "core",
-    "simcore",
+    "simulation",
     "chatlab",
     "trainerlab",
     "strawberry_django",
