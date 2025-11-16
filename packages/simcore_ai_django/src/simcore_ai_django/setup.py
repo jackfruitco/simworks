@@ -190,12 +190,17 @@ def autodiscover_all() -> None:
     """
     with service_span_sync("simcore.autodiscover.identity"):
         autodiscover_modules("simcore.identity")
+        autodiscover_modules("ai.identity")
     with service_span_sync("simcore.autodiscover.receivers"):
         autodiscover_modules("simcore.receivers")
+        autodiscover_modules("ai.receivers")
     # Removed simcore.autodiscover.task_backends autodiscovery
     with service_span_sync("simcore.autodiscover.prompts"):
         autodiscover_modules("simcore.prompts")
+        autodiscover_modules("ai.prompts")
     with service_span_sync("simcore.autodiscover.services"):
         autodiscover_modules("simcore.services")
+        autodiscover_modules("ai.services")
     with service_span_sync("simcore.autodiscover.codecs"):
         autodiscover_modules("simcore.codecs")
+        autodiscover_modules("ai.codecs")

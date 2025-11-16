@@ -1,9 +1,10 @@
 from django.apps import AppConfig
+from django.utils.module_loading import autodiscover_modules
 
 
-class SimcoreConfig(AppConfig):
+class SimulationConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "simcore"
+    name = "simulation"
     label = name
 
     # e.g. {"app", "App", "AppName"}
@@ -12,4 +13,4 @@ class SimcoreConfig(AppConfig):
 
     def ready(self):
         # Import all built-in tools
-        import simcore.tools.builtins
+        autodiscover_modules("tools.builtins")
