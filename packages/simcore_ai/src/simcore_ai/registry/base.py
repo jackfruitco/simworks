@@ -112,11 +112,9 @@ class BaseRegistry(Generic[K, T]):
         with self._lock:
             return tuple(self._store.values())
 
-    def all(self) -> Tuple[type[T], ...]:
-        """
-        Sync wrapper for `aall`.
-        """
-        return async_to_sync(self.aall)()
+    async def alabels(self) -> Tuple[str, ...]:
+        with self._lock:
+            return tuple(cls.identity.as_str for cls in self._store.values())
 
     async def afilter(self, pred) -> Tuple[type[T], ...]:
         """
@@ -124,12 +122,6 @@ class BaseRegistry(Generic[K, T]):
         """
         with self._lock:
             return tuple(c for c in self._store.values() if pred(c))
-
-    def filter(self, pred) -> Tuple[type[T], ...]:
-        """
-        Sync wrapper for `afilter`.
-        """
-        return async_to_sync(self.afilter)(pred)
 
     async def aclear(self) -> None:
         """
@@ -140,12 +132,6 @@ class BaseRegistry(Generic[K, T]):
                 raise RegistryFrozenError("Registry is frozen")
             self._store.clear()
 
-    def clear(self) -> None:
-        """
-        Sync wrapper for `aclear`.
-        """
-        async_to_sync(self.aclear)()
-
     async def afreeze(self) -> None:
         """
         Async: mark the registry as frozen (no further mutations).
@@ -153,8 +139,18 @@ class BaseRegistry(Generic[K, T]):
         with self._lock:
             self._frozen = True
 
+    # sync wrappers
+    def all(self) -> Tuple[type[T], ...]:
+        return async_to_sync(self.aall)()
+
+    def labels(self) -> Tuple[str, ...]:
+        return async_to_sync(self.alabels)()
+
+    def filter(self, pred) -> Tuple[type[T], ...]:
+        return async_to_sync(self.afilter)(pred)
+
+    def clear(self) -> None:
+        async_to_sync(self.aclear)()
+
     def freeze(self) -> None:
-        """
-        Sync wrapper for `afreeze`.
-        """
         async_to_sync(self.afreeze)()
