@@ -220,14 +220,14 @@ wheels = [
 
 [[package]]
 name = "click"
-version = "8.3.0"
+version = "8.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/61/de6cd827efad202d7057d93e0fed9294b96952e188f7384832791c7b2254/click-8.3.0.tar.gz", hash = "sha256:e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4", size = 276943, upload-time = "2025-09-18T17:32:23.696Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/fa/656b739db8587d7b5dfa22e22ed02566950fbfbcdc20311993483657a5c0/click-8.3.1.tar.gz", hash = "sha256:12ff4785d337a1bb490bb7e9c2b1ee5da3112e94a8622f26a6c77f5d2fc6842a", size = 295065, upload-time = "2025-11-15T20:45:42.706Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/d3/9dcc0f5797f070ec8edf30fbadfb200e71d9db6b84d211e3b2085a7589a0/click-8.3.0-py3-none-any.whl", hash = "sha256:9b9f285302c6e3064f4330c05f05b81945b2a39544279343e6e7c5f27a9baddc", size = 107295, upload-time = "2025-09-18T17:32:22.42Z" },
+    { url = "https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl", hash = "sha256:981153a64e25f12d547d3426c367a4857371575ee7ad18df2a6183ab0545b2a6", size = 108274, upload-time = "2025-11-15T20:45:41.139Z" },
 ]
 
 [[package]]
@@ -479,14 +479,14 @@ wheels = [
 
 [[package]]
 name = "faker"
-version = "37.11.0"
+version = "38.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/4b/ca43f6bbcef63deb8ac01201af306388670a172587169aab3b192f7490f0/faker-37.11.0.tar.gz", hash = "sha256:22969803849ba0618be8eee2dd01d0d9e2cd3b75e6ff1a291fa9abcdb34da5e6", size = 1935301, upload-time = "2025-10-07T14:49:01.481Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/05/206c151fe8ca9c8e46963d6c8b6e2e281f272009dad30fe3792005393a5e/faker-38.0.0.tar.gz", hash = "sha256:797aa03fa86982dfb6206918acc10ebf3655bdaa89ddfd3e668d7cc69537331a", size = 1935705, upload-time = "2025-11-12T01:47:39.586Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/46/8f4097b55e43af39e8e71e1f7aec59ff7398bca54d975c30889bc844719d/faker-37.11.0-py3-none-any.whl", hash = "sha256:1508d2da94dfd1e0087b36f386126d84f8583b3de19ac18e392a2831a6676c57", size = 1975525, upload-time = "2025-10-07T14:48:58.29Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/1e/e6d1940d2c2617d7e6a0a3fdd90e506ff141715cdc4c3ecd7217d937e656/faker-38.0.0-py3-none-any.whl", hash = "sha256:ad4ea6fbfaac2a75d92943e6a79c81f38ecff92378f6541dea9a677ec789a5b2", size = 1975561, upload-time = "2025-11-12T01:47:36.672Z" },
 ]
 
 [[package]]
@@ -790,7 +790,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.6.1"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -802,9 +802,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c4/44/303deb97be7c1c9b53118b52825cbd1557aeeff510f3a52566b1fa66f6a2/openai-2.6.1.tar.gz", hash = "sha256:27ae704d190615fca0c0fc2b796a38f8b5879645a3a52c9c453b23f97141bb49", size = 593043, upload-time = "2025-10-24T13:29:52.79Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/0c/b9321e12f89e236f5e9a46346c30fb801818e22ba33b798a5aca84be895c/openai-2.8.0.tar.gz", hash = "sha256:4851908f6d6fcacbd47ba659c5ac084f7725b752b6bfa1e948b6fbfc111a6bad", size = 602412, upload-time = "2025-11-13T18:15:25.847Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/0e/331df43df633e6105ff9cf45e0ce57762bd126a45ac16b25a43f6738d8a2/openai-2.6.1-py3-none-any.whl", hash = "sha256:904e4b5254a8416746a2f05649594fa41b19d799843cd134dac86167e094edef", size = 1005551, upload-time = "2025-10-24T13:29:50.973Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/e1/0a6560bab7fb7b5a88d35a505b859c6d969cb2fa2681b568eb5d95019dec/openai-2.8.0-py3-none-any.whl", hash = "sha256:ba975e347f6add2fe13529ccb94d54a578280e960765e5224c34b08d7e029ddf", size = 1022692, upload-time = "2025-11-13T18:15:23.621Z" },
 ]
 
 [[package]]
@@ -1485,10 +1485,10 @@ requires-dist = [
     { name = "django-imagekit", specifier = ">=5.0.0" },
     { name = "django-polymorphic", specifier = ">=4.1.0" },
     { name = "django-redis", specifier = ">=6.0.0" },
-    { name = "faker", specifier = "==37.11.0" },
+    { name = "faker", specifier = "==38.0.0" },
     { name = "httpcore", specifier = ">=1.0.9" },
     { name = "logfire", extras = ["django"], specifier = "==4.14.2" },
-    { name = "openai", specifier = "==2.6.1" },
+    { name = "openai", specifier = "==2.8.0" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.58b0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "pre-commit", specifier = ">=4.3.0" },
@@ -1501,10 +1501,10 @@ requires-dist = [
     { name = "redis", specifier = ">=7.0.0" },
     { name = "simcore-ai", editable = "packages/simcore_ai" },
     { name = "simcore-ai-django", editable = "packages/simcore_ai_django" },
-    { name = "strawberry-graphql", specifier = "==0.284.1" },
+    { name = "strawberry-graphql", specifier = "==0.285.0" },
     { name = "strawberry-graphql-django", specifier = "==0.67.0" },
     { name = "typing-extensions", specifier = ">=4.15.0" },
-    { name = "zope-interface", specifier = "==8.0.1" },
+    { name = "zope-interface", specifier = "==8.1.1" },
 ]
 
 [[package]]
@@ -1536,7 +1536,7 @@ wheels = [
 
 [[package]]
 name = "strawberry-graphql"
-version = "0.284.1"
+version = "0.285.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "graphql-core" },
@@ -1545,9 +1545,9 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/0b/09d6e90979cf432e9daae6226a0f4560f186646f937afa245b79c6b4fbe8/strawberry_graphql-0.284.1.tar.gz", hash = "sha256:1359b8110d37d0a46caacc09f28dec4816ebbcbedd36b798fb85d61d3f3fad64", size = 211255, upload-time = "2025-10-18T20:32:05.002Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/45/2cd56179d081b5e64637cbb52464428b9a37942e5443562903e3e4fe68a8/strawberry_graphql-0.285.0.tar.gz", hash = "sha256:461e32cd98f2b92e1ef02cf409f36a630a6a265c020d676bdaaf4d5398b371fe", size = 211315, upload-time = "2025-11-10T22:32:07.696Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/9d/03a4225721f82dc8d25de894ae0b29ede0c5710de88a1710a8c081c88a4c/strawberry_graphql-0.284.1-py3-none-any.whl", hash = "sha256:8881c5a87d77f7eb1f84fe7603ec8da3219fd84590caa73fcbdb9a63781ac7af", size = 308652, upload-time = "2025-10-18T20:32:02.07Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/a1/66010a35e9c9bb317599b1bceefb5bb8d854eb2a47985a3070502d0a5d2d/strawberry_graphql-0.285.0-py3-none-any.whl", hash = "sha256:1db1ebf62e97daf5181beb8d42907e2fe926412d5da68c920b89d49dceb16680", size = 308232, upload-time = "2025-11-10T22:32:06.562Z" },
 ]
 
 [[package]]
@@ -1721,6 +1721,14 @@ wheels = [
 
 [[package]]
 name = "zope-interface"
-version = "8.0.1"
+version = "8.1.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/88/3a/7fcf02178b8fad0a51e67e32765cd039ae505d054d744d76b8c2bbcba5ba/zope_interface-8.0.1.tar.gz", hash = "sha256:eba5610d042c3704a48222f7f7c6ab5b243ed26f917e2bc69379456b115e02d1", size = 253746, upload-time = "2025-09-25T05:55:51.285Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/71/c9/5ec8679a04d37c797d343f650c51ad67d178f0001c363e44b6ac5f97a9da/zope_interface-8.1.1.tar.gz", hash = "sha256:51b10e6e8e238d719636a401f44f1e366146912407b58453936b781a19be19ec", size = 254748, upload-time = "2025-11-15T08:32:52.404Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/f5/44efbd98ba06cb937fce7a69fcd7a78c4ac7aa4e1ad2125536801376d2d0/zope_interface-8.1.1-cp314-cp314-macosx_10_9_x86_64.whl", hash = "sha256:da311e9d253991ca327601f47c4644d72359bac6950fbb22f971b24cd7850f8c", size = 209099, upload-time = "2025-11-15T08:37:09.395Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/36/a19866c09c8485c36a4c6908e1dd3f8820b41c1ee333c291157cf4cf09e7/zope_interface-8.1.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:3fb25fca0442c7fb93c4ee40b42e3e033fef2f648730c4b7ae6d43222a3e8946", size = 209240, upload-time = "2025-11-15T08:37:10.687Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/28/0dbf40db772d779a4ac8d006a57ad60936d42ad4769a3d5410dcfb98f6f9/zope_interface-8.1.1-cp314-cp314-manylinux1_i686.manylinux2014_i686.manylinux_2_17_i686.manylinux_2_5_i686.whl", hash = "sha256:bac588d0742b4e35efb7c7df1dacc0397b51ed37a17d4169a38019a1cebacf0a", size = 260919, upload-time = "2025-11-15T08:37:11.838Z" },
+    { url = "https://files.pythonhosted.org/packages/72/ae/650cd4c01dd1b32c26c800b2c4d852f044552c34a56fbb74d41f569cee31/zope_interface-8.1.1-cp314-cp314-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:3d1f053d2d5e2b393e619bce1e55954885c2e63969159aa521839e719442db49", size = 264102, upload-time = "2025-11-15T08:37:13.241Z" },
+    { url = "https://files.pythonhosted.org/packages/46/f0/f534a2c34c006aa090c593cd70eaf94e259fd0786f934698d81f0534d907/zope_interface-8.1.1-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:64a1ad7f4cb17d948c6bdc525a1d60c0e567b2526feb4fa38b38f249961306b8", size = 264276, upload-time = "2025-11-15T08:37:14.369Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/a8/d7e9cf03067b767e23908dbab5f6be7735d70cb4818311a248a8c4bb23cc/zope_interface-8.1.1-cp314-cp314-win_amd64.whl", hash = "sha256:169214da1b82b7695d1a36f92d70b11166d66b6b09d03df35d150cc62ac52276", size = 212492, upload-time = "2025-11-15T08:37:15.538Z" },
+]
