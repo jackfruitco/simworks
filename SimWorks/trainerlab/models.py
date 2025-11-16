@@ -214,7 +214,7 @@ class VitalMeasurement(ABCEvent):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(min_value__lte=models.F("max_value")),
+                condition=models.Q(min_value__lte=models.F("max_value")),
                 name="vital_min_le_max",
             ),
         ]
@@ -312,7 +312,7 @@ class BloodPressure(VitalMeasurement):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(min_value_diastolic__lte=models.F("max_value_diastolic")),
+                condition=models.Q(min_value_diastolic__lte=models.F("max_value_diastolic")),
                 name="bp_dia_min_le_max",
             ),
         ]
