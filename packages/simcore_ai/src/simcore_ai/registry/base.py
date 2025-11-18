@@ -3,9 +3,9 @@
 
 import logging
 from threading import RLock
-from typing import Callable, Generic, TypeVar, Any, Tuple, Dict
+from typing import Callable, Generic, TypeVar, Any, overload, Literal
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 
 from .exceptions import RegistryDuplicateError, RegistryCollisionError, RegistryFrozenError
 from ..components.exceptions import ComponentNotFoundError
@@ -22,7 +22,7 @@ class BaseRegistry(Generic[K, T]):
     def __init__(self, *, coerce_key: Callable[[Any], K]) -> None:
         self._coerce = coerce_key
         self._lock = RLock()
-        self._store: Dict[K, type[T]] = {}
+        self._store: dict[K, type[T]] = {}
         self._frozen = False
 
     def _register(self, cls: type[T]) -> None:
@@ -41,12 +41,18 @@ class BaseRegistry(Generic[K, T]):
                 )
             self._store[key] = cls
 
-    async def aregister(self, cls: type[T], *, strict: bool = False) -> None:
+    def register(self, cls: type[T], *, strict: bool = False) -> None:
         """
-        Async-first registration.
+        Registers a class in the registry, handling duplicates based on the strict mode.
 
-        Registers a component class keyed by its identity.
-        If `strict=True`, duplicate registrations raise; otherwise they are logged and ignored.
+        The method attempts to register the given class. If the class is already registered
+        and `strict` mode is enabled, a `RegistryDuplicateError` is raised. When `strict`
+        is disabled, duplicate registrations are ignored, and a debug message is logged.
+
+        :param cls: The class to be registered.
+        :param strict: Boolean flag indicating whether duplicate registration should raise
+                       an error (True) or be ignored (False). Defaults to False.
+        :return: None
         """
         try:
             self._register(cls)
@@ -55,19 +61,36 @@ class BaseRegistry(Generic[K, T]):
                 raise
             logger.debug("Duplicate registration ignored: %s", cls)
 
-    def register(self, cls: type[T], *, strict: bool = False) -> None:
+    async def aregister(self, cls: type[T], *, strict: bool = False) -> None:
         """
-        Sync wrapper for `aregister`.
+        Asynchronously registers a given class using the `register` method. The operation is
+        performed in an asynchronous context by converting the synchronous `register`
+        method into an asynchronous operation.
 
-        Blocks until registration completes.
+        :param cls: The class to be registered.
+        :type cls: type[T]
+        :param strict: A boolean flag indicating whether to enforce strict registration rules.
+        :type strict: bool
+        :return: None
+        :rtype: None
         """
-        async_to_sync(self.aregister)(cls, strict=strict)
+        return await sync_to_async(self.register)(cls, strict=strict)
 
-    async def aget(self, key: Any) -> type[T]:
+    def get(self, key: Any) -> type[T]:
         """
-        Async lookup.
+        Retrieve a component associated with the given key from the store. If
+        the key does not exist in the store, a `ComponentNotFoundError` is
+        raised.
 
-        Returns the registered component class for `key` or raises ComponentNotFoundError.
+        The method safely handles concurrent access to the store using a lock,
+        ensuring thread-safety.
+
+        :param key: The identity of the component to retrieve.
+        :type key: Any
+        :return: The component associated with the given key.
+        :rtype: type[T]
+        :raises ComponentNotFoundError: If the component with the specified
+            key is not found or is not registered.
         """
         k = self._coerce(key)
         with self._lock:
@@ -78,19 +101,32 @@ class BaseRegistry(Generic[K, T]):
                     f"Component with identity {key!r} not found or not registered"
                 ) from err
 
-    def get(self, key: Any) -> type[T]:
+    async def aget(self, key: Any) -> type[T]:
         """
-        Sync wrapper for `aget`.
+        Retrieve a component associated with the given key from the store. If
+        the key does not exist in the store, a `ComponentNotFoundError` is
+        raised.
 
-        Blocks until lookup completes.
+        The method safely handles concurrent access to the store using a lock,
+        ensuring thread-safety.
+
+        :param key: The identity of the component to retrieve.
+        :type key: Any
+        :return: The component associated with the given key.
+        :rtype: type[T]
+        :raises ComponentNotFoundError: If the component with the specified
+            key is not found or is not registered.
         """
-        return async_to_sync(self.aget)(key)
+        return await sync_to_async(self.get)(key)
 
     async def atry_get(self, key: Any) -> type[T] | None:
         """
-        Async safe lookup.
+        Asynchronously attempts to retrieve a value associated with the given key. If the
+        key is not found, returns None instead of raising an exception.
 
-        Returns the component class if found, otherwise None.
+        :param key: Key to retrieve the associated value. The type should be compatible
+            with the key type expected by the method implementation.
+        :return: The value associated with the key, or None if the key is not found.
         """
         try:
             return await self.aget(key)
@@ -99,54 +135,84 @@ class BaseRegistry(Generic[K, T]):
 
     def try_get(self, key: Any) -> type[T] | None:
         """
-        Sync wrapper for `atry_get`.
+        Attempts to retrieve a value associated with the given key from the object,
+        returning None if the key is not found. This method leverages the `get`
+        function and handles the `ComponentNotFoundError` exception internally.
 
-        Returns the component class if found, otherwise None.
+        :param key: The key to retrieve a value for.
+        :type key: Any
+        :return: The value associated with the specified key, or None if the key is not found.
+        :rtype: type[T] | None
         """
-        return async_to_sync(self.atry_get)(key)
+        try:
+            return self.get(key)
+        except ComponentNotFoundError:
+            return None
 
-    async def aall(self) -> Tuple[type[T], ...]:
-        """
-        Async: return all registered component classes as a tuple.
-        """
+    def count(self) -> int:
+        """Counts the number of registered components in the store."""
         with self._lock:
-            return tuple(self._store.values())
+            return len(self._store)
 
-    async def alabels(self) -> Tuple[str, ...]:
-        with self._lock:
-            return tuple(cls.identity.as_str for cls in self._store.values())
+    async def acount(self) -> int:
+        """Asynchronously counts the number of registered components in the store."""
+        return await sync_to_async(self.count)()
 
-    async def afilter(self, pred) -> Tuple[type[T], ...]:
+    async def alabels(self) -> tuple[str, ...]:
+        """Async wrapper around `labels`."""
+        return await sync_to_async(self.labels)()
+
+    async def afilter(self, pred) -> tuple[type[T], ...]:
         """
         Async: return all registered component classes matching predicate `pred`.
         """
-        with self._lock:
-            return tuple(c for c in self._store.values() if pred(c))
+        return await sync_to_async(self.filter)(pred)
 
     async def aclear(self) -> None:
         """
         Async: clear the registry if not frozen.
+        """
+        return await sync_to_async(self.clear)()
+
+    async def afreeze(self) -> None:
+        """
+        Async: mark the registry as frozen (no further mutations).
+        """
+        return await sync_to_async(self.freeze)()
+
+    def labels(self) -> tuple[str, ...]:
+        """Return all registered component identity strings."""
+        with self._lock:
+            return tuple(cls.identity.as_str for cls in self._store.values())
+
+    def filter(self, pred) -> tuple[type[T], ...]:
+        """
+        Return all registered component classes matching predicate `pred`.
+        """
+        with self._lock:
+            return tuple(c for c in self._store.values() if pred(c))
+
+    def clear(self) -> None:
+        """
+        Clear the registry if not frozen.
         """
         with self._lock:
             if self._frozen:
                 raise RegistryFrozenError("Registry is frozen")
             self._store.clear()
 
-    async def afreeze(self) -> None:
+    def freeze(self) -> None:
         """
-        Async: mark the registry as frozen (no further mutations).
+        Mark the registry as frozen (no further mutations).
         """
         with self._lock:
             self._frozen = True
 
-    # sync wrappers
-    def all(self) -> Tuple[type[T], ...]:
-        return async_to_sync(self.aall)()
 
-    def labels(self) -> Tuple[str, ...]:
+    def labels(self) -> tuple[str, ...]:
         return async_to_sync(self.alabels)()
 
-    def filter(self, pred) -> Tuple[type[T], ...]:
+    def filter(self, pred) -> tuple[type[T], ...]:
         return async_to_sync(self.afilter)(pred)
 
     def clear(self) -> None:
