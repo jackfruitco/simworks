@@ -46,8 +46,12 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     from .ai.services import GenerateInitialResponse
-    context = {"simulation_id": simulation.id, "user_id": user.id}
-    GenerateInitialResponse.task.enqueue(**context)
+    await GenerateInitialResponse.task.aenqueue(
+        ctx={
+            "simulation_id": simulation.id,
+            "user_id": user.id
+        },
+    )
 
     return simulation
 
