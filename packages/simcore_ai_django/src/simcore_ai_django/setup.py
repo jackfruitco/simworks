@@ -190,7 +190,7 @@ def autodiscover_all() -> None:
     entrypoints (e.g., Celery workers/beat or management commands) can opt in
     to the same registration flow.
     """
-    from simcore_ai.api.simcore import PromptSection, DjangoBaseService, DjangoBaseCodec
+    from .components import PromptSection, DjangoBaseService, DjangoBaseCodec
 
     def _tally_component(
         c: type[BaseComponent],
