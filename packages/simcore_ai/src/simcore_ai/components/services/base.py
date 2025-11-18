@@ -385,7 +385,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         async with service_span(
                 f"LLMService.{self.__class__.__name__}._build_prompt",
-                **self.flatten_context(),
+                attributes=self.flatten_context(),
         ):
             # 1) Using both overrides: build directly
             if self.prompt_instruction_override and self.prompt_message_override:
@@ -609,7 +609,10 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ServiceBuildRequestError
             If both the instruction and user message are empty.
         """
-        async with service_span(f"LLMService.{self.__class__.__name__}.build_request", **self.flatten_context()):
+        async with service_span(
+                f"LLMService.{self.__class__.__name__}.build_request",
+                attributes=self.flatten_context(),
+        ):
             # 1) Get or build prompt if available
             prompt = await self.aget_prompt()
 
@@ -894,7 +897,10 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         req, codec, attrs = await self.aprepare(stream=True, **kwargs)
 
         logger.info("simcore.service.%s.run_stream" % self.__class__.__name__, extra=attrs)
-        async with service_span(f"simcore.service.{self.__class__.__name__}.run_stream", **attrs):
+        async with service_span(
+                f"simcore.service.{self.__class__.__name__}.run_stream",
+                attributes=self.flatten_context()
+        ):
             try:
                 if codec is not None:
                     await codec.asetup(context=self.context)
