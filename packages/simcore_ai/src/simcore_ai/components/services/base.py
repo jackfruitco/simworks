@@ -27,7 +27,7 @@ import logging
 from abc import ABC
 from typing import Any, ClassVar, Union, Optional, Protocol
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..base import BaseComponent
@@ -160,7 +160,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         self.check_required_context()
 
     @classmethod
-    def using(cls, **overrides: Any) -> "BaseService":
+    def using(cls, **overrides: Any) -> BaseService:
         """
         Construct a new service instance with per-call configuration overrides.
 
@@ -453,59 +453,86 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             return prompt_
 
     # ----------------------------------------------------------------------
-    # Codec resolution (async-first)
+    # Codec resolution (sync-first)
     # ----------------------------------------------------------------------
-    async def aresolve_codec(self) -> tuple[type[BaseCodec], str]:
+    def _codec_label_from_cls(self, codec_cls: type[BaseCodec], fallback: str) -> str:
+        """Best-effort label resolution for a codec class."""
+        ident = getattr(codec_cls, "identity", None)
+        if isinstance(ident, Identity):
+            return ident.as_str
+        # Allow older codecs to expose a simple "label" string, but don't rely on it.
+        label = getattr(ident, "label", None) or getattr(codec_cls, "label", None)
+        return str(label) if label else fallback
+
+    def resolve_codec(self) -> tuple[type[BaseCodec], str]:
         """
-        Async-first codec resolver used by `resolve_codec()`.
+        Sync codec resolver.
 
         Precedence:
           1) Per-call override (`codec=` at init) via `_codec_override`
           2) Explicit codec class (`codec_cls` arg) or class-level default (`codec_cls` on the class)
           3) Registry by this service's identity
 
-        Always returns a tuple with `BaseCodec` subclass on success and its identity label.
+        Returns:
+            (codec_class, codec_label)
 
         Raises:
-          ServiceCodecResolutionError if no codec can be resolved.
+            ServiceCodecResolutionError if no codec can be resolved.
         """
+        ident: Identity = self.identity
+        ident_label = ident.as_str
+
         # 1) Explicit per-call override
         if self._codec_override is not None:
-            return self._codec_override, self._codec_override.identity.label
+            codec_cls = self._codec_override
+            label = self._codec_label_from_cls(codec_cls, ident_label)
+            return codec_cls, label
 
         # 2) Explicit codec_cls for this instance, then class-level default
         if self._codec_cls is not None:
-            return self._codec_cls, self._codec_cls.identity.label
-        if type(self).codec_cls is not None:
-            return type(self).codec_cls, type(self).codec_cls.identity.label
+            codec_cls = self._codec_cls
+            label = self._codec_label_from_cls(codec_cls, ident_label)
+            return codec_cls, label
 
-        # 3) Registry by service identity only
-        ident = self.identity
+        if type(self).codec_cls is not None:
+            codec_cls = type(self).codec_cls  # type: ignore[assignment]
+            label = self._codec_label_from_cls(codec_cls, ident_label)
+            return codec_cls, label
+
+        # 3) Registry by service identity only (single source of truth)
         codec_cls = Identity.resolve.try_for_(BaseCodec, ident)
         if codec_cls is not None:
-            return codec_cls, codec_cls.identity.label
+            label = self._codec_label_from_cls(codec_cls, ident_label)
+            return codec_cls, label
 
         # Nothing matched
         raise ServiceCodecResolutionError(
-            ident=ident, codec=None, service=self.__class__.__name__
+            ident=ident,
+            codec=None,
+            service=self.__class__.__name__,
         )
 
-    def resolve_codec(self) -> tuple[type[BaseCodec], str]:
-        """Sync wrapper around aresolve_codec()."""
-        return async_to_sync(self.aresolve_codec)()
+    async def aresolve_codec(self) -> tuple[type[BaseCodec], str]:
+        """
+        Async wrapper around `resolve_codec()`.
+
+        Keeps codec resolution centralized in the sync path while
+        remaining usable from async-only code.
+        """
+        return await sync_to_async(self.resolve_codec, thread_sensitive=True)()
 
     # ------------------------------------------------------------------------
     # Service run helpers
     # ------------------------------------------------------------------------
-    async def _aprepare_request(
-            self, *, stream: bool, **ctx: Any
-    ) -> LLMRequest:
+    async def _aprepare_request(self, *, stream: bool, **kwargs: Any) -> LLMRequest:
         """
         Internal helper to build a base LLMRequest and stamp the stream flag.
 
-        Delegates to `abuild_request(**ctx)` and sets `req.stream` accordingly.
+        Delegates to `abuild_request(...)` and sets `req.stream` accordingly.
+        This method relies on `self.context` for contextual data rather than a
+        separate `ctx` dict being threaded through.
         """
-        req = await self.abuild_request(**ctx)
+        req = await self.abuild_request(**kwargs)
         req.stream = stream
         return req
 
@@ -526,7 +553,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         return codec, codec_label
 
-    async def aprepare(self, *, stream: bool, **ctx: Any) -> tuple[LLMRequest, BaseCodec | None, dict[str, Any]]:
+    async def aprepare(
+            self, *, stream: bool, **kwargs: Any
+    ) -> tuple[LLMRequest, BaseCodec | None, dict[str, Any]]:
         """
         Prepare a request + codec instance + tracing attrs for a single service call.
 
@@ -553,7 +582,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         attrs.update(self.flatten_context())
 
         # Build request and stamp stream flag
-        req = await self._aprepare_request(stream=stream, **ctx)
+        req = await self._aprepare_request(stream=stream, **kwargs)
 
         # Attach codec identity to the request when available; schema hints are handled by the codec.
         if codec_label:
@@ -567,7 +596,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Request construction
     # ----------------------------------------------------------------------
-    async def abuild_request(self, **ctx) -> LLMRequest:
+    async def abuild_request(self, **kwargs) -> LLMRequest:
         """
         Build a provider-agnostic `LLMRequest` for this service from the resolved `Prompt`.
 
@@ -581,14 +610,14 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             If both the instruction and user message are empty.
         """
         async with service_span(f"LLMService.{self.__class__.__name__}.build_request", **self.flatten_context()):
-            # 1) Get or build prompt is available
+            # 1) Get or build prompt if available
             prompt = await self.aget_prompt()
 
             # 2) Build messages via hooks
             messages: list[LLMRequestMessage] = []
-            messages += await self._abuild_request_instructions(prompt, **ctx)
-            messages += await self._abuild_request_user_input(prompt, **ctx)
-            messages += await self._abuild_request_extras(prompt, **ctx)
+            messages += await self._abuild_request_instructions(prompt)
+            messages += await self._abuild_request_user_input(prompt)
+            messages += await self._abuild_request_extras(prompt)
 
             # Validate: at least one of instruction or user message must be present
             instr_present = bool(getattr(prompt, "instruction", None))
@@ -606,7 +635,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             req.context = dict(self.context)
 
             # 4) Final customization hook (codec/schema are handled later in `arun` via the codec)
-            req = await self._afinalize_request(req, **ctx)
+            req = await self._afinalize_request(req)
             return req
 
     # --------------------------- build hooks ---------------------------
@@ -635,7 +664,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         except Exception:
             return LLMRole.SYSTEM
 
-    async def _abuild_request_instructions(self, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
+    async def _abuild_request_instructions(self, prompt: Prompt) -> list[LLMRequestMessage]:
         """Create developer messages from prompt.instruction (if present)."""
         messages: list[LLMRequestMessage] = []
         instruction = getattr(prompt, "instruction", None)
@@ -643,7 +672,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             messages.append(LLMRequestMessage(role=LLMRole.DEVELOPER, content=[LLMTextPart(text=str(instruction))]))
         return messages
 
-    async def _abuild_request_user_input(self, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
+    async def _abuild_request_user_input(self, prompt: Prompt) -> list[LLMRequestMessage]:
         """Create user messages from prompt.message (if present)."""
         messages: list[LLMRequestMessage] = []
         message = getattr(prompt, "message", None)
@@ -651,7 +680,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             messages.append(LLMRequestMessage(role=LLMRole.USER, content=[LLMTextPart(text=str(message))]))
         return messages
 
-    async def _abuild_request_extras(self, prompt: Prompt, **ctx) -> list[LLMRequestMessage]:
+    async def _abuild_request_extras(self, prompt: Prompt) -> list[LLMRequestMessage]:
         """Create extra messages from prompt.extra_messages ((role, text) pairs)."""
         messages: list[LLMRequestMessage] = []
         extras = getattr(prompt, "extra_messages", None) or []
@@ -661,7 +690,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 messages.append(LLMRequestMessage(role=llm_role, content=[LLMTextPart(text=str(text))]))
         return messages
 
-    async def _afinalize_request(self, req: LLMRequest, **ctx) -> LLMRequest:
+    async def _afinalize_request(self, req: LLMRequest) -> LLMRequest:
         """Final request customization hook (no-op by default)."""
         return req
 
@@ -733,21 +762,41 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Execution
     # ----------------------------------------------------------------------
-    async def arun(self, **ctx) -> LLMResponse | None:
+    async def arun(self, ctx: dict | None = None, **kwargs) -> LLMResponse | None:
         """
         Core async execution path for this service.
+
+        Any per-call `ctx` provided is merged into `self.context` up front so that
+        downstream helpers rely solely on `self.context` instead of receiving a
+        separate context dict.
 
         Builds the request, lets the codec prepare/encode, sends via the resolved client,
         lets the codec decode the response, emits events, and returns the final `LLMResponse`.
         A fresh codec instance is created per call and torn down in a finally block.
         """
+        if ctx:
+            incoming = ctx
+            if not isinstance(incoming, dict):
+                try:
+                    incoming = dict(incoming)  # type: ignore[arg-type]
+                except Exception:
+                    logger.warning(
+                        "Invalid ctx for %s; expected mapping-like, got %r",
+                        self.__class__.__name__,
+                        type(ctx),
+                    )
+                    incoming = {}
+            if incoming:
+                self.context.update(incoming)
+                self.check_required_context()
+
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
 
         ident: Identity = self.identity
 
         # Prepare request + codec instance + attrs for this call
-        req, codec, attrs = await self.aprepare(stream=False, **ctx)
+        req, codec, attrs = await self.aprepare(stream=False, **kwargs)
 
         logger.info("simcore.service.%s.run" % self.__class__.__name__, extra=attrs)
         async with service_span(f"simcore.service.{self.__class__.__name__}.run", **attrs):
@@ -812,18 +861,37 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                         logger.debug("codec teardown failed; continuing", exc_info=True)
         return None
 
-    async def run_stream(self):
+    async def run_stream(self, ctx: dict | None = None, **kwargs):
         """
         Execute the service with streaming enabled.
+
+        Any per-call `ctx` provided is merged into `self.context` up front so that
+        downstream helpers rely solely on `self.context`.
 
         The codec is constructed per call, used to prepare the request, decode chunks,
         and finalize the stream, then torn down.
         """
+        if ctx:
+            incoming = ctx
+            if not isinstance(incoming, dict):
+                try:
+                    incoming = dict(incoming)  # type: ignore[arg-type]
+                except Exception:
+                    logger.warning(
+                        "Invalid ctx for %s; expected mapping-like, got %r",
+                        self.__class__.__name__,
+                        type(ctx),
+                    )
+                    incoming = {}
+            if incoming:
+                self.context.update(incoming)
+                self.check_required_context()
+
         if not self.emitter:
             raise ServiceConfigError("emitter not provided")
 
         # Prepare request + codec instance + attrs for this call
-        req, codec, attrs = await self.aprepare(stream=True)
+        req, codec, attrs = await self.aprepare(stream=True, **kwargs)
 
         logger.info("simcore.service.%s.run_stream" % self.__class__.__name__, extra=attrs)
         async with service_span(f"simcore.service.{self.__class__.__name__}.run_stream", **attrs):

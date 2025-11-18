@@ -49,8 +49,8 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
         I: Identity | None = None
         if ident is not None:
             try:
-                I = Identity.resolve(identity=ident)
-            except ValueError:
+                I = Identity.get(ident)
+            except Exception:
                 pass
 
         msg = (

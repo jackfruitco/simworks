@@ -36,9 +36,15 @@ async def _run_service_task(identity_str: str, ctx: dict | None = None, override
     ctx = ctx or {}
     overrides = overrides or {}
 
-    svc_cls = services_registry.get(identity_str)
-    svc = svc_cls.using(**overrides)
-    return await svc.arun(**ctx)
+    svc_cls = await services_registry.aget(identity_str)
+
+    # Merge any existing context in overrides with ctx, with ctx taking precedence.
+    base_context = dict(overrides.pop("context", {}))
+    base_context.update(ctx)
+
+    # Pass the full context into the service so required_context_keys are satisfied.
+    svc = svc_cls.using(context=base_context, **overrides)
+    return await svc.arun()
 
 
 class ServiceTaskAdapter:
@@ -56,13 +62,22 @@ class ServiceTaskAdapter:
         self._base_task = base_task
         self._identity_str = identity_str
 
-    def enqueue(self, **ctx):
-        overrides = ctx.pop("service_overrides", {})
-        return self._base_task.enqueue(self._identity_str, ctx, overrides)
+    def enqueue(self, *, ctx: dict | None = None, overrides: dict | None = None):
+        """Enqueue this service via the shared module-level task.
 
-    async def aenqueue(self, **ctx):
-        overrides = ctx.pop("service_overrides", {})
-        return await self._base_task.aenqueue(self._identity_str, ctx, overrides)
+        `ctx` is treated as the service context (e.g. must contain
+        required_context_keys like `simulation_id`). Optional `overrides`
+        are forwarded to the service constructor.
+        """
+        ctx = ctx or {}
+        overrides = overrides or {}
+        return self._base_task.enqueue(identity_str=self._identity_str, ctx=ctx, overrides=overrides)
+
+    async def aenqueue(self, *, ctx: dict | None = None, overrides: dict | None = None):
+        """Async enqueue variant for use from async contexts."""
+        ctx = ctx or {}
+        overrides = overrides or {}
+        return await self._base_task.aenqueue(identity_str=self._identity_str, ctx=ctx, overrides=overrides)
 
     def using(self, *args, **kwargs):
         """

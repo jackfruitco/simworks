@@ -125,12 +125,12 @@ def for_(
         return None
 
     # 1) Explicit registry (__from)
-    if from_ is not None:
+    if __from is not None:
         found = _resolve_via_registry(__from)
         if found is not None:
             return found
-        else:
-            raise RegistryNotFoundError()
+        # If an explicit registry was provided but did not contain the component,
+        # fall through to the remaining resolution strategies instead of failing early.
 
     # 2) Component.get / Component.try_get
     get_fn = getattr(Component, "get", None)

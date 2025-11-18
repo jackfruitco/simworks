@@ -146,18 +146,21 @@ class BaseDecorator:
                 "simcore.identity": final_label,
                 # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple3.*)
                 **({} if not isinstance(meta, dict) else meta),
-                # Echo explicit args if provided (drop Nones below)
+                # Echo e    xplicit args if provided (drop Nones below)
                 "simcore.namespace_arg": namespace,
                 "simcore.kind_arg": kind,
                 "simcore.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
             span_attrs = _filter_trace_attrs(span_attrs)
-            with service_span_sync(f"simcore.decorator.apply ({final_label})", attributes=span_attrs):
-                msg = f"✅ registered `{fqcn}` (ident: `{identity.as_str}`)"
+            with service_span_sync(f"simcore.decorator.apply ({cls.__name__})", attributes=span_attrs):
+                # msg = f"✅ discovered `{identity.as_str}` (ident: `{identity.as_str}`)"
+                logger.info(f"✅ discovered `%s`" % identity.as_str)
                 if logger.isEnabledFor(logging.DEBUG):
-                    msg += f"\n\tattributes: {span_attrs!r}"
-                logger.info(msg)
+                    logger.debug(" -- fqcn: %s" % fqcn)
+                    logger.debug(" -- attributes: %s" % span_attrs.__repr__())
+                    # msg += f"\n\tattributes: {span_attrs!r}"
+                # logger.info(msg)
 
             return cls
 

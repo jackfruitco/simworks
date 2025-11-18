@@ -55,5 +55,7 @@ class SimcoreAIDjangoConfig(AppConfig):
 
             with service_span_sync("simcore.autodiscover"):
                 autodiscover_all()
+                logger.info("all ")
+
 
 
