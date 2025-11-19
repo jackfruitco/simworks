@@ -1,18 +1,16 @@
-
-
-
 import asyncio
 import inspect
 import logging
-from dataclasses import is_dataclass, replace
 from collections.abc import Iterable, Sequence
+from dataclasses import is_dataclass, replace
 from typing import Type, Union
 
 import logfire
 
+from simcore_ai.tracing import service_span, service_span_sync, flatten_context
 from .base import PromptSection, Prompt
 from .plans import PromptPlan
-from simcore_ai.tracing import service_span, service_span_sync, flatten_context
+from ...identity.exceptions import IdentityError
 
 logger = logging.getLogger(__name__)
 
@@ -47,26 +45,39 @@ def _describe_section_spec(obj) -> dict:
         }
 
 
-def _section_key(sec: PromptSection) -> str:
-    """Return a stable identity string for a section.
-
-    Prefer the standardized Identity tuple3 (dot form). Fallback to a
-    module-qualified class name only if Identity isn't available.
+def _get_section_label(sec: PromptSection) -> str:
     """
-    ident = getattr(sec, "identity", None)
-    if ident is not None:
-        to_str = getattr(ident, "to_string", None)
-        if callable(to_str):
-            try:
-                return str(to_str())
-            except Exception as e:
-                logger.warning("identity.to_string() failed for %s: %s", type(sec).__name__, e)
-    # Final fallback: module-qualified class name
-    return f"{sec.__class__.__module__}.{sec.__class__.__name__}"
+    Return a stable identity label for a section.
+
+    Preference order:
+      1. `identity.label` (canonical string form)
+      2. `identity.as_str` (canonical dot form)
+      3. `str(identity)` as a last resort
+
+    Raises
+    ------
+    IdentityError
+        If no identity is attached or the identity object cannot be stringified.
+    """
+    ident = getattr(type(sec), "identity", None) or getattr(sec, "identity", None)
+    if ident is None:
+        raise IdentityError(
+            f"Missing identity for section {type(sec).__name__}. "
+            "Does the component include the IdentityMixin?"
+        )
+
+    label_attr = getattr(ident, "label", None)
+    if isinstance(label_attr, str):
+        return label_attr
+
+    raise IdentityError(
+        f"Could not derive identity label for section {type(sec).__name__}: "
+        "identity object has no `label` string attribute"
+    )
 
 
 def _instantiate_with_overrides(
-    section: SectionSpec, *, weight: int | None = None, tags: Iterable[str] | str | None = None
+        section: SectionSpec, *, weight: int | None = None, tags: Iterable[str] | str | None = None
 ) -> PromptSection:
     """
     Create a PromptSection instance from a class or pass through an instance,
@@ -87,7 +98,11 @@ def _instantiate_with_overrides(
         try:
             new_inst.weight = int(weight)  # type: ignore[attr-defined]
         except Exception:
-            logger.debug("Failed to apply weight override to %s", _section_key(new_inst))
+            try:
+                label = _get_section_label(new_inst)
+            except Exception:
+                label = repr(new_inst)
+            logger.debug("Failed to apply weight override to %s", label)
 
     if tags is not None:
         try:
@@ -99,23 +114,34 @@ def _instantiate_with_overrides(
                 iter_tags = [tags]
             new_inst.tags = frozenset(str(t) for t in iter_tags)  # type: ignore[attr-defined]
         except Exception:
-            logger.debug("Failed to apply tags override to %s", _section_key(new_inst))
+            try:
+                label = _get_section_label(new_inst)
+            except Exception:
+                label = repr(new_inst)
+            logger.debug("Failed to apply tags override to %s", label)
     return new_inst
 
 
 def _sections_from_plan(plan: "PromptPlan") -> list[PromptSection]:
     """
-    Expand a PromptPlan into concrete PromptSection instances with any
-    per-item overrides applied (weight, tags). Confidence data on the plan
-    items is intentionally ignored here (no-op), but the structure remains
+    Expand a PromptPlan into concrete PromptSection instances.
+
+    Supports both:
+      - Plan items that expose `.section`, `.weight`, `.tags`, etc.
+      - Raw SectionSpec entries (PromptSection subclasses or instances).
+
+    Per-item overrides (weight, tags) are applied when present; confidence
+    metadata is intentionally ignored here (no-op), but the structure remains
     for future use.
     """
     sections: list[PromptSection] = []
     for idx, item in enumerate(getattr(plan, "items", []) or []):
         try:
-            section_obj = getattr(item, "section", None)
+            # Support both "plan items" with .section and raw SectionSpec entries
+            section_obj = getattr(item, "section", None) or item
             weight = getattr(item, "weight", None) or getattr(item, "weight_override", None)
             tags = getattr(item, "tags", None)
+
             inst = _instantiate_with_overrides(section_obj, weight=weight, tags=tags)
             sections.append(inst)
         except Exception as e:
@@ -158,20 +184,20 @@ class PromptEngine:
             (added, skipped) counts for diagnostics.
         """
         if plan is None:
-            return (0, 0)
+            return 0, 0
         added = 0
         skipped = 0
         # Expand plan into instances with overrides applied
         plan_sections = _sections_from_plan(plan)
         for sec in plan_sections:
-            key = _section_key(sec)
+            key = _get_section_label(sec)
             if key in self._seen:
                 skipped += 1
                 continue
             self._sections.append(sec)
             self._seen.add(key)
             added += 1
-        return (added, skipped)
+        return added, skipped
 
     # ----- configuration
     def _add_section(self, section: SectionSpec) -> "PromptEngine":
@@ -186,7 +212,7 @@ class PromptEngine:
             except Exception:
                 pass
             raise TypeError(f"Sections must be PromptSection subclasses or instances; got {desc}")
-        key = _section_key(inst)
+        key = _get_section_label(inst)
         if key not in self._seen:
             self._sections.append(inst)
             self._seen.add(key)
@@ -208,10 +234,48 @@ class PromptEngine:
                 raise
         return self
 
+    # ----- public configuration (fluent) -----
+    def add(self, section: SectionSpec) -> "PromptEngine":
+        """
+        Add a single section (class or instance) to the engine.
+
+        This is a public wrapper around `_add_section` and supports fluent
+        chaining, e.g.:
+
+            engine = PromptEngine(BaseSection).add(Guardrails)
+        """
+        return self._add_section(section)
+
+    def add_many(self, sections: Iterable[SectionSpec]) -> "PromptEngine":
+        """
+        Add multiple sections to the engine in order.
+
+        This is a public wrapper around `_add_many_sections` primarily for
+        ergonomic/fluent usage.
+        """
+        return self._add_many_sections(sections)
+
     # ----- building
     async def abuild(self, **ctx) -> Prompt:
+        """
+        Build a Prompt from the configured sections and an optional PromptPlan.
+
+        This is the async-first entrypoint; in ASGI or any environment with
+        an active event loop, prefer this over `build()`.
+        """
         # Avoid mutating caller’s dict
         ctx = dict(ctx)
+
+        # Lightweight visibility into what we're about to do
+        try:
+            section_labels = [_get_section_label(s) for s in self._sections]
+        except Exception:
+            section_labels = []
+        logger.info(
+            "PromptEngine.abuild: starting with %d sections",
+            len(self._sections),
+        )
+        logger.debug("PromptEngine.abuild: section labels=%s", section_labels)
 
         # Optionally merge a plan passed through context (async-first API).
         plan: PromptPlan | None = ctx.pop("plan", None)  # may be absent
@@ -219,15 +283,40 @@ class PromptEngine:
         plan_skipped = 0
         if plan is not None:
             plan_added, plan_skipped = self._merge_plan_sections(plan)
-            # enrich tracing context with lightweight plan metadata
+            # Enrich tracing context with lightweight plan metadata
             try:
-                plan_identity_str = getattr(getattr(plan, "identity", None), "to_string", lambda: None)()
+                plan_identity = getattr(plan, "identity", None)
+                plan_identity_str: str | None = None
+                if plan_identity is not None:
+                    label_attr = getattr(plan_identity, "label", None)
+                    if isinstance(label_attr, str):
+                        plan_identity_str = label_attr
+                    else:
+                        as_str_attr = getattr(plan_identity, "as_str", None)
+                        if isinstance(as_str_attr, str):
+                            plan_identity_str = as_str_attr
+                        else:
+                            plan_identity_str = str(plan_identity)
+
+                item_count = len(getattr(plan, "items", []) or [])
+
                 ctx.setdefault("prompt_plan.identity", plan_identity_str)
-                ctx.setdefault("prompt_plan.item_count", len(getattr(plan, "items", []) or []))
+                ctx.setdefault("prompt_plan.item_count", item_count)
                 ctx.setdefault("prompt_plan.added", plan_added)
                 ctx.setdefault("prompt_plan.skipped", plan_skipped)
+
+                logger.info(
+                    "PromptEngine: merged PromptPlan(identity=%r, items=%s, added=%s, skipped=%s)",
+                    plan_identity_str,
+                    item_count,
+                    plan_added,
+                    plan_skipped,
+                )
             except Exception:
-                pass
+                logger.debug(
+                    "PromptEngine: failed to attach plan metadata to context",
+                    exc_info=True,
+                )
 
         _attrs = {
             "simcore.section_count": len(self._sections),
@@ -248,13 +337,13 @@ class PromptEngine:
         async with service_span("simcore.prompt.build", attributes=_attrs):
             logger.debug(
                 "PromptEngine.abuild: sections=%s",
-                [_section_key(s) for s in self._sections],
+                [_get_section_label(s) for s in self._sections],
             )
             # Preserve insertion order among sections with equal weight
             ordered: Sequence[PromptSection] = [
                 s for _, s in sorted(
                     enumerate(self._sections),
-                    key=lambda t: (t[1].weight, t[0], _section_key(t[1])),
+                    key=lambda t: (t[1].weight, t[0], _get_section_label(t[1])),
                 )
             ]
             outputs: list[tuple[str | None, str | None]] = []
@@ -262,40 +351,53 @@ class PromptEngine:
             errors: list[dict] = []
 
             for sec in ordered:
+                # Resolve label once per section for consistent logging/tracing
+                label = _get_section_label(sec)
+
                 async with service_span(
-                    "simcore.prompt.section",
-                    attributes={
-                        "simcore.section": _section_key(sec),
-                        "simcore.category": getattr(sec, "category", None),
-                        "simcore.name": getattr(sec, "name", None),
-                        "simcore.weight": getattr(sec, "weight", None),
-                        **flatten_context(ctx),
-                    },
+                        "simcore.prompt.section",
+                        attributes={
+                            "simcore.section": label,
+                            "simcore.category": getattr(sec, "category", None),
+                            "simcore.name": getattr(sec, "name", None),
+                            "simcore.weight": getattr(sec, "weight", None),
+                            **flatten_context(ctx),
+                        },
                 ) as section_span:
                     instr = None
                     msg = None
 
                     # Render instruction
                     async with service_span(
-                        "simcore.prompt.render_instruction",
-                        attributes={"simcore.section": _section_key(sec), "simcore.weight": getattr(sec, "weight", None), **flatten_context(ctx)},
+                            "simcore.prompt.render_instruction",
+                            attributes={
+                                "simcore.section": label,
+                                "simcore.weight": getattr(sec, "weight", None),
+                                **flatten_context(ctx),
+                            },
                     ):
                         try:
+                            logger.debug("PromptEngine: rendering instruction for %s", label)
                             instr = await sec.render_instruction(**ctx)
                         except Exception as e:
-                            logger.exception("Instruction render failed for %s", _section_key(sec))
-                            errors.append({"label": _section_key(sec), "stage": "instruction", "error": str(e)})
+                            logger.exception("Instruction render failed for %s", label)
+                            errors.append({"label": label, "stage": "instruction", "error": str(e)})
 
                     # Render message
                     async with service_span(
-                        "simcore.prompt.render_message",
-                        attributes={"simcore.section": _section_key(sec), "simcore.weight": getattr(sec, "weight", None), **flatten_context(ctx)},
+                            "simcore.prompt.render_message",
+                            attributes={
+                                "simcore.section": label,
+                                "simcore.weight": getattr(sec, "weight", None),
+                                **flatten_context(ctx),
+                            },
                     ):
                         try:
+                            logger.debug("PromptEngine: rendering message for %s", label)
                             msg = await sec.render_message(**ctx)
                         except Exception as e:
-                            logger.exception("Message render failed for %s", _section_key(sec))
-                            errors.append({"label": _section_key(sec), "stage": "message", "error": str(e)})
+                            logger.exception("Message render failed for %s", label)
+                            errors.append({"label": label, "stage": "message", "error": str(e)})
 
                     # Annotate the parent section span with outcomes
                     try:
@@ -310,16 +412,17 @@ class PromptEngine:
 
                     if (instr and instr.strip()) or (msg and msg.strip()):
                         outputs.append((instr, msg))
-                        used_labels.append(_section_key(sec))
+                        used_labels.append(label)
+                        logger.info("PromptEngine: section %s contributed to prompt", label)
 
             # Merge sections (sync span ok inside async)
             with service_span_sync(
-                "simcore.prompt.merge",
-                attributes={
-                    "simcore.sections.used_count": len(used_labels),
-                    "simcore.sections.errors_count": len(errors),
-                    **flatten_context(ctx),
-                },
+                    "simcore.prompt.merge",
+                    attributes={
+                        "simcore.sections.used_count": len(used_labels),
+                        "simcore.sections.errors_count": len(errors),
+                        **flatten_context(ctx),
+                    },
             ):
                 prompt = _merge_sections(outputs)
 
