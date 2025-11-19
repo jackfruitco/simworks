@@ -628,14 +628,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             if not (instr_present or user_present):
                 raise ServiceBuildRequestError("Prompt produced no instruction or user message; cannot build request")
 
-            # 3) Create base request and stamp identity
+            # 3) Create base request and stamp identity (context is kept on self.context only)
             ident = self.identity
             req = LLMRequest(messages=messages, stream=False)
             req.namespace = ident.namespace
             req.kind = ident.kind
             req.name = ident.name
-            # attach context for downstream tracing/providers
-            req.context = dict(self.context)
 
             # 4) Final customization hook (codec/schema are handled later in `arun` via the codec)
             req = await self._afinalize_request(req)
@@ -802,7 +800,10 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         req, codec, attrs = await self.aprepare(stream=False, **kwargs)
 
         logger.info("simcore.service.%s.run" % self.__class__.__name__, extra=attrs)
-        async with service_span(f"simcore.service.{self.__class__.__name__}.run", **attrs):
+        async with service_span(
+                f"simcore.service.{self.__class__.__name__}.run",
+                attributes=attrs,
+        ):
             try:
                 if codec is not None:
                     await codec.asetup(context=self.context)

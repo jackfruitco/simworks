@@ -1,17 +1,42 @@
 # simcore_ai_django/signals.py
-"""Django signals for simcore_ai_django glue.
-
-Provides typed payload contracts (TypedDict) for clarity and forwards-compatibility.
-
-This module is context‑first and domain‑agnostic:
-- prefer generic `object_db_pk`
-- include optional `context` dict on all payloads
-"""
 
 from typing import TypedDict, Optional, Union, Dict, Any
 from uuid import UUID
 
 from django.dispatch import Signal
+
+# NEW: light helpers to introspect request/response + identity
+def _as_dict(obj: Any) -> dict:
+    """
+    Best-effort conversion of Pydantic/dataclass objects to dict
+    for signal payloads. Falls back to repr(...) if needed.
+    """
+    if obj is None:
+        return {}
+    dump = getattr(obj, "model_dump", None)
+    if callable(dump):
+        try:
+            return dump()  # Pydantic v2 style
+        except TypeError:
+            return dump(mode="json")
+    dct = getattr(obj, "dict", None)
+    if callable(dct):
+        return dct()
+    if hasattr(obj, "__dict__"):
+        return dict(obj.__dict__)
+    return {"value": repr(obj)}
+
+
+def _split_identity(identity: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Split an identity string like 'chatlab.standardized_patient.initial'
+    into (namespace, kind, service_name). Any missing pieces are None.
+    """
+    parts = (identity or "").split(".")
+    namespace = parts[0] if len(parts) > 0 else None
+    kind = parts[1] if len(parts) > 1 else None
+    service_name = parts[2] if len(parts) > 2 else None
+    return namespace, kind, service_name
 
 
 class RequestSentPayload(TypedDict, total=False):
@@ -103,8 +128,15 @@ ai_outbox_dispatch = Signal()
 # Default emitter that forwards events to Django signals
 # -----------------------------------------------------------------------------
 class DjangoSignalEmitter:
-    """Lightweight emitter that forwards events to Django signals via send_robust."""
+    """Lightweight emitter that forwards events to Django signals via send_robust.
 
+    This class is also compatible with simcore_ai.components.services.ServiceEmitter:
+    it exposes `emit_request`, `emit_response`, `emit_failure`,
+    `emit_stream_chunk`, and `emit_stream_complete`, which are the methods
+    BaseService/ DjangoBaseService expect.
+    """
+
+    # ---- Original public API (kept for back-compat) --------------------
     def request_sent(self, payload: RequestSentPayload) -> None:
         ai_request_sent.send_robust(sender=self.__class__, **payload)
 
@@ -123,6 +155,76 @@ class DjangoSignalEmitter:
 
     def outbox_dispatch(self, payload: OutboxDispatchPayload) -> None:
         ai_outbox_dispatch.send_robust(sender=self.__class__, **payload)
+
+    # ---- ServiceEmitter-compatible API (used by BaseService) ----------
+
+    def emit_request(self, context: dict, identity: str, request_dto: Any) -> None:
+        """Adapter for BaseService→Django signals on request send."""
+        namespace, kind, service_name = _split_identity(identity)
+        ctx = dict(context or {})
+        payload: RequestSentPayload = {
+            "request": _as_dict(request_dto),
+            "namespace": namespace,
+            "kind": kind,
+            "service_name": service_name,
+            "correlation_id": getattr(request_dto, "correlation_id", None),
+            "codec_name": getattr(request_dto, "codec_identity", None),
+            "object_db_pk": ctx.get("object_db_pk"),
+            "context": ctx,
+        }
+        self.request_sent(payload)
+
+    def emit_response(self, context: dict, identity: str, response_dto: Any) -> None:
+        """Adapter for BaseService→Django signals on final response."""
+        namespace, kind, service_name = _split_identity(identity)
+        ctx = dict(context or {})
+        payload: ResponseReadyPayload = {
+            "response": _as_dict(response_dto),
+            "namespace": namespace,
+            "kind": kind,
+            "service_name": service_name,
+            "correlation_id": getattr(response_dto, "request_correlation_id", None),
+            "codec_name": getattr(response_dto, "codec_identity", None),
+            "object_db_pk": ctx.get("object_db_pk"),
+            "context": ctx,
+        }
+        # Treat as "ready" (post-decode, post-success) and also "received" for
+        # consumers that only listen to the older signal.
+        self.response_received(payload)  # type: ignore[arg-type]
+        self.response_ready(payload)
+
+    def emit_failure(self, context: dict, identity: str, correlation_id: Any, error: str) -> None:
+        """Adapter for BaseService→Django signals on failure."""
+        namespace, kind, service_name = _split_identity(identity)
+        ctx = dict(context or {})
+        payload: ResponseFailedPayload = {
+            "error": str(error),
+            "namespace": namespace,
+            "kind": kind,
+            "service_name": service_name,
+            "correlation_id": correlation_id,
+            "object_db_pk": ctx.get("object_db_pk"),
+            "context": ctx,
+        }
+        self.response_failed(payload)
+
+    def emit_stream_chunk(self, context: dict, identity: str, chunk_dto: Any) -> None:
+        """Adapter for streaming chunks; forwarded via outbox_dispatch."""
+        namespace, _, _ = _split_identity(identity)
+        ctx = dict(context or {})
+        payload: OutboxDispatchPayload = {
+            "message": _as_dict(chunk_dto),
+            "namespace": namespace,
+            "object_db_pk": ctx.get("object_db_pk"),
+            "context": ctx,
+        }
+        self.outbox_dispatch(payload)
+
+    def emit_stream_complete(self, context: dict, identity: str, correlation_id: Any) -> None:
+        """Adapter for stream completion; currently a no-op hook."""
+        # You can optionally send a final "stream complete" outbox message here
+        # if you want consumers to know the stream is closed.
+        return None
 
 
 # shared instance used by default in DjangoBaseService
