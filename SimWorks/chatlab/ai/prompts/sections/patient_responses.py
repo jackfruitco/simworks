@@ -2,14 +2,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import PromptSection
 from simulation.ai.mixins import StandardizedPatientMixin
 from ...mixins import ChatlabMixin
 
 
 @simcore.prompt_section
 @dataclass
-class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
+class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, simcore.PromptSection):
     """Prompt section for the LLM to generate an initial scenario."""
 
     weight: int = 10
@@ -45,11 +44,12 @@ class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, Promp
         "lab_result, rad_result, patient_history, simulation_metadata, scenario, simulation_feedback. Include all "
         "required fields for that type; omit fields that don’t apply.\n"
     )
+    message: str = ""
 
 
 @simcore.prompt_section
 @dataclass
-class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
+class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, simcore.PromptSection):
     """Prompt section for the patient's reply to the LLM."""
     instruction = None
 
@@ -65,7 +65,7 @@ class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, PromptS
 
 @simcore.prompt_section
 @dataclass
-class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
+class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, simcore.PromptSection):
     """Prompt section for the LLM to generate an image."""
     weight: int = 20
     instruction: str = (

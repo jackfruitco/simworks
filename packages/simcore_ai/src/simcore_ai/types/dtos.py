@@ -29,18 +29,30 @@ class LLMRole(str, Enum):
 
 
 class LLMTextPart(StrictBaseModel):
-    type: Literal["text"] = "text"
+    type: Literal["input_text"] = "input_text"
     text: str
 
 
 class LLMImagePart(StrictBaseModel):
-    type: Literal["image"] = "image"
+    type: Literal["input_image"] = "input_image"
     mime_type: str
     data_b64: str
 
 
 class LLMAudioPart(StrictBaseModel):
-    type: Literal["audio"] = "audio"
+    type: Literal["input_audio"] = "input_audio"
+    mime_type: str
+    data_b64: str
+
+
+class LLMFilePart(StrictBaseModel):
+    type: Literal["input_file"] = "input_file"
+    mime_type: str
+    data_b64: str
+
+
+class LLMScreenshotPart(StrictBaseModel):
+    type: Literal["computer_screenshot"] = "computer_screenshot"
     mime_type: str
     data_b64: str
 
@@ -66,6 +78,8 @@ LLMContentPart: TypeAlias = (
         LLMTextPart |
         LLMImagePart |
         LLMAudioPart |
+        LLMFilePart |
+        LLMScreenshotPart |
         LLMToolCallPart |
         LLMToolResultPart
 )
@@ -92,6 +106,12 @@ class LLMUsage(StrictBaseModel):
     output_tokens: int = 0
     prompt_tokens: int = 0
     total_tokens: int = 0
+
+    # allow unknown fields from provider
+    model_config = {
+        **StrictBaseModel.model_config,
+        "extra": "allow",
+    }
 
 
 class ToolItem(StrictBaseModel):

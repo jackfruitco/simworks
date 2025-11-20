@@ -44,7 +44,12 @@ async def _run_service_task(identity_str: str, ctx: dict | None = None, override
 
     # Pass the full context into the service so required_context_keys are satisfied.
     svc = svc_cls.using(context=base_context, **overrides)
-    return await svc.arun()
+
+    # Fire-and-forget: rely on side effects (DB writes, websockets, etc.).
+    # Do NOT return the LLMResponse object, since Django's task backend
+    # expects JSON-serializable return values.
+    await svc.arun()
+    return None
 
 
 class ServiceTaskAdapter:

@@ -21,7 +21,6 @@ Prompt plans
 • The cached prompt is available at the read/write property: service.prompt
 """
 
-
 import asyncio
 import logging
 from abc import ABC
@@ -276,6 +275,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
           - IdentityLike -> resolved via Identity into PromptPlan or PromptSection, then wrapped
         """
         if isinstance(spec, PromptPlan):
+            logger.debug("Prompt plan already resolved; returning as-is.")
             return spec
 
         if isinstance(spec, (list, tuple)):

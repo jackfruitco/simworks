@@ -5,20 +5,19 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from simulation.ai.mixins import SimcoreMixin, StandardizedPatientMixin
 from simulation.models import Simulation
-from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.api.types import PromptSection
+from simcore_ai_django.api import simcore
 
 
-@prompt_section
+@simcore.prompt_section
 @dataclass
-class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, PromptSection):
+class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, simcore.PromptSection):
     # name = "name"
 
-    # weight = 100
+    weight = 100
     # tags =
 
     async def render_instruction(self, **ctx) -> str | None:
-        options_ = ("simulation", "sim_id", "sim_pk", "sim_obk")
+        options_ = ("simulation_id", "simulation", "sim_id", "sim_pk", "sim_obj")
 
         for opt in options_:
             if simulation_ := opt in ctx:

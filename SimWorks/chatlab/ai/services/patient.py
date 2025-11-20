@@ -9,8 +9,10 @@ from simcore_ai_django.api import simcore
 from simcore_ai_django.api.types import DjangoBaseService, PromptEngine, LLMTextPart, LLMRole
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
 from simulation.ai.mixins import StandardizedPatientMixin
+from simulation.ai.prompts import PatientNameSection
 from simulation.models import Simulation
 from ..mixins import ChatlabMixin
+from ..prompts.sections import ChatlabPatientInitialSection
 from ...models import Message
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,15 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBase
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
 
+    # prompt_plan = (
+    #     ChatlabPatientInitialSection,
+    #     PatientNameSection,
+    # )
+    prompt_plan = (
+        "chatlab.default.base",
+        "chatlab.standardized_patient.initial",
+        "simcore.standardized_patient.name",
+    )
 
 @simcore.service
 class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):

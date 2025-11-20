@@ -1,6 +1,4 @@
 # simcore_ai/providers/openai/base.py
-
-
 """
 OpenAIProvider
 ==============
@@ -189,7 +187,8 @@ class OpenAIProvider(BaseProvider):
                     logger.debug("provider '%s':: no tools to adapt", self.name)
 
             # Serialize input messages (child span)
-            async with service_span("simcore.prompt.serialize", attributes={"simcore.msg.count": len(req.messages or [])}):
+            async with service_span("simcore.prompt.serialize",
+                                    attributes={"simcore.msg.count": len(req.messages or [])}):
                 input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
 
             model_name = req.model or self.default_model or "gpt-4o-mini"
@@ -237,7 +236,7 @@ class OpenAIProvider(BaseProvider):
         ) as span:
             try:
                 # When streaming is implemented, emit per-chunk events here, e.g.:
-                # span.add_event("simcore.client.stream_chunk", {"type": "text", "bytes": len(delta)})
+                # span.add_event("simcore.client.stream_chunk", {"type": "input_text", "bytes": len(delta)})
                 pass
             finally:
                 # For now, note unimplemented to aid observability

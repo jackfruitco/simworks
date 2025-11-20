@@ -227,7 +227,7 @@ class BaseDecorator:
 
         # Registries own duplicate vs collision handling; they are strict + idempotent
         registry.register(candidate)
-        logger.info(
+        logger.debug(
             "%s.registered %s",
             getattr(registry, "name", self.__class__.__name__.lower()),
             f"{candidate.__module__}.{candidate.__name__}",

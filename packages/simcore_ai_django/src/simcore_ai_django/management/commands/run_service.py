@@ -3,6 +3,7 @@ import json
 import time
 import logging
 from typing import Any
+from asgiref.sync import async_to_sync
 
 from django.core.management.base import BaseCommand, CommandError
 from django.tasks import TaskResultStatus
@@ -53,6 +54,12 @@ class Command(BaseCommand):
             action="store_true",
             help="Execute service in streaming mode via its `stream_task` instead of the default task.",
         )
+        parser.add_argument(
+            "--dry-run",
+            dest="dry_run",
+            action="store_true",
+            help="Build and display the prepared service and request without enqueuing or calling the AI provider.",
+        )
 
     def handle(self, *args, **options):
         # Silence standard logging so only explicit stdout/stderr from this command is shown.
@@ -60,6 +67,7 @@ class Command(BaseCommand):
         identity_str: str = options["identity"]
         ctx_raw: str = options["context"]
         use_stream: bool = bool(options.get("stream"))
+        dry_run: bool = bool(options.get("dry_run"))
 
         # ------------------------------------------------------------------
         # Resolve service class
@@ -90,6 +98,13 @@ class Command(BaseCommand):
 
         if ctx:
             self.stdout.write(f"Context:\n  {ctx!r}")
+
+        # ------------------------------------------------------------------
+        # Dry-run mode: build service + request only, no task enqueue
+        # ------------------------------------------------------------------
+        if dry_run:
+            self._dry_run_service(Svc, ctx=ctx, use_stream=use_stream)
+            return
 
         # ------------------------------------------------------------------
         # Enqueue task (normal or stream)
@@ -132,6 +147,80 @@ class Command(BaseCommand):
         # Wait for completion and pretty-print result
         # ------------------------------------------------------------------
         self._wait_for_result(result, ident=ident)
+
+    def _dry_run_service(self, Svc: type[BaseService], *, ctx: dict[str, Any], use_stream: bool) -> None:
+        """Build a service instance and its request without sending it or enqueuing a task."""
+        # Instantiate the service using its standard helper if available.
+        try:
+            svc: BaseService = Svc.using(context=ctx)
+        except TypeError:
+            # Fallback: direct constructor if .using() is not compatible.
+            svc = Svc(context=ctx)
+
+        ident_str = svc.identity.as_str
+
+        self.stdout.write(
+            self.style.WARNING(
+                "DRY RUN: building request only (no task enqueue, no provider call).\n"
+                f"  class:         {Svc.__name__}\n"
+                f"  identity:      {ident_str}\n"
+                f"  provider_name: {getattr(svc, 'provider_name', None)}"
+            )
+        )
+
+        # Resolve codec + build request via the service's async prepare helper.
+        try:
+            req, codec, attrs = async_to_sync(svc.aprepare)(stream=use_stream)
+        except Exception as e:
+            raise CommandError(f"Failed to build request for {ident_str}: {e}") from e
+
+        # Introspect codec/schema details if available.
+        codec_cls = None
+        schema_cls = None
+        if codec is not None:
+            codec_cls = codec.__class__
+            schema_cls = getattr(codec, "schema_cls", None) or getattr(codec, "output_schema_cls", None)
+        else:
+            codec_cls = getattr(type(svc), "codec_cls", None)
+
+        # Prompt plan debug info (if the service resolved one)
+        prompt_plan = getattr(svc, "_prompt_plan", None)
+        prompt_desc = None
+        if prompt_plan is not None:
+            describe = getattr(prompt_plan, "describe", None)
+            if callable(describe):
+                prompt_desc = describe()
+            else:
+                prompt_desc = repr(prompt_plan)
+
+        self.stdout.write("Service configuration:\n")
+        self.stdout.write(f"  codec_cls:     {codec_cls}\n")
+        self.stdout.write(f"  schema_cls:    {schema_cls}\n")
+        self.stdout.write(f"  prompt_plan:   {prompt_desc}\n")
+
+        # Show the resolved attrs used for tracing/logging.
+        if attrs:
+            try:
+                attrs_json = json.dumps(attrs, indent=2, default=str)
+            except TypeError:
+                attrs_json = repr(attrs)
+            self.stdout.write("Resolved attributes (for tracing/logging):\n")
+            self.stdout.write(f"{attrs_json}\n")
+
+        # Pretty-print the prepared LLMRequest.
+        self.stdout.write("Prepared LLMRequest:\n")
+        try:
+            payload = req.model_dump(mode="json")  # pydantic v2 style
+        except AttributeError:
+            # Fallback for pydantic v1 style.
+            payload = req.dict()
+
+        try:
+            request_json = json.dumps(payload, indent=2, default=str)
+        except TypeError:
+            request_json = repr(payload)
+
+        self.stdout.write(f"{request_json}\n")
 
     def _wait_for_result(self, result, *, ident: str, poll_interval: float = 0.5) -> None:
         """Block until the TaskResult is finished, showing progress, then print a summary.
