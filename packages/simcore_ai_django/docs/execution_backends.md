@@ -49,7 +49,7 @@ class GenerateInitialResponse(DjangoExecutableLLMService):
 Run immediately:
 
 ```python
-await GenerateInitialResponse.run_all(simulation=my_sim)
+await GenerateInitialResponse.execute(simulation=my_sim)
 ```
 
 Enqueue with overrides:

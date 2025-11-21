@@ -337,7 +337,7 @@ fake_service = KeywordService(
     client=FakeClient(),
 )
 
-await fake_service.run_all(Simulation(id=1, text="Example payload"))
+await fake_service.execute(Simulation(id=1, text="Example payload"))
 ```
 
 ## Next steps

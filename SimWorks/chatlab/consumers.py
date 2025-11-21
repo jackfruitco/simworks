@@ -214,7 +214,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Generate a response from Stitch for feedback conversations."""
         raise NotImplementedError
         from .ai.services import GenerateStitchResponse
-        GenerateStitchResponse.run_all(simulation=self.simulation.pk, user_msg=user_msg)
+        GenerateStitchResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
 
         return await acall_connector(
             generate_hotwash_response,

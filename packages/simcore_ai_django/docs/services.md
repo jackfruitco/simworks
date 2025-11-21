@@ -100,7 +100,7 @@ chatlab.standardized_patient.initial
 ## Execution
 
 ```python
-await generate_initial.run_all(simulation=my_sim)
+await generate_initial.execute(simulation=my_sim)
 ```
 
 By default:
@@ -219,7 +219,7 @@ async def generate_differential(simulation):
 ✅ **Execution**
 
 ```python
-await generate_initial.run_all(simulation=my_sim)
+await generate_initial.execute(simulation=my_sim)
 ```
 
 ---
