@@ -60,10 +60,18 @@ class Command(BaseCommand):
             action="store_true",
             help="Build and display the prepared service and request without enqueuing or calling the AI provider.",
         )
+        parser.add_argument(
+            "--log-level",
+            dest="log_level",
+            type=str,
+            default="INFO",
+            help="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.",
+        )
 
     def handle(self, *args, **options):
-        # Silence standard logging so only explicit stdout/stderr from this command is shown.
-        logging.disable(logging.CRITICAL)
+        raw_level = options.get("log_level", "INFO").upper()
+        level = getattr(logging, raw_level, logging.INFO)
+        logging.basicConfig(level=level)
         identity_str: str = options["identity"]
         ctx_raw: str = options["context"]
         use_stream: bool = bool(options.get("stream"))
