@@ -1,6 +1,5 @@
 # simcore_ai/types/dtos.py
 import logging
-import warnings
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Literal, TypeAlias
@@ -88,16 +87,13 @@ InputContent = TextContent | ImageContent | AudioContent | FileContent | Screens
 OutputContent = TextContent | ToolContent | ToolResultContent | ImageContent | AudioContent
 
 
-
 # ---------- LLM Types (DTO) -------------------------------------------------------
-# Input (request)
 class InputItem(StrictBaseModel):
     """Single input message with a role and one or more content parts."""
     role: ContentRole
     content: list[InputContent]
 
 
-# Output (response)
 class OutputItem(StrictBaseModel):
     """Single output message with a role and one or more content parts."""
     role: ContentRole
@@ -138,9 +134,9 @@ class Request(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)
 
     # Response format (provider-agnostic)
-    response_schema: ResponseSchemaType | None = None   # Pydantic model
-    response_schema_json: dict | None = None            # JSON schema from model
-    provider_response_format: dict | None = None        # Provider-specific response format
+    response_schema: ResponseSchemaType | None = None  # Pydantic model
+    response_schema_json: dict | None = None  # JSON schema from model
+    provider_response_format: dict | None = None  # Provider-specific response format
 
     # Tooling
     tools: list[BaseLLMTool] = Field(default_factory=list)
