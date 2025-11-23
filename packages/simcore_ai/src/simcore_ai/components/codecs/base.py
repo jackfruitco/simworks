@@ -15,7 +15,7 @@ from ..schemas.base import BaseOutputSchema
 from ...components import BaseComponent
 from ...identity import IdentityMixin
 from ...tracing import service_span_sync
-from ...types import LLMRequest, LLMResponse, LLMStreamChunk, LLMTextPart, LLMToolResultPart
+from ...types import Request, LLMResponse, LLMStreamChunk, LLMTextPart, LLMToolResultPart
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         self._stream_buffer = None
 
     # ---- Encode -----------------------------------------------------------
-    async def aencode(self, req: LLMRequest) -> None:
+    async def aencode(self, req: Request) -> None:
         """
         Attach provider-agnostic structured-output hints to the request.
 
@@ -86,7 +86,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
             except Exception as e:
                 raise CodecSchemaError("Failed to encode request hints for structured output") from e
 
-    def encode(self, req: LLMRequest) -> None:
+    def encode(self, req: Request) -> None:
         return async_to_sync(self.aencode)(req)
 
     # ---- Decode -----------------------------------------------------------

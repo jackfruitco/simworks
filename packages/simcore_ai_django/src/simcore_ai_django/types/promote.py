@@ -2,7 +2,7 @@
 DTO promotion helpers (core -> Django overlays).
 
 This module performs **pure, lossless** transformations of core simcore_ai DTOs
-(`LLMRequest`, `LLMResponse`, etc.) into Django-rich DTOs (`DjangoLLM*`).
+(`Request`, `LLMResponse`, etc.) into Django-rich DTOs (`DjangoLLM*`).
 It does **no identity normalization** or resolver logic and intentionally
 contains **no tracing**. Service‑aware enrichment (identity/provider/client,
 spans) belongs in `simcore_ai_django.services.promote` / `...demote`.
@@ -19,14 +19,14 @@ from typing import Any, List, Optional, Sequence
 from uuid import UUID
 
 from simcore_ai.types import (
-    LLMRequest,
+    Request,
     LLMRequestMessage,
     LLMResponse,
     LLMResponseItem,
     LLMUsage,
 )
 from .django_dtos import (
-    DjangoLLMRequest,
+    DjangoRequest,
     DjangoLLMRequestMessage,
     DjangoLLMResponse,
     DjangoLLMResponseItem,
@@ -139,8 +139,8 @@ def _promote_usage(
 
 # ---------------------- public API --------------------------------------
 
-def promote_request(req: LLMRequest, **overlay: Any) -> DjangoLLMRequest:
-    """Promote a core LLMRequest to a Django-rich DjangoLLMRequest.
+def promote_request(req: Request, **overlay: Any) -> DjangoRequest:
+    """Promote a core Request to a Django-rich DjangoRequest.
 
     Identity and correlation fields from overlay are copied verbatim.
     No normalization or resolution logic is performed here.
@@ -150,7 +150,7 @@ def promote_request(req: LLMRequest, **overlay: Any) -> DjangoLLMRequest:
     pass it via overlay as `db_pk` to stamp onto the DTO.
     """
     data = req.model_dump(mode="json")
-    dj = DjangoLLMRequest(**data, **overlay)
+    dj = DjangoRequest(**data, **overlay)
 
     # Build rich messages for convenience (sequence-indexed), if base messages exist
     dj.messages_rich = _promote_messages(req.messages, request_db_pk=dj.db_pk,

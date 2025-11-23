@@ -26,7 +26,7 @@ from pydantic import Field
 
 from simcore_ai.types import (
     StrictBaseModel,
-    LLMRequest,
+    Request,
     LLMRequestMessage,
     LLMResponse,
     LLMResponseItem,
@@ -73,7 +73,7 @@ class DjangoLLMRequestMessage(LLMRequestMessage, DjangoDTOBase):
     sequence_index: int | None = None
 
 
-class DjangoLLMRequest(LLMRequest, DjangoDTOBase):
+class DjangoRequest(Request, DjangoDTOBase):
     """Rich request wrapper for Django integrations.
 
     Extends the core request with persistence and routing metadata.
@@ -165,7 +165,7 @@ __all__ = [
     "DjangoDTOBase",
     # Request side
     "DjangoLLMRequestMessage",
-    "DjangoLLMRequest",
+    "DjangoRequest",
     # Response side
     "DjangoLLMResponseItem",
     "DjangoLLMUsage",

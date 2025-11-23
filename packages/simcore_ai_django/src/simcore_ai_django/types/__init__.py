@@ -19,7 +19,7 @@ __all__ = [
     "DjangoLLMBaseTool",
 
     "DjangoLLMRequestMessage",
-    "DjangoLLMRequest",
+    "DjangoRequest",
     "LLMRole",
 
     "DjangoLLMResponse",

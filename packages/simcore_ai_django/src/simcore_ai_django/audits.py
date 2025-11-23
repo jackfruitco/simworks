@@ -9,7 +9,7 @@ from simcore_ai_django.models import AIRequestAudit, AIResponseAudit
 
 # Django-rich DTOs (overlays)
 from simcore_ai_django.types.django_dtos import (
-    DjangoLLMRequest,
+    DjangoRequest,
     DjangoLLMRequestMessage,
     DjangoLLMResponse,
     DjangoLLMResponseItem,
@@ -69,7 +69,7 @@ def _dump_response_items(items: Optional[Iterable[DjangoLLMResponseItem]]) -> li
 # ----------------------------- public audit helpers -----------------------------
 
 
-def write_request_audit(dj_req: DjangoLLMRequest) -> int:
+def write_request_audit(dj_req: DjangoRequest) -> int:
     """
     Persist an audit row for an outbound request and return its PK.
 

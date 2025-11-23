@@ -30,7 +30,7 @@ class DjangoBaseService(BaseService, ABC):
 
     Build Request (hooks)
     ---------------------
-    `BaseService` provides a concrete `abuild_request(**ctx) -> LLMRequest`
+    `BaseService` provides a concrete `abuild_request(**ctx) -> Request`
     that assembles the final provider-agnostic request using hooks:
       - `_abuild_request_instructions(prompt, **ctx) -> list[LLMRequestMessage]`
       - `_abuild_request_user_input(prompt, **ctx) -> list[LLMRequestMessage]`
@@ -82,11 +82,11 @@ class DjangoBaseService(BaseService, ABC):
     # Promotion helpers
     # ------------------------------------------------------------------
     def promote_request(self, req, *, context: dict | None = None):
-        """Promote a core LLMRequest into a Django-aware request using service identity.
+        """Promote a core Request into a Django-aware request using service identity.
 
         Parameters
         ----------
-        req : LLMRequest
+        req : Request
             The provider-agnostic request to promote.
         context : dict | None
             Optional extra context to carry through the promotion pipeline.

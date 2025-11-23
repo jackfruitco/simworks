@@ -43,7 +43,7 @@ Key ingredients:
 The DTO layer keeps data structures portable across providers:
 
 - `LLMRequestMessage` &mdash; a single prompt turn with `role` and a list of content parts (text, images, tool calls, etc.).
-- `LLMRequest` &mdash; the full request envelope: model choice, normalized messages, streaming flag, tool declarations, and codec hints.
+- `Request` &mdash; the full request envelope: model choice, normalized messages, streaming flag, tool declarations, and codec hints.
 - `LLMResponse` &mdash; the normalized result containing response items, usage statistics, provider metadata, and tool call records.
 - `LLMResponseItem` &mdash; an assistant turn expressed as structured parts (text chunks, tool outputs, images, audio).
 - `LLMStreamChunk` &mdash; incremental streaming deltas emitted while a request is in-flight.
@@ -164,9 +164,9 @@ client = get_default_client()
 Send requests using normalized DTOs:
 
 ```python
-from simcore_ai.types import LLMRequest
+from simcore_ai.types import Request
 
-request = LLMRequest(model="gpt-4o-mini", messages=messages)
+request = Request(model="gpt-4o-mini", messages=messages)
 response = await client.send_request(request)
 ```
 
@@ -268,7 +268,7 @@ The generated class still expects an emitter and simulation context; only the li
 
 ## Streaming
 
-- **Direct client streaming** &mdash; set `stream=True` on `LLMRequest` and consume `AIClient.stream_request(request)` to receive `LLMStreamChunk` items as soon as the provider produces them.
+- **Direct client streaming** &mdash; set `stream=True` on `Request` and consume `AIClient.stream_request(request)` to receive `LLMStreamChunk` items as soon as the provider produces them.
 - **Service streaming** &mdash; call `await service.run_stream(simulation)` to let the service orchestrate streaming, retries, and telemetry; streaming data is pushed through the configured emitter.
 
 Each stream chunk exposes `delta` (text), optional `tool_call_delta`, and incremental usage metadata.
@@ -293,7 +293,7 @@ Adapters run in ascending `order`, allowing you to compose provider-specific adj
 
 ## Tool metadata (`simcore_ai.types.tools`)
 
-Declare tool contracts with `BaseLLMTool` and attach them to `LLMRequest.tools`. Streaming tool call progress is captured via `LLMToolCallDelta`.
+Declare tool contracts with `BaseLLMTool` and attach them to `Request.tools`. Streaming tool call progress is captured via `LLMToolCallDelta`.
 
 ```python
 from simcore_ai.types import BaseLLMTool

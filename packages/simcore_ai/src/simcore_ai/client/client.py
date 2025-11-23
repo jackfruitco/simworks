@@ -9,7 +9,7 @@ from simcore_ai.client.schemas import AIClientConfig
 from simcore_ai.providers import BaseProvider
 from simcore_ai.providers.exceptions import ProviderCallError
 from simcore_ai.tracing import service_span
-from simcore_ai.types import LLMResponse, LLMRequest, LLMStreamChunk
+from simcore_ai.types import LLMResponse, Request, LLMStreamChunk
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class AIClient:
 
     async def call(
             self,
-            req: LLMRequest,
+            req: Request,
             *,
             timeout: Optional[float] = None,
     ) -> LLMResponse:
@@ -42,7 +42,7 @@ class AIClient:
 
     async def send_request(
             self,
-            req: LLMRequest,
+            req: Request,
             *,
             timeout: Optional[float] = None,
     ) -> LLMResponse:
@@ -50,7 +50,7 @@ class AIClient:
         Send a request to the provider and (optionally) persist normalized DTOs.
 
         :param req: The normalized provider-agnostic request DTO.
-        :type req: LLMRequest
+        :type req: Request
 
         :param timeout: Timeout for the provider call.
             If not specified, uses client config timeout, else provider default.
@@ -190,7 +190,7 @@ class AIClient:
 
             return resp
 
-    async def stream_request(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
+    async def stream_request(self, req: Request) -> AsyncIterator[LLMStreamChunk]:
         """Pass-through streaming; providers may yield LLMStreamChunk deltas."""
         async with service_span(
                 "simcore.client.stream_request",

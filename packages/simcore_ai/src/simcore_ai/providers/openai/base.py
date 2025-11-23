@@ -7,7 +7,7 @@ Concrete provider implementation for the OpenAI *Responses* API.
 
 Responsibilities
 ----------------
-- Translate normalized `LLMRequest` objects into OpenAI SDK calls.
+- Translate normalized `Request` objects into OpenAI SDK calls.
 - Normalize provider-native responses into our `LLMResponse` model using the
   provider-agnostic adaptation pipeline in `BaseProvider`.
 - Provide provider-specific response-format wrapping (JSON Schema) and tool
@@ -40,7 +40,7 @@ from simcore_ai.tracing import service_span, service_span_sync, flatten_context 
 from simcore_ai.types import (
     LLMToolResultPart,
     LLMToolCall,
-    LLMRequest,
+    Request,
     LLMResponse,
 )
 from ..base import BaseProvider
@@ -153,7 +153,7 @@ class OpenAIProvider(BaseProvider):
                 )
             return None
 
-    async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+    async def call(self, req: Request, timeout: float | None = None) -> LLMResponse:
         """
         Execute a non-streaming request against the OpenAI Responses API.
 
@@ -215,7 +215,7 @@ class OpenAIProvider(BaseProvider):
             # Normalize/Adapt (core BaseProvider handles nested spans for normalize)
             return self.adapt_response(resp, output_schema_cls=req.output_schema_cls)
 
-    async def stream(self, req: LLMRequest):  # pragma: no cover - streaming not implemented yet
+    async def stream(self, req: Request):  # pragma: no cover - streaming not implemented yet
         """
         Execute a streaming request against the OpenAI Responses API.
 

@@ -115,7 +115,7 @@ Create a codec to validate the JSON payload, send the request through the client
 ```python
 
 from simcore_ai.components.codecs.base import BaseCodec
-from simcore_ai.types import LLMRequest
+from simcore_ai.types import Request
 
 
 class SummaryCodec(BaseCodec):
@@ -133,7 +133,7 @@ async def summarize(payload: SummaryRequest) -> SummaryResponse:
     messages = prompt_to_messages(prompt)
 
     response = await client.send_request(
-        LLMRequest(
+        Request(
             model="gpt-4o-mini",
             messages=messages,
         )
@@ -150,16 +150,17 @@ Wrap the coroutine in `asyncio.run(...)` or integrate it into your existing asyn
 
 ## 7. Stream responses (optional)
 
-Set `stream=True` on the `LLMRequest` and iterate over the asynchronous generator returned by `AIClient.stream_request` to process deltas incrementally.
+Set `stream=True` on the `Request` and iterate over the asynchronous generator returned by `AIClient.stream_request` to process deltas incrementally.
 
 ```python
-from simcore_ai.types import LLMRequest
+from simcore_ai.types import Request
+
 
 async def stream_summary(payload: SummaryRequest):
     prompt = build_prompt(payload)
     messages = prompt_to_messages(prompt)
 
-    request = LLMRequest(
+    request = Request(
         model="gpt-4o-mini",
         messages=messages,
         stream=True,

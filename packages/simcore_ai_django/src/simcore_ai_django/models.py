@@ -169,7 +169,7 @@ class AIOutbox(TimestampedModel):
     provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     client_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
-    # Arbitrary payload (e.g., serialized DjangoLLMRequest/Response)
+    # Arbitrary payload (e.g., serialized DjangoRequest/Response)
     payload = models.JSONField(default=dict)
 
     # Delivery bookkeeping

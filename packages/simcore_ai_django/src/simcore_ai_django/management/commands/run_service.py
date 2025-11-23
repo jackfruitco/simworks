@@ -215,8 +215,8 @@ class Command(BaseCommand):
             self.stdout.write("Resolved attributes (for tracing/logging):\n")
             self.stdout.write(f"{attrs_json}\n")
 
-        # Pretty-print the prepared LLMRequest.
-        self.stdout.write("Prepared LLMRequest:\n")
+        # Pretty-print the prepared Request.
+        self.stdout.write("Prepared Request:\n")
         try:
             payload = req.model_dump(mode="json")  # pydantic v2 style
         except AttributeError:

@@ -16,14 +16,14 @@ from typing import Optional
 from collections.abc import Sequence
 
 from simcore_ai.types import (
-    LLMRequest,
+    Request,
     LLMRequestMessage,
     LLMResponse,
     LLMResponseItem,
     LLMUsage,
 )
 from .django_dtos import (
-    DjangoLLMRequest,
+    DjangoRequest,
     DjangoLLMRequestMessage,
     DjangoLLMResponse,
     DjangoLLMResponseItem,
@@ -67,8 +67,8 @@ def _demote_usage(usage_rich: Optional[DjangoLLMUsage], fallback: Optional[LLMUs
 
 # ---------------------- public API --------------------------------------
 
-def demote_request(dj_req: DjangoLLMRequest) -> LLMRequest:
-    """Demote a Django-rich request back to the core LLMRequest.
+def demote_request(dj_req: DjangoRequest) -> Request:
+    """Demote a Django-rich request back to the core Request.
 
     Preserves identity fields (namespace, kind, client_name).
     Strips Django-only overlay fields.
@@ -88,7 +88,7 @@ def demote_request(dj_req: DjangoLLMRequest) -> LLMRequest:
 
     # Rebuild messages from rich list if available
     base["messages"] = _demote_messages(dj_req.messages_rich, fallback=dj_req.messages)
-    return LLMRequest(**base)
+    return Request(**base)
 
 
 def demote_response(dj_resp: DjangoLLMResponse) -> LLMResponse:

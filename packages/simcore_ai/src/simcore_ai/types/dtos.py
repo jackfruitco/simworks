@@ -121,7 +121,7 @@ class ToolItem(StrictBaseModel):
 
 
 # ---------- Request/Response (DTO) -------------------------------------------------
-class LLMRequest(StrictBaseModel):
+class Request(StrictBaseModel):
     model: str | None = None
     messages: list[LLMRequestMessage]
 

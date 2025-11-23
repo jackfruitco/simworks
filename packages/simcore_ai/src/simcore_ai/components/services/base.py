@@ -36,7 +36,7 @@ from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptS
 from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...tracing import get_tracer, service_span, SpanPath
-from ...types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole, StrictBaseModel
+from ...types import Request, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole, StrictBaseModel
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
@@ -45,7 +45,7 @@ LOG_LENGTH_LIMIT: int = 250
 
 
 class ServiceEmitter(Protocol):
-    def emit_request(self, context: dict, namespace: str, request_dto: LLMRequest) -> None: ...
+    def emit_request(self, context: dict, namespace: str, request_dto: Request) -> None: ...
 
     def emit_response(self, context: dict, namespace: str, response_dto: LLMResponse) -> None: ...
 
@@ -804,9 +804,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ------------------------------------------------------------------------
     # Service run helpers
     # ------------------------------------------------------------------------
-    async def _aprepare_request(self, *, stream: bool, **kwargs: Any) -> LLMRequest:
+    async def _aprepare_request(self, *, stream: bool, **kwargs: Any) -> Request:
         """
-        Internal helper to build a base LLMRequest and stamp the stream flag.
+        Internal helper to build a base Request and stamp the stream flag.
 
         Delegates to `abuild_request(...)` and sets `req.stream` accordingly.
         This method relies on `self.context` for contextual data rather than a
@@ -815,7 +815,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         LOG_CAT = "llm.request"
 
         async with service_span(
-            self._span("run", "prepare", "LLMRequest"),
+            self._span("run", "prepare", "Request"),
             attributes=self.flatten_context()
         ):
             req = await self.abuild_request(**kwargs)
@@ -887,12 +887,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
     async def aprepare(
             self, *, stream: bool, **kwargs: Any
-    ) -> tuple[LLMRequest, BaseCodec | None, dict[str, Any]]:
+    ) -> tuple[Request, BaseCodec | None, dict[str, Any]]:
         """
         Prepare a request + codec instance + tracing attrs for a single service call.
 
         Responsibilities:
-          - Build the LLMRequest using the current prompt plan and context.
+          - Build the Request using the current prompt plan and context.
           - Set the `stream` flag on the request.
           - Resolve and instantiate a codec instance (if available).
           - Attach codec identity to the request when available.
@@ -954,9 +954,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Request construction
     # ----------------------------------------------------------------------
-    async def abuild_request(self, **kwargs) -> LLMRequest:
+    async def abuild_request(self, **kwargs) -> Request:
         """
-        Build a provider-agnostic `LLMRequest` for this service from the resolved `Prompt`.
+        Build a provider-agnostic `Request` for this service from the resolved `Prompt`.
 
         Default implementation uses the PromptEngine output to create messages and
         stamps identity and codec routing. Subclasses may override hooks instead of
@@ -1002,7 +1002,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         # 3) Create a request and stamp identity (context is kept on self.context only)
         ident = self.identity
-        req = LLMRequest(messages=messages, stream=False)
+        req = Request(messages=messages, stream=False)
         req.namespace = ident.namespace
         req.kind = ident.kind
         req.name = ident.name
@@ -1084,7 +1084,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         return messages
 
-    async def _afinalize_request(self, req: LLMRequest) -> LLMRequest:
+    async def _afinalize_request(self, req: Request) -> Request:
         """Final request customization hook (no-op by default)."""
         logger.debug(self._build_stdout(
             "llm.request",
@@ -1268,7 +1268,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     async def _asend(
             self,
             client: AIClient,
-            req: LLMRequest,
+            req: Request,
             codec: BaseCodec | None,
             attrs: dict[str, Any],
             ident: Identity,
@@ -1345,7 +1345,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     async def _astream(
             self,
             client: AIClient,
-            req: LLMRequest,
+            req: Request,
             codec: BaseCodec | None,
             attrs: dict[str, Any],
             ident: Identity,

@@ -10,7 +10,7 @@ from typing import Any, AsyncIterator, Optional, Protocol
 from .exceptions import ProviderError, ProviderSchemaUnsupported
 from ..tracing import service_span_sync
 from ..types import (
-    LLMRequest,
+    Request,
     LLMResponse,
     LLMResponseItem,
     LLMStreamChunk,
@@ -103,7 +103,7 @@ class BaseProvider(ABC):
     # Sync streaming is not supported by the client adapter.
 
     @abstractmethod
-    async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+    async def call(self, req: Request, timeout: float | None = None) -> LLMResponse:
         """Canonical async, non-streaming request.
 
         Implementations MUST be async when subclassing BaseProvider. If your concrete
@@ -116,7 +116,7 @@ class BaseProvider(ABC):
         ...
 
     @abstractmethod
-    async def stream(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
+    async def stream(self, req: Request) -> AsyncIterator[LLMStreamChunk]:
         """Canonical async streaming interface.
 
         MUST be implemented as an async generator yielding `LLMStreamChunk` items.
@@ -261,7 +261,7 @@ class BaseProvider(ABC):
     # Response Format / Schema (provider-specific adapters + _wrap_schema func)
     # ---------------------------------------------------------------------
     def build_final_schema(
-            self, req: "LLMRequest"
+            self, req: "Request"
     ) -> None:
         """Compile adapters for the request's response format and attach back to the request.
 
@@ -272,7 +272,7 @@ class BaseProvider(ABC):
             - Attach the final result to the `req.output_schema` field.
 
         Args:
-            req: LLMRequest with `output_schema_cls` set
+            req: Request with `output_schema_cls` set
 
         Returns:
             None (modifies `req` in-place)
@@ -312,7 +312,7 @@ class BaseProvider(ABC):
             except Exception:
                 logger.exception("provider '%s':: build_final_schema failed", getattr(self, "name", self))
 
-    def _apply_schema_adapters(self, req: "LLMRequest") -> dict | None:
+    def _apply_schema_adapters(self, req: "Request") -> dict | None:
         """Apply provider-specific schema adapters to the request's response format.
 
         This is the central point for provider-specific schema adaptation/override.
