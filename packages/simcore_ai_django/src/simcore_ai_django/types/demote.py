@@ -18,14 +18,14 @@ from collections.abc import Sequence
 from simcore_ai.types import (
     Request,
     LLMRequestMessage,
-    LLMResponse,
+    Response,
     LLMResponseItem,
     LLMUsage,
 )
 from .django_dtos import (
     DjangoRequest,
     DjangoLLMRequestMessage,
-    DjangoLLMResponse,
+    DjangoResponse,
     DjangoLLMResponseItem,
     DjangoLLMUsage,
 )
@@ -91,8 +91,8 @@ def demote_request(dj_req: DjangoRequest) -> Request:
     return Request(**base)
 
 
-def demote_response(dj_resp: DjangoLLMResponse) -> LLMResponse:
-    """Demote a Django-rich response back to the core LLMResponse.
+def demote_response(dj_resp: DjangoResponse) -> Response:
+    """Demote a Django-rich response back to the core Response.
 
     Preserves identity and provider/client name fields and received_at.
     Strips Django-only overlay fields.
@@ -113,4 +113,4 @@ def demote_response(dj_resp: DjangoLLMResponse) -> LLMResponse:
 
     base["outputs"] = _demote_response_items(dj_resp.outputs_rich, fallback=dj_resp.outputs)
     base["usage"] = _demote_usage(dj_resp.usage_rich, fallback=dj_resp.usage)
-    return LLMResponse(**base)
+    return Response(**base)

@@ -8,7 +8,7 @@ from simcore_ai.components.promptkit.engine import SectionSpec
 from simcore_ai.identity import Identity
 from simcore_ai.registry import get_registry_for
 from simcore_ai.registry.exceptions import RegistryError
-from simcore_ai.types import LLMResponse
+from simcore_ai.types import Response
 from simcore_ai_django.components.promptkit.render_section import \
     render_section as _default_renderer  # async (namespace, section_key, context) -> str
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
@@ -103,7 +103,7 @@ class DjangoBaseService(BaseService, ABC):
     # ------------------------------------------------------------------
     # Result hooks (context-first)
     # ------------------------------------------------------------------
-    async def on_success_ctx(self, *, context: dict[str, Any], resp: LLMResponse) -> None:
+    async def on_success_ctx(self, *, context: dict[str, Any], resp: Response) -> None:
         """Context-first success hook (preferred in Django layer).
 
         Override this in subclasses instead of `on_success` if you want a
@@ -119,7 +119,7 @@ class DjangoBaseService(BaseService, ABC):
         """
         return None
 
-    async def on_success(self, context: dict[str, Any], resp: LLMResponse) -> None:
+    async def on_success(self, context: dict[str, Any], resp: Response) -> None:
         """BaseService callback override.
 
         Delegates to `on_success_ctx` so subclasses can implement either

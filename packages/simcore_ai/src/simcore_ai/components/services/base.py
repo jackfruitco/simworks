@@ -36,7 +36,7 @@ from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptS
 from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...tracing import get_tracer, service_span, SpanPath
-from ...types import Request, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole, StrictBaseModel
+from ...types import Request, LLMRequestMessage, Response, LLMTextPart, LLMRole, StrictBaseModel
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
@@ -47,7 +47,7 @@ LOG_LENGTH_LIMIT: int = 250
 class ServiceEmitter(Protocol):
     def emit_request(self, context: dict, namespace: str, request_dto: Request) -> None: ...
 
-    def emit_response(self, context: dict, namespace: str, response_dto: LLMResponse) -> None: ...
+    def emit_response(self, context: dict, namespace: str, response_dto: Response) -> None: ...
 
     def emit_failure(self, context: dict, namespace: str, correlation_id, error: str) -> None: ...
 
@@ -1162,7 +1162,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Execution
     # ----------------------------------------------------------------------
-    async def arun(self, **ctx) -> LLMResponse | None:
+    async def arun(self, **ctx) -> Response | None:
         """
         Core async execution path for non-streaming service calls.
 
@@ -1171,7 +1171,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         return await self._arun_core(stream=False, **ctx)
 
-    async def _arun_core(self, *, stream: bool, **ctx) -> LLMResponse | None:
+    async def _arun_core(self, *, stream: bool, **ctx) -> Response | None:
         """
         Shared implementation for non-streaming and streaming runs.
 
@@ -1272,7 +1272,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             codec: BaseCodec | None,
             attrs: dict[str, Any],
             ident: Identity,
-    ) -> LLMResponse | None:
+    ) -> Response | None:
         """
         Non-streaming send/receive with retries, codec decode, and logging.
         """
@@ -1290,7 +1290,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                             attributes=self.flatten_context(),
                     ):
                         try:
-                            resp: LLMResponse = await client.send_request(req)
+                            resp: Response = await client.send_request(req)
 
                             # Tag response identity/correlation
                             resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
@@ -1430,7 +1430,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Result hooks
     # ----------------------------------------------------------------------
-    async def on_success(self, context: dict, resp: LLMResponse) -> None:
+    async def on_success(self, context: dict, resp: Response) -> None:
         ...
 
     async def on_failure(self, context: dict, err: Exception) -> None:

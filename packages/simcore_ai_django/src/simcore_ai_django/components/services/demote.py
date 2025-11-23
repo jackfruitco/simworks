@@ -12,12 +12,12 @@ core model decisions.
 
 from typing import Any
 
-from simcore_ai.types import Request, LLMResponse
+from simcore_ai.types import Request, Response
 from simcore_ai_django.types.demote import (
     demote_request as _dto_demote_request,
     demote_response as _dto_demote_response,
 )
-from simcore_ai_django.types import DjangoRequest, DjangoLLMResponse
+from simcore_ai_django.types import DjangoRequest, DjangoResponse
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.identity import Identity
 
@@ -55,7 +55,7 @@ def _span_attrs_from_request(dj: DjangoRequest) -> dict[str, Any]:
     }
 
 
-def _span_attrs_from_response(dj: DjangoLLMResponse) -> dict[str, Any]:
+def _span_attrs_from_response(dj: DjangoResponse) -> dict[str, Any]:
     ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
     return {
         "simcore.identity": ident or None,
@@ -86,12 +86,12 @@ def demote_request_for_service(dj: DjangoRequest) -> Request:
         return _dto_demote_request(dj)
 
 
-def demote_response_for_service(dj: DjangoLLMResponse) -> LLMResponse:
+def demote_response_for_service(dj: DjangoResponse) -> Response:
     """
-    Demote a DjangoLLMResponse into a core LLMResponse.
+    Demote a DjangoResponse into a core Response.
 
     This is a thin wrapper over `simcore_ai_django.types.demote.demote_response` that
-    preserves identity, provider/client metadata, and `received_at`, returning a core LLMResponse.
+    preserves identity, provider/client metadata, and `received_at`, returning a core Response.
     """
     with service_span_sync(
             "svc.demote_response_for_service",

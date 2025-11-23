@@ -44,7 +44,7 @@ The DTO layer keeps data structures portable across providers:
 
 - `LLMRequestMessage` &mdash; a single prompt turn with `role` and a list of content parts (text, images, tool calls, etc.).
 - `Request` &mdash; the full request envelope: model choice, normalized messages, streaming flag, tool declarations, and codec hints.
-- `LLMResponse` &mdash; the normalized result containing response items, usage statistics, provider metadata, and tool call records.
+- `Response` &mdash; the normalized result containing response items, usage statistics, provider metadata, and tool call records.
 - `LLMResponseItem` &mdash; an assistant turn expressed as structured parts (text chunks, tool outputs, images, audio).
 - `LLMStreamChunk` &mdash; incremental streaming deltas emitted while a request is in-flight.
 - `BaseOutputSchema` &mdash; base class for typed response contracts that codecs can validate against.
@@ -318,17 +318,17 @@ When the provider triggers a tool call, the normalized response includes `LLMToo
 
 Because services operate on DTOs and dependency injection, unit testing stays straightforward:
 
-- Inject a fake `AIClient` that returns canned `LLMResponse` objects.
+- Inject a fake `AIClient` that returns canned `Response` objects.
 - Provide a lightweight emitter that records emitted events for assertions.
 - Assert on prompt rendering by calling your helper that converts prompts into `LLMRequestMessage` lists.
 
 ```python
-from simcore_ai.types import LLMResponse
+from simcore_ai.types import Response
 
 
 class FakeClient:
     async def send_request(self, request):
-        return LLMResponse(outputs=[], usage=None)
+        return Response(outputs=[], usage=None)
 
 
 fake_service = KeywordService(

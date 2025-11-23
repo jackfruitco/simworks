@@ -8,7 +8,7 @@ from asgiref.sync import async_to_sync
 from core.models import PersistModel
 from simcore_ai.components.codecs.base import BaseCodec
 from simcore_ai.components.codecs.exceptions import CodecDecodeError
-from simcore_ai.types import LLMResponse
+from simcore_ai.types import Response
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,9 @@ class DjangoBaseCodec(BaseCodec):
     section_defaults: dict[str, Mapping[str, Any] | Callable[[Mapping[str, Any]], Mapping[str, Any]]] | None = None
 
     # ---- public entrypoints ------------------------------------------------
-    async def adecode(self, resp: LLMResponse) -> Any:
+    async def adecode(self, resp: Response) -> Any:
         """
-        Decode a full LLMResponse, validate to the output schema (if any),
+        Decode a full Response, validate to the output schema (if any),
         and optionally persist sections via Django models.
 
         Returns:
@@ -93,18 +93,18 @@ class DjangoBaseCodec(BaseCodec):
         )
         return validated, results
 
-    def decode(self, resp: LLMResponse) -> Any:
+    def decode(self, resp: Response) -> Any:
         """
         Sync wrapper for `adecode`. Prefer `adecode` in async call sites.
         """
         return async_to_sync(self.adecode)(resp)
 
     # Backwards-friendly aliases (arun/run) for callers that still use the old name.
-    async def arun(self, resp: LLMResponse) -> Any:
+    async def arun(self, resp: Response) -> Any:
         """Alias for `adecode` to support legacy call sites."""
         return await self.adecode(resp)
 
-    def run(self, resp: LLMResponse) -> Any:
+    def run(self, resp: Response) -> Any:
         """Alias for `decode` to support legacy call sites."""
         return self.decode(resp)
 

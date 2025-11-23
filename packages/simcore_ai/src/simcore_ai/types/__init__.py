@@ -19,6 +19,6 @@ __all__ = [
     "LLMToolCall",
     "LLMUsage",
     "Request",
-    "LLMResponse",
+    "Response",
     "LLMStreamChunk",
 ]

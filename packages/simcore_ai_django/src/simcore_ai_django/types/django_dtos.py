@@ -28,7 +28,7 @@ from simcore_ai.types import (
     StrictBaseModel,
     Request,
     LLMRequestMessage,
-    LLMResponse,
+    Response,
     LLMResponseItem,
     LLMUsage,
     LLMToolCall,
@@ -121,7 +121,7 @@ class DjangoLLMUsage(LLMUsage, DjangoDTOBase):
     response_correlation_id: UUID | None = None
 
 
-class DjangoLLMResponse(LLMResponse, DjangoDTOBase):
+class DjangoResponse(Response, DjangoDTOBase):
     """Rich response wrapper for Django integrations.
 
     Echoes operation identity and correlation links; includes `received_at`.
@@ -169,7 +169,7 @@ __all__ = [
     # Response side
     "DjangoLLMResponseItem",
     "DjangoLLMUsage",
-    "DjangoLLMResponse",
+    "DjangoResponse",
     # Tools
     "DjangoLLMBaseTool",
     "DjangoLLMToolCall",

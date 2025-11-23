@@ -154,7 +154,7 @@ class Request(StrictBaseModel):
     image_format: str | None = None
 
 
-class LLMResponse(StrictBaseModel):
+class Response(StrictBaseModel):
     # Identity echoed back (operation identity)
     namespace: str | None = None
     kind: str | None = None
@@ -169,7 +169,7 @@ class LLMResponse(StrictBaseModel):
     client_name: str | None = None
     received_at: datetime | None = None
 
-    outputs: list[LLMResponseItem] = Field(default_factory=list)
+    output: list[LLMResponseItem] = Field(default_factory=list)
     usage: LLMUsage | None = None
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
     provider_meta: dict[str, Any] = Field(default_factory=dict)

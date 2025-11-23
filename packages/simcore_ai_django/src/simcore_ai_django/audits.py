@@ -11,7 +11,7 @@ from simcore_ai_django.models import AIRequestAudit, AIResponseAudit
 from simcore_ai_django.types.django_dtos import (
     DjangoRequest,
     DjangoLLMRequestMessage,
-    DjangoLLMResponse,
+    DjangoResponse,
     DjangoLLMResponseItem,
     DjangoLLMUsage,
 )
@@ -142,7 +142,7 @@ def update_request_audit_formats(
 
 
 def write_response_audit(
-    dj_resp: DjangoLLMResponse,
+    dj_resp: DjangoResponse,
     *,
     request_audit_pk: int | None = None,
 ) -> int:

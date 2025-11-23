@@ -11,7 +11,7 @@ from .exceptions import ProviderError, ProviderSchemaUnsupported
 from ..tracing import service_span_sync
 from ..types import (
     Request,
-    LLMResponse,
+    Response,
     LLMResponseItem,
     LLMStreamChunk,
     LLMTextPart,
@@ -66,7 +66,7 @@ class BaseProvider(ABC):
       - Providers implement `call` (non-stream) and `stream` (streaming) using their SDKs.
       - Providers supply *hook methods* to extract text, outputs, usage, and meta
         from the raw SDK response. The shared `adapt_response` turns those into an
-        `LLMResponse` via the normalized LLMResponseItem → DTO flow.
+        `Response` via the normalized LLMResponseItem → DTO flow.
     """
 
     name: str
@@ -103,7 +103,7 @@ class BaseProvider(ABC):
     # Sync streaming is not supported by the client adapter.
 
     @abstractmethod
-    async def call(self, req: Request, timeout: float | None = None) -> LLMResponse:
+    async def call(self, req: Request, timeout: float | None = None) -> Response:
         """Canonical async, non-streaming request.
 
         Implementations MUST be async when subclassing BaseProvider. If your concrete
@@ -160,7 +160,7 @@ class BaseProvider(ABC):
     # ---------------------------------------------------------------------
     def adapt_response(
             self, resp: Any, *, output_schema_cls: type | None = None
-    ) -> LLMResponse:
+    ) -> Response:
         """
         Provider-agnostic response construction pipeline.
 
@@ -250,7 +250,7 @@ class BaseProvider(ABC):
                 except Exception:
                     usage = LLMUsage(**usage_data) if isinstance(usage_data, dict) else None
 
-            return LLMResponse(
+            return Response(
                 outputs=messages,
                 usage=usage,
                 tool_calls=tool_calls,

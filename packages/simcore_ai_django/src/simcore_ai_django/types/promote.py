@@ -2,7 +2,7 @@
 DTO promotion helpers (core -> Django overlays).
 
 This module performs **pure, lossless** transformations of core simcore_ai DTOs
-(`Request`, `LLMResponse`, etc.) into Django-rich DTOs (`DjangoLLM*`).
+(`Request`, `Response`, etc.) into Django-rich DTOs (`DjangoLLM*`).
 It does **no identity normalization** or resolver logic and intentionally
 contains **no tracing**. Service‑aware enrichment (identity/provider/client,
 spans) belongs in `simcore_ai_django.services.promote` / `...demote`.
@@ -21,14 +21,14 @@ from uuid import UUID
 from simcore_ai.types import (
     Request,
     LLMRequestMessage,
-    LLMResponse,
+    Response,
     LLMResponseItem,
     LLMUsage,
 )
 from .django_dtos import (
     DjangoRequest,
     DjangoLLMRequestMessage,
-    DjangoLLMResponse,
+    DjangoResponse,
     DjangoLLMResponseItem,
     DjangoLLMUsage,
 )
@@ -158,8 +158,8 @@ def promote_request(req: Request, **overlay: Any) -> DjangoRequest:
     return dj
 
 
-def promote_response(resp: LLMResponse, **overlay: Any) -> DjangoLLMResponse:
-    """Promote a core LLMResponse to a Django-rich DjangoLLMResponse.
+def promote_response(resp: Response, **overlay: Any) -> DjangoResponse:
+    """Promote a core Response to a Django-rich DjangoResponse.
 
     Identity and correlation fields from overlay are copied verbatim.
     No normalization or resolution logic is performed here.
@@ -167,7 +167,7 @@ def promote_response(resp: LLMResponse, **overlay: Any) -> DjangoLLMResponse:
     The overlay may include identity and correlation link fields such as request_db_pk, request_correlation_id, response_correlation_id, object_db_pk, namespace, etc.
     """
     data = resp.model_dump(mode="json")
-    dj = DjangoLLMResponse(**data, **overlay)
+    dj = DjangoResponse(**data, **overlay)
 
     req_corr = getattr(dj, "request_correlation_id", None)
     resp_corr = getattr(dj, "correlation_id", None)

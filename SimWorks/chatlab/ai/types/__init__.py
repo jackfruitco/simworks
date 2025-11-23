@@ -9,6 +9,6 @@ ___all__ = [
     "MetafieldItem",
     "ToolItem",
     "Request",
-    "LLMResponse",
+    "Response",
     "StreamChunk",
 ]
