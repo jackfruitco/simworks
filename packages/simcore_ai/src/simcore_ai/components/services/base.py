@@ -36,7 +36,9 @@ from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptS
 from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...tracing import get_tracer, service_span, SpanPath
-from ...types import Request, InputItem, Response, TextContent, ContentRole, StrictBaseModel
+from ...types import Request, Response, StrictBaseModel
+from ...types.messages import InputItem
+from ...types.content import ContentRole, TextContent
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")

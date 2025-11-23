@@ -62,7 +62,8 @@ For simple flows, instantiate `Prompt` directly and translate it into request me
 
 ```python
 from simcore_ai.promptkit import Prompt
-from simcore_ai.types import InputItem, TextContent
+from simcore_ai.types import InputItem
+from simcore_ai.types.content import TextContent
 
 prompt = Prompt(
     instruction="You are a concise assistant.",
@@ -187,7 +188,8 @@ from dataclasses import dataclass
 from simcore_ai.client import get_default_client
 from simcore_ai.promptkit import Prompt
 from simcore_ai.services import BaseService
-from simcore_ai.types import InputItem, TextContent
+from simcore_ai.types import InputItem
+from simcore_ai.types.content import TextContent
 
 
 # reuse `codec = KeywordCodec()` from the codecs section above

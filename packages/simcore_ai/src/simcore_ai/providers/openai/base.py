@@ -38,11 +38,11 @@ from openai.types.responses.response_output_item import ImageGenerationCall
 
 from simcore_ai.tracing import service_span, service_span_sync, flatten_context as _flatten_context
 from simcore_ai.types import (
-    ToolResultContent,
     LLMToolCall,
     Request,
     Response,
 )
+from ...types.content import ToolResultContent
 from ..base import BaseProvider
 from ..exceptions import ProviderError
 from ..openai.tools import OpenAIToolAdapter

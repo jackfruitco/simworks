@@ -1,6 +1,8 @@
 # simcore_ai/types/__init__.py
+from .content import *
 from .base import *
-from .dtos import *
+from .messages import *
+from .transport import *
 from .tools import *
 
 __all__ = [

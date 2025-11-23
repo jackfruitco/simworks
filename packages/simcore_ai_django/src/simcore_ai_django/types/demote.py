@@ -17,11 +17,9 @@ from collections.abc import Sequence
 
 from simcore_ai.types import (
     Request,
-    InputItem,
     Response,
-    OutputItem,
-    UsageContent,
 )
+from simcore_ai.types.messages import InputItem, OutputItem, UsageContent
 from .django_dtos import (
     DjangoRequest,
     DjangoInputItem,

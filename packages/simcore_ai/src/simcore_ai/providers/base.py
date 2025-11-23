@@ -12,12 +12,10 @@ from ..tracing import service_span_sync
 from ..types import (
     Request,
     Response,
-    OutputItem,
     StreamChunk,
-    TextContent,
-    ToolResultContent,
-    LLMToolCall, ContentRole,
-)
+    LLMToolCall, )
+from ..types.messages import OutputItem, UsageContent
+from ..types.content import ContentRole, TextContent, ToolResultContent
 from ..types.tools import BaseLLMTool
 
 logger = logging.getLogger(__name__)
@@ -239,8 +237,6 @@ class BaseProvider(ABC):
                 span.set_attribute("simcore.text.present", bool(text_out))
             except Exception:
                 pass
-
-            from ..types.dtos import UsageContent
 
             usage_data = self._extract_usage(resp)
             usage = None

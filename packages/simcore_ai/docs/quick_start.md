@@ -76,7 +76,8 @@ def build_prompt(payload: SummaryRequest) -> Prompt:
 `AIClient` expects a list of `InputItem` objects. The helper below mirrors the conversion performed by `BaseService`.
 
 ```python
-from simcore_ai.types import InputItem, TextContent
+from simcore_ai.types import InputItem
+from simcore_ai.types.content import TextContent
 
 
 def prompt_to_messages(prompt: Prompt) -> list[InputItem]:

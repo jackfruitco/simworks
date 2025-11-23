@@ -15,7 +15,8 @@ from ..schemas.base import BaseOutputSchema
 from ...components import BaseComponent
 from ...identity import IdentityMixin
 from ...tracing import service_span_sync
-from ...types import Request, Response, StreamChunk, TextContent, ToolResultContent
+from ...types import Request, Response, StreamChunk
+from ...types.content import TextContent, ToolResultContent
 
 logger = logging.getLogger(__name__)
 

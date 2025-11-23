@@ -27,13 +27,11 @@ from pydantic import Field
 from simcore_ai.types import (
     StrictBaseModel,
     Request,
-    InputItem,
     Response,
-    OutputItem,
-    UsageContent,
     LLMToolCall,
     BaseLLMTool,
 )
+from simcore_ai.types.messages import InputItem, OutputItem, UsageContent
 
 
 class DjangoDTOBase(StrictBaseModel):

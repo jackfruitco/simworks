@@ -6,7 +6,9 @@ from typing import Type, Optional, Tuple, List, ClassVar
 
 from core.utils import remove_null_keys
 from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoBaseService, PromptEngine, TextContent, ContentRole
+from simcore_ai_django.api.types import DjangoBaseService, PromptEngine
+from simcore_ai.types.content import TextContent
+from simcore_ai.types import ContentRole
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoInputItem
 from simulation.ai.mixins import StandardizedPatientMixin
 from simulation.ai.prompts import PatientNameSection
