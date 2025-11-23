@@ -46,8 +46,8 @@ jobs:
         context: .
         file: docker/Dockerfile.prod
         push: true
-        tags: ${{ steps.meta.output.tags }}
-        labels: ${{ steps.meta.output.labels }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
 
     - name: Build and push web image
       uses: docker/build-push-action@v6
@@ -59,7 +59,7 @@ jobs:
         tags: |
           ghcr.io/${{ github.repository }}:web-${{ github.ref_name }}
           ghcr.io/${{ github.repository }}:web-latest
-        labels: ${{ steps.meta.output.labels }}
+        labels: ${{ steps.meta.outputs.labels }}
 
     - name: Build and push celery image
       uses: docker/build-push-action@v6
@@ -71,7 +71,7 @@ jobs:
         tags: |
           ghcr.io/${{ github.repository }}:celery-${{ github.ref_name }}
           ghcr.io/${{ github.repository }}:celery-latest
-        labels: ${{ steps.meta.output.labels }}
+        labels: ${{ steps.meta.outputs.labels }}
 
     - name: Build and push beat image
       uses: docker/build-push-action@v6
@@ -83,11 +83,11 @@ jobs:
         tags: |
           ghcr.io/${{ github.repository }}:beat-${{ github.ref_name }}
           ghcr.io/${{ github.repository }}:beat-latest
-        labels: ${{ steps.meta.output.labels }}
+        labels: ${{ steps.meta.outputs.labels }}
 
     - name: Generate artifact attestation
       uses: actions/attest-build-provenance@v3
       with:
         subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
-        subject-digest: ${{ steps.push.output.digest }}
+        subject-digest: ${{ steps.push.outputs.digest }}
         push-to-registry: true
