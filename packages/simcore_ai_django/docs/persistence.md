@@ -48,7 +48,7 @@ class PatientInitialCodec(DjangoBaseCodec):
         msg = Message.objects.create(
             simulation=response.simulation,
             role="patient",
-            text=parsed.messages[0].content if parsed.messages else "",
+            text=parsed.input[0].content if parsed.input else "",
             meta={"identity": response.identity_str},
         )
         return {"message_id": msg.id}

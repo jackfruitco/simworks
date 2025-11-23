@@ -11,7 +11,7 @@ Core promptkit types (AIv3).
 This module defines lightweight types shared by the prompt system:
 
 - `Prompt`: final aggregate produced by a prompt engine. Services convert this
-  to LLMRequestMessage objects (default: developer instruction + user message).
+  to InputItem objects (default: developer instruction + user message).
 - `PromptSection`: declarative section base class. Sections advertise identity
   via a class-level `identity: Identity`. The canonical identity string uses
   dot form: `namespace.kind.name`.

@@ -73,35 +73,37 @@ def build_prompt(payload: SummaryRequest) -> Prompt:
 
 ## 5. Convert the prompt to normalized messages
 
-`AIClient` expects a list of `LLMRequestMessage` objects. The helper below mirrors the conversion performed by `BaseService`.
+`AIClient` expects a list of `InputItem` objects. The helper below mirrors the conversion performed by `BaseService`.
 
 ```python
-from simcore_ai.types import LLMRequestMessage, LLMTextPart
+from simcore_ai.types import InputItem
+from simcore_ai.types.content import TextContent
 
-def prompt_to_messages(prompt: Prompt) -> list[LLMRequestMessage]:
-    messages: list[LLMRequestMessage] = []
+
+def prompt_to_messages(prompt: Prompt) -> list[InputItem]:
+    messages: list[InputItem] = []
 
     if prompt.instruction:
         messages.append(
-            LLMRequestMessage(
+            InputItem(
                 role="developer",
-                content=[LLMTextPart(text=prompt.instruction)],
+                content=[TextContent(text=prompt.instruction)],
             )
         )
 
     if prompt.message:
         messages.append(
-            LLMRequestMessage(
+            InputItem(
                 role="user",
-                content=[LLMTextPart(text=prompt.message)],
+                content=[TextContent(text=prompt.message)],
             )
         )
 
     for role, text in prompt.extra_messages:
         messages.append(
-            LLMRequestMessage(
+            InputItem(
                 role=role,
-                content=[LLMTextPart(text=text)],
+                content=[TextContent(text=text)],
             )
         )
 
@@ -115,7 +117,7 @@ Create a codec to validate the JSON payload, send the request through the client
 ```python
 
 from simcore_ai.components.codecs.base import BaseCodec
-from simcore_ai.types import LLMRequest
+from simcore_ai.types import Request
 
 
 class SummaryCodec(BaseCodec):
@@ -133,9 +135,9 @@ async def summarize(payload: SummaryRequest) -> SummaryResponse:
     messages = prompt_to_messages(prompt)
 
     response = await client.send_request(
-        LLMRequest(
+        Request(
             model="gpt-4o-mini",
-            messages=messages,
+            input=messages,
         )
     )
 
@@ -150,18 +152,19 @@ Wrap the coroutine in `asyncio.run(...)` or integrate it into your existing asyn
 
 ## 7. Stream responses (optional)
 
-Set `stream=True` on the `LLMRequest` and iterate over the asynchronous generator returned by `AIClient.stream_request` to process deltas incrementally.
+Set `stream=True` on the `Request` and iterate over the asynchronous generator returned by `AIClient.stream_request` to process deltas incrementally.
 
 ```python
-from simcore_ai.types import LLMRequest
+from simcore_ai.types import Request
+
 
 async def stream_summary(payload: SummaryRequest):
     prompt = build_prompt(payload)
     messages = prompt_to_messages(prompt)
 
-    request = LLMRequest(
+    request = Request(
         model="gpt-4o-mini",
-        messages=messages,
+        input=messages,
         stream=True,
     )
 

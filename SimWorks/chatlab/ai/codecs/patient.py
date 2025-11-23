@@ -10,7 +10,7 @@ from ..mixins import ChatlabMixin
 @simcore.codec
 class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
     schema_model_map = {
-        "messages": Message,
+        "input": Message,
         "metadata": {
             "patient_history": PatientHistory,
             "patient_demographics": PatientDemographics,
@@ -18,7 +18,7 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWor
         },
     }
     section_defaults = {
-        "messages": lambda ctx: {
+        "input": lambda ctx: {
             "simulation": ctx["simulation"],
             "sender": ctx.get("sender") or ctx["simulation"].user,
             "role": RoleChoices.ASSISTANT,
@@ -31,9 +31,9 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWor
 
 @simcore.codec
 class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
-    schema_model_map = {"messages": Message}
+    schema_model_map = {"input": Message}
     section_defaults = {
-        "messages": lambda ctx: {
+        "input": lambda ctx: {
             "simulation": ctx["simulation"],
             "sender": ctx.get("sender") or ctx["simulation"].user,
             "role": RoleChoices.ASSISTANT,

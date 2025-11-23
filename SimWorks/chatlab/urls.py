@@ -15,7 +15,7 @@ urlpatterns = [
     ),
     # HTMX endpoints
     path(
-        "simulation/<int:simulation_id>/refresh/messages/",
+        "simulation/<int:simulation_id>/refresh/input/",
         views.refresh_messages,
         name="refresh_messages",
     ),
@@ -25,7 +25,7 @@ urlpatterns = [
         name="current_metadata_checksum",
     ),
     path(
-        "simulation/<int:simulation_id>/refresh/older-messages/",
+        "simulation/<int:simulation_id>/refresh/older-input/",
         views.load_older_messages,
         name="load_older_messages",
     ),

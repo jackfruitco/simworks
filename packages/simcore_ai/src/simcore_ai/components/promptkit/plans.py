@@ -57,7 +57,7 @@ def _is_section_instance(obj: object) -> bool:
 def describe_section(sec: object) -> str:
     """
     Render a human-friendly description of a section spec for debug logs
-    and error messages. This is intentionally resilient and avoids raising.
+    and error input. This is intentionally resilient and avoids raising.
 
     Examples:
         - Class: "<class> chatlab.patient.initial (weight=10)"

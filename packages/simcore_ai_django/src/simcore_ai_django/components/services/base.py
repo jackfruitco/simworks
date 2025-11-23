@@ -8,7 +8,7 @@ from simcore_ai.components.promptkit.engine import SectionSpec
 from simcore_ai.identity import Identity
 from simcore_ai.registry import get_registry_for
 from simcore_ai.registry.exceptions import RegistryError
-from simcore_ai.types import LLMResponse
+from simcore_ai.types import Response
 from simcore_ai_django.components.promptkit.render_section import \
     render_section as _default_renderer  # async (namespace, section_key, context) -> str
 from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
@@ -30,11 +30,11 @@ class DjangoBaseService(BaseService, ABC):
 
     Build Request (hooks)
     ---------------------
-    `BaseService` provides a concrete `abuild_request(**ctx) -> LLMRequest`
+    `BaseService` provides a concrete `abuild_request(**ctx) -> Request`
     that assembles the final provider-agnostic request using hooks:
-      - `_abuild_request_instructions(prompt, **ctx) -> list[LLMRequestMessage]`
-      - `_abuild_request_user_input(prompt, **ctx) -> list[LLMRequestMessage]`
-      - `_abuild_request_extras(prompt, **ctx) -> list[LLMRequestMessage]`
+      - `_abuild_request_instructions(prompt, **ctx) -> list[InputItem]`
+      - `_abuild_request_user_input(prompt, **ctx) -> list[InputItem]`
+      - `_abuild_request_extras(prompt, **ctx) -> list[InputItem]`
 
     Prompt assembly is delegated to `BaseService.aget_prompt()`, which uses the
     PromptEngine and (optional) PromptPlan.
@@ -82,11 +82,11 @@ class DjangoBaseService(BaseService, ABC):
     # Promotion helpers
     # ------------------------------------------------------------------
     def promote_request(self, req, *, context: dict | None = None):
-        """Promote a core LLMRequest into a Django-aware request using service identity.
+        """Promote a core Request into a Django-aware request using service identity.
 
         Parameters
         ----------
-        req : LLMRequest
+        req : Request
             The provider-agnostic request to promote.
         context : dict | None
             Optional extra context to carry through the promotion pipeline.
@@ -103,7 +103,7 @@ class DjangoBaseService(BaseService, ABC):
     # ------------------------------------------------------------------
     # Result hooks (context-first)
     # ------------------------------------------------------------------
-    async def on_success_ctx(self, *, context: dict[str, Any], resp: LLMResponse) -> None:
+    async def on_success_ctx(self, *, context: dict[str, Any], resp: Response) -> None:
         """Context-first success hook (preferred in Django layer).
 
         Override this in subclasses instead of `on_success` if you want a
@@ -119,7 +119,7 @@ class DjangoBaseService(BaseService, ABC):
         """
         return None
 
-    async def on_success(self, context: dict[str, Any], resp: LLMResponse) -> None:
+    async def on_success(self, context: dict[str, Any], resp: Response) -> None:
         """BaseService callback override.
 
         Delegates to `on_success_ctx` so subclasses can implement either

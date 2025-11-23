@@ -9,26 +9,18 @@ __all__ = [
     "DjangoBaseOutputSchema",
     "DjangoBaseOutputItem",
     "DjangoBaseOutputBlock",  # use for schemas without identity
-    "DjangoLLMResponseItem",
+    "DjangoOutputItem",
 
     "DjangoDTOBase",
     "DjangoLLMBaseTool",
 
-    "DjangoLLMRequest",
-    "DjangoLLMRequestMessage",
-    "LLMRole",
-
-    "DjangoLLMResponseItem",
-    "DjangoLLMResponse",
-    "DjangoLLMUsage",
+    "DjangoRequest",
+    "DjangoInputItem",
+    "DjangoOutputItem",
+    "DjangoResponse",
+    "DjangoUsageContent",
 
     "DjangoLLMToolCall",
-
-    "LLMTextPart",
-    "LLMImagePart",
-    "LLMAudioPart",
-    "LLMToolCallPart",
-    "LLMToolResultPart",
 
     "demote_request",
     "demote_response",

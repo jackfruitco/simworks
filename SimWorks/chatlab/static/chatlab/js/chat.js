@@ -51,7 +51,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     this.newMessageBtn.classList.add('hidden');
                     this.newMessageBtn.classList.remove('bounce');
                 }
-                // Autoload older messages when at the top
+                // Autoload older input when at the top
                 if (this.messagesDiv.scrollTop === 0 && this.hasMoreMessages) {
                     this.loadOlderMessages();
                 }
@@ -421,7 +421,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     container.prepend(anchor);
                 }
 
-                // Store scroll height before HTMX loads older messages
+                // Store scroll height before HTMX loads older input
                 const previousHeight = container.scrollHeight;
 
                 anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`);

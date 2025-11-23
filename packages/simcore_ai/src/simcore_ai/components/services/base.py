@@ -36,7 +36,9 @@ from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptS
 from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...tracing import get_tracer, service_span, SpanPath
-from ...types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole, StrictBaseModel
+from ...types import Request, Response, StrictBaseModel
+from ...types.messages import InputItem
+from ...types.content import ContentRole, TextContent
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
@@ -45,9 +47,9 @@ LOG_LENGTH_LIMIT: int = 250
 
 
 class ServiceEmitter(Protocol):
-    def emit_request(self, context: dict, namespace: str, request_dto: LLMRequest) -> None: ...
+    def emit_request(self, context: dict, namespace: str, request_dto: Request) -> None: ...
 
-    def emit_response(self, context: dict, namespace: str, response_dto: LLMResponse) -> None: ...
+    def emit_response(self, context: dict, namespace: str, response_dto: Response) -> None: ...
 
     def emit_failure(self, context: dict, namespace: str, correlation_id, error: str) -> None: ...
 
@@ -804,9 +806,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ------------------------------------------------------------------------
     # Service run helpers
     # ------------------------------------------------------------------------
-    async def _aprepare_request(self, *, stream: bool, **kwargs: Any) -> LLMRequest:
+    async def _aprepare_request(self, *, stream: bool, **kwargs: Any) -> Request:
         """
-        Internal helper to build a base LLMRequest and stamp the stream flag.
+        Internal helper to build a base Request and stamp the stream flag.
 
         Delegates to `abuild_request(...)` and sets `req.stream` accordingly.
         This method relies on `self.context` for contextual data rather than a
@@ -815,7 +817,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         LOG_CAT = "llm.request"
 
         async with service_span(
-            self._span("run", "prepare", "LLMRequest"),
+            self._span("run", "prepare", "Request"),
             attributes=self.flatten_context()
         ):
             req = await self.abuild_request(**kwargs)
@@ -887,12 +889,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
     async def aprepare(
             self, *, stream: bool, **kwargs: Any
-    ) -> tuple[LLMRequest, BaseCodec | None, dict[str, Any]]:
+    ) -> tuple[Request, BaseCodec | None, dict[str, Any]]:
         """
         Prepare a request + codec instance + tracing attrs for a single service call.
 
         Responsibilities:
-          - Build the LLMRequest using the current prompt plan and context.
+          - Build the Request using the current prompt plan and context.
           - Set the `stream` flag on the request.
           - Resolve and instantiate a codec instance (if available).
           - Attach codec identity to the request when available.
@@ -954,11 +956,11 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Request construction
     # ----------------------------------------------------------------------
-    async def abuild_request(self, **kwargs) -> LLMRequest:
+    async def abuild_request(self, **kwargs) -> Request:
         """
-        Build a provider-agnostic `LLMRequest` for this service from the resolved `Prompt`.
+        Build a provider-agnostic `Request` for this service from the resolved `Prompt`.
 
-        Default implementation uses the PromptEngine output to create messages and
+        Default implementation uses the PromptEngine output to create input and
         stamps identity and codec routing. Subclasses may override hooks instead of
         replacing this whole method.
 
@@ -976,8 +978,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ):
             prompt = await self.aget_prompt()
 
-            # 2) Build messages via hooks
-            messages: list[LLMRequestMessage] = []
+            # 2) Build input via hooks
+            messages: list[InputItem] = []
             messages += await self._abuild_request_instructions(prompt)
             messages += await self._abuild_request_user_input(prompt)
             messages += await self._abuild_request_extras(prompt)
@@ -1002,7 +1004,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         # 3) Create a request and stamp identity (context is kept on self.context only)
         ident = self.identity
-        req = LLMRequest(messages=messages, stream=False)
+        req = Request(input=messages, stream=False)
         req.namespace = ident.namespace
         req.kind = ident.kind
         req.name = ident.name
@@ -1012,56 +1014,56 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         return req
 
     # --------------------------- build hooks ---------------------------
-    def _coerce_role(self, value: str | LLMRole) -> LLMRole:
-        """Coerce an arbitrary role input to a valid `LLMRole` Enum.
+    def _coerce_role(self, value: str | ContentRole) -> ContentRole:
+        """Coerce an arbitrary role input to a valid `ContentRole` Enum.
 
         Rules:
-        - If an `LLMRole` is passed, return it unchanged.
-        - If a string is passed, try value-based lookup case-insensitively (e.g., "user" → LLMRole.USER).
-        - If that fails, try name-based lookup (e.g., "USER" → LLMRole.USER).
-        - Fallback to `LLMRole.SYSTEM` on unknown inputs.
+        - If an `ContentRole` is passed, return it unchanged.
+        - If a string is passed, try value-based lookup case-insensitively (e.g., "user" → ContentRole.USER).
+        - If that fails, try name-based lookup (e.g., "USER" → ContentRole.USER).
+        - Fallback to `ContentRole.SYSTEM` on unknown inputs.
         """
-        if isinstance(value, LLMRole):
+        if isinstance(value, ContentRole):
             return value
         v = str(value or "").strip()
         if not v:
-            return LLMRole.SYSTEM
+            return ContentRole.SYSTEM
         # Prefer value-based, case-insensitive
         try:
-            return LLMRole(v.lower())
+            return ContentRole(v.lower())
         except Exception:
             pass
         # Fallback: name-based, case-insensitive (Enum names are upper-case)
         try:
-            return LLMRole(v.upper())
+            return ContentRole(v.upper())
         except Exception:
-            return LLMRole.SYSTEM
+            return ContentRole.SYSTEM
 
-    async def _abuild_request_instructions(self, prompt: Prompt) -> list[LLMRequestMessage]:
-        """Create developer messages from prompt.instruction (if present)."""
-        messages: list[LLMRequestMessage] = []
+    async def _abuild_request_instructions(self, prompt: Prompt) -> list[InputItem]:
+        """Create developer input from prompt.instruction (if present)."""
+        messages: list[InputItem] = []
         instruction = getattr(prompt, "instruction", None)
         if instruction:
-            messages.append(LLMRequestMessage(role=LLMRole.DEVELOPER, content=[LLMTextPart(text=str(instruction))]))
+            messages.append(InputItem(role=ContentRole.DEVELOPER, content=[TextContent(text=str(instruction))]))
         logger.debug(self._build_stdout(
             "prompt", "built developer message(s) from p.instruction(s)", indent_level=4, success=True
         ))
         return messages
 
-    async def _abuild_request_user_input(self, prompt: Prompt) -> list[LLMRequestMessage]:
-        """Create user messages from prompt.message (if present)."""
-        messages: list[LLMRequestMessage] = []
+    async def _abuild_request_user_input(self, prompt: Prompt) -> list[InputItem]:
+        """Create user input from prompt.message (if present)."""
+        messages: list[InputItem] = []
         message = getattr(prompt, "message", None)
         if message:
-            messages.append(LLMRequestMessage(role=LLMRole.USER, content=[LLMTextPart(text=str(message))]))
+            messages.append(InputItem(role=ContentRole.USER, content=[TextContent(text=str(message))]))
         logger.debug(self._build_stdout(
             "prompt", "built user message(s) from p.message(s)",indent_level=4, success=True
         ))
         return messages
 
-    async def _abuild_request_extras(self, prompt: Prompt) -> list[LLMRequestMessage]:
-        """Create extra messages from prompt.extra_messages ((role, text) pairs)."""
-        messages: list[LLMRequestMessage] = []
+    async def _abuild_request_extras(self, prompt: Prompt) -> list[InputItem]:
+        """Create extra input from prompt.extra_messages ((role, text) pairs)."""
+        messages: list[InputItem] = []
         extras = getattr(prompt, "extra_messages", None) or []
         if extras:
             logger.debug(self._build_stdout(
@@ -1072,8 +1074,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             ))
         for role, text in extras:
             if text:
-                llm_role: LLMRole = self._coerce_role(role)
-                messages.append(LLMRequestMessage(role=llm_role, content=[LLMTextPart(text=str(text))]))
+                llm_role: ContentRole = self._coerce_role(role)
+                messages.append(InputItem(role=llm_role, content=[TextContent(text=str(text))]))
                 msg_preview = text[:25] + "..." if len(text) > 25 else text
                 logger.debug(self._build_stdout(
                     "prompt",
@@ -1084,7 +1086,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         return messages
 
-    async def _afinalize_request(self, req: LLMRequest) -> LLMRequest:
+    async def _afinalize_request(self, req: Request) -> Request:
         """Final request customization hook (no-op by default)."""
         logger.debug(self._build_stdout(
             "llm.request",
@@ -1162,7 +1164,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Execution
     # ----------------------------------------------------------------------
-    async def arun(self, **ctx) -> LLMResponse | None:
+    async def arun(self, **ctx) -> Response | None:
         """
         Core async execution path for non-streaming service calls.
 
@@ -1171,7 +1173,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         return await self._arun_core(stream=False, **ctx)
 
-    async def _arun_core(self, *, stream: bool, **ctx) -> LLMResponse | None:
+    async def _arun_core(self, *, stream: bool, **ctx) -> Response | None:
         """
         Shared implementation for non-streaming and streaming runs.
 
@@ -1268,11 +1270,11 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     async def _asend(
             self,
             client: AIClient,
-            req: LLMRequest,
+            req: Request,
             codec: BaseCodec | None,
             attrs: dict[str, Any],
             ident: Identity,
-    ) -> LLMResponse | None:
+    ) -> Response | None:
         """
         Non-streaming send/receive with retries, codec decode, and logging.
         """
@@ -1290,7 +1292,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                             attributes=self.flatten_context(),
                     ):
                         try:
-                            resp: LLMResponse = await client.send_request(req)
+                            resp: Response = await client.send_request(req)
 
                             # Tag response identity/correlation
                             resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
@@ -1345,7 +1347,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     async def _astream(
             self,
             client: AIClient,
-            req: LLMRequest,
+            req: Request,
             codec: BaseCodec | None,
             attrs: dict[str, Any],
             ident: Identity,
@@ -1430,7 +1432,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Result hooks
     # ----------------------------------------------------------------------
-    async def on_success(self, context: dict, resp: LLMResponse) -> None:
+    async def on_success(self, context: dict, resp: Response) -> None:
         ...
 
     async def on_failure(self, context: dict, err: Exception) -> None:

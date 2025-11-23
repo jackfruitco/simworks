@@ -6,8 +6,10 @@ from typing import Type, Optional, Tuple, List, ClassVar
 
 from core.utils import remove_null_keys
 from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoBaseService, PromptEngine, LLMTextPart, LLMRole
-from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
+from simcore_ai_django.api.types import DjangoBaseService, PromptEngine
+from simcore_ai.types.content import TextContent
+from simcore_ai.types import ContentRole
+from simcore_ai_django.types import DjangoLLMBaseTool, DjangoInputItem
 from simulation.ai.mixins import StandardizedPatientMixin
 from simulation.ai.prompts import PatientNameSection
 from simulation.models import Simulation
@@ -23,7 +25,7 @@ logger = logging.getLogger(__name__)
 class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate the initial patient response.
 
-    Uses Simulation.prompt_instruction/message to construct rich Django request messages
+    Uses Simulation.prompt_instruction/message to construct rich Django request input
     and validates against the structured output schema.
     """
 
@@ -59,7 +61,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
 
     async def build_messages_and_schema(
             self, *, sim: Simulation, user_msg: Message | None = None
-    ) -> Tuple[List[DjangoLLMRequestMessage], Optional[Type[_Schema]]]:
+    ) -> Tuple[List[DjangoInputItem], Optional[Type[_Schema]]]:
         # Resolve user message if only pk provided
         if user_msg is None and self.user_msg_pk is not None:
             try:
@@ -70,11 +72,11 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
                 )
                 user_msg = None
 
-        msgs: List[DjangoLLMRequestMessage] = []
+        msgs: List[DjangoInputItem] = []
         if user_msg and user_msg.content:
-            msgs.append(DjangoLLMRequestMessage(
-                role=LLMRole.USER,
-                content=[LLMTextPart(text=user_msg.content)])
+            msgs.append(DjangoInputItem(
+                role=ContentRole.USER,
+                content=[TextContent(text=user_msg.content)])
             )
         return msgs, self.response_format_cls
 
@@ -96,14 +98,14 @@ class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
 
     async def build_messages_and_schema(
             self, *, sim: Simulation, user_msg: Message | None = None
-    ) -> Tuple[List[DjangoLLMRequestMessage], Optional[Type[None]]]:
+    ) -> Tuple[List[DjangoInputItem], Optional[Type[None]]]:
         # Use a PromptKit section to generate the instruction for image generation
         from ..prompts import ChatlabImageSection  # local import to avoid cycles
         prompt = await PromptEngine.abuild_from(ChatlabImageSection)
-        msgs: List[DjangoLLMRequestMessage] = [
-            DjangoLLMRequestMessage(
-                role=LLMRole.DEVELOPER,
-                content=[LLMTextPart(text=prompt.instruction or "")]
+        msgs: List[DjangoInputItem] = [
+            DjangoInputItem(
+                role=ContentRole.DEVELOPER,
+                content=[TextContent(text=prompt.instruction or "")]
             )
         ]
         return msgs, None

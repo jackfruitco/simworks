@@ -547,7 +547,7 @@ a { color: inherit; }
 }
 
 /* ───────────────────────────────────────────────
-   Tooltip Feedback (e.g. "Copied!" messages)
+   Tooltip Feedback (e.g. "Copied!" input)
 ────────────────────────────────────────────────── */
 .copied-tooltip {
   display: inline-block;

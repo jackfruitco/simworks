@@ -14,7 +14,7 @@ client registry.
 Primary helpers:
 - `get_default_client()` — return the default `AIClient`.
 - `get_client(name)`     — return a named `AIClient` by registry key.
-- `call_default(request)`— convenience: call the default client with an `LLMRequest`.
+- `call_default(request)`— convenience: call the default client with an `Request`.
 
 These helpers are intentionally minimal and stable; richer flows should continue
 to use the core `AIClient` methods once a client instance is obtained.
@@ -24,7 +24,7 @@ from typing import Optional
 
 from simcore_ai.client.registry import get_ai_client, get_default_client as _get_default_client
 from simcore_ai.client.client import AIClient  # type: ignore
-from simcore_ai.types import LLMRequest, LLMResponse
+from simcore_ai.types import Request, Response
 
 
 def get_default_client() -> AIClient:
@@ -53,16 +53,16 @@ def get_client(name: str) -> AIClient:
     return get_ai_client(name=name)
 
 
-def call_default(request: LLMRequest, *, timeout: Optional[float] = None) -> LLMResponse:
+def call_default(request: Request, *, timeout: Optional[float] = None) -> Response:
     """
-    Convenience helper to call the default client with an `LLMRequest`.
+    Convenience helper to call the default client with an `Request`.
 
     Args:
         request: The normalized request to send to the default AI client.
         timeout: Optional per-call timeout in seconds.
 
     Returns:
-        LLMResponse produced by the provider.
+        Response produced by the provider.
     """
     client = get_default_client()
     # The AIClient.call is async or sync depending on your implementation.

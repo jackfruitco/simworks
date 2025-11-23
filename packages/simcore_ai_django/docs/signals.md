@@ -51,9 +51,9 @@ class MyService(DjangoBaseService):
     "kind": "kind",
     "name": "name",
     "codec": "namespace.kind.codec_name",
-    "messages": [ { "role": "developer", "content": [...] }, ... ],
-    "output_schema": {...} | None,
-    "output_schema_cls": "Qualified.Class.Name" | None,
+    "input": [ { "role": "developer", "content": [...] }, ... ],
+    "response_schema_json": {...} | None,
+    "response_schema": "Qualified.Class.Name" | None,
     "meta": {...}
   }
 }

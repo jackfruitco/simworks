@@ -187,7 +187,7 @@ class Command(BaseCommand):
         schema_cls = None
         if codec is not None:
             codec_cls = codec.__class__
-            schema_cls = getattr(codec, "schema_cls", None) or getattr(codec, "output_schema_cls", None)
+            schema_cls = getattr(codec, "schema_cls", None) or getattr(codec, "response_schema", None)
         else:
             codec_cls = getattr(type(svc), "codec_cls", None)
 
@@ -215,8 +215,8 @@ class Command(BaseCommand):
             self.stdout.write("Resolved attributes (for tracing/logging):\n")
             self.stdout.write(f"{attrs_json}\n")
 
-        # Pretty-print the prepared LLMRequest.
-        self.stdout.write("Prepared LLMRequest:\n")
+        # Pretty-print the prepared Request.
+        self.stdout.write("Prepared Request:\n")
         try:
             payload = req.model_dump(mode="json")  # pydantic v2 style
         except AttributeError:

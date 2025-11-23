@@ -18,13 +18,13 @@ normalization. When `service.identity` is unavailable, we make a best-effort fal
 from typing import Any, Optional
 from uuid import UUID
 
-from simcore_ai.types import LLMRequest, LLMResponse
+from simcore_ai.types import Request, Response
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.identity import Identity
 
 from simcore_ai_django.types import (
-    DjangoLLMRequest,
-    DjangoLLMResponse,
+    DjangoRequest,
+    DjangoResponse,
 )
 from simcore_ai_django.types.promote import (
     promote_request as _dto_promote_request,
@@ -102,11 +102,11 @@ def _extract_provider_client(service: Any) -> tuple[Optional[str], Optional[str]
 
 def promote_request_for_service(
         service: Any,
-        req: LLMRequest,
+        req: Request,
         *,
         context: dict | None = None,
-) -> DjangoLLMRequest:
-    """Promote a core LLMRequest into a DjangoLLMRequest with identity + metadata.
+) -> DjangoRequest:
+    """Promote a core Request into a DjangoRequest with identity + metadata.
 
     Identity comes from `service.identity` (preferred) or legacy `namespace/kind/name`.
     Identities are expected to be already normalized (dot-only triples) upstream.
@@ -115,12 +115,12 @@ def promote_request_for_service(
     Parameters
     ----------
     service: DjangoBaseService (or compatible) instance.
-    req: Core LLMRequest to promote.
+    req: Core Request to promote.
     context: Optional extra context to carry through the promotion pipeline.
 
     Returns
     -------
-    DjangoLLMRequest populated with rich `messages_rich` and metadata.
+    DjangoRequest populated with rich `messages_rich` and metadata.
     """
     ns, kd, nm = _svc_identity_tuple3(service)
     prov, cli = _extract_provider_client(service)
@@ -152,13 +152,13 @@ def promote_request_for_service(
 
 def promote_response_for_service(
         service: Any,
-        resp: LLMResponse,
+        resp: Response,
         *,
         object_db_pk: int | UUID | None = None,
         request_db_pk: int | UUID | None = None,
         response_db_pk: int | UUID | None = None,
-) -> DjangoLLMResponse:
-    """Promote a core LLMResponse into a DjangoLLMResponse with identity + metadata.
+) -> DjangoResponse:
+    """Promote a core Response into a DjangoResponse with identity + metadata.
 
     Identity comes from `service.identity` (preferred) or legacy `namespace/kind/name`.
     Identities are expected to be already normalized (dot-only triples) upstream.
@@ -167,14 +167,14 @@ def promote_response_for_service(
     Parameters
     ----------
     service: DjangoBaseService (or compatible) instance.
-    resp: Core LLMResponse to promote.
+    resp: Core Response to promote.
     object_db_pk: Optional Simulation primary key (int or UUID).
     request_db_pk: Optional DB PK for the originating request (int or UUID).
     response_db_pk: Optional DB PK for this response (int or UUID).
 
     Returns
     -------
-    DjangoLLMResponse populated with rich `outputs_rich`/`usage_rich` and metadata.
+    DjangoResponse populated with rich `outputs_rich`/`usage_rich` and metadata.
     """
     ns, kd, nm = _svc_identity_tuple3(service)
     prov, cli = _extract_provider_client(service)

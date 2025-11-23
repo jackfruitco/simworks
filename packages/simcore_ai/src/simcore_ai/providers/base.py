@@ -10,14 +10,12 @@ from typing import Any, AsyncIterator, Optional, Protocol
 from .exceptions import ProviderError, ProviderSchemaUnsupported
 from ..tracing import service_span_sync
 from ..types import (
-    LLMRequest,
-    LLMResponse,
-    LLMResponseItem,
-    LLMStreamChunk,
-    LLMTextPart,
-    LLMToolResultPart,
-    LLMToolCall, LLMRole,
-)
+    Request,
+    Response,
+    StreamChunk,
+    LLMToolCall, )
+from ..types.messages import OutputItem, UsageContent
+from ..types.content import ContentRole, TextContent, ToolResultContent
 from ..types.tools import BaseLLMTool
 
 logger = logging.getLogger(__name__)
@@ -64,9 +62,9 @@ class BaseProvider(ABC):
 
     Key ideas:
       - Providers implement `call` (non-stream) and `stream` (streaming) using their SDKs.
-      - Providers supply *hook methods* to extract text, outputs, usage, and meta
+      - Providers supply *hook methods* to extract text, output, usage, and meta
         from the raw SDK response. The shared `adapt_response` turns those into an
-        `LLMResponse` via the normalized LLMResponseItem → DTO flow.
+        `Response` via the normalized OutputItem → DTO flow.
     """
 
     name: str
@@ -99,11 +97,11 @@ class BaseProvider(ABC):
     # If you have a sync-only SDK, you may still integrate by running the sync call in a thread
     # (the AIClient will do this via `asyncio.to_thread` when it detects a sync `call`).
     #
-    # Streaming MUST be async: `async def stream(self, req) -> AsyncIterator[LLMStreamChunk]`.
+    # Streaming MUST be async: `async def stream(self, req) -> AsyncIterator[StreamChunk]`.
     # Sync streaming is not supported by the client adapter.
 
     @abstractmethod
-    async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+    async def call(self, req: Request, timeout: float | None = None) -> Response:
         """Canonical async, non-streaming request.
 
         Implementations MUST be async when subclassing BaseProvider. If your concrete
@@ -116,10 +114,10 @@ class BaseProvider(ABC):
         ...
 
     @abstractmethod
-    async def stream(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
+    async def stream(self, req: Request) -> AsyncIterator[StreamChunk]:
         """Canonical async streaming interface.
 
-        MUST be implemented as an async generator yielding `LLMStreamChunk` items.
+        MUST be implemented as an async generator yielding `StreamChunk` items.
         The core client requires an async `stream(...)` and will raise if missing.
         """
         ...
@@ -160,16 +158,16 @@ class BaseProvider(ABC):
     # ---------------------------------------------------------------------
     def adapt_response(
             self, resp: Any, *, output_schema_cls: type | None = None
-    ) -> LLMResponse:
+    ) -> Response:
         """
         Provider-agnostic response construction pipeline.
 
         Steps:
-          1) Extract primary assistant text (if any) and add as an LLMResponseItem with LLMTextPart.
+          1) Extract primary assistant text (if any) and add as an OutputItem with TextContent.
           2) Parse structured text to the declared Pydantic schema (optional, best-effort) via _maybe_parse_to_schema.
-             (This is for app-side validation/debug; the normalized messages are still built from parts.)
-          3) Inspect provider-specific outputs (images/tools) and convert into normalized tool calls and
-             LLMToolResultPart messages.
+             (This is for app-side validation/debug; the normalized input are still built from parts.)
+          3) Inspect provider-specific output (images/tools) and convert into normalized tool calls and
+             ToolResultContent input.
           4) Attach usage and provider_meta.
 
         Args:
@@ -184,29 +182,29 @@ class BaseProvider(ABC):
                     "simcore.provider_label": getattr(self, "provider_label", None),
                 },
         ) as span:
-            messages: list[LLMResponseItem] = []
+            messages: list[OutputItem] = []
             tool_calls: list[LLMToolCall] = []
 
             # 1) Primary assistant text
             text_out = self._extract_text(resp)
             if text_out:
-                messages.append(LLMResponseItem(role=LLMRole.ASSISTANT, content=[LLMTextPart(text=text_out)]))
+                messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[TextContent(text=text_out)]))
 
             # 2) Optional schema parse (best-effort); does not alter normalized message parts
             parsed = None
             if output_schema_cls is not None and text_out:
                 parsed = self._maybe_parse_to_schema(text_out, output_schema_cls)
 
-            # 3) Provider outputs -> tool results / attachments
+            # 3) Provider output -> tool results / attachments
             from uuid import uuid4
             for obj in self._extract_outputs(resp) or []:
                 try:
-                    # 3a) Let the provider fully normalize arbitrary tool outputs (preferred path)
+                    # 3a) Let the provider fully normalize arbitrary tool output (preferred path)
                     pair = self._normalize_tool_output(obj)
                     if pair is not None:
                         call, part = pair
                         tool_calls.append(call)
-                        messages.append(LLMResponseItem(role=LLMRole.ASSISTANT, content=[part]))
+                        messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[part]))
                         continue
 
                     # 3b) Generic fallback: image-like results
@@ -217,9 +215,9 @@ class BaseProvider(ABC):
                         mime = getattr(obj, "mime_type", None) or "image/png"
                         if b64:
                             messages.append(
-                                LLMResponseItem(
-                                    role=LLMRole.ASSISTANT,
-                                    content=[LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64)],
+                                OutputItem(
+                                    role=ContentRole.ASSISTANT,
+                                    content=[ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64)],
                                 )
                             )
                         continue
@@ -240,18 +238,16 @@ class BaseProvider(ABC):
             except Exception:
                 pass
 
-            from ..types.dtos import LLMUsage
-
             usage_data = self._extract_usage(resp)
             usage = None
             if usage_data:
                 try:
-                    usage = LLMUsage.model_validate(usage_data)
+                    usage = UsageContent.model_validate(usage_data)
                 except Exception:
-                    usage = LLMUsage(**usage_data) if isinstance(usage_data, dict) else None
+                    usage = UsageContent(**usage_data) if isinstance(usage_data, dict) else None
 
-            return LLMResponse(
-                outputs=messages,
+            return Response(
+                output=messages,
                 usage=usage,
                 tool_calls=tool_calls,
                 provider_meta=self._extract_provider_meta(resp),
@@ -261,18 +257,18 @@ class BaseProvider(ABC):
     # Response Format / Schema (provider-specific adapters + _wrap_schema func)
     # ---------------------------------------------------------------------
     def build_final_schema(
-            self, req: "LLMRequest"
+            self, req: "Request"
     ) -> None:
         """Compile adapters for the request's response format and attach back to the request.
 
         Flow:
-            - Read `req.output_schema_cls`
+            - Read `req.response_schema`
             - Apply provider-specific adapters via the central compiler
-            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `output_schema`)
-            - Attach the final result to the `req.output_schema` field.
+            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `response_schema_json`)
+            - Attach the final result to the `req.response_schema_json` field.
 
         Args:
-            req: LLMRequest with `output_schema_cls` set
+            req: Request with `response_schema` set
 
         Returns:
             None (modifies `req` in-place)
@@ -308,17 +304,17 @@ class BaseProvider(ABC):
                 # If provider returns None (no envelope), use adapted schema as-is
                 if wrapped is not None and not isinstance(wrapped, dict):
                     raise ProviderError(f"{self.name}._wrap_schema must return dict|None, got {type(wrapped).__name__}")
-                req.output_schema = wrapped or adapted
+                req.response_schema_json = wrapped or adapted
             except Exception:
                 logger.exception("provider '%s':: build_final_schema failed", getattr(self, "name", self))
 
-    def _apply_schema_adapters(self, req: "LLMRequest") -> dict | None:
+    def _apply_schema_adapters(self, req: "Request") -> dict | None:
         """Apply provider-specific schema adapters to the request's response format.
 
         This is the central point for provider-specific schema adaptation/override.
         """
         # Prefer new field; allow legacy alias for transition
-        source = getattr(req, "output_schema_cls", None) or getattr(req, "output_schema_cls", None)
+        source = getattr(req, "response_schema", None) or getattr(req, "response_schema", None)
         if source is None:
             return None
 
@@ -328,7 +324,7 @@ class BaseProvider(ABC):
                     "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
                     "simcore.provider_key": getattr(self, "provider_key", None),
                     "simcore.provider_label": getattr(self, "provider_label", None),
-                    "simcore.output_schema_cls": getattr(source, "__name__", type(source).__name__),
+                    "simcore.response_schema": getattr(source, "__name__", type(source).__name__),
                 },
         ):
             # Derive base JSON Schema
@@ -339,7 +335,7 @@ class BaseProvider(ABC):
 
             if not isinstance(base_schema, dict):
                 raise ProviderSchemaUnsupported(
-                    "output_schema_cls must be a Pydantic model class or a JSON Schema dict")
+                    "response_schema must be a Pydantic model class or a JSON Schema dict")
 
             # Run provider adapters
             from simcore_ai.components.schemas.compiler import compile_schema
@@ -351,7 +347,7 @@ class BaseProvider(ABC):
     def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
         """
         Default no-op wrapper. Providers that support structured output envelopes should override this
-        to return a provider-specific payload (e.g., OpenAI Responses `output_schema`). If None is
+        to return a provider-specific payload (e.g., OpenAI Responses `response_schema_json`). If None is
         returned, the caller will use `adapted_schema` directly.
         """
         return None
@@ -379,10 +375,10 @@ class BaseProvider(ABC):
         """Return provider-specific metadata for diagnostics (model, ids, raw dump)."""
         ...
 
-    def _normalize_tool_output(self, item: Any) -> Optional[tuple[LLMToolCall, LLMToolResultPart]]:
+    def _normalize_tool_output(self, item: Any) -> Optional[tuple[LLMToolCall, ToolResultContent]]:
         """
         Convert a provider-native output item (tool call/result, images, audio, etc.) into a
-        normalized (LLMToolCall, LLMToolResultPart) pair. Return None if the item is not a tool
+        normalized (LLMToolCall, ToolResultContent) pair. Return None if the item is not a tool
         output you recognize, and the base class will try generic fallbacks.
         """
         return None
@@ -426,7 +422,7 @@ class BaseProvider(ABC):
         """Best-effort parse of `text` into a Pydantic-style schema class.
 
         Compatible with Pydantic v2 (`model_validate_json` / `model_validate`).
-        Uses attribute checks to avoid static type errors when `output_schema_cls` is
+        Uses attribute checks to avoid static type errors when `response_schema` is
         not explicitly typed as a Pydantic BaseModel subclass.
         """
         # Try v2 JSON path first if available

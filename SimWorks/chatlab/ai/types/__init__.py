@@ -8,7 +8,7 @@ ___all__ = [
     "MessageItem",
     "MetafieldItem",
     "ToolItem",
-    "LLMRequest",
-    "LLMResponse",
+    "Request",
+    "Response",
     "StreamChunk",
 ]

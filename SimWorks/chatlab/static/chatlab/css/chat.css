@@ -14,7 +14,7 @@
   overflow: auto;
 }
 
-/* Make sure messages scroll and fill container */
+/* Make sure input scroll and fill container */
 #chat-messages {
   flex: 1 1 auto;
   overflow-y: auto;

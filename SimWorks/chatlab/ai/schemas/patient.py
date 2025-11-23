@@ -4,7 +4,7 @@
 from pydantic import Field
 
 from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
 from simulation.ai.mixins import StandardizedPatientMixin
 from simulation.ai.schemas.output_items import LLMConditionsCheckItem
 from ..mixins import ChatlabMixin
@@ -15,12 +15,12 @@ class PatientInitialOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoB
     """
     Output for the initial patient response turn.
     - `image_requested`: whether the assistant is asking to attach/generate an image
-    - `messages`: assistant messages to render/send
-    - `metadata`: additional assistant “side-channel” messages (structured or non-user-visible)
+    - `input`: assistant input to render/send
+    - `metadata`: additional assistant “side-channel” input (structured or non-user-visible)
     - `llm_conditions_check`: simple flags for follow-on logic
     """
-    messages: list[DjangoLLMResponseItem] = Field(..., min_length=1)
-    metadata: list[DjangoLLMResponseItem] = Field(...)
+    messages: list[DjangoOutputItem] = Field(..., min_length=1)
+    metadata: list[DjangoOutputItem] = Field(...)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
@@ -28,7 +28,7 @@ class PatientInitialOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoB
 class PatientReplyOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """Output for subsequent patient reply turns."""
     image_requested: bool
-    messages: list[DjangoLLMResponseItem] = Field(..., min_length=1)
+    messages: list[DjangoOutputItem] = Field(..., min_length=1)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
@@ -36,7 +36,7 @@ class PatientReplyOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBas
 class PatientResultsOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """
     Final “results” payload for the interaction.
-    `metadata` can include structured outputs (e.g., scored observations) as messages.
+    `metadata` can include structured output (e.g., scored observations) as input.
     """
-    metadata: list[DjangoLLMResponseItem] = Field(...)
+    metadata: list[DjangoOutputItem] = Field(...)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)

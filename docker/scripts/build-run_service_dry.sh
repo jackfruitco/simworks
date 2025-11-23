@@ -11,6 +11,10 @@ docker compose -f "${COMPOSE_FILE}" build --no-cache
 echo ">>> Bringing up ${SERVICE_NAME} with --build..."
 docker compose -f "${COMPOSE_FILE}" up --build -d "${SERVICE_NAME}"
 
+echo ">>> Running checks..."
+docker compose -f "$COMPOSE_FILE" exec "${SERVICE_NAME}" \
+  python manage.py check --deploy
+
 echo ">>> Running manage.py run_service inside ${SERVICE_NAME}..."
 docker compose -f "${COMPOSE_FILE}" exec "${SERVICE_NAME}" \
   python manage.py run_service chatlab.standardized_patient.initial -c "${SIM_CONTEXT}" --dry-run

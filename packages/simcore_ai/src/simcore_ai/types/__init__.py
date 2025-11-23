@@ -1,24 +1,26 @@
 # simcore_ai/types/__init__.py
+from .content import *
 from .base import *
-from .dtos import *
+from .messages import *
+from .transport import *
 from .tools import *
 
 __all__ = [
     "StrictBaseModel",
     "Boolish",
     "BaseLLMTool",
-    "LLMRole",
-    "LLMRequestMessage",
-    "LLMResponseItem",
-    "LLMTextPart",
-    "LLMImagePart",
-    "LLMAudioPart",
-    "LLMToolCallPart",
-    "LLMToolResultPart",
+    "ContentRole",
+    "InputItem",
+    "OutputItem",
+    "TextContent",
+    "ImageContent",
+    "AudioContent",
+    "ToolContent",
+    "ToolResultContent",
     "BaseLLMTool",
     "LLMToolCall",
-    "LLMUsage",
-    "LLMRequest",
-    "LLMResponse",
-    "LLMStreamChunk",
+    "UsageContent",
+    "Request",
+    "Response",
+    "StreamChunk",
 ]

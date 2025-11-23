@@ -9,7 +9,7 @@ from simcore_ai.client.schemas import AIClientConfig
 from simcore_ai.providers import BaseProvider
 from simcore_ai.providers.exceptions import ProviderCallError
 from simcore_ai.tracing import service_span
-from simcore_ai.types import LLMResponse, LLMRequest, LLMStreamChunk
+from simcore_ai.types import Response, Request, StreamChunk
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,10 @@ class AIClient:
 
     async def call(
             self,
-            req: LLMRequest,
+            req: Request,
             *,
             timeout: Optional[float] = None,
-    ) -> LLMResponse:
+    ) -> Response:
         """
         Convenience wrapper that mirrors provider-style `call()`.
 
@@ -42,22 +42,22 @@ class AIClient:
 
     async def send_request(
             self,
-            req: LLMRequest,
+            req: Request,
             *,
             timeout: Optional[float] = None,
-    ) -> LLMResponse:
+    ) -> Response:
         """
         Send a request to the provider and (optionally) persist normalized DTOs.
 
         :param req: The normalized provider-agnostic request DTO.
-        :type req: LLMRequest
+        :type req: Request
 
         :param timeout: Timeout for the provider call.
             If not specified, uses client config timeout, else provider default.
         :type timeout: Optional[float]
 
         :return: The normalized provider-agnostic response DTO.
-        :rtype: LLMResponse
+        :rtype: Response
 
         :raises Exception: If the provider call fails and raise_on_error=True.
         :raises ProviderCallError: If provider call fails after retries and raise_on_error=True.
@@ -95,7 +95,7 @@ class AIClient:
                     logger.debug(
                         "No explicit model provided and provider has no default_model; proceeding without explicit model")
 
-            # Let the provider compile + wrap into a final payload on req.output_schema
+            # Let the provider compile + wrap into a final payload on req.response_schema_json
             try:
                 async with service_span("simcore.client.build_final_schema"):
                     self.provider.build_final_schema(req)
@@ -120,10 +120,10 @@ class AIClient:
                             },
                     ):
                         if inspect.iscoroutinefunction(self.provider.call):
-                            resp: LLMResponse = await self.provider.call(req, effective_timeout)
+                            resp: Response = await self.provider.call(req, effective_timeout)
                         else:
                             # Provider is sync; run in a worker thread to avoid blocking the event loop
-                            resp: LLMResponse = await asyncio.to_thread(self.provider.call, req, effective_timeout)
+                            resp: Response = await asyncio.to_thread(self.provider.call, req, effective_timeout)
                     last_exc = None
                     break
                 except Exception as e:  # noqa: BLE001
@@ -170,8 +170,8 @@ class AIClient:
                     raise ProviderCallError("Provider call failed after retries") from last_exc
                 # Best-effort soft failure: return an empty response with error metadata
                 logger.warning("AIClient returning soft-failure response due to raise_on_error=False: %s", last_exc)
-                return LLMResponse(
-                    outputs=[],
+                return Response(
+                    output=[],
                     usage=None,
                     tool_calls=[],
                     provider_meta={
@@ -190,8 +190,8 @@ class AIClient:
 
             return resp
 
-    async def stream_request(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:
-        """Pass-through streaming; providers may yield LLMStreamChunk deltas."""
+    async def stream_request(self, req: Request) -> AsyncIterator[StreamChunk]:
+        """Pass-through streaming; providers may yield StreamChunk deltas."""
         async with service_span(
                 "simcore.client.stream_request",
                 attributes={

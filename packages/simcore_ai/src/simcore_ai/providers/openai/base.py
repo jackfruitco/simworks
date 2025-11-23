@@ -7,8 +7,8 @@ Concrete provider implementation for the OpenAI *Responses* API.
 
 Responsibilities
 ----------------
-- Translate normalized `LLMRequest` objects into OpenAI SDK calls.
-- Normalize provider-native responses into our `LLMResponse` model using the
+- Translate normalized `Request` objects into OpenAI SDK calls.
+- Normalize provider-native responses into our `Response` model using the
   provider-agnostic adaptation pipeline in `BaseProvider`.
 - Provide provider-specific response-format wrapping (JSON Schema) and tool
   output normalization (e.g., image generation results).
@@ -38,11 +38,11 @@ from openai.types.responses.response_output_item import ImageGenerationCall
 
 from simcore_ai.tracing import service_span, service_span_sync, flatten_context as _flatten_context
 from simcore_ai.types import (
-    LLMToolResultPart,
     LLMToolCall,
-    LLMRequest,
-    LLMResponse,
+    Request,
+    Response,
 )
+from ...types.content import ToolResultContent
 from ..base import BaseProvider
 from ..exceptions import ProviderError
 from ..openai.tools import OpenAIToolAdapter
@@ -108,14 +108,14 @@ class OpenAIProvider(BaseProvider):
 
     def _wrap_schema(self, adapted_schema: dict, meta: dict | None = None) -> dict | None:
         """
-        Wrap a compiled JSON Schema into the OpenAI Responses `output_schema` envelope.
+        Wrap a compiled JSON Schema into the OpenAI Responses `response_schema_json` envelope.
 
         Args:
             adapted_schema: Provider-adapted JSON Schema dictionary.
             meta: Optional metadata (`name`, `strict`) derived from the request.
 
         Returns:
-            A dict payload suitable for `output_schema`, or None to use the schema directly.
+            A dict payload suitable for `response_schema_json`, or None to use the schema directly.
         """
         if not adapted_schema:
             return None
@@ -131,10 +131,10 @@ class OpenAIProvider(BaseProvider):
 
     def _normalize_tool_output(self, item: Any):
         """
-        Convert provider-native tool outputs into normalized tool call/result parts.
+        Convert provider-native tool output into normalized tool call/result parts.
 
         Currently supports:
-            - ImageGenerationCall -> (LLMToolCall, LLMToolResultPart)
+            - ImageGenerationCall -> (LLMToolCall, ToolResultContent)
         """
         with service_span_sync(
                 "simcore.tools.handle_output",
@@ -149,20 +149,20 @@ class OpenAIProvider(BaseProvider):
                 mime = getattr(item, "mime_type", None) or "image/png"
                 return (
                     LLMToolCall(call_id=call_id, name="image_generation", arguments={}),
-                    LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64),
+                    ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64),
                 )
             return None
 
-    async def call(self, req: LLMRequest, timeout: float | None = None) -> LLMResponse:
+    async def call(self, req: Request, timeout: float | None = None) -> Response:
         """
         Execute a non-streaming request against the OpenAI Responses API.
 
         Args:
-            req: Normalized request DTO (messages, tools, schema, etc.).
+            req: Normalized request DTO (input, tools, schema, etc.).
             timeout: Optional per-call timeout; falls back to `self.timeout_s`.
 
         Returns:
-            LLMResponse normalized via the BaseProvider adaptation pipeline.
+            Response normalized via the BaseProvider adaptation pipeline.
         """
         logger.debug("provider '%s':: received request call", self.name)
 
@@ -186,10 +186,10 @@ class OpenAIProvider(BaseProvider):
                 else:
                     logger.debug("provider '%s':: no tools to adapt", self.name)
 
-            # Serialize input messages (child span)
+            # Serialize input input (child span)
             async with service_span("simcore.prompt.serialize",
-                                    attributes={"simcore.msg.count": len(req.messages or [])}):
-                input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
+                                    attributes={"simcore.msg.count": len(req.input or [])}):
+                input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.input]
 
             model_name = req.model or self.default_model or "gpt-4o-mini"
 
@@ -203,7 +203,7 @@ class OpenAIProvider(BaseProvider):
                     tool_choice=req.tool_choice or NOT_GIVEN,
                     max_output_tokens=req.max_output_tokens or NOT_GIVEN,
                     timeout=timeout or self.timeout_s or NOT_GIVEN,
-                    text=req.output_schema or NOT_GIVEN,
+                    text=req.response_schema_json or NOT_GIVEN,
                 )
 
             logger.debug(
@@ -213,9 +213,9 @@ class OpenAIProvider(BaseProvider):
             )
 
             # Normalize/Adapt (core BaseProvider handles nested spans for normalize)
-            return self.adapt_response(resp, output_schema_cls=req.output_schema_cls)
+            return self.adapt_response(resp, output_schema_cls=req.response_schema)
 
-    async def stream(self, req: LLMRequest):  # pragma: no cover - streaming not implemented yet
+    async def stream(self, req: Request):  # pragma: no cover - streaming not implemented yet
         """
         Execute a streaming request against the OpenAI Responses API.
 

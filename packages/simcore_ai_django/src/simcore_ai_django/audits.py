@@ -9,11 +9,11 @@ from simcore_ai_django.models import AIRequestAudit, AIResponseAudit
 
 # Django-rich DTOs (overlays)
 from simcore_ai_django.types.django_dtos import (
-    DjangoLLMRequest,
-    DjangoLLMRequestMessage,
-    DjangoLLMResponse,
-    DjangoLLMResponseItem,
-    DjangoLLMUsage,
+    DjangoRequest,
+    DjangoInputItem,
+    DjangoResponse,
+    DjangoOutputItem,
+    DjangoUsageContent,
 )
 
 
@@ -58,23 +58,23 @@ def _dump_json(obj: Any) -> Any:
     return str(obj)
 
 
-def _dump_messages(messages: Optional[Iterable[DjangoLLMRequestMessage]]) -> list[dict]:
+def _dump_messages(messages: Optional[Iterable[DjangoInputItem]]) -> list[dict]:
     return [_dump_json(m) for m in (messages or [])]
 
 
-def _dump_response_items(items: Optional[Iterable[DjangoLLMResponseItem]]) -> list[dict]:
+def _dump_response_items(items: Optional[Iterable[DjangoOutputItem]]) -> list[dict]:
     return [_dump_json(it) for it in (items or [])]
 
 
 # ----------------------------- public audit helpers -----------------------------
 
 
-def write_request_audit(dj_req: DjangoLLMRequest) -> int:
+def write_request_audit(dj_req: DjangoRequest) -> int:
     """
     Persist an audit row for an outbound request and return its PK.
 
-    - Stores normalized request messages (prefer rich messages if available).
-    - Stores output_schema* fields if they are already attached at emit time.
+    - Stores normalized request input (prefer rich input if available).
+    - Stores response_schema_json* fields if they are already attached at emit time.
     """
     with service_span_sync(
         "simcore.audit.request",
@@ -86,7 +86,7 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
             "simcore.stream": bool(getattr(dj_req, "stream", False)),
         },
     ):
-        messages = dj_req.messages_rich or dj_req.messages or []
+        messages = dj_req.messages_rich or dj_req.input or []
         tools = getattr(dj_req, "tools", None)  # if your DTO includes normalized tool specs
 
         row = AIRequestAudit.objects.create(
@@ -110,10 +110,10 @@ def write_request_audit(dj_req: DjangoLLMRequest) -> int:
             tools=_dump_json(tools),
 
             # response format (may be filled later by the client/provider)
-            response_format_cls=getattr(dj_req, "output_schema_cls", None).__name__
-                if getattr(dj_req, "output_schema_cls", None) else None,
+            response_format_cls=getattr(dj_req, "response_schema", None).__name__
+                if getattr(dj_req, "response_schema", None) else None,
             response_format_adapted=_dump_json(getattr(dj_req, "response_format_adapted", None)),
-            response_format=_dump_json(getattr(dj_req, "output_schema", None)),
+            response_format=_dump_json(getattr(dj_req, "response_schema_json", None)),
 
             # prompt metadata (optional)
             prompt_meta=_dump_json(getattr(dj_req, "prompt_meta", None)),
@@ -142,7 +142,7 @@ def update_request_audit_formats(
 
 
 def write_response_audit(
-    dj_resp: DjangoLLMResponse,
+    dj_resp: DjangoResponse,
     *,
     request_audit_pk: int | None = None,
 ) -> int:
@@ -166,7 +166,7 @@ def write_response_audit(
         if request_audit_pk:
             request_row = AIRequestAudit.objects.filter(pk=request_audit_pk).first()
 
-        outputs = dj_resp.outputs_rich or dj_resp.outputs or []
+        outputs = dj_resp.outputs_rich or dj_resp.output or []
         usage = dj_resp.usage_rich or dj_resp.usage
 
         row = AIResponseAudit.objects.create(

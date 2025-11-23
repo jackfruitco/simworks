@@ -12,7 +12,7 @@ What we do here:
 Notes
 -----
 • Strict dot-only identities are preferred ("namespace.kind.name").
-• All outputs are normalized to lowercase for consistency in logs/metrics.
+• All output are normalized to lowercase for consistency in logs/metrics.
 """
 
 

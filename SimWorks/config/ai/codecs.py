@@ -17,7 +17,7 @@ class _MessageTextProvider(Protocol):
 
 
 def default_first_message_text(parsed: Any) -> str:
-    msgs = getattr(parsed, "messages", None) or []
+    msgs = getattr(parsed, "input", None) or []
     if not msgs:
         return ""
     first = msgs[0]

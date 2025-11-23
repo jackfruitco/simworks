@@ -50,7 +50,7 @@ from simcore_ai_django.api.types import DjangoBaseCodec
 # dev: if SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER is true, a shallow instantiation is attempted
 class PatientInitialResponseCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
-        # Save AI messages, metadata, or computed results
+        # Save AI input, metadata, or computed results
         return {"ok": True}
 ```
 

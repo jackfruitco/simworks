@@ -21,7 +21,7 @@ class TimestampedModel(models.Model):
 class AIRequestAudit(TimestampedModel):
     """Audit row for an outbound AI request.
 
-    Stores the normalized request payload (messages/tools/output_schema) and routing metadata.
+    Stores the normalized request payload (input/tools/response_schema_json) and routing metadata.
     This is append-only; do not update after creation except for bookkeeping fields.
     """
 
@@ -43,7 +43,7 @@ class AIRequestAudit(TimestampedModel):
     stream = models.BooleanField(default=False)
 
     # Normalized request payloads
-    messages = models.JSONField(default=list)              # list[LLMRequestMessage]
+    messages = models.JSONField(default=list)              # list[InputItem]
     tools = models.JSONField(null=True, blank=True)        # list[BaseLLMTool] or equivalent
 
     # Response format (schema) fields
@@ -109,8 +109,8 @@ class AIResponseAudit(TimestampedModel):
     received_at = models.DateTimeField(default=timezone.now, db_index=True)
 
     # Normalized response payload
-    outputs = models.JSONField(default=list)          # list[LLMResponseItem]
-    usage = models.JSONField(null=True, blank=True)   # LLMUsage
+    outputs = models.JSONField(default=list)          # list[OutputItem]
+    usage = models.JSONField(null=True, blank=True)   # UsageContent
     provider_meta = models.JSONField(null=True, blank=True)
 
     # Error info (if any)
@@ -169,7 +169,7 @@ class AIOutbox(TimestampedModel):
     provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     client_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
 
-    # Arbitrary payload (e.g., serialized DjangoLLMRequest/Response)
+    # Arbitrary payload (e.g., serialized DjangoRequest/Response)
     payload = models.JSONField(default=dict)
 
     # Delivery bookkeeping
