@@ -1,5 +1,5 @@
 # packages/simcore_ai/src/simcore_ai/identity/mixins.py
-from __future__ import annotations
+
 
 from threading import RLock
 from typing import ClassVar, Optional, Any
@@ -97,15 +97,25 @@ class IdentityMixin:
 
 
     @classmethod
-    def pin_identity(cls, identity: "Identity") -> None:
+    def pin_identity(
+        cls,
+        identity: "Identity",
+        meta: dict[str, Any] | None = None,
+    ) -> tuple["Identity", dict[str, Any]]:
         """Explicitly pin a class's identity (used by decorators/registry).
 
-        This sets the cache to a specific Identity and clears meta. Intended for
-        explicit, authoritative assignments done at registration time.
+        This sets the cache to a specific Identity and pins the meta source.
+        Intended for explicit, authoritative assignments done at registration time.
         """
         with cls.__identity_lock:
             cls.__identity_cached = identity
-            cls.__identity_meta_cached = {"simcore.identity.source": "pinned"}
+
+            # Either replace incoming meta or merge; we enforce a pinned source.
+            base_meta = dict(meta or {})
+            base_meta["simcore.identity.source"] = "pinned"
+            cls.__identity_meta_cached = base_meta
+
+            return cls.__identity_cached, cls.__identity_meta_cached
 
     def __init_subclass__(cls, **kwargs) -> None:  # pragma: no cover - light guardrails
         super().__init_subclass__(**kwargs)

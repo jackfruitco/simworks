@@ -11,7 +11,6 @@ class ApiAccessControl(models.Model):
         ]
 
 # simcore_ai_django/models/mixins.py
-from __future__ import annotations
 from typing import Any, Iterable, Mapping, Sequence, Self
 
 from asgiref.sync import iscoroutinefunction

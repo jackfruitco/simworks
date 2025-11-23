@@ -7,7 +7,7 @@ identity management in simcore AI Django applications.
 Exports:
     IdentityMixin (class): Identity handling mixin for simcore AI types.
 """
-from __future__ import annotations
+
 
 from simcore_ai_django.identity.mixins import DjangoIdentityMixin
 

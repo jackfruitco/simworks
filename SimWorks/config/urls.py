@@ -17,7 +17,7 @@ sitemaps = {
 urlpatterns = [
     path("", CoreViews.index, name="home"),
     path("admin/", admin.site.urls),
-    path("", include("simcore.urls")),
+    path("", include("simulation.urls")),
     path("accounts/", include("accounts.urls")),
     path("chatlab/", include("chatlab.urls")),
     path('graphql', AsyncGraphQLView.as_view(schema=schema), name='graphql'),

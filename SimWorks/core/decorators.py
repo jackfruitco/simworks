@@ -8,7 +8,7 @@ from django.utils.functional import SimpleLazyObject
 from functools import wraps
 from inspect import iscoroutinefunction
 from django.http import HttpResponseForbidden, Http404
-from simcore.models import Simulation
+from simulation.models import Simulation
 
 User = get_user_model()
 

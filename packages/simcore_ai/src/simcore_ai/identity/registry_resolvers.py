@@ -1,15 +1,18 @@
 # simcore_ai/identity/registry_resolvers.py
-from __future__ import annotations
+
 
 import importlib
 import inspect
-from typing import TypeVar, Optional, Any
+from typing import TypeVar, Optional, TYPE_CHECKING
 
-from simcore_ai.components import ComponentNotFoundError
+from simcore_ai.components.exceptions import ComponentNotFoundError
 from simcore_ai.registry.exceptions import RegistryNotFoundError
 from .identity import Identity, IdentityLike
-from ..registry import BaseRegistry
+
 from ..types.protocols import RegistryProtocol
+
+if TYPE_CHECKING:
+    from ..registry import BaseRegistry
 
 T = TypeVar("T")
 
@@ -77,7 +80,7 @@ def for_(
         component_type: type[T] | str,
         ident: IdentityLike,
         *,
-        __from: RegistryProtocol | None = None,
+        __from: RegistryProtocol | None | BaseRegistry = None,
 ) -> T:
     """
     Resolve a registered component of the given type by identity.
@@ -103,13 +106,13 @@ def for_(
     Component = _resolve_component_type(component_type)
 
     # Helper to prefer try_get() when present, otherwise fall back to get()
-    def _resolve_via_registry(registry_: BaseRegistry) -> T | None:
-        try_get = getattr(registry_, "try_get", None)
+    def _resolve_via_registry(__registry: "BaseRegistry") -> T | None:
+        try_get = getattr(__registry, "try_get", None)
         if callable(try_get):
-            found = try_get(identity) or try_get(ident_key)
-            if found is not None:
-                return found
-        get_fn = getattr(registry_, "get", None)
+            __found = try_get(identity) or try_get(ident_key)
+            if __found is not None:
+                return __found
+        get_fn = getattr(__registry, "get", None)
         if callable(get_fn):
             try:
                 return get_fn(identity)
@@ -122,12 +125,12 @@ def for_(
         return None
 
     # 1) Explicit registry (__from)
-    if from_ is not None:
+    if __from is not None:
         found = _resolve_via_registry(__from)
         if found is not None:
             return found
-        else:
-            raise RegistryNotFoundError()
+        # If an explicit registry was provided but did not contain the component,
+        # fall through to the remaining resolution strategies instead of failing early.
 
     # 2) Component.get / Component.try_get
     get_fn = getattr(Component, "get", None)
@@ -154,9 +157,9 @@ def for_(
             return found
 
     # 3) Attached registry on the component class
-    registry_ = getattr(Component, "registry", None)
-    if registry_ is not None:
-        found = _resolve_via_registry(registry_)
+    __registry = getattr(Component, "registry", None)
+    if __registry is not None:
+        found = _resolve_via_registry(__registry)
         if found is not None:
             return found
 
@@ -196,4 +199,3 @@ def try_for_(
         return for_(component_type, ident, __from=__from)
     except (ComponentNotFoundError, RegistryNotFoundError, NotImplementedError, TypeError):
         return None
-

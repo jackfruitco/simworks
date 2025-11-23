@@ -1,4 +1,4 @@
-from __future__ import annotations
+
 
 from typing import List, Optional
 from datetime import datetime
@@ -8,7 +8,7 @@ import strawberry
 import strawberry_django
 from strawberry import ID
 
-from simcore.schema import SimulationType
+from simulation.schema import SimulationType
 from .models import (
     TrainerSession,
     ABCEvent,

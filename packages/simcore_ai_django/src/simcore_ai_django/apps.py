@@ -1,4 +1,5 @@
-from __future__ import annotations
+# simcore_ai_django/apps.py
+
 
 import os
 
@@ -54,5 +55,7 @@ class SimcoreAIDjangoConfig(AppConfig):
 
             with service_span_sync("simcore.autodiscover"):
                 autodiscover_all()
+                logger.info("all ")
+
 
 

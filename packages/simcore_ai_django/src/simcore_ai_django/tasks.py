@@ -1,25 +1,20 @@
-from __future__ import annotations
-from celery import shared_task
-from importlib import import_module
-from .runner import run_service  # NOTE: runner.py
+# simcore_ai_django/tasks.py
+"""
+Celery-based task entrypoints for simcore_ai_django have been removed.
 
-def _import_service(service_path: str):
-    mod, name = service_path.rsplit(":", 1)
-    return getattr(import_module(mod), name)
+The legacy `run_service_task` and its dependency on a Celery queue are no
+longer supported in AIv3. Execution is now handled exclusively via Django
+6.0 Tasks, with one Task auto-registered per service class and exposed as:
 
-@shared_task(
-    bind=True,
-    autoretry_for=(Exception,),
-    retry_backoff=5,           # seconds, exponential
-    retry_backoff_max=600,     # cap 10m
-    max_retries=5,
-)
-def run_service_task(self, *, service_path: str, service_kwargs: dict):
-    """Celery task to run a service.
+    MyService.task
 
-    The runner continues the trace via `traceparent` if provided in service_kwargs.
-    """
-    traceparent = service_kwargs.pop("traceparent", None)
-    Service = _import_service(service_path)
-    svc = Service(**service_kwargs)
-    return run_service(service=svc, traceparent=traceparent)
+To enqueue work, call:
+
+    MyService.task.enqueue(...)
+
+and rely on the configured Django TASKS backend (ImmediateBackend for now)
+instead of Celery's @shared_task entrypoints.
+"""
+
+
+__all__: list[str] = []

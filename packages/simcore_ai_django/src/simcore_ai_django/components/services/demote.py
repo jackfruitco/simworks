@@ -1,5 +1,5 @@
 # simcore_ai_django/services/demote.py
-from __future__ import annotations
+
 
 """
 Service-level demotion helpers.

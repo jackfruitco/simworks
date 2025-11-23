@@ -1,3 +1,4 @@
+# simcore_ai_django/decorators/__init__.py
 from .base import DjangoBaseDecorator
 from .components import *
 

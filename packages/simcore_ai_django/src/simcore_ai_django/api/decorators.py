@@ -1,5 +1,5 @@
 # packages/simcore_ai_django/src/simcore_ai_django/api/decorators.py
-from __future__ import annotations
+
 
 """
 Public facade for **Django-aware** decorators.

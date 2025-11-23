@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import logging
-from contextlib import contextmanager, asynccontextmanager
-from typing import Any, Iterator, AsyncIterator
 from collections.abc import Mapping
+from contextlib import contextmanager, asynccontextmanager
+from dataclasses import dataclass
+from typing import Any, Iterator, AsyncIterator
 
 from opentelemetry import trace
 from opentelemetry.trace import Span, SpanKind, Status, StatusCode, Tracer
@@ -15,6 +14,37 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _DEFAULT_TRACER_NAME = "simcore_ai"
+
+
+@dataclass(frozen=True)
+class SpanPath:
+    """Structured span name helper.
+
+    Example:
+        root = SpanPath.from_str("simcore.svc.GenerateInitialResponse")
+        child = root.child("execute", "run", "prepare")
+        str(child) -> "simcore.svc.GenerateInitialResponse.execute.run.prepare"
+    """
+
+    parts: tuple[str, ...]
+
+    def __str__(self) -> str:
+        return ".".join(self.parts)
+
+    @classmethod
+    def from_str(cls, name: str) -> "SpanPath":
+        name = (name or "").strip()
+        if not name:
+            return cls(())
+        return cls(tuple(p for p in name.split(".") if p))
+
+    def child(self, *segments: str) -> "SpanPath":
+        """Return a new SpanPath with additional segments appended.
+
+        Empty/falsey segments are ignored.
+        """
+        cleaned = tuple(s for s in segments if s)
+        return SpanPath(self.parts + cleaned)
 
 
 def get_tracer(name: str | None = None) -> Tracer:
@@ -72,7 +102,7 @@ def _record_exception(span: Span, err: BaseException) -> None:
 # ---------------------------------------------------------------------------
 
 @contextmanager
-def service_span_sync(name: str, *, attributes: Mapping[str, Any] | None = None) -> Iterator[Span]:
+def service_span_sync(name: str | SpanPath, *, attributes: Mapping[str, Any] | None = None) -> Iterator[Span]:
     """Synchronous span context for service orchestration.
 
     Usage:
@@ -80,7 +110,8 @@ def service_span_sync(name: str, *, attributes: Mapping[str, Any] | None = None)
             ...
     """
     tracer = get_tracer()
-    with tracer.start_as_current_span(name, kind=SpanKind.INTERNAL) as span:
+    span_name = str(name) if isinstance(name, SpanPath) else name
+    with tracer.start_as_current_span(span_name, kind=SpanKind.INTERNAL) as span:
         _apply_attributes(span, attributes)
         try:
             yield span
@@ -92,7 +123,7 @@ def service_span_sync(name: str, *, attributes: Mapping[str, Any] | None = None)
 
 
 @asynccontextmanager
-async def service_span(name: str, *, attributes: Mapping[str, Any] | None = None) -> AsyncIterator[Span]:
+async def service_span(name: str | SpanPath, *, attributes: Mapping[str, Any] | None = None) -> AsyncIterator[Span]:
     """Async span context for service orchestration.
 
     Usage:
@@ -100,7 +131,8 @@ async def service_span(name: str, *, attributes: Mapping[str, Any] | None = None
             ...
     """
     tracer = get_tracer()
-    with tracer.start_as_current_span(name, kind=SpanKind.INTERNAL) as span:
+    span_name = str(name) if isinstance(name, SpanPath) else name
+    with tracer.start_as_current_span(span_name, kind=SpanKind.INTERNAL) as span:
         _apply_attributes(span, attributes)
         try:
             yield span
@@ -112,6 +144,7 @@ async def service_span(name: str, *, attributes: Mapping[str, Any] | None = None
 
 
 __all__ = [
+    "SpanPath",
     "get_tracer",
     "service_span",
     "service_span_sync",

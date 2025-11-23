@@ -11,7 +11,7 @@ import logging
 from typing import Any, Type, TypeVar
 
 from simcore_ai.components.promptkit import PromptSection
-from simcore_ai.decorators.base import BaseDecorator
+from simcore_ai_django.decorators import DjangoBaseDecorator
 from simcore_ai.registry.base import BaseRegistry
 from simcore_ai.registry.singletons import prompt_sections
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=Type[Any])
 
 
-class DjangoPromptSectionDecorator(BaseDecorator):
+class DjangoPromptSectionDecorator(DjangoBaseDecorator):
     """
     Codec decorator specialized for DjangoPromptSectionDecorator subclasses.
 

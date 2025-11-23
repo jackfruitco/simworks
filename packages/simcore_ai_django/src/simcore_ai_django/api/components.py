@@ -11,7 +11,7 @@ from simcore_ai_django.components import *
 
 __all__ = [
     "DjangoBaseCodec",
-    "DjangoExecutableLLMService", "DjangoBaseService",
+    "DjangoBaseService",
     "DjangoBaseOutputSchema", "DjangoBaseOutputBlock", "DjangoBaseOutputItem",
     "Prompt", "PromptEngine", "PromptSection", "PromptScenario",
 ]

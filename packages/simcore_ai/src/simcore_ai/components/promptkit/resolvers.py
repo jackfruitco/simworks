@@ -1,7 +1,7 @@
-# simcore_ai/promptkit/resolvers.py
-from __future__ import annotations
+# simcore_ai/components/promptkit/resolvers.py
 
-from .. import ComponentNotFoundError
+
+from ..exceptions import ComponentNotFoundError
 from ...identity import Identity, IdentityLike
 from ...registry.exceptions import RegistryNotFoundError
 

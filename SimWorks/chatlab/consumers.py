@@ -9,8 +9,8 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
-from simcore.models import Simulation
-from simcore.utils import get_user_initials
+from simulation.models import Simulation
+from simulation.utils import get_user_initials
 from .models import Message
 from .models import RoleChoices
 
@@ -204,14 +204,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _generate_patient_response(self, user_msg: Message) -> None:
         """Generate patient response."""
         from .ai.services import GenerateReplyResponse
-        GenerateReplyResponse().execute(simulation=self.simulation.pk, user_msg=user_msg)
+        GenerateReplyResponse.task.enqueue(
+            simulation_id=self.simulation.pk,
+            user_msg_id=user_msg.pk,
+        )
 
 
     async def _generate_stitch_response(self, user_msg: Message) -> None:
         """Generate a response from Stitch for feedback conversations."""
         raise NotImplementedError
         from .ai.services import GenerateStitchResponse
-        GenerateStitchResponse.run_all(simulation=self.simulation.pk, user_msg=user_msg)
+        GenerateStitchResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
 
         return await acall_connector(
             generate_hotwash_response,

@@ -10,10 +10,10 @@ from django.utils.timezone import now
 
 from chatlab.models import ChatSession, Message, MessageMediaLink
 from core.utils import remove_null_keys
-from simcore.models import (
+from simulation.models import (
     LabResult, RadResult, Simulation, SimulationMetadata,
 )
-from simcore.utils import get_user_initials, generate_fake_name
+from simulation.utils import get_user_initials, generate_fake_name
 from .apps import ChatLabConfig
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,12 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     from .ai.services import GenerateInitialResponse
-    context = {"simulation_id": simulation.id, "user_id": user.id}
-    GenerateInitialResponse(context=context).execute()
+    await GenerateInitialResponse.task.aenqueue(
+        ctx={
+            "simulation_id": simulation.id,
+            "user_id": user.id
+        },
+    )
 
     return simulation
 

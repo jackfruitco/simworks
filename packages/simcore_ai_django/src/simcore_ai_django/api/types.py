@@ -44,7 +44,6 @@ __all__ = [
     "PromptScenario",
 
     "DjangoBaseCodec",
-    "DjangoExecutableLLMService",
     "DjangoBaseService",
     "DjangoLLMBaseTool",
     "DjangoLLMToolCall",

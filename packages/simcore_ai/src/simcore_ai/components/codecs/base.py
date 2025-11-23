@@ -1,5 +1,5 @@
 # simcore_ai/components/codecs/base.py
-from __future__ import annotations
+
 
 import base64
 import json
@@ -7,19 +7,18 @@ import logging
 from abc import ABC
 from typing import Any, ClassVar
 
-from pydantic import ValidationError
-
 from asgiref.sync import async_to_sync
-
-from simcore_ai.components import BaseComponent
-from simcore_ai.identity import IdentityMixin
-from simcore_ai.tracing import service_span_sync
-from simcore_ai.types import LLMRequest, LLMResponse, LLMStreamChunk, LLMTextPart, LLMToolResultPart
+from pydantic import ValidationError
 
 from .exceptions import CodecDecodeError, CodecSchemaError
 from ..schemas.base import BaseOutputSchema
+from ...components import BaseComponent
+from ...identity import IdentityMixin
+from ...tracing import service_span_sync
+from ...types import LLMRequest, LLMResponse, LLMStreamChunk, LLMTextPart, LLMToolResultPart
 
 logger = logging.getLogger(__name__)
+
 
 class BaseCodec(IdentityMixin, BaseComponent, ABC):
     """Provider-agnostic, per-call codec for structured outputs.
@@ -68,11 +67,11 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
           - req.output_schema_meta (optional) if not already set, from self.output_schema_meta
         """
         with service_span_sync(
-            "simcore.codec.encode",
-            attributes={
-                "simcore.codec": self.__class__.__name__,
-                "simcore.output_schema": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
-            },
+                "simcore.codec.encode",
+                attributes={
+                    "simcore.codec": self.__class__.__name__,
+                    "simcore.output_schema": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
+                },
         ):
             # No schema? Nothing to encode.
             if type(self).output_schema_cls is None:
@@ -99,11 +98,11 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         if type(self).output_schema_cls is None:
             return None
         with service_span_sync(
-            "simcore.codec.decode",
-            attributes={
-                "simcore.codec": self.__class__.__name__,
-                "simcore.output_schema": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
-            },
+                "simcore.codec.decode",
+                attributes={
+                    "simcore.codec": self.__class__.__name__,
+                    "simcore.output_schema": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
+                },
         ):
             candidate = self.extract_structured_candidate(resp)
             if candidate is None:
@@ -114,7 +113,8 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         return await self.adecode(resp)
 
     # ---- Streaming hooks --------------------------------------------------
-    async def adecode_chunk(self, chunk: LLMStreamChunk, *, is_final: bool = False) -> tuple[BaseOutputSchema | None, bool]:
+    async def adecode_chunk(self, chunk: LLMStreamChunk, *, is_final: bool = False) -> tuple[
+        BaseOutputSchema | None, bool]:
         """
         Consume a streaming chunk. Return (partial_model_or_None, done_bool).
         Default implementation accumulates nothing and never finishes early.
@@ -159,11 +159,11 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
           - None if extraction/validation fails.
         """
         with service_span_sync(
-            "simcore.codec.validate",
-            attributes={
-                "simcore.codec": self.__class__.__name__,
-                "simcore.schema": getattr(type(self).output_schema_cls, "__name__", None),
-            },
+                "simcore.codec.validate",
+                attributes={
+                    "simcore.codec": self.__class__.__name__,
+                    "simcore.schema": getattr(type(self).output_schema_cls, "__name__", None),
+                },
         ):
             try:
                 return await self.adecode(resp)

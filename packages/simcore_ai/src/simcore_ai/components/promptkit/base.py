@@ -1,5 +1,5 @@
 # simcore_ai/promptkit/types.py
-from __future__ import annotations
+
 
 from abc import ABC
 

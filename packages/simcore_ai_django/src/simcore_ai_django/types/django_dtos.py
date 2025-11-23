@@ -16,7 +16,7 @@ These classes extend the core `simcore_ai.types` models with optional Django-fac
 They are **not** ORM models and are safe to emit via signals. Persistence remains the responsibility
 of codecs and listeners.
 """
-from __future__ import annotations
+
 
 from datetime import datetime, timezone
 from typing import Any

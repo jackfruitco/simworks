@@ -1,67 +1,58 @@
 # chatlab/ai/services/patient.py
-from __future__ import annotations
+
 
 import logging
-from typing import Type, Optional, Tuple, List
+from typing import Type, Optional, Tuple, List, ClassVar
 
-from chatlab.ai.mixins import ChatlabMixin
-from chatlab.models import Message
 from core.utils import remove_null_keys
-from simcore.ai.mixins import StandardizedPatientMixin
-from simcore.models import Simulation
 from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoExecutableLLMService, PromptEngine, PromptPlan, LLMTextPart, LLMRole
+from simcore_ai_django.api.types import DjangoBaseService, PromptEngine, LLMTextPart, LLMRole
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoLLMRequestMessage
+from simulation.ai.mixins import StandardizedPatientMixin
+from simulation.ai.prompts import PatientNameSection
+from simulation.models import Simulation
+from ..mixins import ChatlabMixin
+from ..prompts.sections import ChatlabPatientInitialSection
+from ...models import Message
 
 logger = logging.getLogger(__name__)
 
 
 # ----------------------------- services ------------------------------------------
 @simcore.service
-class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
+class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate the initial patient response.
 
     Uses Simulation.prompt_instruction/message to construct rich Django request messages
     and validates against the structured output schema.
     """
 
-    # Execution defaults (service-level); None => use settings / hard defaults
-    # execution_mode: Optional[str] = "sync"  # "sync" | "async"
-    # execution_backend: Optional[str] = "immediate"  # "immediate" | "celery" | "django_tasks"
-    # execution_priority: Optional[int] = -100  # -100..100
-    # execution_run_after: Optional[float] = None  # seconds; None => now
-    # require_enqueue: bool = False # force async if True
+    required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
 
-    # model: Optional[str] = None  # allow provider default
-    # from ..prompts import ChatlabPatientInitialSection
-    # prompt_plan: PromptPlan = (
+    # prompt_plan = (
     #     ChatlabPatientInitialSection,
+    #     PatientNameSection,
     # )
-
-    required_context_keys: tuple[str, ...] = ("simulation_id",)
-
+    prompt_plan = (
+        "chatlab.default.base",
+        "chatlab.standardized_patient.initial",
+        "simcore.standardized_patient.name",
+    )
 
 @simcore.service
-class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
+class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate a reply to a user message.
 
     Expects a user message pk (or a resolved Message) and validates against the
     reply structured output schema.
     """
 
-    # Execution defaults (service-level); None => use settings / hard defaults
-    # execution_mode: Optional[str] = None  # "sync" | "async"
-    # execution_backend: Optional[str] = None  # "immediate" | "celery" | "django_tasks"
-    # execution_priority: Optional[int] = None  # -100..100
-    # execution_run_after: Optional[float] = None  # seconds; None => now
-    # require_enqueue: bool = False  # force async if True
-
     model: Optional[str] = None
 
     from chatlab.ai.schemas import PatientReplyOutputSchema as _Schema
     response_format_cls = _Schema
 
-    required_context_keys: tuple[str, ...] = ("simulation_id",)
+    required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
 
     # service ctor may receive this
     user_msg_pk: Optional[int] = None
@@ -89,23 +80,16 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecut
 
 
 @simcore.service
-class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoExecutableLLMService):
+class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate a patient image via provider tool-call.
 
     Builds a developer instruction via PromptKit and attaches a normalized image
     generation tool. No structured schema is required by default.
     """
 
-    # Execution defaults (service-level); None => use settings / hard defaults
-    execution_mode: Optional[str] = "async"
-    # execution_backend: Optional[str] = None
-    # execution_priority: Optional[int] = None
-    # execution_run_after: Optional[float] = None
-    require_enqueue: bool = True
-
     model: Optional[str] = None
 
-    required_context_keys: tuple[str, ...] = ("simulation_id",)
+    required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
 
     # Tool options
     output_format: Optional[str] = None  # e.g., "png" | "jpeg"

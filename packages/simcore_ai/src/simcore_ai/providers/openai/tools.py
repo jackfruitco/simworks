@@ -1,5 +1,5 @@
 # packages/simcore_ai/src/simcore_ai/providers/openai/tools.py
-from __future__ import annotations
+
 
 from simcore_ai.tracing import service_span_sync, flatten_context as _flatten_context
 from ..base import BaseProvider

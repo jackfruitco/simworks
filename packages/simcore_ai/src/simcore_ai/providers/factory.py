@@ -1,6 +1,4 @@
 # simcore_ai/providers/factory.py
-from __future__ import annotations
-
 """
 simcore_ai.providers.factory
 ============================
@@ -20,6 +18,7 @@ Notes:
   optional `label` via `semantic_provider_name(key, label)`, and passed to the provider
   constructor as `name`.
 """
+
 
 from typing import Dict, Type
 

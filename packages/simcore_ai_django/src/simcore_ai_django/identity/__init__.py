@@ -15,7 +15,7 @@ Notes
 - No Django imports here; `apps.py` writes into this module.
 """
 
-from __future__ import annotations
+
 
 from .mixins import DjangoIdentityMixin
 from .resolvers import DjangoIdentityResolver

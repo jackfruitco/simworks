@@ -15,7 +15,7 @@ Key properties
 - Registration policy is owned by domain registries (collisions, rewrites).
 - No Django ORM imports; remains framework-light.
 """
-from __future__ import annotations
+
 
 import logging
 from typing import Any

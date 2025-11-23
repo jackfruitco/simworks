@@ -8,10 +8,6 @@ from simcore_ai.tracing import service_span_sync
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
-# Ensure Django apps are loaded so AppConfig.ready() runs (triggers AI autodiscovery)
-import django  # noqa: E402
-django.setup()
-
 app = Celery("simworks")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 

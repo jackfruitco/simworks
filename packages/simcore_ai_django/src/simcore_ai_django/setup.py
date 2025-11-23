@@ -1,5 +1,4 @@
 # simcore_ai_django/setup.py
-from __future__ import annotations
 """
 simcore_ai_django.setup
 =======================
@@ -47,6 +46,8 @@ from simcore_ai.client.registry import (
 )
 from simcore_ai.client.schemas import AIProviderConfig, AIClientRegistration, AIClientConfig
 from simcore_ai.client.utils import effective_provider_config
+from simcore_ai.components import BaseComponent
+from simcore_ai.registry import BaseRegistry
 from simcore_ai.tracing import service_span_sync
 from .health import healthcheck_all_registered
 
@@ -189,15 +190,71 @@ def autodiscover_all() -> None:
     entrypoints (e.g., Celery workers/beat or management commands) can opt in
     to the same registration flow.
     """
+    from .components import PromptSection, DjangoBaseService, DjangoBaseCodec
+
+    def _tally_component(
+        c: type[BaseComponent],
+        r: BaseRegistry | None = None,
+    ) -> tuple[int, tuple[str, ...]]:
+        """Tally number of discovered components for a given component base."""
+        if r is None:
+            try:
+                r = c.get_registry()
+            except Exception:
+                # Non-fatal: log at debug so failures are visible in traces without crashing startup.
+                logger.debug("get_registry() failed for %s", c, exc_info=True)
+                r = None
+
+        if r is None:
+            logger.info("No registry found for %s, ignoring", c)
+            return 0, ()
+
+        labels = r.all(as_str=True)
+        return r.count(), labels
+
     with service_span_sync("simcore.autodiscover.identity"):
         autodiscover_modules("simcore.identity")
+        autodiscover_modules("ai.identity")
+
     with service_span_sync("simcore.autodiscover.receivers"):
         autodiscover_modules("simcore.receivers")
-    with service_span_sync("simcore.autodiscover.task_backends"):
-        autodiscover_modules("simcore.task_backends")
+        autodiscover_modules("ai.receivers")
+
     with service_span_sync("simcore.autodiscover.prompts"):
         autodiscover_modules("simcore.prompts")
+        autodiscover_modules("ai.prompts")
+        p_count, p_labels = _tally_component(PromptSection)
+        logger.info(
+            "Discovered %d PromptSections",
+            p_count,
+            extra={
+                "prompt_sections.count": p_count,
+                "prompt_sections.labels": p_labels,
+            },
+        )
+
     with service_span_sync("simcore.autodiscover.services"):
         autodiscover_modules("simcore.services")
+        autodiscover_modules("ai.services")
+        s_count, s_labels = _tally_component(DjangoBaseService)
+        logger.info(
+            "Discovered %d services",
+            s_count,
+            extra={
+                "services.count": s_count,
+                "services.labels": s_labels,
+            },
+        )
+
     with service_span_sync("simcore.autodiscover.codecs"):
         autodiscover_modules("simcore.codecs")
+        autodiscover_modules("ai.codecs")
+        c_count, c_labels = _tally_component(DjangoBaseCodec)
+        logger.info(
+            "Discovered %d codecs",
+            c_count,
+            extra={
+                "codecs.count": c_count,
+                "codecs.labels": c_labels,
+            },
+        )

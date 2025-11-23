@@ -1,26 +1,17 @@
 # chatlab/views.py
 import logging
 
-from asgiref.sync import async_to_sync
 from asgiref.sync import sync_to_async
-from channels.db import database_sync_to_async
-from chatlab.utils import create_new_simulation
-from chatlab.utils import maybe_start_simulation
+from chatlab.utils import create_new_simulation, maybe_start_simulation
 from core.decorators import resolve_user, simulation_required
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import Http404
-from django.http import HttpResponseForbidden
-from django.http import JsonResponse
-from django.shortcuts import aget_object_or_404
-from django.shortcuts import get_object_or_404
-from django.shortcuts import redirect
-from django.shortcuts import render
+from django.http import Http404, HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET
-from simcore.models import Simulation
-from simcore.tools import aget_tool
-from simcore.tools import alist_tools
+from simulation.models import Simulation
+from simulation.tools import aget_tool, alist_tools
 
 from .models import Message
 

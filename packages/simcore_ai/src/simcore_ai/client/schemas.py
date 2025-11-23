@@ -1,5 +1,5 @@
 # simcore_ai/client/schemas.py
-from __future__ import annotations
+
 
 """
 Strict configuration schemas for provider wiring and client orchestration.

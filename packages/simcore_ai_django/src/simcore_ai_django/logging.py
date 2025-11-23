@@ -1,5 +1,5 @@
 # simcore_ai_django/logging.py
-from __future__ import annotations
+
 
 from contextlib import contextmanager, asynccontextmanager
 from collections.abc import Mapping, MutableMapping

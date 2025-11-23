@@ -6,7 +6,7 @@ domain-specific decorator classes/instances via **lazy** attribute access.
 We avoid importing domain modules (services, codecs, promptkit, schemas)
 at import time to prevent circular imports during early Django startup.
 """
-from __future__ import annotations
+
 
 from .base import BaseDecorator
 from .components import *

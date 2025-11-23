@@ -1,12 +1,13 @@
-from __future__ import annotations
+# simcore_ai/decorators/components/service_decorator.py
+
 
 from simcore_ai.registry import BaseRegistry
 
 """
-Core codec decorator.
+Core service decorator.
 
-- Derives & pins identity via IdentityResolver (kind defaults to "codec" if not provided).
-- Registers the class in the global `codecs` registry.
+- Derives & pins identity via IdentityResolver (kind defaults to "service" if not provided).
+- Registers the class in the global `services` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
 
@@ -24,7 +25,7 @@ T = TypeVar("T", bound=Type[Any])
 
 class ServiceDecorator(BaseDecorator):
     """
-    Codec decorator specialized for BaseService subclasses.
+    Service decorator specialized for BaseService subclasses.
 
     Usage
     -----
@@ -45,7 +46,7 @@ class ServiceDecorator(BaseDecorator):
         return _Registry
 
     def register(self, candidate: Type[Any]) -> None:
-        # Guard: ensure we only register codec classes
+        # Guard: ensure we only register service classes
         if not issubclass(candidate, BaseService):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseService to use @service"

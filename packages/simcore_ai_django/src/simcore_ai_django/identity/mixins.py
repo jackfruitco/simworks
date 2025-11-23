@@ -1,5 +1,5 @@
 # packages/simcore_ai_django/src/simcore_ai_django/identity/mixins.py
-from __future__ import annotations
+
 
 """
 Django-aware identity mixin.

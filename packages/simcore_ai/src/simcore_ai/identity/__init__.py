@@ -7,12 +7,11 @@ and selected low-level utilities. Identity derivation is centralized in
 
 Exports intentionally avoid wildcard imports to keep the surface explicit.
 """
-from __future__ import annotations
+
 
 from .identity import IdentityLike, Identity
 from .mixins import IdentityMixin
-from .resolvers import Resolve as _Resolve, IdentityResolver
-from .resolvers import resolve_identity  # convenience helper (uses IdentityResolver)
+from .resolvers import Resolve as _Resolve, IdentityResolver, resolve_identity
 from .protocols import IdentityResolverProtocol, IdentityProtocol
 from .utils import DEFAULT_IDENTITY_STRIP_TOKENS, coerce_identity_key
 

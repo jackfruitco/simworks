@@ -1,10 +1,11 @@
 # chatlab/ai/codecs/patient.py
-from chatlab.ai.mixins import ChatlabMixin
-from config.ai.codecs import SimWorksCodec
 from chatlab.models import Message, RoleChoices
-from simcore.ai.mixins import StandardizedPatientMixin
-from simcore.models import SimulationMetadata, PatientHistory, PatientDemographics, LabResult, RadResult
+from config.ai.codecs import SimWorksCodec
 from simcore_ai_django.api import simcore
+from simulation.ai.mixins import StandardizedPatientMixin
+from simulation.models import SimulationMetadata, PatientHistory, PatientDemographics, LabResult, RadResult
+from ..mixins import ChatlabMixin
+
 
 @simcore.codec
 class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
@@ -27,6 +28,7 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWor
     }
     section_kind_field = "kind"
 
+
 @simcore.codec
 class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
     schema_model_map = {"messages": Message}
@@ -38,6 +40,7 @@ class PatientReplyCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
             "is_from_ai": True,
         }
     }
+
 
 @simcore.codec
 class PatientResultsCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):

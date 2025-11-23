@@ -1,0 +1,10 @@
+{# templates/simulation/partials/_patient_history.html #}
+{% if tool.data %}
+  <ul class="sim-metadata">
+    {% for metafield in tool.data %}
+      <li>{{ metafield.value }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="sim-metadata-empty">No known medical history available.</div>
+{% endif %}

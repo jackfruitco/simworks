@@ -25,7 +25,7 @@ class MessageAdmin(admin.ModelAdmin):
     fieldsets = [
         (None, {"fields": (("simulation", "order"), ("sender", "role"))}),
         ("Contents", {"fields": ("content",)}),
-        ("AI Response", {"classes": ("collapse",), "fields": ("response__normalized",)}),
+        # ("AI Response", {"classes": ("collapse",), "fields": ("response__normalized",)}),
     ]
 
     def has_change_permission(self, request, obj=None):

@@ -1,7 +1,7 @@
 from typing import Optional, Iterable
 
-from simcore_ai.components.codecs.exceptions import CodecNotFoundError
-from simcore_ai.exceptions.base import SimCoreError
+from ..codecs.exceptions import CodecNotFoundError
+from ...exceptions.base import SimCoreError
 
 __all__ = [
     "ServiceError",
@@ -49,8 +49,8 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
         I: Identity | None = None
         if ident is not None:
             try:
-                I = Identity.resolve(identity=ident)
-            except ValueError:
+                I = Identity.get(ident)
+            except Exception:
                 pass
 
         msg = (

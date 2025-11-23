@@ -15,7 +15,7 @@ Notes
 • All outputs are normalized to lowercase for consistency in logs/metrics.
 """
 
-from __future__ import annotations
+
 
 # Centralized identity primitives/utilities
 from simcore_ai.identity import coerce_identity_key

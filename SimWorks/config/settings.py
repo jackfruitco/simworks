@@ -1,16 +1,16 @@
+# simworks/config/settings.py
 import os
 import re
 from pathlib import Path
 
-from core.utils.system import check_env
+import logfire
 from django.core.exceptions import ImproperlyConfigured
 
+from core.utils.system import check_env
 from .logging import LOGGING
-import logfire
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start_timestamp development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     "daphne",
     "channels",
     "accounts",
-    "django_celery_beat",
+    # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -58,13 +58,12 @@ INSTALLED_APPS = [
     "django_htmx",
     "simcore_ai_django",
     "core",
-    "simcore",
+    "simulation",
     "chatlab",
     "trainerlab",
     "strawberry_django",
     "imagekit",
 ]
-
 
 MIDDLEWARE = [
     "core.middleware.HealthCheckMiddleware",
@@ -99,7 +98,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
-
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -183,17 +181,11 @@ SIMCORE_AI = {
     "HEALTHCHECK_ON_START": True,
 }
 
-SIMCORE_AI_EXECUTION = {
-    "DEFAULT_BACKEND": os.getenv("AI_EXECUTION_DEFAULT_BACKEND", "celery"),  # "celery" or "immediate"
-    "DEFAULT_MODE": os.getenv("AI_EXECUTION_DEFAULT_MODE", "async"),          # "async" or "sync"
-    "BACKENDS": {
-        "celery": {
-            "queue_default": os.getenv("AI_EXECUTION_DEFAULT_QUEUE", None),
-        },
-        "immediate": {},
-    },
+TASKS = {
+    "default": {
+        "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
+    }
 }
-
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)
@@ -219,7 +211,6 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25  # seconds
 
 # Celery Beat config
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -248,7 +239,6 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
@@ -288,5 +278,5 @@ CSRF_FAILURE_VIEW = "core.views.csrf_failure"
 STRAWBERRY_DJANGO = {
     "FIELD_DESCRIPTION_FROM_HELP_TEXT": True,
     "TYPE_DESCRIPTION_FROM_MODEL_DOCSTRING": True,
-    "MUTATIONS_DEFAULT_HANDLE_ERRORS":  True,
+    "MUTATIONS_DEFAULT_HANDLE_ERRORS": True,
 }

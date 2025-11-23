@@ -20,7 +20,7 @@ Notes:
   This module intentionally no longer exposes `derive_identity_for_class`.
 """
 
-from __future__ import annotations
+
 
 import logging
 import os

@@ -4,7 +4,7 @@ from django.db import models
 from polymorphic.models import PolymorphicModel
 from django.utils.translation import gettext_lazy as _
 
-from simcore.models import BaseSession
+from simulation.models import BaseSession
 
 
 class TrainerSession(BaseSession):
@@ -30,7 +30,8 @@ class ABCEvent(PolymorphicModel):
 
     warnings.warn("`ABCEvent.event_type` is deprecated. Use `ABCEvent.polymorphic_ctype` instead.", DeprecationWarning, stacklevel=2)
     # event_type = models.ForeignKey(EventType, on_delete=models.CASCADE, related_name="events")
-    simulation = models.ForeignKey("simcore.Simulation", on_delete=models.CASCADE, related_name="events")
+
+    simulation = models.ForeignKey("simulation.Simulation", on_delete=models.CASCADE, related_name="events")
 
     def __str__(self):
         return f"{self.__class__.__name__} at {self.timestamp:%H:%M:%S}"
@@ -214,7 +215,7 @@ class VitalMeasurement(ABCEvent):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(min_value__lte=models.F("max_value")),
+                condition=models.Q(min_value__lte=models.F("max_value")),
                 name="vital_min_le_max",
             ),
         ]
@@ -312,7 +313,7 @@ class BloodPressure(VitalMeasurement):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=models.Q(min_value_diastolic__lte=models.F("max_value_diastolic")),
+                condition=models.Q(min_value_diastolic__lte=models.F("max_value_diastolic")),
                 name="bp_dia_min_le_max",
             ),
         ]

@@ -7,7 +7,6 @@ from .codecs import BaseCodec
 from .schemas import BaseOutputSchema
 from .promptkit import PromptSection
 from .services import BaseService
-from .exceptions import ComponentError, ComponentNotFoundError
 
 __all__ = [
     "BaseComponent",
@@ -15,6 +14,5 @@ __all__ = [
     "BaseOutputSchema",
     "PromptSection",
     "BaseService",
-    "ComponentError",
-    "ComponentNotFoundError",
+    "exceptions"
 ]

@@ -1,7 +1,7 @@
 # simcore_ai_django/api/__init__.py
 """Stable API facade for SimWorks."""
 
-from __future__ import annotations
+
 
 from .registry import *
 from .client import *
@@ -28,7 +28,6 @@ __all__ = [
 
     # services
     "DjangoBaseService",
-    "DjangoExecutableLLMService",
 
     # tracing
     "service_span_sync",

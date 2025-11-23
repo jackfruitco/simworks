@@ -1,5 +1,5 @@
 # simcore_ai/providers/base.py
-from __future__ import annotations
+
 
 import inspect
 import logging
@@ -177,7 +177,7 @@ class BaseProvider(ABC):
             output_schema_cls: Optional Pydantic model class to parse structured text into
         """
         with service_span_sync(
-                "simcore.response.normalize",
+                "simcore.response.adapt",
                 attributes={
                     "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
                     "simcore.provider_key": getattr(self, "provider_key", None),
@@ -278,7 +278,7 @@ class BaseProvider(ABC):
             None (modifies `req` in-place)
         """
         with service_span_sync(
-                "simcore.schema.build_final",
+                "simcore.provider.schema.build_final",
                 attributes={
                     "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
                     "simcore.provider_key": getattr(self, "provider_key", None),
@@ -287,7 +287,7 @@ class BaseProvider(ABC):
         ):
             try:
                 # Compile/adapt into provider-friendly JSON Schema
-                with service_span_sync("simcore.schema.adapters",
+                with service_span_sync("simcore.provider.schema.adapters",
                                        attributes={
                                            "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
                                            "simcore.provider_key": getattr(self, "provider_key", None),

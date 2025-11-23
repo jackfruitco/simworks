@@ -1,16 +1,16 @@
 [project]
 name = "simcore-ai"
-version = "0.3.0"
+version = "0.4.0"
 description = "Provider-agnostic AI engine for SimWorks (pure Python)."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 license = { text = "MIT" }
 authors = [
   { name = "Jackfruit Co SimWorks" },
   { name = "Tyler J", email = "tyler@jackfruit.me" }
 ]
 classifiers = [
-  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: MIT License",
 ]
 
