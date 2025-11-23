@@ -35,11 +35,13 @@ from ..mixins import LifecycleMixin
 from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
 from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
-from ...tracing import get_tracer, service_span
-from ...types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole
+from ...tracing import get_tracer, service_span, SpanPath
+from ...types import LLMRequest, LLMRequestMessage, LLMResponse, LLMTextPart, LLMRole, StrictBaseModel
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
+
+LOG_LENGTH_LIMIT: int = 250
 
 
 class ServiceEmitter(Protocol):
@@ -79,6 +81,10 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     prompt_engine: ClassVar[PromptEngine | None] = None
     provider_name: ClassVar[str | None] = None
 
+    schema_cls: ClassVar[type[StrictBaseModel] | None] = None
+
+    _span_root: ClassVar[SpanPath | None] = None
+
     # Retry/backoff defaults (may be overridden per-instance if needed)
     max_attempts: int = 3
     backoff_initial: float = 0.5  # seconds
@@ -97,6 +103,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             prompt_engine: PromptEngine | None = None,
             prompt_instruction_override: str | None = None,
             prompt_message_override: str | None = None,
+            schema_cls: type[StrictBaseModel] | None = None,
             **kwargs: Any,
     ) -> None:
         """
@@ -110,6 +117,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         super().__init__(**kwargs)
 
+        self.span_prefix = f"{self.__class__.__module__}.{self.__class__.__name__}"
+
         # Context
         if context is None:
             self.context: dict[str, Any] = {}
@@ -119,7 +128,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             try:
                 self.context = dict(context)  # type: ignore[arg-type]
             except Exception:
-                logger.warning(
+                logger.error(
                     "Invalid context for %s; expected mapping-like, got %r",
                     self.__class__.__name__,
                     type(context),
@@ -155,6 +164,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         # Cached prompt (only used when all sections are non-dynamic)
         self._prompt_cache: Prompt | None = None
 
+        self._schema_cls: type[StrictBaseModel] | None = self._resolve_schema_cls(schema_cls)
+
         # Validate required context keys
         self.check_required_context()
 
@@ -183,6 +194,17 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     def slug(self) -> str:
         """Get slug for Service (from identity string)."""
         return self.identity.as_str
+
+    @property
+    def schema_cls(self) -> type[StrictBaseModel] | None:
+        """Return the active output schema class for this service, if any.
+
+        Resolution order:
+        - Per-instance override passed to __init__ (schema_cls=...)
+        - Class-level default declared on the concrete service.
+        - Registry lookup by this service's identity (StrictBaseModel subclass)
+        """
+        return self._schema_cls
 
     @property
     def codec(self) -> BaseCodec:
@@ -233,6 +255,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             raise ServiceConfigError(
                 f"Missing required context keys: {', '.join(missing)}",
             )
+        logger.debug(self._build_stdout(
+            "context",
+            f"validated required context keys: {', '.join(map(str, required))}",
+            indent_level=1,
+            success=True
+        ))
 
     # ----------------------------------------------------------------------
     # Internal coercion helpers
@@ -274,8 +302,11 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
           - list/tuple of PromptSectionSpec|str -> resolved via PromptPlan.from_any(...)
           - IdentityLike -> resolved via Identity into PromptPlan or PromptSection, then wrapped
         """
+        LOG_CAT = "prompt.plan"
         if isinstance(spec, PromptPlan):
-            logger.debug("Prompt plan already resolved; returning as-is.")
+            logger.debug(self._build_stdout(
+                LOG_CAT, "coercion skipped -- already PromptPlan", indent_level=2, success=True)
+            )
             return spec
 
         if isinstance(spec, (list, tuple)):
@@ -310,7 +341,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """Teardown hook (no-op by default)."""
         return self
 
-    async def afinalize(self, result, **ctx):
+    def finalize(self, result, **ctx):
         """Post-processing hook (passthrough by default)."""
         return result
 
@@ -336,6 +367,76 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         from simcore_ai.tracing import flatten_context as flatten_context_
         return flatten_context_(self.context)
 
+    @property
+    def span_root(self) -> SpanPath:
+        """
+        Root span path for this service.
+
+        Subclasses may override the class-level `_span_root` with a `SpanPath`
+        instance. If not set, this defaults to `simcore.svc.<ClassName>`.
+        """
+        root = getattr(type(self), "_span_root", None)
+        if isinstance(root, SpanPath):
+            return root
+        return SpanPath(("simcore", "svc", self.__class__.__name__))
+
+    def _span(self, *segments: str) -> str:
+        """Helper to build a child span name from the service's span root."""
+        return str(self.span_root.child(*segments))
+
+    def _build_stdout(
+            self,
+            part: str | None = None,
+            msg: str | None = None,
+            indent_level: int = 1,
+            success: Any = None
+    ) -> str:
+        """
+        Build a clean stdout line for the service runner.
+
+        success:
+            True  -> shows a checkmark
+            False -> shows a cross
+            "N/A" -> shows a checkmark (greyed)
+            None  -> shows no symbol
+            Anything else -> shows a warning symbol
+        """
+        indent_level = 1
+        prefix = "--" * indent_level
+        label = f"[{part}]: " if part else ""
+
+        symbol = ""
+        if success:
+            symbol = " ✅ "
+        elif success is False:
+            symbol = " ❌ "
+        elif success == "N/A":
+            symbol = " ☑️ "
+        elif success is not None:
+            symbol = " ⚠️ "
+
+        return f"{prefix}{symbol}{label}{msg}"
+
+    def _set_context(self, values: dict[str, Any], log_cat: str = None) -> None:
+        """Set values in `self.context` and log them."""
+        added = []
+        for key, value in values.items():
+            try:
+                self.context[key] = value
+                added.append(key)
+            except Exception:
+                logger.debug(self._build_stdout(
+                    log_cat,
+                    f"could not set context[{k}]: {v!r}",
+                    indent_level=3,
+                    success="non-fatal"
+                ), exc_info=True
+                )
+        if added:
+            logger.debug(self._build_stdout(
+                log_cat,
+                f"set context[{', '.join(added)}]", indent_level=3, success=True
+            ))
     # ----------------------------------------------------------------------
     # Prompt resolution (async-first)
     # ----------------------------------------------------------------------
@@ -344,15 +445,23 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Return the PromptSection class with matching Identity for this service, or None if not found.
         Pure lookup; no exceptions.
         """
+        LOG_CAT = "prompt"
         try:
             section_cls = Identity.resolve.try_for_(PromptSection, self.identity)
+            self.context["prompt.plan.from_identity"] = "True"
+            self.context["prompt.plan.from_identity.label"] = section_cls.identity.label
+            logger.debug(self._build_stdout(
+                LOG_CAT, f"resolved section from identity: {section_cls.identity.label}",
+                indent_level=2, success=True
+            ))
             return section_cls
         except Exception:
-            logger.warning(
-                "Could not resolve PromptSection from identity: %s",
-                self.identity.as_str,
-                exc_info=True,
-            )
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"could not resolve section from identity: {self.identity.as_str}",
+                indent_level=2,
+                success="non-fatal"
+            ), exc_info=True)
             return None
 
     async def aget_prompt(self) -> Prompt:
@@ -364,8 +473,21 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
           - Otherwise builds a fresh Prompt via `_aget_prompt()` and caches it
             when safe.
         """
+        LOG_CAT = "prompt"
+        self._set_context(
+            {
+                "prompt.source": "<unknown>",
+                "prompt.updated_cache": "<unknown>",
+            },
+            log_cat=LOG_CAT
+        )
+
         # If we have a cached prompt and it's safe to reuse, return it
         if self._prompt_cache is not None and not self.has_dynamic_prompt:
+            logger.debug(self._build_stdout(
+                LOG_CAT, "resolved from cache", indent_level=3, success=True
+            ))
+            self.context["prompt.source"] = "cache"
             return self._prompt_cache
 
         # Always build fresh when dynamic; may cache when static
@@ -373,6 +495,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         if not self.has_dynamic_prompt:
             self._prompt_cache = prompt
+            logger.debug(self._build_stdout(
+                LOG_CAT, "cached", indent_level=3, success=True
+            ))
 
         return prompt
 
@@ -383,47 +508,71 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         This is a pure builder: it does not read or write the prompt cache.
         Use `aget_prompt()` / `prompt` for cache-aware access.
         """
+        LOG_CAT = "prompt"
+
+        self._set_context(
+            {
+                "prompt.plan.source": "<unknown>",
+                "prompt.engine": "<unknown>",
+                "prompt.instruction.override": False,
+                "prompt.message.override": False,
+            },
+            log_cat=LOG_CAT
+        )
+
+        # 1) Using both overrides: build directly
+        if self.prompt_instruction_override and self.prompt_message_override:
+            self.context["prompt.plan.source"] = "overrides"
+            logger.debug(self._build_stdout(
+                LOG_CAT, f"resolved (from overrides)",
+                indent_level=3, success=True
+            ))
+            return Prompt(
+                instruction=str(self.prompt_instruction_override),
+                message=str(self.prompt_message_override),
+            )
+
+        # 2) Use the explicit plan if provided
+        plan = self._prompt_plan
+        self.context["prompt.plan.source"] = "explicit"
+
+        # 3) Fallback: single section matching identity
+        if not plan:
+            section_cls = self._try_get_matching_prompt_section()
+            if section_cls is None:
+                ident_str = self.identity.as_str
+                raise ServiceBuildRequestError(
+                    f"No prompt plan provided and no PromptSection registered for identity '{ident_str}'."
+                )
+            plan = PromptPlan.from_sections([section_cls])
+            self.context["prompt.plan.source"] = "matching identity"
+
+        # Ensure already coerced to PromptPlan
+        assert isinstance(plan, PromptPlan)
+
+        logger.debug(self._build_stdout(
+            LOG_CAT,
+            f"resolved (from {self.context['prompt.plan.source']}): "
+            f"{getattr(plan, 'describe', lambda: plan)()}",
+            indent_level=3, success=True,
+        ))
+
+        engine = (
+                self._prompt_engine
+                or type(self).prompt_engine
+                or PromptEngine
+        )
+        self.context["prompt.engine"] = repr(engine)
+
+        ctx = {"context": self.context, "service": self}
+
         async with service_span(
-                f"LLMService.{self.__class__.__name__}._build_prompt",
+                self._span("run", "prepare", "prompt", "build"),
                 attributes=self.flatten_context(),
         ):
-            # 1) Using both overrides: build directly
-            if self.prompt_instruction_override and self.prompt_message_override:
-                return Prompt(
-                    instruction=str(self.prompt_instruction_override),
-                    message=str(self.prompt_message_override),
-                )
-
-            # 2) Use explicit plan if provided
-            plan = self._prompt_plan
-
-            # 3) Fallback: single section matching identity
-            if not plan:
-                section_cls = self._try_get_matching_prompt_section()
-                if section_cls is None:
-                    ident_str = self.identity.as_str
-                    raise ServiceBuildRequestError(
-                        f"No prompt plan provided and no PromptSection registered for identity '{ident_str}'."
-                    )
-                plan = PromptPlan.from_sections([section_cls])
-
-            # Ensure already coerced to PromptPlan
-            assert isinstance(plan, PromptPlan)
-
-            logger.debug(
-                "prompt plan resolved: %s",
-                getattr(plan, "describe", lambda: plan)(),
-            )
-
-            engine = (
-                    self._prompt_engine
-                    or type(self).prompt_engine
-                    or PromptEngine
-            )
-            ctx = {"context": self.context, "service": self}
-
             abuild = getattr(engine, "abuild_from", None)
             if callable(abuild):
+                self.context["prompt.engine.build_method"] = repr(abuild)
                 prompt_: Prompt = await abuild(plan=plan, **ctx)  # type: ignore[arg-type]
             else:
                 build = getattr(engine, "build_from", None)
@@ -431,26 +580,64 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                     raise ServiceBuildRequestError(
                         "PromptEngine has no build_from/abuild_from callable"
                     )
+                self.context["prompt.engine.build_method"] = repr(build)
                 prompt_ = build(plan=plan, **ctx)  # type: ignore[arg-type]
+        logger.debug(self._build_stdout(
+            LOG_CAT,
+            f"initial build complete: "
+            f"instruction={prompt_.instruction[:25]}...,"
+            f"message={prompt_.message[:25]}...",
+            indent_level=3, success=True
+        ))
 
-            # Apply optional overrides
-            if self.prompt_instruction_override is not None:
-                try:
-                    setattr(prompt_, "instruction", str(self.prompt_instruction_override))
-                except Exception:
-                    logger.warning(
-                        "failed to override prompt developer instruction; ignoring"
-                    )
+        # Apply optional overrides
+        if self.prompt_instruction_override is not None:
+            try:
+                self.context["prompt.instruction.override"] = True
+                setattr(prompt_, "instruction", str(self.prompt_instruction_override))
+                logger.debug(self._build_stdout(
+                    LOG_CAT,
+                    f"found instruction override: {self.prompt_instruction_override[:250]}",
+                    indent_level=4,
+                    success=True
+                ))
+            except Exception as err:
+                logger.debug(self._build_stdout(
+                    LOG_CAT,
+                    f"could not override instruction; ignoring: {type(err).__name__}: {str(err)}",
+                    indent_level=4, success="non-fatal"
+                ), exc_info=True)
 
-            if self.prompt_message_override is not None:
-                try:
-                    setattr(prompt_, "message", str(self.prompt_message_override))
-                except Exception:
-                    logger.warning(
-                        "failed to override prompt user message; ignoring"
-                    )
+        if self.prompt_message_override is not None:
+            try:
+                instr_override = self.context["prompt.instruction.override"]
+                setattr(prompt_, "message", str(self.prompt_message_override))
+                self.context["prompt.message.override"] = True
+                logger.debug(self._build_stdout(
+                    LOG_CAT, f"found message override: {self.prompt_message_override[:250]}",
+                    indent_level=3, success=True
+                ))
+            except Exception as err:
+                logger.debug(self._build_stdout(
+                    LOG_CAT,
+                    f"could not override user message; ignoring: {type(err).__name__}: {str(err)}",
+                    indent_level=4, success="non-fatal"
+                ), exc_info=True)
 
-            return prompt_
+        msg = "build complete"
+        if all(self.context[f"prompt.{attr}.override"] for attr in ("instruction", "message")):
+            msg += " (with overrides)"
+        elif self.context["prompt.instruction.override"]:
+            msg += " (with instruction override)"
+        elif self.context["prompt.message.override"]:
+            msg += " (with message override)"
+
+        if logger.isEnabledFor(logging.DEBUG):
+            msg += f": instruction={prompt_.instruction[:250]}..., message={prompt_.message[:250]}..."
+
+        logger.debug(self._build_stdout(LOG_CAT, msg, indent_level=2, success=True))
+
+        return prompt_
 
     # ----------------------------------------------------------------------
     # Codec resolution (sync-first)
@@ -479,6 +666,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Raises:
             ServiceCodecResolutionError if no codec can be resolved.
         """
+        LOG_CAT = "codec"
+
         ident: Identity = self.identity
         ident_label = ident.as_str
 
@@ -486,23 +675,46 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         if self._codec_override is not None:
             codec_cls = self._codec_override
             label = self._codec_label_from_cls(codec_cls, ident_label)
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from override): {codec_cls.__name__} ({label})",
+                indent_level=2,
+                success=True
+            ))
             return codec_cls, label
 
         # 2) Explicit codec_cls for this instance, then class-level default
         if self._codec_cls is not None:
             codec_cls = self._codec_cls
             label = self._codec_label_from_cls(codec_cls, ident_label)
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from service instance): {codec_cls.__name__} ({label})",
+                indent_level=2,
+                success=True
+            ))
             return codec_cls, label
 
         if type(self).codec_cls is not None:
             codec_cls = type(self).codec_cls  # type: ignore[assignment]
             label = self._codec_label_from_cls(codec_cls, ident_label)
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from service class): {codec_cls.__name__} ({label})",
+                indent_level=2,
+                success=True
+            ))
             return codec_cls, label
 
         # 3) Registry by service identity only (single source of truth)
         codec_cls = Identity.resolve.try_for_(BaseCodec, ident)
         if codec_cls is not None:
             label = self._codec_label_from_cls(codec_cls, ident_label)
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from matching identity): {codec_cls.__name__} ({label})",
+                indent_level=2, success=True
+            ))
             return codec_cls, label
 
         # Nothing matched
@@ -521,6 +733,74 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         return await sync_to_async(self.resolve_codec, thread_sensitive=True)()
 
+    def _resolve_schema_cls(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
+        """Resolve the output schema class for this service.
+
+        Precedence:
+          1) Explicit per-instance override passed to ``__init__`` (``schema_cls=...``)
+          2) Class-level default declared on the concrete service (``schema_cls``)
+          3) Registry lookup by this service's identity
+        """
+        LOG_CAT = "schema"
+
+        # 1) Explicit per-instance override
+        if override is not None:
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from override): {getattr(override, '__name__', str(override))}",
+                indent_level=2,
+                success=True,
+            ))
+            return override
+
+        # 2) Class-level default
+        cls_default = type(self).schema_cls
+        if cls_default is not None:
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from service class): {getattr(cls_default, '__name__', str(cls_default))}",
+                indent_level=2,
+                success=True,
+            ))
+            return cls_default
+
+        # 3) Identity-based registry lookup
+        try:
+            resolved = Identity.resolve.try_for_(StrictBaseModel, self.identity)
+        except Exception:
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"could not resolve schema from identity: {self.identity.as_str}",
+                indent_level=2,
+                success="non-fatal",
+            ), exc_info=True)
+            return None
+
+        if resolved is not None:
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved (from matching identity): {getattr(resolved, '__name__', str(resolved))}",
+                indent_level=2,
+                success=True,
+            ))
+        else:
+            logger.warning(self._build_stdout(
+                LOG_CAT,
+                "no schema resolved for service; continuing with schema_cls=None",
+                indent_level=2,
+                success="non-fatal",
+            ))
+        return resolved
+
+    async def _aresolve_schema_cls(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
+        """
+        Async wrapper around `resolve_schema_cls()`.
+
+        Keeps schema resolution centralized in the sync path while
+        remaining usable from async-only code.
+        """
+        return await sync_to_async(self.resolve_codec, thread_sensitive=True)()
+
     # ------------------------------------------------------------------------
     # Service run helpers
     # ------------------------------------------------------------------------
@@ -532,8 +812,39 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         This method relies on `self.context` for contextual data rather than a
         separate `ctx` dict being threaded through.
         """
-        req = await self.abuild_request(**kwargs)
-        req.stream = stream
+        LOG_CAT = "llm.request"
+
+        async with service_span(
+            self._span("run", "prepare", "LLMRequest"),
+            attributes=self.flatten_context()
+        ):
+            req = await self.abuild_request(**kwargs)
+            req.stream = stream
+
+            # Stamp key request attributes into context for downstream spans/logs
+            self._set_context(
+                {
+                    "llm.request.stream": bool(stream),
+                    "llm.request.model": req.model or "<unknown>",
+                    "llm.request.correlation_id": str(req.correlation_id),
+                },
+                log_cat=LOG_CAT,
+            )
+
+        dump = req.model_dump()
+        dump_str = repr(dump)
+
+        if len(dump_str) > LOG_LENGTH_LIMIT:
+            preview = dump_str[:LOG_LENGTH_LIMIT] + "..."
+        else:
+            preview = dump_str
+
+        logger.debug(self._build_stdout(
+            LOG_CAT,
+            f"preparation complete: {preview}",
+            indent_level=2,
+            success=True,
+        ))
         return req
 
     async def _aprepare_codec(self) -> tuple[BaseCodec | None, str | None]:
@@ -543,15 +854,36 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Returns:
             (codec_instance_or_None, codec_label_or_None)
         """
-        codec_cls, codec_label = await self.aresolve_codec()
+        LOG_CAT = "codec"
 
-        codec: BaseCodec | None
-        try:
-            codec = codec_cls(service=self)  # type: ignore[call-arg]
-        except TypeError:
-            codec = codec_cls()  # type: ignore[call-arg]
+        async with service_span(
+                self._span("run", "prepare", "codec", "resolve"),
+                attributes=self.flatten_context(),
+        ):
+            codec_cls, codec_label = await self.aresolve_codec()
 
-        return codec, codec_label
+            codec: BaseCodec | None
+            try:
+                codec = codec_cls(service=self)  # type: ignore[call-arg]
+            except TypeError:
+                codec = codec_cls()  # type: ignore[call-arg]
+
+            self._set_context(
+                {
+                    "service.codec.class": codec_cls.__name__,
+                    "service.codec.label": codec_label or "<unknown>"
+                },
+                log_cat=LOG_CAT,
+            )
+
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"prepared: {codec_cls.__name__} ({codec_label})",
+                indent_level=3,
+                success=True,
+            ))
+
+            return codec, codec_label
 
     async def aprepare(
             self, *, stream: bool, **kwargs: Any
@@ -569,27 +901,53 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Returns:
             (request, codec_instance_or_None, attrs_dict)
         """
+        LOG_CAT = "prep"
         ident: Identity = self.identity
 
-        # Resolve codec and instantiate per-call instance
-        codec, codec_label = await self._aprepare_codec()
+        async with service_span(
+                self._span("run", "prepare"),
+                attributes=self.flatten_context(),
+        ):
+            # Resolve codec and instantiate per-call instance
+            codec, codec_label = await self._aprepare_codec()
 
-        # Base attributes for logging/tracing
-        attrs: dict[str, Any] = {
-            "identity": ident.label,
-            "codec": codec_label or "<unknown>",
-        }
-        attrs.update(self.flatten_context())
+            # Base attributes for logging/tracing
+            attrs: dict[str, Any] = {
+                "identity": ident.label,
+                "codec": codec_label or "<unknown>",
+            }
+            attrs.update(self.flatten_context())
 
-        # Build request and stamp stream flag
-        req = await self._aprepare_request(stream=stream, **kwargs)
+            # Stamp service-level context about this call
+            self._set_context(
+                {
+                    "service.identity": ident.as_str,
+                    "llm.stream": bool(stream),
+                    "service.codec.label": codec_label or "<unknown>",
+                },
+                log_cat=LOG_CAT,
+            )
 
-        # Attach codec identity to the request when available; schema hints are handled by the codec.
-        if codec_label:
-            try:
-                req.codec_identity = codec_label  # type: ignore[attr-defined]
-            except Exception:
-                pass
+            # Build request and stamp stream flag
+            req = await self._aprepare_request(stream=stream, **kwargs)
+
+            # Attach codec identity to the request when available; schema hints are handled by the codec.
+            if codec_label:
+                try:
+                    req.codec_identity = codec_label  # type: ignore[attr-defined]
+                    logger.debug(self._build_stdout(
+                        "llm.request",
+                        f"attached codec identity: {req.codec_identity}",
+                        indent_level=3,
+                        success=True
+                    ))
+                except Exception as err:
+                    logger.debug(self._build_stdout(
+                        "llm.request",
+                        f"could not attach codec identity: {type(err).__name__}: {str(err)}",
+                        indent_level=3,
+                        success=False
+                    ), exc_info=True)
 
         return req, codec, attrs
 
@@ -609,11 +967,13 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ServiceBuildRequestError
             If both the instruction and user message are empty.
         """
+        LOG_CAT = "llm.request"
+
+        # 1) Get or build prompt if available
         async with service_span(
-                f"LLMService.{self.__class__.__name__}.build_request",
+                self._span("run", "prepare", "request", "prompt"),
                 attributes=self.flatten_context(),
         ):
-            # 1) Get or build prompt if available
             prompt = await self.aget_prompt()
 
             # 2) Build messages via hooks
@@ -626,18 +986,30 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             instr_present = bool(getattr(prompt, "instruction", None))
             user_present = bool(getattr(prompt, "message", None))
             if not (instr_present or user_present):
-                raise ServiceBuildRequestError("Prompt produced no instruction or user message; cannot build request")
+                raise ServiceBuildRequestError(
+                    "Prompt produced no instruction or user message; cannot build request"
+                )
 
-            # 3) Create base request and stamp identity (context is kept on self.context only)
-            ident = self.identity
-            req = LLMRequest(messages=messages, stream=False)
-            req.namespace = ident.namespace
-            req.kind = ident.kind
-            req.name = ident.name
+            # Stamp basic request content metadata into context for tracing
+            self._set_context(
+                {
+                    "llm.request.message.count": len(messages),
+                    "prompt.instruction.present": instr_present,
+                    "prompt.message.present": user_present,
+                },
+                log_cat=LOG_CAT,
+            )
 
-            # 4) Final customization hook (codec/schema are handled later in `arun` via the codec)
-            req = await self._afinalize_request(req)
-            return req
+        # 3) Create a request and stamp identity (context is kept on self.context only)
+        ident = self.identity
+        req = LLMRequest(messages=messages, stream=False)
+        req.namespace = ident.namespace
+        req.kind = ident.kind
+        req.name = ident.name
+
+        # 4) Final customization hook (codec/schema are handled later in `arun` via the codec)
+        req = await self._afinalize_request(req)
+        return req
 
     # --------------------------- build hooks ---------------------------
     def _coerce_role(self, value: str | LLMRole) -> LLMRole:
@@ -671,6 +1043,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         instruction = getattr(prompt, "instruction", None)
         if instruction:
             messages.append(LLMRequestMessage(role=LLMRole.DEVELOPER, content=[LLMTextPart(text=str(instruction))]))
+        logger.debug(self._build_stdout(
+            "prompt", "built developer message(s) from p.instruction(s)", indent_level=4, success=True
+        ))
         return messages
 
     async def _abuild_request_user_input(self, prompt: Prompt) -> list[LLMRequestMessage]:
@@ -679,20 +1054,44 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         message = getattr(prompt, "message", None)
         if message:
             messages.append(LLMRequestMessage(role=LLMRole.USER, content=[LLMTextPart(text=str(message))]))
+        logger.debug(self._build_stdout(
+            "prompt", "built user message(s) from p.message(s)",indent_level=4, success=True
+        ))
         return messages
 
     async def _abuild_request_extras(self, prompt: Prompt) -> list[LLMRequestMessage]:
         """Create extra messages from prompt.extra_messages ((role, text) pairs)."""
         messages: list[LLMRequestMessage] = []
         extras = getattr(prompt, "extra_messages", None) or []
+        if extras:
+            logger.debug(self._build_stdout(
+                "prompt",
+                f"found {len(extras)} extra message(s) in prompt",
+                indent_level=4,
+                success="N/A",
+            ))
         for role, text in extras:
             if text:
                 llm_role: LLMRole = self._coerce_role(role)
                 messages.append(LLMRequestMessage(role=llm_role, content=[LLMTextPart(text=str(text))]))
+                msg_preview = text[:25] + "..." if len(text) > 25 else text
+                logger.debug(self._build_stdout(
+                    "prompt",
+                    f"built extra {llm_role.name} message from extra_messages: '{msg_preview}'",
+                    indent_level=5,
+                    success=True
+                ))
+
         return messages
 
     async def _afinalize_request(self, req: LLMRequest) -> LLMRequest:
         """Final request customization hook (no-op by default)."""
+        logger.debug(self._build_stdout(
+            "llm.request",
+            f"finalized (no-op; nothing given to finalize)",
+            indent_level=2,
+            success="N/A",
+        ))
         return req
 
     # ----------------------------------------------------------------------
@@ -763,29 +1162,44 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Execution
     # ----------------------------------------------------------------------
-    async def arun(self, ctx: dict | None = None, **kwargs) -> LLMResponse | None:
+    async def arun(self, **ctx) -> LLMResponse | None:
         """
-        Core async execution path for this service.
+        Core async execution path for non-streaming service calls.
 
-        Any per-call `ctx` provided is merged into `self.context` up front so that
-        downstream helpers rely solely on `self.context` instead of receiving a
-        separate context dict.
-
-        Builds the request, lets the codec prepare/encode, sends via the resolved client,
-        lets the codec decode the response, emits events, and returns the final `LLMResponse`.
-        A fresh codec instance is created per call and torn down in a finally block.
+        This is invoked by `LifecycleMixin.aexecute` inside the lifecycle `.run` span.
+        All context merging and request/codec preparation is delegated to `_arun_core`.
         """
-        if ctx:
-            incoming = ctx
+        return await self._arun_core(stream=False, **ctx)
+
+    async def _arun_core(self, *, stream: bool, **ctx) -> LLMResponse | None:
+        """
+        Shared implementation for non-streaming and streaming runs.
+
+        Handles:
+          - merging per-call context into `self.context`
+          - validating required context
+          - ensuring an emitter is present
+          - preparing the request/codec/attrs via `aprepare`
+          - resolving the client and emitting the outbound request
+          - delegating to `_asend` or `_astream` for IO
+        """
+        LOG_CAT = "svc.run"
+
+        # Normalize and merge contextual overrides, if provided
+        ctx = dict(ctx) if ctx else {}
+        raw_ctx = ctx.pop("context", None)
+        if raw_ctx:
+            incoming = raw_ctx
             if not isinstance(incoming, dict):
                 try:
                     incoming = dict(incoming)  # type: ignore[arg-type]
                 except Exception:
-                    logger.warning(
-                        "Invalid ctx for %s; expected mapping-like, got %r",
-                        self.__class__.__name__,
-                        type(ctx),
-                    )
+                    logger.debug(self._build_stdout(
+                        LOG_CAT,
+                        f"could not parse context (expected mapping-like, but got '{repr(raw_ctx)}')",
+                        indent_level=2,
+                        success="non-fatal"
+                    ), exc_info=True)
                     incoming = {}
             if incoming:
                 self.context.update(incoming)
@@ -796,67 +1210,130 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         ident: Identity = self.identity
 
-        # Prepare request + codec instance + attrs for this call
-        req, codec, attrs = await self.aprepare(stream=False, **kwargs)
-
-        logger.info("simcore.service.%s.run" % self.__class__.__name__, extra=attrs)
         async with service_span(
-                f"simcore.service.{self.__class__.__name__}.run",
-                attributes=attrs,
+                self._span("run", "prepare"),
+                attributes=self.flatten_context(),
         ):
+            # Build request + codec + attrs
+            req, codec, attrs = await self.aprepare(stream=stream, **ctx)
+
             try:
+                # Prepare codec for this call
                 if codec is not None:
-                    await codec.asetup(context=self.context)
-                    await codec.aencode(req)
+                    async with service_span(
+                            self._span("run", "prepare", "codec", "setup"),
+                            attributes=self.flatten_context(),
+                    ):
+                        await codec.asetup(context=self.context)
 
-                client = self.get_client()
-                self.emitter.emit_request(self.context, self.identity.as_str, req)
+                    async with service_span(
+                            self._span("run", "prepare", "codec", "encode"),
+                            attributes=self.flatten_context(),
+                    ):
+                        await codec.aencode(req)
 
-                attempt = 1
-                while attempt <= max(1, self.max_attempts):
-                    try:
-                        resp: LLMResponse = await client.send_request(req)
+                # Resolve client
+                async with service_span(
+                        self._span("run", "prepare", "client"),
+                        attributes=self.flatten_context(),
+                ):
+                    client = self.get_client()
 
-                        # Tag response identity/correlation
-                        resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
-                        if getattr(resp, "request_correlation_id", None) is None:
-                            resp.request_correlation_id = req.correlation_id
+                # Emit outbound request event
+                async with service_span(
+                        self._span("run", "prepare", "emit_request"),
+                        attributes=self.flatten_context(),
+                ):
+                    self.emitter.emit_request(self.context, ident.as_str, req)
 
-                        # Attach codec identity if missing (write-safe fields only)
-                        if hasattr(resp, "codec_identity"):
-                            if not getattr(resp, "codec_identity", None):
+                self._set_context(
+                    {
+                        "llm.client.name": getattr(client, "name", "<unknown>"),
+                        "llm.request.correlation_id": str(req.correlation_id),
+                    }
+                )
+
+            except Exception:
+                # Normalize any provider/codec misconfiguration failures
+                raise ServiceConfigError(
+                    "The provider is not configured. Please contact the platform team. "
+                )
+
+        # Delegate to the appropriate IO helper
+        if stream:
+            await self._astream(client, req, codec, attrs, ident)
+            return None
+        return await self._asend(client, req, codec, attrs, ident)
+
+    async def _asend(
+            self,
+            client: AIClient,
+            req: LLMRequest,
+            codec: BaseCodec | None,
+            attrs: dict[str, Any],
+            ident: Identity,
+    ) -> LLMResponse | None:
+        """
+        Non-streaming send/receive with retries, codec decode, and logging.
+        """
+        async with service_span(self._span("run", "send"), attributes=self.flatten_context()):
+            attempt = 1
+            max_attempts = max(1, self.max_attempts)
+            try:
+                while attempt <= max_attempts:
+                    self.context.update({
+                        "send.attempts": attempt,
+                        "send.max_attempts": max_attempts,
+                    })
+                    async with service_span(
+                            self._span("run", "send", "attempt", str(attempt)),
+                            attributes=self.flatten_context(),
+                    ):
+                        try:
+                            resp: LLMResponse = await client.send_request(req)
+
+                            # Tag response identity/correlation
+                            resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
+                            if getattr(resp, "request_correlation_id", None) is None:
+                                resp.request_correlation_id = req.correlation_id
+
+                            # Attach codec identity if missing (write-safe fields only)
+                            if hasattr(resp, "codec_identity") and not getattr(resp, "codec_identity", None):
                                 try:
                                     resp.codec_identity = req.codec_identity  # type: ignore[attr-defined]
                                 except Exception:
-                                    pass
+                                    logger.debug(
+                                        "failed to propagate codec_identity to response",
+                                        exc_info=True,
+                                    )
 
-                        # Let the codec decode/shape the response
-                        if codec is not None:
-                            await codec.adecode(resp)
+                            # Let the codec decode/shape the response
+                            if codec is not None:
+                                await codec.adecode(resp)
 
-                        self.emitter.emit_response(self.context, self.identity.as_str, resp)
-                        await self.on_success(self.context, resp)
+                            self.emitter.emit_response(self.context, ident.as_str, resp)
+                            await self.on_success(self.context, resp)
 
-                        logger.info(
-                            "llm.service.success",
-                            extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
-                        )
-                        return resp
-                    except Exception as e:
-                        if attempt >= max(1, self.max_attempts):
-                            self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
-                            await self.on_failure(self.context, e)
-                            logger.exception(
-                                "llm.service.error",
+                            logger.info(
+                                "llm.service.success",
                                 extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
                             )
-                            raise
-                        logger.warning(
-                            "llm.service.retrying",
-                            extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts},
-                        )
-                        await self._backoff_sleep(attempt)
-                        attempt += 1
+                            return resp
+                        except Exception as e:
+                            if attempt >= max_attempts:
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.exception(
+                                    "llm.service.error",
+                                    extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                                )
+                                raise
+                            logger.warning(
+                                "llm.service.retrying",
+                                extra={**attrs, "attempt": attempt, "max_attempts": max_attempts},
+                            )
+                            await self._backoff_sleep(attempt)
+                            attempt += 1
             finally:
                 if codec is not None:
                     try:
@@ -865,54 +1342,27 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                         logger.debug("codec teardown failed; continuing", exc_info=True)
         return None
 
-    async def run_stream(self, ctx: dict | None = None, **kwargs):
+    async def _astream(
+            self,
+            client: AIClient,
+            req: LLMRequest,
+            codec: BaseCodec | None,
+            attrs: dict[str, Any],
+            ident: Identity,
+    ) -> None:
         """
-        Execute the service with streaming enabled.
-
-        Any per-call `ctx` provided is merged into `self.context` up front so that
-        downstream helpers rely solely on `self.context`.
-
-        The codec is constructed per call, used to prepare the request, decode chunks,
-        and finalize the stream, then torn down.
+        Streaming send/receive with retries, codec chunk decode, and logging.
         """
-        if ctx:
-            incoming = ctx
-            if not isinstance(incoming, dict):
-                try:
-                    incoming = dict(incoming)  # type: ignore[arg-type]
-                except Exception:
-                    logger.warning(
-                        "Invalid ctx for %s; expected mapping-like, got %r",
-                        self.__class__.__name__,
-                        type(ctx),
-                    )
-                    incoming = {}
-            if incoming:
-                self.context.update(incoming)
-                self.check_required_context()
-
-        if not self.emitter:
-            raise ServiceConfigError("emitter not provided")
-
-        # Prepare request + codec instance + attrs for this call
-        req, codec, attrs = await self.aprepare(stream=True, **kwargs)
-
-        logger.info("simcore.service.%s.run_stream" % self.__class__.__name__, extra=attrs)
+        logger.info("simcore.service.%s.run_stream", self.__class__.__name__, extra=attrs)
         async with service_span(
-                f"simcore.service.{self.__class__.__name__}.run_stream",
-                attributes=self.flatten_context()
+                f"{self.span_prefix}.run.stream",
+                attributes=self.flatten_context(),
         ):
             try:
-                if codec is not None:
-                    await codec.asetup(context=self.context)
-                    await codec.aencode(req)
-
-                client = self.get_client()
-                self.emitter.emit_request(self.context, self.identity.as_str, req)
-
                 attempt = 1
+                max_attempts = max(1, self.max_attempts)
                 started = False
-                while attempt <= max(1, self.max_attempts) and not started:
+                while attempt <= max_attempts and not started:
                     try:
                         async for chunk in client.stream_request(req):
                             started = True
@@ -923,7 +1373,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                                 except AttributeError:
                                     # Older codecs may not implement the hook
                                     pass
-                            self.emitter.emit_stream_chunk(self.context, self.identity.as_str, chunk)
+                            self.emitter.emit_stream_chunk(self.context, ident.as_str, chunk)
 
                         # Allow codec to finalize any stream-level state
                         if codec is not None:
@@ -932,11 +1382,11 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                             except AttributeError:
                                 pass
 
-                        self.emitter.emit_stream_complete(self.context, self.identity.as_str, req.correlation_id)
+                        self.emitter.emit_stream_complete(self.context, ident.as_str, req.correlation_id)
                         return
                     except Exception as e:
-                        if started or attempt >= max(1, self.max_attempts):
-                            self.emitter.emit_failure(self.context, self.identity.as_str, req.correlation_id, str(e))
+                        if started or attempt >= max_attempts:
+                            self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
                             await self.on_failure(self.context, e)
                             logger.exception(
                                 "llm.service.stream.error",
@@ -945,7 +1395,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                             raise
                         logger.warning(
                             "llm.service.stream.retrying",
-                            extra={**attrs, "attempt": attempt, "max_attempts": self.max_attempts},
+                            extra={**attrs, "attempt": attempt, "max_attempts": max_attempts},
                         )
                         await self._backoff_sleep(attempt)
                         attempt += 1
@@ -955,6 +1405,27 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                         await codec.ateardown()
                     except Exception:
                         logger.debug("codec teardown failed; continuing", exc_info=True)
+
+    async def run_stream(self, **ctx):
+        """
+        Execute the service with streaming enabled.
+
+        Any per-call `context` provided is merged into `self.context` up front so that
+        downstream helpers rely solely on `self.context`.
+
+        The codec is constructed per call, used to prepare the request, decode chunks,
+        and finalize the stream, then torn down.
+        """
+        try:
+            self.context["llm.stream"] = True
+        except Exception:
+            logger.debug("failed to stamp llm.stream into context", exc_info=True)
+
+        async with service_span(
+                f"{self.span_prefix}.execute.stream",
+                attributes=self.flatten_context(),
+        ):
+            await self._arun_core(stream=True, **ctx)
 
     # ----------------------------------------------------------------------
     # Result hooks
