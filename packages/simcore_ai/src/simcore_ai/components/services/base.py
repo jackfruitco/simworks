@@ -36,7 +36,7 @@ from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptS
 from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...tracing import get_tracer, service_span, SpanPath
-from ...types import Request, LLMRequestMessage, Response, LLMTextPart, LLMRole, StrictBaseModel
+from ...types import Request, InputItem, Response, TextContent, ContentRole, StrictBaseModel
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
@@ -958,7 +958,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         Build a provider-agnostic `Request` for this service from the resolved `Prompt`.
 
-        Default implementation uses the PromptEngine output to create messages and
+        Default implementation uses the PromptEngine output to create input and
         stamps identity and codec routing. Subclasses may override hooks instead of
         replacing this whole method.
 
@@ -976,8 +976,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ):
             prompt = await self.aget_prompt()
 
-            # 2) Build messages via hooks
-            messages: list[LLMRequestMessage] = []
+            # 2) Build input via hooks
+            messages: list[InputItem] = []
             messages += await self._abuild_request_instructions(prompt)
             messages += await self._abuild_request_user_input(prompt)
             messages += await self._abuild_request_extras(prompt)
@@ -1002,7 +1002,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         # 3) Create a request and stamp identity (context is kept on self.context only)
         ident = self.identity
-        req = Request(messages=messages, stream=False)
+        req = Request(input=messages, stream=False)
         req.namespace = ident.namespace
         req.kind = ident.kind
         req.name = ident.name
@@ -1012,56 +1012,56 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         return req
 
     # --------------------------- build hooks ---------------------------
-    def _coerce_role(self, value: str | LLMRole) -> LLMRole:
-        """Coerce an arbitrary role input to a valid `LLMRole` Enum.
+    def _coerce_role(self, value: str | ContentRole) -> ContentRole:
+        """Coerce an arbitrary role input to a valid `ContentRole` Enum.
 
         Rules:
-        - If an `LLMRole` is passed, return it unchanged.
-        - If a string is passed, try value-based lookup case-insensitively (e.g., "user" → LLMRole.USER).
-        - If that fails, try name-based lookup (e.g., "USER" → LLMRole.USER).
-        - Fallback to `LLMRole.SYSTEM` on unknown inputs.
+        - If an `ContentRole` is passed, return it unchanged.
+        - If a string is passed, try value-based lookup case-insensitively (e.g., "user" → ContentRole.USER).
+        - If that fails, try name-based lookup (e.g., "USER" → ContentRole.USER).
+        - Fallback to `ContentRole.SYSTEM` on unknown inputs.
         """
-        if isinstance(value, LLMRole):
+        if isinstance(value, ContentRole):
             return value
         v = str(value or "").strip()
         if not v:
-            return LLMRole.SYSTEM
+            return ContentRole.SYSTEM
         # Prefer value-based, case-insensitive
         try:
-            return LLMRole(v.lower())
+            return ContentRole(v.lower())
         except Exception:
             pass
         # Fallback: name-based, case-insensitive (Enum names are upper-case)
         try:
-            return LLMRole(v.upper())
+            return ContentRole(v.upper())
         except Exception:
-            return LLMRole.SYSTEM
+            return ContentRole.SYSTEM
 
-    async def _abuild_request_instructions(self, prompt: Prompt) -> list[LLMRequestMessage]:
-        """Create developer messages from prompt.instruction (if present)."""
-        messages: list[LLMRequestMessage] = []
+    async def _abuild_request_instructions(self, prompt: Prompt) -> list[InputItem]:
+        """Create developer input from prompt.instruction (if present)."""
+        messages: list[InputItem] = []
         instruction = getattr(prompt, "instruction", None)
         if instruction:
-            messages.append(LLMRequestMessage(role=LLMRole.DEVELOPER, content=[LLMTextPart(text=str(instruction))]))
+            messages.append(InputItem(role=ContentRole.DEVELOPER, content=[TextContent(text=str(instruction))]))
         logger.debug(self._build_stdout(
             "prompt", "built developer message(s) from p.instruction(s)", indent_level=4, success=True
         ))
         return messages
 
-    async def _abuild_request_user_input(self, prompt: Prompt) -> list[LLMRequestMessage]:
-        """Create user messages from prompt.message (if present)."""
-        messages: list[LLMRequestMessage] = []
+    async def _abuild_request_user_input(self, prompt: Prompt) -> list[InputItem]:
+        """Create user input from prompt.message (if present)."""
+        messages: list[InputItem] = []
         message = getattr(prompt, "message", None)
         if message:
-            messages.append(LLMRequestMessage(role=LLMRole.USER, content=[LLMTextPart(text=str(message))]))
+            messages.append(InputItem(role=ContentRole.USER, content=[TextContent(text=str(message))]))
         logger.debug(self._build_stdout(
             "prompt", "built user message(s) from p.message(s)",indent_level=4, success=True
         ))
         return messages
 
-    async def _abuild_request_extras(self, prompt: Prompt) -> list[LLMRequestMessage]:
-        """Create extra messages from prompt.extra_messages ((role, text) pairs)."""
-        messages: list[LLMRequestMessage] = []
+    async def _abuild_request_extras(self, prompt: Prompt) -> list[InputItem]:
+        """Create extra input from prompt.extra_messages ((role, text) pairs)."""
+        messages: list[InputItem] = []
         extras = getattr(prompt, "extra_messages", None) or []
         if extras:
             logger.debug(self._build_stdout(
@@ -1072,8 +1072,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             ))
         for role, text in extras:
             if text:
-                llm_role: LLMRole = self._coerce_role(role)
-                messages.append(LLMRequestMessage(role=llm_role, content=[LLMTextPart(text=str(text))]))
+                llm_role: ContentRole = self._coerce_role(role)
+                messages.append(InputItem(role=llm_role, content=[TextContent(text=str(text))]))
                 msg_preview = text[:25] + "..." if len(text) > 25 else text
                 logger.debug(self._build_stdout(
                     "prompt",

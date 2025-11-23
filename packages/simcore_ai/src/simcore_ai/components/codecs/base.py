@@ -15,7 +15,7 @@ from ..schemas.base import BaseOutputSchema
 from ...components import BaseComponent
 from ...identity import IdentityMixin
 from ...tracing import service_span_sync
-from ...types import Request, Response, LLMStreamChunk, LLMTextPart, LLMToolResultPart
+from ...types import Request, Response, StreamChunk, TextContent, ToolResultContent
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         return await self.adecode(resp)
 
     # ---- Streaming hooks --------------------------------------------------
-    async def adecode_chunk(self, chunk: LLMStreamChunk, *, is_final: bool = False) -> tuple[
+    async def adecode_chunk(self, chunk: StreamChunk, *, is_final: bool = False) -> tuple[
         BaseOutputSchema | None, bool]:
         """
         Consume a streaming chunk. Return (partial_model_or_None, done_bool).
@@ -204,7 +204,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     def _extract_from_json_text(resp: Response) -> dict | None:
         for msg in getattr(resp, "output", []) or []:
             for part in getattr(msg, "content", []) or []:
-                if isinstance(part, LLMTextPart):
+                if isinstance(part, TextContent):
                     text = getattr(part, "text", None)
                     if not text:
                         continue
@@ -220,7 +220,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     def _extract_from_tool_result(resp: Response) -> dict | None:
         for msg in getattr(resp, "output", []) or []:
             for part in getattr(msg, "content", []) or []:
-                if isinstance(part, LLMToolResultPart):
+                if isinstance(part, ToolResultContent):
                     mime = (getattr(part, "mime_type", "") or "").split(";", 1)[0].strip().lower()
                     if mime in {"application/json", "text/json"} and getattr(part, "data_b64", None):
                         try:

@@ -32,9 +32,9 @@ class DjangoBaseService(BaseService, ABC):
     ---------------------
     `BaseService` provides a concrete `abuild_request(**ctx) -> Request`
     that assembles the final provider-agnostic request using hooks:
-      - `_abuild_request_instructions(prompt, **ctx) -> list[LLMRequestMessage]`
-      - `_abuild_request_user_input(prompt, **ctx) -> list[LLMRequestMessage]`
-      - `_abuild_request_extras(prompt, **ctx) -> list[LLMRequestMessage]`
+      - `_abuild_request_instructions(prompt, **ctx) -> list[InputItem]`
+      - `_abuild_request_user_input(prompt, **ctx) -> list[InputItem]`
+      - `_abuild_request_extras(prompt, **ctx) -> list[InputItem]`
 
     Prompt assembly is delegated to `BaseService.aget_prompt()`, which uses the
     PromptEngine and (optional) PromptPlan.

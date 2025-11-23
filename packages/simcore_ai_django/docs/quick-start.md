@@ -25,10 +25,11 @@ If all components share the same tuple3 identity, they work together automatical
 Define your output fields only.
 
 ```python
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema):
-    messages: list[DjangoLLMResponseItem]
+    messages: list[DjangoOutputItem]
 ```
 Tip: To align identities across all components without extra wiring, add identity mixins (e.g., ChatlabMixin, StandardizedPatientMixin) or set origin/bucket as class attrs. Otherwise, the Django autoderive rules will use your app label for origin, default for bucket, and a stripped/snake class name for name.
 
@@ -73,7 +74,7 @@ from simcore_ai_django.api.types import DjangoBaseCodec
 @codec
 class InitialCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
-        # Persist messages, metadata, results, etc.
+        # Persist input, metadata, results, etc.
         return {"ai_response_id": 123}
 ```
 

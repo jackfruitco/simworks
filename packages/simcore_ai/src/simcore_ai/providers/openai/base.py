@@ -38,7 +38,7 @@ from openai.types.responses.response_output_item import ImageGenerationCall
 
 from simcore_ai.tracing import service_span, service_span_sync, flatten_context as _flatten_context
 from simcore_ai.types import (
-    LLMToolResultPart,
+    ToolResultContent,
     LLMToolCall,
     Request,
     Response,
@@ -134,7 +134,7 @@ class OpenAIProvider(BaseProvider):
         Convert provider-native tool output into normalized tool call/result parts.
 
         Currently supports:
-            - ImageGenerationCall -> (LLMToolCall, LLMToolResultPart)
+            - ImageGenerationCall -> (LLMToolCall, ToolResultContent)
         """
         with service_span_sync(
                 "simcore.tools.handle_output",
@@ -149,7 +149,7 @@ class OpenAIProvider(BaseProvider):
                 mime = getattr(item, "mime_type", None) or "image/png"
                 return (
                     LLMToolCall(call_id=call_id, name="image_generation", arguments={}),
-                    LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64),
+                    ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64),
                 )
             return None
 
@@ -158,7 +158,7 @@ class OpenAIProvider(BaseProvider):
         Execute a non-streaming request against the OpenAI Responses API.
 
         Args:
-            req: Normalized request DTO (messages, tools, schema, etc.).
+            req: Normalized request DTO (input, tools, schema, etc.).
             timeout: Optional per-call timeout; falls back to `self.timeout_s`.
 
         Returns:
@@ -186,10 +186,10 @@ class OpenAIProvider(BaseProvider):
                 else:
                     logger.debug("provider '%s':: no tools to adapt", self.name)
 
-            # Serialize input messages (child span)
+            # Serialize input input (child span)
             async with service_span("simcore.prompt.serialize",
-                                    attributes={"simcore.msg.count": len(req.messages or [])}):
-                input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.messages]
+                                    attributes={"simcore.msg.count": len(req.input or [])}):
+                input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.input]
 
             model_name = req.model or self.default_model or "gpt-4o-mini"
 

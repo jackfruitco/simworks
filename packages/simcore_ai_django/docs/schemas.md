@@ -22,7 +22,7 @@ from simcore_ai_django.api.types import (
     DjangoBaseOutputSchema,
     DjangoBaseOutputBlock,
     DjangoBaseOutputItem,
-    DjangoLLMResponseItem,
+    DjangoOutputItem,
 )
 ```
 
@@ -35,10 +35,11 @@ from simcore_ai_django.api.types import (
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema):
-    messages: list[DjangoLLMResponseItem]
+    messages: list[DjangoOutputItem]
 ```
 
 Identity autoderives (e.g., `chatlab.standardized_patient.initial`) when your app or mixins define `origin`/`bucket`.
@@ -58,7 +59,7 @@ class StandardizedPatientMixin(DjangoIdentityMixin):
 
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
-    messages: list[DjangoLLMResponseItem]
+    messages: list[DjangoOutputItem]
 ```
 
 Identity resolves to:

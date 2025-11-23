@@ -20,17 +20,17 @@ from uuid import UUID
 
 from simcore_ai.types import (
     Request,
-    LLMRequestMessage,
+    InputItem,
     Response,
-    LLMResponseItem,
-    LLMUsage,
+    OutputItem,
+    UsageContent,
 )
 from .django_dtos import (
     DjangoRequest,
-    DjangoLLMRequestMessage,
+    DjangoInputItem,
     DjangoResponse,
-    DjangoLLMResponseItem,
-    DjangoLLMUsage,
+    DjangoOutputItem,
+    DjangoUsageContent,
 )
 
 __all__ = [
@@ -41,28 +41,28 @@ __all__ = [
 # ---------------------- helpers -----------------------------------------
 
 def _promote_messages(
-        messages: Optional[Sequence[LLMRequestMessage]], *, request_db_pk: int | UUID | None = None,
+        messages: Optional[Sequence[InputItem]], *, request_db_pk: int | UUID | None = None,
         request_correlation_id: UUID | None = None
-) -> List[DjangoLLMRequestMessage]:
+) -> List[DjangoInputItem]:
     """
-    Promote a sequence of LLMRequestMessage core DTOs into DjangoLLMRequestMessage DTOs.
+    Promote a sequence of InputItem core DTOs into DjangoInputItem DTOs.
 
     Parameters:
-    - messages: Optional sequence of LLMRequestMessage to promote.
+    - input: Optional sequence of InputItem to promote.
     - request_db_pk: Optional database primary key to associate with each message.
     - request_correlation_id: Optional correlation UUID to associate with each message.
 
     Returns:
-    - List of DjangoLLMRequestMessage with sequence_index preserving order.
+    - List of DjangoInputItem with sequence_index preserving order.
     - Returns empty list if input is None or empty.
     """
-    out: List[DjangoLLMRequestMessage] = []
+    out: List[DjangoInputItem] = []
     if not messages:
         return out
     for idx, msg in enumerate(messages):
         data = msg.model_dump(mode="json")
         out.append(
-            DjangoLLMRequestMessage(
+            DjangoInputItem(
                 **data,
                 request_db_pk=request_db_pk,
                 sequence_index=idx,
@@ -73,32 +73,32 @@ def _promote_messages(
 
 
 def _promote_response_items(
-        items: Optional[Sequence[LLMResponseItem]], *, response_db_pk: int | UUID | None = None,
+        items: Optional[Sequence[OutputItem]], *, response_db_pk: int | UUID | None = None,
         request_db_pk: int | UUID | None = None,
         request_correlation_id: UUID | None = None,
         response_correlation_id: UUID | None = None,
-) -> List[DjangoLLMResponseItem]:
+) -> List[DjangoOutputItem]:
     """
-    Promote a sequence of LLMResponseItem core DTOs into DjangoLLMResponseItem DTOs.
+    Promote a sequence of OutputItem core DTOs into DjangoOutputItem DTOs.
 
     Parameters:
-    - items: Optional sequence of LLMResponseItem to promote.
+    - items: Optional sequence of OutputItem to promote.
     - response_db_pk: Optional database primary key for the response.
     - request_db_pk: Optional database primary key for the request.
     - request_correlation_id: Optional correlation UUID for the request.
     - response_correlation_id: Optional correlation UUID for the response.
 
     Returns:
-    - List of DjangoLLMResponseItem with sequence_index preserving order.
+    - List of DjangoOutputItem with sequence_index preserving order.
     - Returns empty list if input is None or empty.
     """
-    out: List[DjangoLLMResponseItem] = []
+    out: List[DjangoOutputItem] = []
     if not items:
         return out
     for idx, it in enumerate(items):
         data = it.model_dump(mode="json")
         out.append(
-            DjangoLLMResponseItem(
+            DjangoOutputItem(
                 **data,
                 response_db_pk=response_db_pk,
                 request_db_pk=request_db_pk,
@@ -111,30 +111,30 @@ def _promote_response_items(
 
 
 def _promote_usage(
-        usage: Optional[LLMUsage], *, response_db_pk: int | UUID | None = None,
+        usage: Optional[UsageContent], *, response_db_pk: int | UUID | None = None,
         request_correlation_id: UUID | None = None,
         response_correlation_id: UUID | None = None,
-) -> Optional[DjangoLLMUsage]:
+) -> Optional[DjangoUsageContent]:
     """
-    Promote an optional LLMUsage core DTO into DjangoLLMUsage DTO.
+    Promote an optional UsageContent core DTO into DjangoUsageContent DTO.
 
     Passes through usage fields and stamps correlation and database keys.
 
     Parameters:
-    - usage: Optional LLMUsage to promote.
+    - usage: Optional UsageContent to promote.
     - response_db_pk: Optional database primary key for the response.
     - request_correlation_id: Optional correlation UUID for the request.
     - response_correlation_id: Optional correlation UUID for the response.
 
     Returns:
-    - DjangoLLMUsage instance or None if usage is None.
+    - DjangoUsageContent instance or None if usage is None.
     """
     if not usage:
         return None
     data = usage.model_dump(mode="json")
-    return DjangoLLMUsage(**data, response_db_pk=response_db_pk,
-                          request_correlation_id=request_correlation_id,
-                          response_correlation_id=response_correlation_id)
+    return DjangoUsageContent(**data, response_db_pk=response_db_pk,
+                              request_correlation_id=request_correlation_id,
+                              response_correlation_id=response_correlation_id)
 
 
 # ---------------------- public API --------------------------------------
@@ -152,8 +152,8 @@ def promote_request(req: Request, **overlay: Any) -> DjangoRequest:
     data = req.model_dump(mode="json")
     dj = DjangoRequest(**data, **overlay)
 
-    # Build rich messages for convenience (sequence-indexed), if base messages exist
-    dj.messages_rich = _promote_messages(req.messages, request_db_pk=dj.db_pk,
+    # Build rich input for convenience (sequence-indexed), if base input exist
+    dj.messages_rich = _promote_messages(req.input, request_db_pk=dj.db_pk,
                                          request_correlation_id=getattr(dj, "correlation_id", None))
     return dj
 

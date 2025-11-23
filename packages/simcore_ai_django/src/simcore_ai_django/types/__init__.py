@@ -18,21 +18,21 @@ __all__ = [
 
     "DjangoLLMBaseTool",
 
-    "DjangoLLMRequestMessage",
+    "DjangoInputItem",
     "DjangoRequest",
-    "LLMRole",
+    "ContentRole",
 
     "DjangoResponse",
-    "DjangoLLMResponseItem",
-    "DjangoLLMUsage",
+    "DjangoOutputItem",
+    "DjangoUsageContent",
 
     "DjangoLLMToolCall",
 
-    "LLMTextPart",
-    "LLMImagePart",
-    "LLMAudioPart",
-    "LLMToolCallPart",
-    "LLMToolResultPart",
+    "TextContent",
+    "ImageContent",
+    "AudioContent",
+    "ToolContent",
+    "ToolResultContent",
 
     "demote_request",
     "demote_response",

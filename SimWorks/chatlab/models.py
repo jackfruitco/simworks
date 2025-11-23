@@ -37,7 +37,7 @@ class Message(PersistModel):
     timestamp = models.DateTimeField(auto_now_add=True)
 
     simulation = models.ForeignKey(
-        Simulation, on_delete=models.CASCADE, related_name="messages"
+        Simulation, on_delete=models.CASCADE, related_name="input"
     )
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     content = models.TextField(blank=True, null=True)
@@ -55,7 +55,7 @@ class Message(PersistModel):
 
     # Media
     media = models.ManyToManyField(
-        SimulationImage, through="MessageMediaLink", related_name="messages", blank=True
+        SimulationImage, through="MessageMediaLink", related_name="input", blank=True
     )
 
     # UX/Status enhancements
@@ -69,7 +69,7 @@ class Message(PersistModel):
         "simulation.AIResponse",
         on_delete=models.CASCADE,
         verbose_name="AI Response",
-        related_name="messages",
+        related_name="input",
         null=True,
         blank=True,
     )
@@ -94,7 +94,7 @@ class Message(PersistModel):
             Message.objects.filter(
                 simulation=self.simulation,
                 order__lt=self.order,
-                role=RoleChoices.ASSISTANT,  # Only consider ASSISTANT messages
+                role=RoleChoices.ASSISTANT,  # Only consider ASSISTANT input
                 openai_id__isnull=False,  # That have an provider_response_id set
             )
             .order_by("-order")

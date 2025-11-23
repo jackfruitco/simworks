@@ -9,7 +9,7 @@ from simcore_ai.client.schemas import AIClientConfig
 from simcore_ai.providers import BaseProvider
 from simcore_ai.providers.exceptions import ProviderCallError
 from simcore_ai.tracing import service_span
-from simcore_ai.types import Response, Request, LLMStreamChunk
+from simcore_ai.types import Response, Request, StreamChunk
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +190,8 @@ class AIClient:
 
             return resp
 
-    async def stream_request(self, req: Request) -> AsyncIterator[LLMStreamChunk]:
-        """Pass-through streaming; providers may yield LLMStreamChunk deltas."""
+    async def stream_request(self, req: Request) -> AsyncIterator[StreamChunk]:
+        """Pass-through streaming; providers may yield StreamChunk deltas."""
         async with service_span(
                 "simcore.client.stream_request",
                 attributes={

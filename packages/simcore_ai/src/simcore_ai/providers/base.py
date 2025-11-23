@@ -12,11 +12,11 @@ from ..tracing import service_span_sync
 from ..types import (
     Request,
     Response,
-    LLMResponseItem,
-    LLMStreamChunk,
-    LLMTextPart,
-    LLMToolResultPart,
-    LLMToolCall, LLMRole,
+    OutputItem,
+    StreamChunk,
+    TextContent,
+    ToolResultContent,
+    LLMToolCall, ContentRole,
 )
 from ..types.tools import BaseLLMTool
 
@@ -66,7 +66,7 @@ class BaseProvider(ABC):
       - Providers implement `call` (non-stream) and `stream` (streaming) using their SDKs.
       - Providers supply *hook methods* to extract text, output, usage, and meta
         from the raw SDK response. The shared `adapt_response` turns those into an
-        `Response` via the normalized LLMResponseItem → DTO flow.
+        `Response` via the normalized OutputItem → DTO flow.
     """
 
     name: str
@@ -99,7 +99,7 @@ class BaseProvider(ABC):
     # If you have a sync-only SDK, you may still integrate by running the sync call in a thread
     # (the AIClient will do this via `asyncio.to_thread` when it detects a sync `call`).
     #
-    # Streaming MUST be async: `async def stream(self, req) -> AsyncIterator[LLMStreamChunk]`.
+    # Streaming MUST be async: `async def stream(self, req) -> AsyncIterator[StreamChunk]`.
     # Sync streaming is not supported by the client adapter.
 
     @abstractmethod
@@ -116,10 +116,10 @@ class BaseProvider(ABC):
         ...
 
     @abstractmethod
-    async def stream(self, req: Request) -> AsyncIterator[LLMStreamChunk]:
+    async def stream(self, req: Request) -> AsyncIterator[StreamChunk]:
         """Canonical async streaming interface.
 
-        MUST be implemented as an async generator yielding `LLMStreamChunk` items.
+        MUST be implemented as an async generator yielding `StreamChunk` items.
         The core client requires an async `stream(...)` and will raise if missing.
         """
         ...
@@ -165,11 +165,11 @@ class BaseProvider(ABC):
         Provider-agnostic response construction pipeline.
 
         Steps:
-          1) Extract primary assistant text (if any) and add as an LLMResponseItem with LLMTextPart.
+          1) Extract primary assistant text (if any) and add as an OutputItem with TextContent.
           2) Parse structured text to the declared Pydantic schema (optional, best-effort) via _maybe_parse_to_schema.
-             (This is for app-side validation/debug; the normalized messages are still built from parts.)
+             (This is for app-side validation/debug; the normalized input are still built from parts.)
           3) Inspect provider-specific output (images/tools) and convert into normalized tool calls and
-             LLMToolResultPart messages.
+             ToolResultContent input.
           4) Attach usage and provider_meta.
 
         Args:
@@ -184,13 +184,13 @@ class BaseProvider(ABC):
                     "simcore.provider_label": getattr(self, "provider_label", None),
                 },
         ) as span:
-            messages: list[LLMResponseItem] = []
+            messages: list[OutputItem] = []
             tool_calls: list[LLMToolCall] = []
 
             # 1) Primary assistant text
             text_out = self._extract_text(resp)
             if text_out:
-                messages.append(LLMResponseItem(role=LLMRole.ASSISTANT, content=[LLMTextPart(text=text_out)]))
+                messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[TextContent(text=text_out)]))
 
             # 2) Optional schema parse (best-effort); does not alter normalized message parts
             parsed = None
@@ -206,7 +206,7 @@ class BaseProvider(ABC):
                     if pair is not None:
                         call, part = pair
                         tool_calls.append(call)
-                        messages.append(LLMResponseItem(role=LLMRole.ASSISTANT, content=[part]))
+                        messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[part]))
                         continue
 
                     # 3b) Generic fallback: image-like results
@@ -217,9 +217,9 @@ class BaseProvider(ABC):
                         mime = getattr(obj, "mime_type", None) or "image/png"
                         if b64:
                             messages.append(
-                                LLMResponseItem(
-                                    role=LLMRole.ASSISTANT,
-                                    content=[LLMToolResultPart(call_id=call_id, mime_type=mime, data_b64=b64)],
+                                OutputItem(
+                                    role=ContentRole.ASSISTANT,
+                                    content=[ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64)],
                                 )
                             )
                         continue
@@ -240,15 +240,15 @@ class BaseProvider(ABC):
             except Exception:
                 pass
 
-            from ..types.dtos import LLMUsage
+            from ..types.dtos import UsageContent
 
             usage_data = self._extract_usage(resp)
             usage = None
             if usage_data:
                 try:
-                    usage = LLMUsage.model_validate(usage_data)
+                    usage = UsageContent.model_validate(usage_data)
                 except Exception:
-                    usage = LLMUsage(**usage_data) if isinstance(usage_data, dict) else None
+                    usage = UsageContent(**usage_data) if isinstance(usage_data, dict) else None
 
             return Response(
                 output=messages,
@@ -379,10 +379,10 @@ class BaseProvider(ABC):
         """Return provider-specific metadata for diagnostics (model, ids, raw dump)."""
         ...
 
-    def _normalize_tool_output(self, item: Any) -> Optional[tuple[LLMToolCall, LLMToolResultPart]]:
+    def _normalize_tool_output(self, item: Any) -> Optional[tuple[LLMToolCall, ToolResultContent]]:
         """
         Convert a provider-native output item (tool call/result, images, audio, etc.) into a
-        normalized (LLMToolCall, LLMToolResultPart) pair. Return None if the item is not a tool
+        normalized (LLMToolCall, ToolResultContent) pair. Return None if the item is not a tool
         output you recognize, and the base class will try generic fallbacks.
         """
         return None

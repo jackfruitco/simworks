@@ -10,10 +10,10 @@ from simcore_ai_django.models import AIRequestAudit, AIResponseAudit
 # Django-rich DTOs (overlays)
 from simcore_ai_django.types.django_dtos import (
     DjangoRequest,
-    DjangoLLMRequestMessage,
+    DjangoInputItem,
     DjangoResponse,
-    DjangoLLMResponseItem,
-    DjangoLLMUsage,
+    DjangoOutputItem,
+    DjangoUsageContent,
 )
 
 
@@ -58,11 +58,11 @@ def _dump_json(obj: Any) -> Any:
     return str(obj)
 
 
-def _dump_messages(messages: Optional[Iterable[DjangoLLMRequestMessage]]) -> list[dict]:
+def _dump_messages(messages: Optional[Iterable[DjangoInputItem]]) -> list[dict]:
     return [_dump_json(m) for m in (messages or [])]
 
 
-def _dump_response_items(items: Optional[Iterable[DjangoLLMResponseItem]]) -> list[dict]:
+def _dump_response_items(items: Optional[Iterable[DjangoOutputItem]]) -> list[dict]:
     return [_dump_json(it) for it in (items or [])]
 
 
@@ -73,7 +73,7 @@ def write_request_audit(dj_req: DjangoRequest) -> int:
     """
     Persist an audit row for an outbound request and return its PK.
 
-    - Stores normalized request messages (prefer rich messages if available).
+    - Stores normalized request input (prefer rich input if available).
     - Stores response_schema_json* fields if they are already attached at emit time.
     """
     with service_span_sync(
@@ -86,7 +86,7 @@ def write_request_audit(dj_req: DjangoRequest) -> int:
             "simcore.stream": bool(getattr(dj_req, "stream", False)),
         },
     ):
-        messages = dj_req.messages_rich or dj_req.messages or []
+        messages = dj_req.messages_rich or dj_req.input or []
         tools = getattr(dj_req, "tools", None)  # if your DTO includes normalized tool specs
 
         row = AIRequestAudit.objects.create(

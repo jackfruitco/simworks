@@ -17,7 +17,7 @@ When components share the same **tuple³ identity** (`origin.bucket.name`), the 
 1. The **Service** asks `PromptEngine` to build a prompt.
 2. The engine instantiates each `PromptSection` in the service’s `prompt_plan` (or the section matching the service identity).
 3. Sections emit instructions/messages; the engine merges them into a single `Prompt` dataclass.
-4. The service converts that prompt into structured `LLMRequestMessage` objects.
+4. The service converts that prompt into structured `InputItem` objects.
 
 ---
 

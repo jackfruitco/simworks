@@ -42,11 +42,11 @@ Key ingredients:
 
 The DTO layer keeps data structures portable across providers:
 
-- `LLMRequestMessage` &mdash; a single prompt turn with `role` and a list of content parts (text, images, tool calls, etc.).
+- `InputItem` &mdash; a single prompt turn with `role` and a list of content parts (text, images, tool calls, etc.).
 - `Request` &mdash; the full request envelope: model choice, normalized messages, streaming flag, tool declarations, and codec hints.
 - `Response` &mdash; the normalized result containing response items, usage statistics, provider metadata, and tool call records.
-- `LLMResponseItem` &mdash; an assistant turn expressed as structured parts (text chunks, tool outputs, images, audio).
-- `LLMStreamChunk` &mdash; incremental streaming deltas emitted while a request is in-flight.
+- `OutputItem` &mdash; an assistant turn expressed as structured parts (text chunks, tool outputs, images, audio).
+- `StreamChunk` &mdash; incremental streaming deltas emitted while a request is in-flight.
 - `BaseOutputSchema` &mdash; base class for typed response contracts that codecs can validate against.
 
 All DTOs inherit from a strict `BaseModel`, so extra fields raise validation errors and serialization stays predictable.
@@ -62,27 +62,27 @@ For simple flows, instantiate `Prompt` directly and translate it into request me
 
 ```python
 from simcore_ai.promptkit import Prompt
-from simcore_ai.types import LLMRequestMessage, LLMTextPart
+from simcore_ai.types import InputItem, TextContent
 
 prompt = Prompt(
     instruction="You are a concise assistant.",
     message="Reply with JSON containing a 'summary' field for the provided text.",
 )
 
-messages: list[LLMRequestMessage] = []
+messages: list[InputItem] = []
 
 if prompt.instruction:
     messages.append(
-        LLMRequestMessage(role="developer", content=[LLMTextPart(text=prompt.instruction)])
+        InputItem(role="developer", content=[TextContent(text=prompt.instruction)])
     )
 
 if prompt.message:
     messages.append(
-        LLMRequestMessage(role="user", content=[LLMTextPart(text=prompt.message)])
+        InputItem(role="user", content=[TextContent(text=prompt.message)])
     )
 
 for role, text in prompt.extra_messages:
-    messages.append(LLMRequestMessage(role=role, content=[LLMTextPart(text=text)]))
+    messages.append(InputItem(role=role, content=[TextContent(text=text)]))
 ```
 
 For reusable, testable prompt sections, subclass `PromptSection` and use `PromptEngine` to render them. In the example below, `payload` represents the request object carrying runtime data (for example, an instance of `SummaryRequest`).
@@ -107,7 +107,7 @@ class ArticleSection(PromptSection):
 prompt = await PromptEngine.abuild_from(SystemSection, ArticleSection, title=payload.title, body=payload.body)
 ```
 
-The resulting `Prompt` can be converted to `LLMRequestMessage` instances using the helper shown above.
+The resulting `Prompt` can be converted to `InputItem` instances using the helper shown above.
 
 ## Codecs (`simcore_ai.codecs`)
 
@@ -166,7 +166,7 @@ Send requests using normalized DTOs:
 ```python
 from simcore_ai.types import Request
 
-request = Request(model="gpt-4o-mini", messages=messages)
+request = Request(model="gpt-4o-mini", input=messages)
 response = await client.send_request(request)
 ```
 
@@ -187,7 +187,8 @@ from dataclasses import dataclass
 from simcore_ai.client import get_default_client
 from simcore_ai.promptkit import Prompt
 from simcore_ai.services import BaseService
-from simcore_ai.types import LLMRequestMessage, LLMTextPart
+from simcore_ai.types import InputItem, TextContent
+
 
 # reuse `codec = KeywordCodec()` from the codecs section above
 
@@ -217,17 +218,17 @@ class KeywordService(BaseService):
     def select_codec(self):
         return codec  # return an instance or class of BaseCodec
 
-    async def build_request_messages(self, simulation) -> list[LLMRequestMessage]:
+    async def build_request_messages(self, simulation) -> list[InputItem]:
         prompt = Prompt(
             instruction="You return keyword lists as JSON.",
             message=f"Reply with {{\"keywords\": [...]}} for: {simulation.text}",
         )
 
-        messages: list[LLMRequestMessage] = []
+        messages: list[InputItem] = []
         if prompt.instruction:
-            messages.append(LLMRequestMessage(role="developer", content=[LLMTextPart(text=prompt.instruction)]))
+            messages.append(InputItem(role="developer", content=[TextContent(text=prompt.instruction)]))
         if prompt.message:
-            messages.append(LLMRequestMessage(role="user", content=[LLMTextPart(text=prompt.message)]))
+            messages.append(InputItem(role="user", content=[TextContent(text=prompt.message)]))
         return messages
 
 
@@ -268,7 +269,7 @@ The generated class still expects an emitter and simulation context; only the li
 
 ## Streaming
 
-- **Direct client streaming** &mdash; set `stream=True` on `Request` and consume `AIClient.stream_request(request)` to receive `LLMStreamChunk` items as soon as the provider produces them.
+- **Direct client streaming** &mdash; set `stream=True` on `Request` and consume `AIClient.stream_request(request)` to receive `StreamChunk` items as soon as the provider produces them.
 - **Service streaming** &mdash; call `await service.run_stream(simulation)` to let the service orchestrate streaming, retries, and telemetry; streaming data is pushed through the configured emitter.
 
 Each stream chunk exposes `delta` (text), optional `tool_call_delta`, and incremental usage metadata.
@@ -320,7 +321,7 @@ Because services operate on DTOs and dependency injection, unit testing stays st
 
 - Inject a fake `AIClient` that returns canned `Response` objects.
 - Provide a lightweight emitter that records emitted events for assertions.
-- Assert on prompt rendering by calling your helper that converts prompts into `LLMRequestMessage` lists.
+- Assert on prompt rendering by calling your helper that converts prompts into `InputItem` lists.
 
 ```python
 from simcore_ai.types import Response

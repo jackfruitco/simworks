@@ -76,7 +76,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room_name = f"simulation_{self.simulation_id}"
         self.room_group_name = self.room_name
 
-        # Join the room group for broadcasting messages
+        # Join the room group for broadcasting input
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
         ChatConsumer.log(
@@ -84,7 +84,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             msg=f"User {func_name}ed to room {self.room_group_name} (channel: {self.channel_name})",
         )
 
-        # Check if the simulation is new (i.e., no messages already exist), then
+        # Check if the simulation is new (i.e., no input already exist), then
         # Send connect an init message, then, if new simulation,
         # Simulate System User typing
         is_new_simulation = not await Message.objects.filter(
@@ -136,7 +136,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data: str = None, bytes_data=None) -> None:
         """
-        Handles incoming WebSocket messages by parsing the data and routing it to the appropriate
+        Handles incoming WebSocket input by parsing the data and routing it to the appropriate
         handler based on the event type.
 
         This method receives data in either textual or byte format and determines the event type
@@ -159,7 +159,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if ended:
             # Always allow lightweight client lifecycle and typing signals
             allowed_when_ended = {"client_ready", "typing", "stopped_typing"}
-            # Also allow instructor/feedback messages to continue after end
+            # Also allow instructor/feedback input to continue after end
             is_feedback_chat = event_type == "chat.message_created" and data.get("feedbackConversation") is True
             if event_type not in allowed_when_ended and not is_feedback_chat:
                 ChatConsumer.log(func_name, f"dropping '{event_type}' because simulation has ended", level=logging.INFO)
@@ -258,7 +258,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def handle_message(self, data: dict) -> None:
         """
-        Handle incoming user messages, save them to DB, and trigger AI response.
+        Handle incoming user input, save them to DB, and trigger AI response.
 
         :param data: A dict containing at least 'content' and 'role'
         """

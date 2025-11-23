@@ -478,7 +478,7 @@ def _merge_sections(outputs: list[tuple[str | None, str | None]]) -> Prompt:
     Prompt
         A Prompt whose `instruction` is the concatenation of all non-empty section
         instructions (separated by blank lines). The `message` is the concatenation
-        of all non-empty section messages, or `None` if there were none.
+        of all non-empty section input, or `None` if there were none.
 
     Observability
     -------------

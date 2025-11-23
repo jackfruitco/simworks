@@ -164,7 +164,7 @@ def resolve_collision(
       - In non-debug → append "-2", "-3", … to the **name** until unique.
 
     Args:
-        kind: Human label for error/warn messages ("codec", "service", "prompt", etc.).
+        kind: Human label for error/warn input ("codec", "service", "prompt", etc.).
         ident_tuple: (namespace, kind, name)
         debug: If None, falls back to SIMCORE_AI_DEBUG env var.
         exists: Callable that returns True if the identity already exists.

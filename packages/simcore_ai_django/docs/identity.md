@@ -136,10 +136,11 @@ class StandardizedPatientMixin(DjangoIdentityMixin): bucket = "standardized_pati
 
 ```python
 # schemas/patient.py
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoLLMResponseItem
+from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
-    messages: list[DjangoLLMResponseItem]
+    messages: list[DjangoOutputItem]
 ```
 
 ```python

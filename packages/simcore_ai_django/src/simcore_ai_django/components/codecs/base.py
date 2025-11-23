@@ -21,7 +21,7 @@ class DjangoBaseCodec(BaseCodec):
     Two patterns are supported:
 
     1) Simple section→model:
-         schema_model_map = {"messages": Message, "metadata": SimulationMetadata}
+         schema_model_map = {"input": Message, "metadata": SimulationMetadata}
 
     2) Routed by item "kind":
          schema_model_map = {"metadata": {"lab_result": LabResult, "rad_result": RadResult, "__default__": SimulationMetadata}}
@@ -40,7 +40,7 @@ class DjangoBaseCodec(BaseCodec):
 
     Section defaults allow pre-seeding fields (e.g., FKs) on each instance before apersist():
          section_defaults = {
-             "messages": {"role": "A", "is_from_ai": True},
+             "input": {"role": "A", "is_from_ai": True},
              "metadata": lambda item: {"simulation": sim},  # callable per-item OK
          }
     """

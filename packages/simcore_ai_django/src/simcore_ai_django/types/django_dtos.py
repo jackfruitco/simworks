@@ -27,10 +27,10 @@ from pydantic import Field
 from simcore_ai.types import (
     StrictBaseModel,
     Request,
-    LLMRequestMessage,
+    InputItem,
     Response,
-    LLMResponseItem,
-    LLMUsage,
+    OutputItem,
+    UsageContent,
     LLMToolCall,
     BaseLLMTool,
 )
@@ -62,7 +62,7 @@ class DjangoDTOBase(StrictBaseModel):
 
 
 # ---------------------- Request-side (rich) -----------------------------------------
-class DjangoLLMRequestMessage(LLMRequestMessage, DjangoDTOBase):
+class DjangoInputItem(InputItem, DjangoDTOBase):
     """Rich request message that can be persisted individually if desired.
 
     Includes `request_correlation_id` for end-to-end tracing.
@@ -89,12 +89,12 @@ class DjangoRequest(Request, DjangoDTOBase):
     # Optional hints used by glue/persistence layers
     prompt_meta: dict[str, Any] = Field(default_factory=dict)
 
-    # If messages are persisted individually, services may populate this with rich msg DTOs
-    messages_rich: list[DjangoLLMRequestMessage] | None = None
+    # If input are persisted individually, services may populate this with rich msg DTOs
+    messages_rich: list[DjangoInputItem] | None = None
 
 
 # ---------------------- Response-side (rich) ----------------------------------------
-class DjangoLLMResponseItem(LLMResponseItem, DjangoDTOBase):
+class DjangoOutputItem(OutputItem, DjangoDTOBase):
     """Rich response item that can be persisted with ordering and linkage.
 
     Carries both request/response correlation IDs for traceability.
@@ -107,11 +107,11 @@ class DjangoLLMResponseItem(LLMResponseItem, DjangoDTOBase):
     response_correlation_id: UUID | None = None
 
 
-class DjangoLLMResponseMessage(LLMResponseItem, DjangoDTOBase):
+class DjangoOutputMessage(OutputItem, DjangoDTOBase):
     """Rich response message that can be persisted individually if desired."""
 
 
-class DjangoLLMUsage(LLMUsage, DjangoDTOBase):
+class DjangoUsageContent(UsageContent, DjangoDTOBase):
     """Optional persisted usage row.
 
     Optional persisted usage row tied to a response; includes correlation links.
@@ -139,8 +139,8 @@ class DjangoResponse(Response, DjangoDTOBase):
     received_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Rich items/usage (if promoted by the glue layer)
-    outputs_rich: list[DjangoLLMResponseItem] | None = None
-    usage_rich: DjangoLLMUsage | None = None
+    outputs_rich: list[DjangoOutputItem] | None = None
+    usage_rich: DjangoUsageContent | None = None
 
     request_correlation_id: UUID | None = None
 
@@ -164,11 +164,11 @@ __all__ = [
     # Base overlay
     "DjangoDTOBase",
     # Request side
-    "DjangoLLMRequestMessage",
+    "DjangoInputItem",
     "DjangoRequest",
     # Response side
-    "DjangoLLMResponseItem",
-    "DjangoLLMUsage",
+    "DjangoOutputItem",
+    "DjangoUsageContent",
     "DjangoResponse",
     # Tools
     "DjangoLLMBaseTool",

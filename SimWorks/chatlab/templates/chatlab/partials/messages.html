@@ -1,4 +1,4 @@
-{% comment %} Renders a list of chat messages {% endcomment %}
+{% comment %} Renders a list of chat input {% endcomment %}
 {% for message in messages %}
   <div class="chat-bubble {% if message.sender.username == user.username %}outgoing{% else %}incoming{% endif %}"
        data-message-id="{{ message.id }}"
