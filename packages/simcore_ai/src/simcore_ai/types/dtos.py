@@ -139,8 +139,9 @@ class Request(StrictBaseModel):
         return None
 
     # Response format (provider-agnostic)
-    output_schema_cls: Any = None  # renamed from output_schema_cls
-    output_schema: dict | None = None
+    response_schema: Any = None                     # Pydantic model
+    response_schema_json: dict | None = None        # JSON schema from model
+    provider_response_format: dict | None = None    # Provider-specific response format
 
     # Tooling
     tools: list[BaseLLMTool] = Field(default_factory=list)

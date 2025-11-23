@@ -21,7 +21,7 @@ class TimestampedModel(models.Model):
 class AIRequestAudit(TimestampedModel):
     """Audit row for an outbound AI request.
 
-    Stores the normalized request payload (messages/tools/output_schema) and routing metadata.
+    Stores the normalized request payload (messages/tools/response_schema_json) and routing metadata.
     This is append-only; do not update after creation except for bookkeeping fields.
     """
 

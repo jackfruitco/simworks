@@ -36,7 +36,7 @@ class PatientReplyOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBas
 class PatientResultsOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """
     Final “results” payload for the interaction.
-    `metadata` can include structured outputs (e.g., scored observations) as messages.
+    `metadata` can include structured output (e.g., scored observations) as messages.
     """
     metadata: list[DjangoLLMResponseItem] = Field(...)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)

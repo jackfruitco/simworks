@@ -21,12 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 class BaseCodec(IdentityMixin, BaseComponent, ABC):
-    """Provider-agnostic, per-call codec for structured outputs.
+    """Provider-agnostic, per-call codec for structured output.
 
   Responsibilities
   ----------------
-  • Advertise a Pydantic schema via `output_schema_cls`.
-  • During encode, set provider-agnostic hints on the request (e.g., `output_schema_cls`, `output_schema_meta`).
+  • Advertise a Pydantic schema via `response_schema`.
+  • During encode, set provider-agnostic hints on the request (e.g., `response_schema`, `output_schema_meta`).
   • During decode, validate normalized responses/stream chunks to that schema.
   • Never call provider adapters or SDKs; providers wrap schemas via their own adapters.
   """
@@ -63,14 +63,14 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         Attach provider-agnostic structured-output hints to the request.
 
         Sets:
-          - req.output_schema_cls = self.output_schema_cls
+          - req.response_schema = self.response_schema
           - req.output_schema_meta (optional) if not already set, from self.output_schema_meta
         """
         with service_span_sync(
                 "simcore.codec.encode",
                 attributes={
                     "simcore.codec": self.__class__.__name__,
-                    "simcore.output_schema": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
+                    "simcore.response_schema_json": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
                 },
         ):
             # No schema? Nothing to encode.
@@ -79,8 +79,8 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
             try:
                 # Attach cls and meta if not already attached by service
-                if getattr(req, "output_schema_cls", None) is None:
-                    req.output_schema_cls = type(self).output_schema_cls
+                if getattr(req, "response_schema", None) is None:
+                    req.response_schema = type(self).output_schema_cls
                 if getattr(req, "output_schema_meta", None) is None and self.output_schema_meta:
                     req.output_schema_meta = dict(self.output_schema_meta)
             except Exception as e:
@@ -101,7 +101,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                 "simcore.codec.decode",
                 attributes={
                     "simcore.codec": self.__class__.__name__,
-                    "simcore.output_schema": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
+                    "simcore.response_schema_json": getattr(type(self).output_schema_cls, "__name__", "<Not Set>"),
                 },
         ):
             candidate = self.extract_structured_candidate(resp)
@@ -131,7 +131,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     # ---- Schema utilities --------------------------------------------------
     def json_schema(self) -> dict:
         if type(self).output_schema_cls is None:
-            raise CodecSchemaError(f"Codec '{self.__class__.__name__}' has no 'output_schema_cls' defined")
+            raise CodecSchemaError(f"Codec '{self.__class__.__name__}' has no 'response_schema' defined")
         try:
             return type(self).output_schema_cls.model_json_schema()
         except Exception as e:
@@ -142,7 +142,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     # ---- Validation --------------------------------------------------------
     def validate_dict(self, data: dict[str, Any]) -> BaseOutputSchema:
         if type(self).output_schema_cls is None:
-            raise CodecSchemaError(f"Codec '{self.__class__.__name__}' has no 'output_schema_cls' defined")
+            raise CodecSchemaError(f"Codec '{self.__class__.__name__}' has no 'response_schema' defined")
         try:
             return type(self).output_schema_cls.model_validate(data)
         except ValidationError as e:
@@ -202,7 +202,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
     @staticmethod
     def _extract_from_json_text(resp: Response) -> dict | None:
-        for msg in getattr(resp, "outputs", []) or []:
+        for msg in getattr(resp, "output", []) or []:
             for part in getattr(msg, "content", []) or []:
                 if isinstance(part, LLMTextPart):
                     text = getattr(part, "text", None)
@@ -218,7 +218,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
     @staticmethod
     def _extract_from_tool_result(resp: Response) -> dict | None:
-        for msg in getattr(resp, "outputs", []) or []:
+        for msg in getattr(resp, "output", []) or []:
             for part in getattr(msg, "content", []) or []:
                 if isinstance(part, LLMToolResultPart):
                     mime = (getattr(part, "mime_type", "") or "").split(";", 1)[0].strip().lower()

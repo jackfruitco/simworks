@@ -96,7 +96,7 @@ def demote_response(dj_resp: DjangoResponse) -> Response:
 
     Preserves identity and provider/client name fields and received_at.
     Strips Django-only overlay fields.
-    Order of outputs is preserved. The response's `received_at` timestamp is retained if present.
+    Order of output is preserved. The response's `received_at` timestamp is retained if present.
     """
     base = dj_resp.model_dump(mode="json")
     for key in (
@@ -111,6 +111,6 @@ def demote_response(dj_resp: DjangoResponse) -> Response:
     ):
         base.pop(key, None)
 
-    base["outputs"] = _demote_response_items(dj_resp.outputs_rich, fallback=dj_resp.outputs)
+    base["output"] = _demote_response_items(dj_resp.outputs_rich, fallback=dj_resp.output)
     base["usage"] = _demote_usage(dj_resp.usage_rich, fallback=dj_resp.usage)
     return Response(**base)

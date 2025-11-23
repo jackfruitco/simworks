@@ -471,7 +471,7 @@ class PromptEngine:
 
 
 def _merge_sections(outputs: list[tuple[str | None, str | None]]) -> Prompt:
-    """Merge section outputs into a single Prompt and annotate the current span.
+    """Merge section output into a single Prompt and annotate the current span.
 
     Returns
     -------

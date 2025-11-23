@@ -64,7 +64,7 @@ class BaseProvider(ABC):
 
     Key ideas:
       - Providers implement `call` (non-stream) and `stream` (streaming) using their SDKs.
-      - Providers supply *hook methods* to extract text, outputs, usage, and meta
+      - Providers supply *hook methods* to extract text, output, usage, and meta
         from the raw SDK response. The shared `adapt_response` turns those into an
         `Response` via the normalized LLMResponseItem → DTO flow.
     """
@@ -168,7 +168,7 @@ class BaseProvider(ABC):
           1) Extract primary assistant text (if any) and add as an LLMResponseItem with LLMTextPart.
           2) Parse structured text to the declared Pydantic schema (optional, best-effort) via _maybe_parse_to_schema.
              (This is for app-side validation/debug; the normalized messages are still built from parts.)
-          3) Inspect provider-specific outputs (images/tools) and convert into normalized tool calls and
+          3) Inspect provider-specific output (images/tools) and convert into normalized tool calls and
              LLMToolResultPart messages.
           4) Attach usage and provider_meta.
 
@@ -197,11 +197,11 @@ class BaseProvider(ABC):
             if output_schema_cls is not None and text_out:
                 parsed = self._maybe_parse_to_schema(text_out, output_schema_cls)
 
-            # 3) Provider outputs -> tool results / attachments
+            # 3) Provider output -> tool results / attachments
             from uuid import uuid4
             for obj in self._extract_outputs(resp) or []:
                 try:
-                    # 3a) Let the provider fully normalize arbitrary tool outputs (preferred path)
+                    # 3a) Let the provider fully normalize arbitrary tool output (preferred path)
                     pair = self._normalize_tool_output(obj)
                     if pair is not None:
                         call, part = pair
@@ -251,7 +251,7 @@ class BaseProvider(ABC):
                     usage = LLMUsage(**usage_data) if isinstance(usage_data, dict) else None
 
             return Response(
-                outputs=messages,
+                output=messages,
                 usage=usage,
                 tool_calls=tool_calls,
                 provider_meta=self._extract_provider_meta(resp),
@@ -266,13 +266,13 @@ class BaseProvider(ABC):
         """Compile adapters for the request's response format and attach back to the request.
 
         Flow:
-            - Read `req.output_schema_cls`
+            - Read `req.response_schema`
             - Apply provider-specific adapters via the central compiler
-            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `output_schema`)
-            - Attach the final result to the `req.output_schema` field.
+            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `response_schema_json`)
+            - Attach the final result to the `req.response_schema_json` field.
 
         Args:
-            req: Request with `output_schema_cls` set
+            req: Request with `response_schema` set
 
         Returns:
             None (modifies `req` in-place)
@@ -308,7 +308,7 @@ class BaseProvider(ABC):
                 # If provider returns None (no envelope), use adapted schema as-is
                 if wrapped is not None and not isinstance(wrapped, dict):
                     raise ProviderError(f"{self.name}._wrap_schema must return dict|None, got {type(wrapped).__name__}")
-                req.output_schema = wrapped or adapted
+                req.response_schema_json = wrapped or adapted
             except Exception:
                 logger.exception("provider '%s':: build_final_schema failed", getattr(self, "name", self))
 
@@ -318,7 +318,7 @@ class BaseProvider(ABC):
         This is the central point for provider-specific schema adaptation/override.
         """
         # Prefer new field; allow legacy alias for transition
-        source = getattr(req, "output_schema_cls", None) or getattr(req, "output_schema_cls", None)
+        source = getattr(req, "response_schema", None) or getattr(req, "response_schema", None)
         if source is None:
             return None
 
@@ -328,7 +328,7 @@ class BaseProvider(ABC):
                     "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
                     "simcore.provider_key": getattr(self, "provider_key", None),
                     "simcore.provider_label": getattr(self, "provider_label", None),
-                    "simcore.output_schema_cls": getattr(source, "__name__", type(source).__name__),
+                    "simcore.response_schema": getattr(source, "__name__", type(source).__name__),
                 },
         ):
             # Derive base JSON Schema
@@ -339,7 +339,7 @@ class BaseProvider(ABC):
 
             if not isinstance(base_schema, dict):
                 raise ProviderSchemaUnsupported(
-                    "output_schema_cls must be a Pydantic model class or a JSON Schema dict")
+                    "response_schema must be a Pydantic model class or a JSON Schema dict")
 
             # Run provider adapters
             from simcore_ai.components.schemas.compiler import compile_schema
@@ -351,7 +351,7 @@ class BaseProvider(ABC):
     def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
         """
         Default no-op wrapper. Providers that support structured output envelopes should override this
-        to return a provider-specific payload (e.g., OpenAI Responses `output_schema`). If None is
+        to return a provider-specific payload (e.g., OpenAI Responses `response_schema_json`). If None is
         returned, the caller will use `adapted_schema` directly.
         """
         return None
@@ -426,7 +426,7 @@ class BaseProvider(ABC):
         """Best-effort parse of `text` into a Pydantic-style schema class.
 
         Compatible with Pydantic v2 (`model_validate_json` / `model_validate`).
-        Uses attribute checks to avoid static type errors when `output_schema_cls` is
+        Uses attribute checks to avoid static type errors when `response_schema` is
         not explicitly typed as a Pydantic BaseModel subclass.
         """
         # Try v2 JSON path first if available

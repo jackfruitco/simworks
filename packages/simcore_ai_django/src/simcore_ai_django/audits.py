@@ -74,7 +74,7 @@ def write_request_audit(dj_req: DjangoRequest) -> int:
     Persist an audit row for an outbound request and return its PK.
 
     - Stores normalized request messages (prefer rich messages if available).
-    - Stores output_schema* fields if they are already attached at emit time.
+    - Stores response_schema_json* fields if they are already attached at emit time.
     """
     with service_span_sync(
         "simcore.audit.request",
@@ -110,10 +110,10 @@ def write_request_audit(dj_req: DjangoRequest) -> int:
             tools=_dump_json(tools),
 
             # response format (may be filled later by the client/provider)
-            response_format_cls=getattr(dj_req, "output_schema_cls", None).__name__
-                if getattr(dj_req, "output_schema_cls", None) else None,
+            response_format_cls=getattr(dj_req, "response_schema", None).__name__
+                if getattr(dj_req, "response_schema", None) else None,
             response_format_adapted=_dump_json(getattr(dj_req, "response_format_adapted", None)),
-            response_format=_dump_json(getattr(dj_req, "output_schema", None)),
+            response_format=_dump_json(getattr(dj_req, "response_schema_json", None)),
 
             # prompt metadata (optional)
             prompt_meta=_dump_json(getattr(dj_req, "prompt_meta", None)),
@@ -166,7 +166,7 @@ def write_response_audit(
         if request_audit_pk:
             request_row = AIRequestAudit.objects.filter(pk=request_audit_pk).first()
 
-        outputs = dj_resp.outputs_rich or dj_resp.outputs or []
+        outputs = dj_resp.outputs_rich or dj_resp.output or []
         usage = dj_resp.usage_rich or dj_resp.usage
 
         row = AIResponseAudit.objects.create(

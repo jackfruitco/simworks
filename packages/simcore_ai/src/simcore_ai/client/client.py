@@ -95,7 +95,7 @@ class AIClient:
                     logger.debug(
                         "No explicit model provided and provider has no default_model; proceeding without explicit model")
 
-            # Let the provider compile + wrap into a final payload on req.output_schema
+            # Let the provider compile + wrap into a final payload on req.response_schema_json
             try:
                 async with service_span("simcore.client.build_final_schema"):
                     self.provider.build_final_schema(req)
@@ -171,7 +171,7 @@ class AIClient:
                 # Best-effort soft failure: return an empty response with error metadata
                 logger.warning("AIClient returning soft-failure response due to raise_on_error=False: %s", last_exc)
                 return Response(
-                    outputs=[],
+                    output=[],
                     usage=None,
                     tool_calls=[],
                     provider_meta={

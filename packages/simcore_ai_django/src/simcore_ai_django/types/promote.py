@@ -173,7 +173,7 @@ def promote_response(resp: Response, **overlay: Any) -> DjangoResponse:
     resp_corr = getattr(dj, "correlation_id", None)
 
     dj.outputs_rich = _promote_response_items(
-        resp.outputs,
+        resp.output,
         response_db_pk=dj.db_pk,
         request_db_pk=getattr(dj, "request_db_pk", None),
         request_correlation_id=req_corr,

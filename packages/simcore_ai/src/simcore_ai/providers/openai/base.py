@@ -108,14 +108,14 @@ class OpenAIProvider(BaseProvider):
 
     def _wrap_schema(self, adapted_schema: dict, meta: dict | None = None) -> dict | None:
         """
-        Wrap a compiled JSON Schema into the OpenAI Responses `output_schema` envelope.
+        Wrap a compiled JSON Schema into the OpenAI Responses `response_schema_json` envelope.
 
         Args:
             adapted_schema: Provider-adapted JSON Schema dictionary.
             meta: Optional metadata (`name`, `strict`) derived from the request.
 
         Returns:
-            A dict payload suitable for `output_schema`, or None to use the schema directly.
+            A dict payload suitable for `response_schema_json`, or None to use the schema directly.
         """
         if not adapted_schema:
             return None
@@ -131,7 +131,7 @@ class OpenAIProvider(BaseProvider):
 
     def _normalize_tool_output(self, item: Any):
         """
-        Convert provider-native tool outputs into normalized tool call/result parts.
+        Convert provider-native tool output into normalized tool call/result parts.
 
         Currently supports:
             - ImageGenerationCall -> (LLMToolCall, LLMToolResultPart)
@@ -203,7 +203,7 @@ class OpenAIProvider(BaseProvider):
                     tool_choice=req.tool_choice or NOT_GIVEN,
                     max_output_tokens=req.max_output_tokens or NOT_GIVEN,
                     timeout=timeout or self.timeout_s or NOT_GIVEN,
-                    text=req.output_schema or NOT_GIVEN,
+                    text=req.response_schema_json or NOT_GIVEN,
                 )
 
             logger.debug(
@@ -213,7 +213,7 @@ class OpenAIProvider(BaseProvider):
             )
 
             # Normalize/Adapt (core BaseProvider handles nested spans for normalize)
-            return self.adapt_response(resp, output_schema_cls=req.output_schema_cls)
+            return self.adapt_response(resp, output_schema_cls=req.response_schema)
 
     async def stream(self, req: Request):  # pragma: no cover - streaming not implemented yet
         """

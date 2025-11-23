@@ -328,7 +328,7 @@ from simcore_ai.types import Response
 
 class FakeClient:
     async def send_request(self, request):
-        return Response(outputs=[], usage=None)
+        return Response(output=[], usage=None)
 
 
 fake_service = KeywordService(
