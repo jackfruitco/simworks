@@ -14,7 +14,9 @@ from typing import Any, Dict
 from pydantic import Field
 
 from .base import StrictBaseModel
-from .content import ContentRole, InputContent, OutputContent
+from .content import ContentRole
+from .input import InputContent
+from .output import OutputContent
 
 
 class InputItem(StrictBaseModel):
