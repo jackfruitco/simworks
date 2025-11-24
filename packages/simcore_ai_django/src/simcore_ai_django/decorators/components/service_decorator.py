@@ -11,7 +11,7 @@ Core service decorator.
 import logging
 from typing import Any, Type, TypeVar
 
-from simcore_ai.components.services.base import BaseService
+from simcore_ai.components.services.service import BaseService
 from simcore_ai.registry import BaseRegistry
 from simcore_ai.registry.singletons import services as _Registry
 from simcore_ai_django.decorators.base import DjangoBaseDecorator

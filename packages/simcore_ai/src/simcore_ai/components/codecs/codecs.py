@@ -14,7 +14,7 @@ from ...components import BaseComponent
 from ...identity import IdentityMixin
 from ...tracing import service_span_sync
 from ...types import Request, Response, StreamChunk
-from ...types.content import TextContent, ToolResultContent
+from ...types.output import OutputTextContent, OutputToolResultContent, OutputJsonContent
 
 logger = logging.getLogger(__name__)
 
@@ -287,11 +287,12 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     def extract_structured_candidate(self, resp: Response) -> dict | None:
         """Best-effort structured payload extraction.
 
-        Priority: provider-native → JSON text → tool-result JSON.
+        Priority: provider-native → OutputJsonContent → JSON text → tool-result JSON.
         """
         with service_span_sync("simcore.codec.extract", attributes={"simcore.codec": self.__class__.__name__}):
             for extractor in (
                 self._extract_from_provider,
+                self._extract_from_json_content,
                 self._extract_from_json_text,
                 self._extract_from_tool_result,
             ):
@@ -309,10 +310,21 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         return obj if isinstance(obj, dict) else None
 
     @staticmethod
+    def _extract_from_json_content(resp: Response) -> dict | None:
+        """Extract structured payload from OutputJsonContent, if present."""
+        for msg in getattr(resp, "output", []) or []:
+            for part in getattr(msg, "content", []) or []:
+                if isinstance(part, OutputJsonContent):
+                    value = getattr(part, "value", None)
+                    if isinstance(value, dict):
+                        return value
+        return None
+
+    @staticmethod
     def _extract_from_json_text(resp: Response) -> dict | None:
         for msg in getattr(resp, "output", []) or []:
             for part in getattr(msg, "content", []) or []:
-                if isinstance(part, TextContent):
+                if isinstance(part, OutputTextContent):
                     text = getattr(part, "text", None)
                     if not text:
                         continue
@@ -328,7 +340,11 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     def _extract_from_tool_result(resp: Response) -> dict | None:
         for msg in getattr(resp, "output", []) or []:
             for part in getattr(msg, "content", []) or []:
-                if isinstance(part, ToolResultContent):
+                if isinstance(part, OutputToolResultContent):
+                    # Prefer native JSON field if available
+                    if getattr(part, "result_json", None) and isinstance(part.result_json, dict):
+                        return part.result_json
+
                     mime = (getattr(part, "mime_type", "") or "").split(";", 1)[0].strip().lower()
                     if mime in {"application/json", "text/json"} and getattr(part, "data_b64", None):
                         try:
@@ -337,5 +353,6 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                             if isinstance(parsed, dict):
                                 return parsed
                         except Exception:
-                            continue
+                            pass
+                    return None
         return None

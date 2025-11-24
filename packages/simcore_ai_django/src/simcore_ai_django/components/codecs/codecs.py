@@ -13,7 +13,7 @@ from typing import Any, ClassVar, Mapping, TypeVar, Callable
 from asgiref.sync import async_to_sync
 
 from core.models import PersistModel
-from simcore_ai.components.codecs.codecs import BaseCodec
+from simcore_ai.components.codecs import BaseCodec
 from simcore_ai.components.codecs.exceptions import CodecDecodeError
 from simcore_ai.types import Response
 

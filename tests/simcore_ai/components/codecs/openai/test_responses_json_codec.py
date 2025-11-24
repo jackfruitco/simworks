@@ -6,8 +6,9 @@ from pydantic import BaseModel
 from simcore_ai.components.codecs.exceptions import CodecDecodeError, CodecSchemaError
 from simcore_ai.components.codecs.openai.responses_json import OpenAIResponsesJsonCodec
 from simcore_ai.types import Request, Response
-from simcore_ai.types.content import ContentRole, TextContent
+from simcore_ai.types.content import ContentRole
 from simcore_ai.types.messages import OutputItem
+from simcore_ai.types.output import OutputTextContent
 
 
 class SimpleSchema(BaseModel):
@@ -139,7 +140,7 @@ def test_decode_prefers_provider_structured_over_text_json():
 
     text_msg = OutputItem(
         role=ContentRole.ASSISTANT,
-        content=[TextContent(text='{"foo": "from_text"}')],
+        content=[OutputTextContent(text='{"foo": "from_text"}')],
     )
     resp = Response(
         request=req,

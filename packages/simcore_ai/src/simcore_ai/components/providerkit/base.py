@@ -14,7 +14,8 @@ from simcore_ai.types import (
     StreamChunk,
     LLMToolCall, )
 from simcore_ai.types.messages import OutputItem, UsageContent
-from simcore_ai.types.content import ContentRole, TextContent, ToolResultContent
+from simcore_ai.types.content import ContentRole
+from simcore_ai.types.output import OutputTextContent, OutputToolResultContent
 from simcore_ai.types.tools import BaseLLMTool
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,8 @@ class BaseProvider(ABC):
     Key ideas:
       - Providers implement `call` (non-stream) and `stream` (streaming) using their SDKs.
       - Providers supply *hook methods* to extract text, output, usage, and meta
-        from the raw SDK response. The shared `adapt_response` turns those into an
-        `Response` via the normalized OutputItem → DTO flow.
+        from the raw SDK response. The shared `adapt_response` turns those into a
+        `Response` via the normalized OutputItem → DTO flow (text/output/usage/meta normalization).
     """
 
     name: str
@@ -164,15 +165,17 @@ class BaseProvider(ABC):
         Provider-agnostic response construction pipeline.
 
         Steps:
-          1) Extract primary assistant text (if any) and add as an OutputItem with TextContent.
+          1) Extract primary assistant text (if any) and add as an OutputItem with OutputTextContent.
           2) Inspect provider-specific output (images/tools) and convert into normalized tool calls and
-             ToolResultContent input.
+             OutputToolResultContent input.
           3) Attach usage and provider_meta.
 
         Args:
             resp: Provider-specific response object
-            output_schema_cls: Optional Pydantic model class to parse structured text into
+            output_schema_cls: (unused, for call-site compatibility)
         """
+        # output_schema_cls is retained for call-site compatibility but is no longer used.
+        _ = output_schema_cls
         with service_span_sync(
                 "simcore.response.adapt",
                 attributes={
@@ -187,7 +190,12 @@ class BaseProvider(ABC):
             # 1) Primary assistant text
             text_out = self._extract_text(resp)
             if text_out:
-                messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[TextContent(text=text_out)]))
+                messages.append(
+                    OutputItem(
+                        role=ContentRole.ASSISTANT,
+                        content=[OutputTextContent(text=text_out)],
+                    )
+                )
 
             # 2) Provider output -> tool results / attachments
             from uuid import uuid4
@@ -198,7 +206,12 @@ class BaseProvider(ABC):
                     if pair is not None:
                         call, part = pair
                         tool_calls.append(call)
-                        messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[part]))
+                        messages.append(
+                            OutputItem(
+                                role=ContentRole.ASSISTANT,
+                                content=[part],
+                            )
+                        )
                         continue
 
                     # 3b) Generic fallback: image-like results
@@ -211,7 +224,13 @@ class BaseProvider(ABC):
                             messages.append(
                                 OutputItem(
                                     role=ContentRole.ASSISTANT,
-                                    content=[ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64)],
+                                    content=[
+                                        OutputToolResultContent(
+                                            call_id=call_id,
+                                            mime_type=mime,
+                                            data_b64=b64,
+                                        )
+                                    ],
                                 )
                             )
                         continue
@@ -248,56 +267,6 @@ class BaseProvider(ABC):
             )
 
     # ---------------------------------------------------------------------
-    # Response Format / Schema (legacy shim)
-    # ---------------------------------------------------------------------
-    def build_final_schema(self, req: Request) -> None:
-        """DEPRECATED: schema compilation now lives on codecs.
-
-        Codecs are responsible for populating ``req.provider_response_format``
-        (and optionally ``req.response_schema_json``) based on the declared
-        response schema. Providers should treat those fields as inputs for the
-        SDK call and not attempt to compile or adapt JSON Schema themselves.
-
-        This method is kept as a no-op shim for older call sites that still
-        invoke ``BaseProvider.build_final_schema(req)``. If a codec has set
-        ``req.provider_response_format``, it will be mirrored onto
-        ``req.response_schema_json`` for backwards compatibility.
-        """
-        with service_span_sync(
-            "simcore.provider.schema.build_final",
-            attributes={
-                "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
-                "simcore.provider_key": getattr(self, "provider_key", None),
-                "simcore.provider_label": getattr(self, "provider_label", None),
-            },
-        ):
-            try:
-                provider_format = getattr(req, "provider_response_format", None)
-                if provider_format is not None:
-                    try:
-                        setattr(req, "response_schema_json", provider_format)
-                    except Exception:
-                        logger.debug(
-                            "provider '%s':: failed to mirror provider_response_format onto response_schema_json",
-                            getattr(self, "name", self.__class__.__name__),
-                            exc_info=True,
-                        )
-            except Exception:
-                logger.exception(
-                    "provider '%s':: build_final_schema shim failed",
-                    getattr(self, "name", self.__class__.__name__),
-                )
-
-    def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
-        """DEPRECATED: schema wrapping is now handled by codecs.
-
-        This hook is retained for subclasses that may still override it, but it
-        is no longer used by the base provider pipeline. New code should not
-        rely on this method.
-        """
-        return None
-
-    # ---------------------------------------------------------------------
     # Provider-specific Response HOOKS (override in concrete providers)
     # ---------------------------------------------------------------------
     def _extract_text(self, resp: Any) -> Optional[str]:
@@ -320,10 +289,10 @@ class BaseProvider(ABC):
         """Return provider-specific metadata for diagnostics (model, ids, raw dump)."""
         ...
 
-    def _normalize_tool_output(self, item: Any) -> Optional[tuple[LLMToolCall, ToolResultContent]]:
+    def _normalize_tool_output(self, item: Any) -> Optional[tuple[LLMToolCall, OutputToolResultContent]]:
         """
         Convert a provider-native output item (tool call/result, images, audio, etc.) into a
-        normalized (LLMToolCall, ToolResultContent) pair. Return None if the item is not a tool
+        normalized (LLMToolCall, OutputToolResultContent) pair. Return None if the item is not a tool
         output you recognize, and the base class will try generic fallbacks.
         """
         return None

@@ -1,13 +1,10 @@
-# simcore_ai_django/components/services/base.py
+# simcore_ai_django/components/services/services.py
 import logging
 from abc import ABC
 from typing import Any, Callable, Awaitable, ClassVar
 
-from simcore_ai.components import BaseService, PromptSection
-from simcore_ai.components.promptkit.engine import SectionSpec
-from simcore_ai.identity import Identity
-from simcore_ai.registry import get_registry_for
-from simcore_ai.registry.exceptions import RegistryError
+from simcore_ai.components import BaseService
+from simcore_ai.components.promptkit import PromptSectionSpec
 from simcore_ai.types import Response
 from simcore_ai_django.components.promptkit.render_section import \
     render_section as _default_renderer  # async (namespace, section_key, context) -> str
@@ -15,7 +12,8 @@ from simcore_ai_django.signals import emitter as _default_emitter  # DjangoSigna
 
 logger = logging.getLogger(__name__)
 
-RenderSection = Callable[[str, str, dict], Awaitable[str]]
+RenderSection = Callable[[str, str, dict[str, Any]], Awaitable[str]]
+
 
 class DjangoBaseService(BaseService, ABC):
     """Django-aware convenience subclass of BaseService.
@@ -138,35 +136,12 @@ class DjangoBaseService(BaseService, ABC):
     # ------------------------------------------------------------------
     # Prompt registry helper (optional)
     # ------------------------------------------------------------------
-    def _get_registry_section_or_none(self) -> SectionSpec | None:
-        """Return a `PromptSection` from the registry for this service identity, or None.
+    def _get_registry_section_or_none(self) -> PromptSectionSpec | None:
+        """Return a `PromptSectionSpec` for this service identity, or None.
 
-        Pure lookup; no exceptions. This is primarily for legacy or advanced
-        Django integrations that want to bypass the standard Identity.resolve
-        flow used by the core BaseService.
+        This is a thin wrapper over the core BaseService prompt resolution helper
+        and is kept for legacy Django integrations that previously relied on a
+        Django-side registry lookup. New code should prefer the prompt plan
+        mechanisms and `BaseService.aget_prompt()` directly.
         """
-        logger.debug("Getting registry section via `simcore_ai_django` for %s", self.identity)
-        ident_ = self.identity.as_str
-
-        # 1) Direct registry lookup via PromptSection
-        try:
-            return PromptSection.get_registry().get(ident_)
-        except Exception:
-            pass
-
-        # 2) Identity resolver indirection
-        try:
-            return Identity.resolve.try_for_("PromptSection", ident_)
-        except RegistryError:
-            pass
-
-        # 3) Fallback: generic registry mapping
-        try:
-            reg = get_registry_for(PromptSection)
-            if reg is not None:
-                return reg.try_get(ident_)
-        except Exception:
-            pass
-
-        return None
-
+        return self._try_get_matching_prompt_section()

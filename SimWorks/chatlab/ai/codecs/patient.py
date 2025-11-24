@@ -7,26 +7,26 @@ from simulation.models import SimulationMetadata, PatientHistory, PatientDemogra
 from ..mixins import ChatlabMixin
 
 
-@simcore.codec
-class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
-    schema_model_map = {
-        "input": Message,
-        "metadata": {
-            "patient_history": PatientHistory,
-            "patient_demographics": PatientDemographics,
-            "default": SimulationMetadata,
-        },
-    }
-    section_defaults = {
-        "input": lambda ctx: {
-            "simulation": ctx["simulation"],
-            "sender": ctx.get("sender") or ctx["simulation"].user,
-            "role": RoleChoices.ASSISTANT,
-            "is_from_ai": True,
-        },
-        "metadata": lambda ctx: {"simulation": ctx["simulation"]},
-    }
-    section_kind_field = "kind"
+# @simcore.codec
+# class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, SimWorksCodec):
+#     schema_model_map = {
+#         "input": Message,
+#         "metadata": {
+#             "patient_history": PatientHistory,
+#             "patient_demographics": PatientDemographics,
+#             "default": SimulationMetadata,
+#         },
+#     }
+#     section_defaults = {
+#         "input": lambda ctx: {
+#             "simulation": ctx["simulation"],
+#             "sender": ctx.get("sender") or ctx["simulation"].user,
+#             "role": RoleChoices.ASSISTANT,
+#             "is_from_ai": True,
+#         },
+#         "metadata": lambda ctx: {"simulation": ctx["simulation"]},
+#     }
+#     section_kind_field = "kind"
 
 
 @simcore.codec

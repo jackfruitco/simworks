@@ -20,6 +20,7 @@ from .content import (
     BaseScreenshotContent,
     BaseToolCallContent,
     BaseToolResultContent,
+    BaseJsonContent
 )
 
 __all__ = (

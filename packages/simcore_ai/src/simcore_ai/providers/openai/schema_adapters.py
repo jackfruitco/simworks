@@ -32,11 +32,12 @@ class FlattenUnions:
                     node["type"] = "object"
                     node.setdefault("properties", {}).update(merged_props)
                     node.setdefault("required", [])
-                    node["description"] = (
-                            (node.get("description") or "") +
-                            " NOTE: Provider does not support 'oneOf' union types; flattened union. "
-                            "Use your discriminator field in prompt."
-                    ).strip()
+                    description = (node.get("description") or "").strip()
+                    note = (
+                        "Provider does not support 'oneOf' union types; flattened union. "
+                        "Use a discriminator field in the prompt."
+                    )
+                    node["description"] = f"{description} NOTE: {note}".strip()
                 return node
             if isinstance(node, list):
                 return [walk(x) for x in node]

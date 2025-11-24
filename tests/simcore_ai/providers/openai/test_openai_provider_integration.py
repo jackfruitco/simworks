@@ -4,8 +4,9 @@ import pytest
 
 from simcore_ai.providers.openai.openai import OpenAIProvider
 from simcore_ai.types import Request, Response
-from simcore_ai.types.content import ContentRole, TextContent
+from simcore_ai.types.content import ContentRole
 from simcore_ai.types.messages import OutputItem
+from simcore_ai.types.output import OutputTextContent
 from simcore_ai.types.tools import BaseLLMTool
 
 
@@ -98,7 +99,7 @@ async def test_call_uses_provider_response_format_for_text_and_adapts_response(m
     assert isinstance(first_msg, OutputItem)
     assert first_msg.role == ContentRole.ASSISTANT
     assert first_msg.content
-    assert isinstance(first_msg.content[0], TextContent)
+    assert isinstance(first_msg.content[0], OutputTextContent)
     assert first_msg.content[0].text == "structured reply"
 
     # Usage should be propagated from the provider response

@@ -32,8 +32,8 @@ class OpenAiNamespaceMixin:
 
 class OpenAIResponsesBaseCodec(OpenAINamespaceMixin, BaseCodec):
     """Base class for OpenAI Responses codecs."""
-    kind: ClassVar[str] = "responses"
-
+    # kind: ClassVar[str] = "responses"
+    pass
 
 @codec(name="json")
 class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):

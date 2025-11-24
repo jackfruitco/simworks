@@ -15,7 +15,7 @@ from typing import Any, Type, TypeVar
 import logging
 
 from simcore_ai.decorators.base import BaseDecorator
-from simcore_ai.components.services.base import BaseService
+from simcore_ai.components.services.service import BaseService
 from simcore_ai.registry.singletons import services as _Registry
 
 logger = logging.getLogger(__name__)

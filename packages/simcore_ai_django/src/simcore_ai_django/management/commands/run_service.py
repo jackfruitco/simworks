@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.tasks import TaskResultStatus
 
 from simcore_ai.identity import Identity
-from simcore_ai.components.services.base import BaseService
+from simcore_ai.components.services.service import BaseService
 from simcore_ai.registry.singletons import get_registry_for
 
 

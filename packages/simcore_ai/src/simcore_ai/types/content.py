@@ -22,7 +22,7 @@ __all__ = (
     "BaseAudioContent",
     "BaseFileContent",
     "BaseScreenshotContent",
-    "BaseToolContent",
+    "BaseToolCallContent",
     "BaseToolResultContent",
     "BaseJsonContent",
 )
@@ -67,7 +67,7 @@ class BaseScreenshotContent(StrictBaseModel):
     data_b64: str
 
 
-class BaseToolContent(StrictBaseModel):
+class BaseToolCallContent(StrictBaseModel):
     """Base shape for tool call content."""
     call_id: str
     name: str

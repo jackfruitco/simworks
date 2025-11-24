@@ -4,11 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from simcore_ai.types.transport import (
-    Request,
-)
-from simcore_ai.types.content import TextContent
-from simcore_ai.types import ContentRole, InputContent, InputItem
+from simcore_ai.types.transport import Request
+from simcore_ai.types.content import ContentRole
+from simcore_ai.types.input import InputContent, InputTextContent
+from simcore_ai.types.messages import InputItem
 
 
 class DummySchema(BaseModel):
@@ -18,7 +17,7 @@ class DummySchema(BaseModel):
 def test_request_basic_defaults_and_correlation():
     item = InputItem(
         role=ContentRole.USER,
-        content=[InputContent.__args__[0](text="hi")],  # TextContent via alias
+        content=[InputTextContent(text="hi")],
     )
     req = Request(model="gpt-4.1", input=[item])
 
@@ -49,7 +48,7 @@ def test_request_basic_defaults_and_correlation():
 
 
 def test_request_with_response_schema_fields_populated():
-    item = InputItem(role=ContentRole.USER, content=[TextContent(text="hi")])
+    item = InputItem(role=ContentRole.USER, content=[InputTextContent(text="hi")])
     req = Request(
         model="gpt-4.1",
         input=[item],
