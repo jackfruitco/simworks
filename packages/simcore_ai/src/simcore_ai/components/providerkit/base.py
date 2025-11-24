@@ -1,4 +1,4 @@
-# simcore_ai/providers/base.py
+# simcore_ai/components/providerkit/base.py
 
 
 import inspect
@@ -7,18 +7,19 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any, AsyncIterator, Optional, Protocol
 
-from .exceptions import ProviderError, ProviderSchemaUnsupported
-from ..tracing import service_span_sync
-from ..types import (
+from simcore_ai.tracing import service_span_sync
+from simcore_ai.types import (
     Request,
     Response,
     StreamChunk,
     LLMToolCall, )
-from ..types.messages import OutputItem, UsageContent
-from ..types.content import ContentRole, TextContent, ToolResultContent
-from ..types.tools import BaseLLMTool
+from simcore_ai.types.messages import OutputItem, UsageContent
+from simcore_ai.types.content import ContentRole, TextContent, ToolResultContent
+from simcore_ai.types.tools import BaseLLMTool
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["BaseProvider"]
 
 
 class BaseProvider(ABC):
@@ -164,11 +165,9 @@ class BaseProvider(ABC):
 
         Steps:
           1) Extract primary assistant text (if any) and add as an OutputItem with TextContent.
-          2) Parse structured text to the declared Pydantic schema (optional, best-effort) via _maybe_parse_to_schema.
-             (This is for app-side validation/debug; the normalized input are still built from parts.)
-          3) Inspect provider-specific output (images/tools) and convert into normalized tool calls and
+          2) Inspect provider-specific output (images/tools) and convert into normalized tool calls and
              ToolResultContent input.
-          4) Attach usage and provider_meta.
+          3) Attach usage and provider_meta.
 
         Args:
             resp: Provider-specific response object
@@ -190,12 +189,7 @@ class BaseProvider(ABC):
             if text_out:
                 messages.append(OutputItem(role=ContentRole.ASSISTANT, content=[TextContent(text=text_out)]))
 
-            # 2) Optional schema parse (best-effort); does not alter normalized message parts
-            parsed = None
-            if output_schema_cls is not None and text_out:
-                parsed = self._maybe_parse_to_schema(text_out, output_schema_cls)
-
-            # 3) Provider output -> tool results / attachments
+            # 2) Provider output -> tool results / attachments
             from uuid import uuid4
             for obj in self._extract_outputs(resp) or []:
                 try:
@@ -254,101 +248,52 @@ class BaseProvider(ABC):
             )
 
     # ---------------------------------------------------------------------
-    # Response Format / Schema (provider-specific adapters + _wrap_schema func)
+    # Response Format / Schema (legacy shim)
     # ---------------------------------------------------------------------
-    def build_final_schema(
-            self, req: "Request"
-    ) -> None:
-        """Compile adapters for the request's response format and attach back to the request.
+    def build_final_schema(self, req: Request) -> None:
+        """DEPRECATED: schema compilation now lives on codecs.
 
-        Flow:
-            - Read `req.response_schema`
-            - Apply provider-specific adapters via the central compiler
-            - Wrap the adapted response format into provider-specific payload (e.g., OpenAI Responses `response_schema_json`)
-            - Attach the final result to the `req.response_schema_json` field.
+        Codecs are responsible for populating ``req.provider_response_format``
+        (and optionally ``req.response_schema_json``) based on the declared
+        response schema. Providers should treat those fields as inputs for the
+        SDK call and not attempt to compile or adapt JSON Schema themselves.
 
-        Args:
-            req: Request with `response_schema` set
-
-        Returns:
-            None (modifies `req` in-place)
+        This method is kept as a no-op shim for older call sites that still
+        invoke ``BaseProvider.build_final_schema(req)``. If a codec has set
+        ``req.provider_response_format``, it will be mirrored onto
+        ``req.response_schema_json`` for backwards compatibility.
         """
         with service_span_sync(
-                "simcore.provider.schema.build_final",
-                attributes={
-                    "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
-                    "simcore.provider_key": getattr(self, "provider_key", None),
-                    "simcore.provider_label": getattr(self, "provider_label", None),
-                },
+            "simcore.provider.schema.build_final",
+            attributes={
+                "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
+                "simcore.provider_key": getattr(self, "provider_key", None),
+                "simcore.provider_label": getattr(self, "provider_label", None),
+            },
         ):
             try:
-                # Compile/adapt into provider-friendly JSON Schema
-                with service_span_sync("simcore.provider.schema.adapters",
-                                       attributes={
-                                           "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
-                                           "simcore.provider_key": getattr(self, "provider_key", None),
-                                           "simcore.provider_label": getattr(self, "provider_label", None),
-                                       }):
-                    adapted = self._apply_schema_adapters(req)
-                if adapted is None:
-                    return  # no schema provided; nothing to do
-
-                # (Optional) keep for diagnostics
-                try:
-                    setattr(req, "response_format_adapted", adapted)
-                except Exception:
-                    pass
-
-                meta = getattr(req, "_schema_meta", {"name": "response", "strict": True})
-                wrapped = self._wrap_schema(adapted, meta)
-                # If provider returns None (no envelope), use adapted schema as-is
-                if wrapped is not None and not isinstance(wrapped, dict):
-                    raise ProviderError(f"{self.name}._wrap_schema must return dict|None, got {type(wrapped).__name__}")
-                req.response_schema_json = wrapped or adapted
+                provider_format = getattr(req, "provider_response_format", None)
+                if provider_format is not None:
+                    try:
+                        setattr(req, "response_schema_json", provider_format)
+                    except Exception:
+                        logger.debug(
+                            "provider '%s':: failed to mirror provider_response_format onto response_schema_json",
+                            getattr(self, "name", self.__class__.__name__),
+                            exc_info=True,
+                        )
             except Exception:
-                logger.exception("provider '%s':: build_final_schema failed", getattr(self, "name", self))
-
-    def _apply_schema_adapters(self, req: "Request") -> dict | None:
-        """Apply provider-specific schema adapters to the request's response format.
-
-        This is the central point for provider-specific schema adaptation/override.
-        """
-        # Prefer new field; allow legacy alias for transition
-        source = getattr(req, "response_schema", None) or getattr(req, "response_schema", None)
-        if source is None:
-            return None
-
-        with service_span_sync(
-                "simcore.schema.compile",
-                attributes={
-                    "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
-                    "simcore.provider_key": getattr(self, "provider_key", None),
-                    "simcore.provider_label": getattr(self, "provider_label", None),
-                    "simcore.response_schema": getattr(source, "__name__", type(source).__name__),
-                },
-        ):
-            # Derive base JSON Schema
-            try:
-                base_schema = source.model_json_schema()  # Pydantic v2 model class
-            except Exception:
-                base_schema = source  # already a dict-like schema
-
-            if not isinstance(base_schema, dict):
-                raise ProviderSchemaUnsupported(
-                    "response_schema must be a Pydantic model class or a JSON Schema dict")
-
-            # Run provider adapters
-            from simcore_ai.components.schemas.compiler import compile_schema
-            compiled = compile_schema(base_schema, provider=self.name)
-            if not isinstance(compiled, dict):
-                raise ProviderSchemaUnsupported("compile_schema must return a dict JSON Schema")
-            return compiled
+                logger.exception(
+                    "provider '%s':: build_final_schema shim failed",
+                    getattr(self, "name", self.__class__.__name__),
+                )
 
     def _wrap_schema(self, compiled_schema: dict, meta: dict | None = None) -> dict | None:
-        """
-        Default no-op wrapper. Providers that support structured output envelopes should override this
-        to return a provider-specific payload (e.g., OpenAI Responses `response_schema_json`). If None is
-        returned, the caller will use `adapted_schema` directly.
+        """DEPRECATED: schema wrapping is now handled by codecs.
+
+        This hook is retained for subclasses that may still override it, but it
+        is no longer used by the base provider pipeline. New code should not
+        rely on this method.
         """
         return None
 
@@ -417,29 +362,6 @@ class BaseProvider(ABC):
     # ---------------------------------------------------------------------
     # Utilities
     # ---------------------------------------------------------------------
-    @staticmethod
-    def _maybe_parse_to_schema(text: str, schema_cls: type) -> Any:
-        """Best-effort parse of `text` into a Pydantic-style schema class.
-
-        Compatible with Pydantic v2 (`model_validate_json` / `model_validate`).
-        Uses attribute checks to avoid static type errors when `response_schema` is
-        not explicitly typed as a Pydantic BaseModel subclass.
-        """
-        # Try v2 JSON path first if available
-        try:
-            mvj = getattr(schema_cls, "model_validate_json", None)
-            if callable(mvj):
-                return mvj(text)
-        except Exception:
-            pass
-        # Fallback to generic model_validate if available
-        try:
-            mv = getattr(schema_cls, "model_validate", None)
-            if callable(mv):
-                return mv(text)
-        except Exception:
-            pass
-        return None
 
     def supports_streaming(self) -> bool:
         """Return True if this provider exposes an async `stream` method."""

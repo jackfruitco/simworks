@@ -1,4 +1,4 @@
-from .base import BaseCodec
+from .codecs import BaseCodec
 
 __all__ = (
     "BaseCodec",

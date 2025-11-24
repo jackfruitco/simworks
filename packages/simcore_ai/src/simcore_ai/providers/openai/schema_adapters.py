@@ -1,12 +1,20 @@
 # simcore_ai/providers/openai/schema_adapters.py
 from typing import Any, Dict
 
-from .base import PROVIDER_NAME
-from simcore_ai.components.schemas.compiler import schema_adapter
+"""
+OpenAI-specific schema adapters.
 
+These helpers are used by provider-aware codecs to adapt JSON Schemas
+for the OpenAI Responses API (e.g., flattening oneOf unions).
+"""
 
-@schema_adapter(PROVIDER_NAME, order=50)
 class FlattenUnions:
+    """Flatten oneOf unions into a single object schema.
+
+    This is an OpenAI-specific workaround for providers that do not support
+    JSON Schema `oneOf` unions. Codecs for OpenAI JSON output should call
+    this adapter as part of their schema pipeline.
+    """
     def adapt(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         def walk(node: Any) -> Any:
             if isinstance(node, dict):

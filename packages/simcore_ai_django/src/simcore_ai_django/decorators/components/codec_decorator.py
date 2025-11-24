@@ -16,7 +16,7 @@ import logging
 
 from ..base import DjangoBaseDecorator
 from simcore_ai_django.components import DjangoBaseCodec
-from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.codecs import BaseCodec
 from simcore_ai.registry.singletons import codecs as codec_registry
 
 logger = logging.getLogger(__name__)

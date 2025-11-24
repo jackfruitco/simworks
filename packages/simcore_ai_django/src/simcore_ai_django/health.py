@@ -34,7 +34,7 @@ from typing import Dict, Optional, Tuple
 
 from simcore_ai.client.registry import list_clients
 from simcore_ai.client.client import AIClient  # type: ignore
-from simcore_ai.providers.base import BaseProvider  # type: ignore
+from simcore_ai.components.providerkit.base import BaseProvider  # type: ignore
 
 logger = logging.getLogger(__name__)
 

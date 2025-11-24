@@ -23,6 +23,7 @@ Prompt plans
 
 import asyncio
 import logging
+import warnings
 from abc import ABC
 from typing import Any, ClassVar, Union, Optional, Protocol
 
@@ -30,7 +31,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..base import BaseComponent
-from ..codecs.base import BaseCodec
+from ..codecs.codecs import BaseCodec
 from ..mixins import LifecycleMixin
 from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
 from ...client import AIClient
@@ -78,12 +79,15 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
     # Class-level configuration / hints
     required_context_keys: ClassVar[tuple[str, ...]] = ()
-    codec_cls: ClassVar[type[BaseCodec] | None] = None
+    codec_cls: ClassVar[type[BaseCodec] | None] = None          # Deprecated, see `codecs`
+
+    codecs: list[BaseCodec] = []
+
     prompt_plan: ClassVar[PromptPlan | list[PromptSectionSpec] | list[str] | None] = None
     prompt_engine: ClassVar[PromptEngine | None] = None
     provider_name: ClassVar[str | None] = None
 
-    schema_cls: ClassVar[type[StrictBaseModel] | None] = None
+    response_schema: ClassVar[type[StrictBaseModel] | None] = None
 
     _span_root: ClassVar[SpanPath | None] = None
 
@@ -202,15 +206,15 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """Return the active output schema class for this service, if any.
 
         Resolution order:
-        - Per-instance override passed to __init__ (schema_cls=...)
+        - Per-instance override passed to __init__ (response_schema=...)
         - Class-level default declared on the concrete service.
         - Registry lookup by this service's identity (StrictBaseModel subclass)
         """
         return self._schema_cls
 
     @property
-    def codec(self) -> BaseCodec:
-        raise RuntimeError("Codec property is not available; codecs are instantiated per-call.")
+    def codecs(self) -> BaseCodec:
+        raise RuntimeError("Codecs property is not available; codecs are instantiated per-call.")
 
     @property
     def prompt(self) -> Prompt:
@@ -403,8 +407,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             None  -> shows no symbol
             Anything else -> shows a warning symbol
         """
+        # TODO override ident_level=1 for testing
         indent_level = 1
-        prefix = "--" * indent_level
+        prefix = "--" * min(4, indent_level)
         label = f"[{part}]: " if part else ""
 
         symbol = ""
@@ -419,20 +424,22 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         return f"{prefix}{symbol}{label}{msg}"
 
-    def _set_context(self, values: dict[str, Any], log_cat: str = None) -> None:
+    def _set_context(self, values: dict[str, Any], log_cat: str | None = None) -> None:
         """Set values in `self.context` and log them."""
-        added = []
+        added: list[str] = []
         for key, value in values.items():
             try:
                 self.context[key] = value
-                added.append(key)
+                added.append(str(key))
             except Exception:
-                logger.debug(self._build_stdout(
-                    log_cat,
-                    f"could not set context[{k}]: {v!r}",
-                    indent_level=3,
-                    success="non-fatal"
-                ), exc_info=True
+                logger.debug(
+                    self._build_stdout(
+                        log_cat,
+                        f"could not set context[{key}]: {value!r}",
+                        indent_level=3,
+                        success="non-fatal",
+                    ),
+                    exc_info=True,
                 )
         if added:
             logger.debug(self._build_stdout(
@@ -653,6 +660,35 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         label = getattr(ident, "label", None) or getattr(codec_cls, "label", None)
         return str(label) if label else fallback
 
+    def select_codecs(self) -> tuple[type[BaseCodec], ...]:
+        """Selects codecs to use for this service."""
+        LOG_CAT = "codec"
+        sel: list[type[BaseCodec]] = []
+
+        self._set_context(
+            {
+                "codec.selected": "<None>",
+            },
+            log_cat=LOG_CAT
+        )
+
+        if self.response_schema and self.provider_name:
+            cand: type[BaseCodec] = Identity.resolve.try_for_(
+                component=BaseCodec,
+                identify=(self.provider_name, "default", "json")
+            )
+            if cand is not None:
+                sel.append(cand)
+                self.context["codec.selected"] += repr(cand)
+                self.codecs.append(cand())
+                logger.debug(self._build_stdout(
+                    LOG_CAT, f"selected codec: {cand.__name__}", indent_level=3, success=True
+                ))
+
+
+        return tuple(sel)
+
+
     def resolve_codec(self) -> tuple[type[BaseCodec], str]:
         """
         Sync codec resolver.
@@ -668,6 +704,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Raises:
             ServiceCodecResolutionError if no codec can be resolved.
         """
+        warnings.warn(
+            "`resolve_codec()` is deprecated. Use `select_codec()` instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         LOG_CAT = "codec"
 
         ident: Identity = self.identity
@@ -733,14 +775,20 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Keeps codec resolution centralized in the sync path while
         remaining usable from async-only code.
         """
+        warnings.warn(
+            "`aresolve_codec()` is deprecated. Use `aselect_codec()` instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         return await sync_to_async(self.resolve_codec, thread_sensitive=True)()
 
     def _resolve_schema_cls(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
         """Resolve the output schema class for this service.
 
         Precedence:
-          1) Explicit per-instance override passed to ``__init__`` (``schema_cls=...``)
-          2) Class-level default declared on the concrete service (``schema_cls``)
+          1) Explicit per-instance override passed to ``__init__`` (``response_schema=...``)
+          2) Class-level default declared on the concrete service (``response_schema``)
           3) Registry lookup by this service's identity
         """
         LOG_CAT = "schema"
@@ -788,20 +836,19 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         else:
             logger.warning(self._build_stdout(
                 LOG_CAT,
-                "no schema resolved for service; continuing with schema_cls=None",
+                "no schema resolved for service; continuing with response_schema=None",
                 indent_level=2,
                 success="non-fatal",
             ))
         return resolved
 
     async def _aresolve_schema_cls(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
-        """
-        Async wrapper around `resolve_schema_cls()`.
+        """Async wrapper around `_resolve_schema_cls()`.
 
         Keeps schema resolution centralized in the sync path while
         remaining usable from async-only code.
         """
-        return await sync_to_async(self.resolve_codec, thread_sensitive=True)()
+        return await sync_to_async(self._resolve_schema_cls, thread_sensitive=True)(override)
 
     # ------------------------------------------------------------------------
     # Service run helpers
@@ -1239,7 +1286,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                         self._span("run", "prepare", "client"),
                         attributes=self.flatten_context(),
                 ):
-                    client = self.get_client()
+                    client: AIClient = self.get_client()
 
                 # Emit outbound request event
                 async with service_span(

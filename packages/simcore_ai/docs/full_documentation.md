@@ -116,7 +116,7 @@ Codecs transform normalized responses into typed models. Subclass `BaseCodec` or
 
 ```python
 
-from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.codecs import BaseCodec
 from simcore_ai.components.schemas.base import BaseOutputSchema
 
 
@@ -128,7 +128,7 @@ class KeywordCodec(BaseCodec):
     name = "keyword-plan"
     origin = "guides"
     bucket = "services"
-    output_schema_cls = KeywordPlan
+    response_schema = KeywordPlan
 
 
 codec = KeywordCodec()

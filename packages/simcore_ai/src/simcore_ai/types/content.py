@@ -15,6 +15,17 @@ from pydantic import Field
 
 from .base import StrictBaseModel
 
+__all__ = (
+    "ContentRole",
+    "BaseTextContent",
+    "BaseImageContent",
+    "BaseAudioContent",
+    "BaseFileContent",
+    "BaseScreenshotContent",
+    "BaseToolContent",
+    "BaseToolResultContent",
+    "BaseJsonContent",
+)
 
 class ContentRole(str, Enum):
     SYSTEM = "system"
@@ -27,44 +38,44 @@ class ContentRole(str, Enum):
     TOOL = "tool"
 
 
-class TextContent(StrictBaseModel):
-    type: Literal["input_text"] = "input_text"
+class BaseTextContent(StrictBaseModel):
+    """Base shape for text content (provider-agnostic)."""
     text: str
 
 
-class ImageContent(StrictBaseModel):
-    type: Literal["input_image"] = "input_image"
+class BaseImageContent(StrictBaseModel):
+    """Base shape for image content (base64-encoded)."""
     mime_type: str
     data_b64: str
 
 
-class AudioContent(StrictBaseModel):
-    type: Literal["input_audio"] = "input_audio"
+class BaseAudioContent(StrictBaseModel):
+    """Base shape for audio content (base64-encoded)."""
     mime_type: str
     data_b64: str
 
 
-class FileContent(StrictBaseModel):
-    type: Literal["input_file"] = "input_file"
+class BaseFileContent(StrictBaseModel):
+    """Base shape for generic file content (base64-encoded)."""
     mime_type: str
     data_b64: str
 
 
-class ScreenshotContent(StrictBaseModel):
-    type: Literal["computer_screenshot"] = "computer_screenshot"
+class BaseScreenshotContent(StrictBaseModel):
+    """Base shape for screenshots (base64-encoded)."""
     mime_type: str
     data_b64: str
 
 
-class ToolContent(StrictBaseModel):
-    type: Literal["tool_call"] = "tool_call"
+class BaseToolContent(StrictBaseModel):
+    """Base shape for tool call content."""
     call_id: str
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
-class ToolResultContent(StrictBaseModel):
-    type: Literal["tool_result"] = "tool_result"
+class BaseToolResultContent(StrictBaseModel):
+    """Base shape for tool result content."""
     call_id: str
     # The result can be text, JSON, or binary (e.g., base64 image bytes)
     result_text: str | None = None
@@ -73,5 +84,6 @@ class ToolResultContent(StrictBaseModel):
     data_b64: str | None = None
 
 
-InputContent = TextContent | ImageContent | AudioContent | FileContent | ScreenshotContent
-OutputContent = TextContent | ToolContent | ToolResultContent | ImageContent | AudioContent
+class BaseJsonContent(StrictBaseModel):
+    """Base structured JSON content."""
+    value: dict[str, Any]

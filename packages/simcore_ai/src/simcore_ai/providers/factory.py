@@ -22,7 +22,7 @@ Notes:
 
 from typing import Dict, Type
 
-from .base import BaseProvider
+from simcore_ai.components.providerkit.base import BaseProvider
 from simcore_ai.registry.exceptions import (
     RegistryError,
     RegistryDuplicateError,
@@ -128,7 +128,7 @@ def create_provider(config: AIProviderConfig) -> BaseProvider:
 # Keep these imports isolated so the core doesn't hard-depend on any one SDK.
 try:
     # OpenAI provider lives in simcore_ai/providers/openai/base.py
-    from .openai.base import OpenAIProvider  # type: ignore
+    from .openai.openai import OpenAIProvider  # type: ignore
 
     register_provider("openai", OpenAIProvider)
 except Exception:

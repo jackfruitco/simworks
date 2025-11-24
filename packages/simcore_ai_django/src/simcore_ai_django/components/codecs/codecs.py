@@ -1,22 +1,38 @@
+# simcore_ai_django/components/codecs/codecs.py
+"""
+This module provides the DjangoBaseCodec façade.
 
+It subclasses the core BaseCodec and offers fan-out and persistence helpers
+that are deprecated and will be moved to the service layer.
+"""
 
 import asyncio
 import logging
+import warnings
 from typing import Any, ClassVar, Mapping, TypeVar, Callable
 from asgiref.sync import async_to_sync
 
 from core.models import PersistModel
-from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.codecs import BaseCodec
 from simcore_ai.components.codecs.exceptions import CodecDecodeError
 from simcore_ai.types import Response
 
 logger = logging.getLogger(__name__)
 
+__all__ = ("DjangoBaseCodec",)
+
 M = TypeVar("M", bound=PersistModel)
 
 class DjangoBaseCodec(BaseCodec):
     """
-    Async-first Django codec that can fan-out a validated payload into Django model instances.
+    DjangoBaseCodec is a Django-facing façade over the core BaseCodec.
+
+    It provides asynchronous decoding and validation of payloads, along with
+    deprecated fan-out and persistence behavior for Django model instances.
+
+    The fan-out and persistence logic is **deprecated**. New code should prefer
+    handling persistence in service `finalize()` methods. This logic will be
+    removed in a later milestone.
 
     Two patterns are supported:
 
@@ -122,6 +138,20 @@ class DjangoBaseCodec(BaseCodec):
 
     # ---- core persistence --------------------------------------------------
     async def persist_sections(self, vdict: Mapping[str, Any]) -> list[PersistModel]:
+        """
+        DEPRECATED: Fan-out and persistence should be handled at the service layer.
+
+        This method persists sections of the validated payload into Django model
+        instances according to the schema_model_map and related configuration.
+
+        Callers should prefer service-level persistence (e.g. in finalize() methods).
+        """
+        warnings.warn(
+            "this method is deprecated; use service-level persistence instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         coros: list[asyncio.Future] = []
         instances: list[PersistModel] = []
 

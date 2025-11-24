@@ -36,7 +36,7 @@ Example
 This package provides the entrypoint most apps should import when
 working with Django-aware codecs.
 """
-from .base import DjangoBaseCodec
+from .codecs import DjangoBaseCodec
 
 __all__ = [
     "DjangoBaseCodec",

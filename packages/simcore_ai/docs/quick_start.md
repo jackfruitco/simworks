@@ -116,7 +116,7 @@ Create a codec to validate the JSON payload, send the request through the client
 
 ```python
 
-from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.codecs import BaseCodec
 from simcore_ai.types import Request
 
 
@@ -124,7 +124,7 @@ class SummaryCodec(BaseCodec):
     name = "summary"
     origin = "guides"
     bucket = "quickstart"
-    output_schema_cls = SummaryResponse
+    response_schema = SummaryResponse
 
 
 summary_codec = SummaryCodec()

@@ -2,7 +2,7 @@
 
 from typing import overload, TypeVar, cast, Any
 
-from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.codecs import BaseCodec
 from simcore_ai.components.promptkit.base import PromptSection
 from simcore_ai.components.schemas import BaseOutputSchema
 from simcore_ai.components.services.base import BaseService
@@ -40,7 +40,7 @@ def get_registry_for(component_type: type[TPS]) -> BaseRegistry[Identity, TPS]: 
 
 
 # -----------------------------------------------------------------------------------------
-# ---------- Implementation ---------------------------------------------------------------
+# Implementation
 # -----------------------------------------------------------------------------------------
 def get_registry_for(component_type: type[Any]) -> BaseRegistry[Identity, Any] | None:
     """

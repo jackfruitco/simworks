@@ -1,21 +1,21 @@
 
-
-from simcore_ai.registry import BaseRegistry
-
 """
 Core codec decorator.
 
-- Derives & pins identity via IdentityResolver (kind defaults to "codec" if not provided).
-- Registers the class in the global `codecs` registry.
+- Derives & pins identity via IdentityResolver (kind/namespace/name via resolver + hints).
+- Registers codec classes in the global `codecs` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
+- Enforces that only BaseCodec subclasses can be decorated.
 """
-
-from typing import Any, Type, TypeVar
 import logging
+from typing import Any, Type, TypeVar
 
+from simcore_ai.registry import BaseRegistry
 from simcore_ai.decorators.base import BaseDecorator
-from simcore_ai.components.codecs.base import BaseCodec
+from simcore_ai.components.codecs.codecs import BaseCodec
 from simcore_ai.registry.singletons import codecs as codec_registry
+
+__all__ = ("CodecDecorator", "codec")
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +35,26 @@ class CodecDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @codec(namespace="simcore", name="my_codec")
-        class JSONCodec(BaseCodec):
+        @codec(namespace="openai", kind="responses", name="json")
+        class OpenAIJSONCodec(BaseCodec):
             ...
     """
 
     def get_registry(self) -> BaseRegistry:
-        # Always register into the codecs registry
+        """Return the global codecs registry singleton."""
         return codec_registry
 
     def register(self, candidate: Type[Any]) -> None:
-        # Guard: ensure we only register codec classes
+        """Register a codec class after guarding its base type.
+
+        Ensures only BaseCodec subclasses are registered into the codecs registry.
+        """
         if not issubclass(candidate, BaseCodec):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseCodec to use @codec"
             )
         super().register(candidate)
+
+
+# Public instance used as the decorator in app code
+codec = CodecDecorator()

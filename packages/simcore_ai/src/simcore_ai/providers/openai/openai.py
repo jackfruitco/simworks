@@ -1,4 +1,4 @@
-# simcore_ai/providers/openai/base.py
+# simcore_ai/providers/openai/openai.py
 """
 OpenAIProvider
 ==============
@@ -10,8 +10,7 @@ Responsibilities
 - Translate normalized `Request` objects into OpenAI SDK calls.
 - Normalize provider-native responses into our `Response` model using the
   provider-agnostic adaptation pipeline in `BaseProvider`.
-- Provide provider-specific response-format wrapping (JSON Schema) and tool
-  output normalization (e.g., image generation results).
+- Handle provider-specific tool output normalization (e.g., image generation results).
 - Emit rich tracing spans for observability.
 
 Construction
@@ -27,25 +26,18 @@ passes a resolved configuration:
 This class does not fetch environment variables directly; resolution occurs in
 the Django setup + provider factory layer.
 """
-
 import logging
 from typing import Any, Final, Literal
-from uuid import uuid4
 
 from openai import NOT_GIVEN, AsyncOpenAI
 from openai.types.responses import Response as OpenAIResponse, EasyInputMessageParam
-from openai.types.responses.response_output_item import ImageGenerationCall
 
-from simcore_ai.tracing import service_span, service_span_sync, flatten_context as _flatten_context
-from simcore_ai.types import (
-    LLMToolCall,
-    Request,
-    Response,
-)
-from ...types.content import ToolResultContent
-from ..base import BaseProvider
+from .tools import OpenAIToolAdapter
+from .output_adapters import ImageGenerationOutputAdapter
 from ..exceptions import ProviderError
-from ..openai.tools import OpenAIToolAdapter
+from ...components.providerkit import BaseProvider
+from ...tracing import service_span, service_span_sync, flatten_context as _flatten_context
+from ...types import Request, Response
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +79,9 @@ class OpenAIProvider(BaseProvider):
 
         # Register tools adapter
         self.set_tool_adapter(OpenAIToolAdapter())
+        self._output_adapters: list[ImageGenerationOutputAdapter] = [
+            ImageGenerationOutputAdapter(),
+        ]
 
     async def healthcheck(self, *, timeout: float | None = None) -> tuple[bool, str]:
         """
@@ -106,35 +101,10 @@ class OpenAIProvider(BaseProvider):
             self.record_rate_limit(status_code=getattr(exc, "status_code", None), detail=str(exc))
             return False, f"openai error: {exc!s}"
 
-    def _wrap_schema(self, adapted_schema: dict, meta: dict | None = None) -> dict | None:
-        """
-        Wrap a compiled JSON Schema into the OpenAI Responses `response_schema_json` envelope.
-
-        Args:
-            adapted_schema: Provider-adapted JSON Schema dictionary.
-            meta: Optional metadata (`name`, `strict`) derived from the request.
-
-        Returns:
-            A dict payload suitable for `response_schema_json`, or None to use the schema directly.
-        """
-        if not adapted_schema:
-            return None
-        meta = meta or {}
-        return {
-            "type": "json_schema",
-            "json_schema": {
-                "name": meta.get("name", "response"),
-                "schema": adapted_schema,
-                "strict": bool(meta.get("strict", True)),
-            },
-        }
-
     def _normalize_tool_output(self, item: Any):
         """
-        Convert provider-native tool output into normalized tool call/result parts.
-
-        Currently supports:
-            - ImageGenerationCall -> (LLMToolCall, ToolResultContent)
+        Convert provider-native output into normalized tool call/result parts
+        using registered output adapters.
         """
         with service_span_sync(
                 "simcore.tools.handle_output",
@@ -143,14 +113,19 @@ class OpenAIProvider(BaseProvider):
                     "simcore.output.type": type(item).__name__,
                 },
         ):
-            if isinstance(item, ImageGenerationCall):
-                call_id = getattr(item, "id", None) or str(uuid4())
-                b64 = getattr(item, "result", None)
-                mime = getattr(item, "mime_type", None) or "image/png"
-                return (
-                    LLMToolCall(call_id=call_id, name="image_generation", arguments={}),
-                    ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64),
-                )
+            for adapter in getattr(self, "_output_adapters", []):
+                try:
+                    result = adapter.adapt(item)
+                except Exception:
+                    logger.debug(
+                        "provider '%s':: output adapter %s failed; skipping",
+                        self.name,
+                        type(adapter).__name__,
+                        exc_info=True,
+                    )
+                    continue
+                if result is not None:
+                    return result
             return None
 
     async def call(self, req: Request, timeout: float | None = None) -> Response:
@@ -192,9 +167,29 @@ class OpenAIProvider(BaseProvider):
                 input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.input]
 
             model_name = req.model or self.default_model or "gpt-4o-mini"
+            response_format = (
+                    getattr(req, "provider_response_format", None)
+                    or getattr(req, "response_schema_json", None)
+            )
+
+            logger.debug(
+                "provider '%s':: call model=%s stream=%s has_response_format=%s",
+                self.name,
+                model_name,
+                bool(getattr(req, "stream", False)),
+                bool(response_format),
+            )
 
             # Provider request (child span)
             async with service_span("simcore.provider.send", attributes={"simcore.provider_name": self.name}):
+                try:
+                    span = service_span.current_span()
+                    if span is not None:
+                        span.set_attribute("simcore.model", model_name)
+                        span.set_attribute("simcore.request.has_response_format", bool(response_format))
+                        span.set_attribute("simcore.request.tools.count", len(native_tools or []))
+                except Exception:
+                    pass
                 resp: OpenAIResponse = await self._client.responses.create(
                     model=model_name,
                     input=input_,
@@ -203,7 +198,7 @@ class OpenAIProvider(BaseProvider):
                     tool_choice=req.tool_choice or NOT_GIVEN,
                     max_output_tokens=req.max_output_tokens or NOT_GIVEN,
                     timeout=timeout or self.timeout_s or NOT_GIVEN,
-                    text=req.response_schema_json or NOT_GIVEN,
+                    text=response_format or NOT_GIVEN,
                 )
 
             logger.debug(
@@ -257,7 +252,7 @@ class OpenAIProvider(BaseProvider):
 
     def _is_image_output(self, item: Any) -> bool:
         """Return True if the given item represents an image generation result."""
-        return isinstance(item, ImageGenerationCall)
+        return False  # ImageGenerationCall import removed; image output detection handled by adapters
 
     # def _build_attachment(self, item: Any) -> AttachmentItem | None:
     #     ...

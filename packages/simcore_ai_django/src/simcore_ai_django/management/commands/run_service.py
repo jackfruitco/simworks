@@ -187,7 +187,7 @@ class Command(BaseCommand):
         schema_cls = None
         if codec is not None:
             codec_cls = codec.__class__
-            schema_cls = getattr(codec, "schema_cls", None) or getattr(codec, "response_schema", None)
+            schema_cls = getattr(codec, "response_schema", None) or getattr(codec, "response_schema", None)
         else:
             codec_cls = getattr(type(svc), "codec_cls", None)
 
@@ -203,7 +203,7 @@ class Command(BaseCommand):
 
         self.stdout.write("Service configuration:\n")
         self.stdout.write(f"  codec_cls:     {codec_cls}\n")
-        self.stdout.write(f"  schema_cls:    {schema_cls}\n")
+        self.stdout.write(f"  response_schema:    {schema_cls}\n")
         self.stdout.write(f"  prompt_plan:   {prompt_desc}\n")
 
         # Show the resolved attrs used for tracing/logging.
