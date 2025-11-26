@@ -7,7 +7,7 @@ from typing import Type, Optional, Tuple, List, ClassVar
 from core.utils import remove_null_keys
 from simcore_ai_django.api import simcore
 from simcore_ai_django.api.types import DjangoBaseService, PromptEngine
-from simcore_ai.types.content import TextContent
+from simcore_ai.types.input import InputTextContent
 from simcore_ai.types import ContentRole
 from simcore_ai_django.types import DjangoLLMBaseTool, DjangoInputItem
 from simulation.ai.mixins import StandardizedPatientMixin
@@ -76,7 +76,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
         if user_msg and user_msg.content:
             msgs.append(DjangoInputItem(
                 role=ContentRole.USER,
-                content=[TextContent(text=user_msg.content)])
+                content=[InputTextContent(text=user_msg.content)])
             )
         return msgs, self.response_format_cls
 
@@ -105,7 +105,7 @@ class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
         msgs: List[DjangoInputItem] = [
             DjangoInputItem(
                 role=ContentRole.DEVELOPER,
-                content=[TextContent(text=prompt.instruction or "")]
+                content=[InputTextContent(text=prompt.instruction or "")]
             )
         ]
         return msgs, None

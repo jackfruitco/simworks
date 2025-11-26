@@ -8,6 +8,9 @@ into codec-local `SchemaAdapter` lists on `BaseCodec` subclasses.
 New code should configure schema adaptation via `schema_adapters` on
 provider-specific codec classes instead of using this global registry.
 """
+import warnings
+
+warnings.warn("simcore_ai.schemas.compiler is deprecated; use codecs instead.", DeprecationWarning, stacklevel=2)
 
 import logging
 from copy import deepcopy

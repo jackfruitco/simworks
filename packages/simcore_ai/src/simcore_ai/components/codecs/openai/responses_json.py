@@ -15,8 +15,8 @@ keyed by identity (namespace='openai', kind='responses', name='json').
 from typing import Any, ClassVar, Sequence
 
 from pydantic import ValidationError
-from simcore_ai.components.codecs.base import BaseCodec
-from simcore_ai.decorators.codec import codec
+from simcore_ai.components.codecs import BaseCodec
+from simcore_ai.decorators import codec
 
 from simcore_ai.components.codecs.exceptions import CodecDecodeError, CodecSchemaError
 from simcore_ai.providers.openai.schema_adapters import FlattenUnions
@@ -30,7 +30,7 @@ class OpenAiNamespaceMixin:
     provider_name: ClassVar[str] = "openai"
 
 
-class OpenAIResponsesBaseCodec(OpenAINamespaceMixin, BaseCodec):
+class OpenAIResponsesBaseCodec(OpenAiNamespaceMixin, BaseCodec):
     """Base class for OpenAI Responses codecs."""
     # kind: ClassVar[str] = "responses"
     pass

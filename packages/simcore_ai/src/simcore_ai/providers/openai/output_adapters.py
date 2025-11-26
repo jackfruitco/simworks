@@ -5,7 +5,7 @@ from uuid import uuid4
 from openai.types.responses.response_output_item import ImageGenerationCall
 
 from simcore_ai.types import LLMToolCall
-from simcore_ai.types.content import ToolResultContent
+from simcore_ai.types.content import BaseToolResultContent
 
 """
 OpenAI-specific output adapters.
@@ -18,17 +18,17 @@ and tool result DTOs used by the core transport layer.
 class OutputAdapter(Protocol):
     """Protocol for provider-native output adapters.
 
-    Implementations should return a (LLMToolCall, ToolResultContent) tuple
+    Implementations should return a (LLMToolCall, BaseToolResultContent) tuple
     when they recognize the item, or None otherwise.
     """
 
-    def adapt(self, item: Any) -> tuple[LLMToolCall, ToolResultContent] | None: ...
+    def adapt(self, item: Any) -> tuple[LLMToolCall, BaseToolResultContent] | None: ...
 
 
 class ImageGenerationOutputAdapter:
     """Adapt OpenAI image generation outputs into normalized tool results."""
 
-    def adapt(self, item: Any) -> tuple[LLMToolCall, ToolResultContent] | None:
+    def adapt(self, item: Any) -> tuple[LLMToolCall, BaseToolResultContent] | None:
         if not isinstance(item, ImageGenerationCall):
             return None
 
@@ -39,5 +39,5 @@ class ImageGenerationOutputAdapter:
             return None
 
         call = LLMToolCall(call_id=call_id, name="image_generation", arguments={})
-        result = ToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64)
+        result = BaseToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64)
         return call, result
