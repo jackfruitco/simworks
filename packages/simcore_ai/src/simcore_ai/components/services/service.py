@@ -26,6 +26,7 @@ import logging
 import warnings
 from abc import ABC
 from typing import Any, ClassVar, Union, Optional, Protocol
+from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
 
@@ -34,12 +35,15 @@ from ..base import BaseComponent
 from ..codecs.codecs import BaseCodec
 from ..mixins import LifecycleMixin
 from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
-from ...client import AIClient
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...tracing import get_tracer, service_span, SpanPath
 from ...types import Request, Response, StrictBaseModel
+from ...types.content import ContentRole
+from ...types.input import InputTextContent
 from ...types.messages import InputItem
-from ...types.content import ContentRole, TextContent
+
+if TYPE_CHECKING:  # pragma: no cover
+    from simcore_ai.client import AIClient
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("simcore_ai.service")
@@ -79,7 +83,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
     # Class-level configuration / hints
     required_context_keys: ClassVar[tuple[str, ...]] = ()
-    codec_cls: ClassVar[type[BaseCodec] | None] = None          # Deprecated, see `codecs`
+    codec_cls: ClassVar[type[BaseCodec] | None] = None  # Deprecated, see `codecs`
 
     codecs: list[BaseCodec] = []
 
@@ -200,21 +204,6 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     def slug(self) -> str:
         """Get slug for Service (from identity string)."""
         return self.identity.as_str
-
-    @property
-    def response_schema(self) -> type[StrictBaseModel] | None:
-        """Return the active output schema class for this service, if any.
-
-        Resolution order:
-        - Per-instance override passed to __init__ (response_schema=...)
-        - Class-level default declared on the concrete service (response_schema on the class)
-        - Registry lookup by this service's identity (StrictBaseModel subclass)
-        """
-        return self._response_schema
-
-    @property
-    def codecs(self) -> BaseCodec:
-        raise RuntimeError("Codecs property is not available; codecs are instantiated per-call.")
 
     @property
     def prompt(self) -> Prompt:
@@ -446,6 +435,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 log_cat,
                 f"set context[{', '.join(added)}]", indent_level=3, success=True
             ))
+
     # ----------------------------------------------------------------------
     # Prompt resolution (async-first)
     # ----------------------------------------------------------------------
@@ -1154,7 +1144,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         messages: list[InputItem] = []
         instruction = getattr(prompt, "instruction", None)
         if instruction:
-            messages.append(InputItem(role=ContentRole.DEVELOPER, content=[TextContent(text=str(instruction))]))
+            messages.append(InputItem(role=ContentRole.DEVELOPER, content=[InputTextContent(text=str(instruction))]))
         logger.debug(self._build_stdout(
             "prompt", "built developer message(s) from p.instruction(s)", indent_level=4, success=True
         ))
@@ -1165,9 +1155,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         messages: list[InputItem] = []
         message = getattr(prompt, "message", None)
         if message:
-            messages.append(InputItem(role=ContentRole.USER, content=[TextContent(text=str(message))]))
+            messages.append(InputItem(role=ContentRole.USER, content=[InputTextContent(text=str(message))]))
         logger.debug(self._build_stdout(
-            "prompt", "built user message(s) from p.message(s)",indent_level=4, success=True
+            "prompt", "built user message(s) from p.message(s)", indent_level=4, success=True
         ))
         return messages
 
@@ -1185,7 +1175,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         for role, text in extras:
             if text:
                 llm_role: ContentRole = self._coerce_role(role)
-                messages.append(InputItem(role=llm_role, content=[TextContent(text=str(text))]))
+                messages.append(InputItem(role=llm_role, content=[InputTextContent(text=str(text))]))
                 msg_preview = text[:25] + "..." if len(text) > 25 else text
                 logger.debug(self._build_stdout(
                     "prompt",
