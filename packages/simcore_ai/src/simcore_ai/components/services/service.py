@@ -32,7 +32,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..base import BaseComponent
-from ..codecs.codecs import BaseCodec
+from ..codecs.codec import BaseCodec
 from ..mixins import LifecycleMixin
 from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
 from ...identity import Identity, IdentityLike, IdentityMixin

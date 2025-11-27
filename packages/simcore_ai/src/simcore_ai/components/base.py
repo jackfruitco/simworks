@@ -1,6 +1,4 @@
 # simcore_ai/components/base.py
-
-
 import logging
 from abc import ABC
 from typing import TYPE_CHECKING, ClassVar
@@ -8,7 +6,6 @@ from uuid import UUID, uuid4
 
 from .exceptions import ComponentNotFoundError
 from ..identity import IdentityLike
-from ..registry.exceptions import RegistryNotFoundError
 
 if TYPE_CHECKING:
     from simcore_ai.registry import BaseRegistry
@@ -40,6 +37,8 @@ class BaseComponent(ABC):
 
         registry = get_registry_for(cls)
         if registry is None:
+            from ..registry.exceptions import RegistryNotFoundError
+
             raise RegistryNotFoundError(f"No registry mapped for {cls.__name__}")
         return registry
 
@@ -50,6 +49,8 @@ class BaseComponent(ABC):
     @classmethod
     def try_get_registry(cls) -> BaseRegistry | None:
         """Return the registry for this component class, or None if not available."""
+        from ..registry.exceptions import RegistryNotFoundError
+
         try:
             return cls.get_registry()
         except (RegistryNotFoundError, NotImplementedError):
@@ -90,6 +91,8 @@ class BaseComponent(ABC):
     @classmethod
     def try_get(cls, ident: IdentityLike) -> type[BaseComponent] | None:
         """Sync-safe lookup. Returns None instead of raising."""
+        from ..registry.exceptions import RegistryNotFoundError
+
         try:
             return cls.get(ident)
         except ComponentNotFoundError:
@@ -102,6 +105,8 @@ class BaseComponent(ABC):
     @classmethod
     async def atry_get(cls, ident: IdentityLike) -> type[BaseComponent] | None:
         """Async-safe lookup. Returns None instead of raising."""
+        from ..registry.exceptions import RegistryNotFoundError
+
         try:
             return await cls.aget(ident)
         except ComponentNotFoundError:

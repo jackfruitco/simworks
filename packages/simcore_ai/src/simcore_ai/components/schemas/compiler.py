@@ -12,12 +12,12 @@ import warnings
 
 warnings.warn("simcore_ai.schemas.compiler is deprecated; use codecs instead.", DeprecationWarning, stacklevel=2)
 
+raise DeprecationWarning("simcore_ai.schemas.compiler is deprecated; use codecs instead.")
+
 import logging
 from copy import deepcopy
 from collections.abc import Callable
 from typing import Union, Type, Literal
-
-from simcore_ai.components.codecs.codecs import SchemaAdapter
 
 logger = logging.getLogger(__name__)
 

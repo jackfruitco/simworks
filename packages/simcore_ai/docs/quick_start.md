@@ -116,7 +116,7 @@ Create a codec to validate the JSON payload, send the request through the client
 
 ```python
 
-from simcore_ai.components.codecs.codecs import BaseCodec
+from simcore_ai.components.codecs.codec import BaseCodec
 from simcore_ai.types import Request
 
 

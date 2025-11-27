@@ -12,7 +12,7 @@ from typing import Any, Type, TypeVar
 
 from simcore_ai.registry import BaseRegistry
 from simcore_ai.decorators.base import BaseDecorator
-from simcore_ai.components.codecs.codecs import BaseCodec
+from simcore_ai.components.codecs.codec import BaseCodec
 from simcore_ai.registry.singletons import codecs as codec_registry
 
 __all__ = ("CodecDecorator", "codec")

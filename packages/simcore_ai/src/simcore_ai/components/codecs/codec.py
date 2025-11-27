@@ -1,4 +1,4 @@
-# simcore_ai/components/codecs/base.py
+# simcore_ai/components/codec/base.py
 import base64
 import json
 import logging
@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from .exceptions import CodecDecodeError, CodecSchemaError
 from ..schemas.base import BaseOutputSchema
-from ...components import BaseComponent
+from ...components.base import BaseComponent
 from ...identity import IdentityMixin
 from ...tracing import service_span_sync
 from ...types import Request, Response, StreamChunk

@@ -116,7 +116,7 @@ Codecs transform normalized responses into typed models. Subclass `BaseCodec` or
 
 ```python
 
-from simcore_ai.components.codecs.codecs import BaseCodec
+from simcore_ai.components.codecs.codec import BaseCodec
 from simcore_ai.components.schemas.base import BaseOutputSchema
 
 
