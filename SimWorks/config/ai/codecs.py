@@ -9,7 +9,7 @@ from django.db import transaction
 
 from chatlab.models import Message, RoleChoices
 from simulation.models import Simulation, AIResponse
-from simcore_ai_django.components.codecs.codecs import DjangoBaseCodec
+from simcore_ai_django.components.codecs.codec import DjangoBaseCodec
 
 
 class _MessageTextProvider(Protocol):

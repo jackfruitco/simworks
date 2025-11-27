@@ -127,6 +127,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         cls = type(self)
         if cls.response_schema is None:
             # No schema configured; nothing to encode.
+            logger.debug("%s: no structured output schema defined", cls.__name__)
             return
 
         with service_span_sync(
