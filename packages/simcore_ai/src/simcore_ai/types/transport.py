@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any, Dict, TypeAlias
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 from .base import StrictBaseModel
 from .messages import InputItem, OutputItem, UsageContent
@@ -45,7 +45,9 @@ class Request(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)
 
     # Response format (provider-agnostic)
-    response_schema: ResponseSchemaType | None = None  # Pydantic model
+    response_schema: ResponseSchemaType | None = Field(
+        default=None, repr=False
+    )  # Pydantic model
     response_schema_json: dict | None = None  # JSON schema from the model
     provider_response_format: dict | None = None  # Provider-specific response format
 
@@ -59,6 +61,21 @@ class Request(StrictBaseModel):
     max_output_tokens: int | None = None
     stream: bool = False
     image_format: str | None = None
+
+    @field_serializer("response_schema", when_used="json")
+    def _serialize_response_schema(
+            self, value: ResponseSchemaType | None
+    ) -> str | None:
+        if value is None:
+            return None
+
+        base = f"{value.__module__}.{value.__qualname__}"
+
+        identity = getattr(getattr(value, "identity", None), "as_str", None)
+        if identity:
+            return f"{base} (ident: `{identity}`)"
+
+        return base
 
 
 class Response(StrictBaseModel):
