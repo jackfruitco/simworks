@@ -35,6 +35,7 @@ class OpenAIResponsesBaseCodec(OpenAiNamespaceMixin, BaseCodec):
     # kind: ClassVar[str] = "responses"
     pass
 
+
 @codec(name="json")
 class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
     """Codec for OpenAI Responses JSON structured output.

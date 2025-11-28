@@ -5,6 +5,7 @@ import inspect
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from slugify import slugify
 from typing import Any, AsyncIterator, Optional, Protocol
 
 from simcore_ai.tracing import service_span_sync
@@ -79,6 +80,7 @@ class BaseProvider(ABC):
             description: str | None = None,
             provider_key: Optional[str] = None,
             provider_label: Optional[str] = None,
+            slug: Optional[str] = None,
             **_: object
     ) -> None:
         """Common initializer for providers.
@@ -89,6 +91,7 @@ class BaseProvider(ABC):
         # Optional observability fields (set by the factory when available)
         self.provider_key = provider_key
         self.provider_label = provider_label
+        self.slug = slug if slug is not None else slugify(name)
 
     _tool_adapter: Optional["BaseProvider.ToolAdapter"] = None
 

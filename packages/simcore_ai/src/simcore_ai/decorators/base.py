@@ -155,7 +155,7 @@ class BaseDecorator:
             span_attrs = _filter_trace_attrs(span_attrs)
             with service_span_sync(f"simcore.decorator.apply ({cls.__name__})", attributes=span_attrs):
                 # msg = f"✅ discovered `{identity.as_str}` (ident: `{identity.as_str}`)"
-                logger.info(f"✅ discovered `%s`" % identity.as_str)
+                logger.info("[%s] ✅ discovered `%s`", type(cls), identity.as_str)
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(" -- fqcn: %s" % fqcn)
                     logger.debug(" -- attributes: %s" % span_attrs.__repr__())
