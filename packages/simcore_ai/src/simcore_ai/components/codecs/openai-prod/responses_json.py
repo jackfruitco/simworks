@@ -15,19 +15,19 @@ keyed by identity (namespace='openai', kind='responses', name='json').
 from typing import Any, ClassVar, Sequence
 
 from pydantic import ValidationError
-from simcore_ai.components.codecs import BaseCodec
-from simcore_ai.decorators import codec
 
+from simcore_ai.components.codecs import BaseCodec
 from simcore_ai.components.codecs.exceptions import CodecDecodeError, CodecSchemaError
-from simcore_ai.providers.openai.schema_adapters import FlattenUnions
+from simcore_ai.decorators import codec
+from simcore_ai.providers.openai.schema_adapters import FlattenUnions, OpenaiWrapper
 from simcore_ai.tracing import service_span_sync
 from simcore_ai.types import Request, Response
 
 
 class OpenAiNamespaceMixin:
     """Mixin for OpenAI codecs. Sets the codec namespace and provider name."""
-    namespace: ClassVar[str] = "openai"
-    provider_name: ClassVar[str] = "openai"
+    namespace: ClassVar[str] = "openai-prod"
+    provider_name: ClassVar[str] = "openai-prod"
 
 
 class OpenAIResponsesBaseCodec(OpenAiNamespaceMixin, BaseCodec):
@@ -61,7 +61,7 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
     output_schema_cls: ClassVar[type | None] = None
 
     # Ordered list of schema adapters to apply for OpenAI JSON.
-    schema_adapters: ClassVar[Sequence[FlattenUnions]] = (FlattenUnions(),)
+    schema_adapters: ClassVar[Sequence[FlattenUnions, OpenaiWrapper]] = (FlattenUnions(), OpenaiWrapper())
 
     async def aencode(self, req: Request) -> None:
         """Attach provider-specific response format for OpenAI Responses.
@@ -124,14 +124,15 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
             name = meta.get("name") or "response"
             strict = bool(meta.get("strict", True))
 
-            provider_payload: dict[str, Any] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": name,
-                    "schema": compiled,
-                    "strict": strict,
-                },
-            }
+            # MOVED OpenAI provider wrapping to OpenaiWrapper adapter
+            # provider_payload: dict[str, Any] = {
+            #     "type": "json_schema",
+            #     "json_schema": {
+            #         "name": name,
+            #         "schema": compiled,
+            #         "strict": strict,
+            #     },
+            # }
             setattr(req, "provider_response_format", provider_payload)
 
     async def adecode(self, resp: Response) -> Any | None:

@@ -91,9 +91,26 @@ class BaseProvider(ABC):
         # Optional observability fields (set by the factory when available)
         self.provider_key = provider_key
         self.provider_label = provider_label
-        self.slug = slug if slug is not None else slugify(name)
+        if slug:
+            self.slug = slugify(slug)
 
     _tool_adapter: Optional["BaseProvider.ToolAdapter"] = None
+
+    @property
+    def slug(self):
+        """Get provider slug."""
+        return self._slug
+
+    @slug.setter
+    def slug(self, value: str | None = None) -> None:
+        """Set the provider slug from provided value, or default to `name:label`, or `name`"""
+        if value:
+            self._slug = slugify(value.strip())
+        else:
+            if self.provider_label:
+                self._slug = slugify(f"{self.name}:{self.provider_label}".strip())
+            else:
+                self._slug = slugify(self.name.strip())
 
     # ---------------------------------------------------------------------
     # Public provider API (async-first contracts)
@@ -104,7 +121,6 @@ class BaseProvider(ABC):
     #
     # Streaming MUST be async: `async def stream(self, req) -> AsyncIterator[StreamChunk]`.
     # Sync streaming is not supported by the client adapter.
-
     @abstractmethod
     async def call(self, req: Request, timeout: float | None = None) -> Response:
         """Canonical async, non-streaming request.

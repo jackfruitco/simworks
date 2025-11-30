@@ -27,9 +27,13 @@ class BaseRegistry(Generic[K, T]):
 
     def _register(self, cls: type[T]) -> None:
         """Internal: register a component class into the store."""
-        if not hasattr(cls, "identity"):
-            raise ValueError(f"Component {cls} has no identity")
-        key = self._coerce(getattr(cls, "identity"))
+        if hasattr(cls, "identity"):
+            key = self._coerce(getattr(cls, "identity"))
+        elif hasattr(cls, "slug"):
+            key = self._coerce(getattr(cls, "slug"))
+        else:
+            raise ValueError(f"Component {cls} has no identity (or fallback `slug`)")
+
         with self._lock:
             if self._frozen:
                 raise RegistryFrozenError("Registry is frozen")
@@ -151,6 +155,23 @@ class BaseRegistry(Generic[K, T]):
         return await sync_to_async(self.count)()
 
     # --- enumerate all entries ---
+    @overload
+    def items(self, *, as_str: Literal[True]) -> tuple[str, ...]: ...
+    @overload
+    def items(self, *, as_str: Literal[False] = False) -> tuple[type[T], ...]: ...
+
+    def items(self, *, as_str: bool = False):
+        """
+        Return all registered component classes or their identity strings.
+
+        When `as_str` is True, returns a tuple of identity strings.
+        Otherwise, returns a tuple of registered classes.
+        """
+        with self._lock:
+            if as_str:
+                return tuple(cls.identity.as_str for cls in self._store.values())
+            return tuple(self._store.values())
+
 
     @overload
     def all(self, *, as_str: Literal[True]) -> tuple[str, ...]: ...
@@ -164,17 +185,17 @@ class BaseRegistry(Generic[K, T]):
         When `as_str` is True, returns a tuple of identity strings.
         Otherwise, returns a tuple of registered classes.
         """
-        with self._lock:
-            if as_str:
-                return tuple(cls.identity.as_str for cls in self._store.values())
-            return tuple(self._store.values())
+        return self.items(as_str=as_str)
 
     async def aall(self, *, as_str: bool = False):
         """Async wrapper around `all`."""
         return await sync_to_async(self.all)(as_str=as_str)
 
-    # --- labels ---
+    def keys(self) -> tuple[K, ...]:
+        """Return all registered component keys."""
+        return tuple(self._store.keys())
 
+    # --- labels ---
     def labels(self) -> tuple[str, ...]:
         """Return all registered component identity strings."""
         with self._lock:

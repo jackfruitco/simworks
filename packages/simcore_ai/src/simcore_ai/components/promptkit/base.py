@@ -117,7 +117,7 @@ Renderable = str | None | Awaitable[str | None]
 class ConfidenceNote:
     """Optional confidence signal a section can expose for future planners.
 
-    score: 0.0..1.0 (advisory weight; not a probability)
+    score: 0.0..1.0 (advisory order; not a probability)
     note: short human-readable explanation for debugging
     """
     score: float

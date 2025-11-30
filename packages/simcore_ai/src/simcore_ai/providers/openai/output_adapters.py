@@ -15,16 +15,6 @@ and tool result DTOs used by the core transport layer.
 """
 
 
-class OutputAdapter(Protocol):
-    """Protocol for provider-native output adapters.
-
-    Implementations should return a (LLMToolCall, BaseToolResultContent) tuple
-    when they recognize the item, or None otherwise.
-    """
-
-    def adapt(self, item: Any) -> tuple[LLMToolCall, BaseToolResultContent] | None: ...
-
-
 class ImageGenerationOutputAdapter:
     """Adapt OpenAI image generation outputs into normalized tool results."""
 

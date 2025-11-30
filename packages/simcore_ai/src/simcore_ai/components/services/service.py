@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync, sync_to_async
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
+from .. import BaseOutputSchema
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
 from ..mixins import LifecycleMixin
@@ -90,8 +91,6 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     prompt_plan: ClassVar[PromptPlan | list[PromptSectionSpec] | list[str] | None] = None
     prompt_engine: ClassVar[PromptEngine | None] = None
     provider_name: ClassVar[str | None] = None
-
-    response_schema: ClassVar[type[StrictBaseModel] | None] = None
 
     _span_root: ClassVar[SpanPath | None] = None
 
@@ -174,10 +173,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         # Cached prompt (only used when all sections are non-dynamic)
         self._prompt_cache: Prompt | None = None
 
-        self._response_schema: type[StrictBaseModel] | None = self._resolve_response_schema(response_schema)
-
-        # Validate required context keys
-        self.check_required_context()
+        self.response_schema: type[StrictBaseModel] | None = self._resolve_response_schema(response_schema)
 
     @classmethod
     def using(cls, **overrides: Any) -> BaseService:
@@ -658,6 +654,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
           ask BaseCodec to return all codecs that match this call signature
           (typically the provider's JSON / structured-output codec).
         - Returns an empty tuple if no codec applies.
+
+        Uses the new provider-based API with a namespace fallback.
         """
         LOG_CAT = "codec"
         sel: list[type[BaseCodec]] = []
@@ -669,7 +667,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             log_cat=LOG_CAT,
         )
 
-        provider = self.provider_name or ""
+        # Prefer explicit provider_name; fall back to this service's namespace
+        provider = self.provider_name or self.identity.namespace or ""
         if self.response_schema and provider:
             try:
                 matches = BaseCodec.select_for(
@@ -710,7 +709,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Precedence:
           1) Per-call override (`codec=` at init) via `_codec_override`
           2) Explicit codec class (`codec_cls` arg) or class-level default (`codec_cls` on the class)
-          3) BaseCodec.select_for(...) using provider_name / structured-output defaults
+          3) Automatic selection via the new provider-based API (`select_codecs`)
           4) Legacy registry lookup by this service's identity
         """
         LOG_CAT = "codec"
@@ -759,40 +758,34 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             )
             return codec_cls, label
 
-        # 3) Automatic selection via BaseCodec.select_for when we have a schema + provider
+        # 3) Automatic selection via the new provider-based API (`select_codecs`)
         codec_cls: type[BaseCodec] | None = None
-        provider = self.provider_name or ident.namespace or ""
-        if provider and self.response_schema is not None:
-            try:
-                matches = BaseCodec.select_for(
-                    provider=provider,
-                    api="default",
-                    result_type="json",
-                )
-            except Exception:
-                logger.debug(
-                    self._build_stdout(
-                        LOG_CAT,
-                        "BaseCodec.select_for failed; continuing to legacy identity lookup",
-                        indent_level=2,
-                        success="non-fatal",
-                    ),
-                    exc_info=True,
-                )
-                matches = ()
+        try:
+            matches = self.select_codecs()
+        except Exception:
+            logger.debug(
+                self._build_stdout(
+                    LOG_CAT,
+                    "select_codecs() failed; continuing to legacy identity lookup",
+                    indent_level=2,
+                    success="non-fatal",
+                ),
+                exc_info=True,
+            )
+            matches = ()
 
-            if matches:
-                codec_cls = matches[0]
-                label = self._codec_label_from_cls(codec_cls, ident_label)
-                logger.debug(
-                    self._build_stdout(
-                        LOG_CAT,
-                        f"resolved (via BaseCodec.select_for): {codec_cls.__name__} ({label})",
-                        indent_level=2,
-                        success=True,
-                    )
+        if matches:
+            codec_cls = matches[0]
+            label = self._codec_label_from_cls(codec_cls, ident_label)
+            logger.debug(
+                self._build_stdout(
+                    LOG_CAT,
+                    f"resolved (via select_codecs): {codec_cls.__name__} ({label})",
+                    indent_level=2,
+                    success=True,
                 )
-                return codec_cls, label
+            )
+            return codec_cls, label
 
         # 4) Legacy: registry by service identity only (single source of truth)
         legacy_cls = Identity.resolve.try_for_(BaseCodec, ident)
@@ -821,9 +814,16 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
     def resolve_codec(self) -> tuple[type[BaseCodec], str]:
         """
-        Sync codec resolver (deprecated).
+        DEPRECATED: Sync codec resolver.
 
-        Delegates to `_select_codec_class()` and raises if no codec is found.
+        This method is retained for backwards compatibility and delegates to
+        `_select_codec_class()`. New code should use `select_codecs()` and/or
+        `_select_codec_class()` instead.
+
+        Raises
+        ------
+        ServiceCodecResolutionError
+            If no codec is found for this service.
         """
         warnings.warn(
             "`resolve_codec()` is deprecated. Use `select_codecs()` / `_select_codec_class()` instead.",
@@ -842,10 +842,16 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
     async def aresolve_codec(self) -> tuple[type[BaseCodec], str]:
         """
-        Async wrapper around `resolve_codec()` (deprecated).
+        DEPRECATED: Async wrapper around `resolve_codec()`.
 
-        Keeps codec resolution centralized in the sync path while
-        remaining usable from async-only code.
+        This is preserved only for callers that still rely on the legacy API.
+        New code should use `select_codecs()` / `_select_codec_class()` and the
+        per-call codec preparation helpers instead.
+
+        Notes
+        -----
+        Keeps codec resolution centralized in the sync path while remaining
+        usable from async-only code.
         """
         warnings.warn(
             "`aresolve_codec()` is deprecated. Use `select_codecs()` / `_select_codec_class()` instead.",
@@ -858,8 +864,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     def _resolve_response_schema(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
         """Resolve the output schema class for this service.
 
-        Precedence:
-          1) Explicit per-instance override passed to ``__init__`` (``response_schema=...``)
+        Resolution order:
+          1) Explicit per-instance override passed to ``__init__`` / ``using(response_schema=...)``
           2) Class-level default declared on the concrete service (``response_schema``)
           3) Registry lookup by this service's identity
         """
@@ -873,10 +879,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 indent_level=2,
                 success=True,
             ))
+            self.context["service.response_schema.source"] = "override"
+            self.context["service.response_schema.name"] = getattr(override, "__name__", str(override))
             return override
 
-        # 2) Class-level default
-        cls_default: type[StrictBaseModel] | None = type(self).response_schema
+        # 2) Class-level default on the concrete service subclass, if defined
+        cls_default: type[StrictBaseModel] | None = getattr(type(self), "response_schema", None)
         if cls_default is not None:
             logger.debug(self._build_stdout(
                 LOG_CAT,
@@ -884,11 +892,13 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 indent_level=2,
                 success=True,
             ))
+            self.context["service.response_schema.source"] = "class"
+            self.context["service.response_schema.name"] = getattr(cls_default, "__name__", str(cls_default))
             return cls_default
 
         # 3) Identity-based registry lookup
         try:
-            resolved = Identity.resolve.try_for_(StrictBaseModel, self.identity)
+            resolved = Identity.resolve.try_for_(BaseOutputSchema, self.identity)
         except Exception:
             logger.debug(self._build_stdout(
                 LOG_CAT,
@@ -905,6 +915,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 indent_level=2,
                 success=True,
             ))
+            self.context["service.response_schema.source"] = "identity"
+            self.context["service.response_schema.name"] = getattr(resolved, "__name__", str(resolved))
         else:
             logger.warning(self._build_stdout(
                 LOG_CAT,
@@ -952,10 +964,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 return None, None
 
             try:
-                try:
-                    codec: BaseCodec | None = codec_cls(service=self)  # type: ignore[call-arg]
-                except TypeError:
-                    codec = codec_cls()  # type: ignore[call-arg]
+                codec: BaseCodec | None = codec_cls(service=self)  # type: ignore[call-arg]
             except Exception:
                 logger.debug(
                     self._build_stdout(
@@ -1030,8 +1039,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 log_cat=LOG_CAT,
             )
 
-            # Build request and stamp stream flag
-            req = await self._aprepare_request(stream=stream, **kwargs)
+            # Build request and stamp stream flag using the new builder API
+            req = await self.abuild_request(**kwargs)
+            req.stream = bool(stream)
 
             # Attach codec identity to the request when available; schema hints are handled by the codec.
             if codec_label:

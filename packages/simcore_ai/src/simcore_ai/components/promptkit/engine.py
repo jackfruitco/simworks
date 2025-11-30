@@ -81,7 +81,7 @@ def _instantiate_with_overrides(
 ) -> PromptSection:
     """
     Create a PromptSection instance from a class or pass through an instance,
-    then apply lightweight overrides (weight, tags) when provided. If overrides
+    then apply lightweight overrides (order, tags) when provided. If overrides
     are requested and the section is a dataclass instance, a shallow clone is made
     to avoid mutating caller-owned instances.
     """
@@ -102,7 +102,7 @@ def _instantiate_with_overrides(
                 label = _get_section_label(new_inst)
             except Exception:
                 label = repr(new_inst)
-            logger.debug("Failed to apply weight override to %s", label)
+            logger.debug("Failed to apply order override to %s", label)
 
     if tags is not None:
         try:
@@ -127,10 +127,10 @@ def _sections_from_plan(plan: "PromptPlan") -> list[PromptSection]:
     Expand a PromptPlan into concrete PromptSection instances.
 
     Supports both:
-      - Plan items that expose `.section`, `.weight`, `.tags`, etc.
+      - Plan items that expose `.section`, `.order`, `.tags`, etc.
       - Raw SectionSpec entries (PromptSection subclasses or instances).
 
-    Per-item overrides (weight, tags) are applied when present; confidence
+    Per-item overrides (order, tags) are applied when present; confidence
     metadata is intentionally ignored here (no-op), but the structure remains
     for future use.
     """
@@ -139,7 +139,7 @@ def _sections_from_plan(plan: "PromptPlan") -> list[PromptSection]:
         try:
             # Support both "plan items" with .section and raw SectionSpec entries
             section_obj = getattr(item, "section", None) or item
-            weight = getattr(item, "weight", None) or getattr(item, "weight_override", None)
+            weight = getattr(item, "order", None) or getattr(item, "weight_override", None)
             tags = getattr(item, "tags", None)
 
             inst = _instantiate_with_overrides(section_obj, weight=weight, tags=tags)
@@ -153,7 +153,7 @@ def _sections_from_plan(plan: "PromptPlan") -> list[PromptSection]:
 
 class PromptEngine:
     """
-    Compose prompt sections and render them in weight order.
+    Compose prompt sections and render them in order order.
 
     Usage:
         # Async (preferred in ASGI or when an event loop is running)
@@ -339,11 +339,11 @@ class PromptEngine:
                 "PromptEngine.abuild: sections=%s",
                 [_get_section_label(s) for s in self._sections],
             )
-            # Preserve insertion order among sections with equal weight
+            # Preserve insertion order among sections with equal order
             ordered: Sequence[PromptSection] = [
                 s for _, s in sorted(
                     enumerate(self._sections),
-                    key=lambda t: (t[1].weight, t[0], _get_section_label(t[1])),
+                    key=lambda t: (t[1].order, t[0], _get_section_label(t[1])),
                 )
             ]
             outputs: list[tuple[str | None, str | None]] = []
@@ -360,7 +360,7 @@ class PromptEngine:
                             "simcore.section": label,
                             "simcore.category": getattr(sec, "category", None),
                             "simcore.name": getattr(sec, "name", None),
-                            "simcore.weight": getattr(sec, "weight", None),
+                            "simcore.order": getattr(sec, "order", None),
                             **flatten_context(ctx),
                         },
                 ) as section_span:
@@ -372,7 +372,7 @@ class PromptEngine:
                             "simcore.prompt.render_instruction",
                             attributes={
                                 "simcore.section": label,
-                                "simcore.weight": getattr(sec, "weight", None),
+                                "simcore.order": getattr(sec, "order", None),
                                 **flatten_context(ctx),
                             },
                     ):
@@ -388,7 +388,7 @@ class PromptEngine:
                             "simcore.prompt.render_message",
                             attributes={
                                 "simcore.section": label,
-                                "simcore.weight": getattr(sec, "weight", None),
+                                "simcore.order": getattr(sec, "order", None),
                                 **flatten_context(ctx),
                             },
                     ):

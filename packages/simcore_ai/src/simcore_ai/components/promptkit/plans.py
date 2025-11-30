@@ -60,19 +60,19 @@ def describe_section(sec: object) -> str:
     and error input. This is intentionally resilient and avoids raising.
 
     Examples:
-        - Class: "<class> chatlab.patient.initial (weight=10)"
-        - Instance: "<instance> chatlab.patient.initial (weight=10)"
+        - Class: "<class> chatlab.patient.initial (order=10)"
+        - Instance: "<instance> chatlab.patient.initial (order=10)"
         - Other: "<invalid> dict keys=['x','y']"
     """
     try:
         if _is_section_class(sec):
             cls: type[PromptSection] = sec  # type: ignore[assignment]
-            weight = getattr(cls, "weight", None)
-            return f"<class> {cls.identity.as_str} (weight={weight})"
+            weight = getattr(cls, "order", None)
+            return f"<class> {cls.identity.as_str} (order={weight})"
         if _is_section_instance(sec):
             inst: PromptSection = sec  # type: ignore[assignment]
             ident_str = inst.identity.to_string()
-            return f"<instance> {ident_str} (weight={inst.weight})"
+            return f"<instance> {ident_str} (order={inst.weight})"
         # Fallback: non-section, provide some shape
         if isinstance(sec, dict):
             return f"<invalid> dict keys={sorted(sec.keys())!r}"

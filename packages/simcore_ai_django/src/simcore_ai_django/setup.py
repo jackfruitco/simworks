@@ -31,7 +31,7 @@ Notes
 - API key resolution order is handled inside the factory/merge workflow:
     client.api_key -> provider.api_key -> os.environ[client.api_key_env or provider.api_key_env]
 """
-
+import importlib
 import logging
 import os
 from typing import Dict, Tuple
@@ -44,7 +44,7 @@ from simcore_ai.client.registry import (
     set_default_client,
     is_configured as registry_is_configured,
 )
-from simcore_ai.client.schemas import AIProviderConfig, AIClientRegistration, AIClientConfig
+from simcore_ai.client.types import AIProviderConfig, AIClientRegistration, AIClientConfig
 from simcore_ai.client.utils import effective_provider_config
 from simcore_ai.components import BaseComponent
 from simcore_ai.registry import BaseRegistry
@@ -181,6 +181,57 @@ def configure_ai_clients() -> None:
         # Mark configured for idempotency
         _CONFIGURED_SIGNATURE = current_sig
 
+def autodiscover_codecs() -> None:
+    """
+    Discover provider-specific codecs by importing codec modules for each
+    unique provider used by configured clients.
+
+    This relies on AI clients having been configured already, so that
+    `list_clients()` returns the active client objects.
+    """
+    from simcore_ai.client import list_clients
+
+    slugs: set[str] = set()
+
+    for ident, client in list_clients().items():
+        provider = getattr(client, "provider", None)
+        if provider is None:
+            logger.warning("No provider found for client '%s'; skipping", ident)
+            continue
+
+        slug = getattr(provider, "slug", None)
+        if not slug:
+            logger.warning(
+                "Provider %r for client '%s' has no slug; skipping codec discovery",
+                provider,
+                ident,
+            )
+            continue
+
+        if slug in slugs:
+            logger.debug(
+                "Provider slug '%s' already discovered (client '%s'); skipping duplicate",
+                slug,
+                ident,
+            )
+            continue
+
+        slugs.add(slug)
+        logger.debug(
+            "Discovered provider slug '%s' from client '%s'; queued for codec import",
+            slug,
+            ident,
+        )
+
+    for slug in slugs:
+        module = f"simcore_ai.components.codecs.{slug}"
+        try:
+            importlib.import_module(module)
+        except ModuleNotFoundError:
+            logger.warning(
+                "No codecs package found with provider slug '%s'; skipping",
+                slug
+            )
 
 def autodiscover_all() -> None:
     """
@@ -225,7 +276,7 @@ def autodiscover_all() -> None:
         autodiscover_modules("ai.prompts")
         p_count, p_labels = _tally_component(PromptSection)
         logger.info(
-            "Discovered %d PromptSections",
+            "Discovered %d PromptSection(s)",
             p_count,
             extra={
                 "prompt_sections.count": p_count,
@@ -238,7 +289,7 @@ def autodiscover_all() -> None:
         autodiscover_modules("ai.services")
         s_count, s_labels = _tally_component(DjangoBaseService)
         logger.info(
-            "Discovered %d services",
+            "Discovered %d service(s)",
             s_count,
             extra={
                 "services.count": s_count,
@@ -249,9 +300,12 @@ def autodiscover_all() -> None:
     with service_span_sync("simcore.autodiscover.codecs"):
         autodiscover_modules("simcore.codecs")
         autodiscover_modules("ai.codecs")
+
+        autodiscover_codecs()
+
         c_count, c_labels = _tally_component(DjangoBaseCodec)
         logger.info(
-            "Discovered %d codecs",
+            "Discovered %d codec(s)",
             c_count,
             extra={
                 "codecs.count": c_count,

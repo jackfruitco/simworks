@@ -1,6 +1,6 @@
 # simcore_ai/registry/__init__.py
 from .base import BaseRegistry
-from .singletons import codecs,services,schemas,prompt_sections,get_registry_for
+from .singletons import *
 
 __all__ = (
     "BaseRegistry",
@@ -8,5 +8,6 @@ __all__ = (
     "services",
     "schemas",
     "prompt_sections",
+    "providers",
     "get_registry_for",
 )

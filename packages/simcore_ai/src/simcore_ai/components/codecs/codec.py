@@ -50,14 +50,28 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     # can be appended in subclasses.
     schema_adapters: ClassVar[list[SchemaAdapter]] = []
 
-
-    def __init__(self) -> None:
+    def __init__(self, service: Any | None = None) -> None:
         super().__init__()
         self._stream_buffer: list[Any] | None = None
+        if service is not None:
+            self.service = service
 
     def __init_subclass__(cls, **kw) -> None:  # pragma: no cover - light guardrails
         """Ensure IdentityMixin hooks run; registration is handled by decorators."""
         super().__init_subclass__(**kw)
+
+    def _get_schema_from_service(self) -> type[BaseOutputSchema] | None:
+        """Return the effective response schema for this codec.
+
+        Codecs do not own schemas; they read the schema resolved by the service.
+        The service is expected to expose a `response_schema` attribute that has
+        already applied per-call overrides, class-level defaults, and identity-based
+        resolution in that order.
+        """
+        svc = getattr(self, "service", None)
+        if svc is None:
+            return None
+        return getattr(svc, "response_schema", None)
 
     # ---- Selection helpers -------------------------------------------------
     @classmethod
@@ -75,9 +89,9 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         provider_name = getattr(provider, "name", None) or str(provider)
         ident = cls.identity
         return (
-            ident.namespace == provider_name
-            and ident.kind == api
-            and ident.name == result_type
+                ident.namespace == provider_name
+                and ident.kind == api
+                and ident.name == result_type
         )
 
     @classmethod
@@ -125,27 +139,26 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
           - req.provider_response_format  (provider-native payload)
         """
         cls = type(self)
-        if cls.response_schema is None:
+        schema_cls_ = self._get_schema_from_service()
+        if schema_cls_ is None:
             # No schema configured; nothing to encode.
-            logger.debug("%s: no structured output schema defined", cls.__name__)
+            logger.debug("%s: no structured output schema defined via service", cls.__name__)
             return
 
         with service_span_sync(
-            "simcore.codec.encode",
-            attributes={
-                "simcore.codec": cls.__name__,
-                "simcore.response_schema": getattr(cls.response_schema, "__name__", "<Not Set>"),
-            },
+                "simcore.codec.encode",
+                attributes={
+                    "simcore.codec": cls.__name__,
+                    "simcore.response_schema": getattr(schema_cls_, "__name__", "<Not Set>"),
+                },
         ):
             try:
-                schema_cls = cls.response_schema
-
-                # Attach schema class if not already provided by the service.
+                # Ensure response schema cls is attached to request if not already.
                 if getattr(req, "response_schema", None) is None:
-                    req.response_schema = schema_cls
+                    req.response_schema = schema_cls_
 
                 # Canonical JSON Schema from the Pydantic model.
-                schema_json = schema_cls.model_json_schema()
+                schema_json = schema_cls_.model_json_schema()
                 req.response_schema_json = schema_json
 
                 # Provider-specific adaptation and envelope.
@@ -180,8 +193,8 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         return out
 
     def _build_provider_response_format(
-        self,
-        adapted_schema: dict[str, Any] | None,
+            self,
+            adapted_schema: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
         """Provider-specific envelope for the adapted schema.
 
@@ -198,14 +211,15 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         Returns a validated model, or None if no structured payload exists.
         """
         cls = type(self)
-        if cls.response_schema is None:
+        schema_cls = self._get_schema_from_service()
+        if schema_cls is None:
             return None
         with service_span_sync(
-            "simcore.codec.decode",
-            attributes={
-                "simcore.codec": cls.__name__,
-                "simcore.response_schema": getattr(cls.response_schema, "__name__", "<Not Set>"),
-            },
+                "simcore.codec.decode",
+                attributes={
+                    "simcore.codec": cls.__name__,
+                    "simcore.response_schema": getattr(schema_cls, "__name__", "<Not Set>"),
+                },
         ):
             candidate = self.extract_structured_candidate(resp)
             if candidate is None:
@@ -217,10 +231,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
     # ---- Streaming hooks --------------------------------------------------
     async def adecode_chunk(
-        self,
-        chunk: StreamChunk,
-        *,
-        is_final: bool = False,
+            self,
+            chunk: StreamChunk,
+            *,
+            is_final: bool = False,
     ) -> tuple[BaseOutputSchema | None, bool]:
         """Consume a streaming chunk.
 
@@ -238,10 +252,13 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
     # ---- Schema utilities -------------------------------------------------
     def json_schema(self) -> dict:
-        if type(self).response_schema is None:
-            raise CodecSchemaError(f"Codec '{self.__class__.__name__}' has no 'response_schema' defined")
+        schema_cls = self._get_schema_from_service()
+        if schema_cls is None:
+            raise CodecSchemaError(
+                f"Codec '{self.__class__.__name__}' has no 'response_schema' defined via service"
+            )
         try:
-            return type(self).response_schema.model_json_schema()
+            return schema_cls.model_json_schema()
         except Exception as e:
             raise CodecSchemaError(
                 f"Failed to build JSON schema for codec '{self.__class__.__name__}'"
@@ -249,10 +266,13 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
     # ---- Validation --------------------------------------------------------
     def validate_dict(self, data: dict[str, Any]) -> BaseOutputSchema:
-        if type(self).response_schema is None:
-            raise CodecSchemaError(f"Codec '{self.__class__.__name__}' has no 'response_schema' defined")
+        schema_cls = self._get_schema_from_service()
+        if schema_cls is None:
+            raise CodecSchemaError(
+                f"Codec '{self.__class__.__name__}' has no 'response_schema' defined via service"
+            )
         try:
-            return type(self).response_schema.model_validate(data)
+            return schema_cls.model_validate(data)
         except ValidationError as e:
             raise CodecDecodeError(
                 f"Validation failed for codec '{self.__class__.__name__}'"
@@ -265,12 +285,13 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
           - A validated model on success.
           - None if extraction/validation fails.
         """
+        schema_cls = self._get_schema_from_service()
         with service_span_sync(
-            "simcore.codec.validate",
-            attributes={
-                "simcore.codec": self.__class__.__name__,
-                "simcore.schema": getattr(type(self).response_schema, "__name__", None),
-            },
+                "simcore.codec.validate",
+                attributes={
+                    "simcore.codec": self.__class__.__name__,
+                    "simcore.schema": getattr(schema_cls, "__name__", None) if schema_cls else None,
+                },
         ):
             try:
                 return await self.adecode(resp)
@@ -292,10 +313,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         """
         with service_span_sync("simcore.codec.extract", attributes={"simcore.codec": self.__class__.__name__}):
             for extractor in (
-                self._extract_from_provider,
-                self._extract_from_json_content,
-                self._extract_from_json_text,
-                self._extract_from_tool_result,
+                    self._extract_from_provider,
+                    self._extract_from_json_content,
+                    self._extract_from_json_text,
+                    self._extract_from_tool_result,
             ):
                 try:
                     data = extractor(resp)
