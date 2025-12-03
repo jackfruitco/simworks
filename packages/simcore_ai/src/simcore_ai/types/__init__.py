@@ -30,6 +30,7 @@ __all__ = [
     "OutputTextContent",
     "OutputImageContent",
     "OutputAudioContent",
+    "OutputJsonContent",
 
     "OutputToolCallContent",
     "OutputToolResultContent",

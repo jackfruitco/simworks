@@ -1,5 +1,5 @@
 # simcore_ai/registry/singletons.py
-from typing import TYPE_CHECKING, Any, Literal, TypeVar, overload, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, overload, cast, TypeAlias
 
 from simcore_ai.identity.identity import Identity
 from simcore_ai.registry.base import BaseRegistry
@@ -10,31 +10,59 @@ if TYPE_CHECKING:
     from simcore_ai.components.promptkit.base import PromptSection
     from simcore_ai.components.schemas import BaseOutputSchema
     from simcore_ai.components.services.service import BaseService
+    from simcore_ai.components.providerkit import BaseProvider
 
     TSvc = TypeVar("TSvc", bound="BaseService")
     TCod = TypeVar("TCod", bound="BaseCodec")
     TSch = TypeVar("TSch", bound="BaseOutputSchema")
     TPS = TypeVar("TPS", bound="PromptSection")
+    TPrv = TypeVar("TPrv", bound="BaseProvider")
 
-    ComponentKind = Literal["service", "codec", "schema", "prompt_section"]
-    ComponentKey = (
-        type["BaseService"]
-        | type["BaseCodec"]
-        | type["BaseOutputSchema"]
-        | type["PromptSection"]
-        | ComponentKind
+    ComponentKey: TypeAlias = (
+            type[BaseService]
+            | type[BaseCodec]
+            | type[BaseOutputSchema]
+            | type[PromptSection]
+            | type[BaseProvider]
     )
 
+    ComponentKeyAliases: TypeAlias = Literal[
+        "service", "codec", "schema", "prompt_section", "provider",
+        "services", "codecs", "schemas", "prompt_sections", "providers",
+        "BaseService", "BaseCodec", "BaseOutputSchema", "PromptSection", "BaseProvider"
+    ]
+
+    ComponentKeyLike: TypeAlias = ComponentKey | ComponentKeyAliases
+
+
     @overload
-    def get_registry_for(component: type[TSvc]) -> BaseRegistry[Identity, TSvc]: ...
+    def get_registry_for(component: type[TSvc]) -> BaseRegistry[Identity, TSvc]:
+        ...
+
+
     @overload
-    def get_registry_for(component: type[TCod]) -> BaseRegistry[Identity, TCod]: ...
+    def get_registry_for(component: type[TCod]) -> BaseRegistry[Identity, TCod]:
+        ...
+
+
     @overload
-    def get_registry_for(component: type[TSch]) -> BaseRegistry[Identity, TSch]: ...
+    def get_registry_for(component: type[TSch]) -> BaseRegistry[Identity, TSch]:
+        ...
+
+
     @overload
-    def get_registry_for(component: type[TPS]) -> BaseRegistry[Identity, TPS]: ...
+    def get_registry_for(component: type[TPS]) -> BaseRegistry[Identity, TPS]:
+        ...
+
+
     @overload
-    def get_registry_for(kind: ComponentKind) -> BaseRegistry[Identity, Any]: ...
+    def get_registry_for(component: type[TPrv]) -> BaseRegistry[Identity, TPrv]:
+        ...
+
+
+    @overload
+    def get_registry_for(kind: ComponentKind) -> BaseRegistry[Identity, Any]:
+        ...
 else:
     # At runtime we don’t need precise typing – keep it loose.
     ComponentKind = str  # type: ignore[assignment]
@@ -47,6 +75,7 @@ services: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
 codecs: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
 schemas: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
 prompt_sections: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
+providers: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
 
 
 def _infer_kind_from_type(component_type: type[Any]) -> str | None:
@@ -69,6 +98,9 @@ def _infer_kind_from_type(component_type: type[Any]) -> str | None:
         from simcore_ai.components.promptkit.base import (  # type: ignore[import-not-found]
             PromptSection as _PromptSection,
         )
+        from simcore_ai.components.providerkit import (  # type: ignore[import-not-found]
+            BaseProvider as _BaseProvider
+        )
     except Exception:
         # If anything goes sideways during lazy import, bail out and let the
         # caller decide how to handle a missing registry.
@@ -82,10 +114,12 @@ def _infer_kind_from_type(component_type: type[Any]) -> str | None:
         return "schema"
     if issubclass(component_type, _PromptSection):
         return "prompt_section"
+    if issubclass(component_type, _BaseProvider):
+        return "provider"
     return None
 
 
-def get_registry_for(component: ComponentKey) -> BaseRegistry[Identity, Any] | None:
+def get_registry_for(component: ComponentKeyLike) -> BaseRegistry[Identity | str, Any] | None:
     """
     Return the global registry singleton corresponding to the given component.
 
@@ -120,5 +154,7 @@ def get_registry_for(component: ComponentKey) -> BaseRegistry[Identity, Any] | N
         return cast(BaseRegistry[Identity, Any], schemas)
     if kind == "prompt_section":
         return cast(BaseRegistry[Identity, Any], prompt_sections)
+    if kind == "provider":
+        return providers
 
     return None

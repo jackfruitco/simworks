@@ -26,7 +26,8 @@ from collections.abc import Mapping
 from threading import RLock
 from typing import Dict, Optional, Any
 
-from simcore_ai.client.schemas import AIProviderConfig, AIClientConfig
+from simcore_ai.client.types import AIClientConfig
+from ..components.providerkit.provider import AIProviderConfig
 from simcore_ai.providers.factory import create_provider
 from simcore_ai.registry.exceptions import (
     RegistryError,

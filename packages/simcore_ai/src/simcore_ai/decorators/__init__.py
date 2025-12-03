@@ -17,5 +17,6 @@ __all__ = [
     "service",
     "schema",
     "prompt_section"
+    "provider",
 ]
 

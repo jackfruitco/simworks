@@ -100,6 +100,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     backoff_factor: float = 2.0
     backoff_jitter: float = 0.1  # +/- seconds
 
+    dry_run: bool = False
+
     def __init__(
             self,
             *,
@@ -190,6 +192,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             - client: AIClient
             - emitter: ServiceEmitter
             - prompt_instruction_override / prompt_message_override: str
+            - dry_run: bool
 
         Task-level concerns (priority, queue, retries, etc.) are handled by the
         Django Tasks layer and MUST NOT be passed here.
@@ -1372,9 +1375,13 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 )
 
         # Delegate to the appropriate IO helper
+        if self.dry_run:
+            return Response(request=req, output=[], usage=None, tool_calls=[])
+
         if stream:
             await self._astream(client, req, codec, attrs, ident)
             return None
+
         return await self._asend(client, req, codec, attrs, ident)
 
     async def _asend(

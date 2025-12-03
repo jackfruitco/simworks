@@ -6,7 +6,8 @@ from typing import Any
 from asgiref.sync import async_to_sync
 
 from django.core.management.base import BaseCommand, CommandError
-from django.tasks import TaskResultStatus
+from django.tasks import TaskResultStatus, Task
+from django.tasks.backends.immediate import ImmediateBackend
 
 from simcore_ai.identity import Identity
 from simcore_ai.components.services.service import BaseService
@@ -81,6 +82,11 @@ class Command(BaseCommand):
         # Resolve service class
         # ------------------------------------------------------------------
         Svc = Identity.resolve.try_for_(BaseService, identity_str)
+        if dry_run:
+            Svc = Svc.using(dry_run=True) if Svc else None
+            self.stdout.write(
+                self.style.WARNING(f"DRY RUN: modified Service using `Dry Run`)")
+            )
         if Svc is None:
             raise CommandError(f"Could not resolve service for identity: {identity_str!r}")
 
@@ -108,17 +114,10 @@ class Command(BaseCommand):
             self.stdout.write(f"Context:\n  {ctx!r}")
 
         # ------------------------------------------------------------------
-        # Dry-run mode: build service + request only, no task enqueue
-        # ------------------------------------------------------------------
-        if dry_run:
-            self._dry_run_service(Svc, ctx=ctx, use_stream=use_stream)
-            return
-
-        # ------------------------------------------------------------------
         # Enqueue task (normal or stream)
         # ------------------------------------------------------------------
         task_attr = "stream_task" if use_stream else "task"
-        task_obj = getattr(Svc, task_attr, None)
+        task_obj: Task = getattr(Svc, task_attr, None)
         if task_obj is None:
             if use_stream:
                 raise CommandError(
@@ -126,6 +125,12 @@ class Command(BaseCommand):
                 )
             raise CommandError(
                 f"Service {Svc.__name__} does not define a 'task' attribute; cannot enqueue."
+            )
+
+        if dry_run:
+            task_obj = task_obj.using(backend=ImmediateBackend)
+            self.stdout.write(
+                self.style.WARNING("DRY RUN: modified task using `ImmediateBackend`.")
             )
 
         try:

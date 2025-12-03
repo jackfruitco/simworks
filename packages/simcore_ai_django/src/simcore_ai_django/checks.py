@@ -160,7 +160,7 @@ def check_simcore_ai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                     messages.append(
                         checks.Warning(
                             f"SIMCORE_AI['PROVIDERS']['{pkey}'] has no 'api_key' or 'api_key_env'.",
-                            hint="Set 'api_key_env' to the name of an environment variable holding your key.",
+                            hint="Set 'api_key_env' to the name of an profile variable holding your key.",
                             obj=f"settings.SIMCORE_AI['PROVIDERS']['{pkey}']",
                             id=f"{TAG}.W002",
                         )

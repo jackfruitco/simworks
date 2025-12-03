@@ -27,12 +27,7 @@ class BaseRegistry(Generic[K, T]):
 
     def _register(self, cls: type[T]) -> None:
         """Internal: register a component class into the store."""
-        if hasattr(cls, "identity"):
-            key = self._coerce(getattr(cls, "identity"))
-        elif hasattr(cls, "slug"):
-            key = self._coerce(getattr(cls, "slug"))
-        else:
-            raise ValueError(f"Component {cls} has no identity (or fallback `slug`)")
+        key = self._coerce(cls)
 
         with self._lock:
             if self._frozen:
@@ -160,7 +155,7 @@ class BaseRegistry(Generic[K, T]):
     @overload
     def items(self, *, as_str: Literal[False] = False) -> tuple[type[T], ...]: ...
 
-    def items(self, *, as_str: bool = False):
+    def items(self, *, as_str: bool = False) -> object:
         """
         Return all registered component classes or their identity strings.
 
@@ -169,7 +164,8 @@ class BaseRegistry(Generic[K, T]):
         """
         with self._lock:
             if as_str:
-                return tuple(cls.identity.as_str for cls in self._store.values())
+                if hasattr(self._store[0], "identity"):
+                    return tuple(cls.identity.as_str for cls in self._store.values())
             return tuple(self._store.values())
 
 

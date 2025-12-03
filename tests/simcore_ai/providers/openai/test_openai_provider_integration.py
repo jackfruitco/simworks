@@ -2,7 +2,7 @@
 
 import pytest
 
-from simcore_ai.providers.openai.openai import OpenAIProvider
+from simcore_ai.providers.openai.openai import OpenAIResponsesProvider
 from simcore_ai.types import Request, Response
 from simcore_ai.types.content import ContentRole
 from simcore_ai.types.messages import OutputItem
@@ -20,7 +20,7 @@ class FakeUsage:
 
 
 class FakeOpenAIResponse:
-    """Minimal stand-in for openai.types.responses.Response used by OpenAIProvider."""
+    """Minimal stand-in for openai.types.responses.Response used by OpenAIResponsesProvider."""
 
     def __init__(self, text: str = "hello from openai") -> None:
         self.output_text = text
@@ -51,7 +51,7 @@ async def test_call_uses_provider_response_format_for_text_and_adapts_response(m
         captured = kwargs
         return FakeOpenAIResponse(text="structured reply")
 
-    provider = OpenAIProvider(
+    provider = OpenAIResponsesProvider(
         api_key="test-key",
         base_url="https://example.invalid",
         default_model="gpt-4o-mini",
@@ -116,7 +116,7 @@ async def test_call_falls_back_to_response_schema_json_when_no_provider_response
         captured = kwargs
         return FakeOpenAIResponse(text="fallback reply")
 
-    provider = OpenAIProvider(
+    provider = OpenAIResponsesProvider(
         api_key="test-key",
         base_url="https://example.invalid",
         default_model="gpt-4o-mini",

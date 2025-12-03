@@ -2,7 +2,7 @@
 
 
 from simcore_ai.tracing import service_span_sync, flatten_context as _flatten_context
-from simcore_ai.components.providerkit.base import BaseProvider
+from simcore_ai.components.providerkit.provider import BaseProvider
 from ...types.tools import BaseLLMTool
 
 

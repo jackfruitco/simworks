@@ -21,13 +21,12 @@ Design notes:
   `semantic_provider_name(provider_key, label)` -> "openai:prod".
 """
 
-from typing import Any, Dict, Optional, Literal
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 from pydantic.config import ConfigDict
 
 __all__ = [
-    "AIProviderConfig",
     "AIClientRegistration",
     "AIClientConfig",
     "semantic_provider_name",
@@ -48,39 +47,6 @@ def semantic_provider_name(provider_key: str, label: str | None) -> str:
     if lab:
         return f"{key}:{lab}"
     return key
-
-
-class AIProviderConfig(BaseModel):
-    """
-    Provider wiring (STRICT).
-
-    Fields:
-        provider:     Vendor slug (e.g., "openai", "anthropic", "vertex", "azure_openai", "local").
-        label:        Optional disambiguator for multiple accounts/environments (e.g., "prod", "staging").
-        base_url:     Optional custom endpoint.
-        api_key:      Direct secret value (already resolved). Prefer env usage in production.
-        api_key_env:  Name of environment variable to read the key from (resolved later in the factory).
-        model:        Provider's default model for this wiring (clients may override).
-        organization: Optional vendor-specific org/account identifier.
-        timeout_s:    Default request timeout (seconds). Clients may override.
-
-    Notes:
-        - Extra keys are forbidden to catch mistakes early.
-        - Secrets precedence is applied OUTSIDE this model (in the provider factory):
-            client override -> provider value -> os.environ[api_key_env] (if set) -> None
-    """
-    provider: Literal["openai", "anthropic", "vertex", "azure_openai", "local"]
-    label: Optional[str] = None
-
-    base_url: Optional[str] = None
-    api_key: Optional[str] = None
-    api_key_env: Optional[str] = None
-
-    model: Optional[str] = None
-    organization: Optional[str] = None
-    timeout_s: Optional[float] = None
-
-    model_config = ConfigDict(extra="forbid")
 
 
 class AIClientRegistration(BaseModel):

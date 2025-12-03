@@ -61,7 +61,11 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
     output_schema_cls: ClassVar[type | None] = None
 
     # Ordered list of schema adapters to apply for OpenAI JSON.
-    schema_adapters: ClassVar[Sequence[FlattenUnions, OpenaiWrapper]] = (FlattenUnions(), OpenaiWrapper())
+    schema_adapters: ClassVar[Sequence[SchemaAdapter]] = (
+        FlattenUnions(order=0),
+        OpenaiWrapper(order=999)
+    )
+
 
     async def aencode(self, req: Request) -> None:
         """Attach provider-specific response format for OpenAI Responses.
@@ -105,6 +109,7 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                         f"got {type(candidate).__name__}"
                     )
                 base_schema = candidate
+            req.response_schema_json = base_schema
 
             # Apply schema adapters (OpenAI-specific quirks such as flattening oneOf).
             compiled = base_schema
@@ -117,23 +122,7 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                     ) from exc
 
             # Keep adapted schema for diagnostics
-            req.response_schema_json = compiled
-
-            # Build OpenAI JSON envelope for Responses API.
-            meta = dict(self.output_schema_meta or {})
-            name = meta.get("name") or "response"
-            strict = bool(meta.get("strict", True))
-
-            # MOVED OpenAI provider wrapping to OpenaiWrapper adapter
-            # provider_payload: dict[str, Any] = {
-            #     "type": "json_schema",
-            #     "json_schema": {
-            #         "name": name,
-            #         "schema": compiled,
-            #         "strict": strict,
-            #     },
-            # }
-            setattr(req, "provider_response_format", provider_payload)
+            setattr(req, "provider_response_format", req.response_schema_json)
 
     async def adecode(self, resp: Response) -> Any | None:
         """Decode structured output from a Response into the declared schema, if available.

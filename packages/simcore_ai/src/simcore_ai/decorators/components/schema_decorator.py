@@ -15,7 +15,7 @@ import logging
 
 from simcore_ai.decorators.base import BaseDecorator
 from simcore_ai.components.schemas import BaseOutputSchema
-from simcore_ai.registry.singletons import schemas as _Registry
+from simcore_ai.registry.singletons import schemas as schema_registry
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ T = TypeVar("T", bound=Type[Any])
 
 class SchemaDecorator(BaseDecorator):
     """
-    Codec decorator specialized for BaseOutputSchema subclasses.
+    Schema decorator specialized for BaseOutputSchema subclasses.
 
     Usage
     -----
@@ -42,7 +42,7 @@ class SchemaDecorator(BaseDecorator):
 
     def get_registry(self) -> BaseRegistry:
         # Always register into the schema registry
-        return _Registry
+        return schema_registry
 
     def register(self, candidate: Type[Any]) -> None:
         # Guard: ensure we only register schema classes

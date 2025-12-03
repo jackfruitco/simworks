@@ -1,87 +1,108 @@
 # simcore_ai/providers/openai/openai.py
 """
-OpenAIProvider
-==============
+This module provides an OpenAI Responses API provider implementation for handling
+interaction with OpenAI's async APIs and providing normalized abstractions for custom
+tool chaining and input/output processing.
 
-Concrete provider implementation for the OpenAI *Responses* API.
+The module includes a class `OpenAIResponsesProvider`, which integrates with OpenAI APIs to
+facilitate operations such as health checks, execution of non-streaming requests,
+and the adaptive normalization of outputs.
 
-Responsibilities
-----------------
-- Translate normalized `Request` objects into OpenAI SDK calls.
-- Normalize provider-native responses into our `Response` model using the
-  provider-agnostic adaptation pipeline in `BaseProvider`.
-- Handle provider-specific tool output normalization (e.g., image generation results).
-- Emit rich tracing spans for observability.
+Classes:
+    - OpenAIResponsesProvider: Manages provider-specific configuration, OpenAI API interaction,
+      and tool adapter integration.
 
-Construction
-------------
-Instances are constructed by `simcore_ai.providers.factory.create_provider`, which
-passes a resolved configuration:
-    - api_key:      Final API key (already resolved with env/overrides).
-    - base_url:     Optional custom endpoint.
-    - default_model:Default model used if the request does not specify one.
-    - timeout_s:    Request timeout in seconds.
-    - name:         Semantic provider identity (e.g., "openai:prod").
-
-This class does not fetch environment variables directly; resolution occurs in
-the Django setup + provider factory layer.
 """
 import logging
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, Optional
 
 from openai import NOT_GIVEN, AsyncOpenAI
 from openai.types.responses import Response as OpenAIResponse, EasyInputMessageParam
 
 from .tools import OpenAIToolAdapter
 from .output_adapters import ImageGenerationOutputAdapter
-from ..exceptions import ProviderError
+from simcore_ai.components.providerkit.exceptions import ProviderError
 from ...components.providerkit import BaseProvider
 from ...tracing import service_span, service_span_sync, flatten_context as _flatten_context
 from ...types import Request, Response
+from ...decorators import provider
 
 logger = logging.getLogger(__name__)
 
 PROVIDER_NAME: Final[Literal["openai"]] = "openai"
+API_SURFACE: Final[Literal["responses"]] = "responses"
+API_VERSION: Final[None] = None
 
 
-class OpenAIProvider(BaseProvider):
+class OpenAIResponsesProvider(BaseProvider):
     """OpenAI Responses API provider."""
 
     def __init__(
             self,
             *,
-            api_key: str | None,
+            alias: str,
+            provider_: str | None = PROVIDER_NAME,
+            api_surface: Literal["responses"] | None = API_SURFACE,
+            api_version: Literal[None] | None = API_VERSION,
+            api_key: str | None = None,
             base_url: str | None = None,
             default_model: str | None = None,
             timeout_s: int = 60,
-            name: str = PROVIDER_NAME,
+            profile: str | None = ENVIRONMENT_PROD,
+            slug: Optional[str] = None,
+            description: str | None = None,
+            api_key_required: bool | None = None,
             **kwargs: object,
     ) -> None:
         """
-        Initialize the OpenAI provider.
+        Initialize the OpenAIResponses provider.
 
         Args:
-            api_key: Final API key to use for authentication (may be None in dev).
-            base_url: Optional custom endpoint URL.
-            default_model: Default model used when a request omits `req.model`.
-            timeout_s: Default request timeout (seconds).
-            name: Semantic provider name for logs/tracing (e.g., "openai:prod").
-            **kwargs: Ignored; included for forward-compatibility.
+            alias: Logical provider alias (e.g., "openai:prod").
+            api_key: Final API key (may be None if resolved via env by BaseProvider).
+            base_url: Optional custom OpenAI endpoint.
+            default_model: Default model if the request does not specify one.
+            timeout_s: Request timeout in seconds.
+            profile: Optional profile label (e.g., "prod", "staging").
+            slug: Optional slug override; falls back to alias/identity.
+            description: Optional human-readable description.
+            api_key_required: Whether this provider requires an API key. If None,
+                BaseProvider will resolve from env or class default.
+            **kwargs: Additional config passed through to BaseProvider and ignored there.
         """
-        self.api_key = api_key
-        self.base_url = base_url or None
+        # Initialize shared provider configuration first
+        super().__init__(
+            alias=alias,
+            provider=provider_,
+            api_key_required=api_key_required,
+            api_key=api_key,
+            description=description,
+            slug=slug,
+            profile=profile,
+
+            # Identity parts
+            namespace=provider_,
+            kind="default",
+            name=profile,
+
+            **kwargs,
+        )
+
+        # Provider-specific configuration
+        self.base_url = base_url
         self.default_model = default_model
         self.timeout_s = timeout_s
 
-        self._client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout_s)
+        # Underlying OpenAI async client
+        self._client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.timeout_s,
+        )
 
-        super().__init__(name=name, description="OpenAI Responses API")
-
-        # Register tools adapter
+        # Tool + output adapters
         self.set_tool_adapter(OpenAIToolAdapter())
-        self._output_adapters: list[ImageGenerationOutputAdapter] = [
-            ImageGenerationOutputAdapter(),
-        ]
+        self._output_adapters = [ImageGenerationOutputAdapter()]
 
     async def healthcheck(self, *, timeout: float | None = None) -> tuple[bool, str]:
         """
@@ -239,7 +260,7 @@ class OpenAIProvider(BaseProvider):
                     span.add_event("simcore.client.stream.unimplemented", {"reason": "not yet implemented"})
                 except Exception:
                     pass
-            raise ProviderError("OpenAIProvider.stream is not implemented yet")
+            raise ProviderError("OpenAIResponsesProvider.stream is not implemented yet")
 
     # --- BaseProvider hook implementations ---------------------------------
     def _extract_text(self, resp: OpenAIResponse) -> str | None:

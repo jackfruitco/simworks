@@ -22,7 +22,7 @@ provider instances.
 Core Responsibilities:
 ----------------------
 - Merge provider and client configuration with explicit override precedence.
-- Resolve API keys from environment variables when required.
+- Resolve API keys from profile variables when required.
 - Generate consistent provider identity names for observability.
 """
 
@@ -31,7 +31,8 @@ import logging
 import os
 from typing import Optional
 
-from simcore_ai.client.schemas import AIProviderConfig, AIClientRegistration, semantic_provider_name
+from simcore_ai.client.types import AIClientRegistration, semantic_provider_name
+from simcore_ai.components.providerkit.provider import AIProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +109,14 @@ def _resolve_from_env(
         provider: AIProviderConfig,
 ) -> Optional[str]:
     """
-    Resolve an API key from environment variables following precedence.
+    Resolve an API key from profile variables following precedence.
 
     Checks, in order:
         1. `client.api_key_env`
         2. `provider.api_key_env`
 
     Returns:
-        The resolved API key value, or None if neither environment variable
+        The resolved API key value, or None if neither profile variable
         is defined or contains a non-empty value.
     """
     for env_key in (

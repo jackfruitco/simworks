@@ -9,12 +9,14 @@ from asgiref.sync import async_to_sync
 from pydantic import ValidationError
 
 from .exceptions import CodecDecodeError, CodecSchemaError
-from ..schemas.base import BaseOutputSchema
-from ...components.base import BaseComponent
+from ..base import BaseComponent
+from ..schemas import BaseOutputSchema, sort_adapters
 from ...identity import IdentityMixin
 from ...tracing import service_span_sync
-from ...types import Request, Response, StreamChunk
-from ...types.output import OutputTextContent, OutputToolResultContent, OutputJsonContent
+from ...types import (
+    Request, Response, StreamChunk,
+    OutputTextContent, OutputToolResultContent, OutputJsonContent
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     def __init_subclass__(cls, **kw) -> None:  # pragma: no cover - light guardrails
         """Ensure IdentityMixin hooks run; registration is handled by decorators."""
         super().__init_subclass__(**kw)
+        # sort adapters by order
+        adapters = getattr(cls, "schema_adapters", ())
+        if adapters:
+            cls.schema_adapters = tuple(sort_adapters(adapters))
 
     def _get_schema_from_service(self) -> type[BaseOutputSchema] | None:
         """Return the effective response schema for this codec.

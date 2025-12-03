@@ -1,10 +1,10 @@
-
-
+# simcore_ai/identity/identity.py
 import logging
 import re
 from dataclasses import dataclass
 from typing import NamedTuple, Union, ClassVar, Any
 
+from .exceptions import IdentityValidationError, IdentityError, IdentityResolutionError
 from .protocols import IdentityProtocol
 
 logger = logging.getLogger(__name__)
@@ -36,19 +36,6 @@ IdentityLike = Union["Identity", IdentityKey, tuple[str, str, str], str]
 
 _MAX_LEN = 128
 _ALLOWED_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-
-# Prefer central exceptions if available; otherwise use local fallbacks.
-try:
-    from .exceptions import IdentityValidationError, IdentityError
-except Exception:  # pragma: no cover
-    class IdentityError(ValueError):
-        """Generic identity error."""
-        pass
-
-
-    class IdentityValidationError(IdentityError):
-        """Validation failure for identity components."""
-        pass
 
 
 def _validate_label(value: str, field: str) -> str:
@@ -136,24 +123,30 @@ class Identity:
 
     # ------------------- Constructors -------------------
     @classmethod
-    def get(cls, value: IdentityLike) -> "Identity":
-        """Canonical public API: coerce any IdentityLike into an Identity."""
+    def get(cls, value: IdentityLike) -> Identity:
+        """Get an Identity instance from any IdentityLike object.
 
-        def _from_key(key: IdentityKey) -> "Identity":
+        :param value: An Identity-like object
+        :return: An Identity instance
+
+        :raises IdentityError: If the input cannot be converted to an Identity.
+        """
+
+        def _from_key(key: IdentityKey) -> Identity:
             return cls(namespace=key.namespace, kind=key.kind, name=key.name)
 
         def _from_tuple(value_: tuple[str, str, str]) -> "Identity":
             ns_, kd_, nm_ = value_
             return cls(namespace=str(ns_), kind=str(kd_), name=str(nm_))
 
-        def _from_str(value_: str) -> "Identity":
+        def _from_str(value_: str) -> Identity:
             parts_ = [p.strip() for p in value_.split(".", 2)]
             if len(parts_) != 3 or any(p == "" for p in parts_):
                 raise IdentityError(f"Expected 'namespace.kind.name', got {value!r}")
             ns_, kd_, nm_ = parts_
             return cls(namespace=ns_, kind=kd_, name=nm_)
 
-        def _fallback(value_: object) -> "Identity":
+        def _fallback(value_: object) -> Identity:
             if not isinstance(value_, str):
                 raise IdentityError(f"Unrecognized identity input type: {type(value_).__name__}")
 
@@ -161,7 +154,7 @@ class Identity:
             parts = [p.strip() for p in s.split(",")]
             if len(parts) == 3:
                 return cls(namespace=parts[0], kind=parts[1], name=parts[2])
-            raise IdentityError(
+            raise IdentityResolutionError(
                 f"Unrecognized identity string format: {value!r}. "
                 "Use 'namespace.kind.name' or '(namespace, kind, name)'."
             )
@@ -193,7 +186,7 @@ class Identity:
         raise IdentityError(f"Unsupported identity input type: {type(value).__name__}")
 
     @classmethod
-    def get_for(cls, value: IdentityLike | IdentityProtocol) -> "Identity":
+    def get_for(cls, value: IdentityLike | IdentityProtocol) -> Identity:
         """
         Resolve the Identity for a component or IdentityLike:
           • If `value` exposes `.identity`, coerce and return that.
@@ -214,7 +207,7 @@ class Identity:
 
     # ------------------- Coercion helpers -------------------
     @classmethod
-    def try_get(cls, value: IdentityLike) -> "Identity | None":
+    def try_get(cls, value: IdentityLike) -> Identity | None:
         """Best-effort coercion. Returns None instead of raising on failure."""
         try:
             return cls.get(value)

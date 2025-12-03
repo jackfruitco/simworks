@@ -1,4 +1,4 @@
-from .base import *
+from .provider import *
 
 __all__ = [
     "BaseProvider",
