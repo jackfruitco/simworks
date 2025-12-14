@@ -245,8 +245,10 @@ class OrchestrAI:
         except Exception:  # pragma: no cover - metadata may be missing in tests
             pkg_version = "unknown"
 
-        header = f"ORCHESTRAI v{pkg_version}".strip()
-        return f"{ORCA_BANNER}\n{header}\n".rstrip() + "\n"
+        header = f"OrchestrAI™ v{pkg_version}".strip()
+        company_ = f"\nfrom Jackruit.co™".strip()
+        copyright_ = f"© 2026".strip()
+        return f"{ORCA_BANNER}\n{header}\n{company_}\n{copyright_}\n".rstrip() + "\n"
 
     def print_banner(self, file=None) -> None:
         if file is None:
