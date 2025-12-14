@@ -1,3 +1,4 @@
+import asyncio
 import types
 
 import pytest
@@ -42,3 +43,15 @@ def test_registry_freeze_blocks_registration():
 
     with pytest.raises(RuntimeError):
         reg.register("two", 2)
+
+
+def test_registry_try_get_returns_none_for_missing_key():
+    reg = Registry()
+
+    assert reg.try_get("missing") is None
+
+
+def test_registry_atry_get_returns_none_for_missing_key():
+    reg = Registry()
+
+    assert asyncio.run(reg.atry_get("missing")) is None
