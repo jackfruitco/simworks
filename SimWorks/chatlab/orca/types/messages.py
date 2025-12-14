@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 
 from pydantic import Field
 
-from chatlab.ai.types.attachments import AttachmentItem
+from chatlab.orca.types.attachments import AttachmentItem
 from orchestrai_django.types import StrictBaseModel
 
 

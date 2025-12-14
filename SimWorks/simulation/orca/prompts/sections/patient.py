@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from django.core.exceptions import ObjectDoesNotExist
 
-from simulation.ai.mixins import SimcoreMixin, StandardizedPatientMixin
+from simulation.orca.mixins import SimcoreMixin, StandardizedPatientMixin
 from simulation.models import Simulation
 from orchestrai_django.api import simcore
 

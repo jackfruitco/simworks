@@ -203,7 +203,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def _generate_patient_response(self, user_msg: Message) -> None:
         """Generate patient response."""
-        from .ai.services import GenerateReplyResponse
+        from .orca.services import GenerateReplyResponse
         GenerateReplyResponse.task.enqueue(
             simulation_id=self.simulation.pk,
             user_msg_id=user_msg.pk,
@@ -213,7 +213,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _generate_stitch_response(self, user_msg: Message) -> None:
         """Generate a response from Stitch for feedback conversations."""
         raise NotImplementedError
-        from .ai.services import GenerateStitchResponse
+        from .orca.services import GenerateStitchResponse
         GenerateStitchResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
 
         return await acall_connector(

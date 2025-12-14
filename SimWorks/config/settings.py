@@ -130,38 +130,14 @@ else:
 # ---------------------------------------------------------------------------
 ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
-ORCA_IDENTITY_STRIP_TOKENS = [
-    t for t in re.split(r"[\s,]+", os.getenv("ORCA_IDENTITY_STRIP_TOKENS", "").strip()) if t
-]
 ORCA_CONFIG = {
-    "CLIENT": "default",
-    "CLIENTS": {
-        "default": {
-            "provider": "openai",
-            "surface": "responses",
-            "api_key_envvar": "ORCA_PROVIDER_API_KEY",
-            "model": os.getenv("ORCA_DEFAULT_MODEL", None),
-        }
+    "MODE": "single",
+    "CLIENT": {
+        "provider": "openai",
+        "surface": "responses",
+        "api_key_envvar": "ORCA_PROVIDER_API_KEY",
+        "model": os.getenv("ORCA_DEFAULT_MODEL", None),
     },
-    "PROVIDERS": {
-        "openai": {
-            "surface": "responses",
-            "api_key_envvar": "ORCA_PROVIDER_API_KEY",
-            "model": os.getenv("ORCA_DEFAULT_MODEL", None),
-        }
-    },
-    "DISCOVERY_PATHS": [
-        "orchestrai.identity",
-        "orchestrai.receivers",
-        "orchestrai.prompts",
-        "orchestrai.services",
-        "orchestrai.codecs",
-        "ai.identity",
-        "ai.receivers",
-        "ai.prompts",
-        "ai.services",
-        "ai.codecs",
-    ],
 }
 
 TASKS = {

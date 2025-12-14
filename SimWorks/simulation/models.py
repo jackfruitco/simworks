@@ -251,7 +251,7 @@ class Simulation(models.Model):
 
     def generate_feedback(self) -> None:
         """Generate feedback for this simulation."""
-        from .ai.services import GenerateHotwashInitialResponse
+        from .orca.services import GenerateHotwashInitialResponse
         GenerateHotwashInitialResponse.task.enqueue(simulation_id=self.pk)
 
     def calculate_metadata_checksum(self) -> str:

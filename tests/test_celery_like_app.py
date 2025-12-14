@@ -22,7 +22,7 @@ def test_as_current_context_manager():
 
 def test_setup_is_idempotent():
     app = OrchestrAI()
-    app.conf.update_from_mapping({"CLIENT": "alpha"})
+    app.conf.update_from_mapping({"CLIENT": {"name": "alpha"}})
     app.setup()
     app.setup()
     assert app.client == {"name": "alpha"}

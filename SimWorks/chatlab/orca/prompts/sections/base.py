@@ -3,7 +3,7 @@ from typing import Any
 
 from orchestrai_django.api import simcore
 
-from simulation.ai.mixins import StandardizedPatientMixin
+from simulation.orca.mixins import StandardizedPatientMixin
 from ...mixins import ChatlabMixin
 
 

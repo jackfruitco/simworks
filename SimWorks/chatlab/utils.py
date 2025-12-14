@@ -45,7 +45,7 @@ async def create_new_simulation(
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
-    from .ai.services import GenerateInitialResponse
+    from .orca.services import GenerateInitialResponse
     await GenerateInitialResponse.task.aenqueue(
         ctx={
             "simulation_id": simulation.id,

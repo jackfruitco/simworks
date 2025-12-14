@@ -73,7 +73,7 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from simulation.ai.services import GenerateHotwashInitialResponse
+            from simulation.orca.services import GenerateHotwashInitialResponse
             GenerateHotwashInitialResponse.task.enqueue(_simulation_id=simulation_id, _lab_orders=submitted_orders)
 
             return JsonResponse({"status": "ok", "orders": submitted_orders})

@@ -3,10 +3,13 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 DJANGO_SRC = ROOT / "packages" / "orchestrai_django" / "src"
 if str(DJANGO_SRC) not in sys.path:
     sys.path.insert(0, str(DJANGO_SRC))
+
 
 def install_fake_django(monkeypatch, settings_obj):
     django_mod = types.ModuleType("django")
@@ -45,56 +48,143 @@ def install_fake_django(monkeypatch, settings_obj):
     return DummyAppConfig, module_loading_mod
 
 
-def test_configure_from_django_settings_prefers_mapping(monkeypatch):
+def make_package(tmp_path: Path, name: str, files: dict[str, str]) -> None:
+    base = tmp_path / name
+    base.mkdir()
+    (base / "__init__.py").write_text("")
+    for rel_path, content in files.items():
+        target = base / rel_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+
+
+def test_single_mode_rejects_clients_providers(monkeypatch):
+    from orchestrai_django import integration
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_CONFIG={
+            "MODE": "single",
+            "CLIENT": {"provider": "openai"},
+            "CLIENTS": {"bad": {}},
+        }
+    )
+    install_fake_django(monkeypatch, settings_obj)
+
+    with pytest.raises(ValueError):
+        integration.configure_from_django_settings()
+
+
+def test_single_mode_configures_client(monkeypatch):
     from orchestrai import OrchestrAI
     from orchestrai_django import integration
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={"CLIENT": "default", "CLIENTS": {"default": {"provider": "openai"}}}
+        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        INSTALLED_APPS=[],
     )
     install_fake_django(monkeypatch, settings_obj)
 
     app = OrchestrAI()
     conf = integration.configure_from_django_settings(app)
 
-    assert conf["CLIENT"] == "default"
-    assert app.conf["CLIENTS"] == {"default": {"provider": "openai"}}
+    assert conf["CLIENT"]["provider"] == "stub"
+    app.start()
+    assert "default" in app.clients.all()
 
 
-def test_configure_from_django_settings_legacy_namespace(monkeypatch):
+def test_django_discovery_prefers_orca_and_loads_components(monkeypatch, tmp_path):
+    from orchestrai import OrchestrAI
     from orchestrai_django import integration
 
-    settings_obj = types.SimpleNamespace(ORCA_CLIENTS={"legacy": {"provider": "stub"}})
+    make_package(
+        tmp_path,
+        "myapp",
+        {
+            "orca/__init__.py": "",
+            "orca/services/__init__.py": "IMPORTED = True\n",
+        },
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        INSTALLED_APPS=["myapp"],
+    )
     install_fake_django(monkeypatch, settings_obj)
 
-    conf = integration.configure_from_django_settings()
-    assert conf["CLIENTS"] == {"legacy": {"provider": "stub"}}
+    app = OrchestrAI()
+    conf = integration.configure_from_django_settings(app)
+
+    assert "myapp.orca.services" in conf["DISCOVERY_PATHS"]
+    app.start()
+    assert sys.modules["myapp.orca.services"].IMPORTED is True
 
 
-def test_ready_autostarts_and_stores_app(monkeypatch):
-    settings_obj = types.SimpleNamespace(
-        ORCA_AUTOSTART=True,
-        ORCA_ENTRYPOINT="tests.fake_entrypoint:get_orca",
+def test_django_discovery_can_load_ai_convention(monkeypatch, tmp_path):
+    from orchestrai import OrchestrAI
+    from orchestrai_django import integration
+
+    make_package(
+        tmp_path,
+        "legacyapp",
+        {
+            "ai/__init__.py": "",
+            "ai/services/__init__.py": "AI_IMPORTED = True\n",
+        },
     )
-    DummyAppConfig, _ = install_fake_django(monkeypatch, settings_obj)
+    monkeypatch.syspath_prepend(str(tmp_path))
 
-    class FakeApp:
-        def __init__(self):
-            self.starts = 0
+    settings_obj = types.SimpleNamespace(
+        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        INSTALLED_APPS=["legacyapp"],
+    )
+    install_fake_django(monkeypatch, settings_obj)
 
-        def start(self):
-            self.starts += 1
+    app = OrchestrAI()
+    conf = integration.configure_from_django_settings(app)
 
-    fake_app = FakeApp()
-    entrypoint_mod = types.ModuleType("tests.fake_entrypoint")
-    entrypoint_mod.get_orca = lambda: fake_app
-    monkeypatch.setitem(sys.modules, "tests.fake_entrypoint", entrypoint_mod)
+    assert "legacyapp.ai.services" in conf["DISCOVERY_PATHS"]
+    app.start()
+    assert sys.modules["legacyapp.ai.services"].AI_IMPORTED is True
 
-    apps_module = importlib.reload(importlib.import_module("orchestrai_django.apps"))
-    monkeypatch.setattr(apps_module, "_started", False)
 
-    cfg = apps_module.OrchestrAIDjangoConfig("orchestrai_django", apps_module)
-    cfg.ready()
+def test_service_from_orca_package_registers_and_runs(monkeypatch, tmp_path):
+    from orchestrai import OrchestrAI
+    from orchestrai_django import integration
 
-    assert getattr(settings_obj, "_ORCA_APP", None) is fake_app
-    assert fake_app.starts == 1
+    service_code = """
+from orchestrai.decorators import service
+from orchestrai.components.services.service import BaseService
+
+@service
+class RunnableService(BaseService):
+    abstract = False
+
+    async def __call__(self, *args, **kwargs):
+        return "ok"
+"""
+    make_package(
+        tmp_path,
+        "svcapp",
+        {
+            "orca/__init__.py": "",
+            "orca/services/__init__.py": service_code,
+        },
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        INSTALLED_APPS=["svcapp"],
+    )
+    install_fake_django(monkeypatch, settings_obj)
+
+    app = OrchestrAI()
+    integration.configure_from_django_settings(app)
+    app.start()
+
+    module = sys.modules["svcapp.orca.services"]
+    assert hasattr(module, "RunnableService")
+    svc = module.RunnableService()
+    assert svc.abstract is False
+

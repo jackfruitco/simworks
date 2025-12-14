@@ -65,17 +65,12 @@ def _import_from_path(path: str) -> Any:
 
 
 def _maybe_start(app: Any) -> None:
-    """Best-effort start hook for OrchestrAI applications."""
+    """Start an OrchestrAI application using the current lifecycle."""
 
-    if hasattr(app, "start") and callable(getattr(app, "start")):
-        app.start()
-        return
+    if not hasattr(app, "start") or not callable(getattr(app, "start")):
+        raise TypeError("ORCA_ENTRYPOINT must resolve to an OrchestrAI instance with .start()")
 
-    # Fallbacks for any partially migrated apps
-    if hasattr(app, "discover") and callable(getattr(app, "discover")):
-        app.discover()
-    if hasattr(app, "finalize") and callable(getattr(app, "finalize")):
-        app.finalize()
+    app.start()
 
 
 class OrchestrAIDjangoConfig(AppConfig):

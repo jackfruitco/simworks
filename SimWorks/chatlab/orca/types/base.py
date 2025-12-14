@@ -7,8 +7,8 @@ from typing import Any, Dict, Optional, List
 
 from pydantic import Field
 
-from chatlab.ai.types.messages import MessageItem
-from chatlab.ai.types.metadata import MetafieldItem
+from chatlab.orca.types.messages import MessageItem
+from chatlab.orca.types.metadata import MetafieldItem
 from orchestrai_django.types import StrictBaseModel
 
 logger = logging.getLogger(__name__)
