@@ -20,10 +20,13 @@ class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, PromptSection):
     async def render_instruction(self, **ctx) -> str | None:
         options_ = ("simulation_id", "simulation", "sim_id", "sim_pk", "sim_obj")
 
+        simulation_ = None
         for opt in options_:
-            if simulation_ := opt in ctx:
+            simulation_ = ctx.get(opt)
+            if simulation_:
                 break
-        else:
+
+        if simulation_ is None and not any(opt in ctx for opt in options_):
             raise ValueError(f"Missing required context variable(s): {options_}")
 
         if not isinstance(simulation_, Simulation):
