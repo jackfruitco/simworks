@@ -13,7 +13,7 @@ def _coerce_to_str(value: Any) -> str:
     return str(value)
 
 
-class Registry(BaseRegistry[str, Any]):
+class AppRegistry(BaseRegistry[str, Any]):
     def __init__(self) -> None:
         super().__init__(coerce_key=_coerce_to_str)
         self._finalize_callbacks: list[Callable[[Any], None]] = []
@@ -61,7 +61,7 @@ class Registry(BaseRegistry[str, Any]):
         return iter(self._store.items())
 
 
-class ServicesRegistry(Registry):
+class ServiceRunnerRegistry(AppRegistry):
     """Registry with helpers to run registered services.
 
     Exposes convenience methods that mirror the old ``Service.task`` helpers:
