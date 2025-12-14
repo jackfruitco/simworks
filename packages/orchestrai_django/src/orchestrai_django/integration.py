@@ -2,19 +2,22 @@
 
 from typing import Any
 
-from orchestrai.apps.conf.models import OrcaSettings
+from orchestrai.client.settings_loader import OrcaSettings, load_orca_settings
+from orchestrai.conf.settings import Settings
 
 
-def configure_from_django_settings(app: Any, *, namespace: str = "ORCA") -> OrcaSettings:
-    """
-    Load settings via django.conf.settings without forcing core orchestrai to depend on Django.
-    """
+def configure_from_django_settings(app: Any | None = None, *, namespace: str = "ORCA") -> OrcaSettings:
+    """Load namespaced settings from ``django.conf.settings``."""
+
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
-    app.AppConfig.from_object("django.conf:settings", namespace=namespace)
-    # In case user wants a dict-style ORCA config only:
-    # (already handled by core loader's _extract_namespaced_settings)
-    return app.ensure_settings()
+    conf = Settings()
+    conf.update_from_mapping(vars(dj_settings), namespace=namespace)
+
+    loaded = load_orca_settings(conf.as_dict())
+    if app is not None and hasattr(app, "configure"):
+        app.configure(conf.as_dict(), namespace=None)
+    return loaded
 
 
 def django_autodiscover(app: Any, *, module_names: list[str] | None = None) -> None:

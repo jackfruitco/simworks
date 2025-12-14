@@ -23,7 +23,6 @@ Prompt plans
 
 import asyncio
 import logging
-import warnings
 from abc import ABC
 from typing import Any, ClassVar, Union, Optional, Protocol
 from typing import TYPE_CHECKING
@@ -805,55 +804,6 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             )
         )
         return None, None
-
-    def resolve_codec(self) -> tuple[type[BaseCodec], str]:
-        """
-        DEPRECATED: Sync codec resolver.
-
-        This method is retained for backwards compatibility and delegates to
-        `_select_codec_class()`. New code should use `select_codecs()` and/or
-        `_select_codec_class()` instead.
-
-        Raises
-        ------
-        ServiceCodecResolutionError
-            If no codec is found for this service.
-        """
-        warnings.warn(
-            "`resolve_codec()` is deprecated. Use `select_codecs()` / `_select_codec_class()` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        codec_cls, codec_label = self._select_codec_class()
-        if codec_cls is None:
-            raise ServiceCodecResolutionError(
-                ident=self.identity,
-                codec=None,
-                service=self.__class__.__name__,
-            )
-        return codec_cls, codec_label
-
-    async def aresolve_codec(self) -> tuple[type[BaseCodec], str]:
-        """
-        DEPRECATED: Async wrapper around `resolve_codec()`.
-
-        This is preserved only for callers that still rely on the legacy API.
-        New code should use `select_codecs()` / `_select_codec_class()` and the
-        per-call codec preparation helpers instead.
-
-        Notes
-        -----
-        Keeps codec resolution centralized in the sync path while remaining
-        usable from async-only code.
-        """
-        warnings.warn(
-            "`aresolve_codec()` is deprecated. Use `select_codecs()` / `_select_codec_class()` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        return await sync_to_async(self.resolve_codec, thread_sensitive=True)()
 
     def _resolve_response_schema(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
         """Resolve the output schema class for this service.

@@ -23,10 +23,10 @@ __all__ = [
     "Identity", "IdentityLike", "IdentityResolver",
     # Constants
     "DEFAULT_IDENTITY_STRIP_TOKENS",
+    # Helpers
+    "coerce_identity_key",
     # Protocols
     "IdentityResolverProtocol", "IdentityProtocol",
-    # Convenience helpers
-    "coerce_identity_key",
 ]
 
 # Only expose IdentityMixin if it exists locally.

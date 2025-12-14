@@ -104,7 +104,6 @@ The core ships with lightweight span helpers in `orchestrai.tracing.tracing` tha
 
 ## Deprecations
 
-- `orchestrai.apps` emits a `DeprecationWarning`; import `OrchestrAI` from `orchestrai` instead.
 - Legacy tracing backends were removed in favor of the lightweight span helpers.
 
 ## Example end-to-end

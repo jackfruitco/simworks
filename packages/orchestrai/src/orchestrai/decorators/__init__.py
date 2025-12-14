@@ -18,6 +18,6 @@ __all__ = [
     "schema",
     "prompt_section",
     "provider",
-    "provider_backend", "backend",
+    "provider_backend",
 ]
 

@@ -28,6 +28,8 @@ import re
 from collections.abc import Iterable, Callable
 from typing import Optional, Union, TYPE_CHECKING
 
+from .exceptions import IdentityError
+
 if TYPE_CHECKING:
     from . import IdentityLike, Identity
 
@@ -38,8 +40,8 @@ __all__ = [
     "module_root",
     "resolve_collision",
     "parse_dot_identity",
-    "coerce_identity_key",
     "get_effective_strip_tokens",
+    "coerce_identity_key",
 ]
 
 logger = logging.getLogger(__name__)
@@ -249,42 +251,19 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
-def coerce_identity_key(value: "IdentityLike") -> Optional[tuple[str, str, str]]:
-    """Coerce (tuple | Identity | 'ns.kind.name' str) to a normalized (ns, kind, name) tuple.
+def coerce_identity_key(value: "IdentityLike" | None) -> tuple[str, str, str] | None:
+    """Best-effort conversion of Identity-like inputs to an (namespace, kind, name) tuple."""
 
-    This is a thin compatibility wrapper around the centralized Identity API.
-    It prefers `Identity.get_for(...)` when available and falls back to
-    strict dot parsing. Returns ``None`` on failure rather than raising.
-    """
-    # Local import to avoid import cycles at module import time
-    from .identity import Identity
+    if value is None:
+        return None
 
-    # Fast path: already a triple
-    if isinstance(value, tuple) and len(value) == 3:
-        ns, kd, nm = value  # type: ignore[misc]
-        return str(ns), str(kd), str(nm)
+    try:
+        from .identity import Identity
 
-    # Identity instance
-    if isinstance(value, Identity):  # type: ignore[arg-type]
-        return value.as_tuple3  # type: ignore[union-attr]
+        ident = Identity.get(value)
+    except IdentityError:
+        logger.debug("Failed to coerce identity value: %r", value)
+        return None
 
-    # Dot-string → prefer Identity.get_for, else strict parser fallback
-    if isinstance(value, str):
-        try:
-            if Identity is not None:
-                ident = Identity.get_for(value)  # strict coercion; may raise
-                return ident.as_tuple3
-            # Fallback: strict parse to tuple3
-            return parse_dot_identity(value)
-        except Exception:
-            return None
+    return ident.as_tuple3
 
-    # Last resort: if Identity API is available, attempt strict coercion
-    if Identity is not None:
-        try:
-            ident = Identity.get_for(value)  # may raise for unsupported types
-            return ident.as_tuple3
-        except Exception:
-            return None
-
-    return None

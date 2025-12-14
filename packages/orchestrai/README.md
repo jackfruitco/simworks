@@ -11,8 +11,6 @@ from orchestrai import OrchestrAI
 app = OrchestrAI()
 ```
 
-The legacy `orchestrai.apps` entry point emits a `DeprecationWarning`; prefer the canonical import above.
-
 ## Quick start
 
 Create an app, apply configuration, and run the lifecycle explicitly:

@@ -15,9 +15,8 @@ from __future__ import annotations
 
 import importlib
 import sys
-import warnings
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable
 
 
 ORCA_BANNER = r"""
@@ -39,6 +38,7 @@ ORCA_BANNER = r"""
 from ._state import push_current_app, set_current_app
 from .conf.settings import Settings
 from .finalize import consume_finalizers
+from .fixups.base import BaseFixup
 from .loaders.base import BaseLoader
 from .registry.simple import Registry
 
@@ -55,23 +55,6 @@ def _import_string(path: str):
     return getattr(module, attr) if attr else module
 
 
-_APPS_DEPRECATION = (
-    "'orchestrai.apps' is deprecated; import OrchestrAI from 'orchestrai' instead.\n"
-    "Example: from orchestrai import OrchestrAI"
-)
-
-
-def warn_deprecated_apps_import(stacklevel: int = 2) -> None:
-    """Emit a single deprecation warning for the legacy apps module."""
-
-    if getattr(warn_deprecated_apps_import, "_already_warned", False):
-        return
-    with warnings.catch_warnings():
-        warnings.simplefilter("always", DeprecationWarning)
-        warnings.warn(_APPS_DEPRECATION, DeprecationWarning, stacklevel=stacklevel)
-    warn_deprecated_apps_import._already_warned = True
-
-
 # ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
@@ -81,6 +64,7 @@ class OrchestrAI:
     name: str = "orchestrai"
     loader: BaseLoader | None = None
     conf: Settings = field(default_factory=Settings)
+    fixups: list[BaseFixup] = field(default_factory=list)
     _default_client: str | None = None
     _finalized: bool = False
     _setup_done: bool = False
@@ -88,12 +72,19 @@ class OrchestrAI:
     _banner_printed: bool = False
     _components_reported: bool = False
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
+    _fixup_specs: list[object] = field(default_factory=list, repr=False)
 
     services: Registry = field(default_factory=Registry)
     codecs: Registry = field(default_factory=Registry)
     providers: Registry = field(default_factory=Registry)
     clients: Registry = field(default_factory=Registry)
     prompt_sections: Registry = field(default_factory=Registry)
+
+    def __post_init__(self) -> None:
+        # Capture any provided fixup specs; actual instances are built during setup
+        if self.fixups:
+            self._fixup_specs.extend(self.fixups)
+            self.fixups = []
 
     # ------------------------------------------------------------------
     # Current app helpers
@@ -133,6 +124,7 @@ class OrchestrAI:
             loader_cls = _import_string(loader_path)
             self.loader = loader_cls()
 
+        self._configure_fixups()
         self._configure_clients()
         self._configure_providers()
 
@@ -143,11 +135,7 @@ class OrchestrAI:
         if self._finalized:
             return self
         self.setup()
-        if self.loader is None:
-            return self
-        modules: list[str] = list(self.conf.get("DISCOVERY_PATHS", ()))
-        self.loader.autodiscover(self, modules)
-        return self
+        return self.autodiscover_components()
 
     def finalize(self) -> "OrchestrAI":
         if self._finalized:
@@ -264,6 +252,52 @@ class OrchestrAI:
             file = sys.stdout
         print(self.component_report_text(), file=file)
         self._components_reported = True
+
+    # ------------------------------------------------------------------
+    # Fixup helpers
+    # ------------------------------------------------------------------
+    def _configure_fixups(self) -> None:
+        specs: list[object] = list(self._fixup_specs)
+        specs.extend(self.conf.get("FIXUPS", ()))
+
+        resolved: list[BaseFixup] = []
+        for spec in specs:
+            fixup = self._resolve_fixup(spec)
+            fixup.on_app_init(self)
+            resolved.append(fixup)
+
+        self.fixups = resolved
+        for fixup in self.fixups:
+            fixup.on_setup(self)
+
+    def _resolve_fixup(self, spec: object) -> BaseFixup:
+        if isinstance(spec, BaseFixup):
+            return spec
+        if isinstance(spec, str):
+            obj = _import_string(spec)
+            if isinstance(obj, type) and issubclass(obj, BaseFixup):
+                return obj()
+            if isinstance(obj, BaseFixup):
+                return obj
+            raise TypeError(f"Fixup path {spec!r} did not resolve to a BaseFixup")
+        if isinstance(spec, type) and issubclass(spec, BaseFixup):
+            return spec()
+        raise TypeError(f"Unsupported fixup spec: {spec!r}")
+
+    def autodiscover_components(self) -> "OrchestrAI":
+        if self.loader is None:
+            return self
+
+        modules: list[str] = list(self.conf.get("DISCOVERY_PATHS", ()))
+        for fixup in self.fixups:
+            extra = fixup.autodiscover_sources(self)
+            if extra:
+                modules.extend(extra)
+
+        imported = self.loader.autodiscover(self, modules) or []
+        for fixup in self.fixups:
+            fixup.on_import_modules(self, imported)
+        return self
 
 
 __all__ = ["OrchestrAI"]
