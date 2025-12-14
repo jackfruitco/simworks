@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import io
 import sys
+import textwrap
 import types
 
 import pytest
@@ -207,6 +208,87 @@ def test_run_service_supports_dry_run(monkeypatch):
     assert DryRunService.seen_dry_run is True
     assert DryRunService.seen_context == {}
     assert "\"dry_run\": true" in output
+
+
+def test_autostart_sets_current_app_for_run_service(monkeypatch, tmp_path):
+    from orchestrai import get_current_app
+    from orchestrai.components.services.service import BaseService
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_ENTRYPOINT="autostart_pkg.entry:get_app",
+        ORCA_AUTOSTART=True,
+    )
+
+    settings = install_fake_django_management(monkeypatch, settings_obj)
+
+    apps_mod = types.ModuleType("django.apps")
+
+    class DummyAppConfig:
+        def __init__(self, app_name, module=None):
+            self.name = app_name
+            self.module = module
+
+    apps_mod.AppConfig = DummyAppConfig
+    monkeypatch.setitem(sys.modules, "django.apps", apps_mod)
+
+    pkg_dir = tmp_path / "autostart_pkg"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "entry.py").write_text(
+        textwrap.dedent(
+            """
+            from orchestrai import OrchestrAI
+            from orchestrai.components.services.service import BaseService
+
+            autostart_app = OrchestrAI()
+
+            class AutostartService(BaseService):
+                abstract = False
+
+                def execute(self):
+                    return {"from_autostart": True}
+
+            autostart_app.services.register("autostart.service", AutostartService)
+            autostart_app.conf.update_from_mapping(
+                {"CLIENT": {"name": "auto_client", "provider": "stub"}}
+            )
+            autostart_app.clients.register(
+                "auto_client", {"name": "auto_client", "provider": "stub"}
+            )
+
+            def get_app():
+                return autostart_app
+            """
+        )
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    import orchestrai_django.apps as django_apps
+
+    monkeypatch.setattr(django_apps, "_started", False)
+
+    config = django_apps.OrchestrAIDjangoConfig("orchestrai_django", module="orchestrai_django")
+    config.ready()
+
+    autostart_mod = importlib.import_module("autostart_pkg.entry")
+    app = autostart_mod.autostart_app
+
+    assert settings._ORCA_APP is app
+    assert get_current_app() is app
+    assert app.clients.get("auto_client") == {"name": "auto_client", "provider": "stub"}
+
+    from orchestrai_django.management.commands import run_service
+
+    cmd = run_service.Command()
+    cmd.handle(service="autostart.service", context="{}", mode="start")
+
+    output = cmd.stdout.getvalue()
+    assert "executed successfully" in output
+
+    report = app.component_report_text()
+    assert "autostart.service" in report
+    assert "auto_client" in report
 
 
 def test_run_service_missing_identity_has_clear_error(monkeypatch):
