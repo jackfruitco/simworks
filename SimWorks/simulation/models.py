@@ -15,6 +15,7 @@ from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from django.db import models
 from django.db.models import QuerySet
 from django.utils.timezone import now
+from orchestrai import get_current_app
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
@@ -251,8 +252,11 @@ class Simulation(models.Model):
 
     def generate_feedback(self) -> None:
         """Generate feedback for this simulation."""
-        from .ai.services import GenerateHotwashInitialResponse
-        GenerateHotwashInitialResponse.task.enqueue(simulation_id=self.pk)
+        from .orca.services import GenerateHotwashInitialResponse
+        get_current_app().services.schedule(
+            GenerateHotwashInitialResponse,
+            simulation_id=self.pk,
+        )
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256

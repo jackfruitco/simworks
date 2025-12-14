@@ -8,6 +8,7 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
+from orchestrai import get_current_app
 
 from simulation.models import Simulation
 from simulation.utils import get_user_initials
@@ -203,8 +204,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def _generate_patient_response(self, user_msg: Message) -> None:
         """Generate patient response."""
-        from .ai.services import GenerateReplyResponse
-        GenerateReplyResponse.task.enqueue(
+        from .orca.services import GenerateReplyResponse
+        await get_current_app().services.aschedule(
+            GenerateReplyResponse,
             simulation_id=self.simulation.pk,
             user_msg_id=user_msg.pk,
         )
@@ -213,7 +215,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _generate_stitch_response(self, user_msg: Message) -> None:
         """Generate a response from Stitch for feedback conversations."""
         raise NotImplementedError
-        from .ai.services import GenerateStitchResponse
+        from .orca.services import GenerateStitchResponse
         GenerateStitchResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
 
         return await acall_connector(

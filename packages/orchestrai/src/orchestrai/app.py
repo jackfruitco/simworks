@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
@@ -40,7 +41,7 @@ from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import BaseFixup
 from .loaders.base import BaseLoader
-from .registry.simple import Registry
+from .registry.simple import Registry, ServicesRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +75,7 @@ class OrchestrAI:
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
     _fixup_specs: list[object] = field(default_factory=list, repr=False)
 
-    services: Registry = field(default_factory=Registry)
+    services: ServicesRegistry = field(default_factory=ServicesRegistry)
     codecs: Registry = field(default_factory=Registry)
     providers: Registry = field(default_factory=Registry)
     clients: Registry = field(default_factory=Registry)
@@ -118,6 +119,12 @@ class OrchestrAI:
     def setup(self) -> "OrchestrAI":
         if self._setup_done:
             return self
+
+        if self.mode == "single":
+            if self.conf.get("CLIENTS"):
+                raise ValueError("CLIENTS is not allowed in single mode; use a single CLIENT mapping")
+            if self.conf.get("PROVIDERS"):
+                raise ValueError("PROVIDERS is not allowed in single mode; embed provider config in CLIENT")
 
         if self.loader is None:
             loader_path = self.conf.get("LOADER")
@@ -180,6 +187,21 @@ class OrchestrAI:
         return self.conf.get("MODE", "single")
 
     def _configure_clients(self) -> None:
+        if self.mode == "single":
+            client_conf = self.conf.get("CLIENT")
+            if client_conf is None:
+                self._default_client = None
+                return
+            if not isinstance(client_conf, AbcMapping):
+                raise TypeError("In single mode, CLIENT must be a mapping of client configuration")
+
+            name = client_conf.get("name") or "default"
+            definition = dict(client_conf)
+            definition.setdefault("name", name)
+            self.clients.register(name, definition)
+            self._default_client = name
+            return
+
         clients_conf = dict(self.conf.get("CLIENTS", {}))
         default_client = self.conf.get("CLIENT")
         if default_client and default_client not in clients_conf:
@@ -193,6 +215,8 @@ class OrchestrAI:
         self._default_client = default_client
 
     def _configure_providers(self) -> None:
+        if self.mode == "single":
+            return
         for name, definition in dict(self.conf.get("PROVIDERS", {})).items():
             self.providers.register(name, definition)
 

@@ -64,53 +64,13 @@ def _import_from_path(path: str) -> Any:
     raise ImportError(f"Could not import ORCA_ENTRYPOINT: {path}")
 
 
-def _maybe_ensure_ready(app: Any) -> None:
-    """Best-effort 'ensure ready' call, preferring Django discovery when available."""
-    # If we're running inside Django, prefer Django-native autodiscovery across INSTALLED_APPS.
-    try:
-        from django.conf import settings as _dj_settings
-        from orchestrai_django.integration import django_autodiscover as _django_autodiscover
-    except Exception:
-        _dj_settings = None
-        _django_autodiscover = None
+def _maybe_start(app: Any) -> None:
+    """Start an OrchestrAI application using the current lifecycle."""
 
-    if _django_autodiscover is not None and callable(_django_autodiscover):
-        # 1) Configure providers/clients first (idempotent inside app)
-        if hasattr(app, "autoconfigure_orca") and callable(getattr(app, "autoconfigure_orca")):
-            app.autoconfigure_orca()
-        elif hasattr(app, "ensure_configured") and callable(getattr(app, "ensure_configured")):
-            app.ensure_configured()
+    if not hasattr(app, "start") or not callable(getattr(app, "start")):
+        raise TypeError("ORCA_ENTRYPOINT must resolve to an OrchestrAI instance with .start()")
 
-        # 2) Django-native discovery (preferred in Django deployments)
-        module_names = None
-        if _dj_settings is not None:
-            module_names = getattr(_dj_settings, "ORCA_DISCOVERY_MODULES", None)
-        _django_autodiscover(app, module_names=list(module_names) if module_names else None)
-
-        # 3) Prevent core discovery from running again (best-effort; internal flag)
-        if hasattr(app, "_discovered"):
-            try:
-                setattr(app, "_discovered", True)
-            except Exception:
-                logger.debug("Failed to set app._discovered=True", exc_info=True)
-
-        # 4) Run any remaining readiness logic without re-running discovery
-        if hasattr(app, "ensure_ready") and callable(getattr(app, "ensure_ready")):
-            app.ensure_ready()
-        return
-
-    # Non-Django fallback: use core convenience if present
-    if hasattr(app, "ensure_ready") and callable(getattr(app, "ensure_ready")):
-        app.ensure_ready()
-        return
-
-    # Legacy / transitional fallbacks
-    if hasattr(app, "ensure_configured") and callable(getattr(app, "ensure_configured")):
-        app.ensure_configured()
-    if hasattr(app, "autoconfigure_orca") and callable(getattr(app, "autoconfigure_orca")):
-        app.autoconfigure_orca()
-    if hasattr(app, "autodiscover_components") and callable(getattr(app, "autodiscover_components")):
-        app.autodiscover_components()
+    app.start()
 
 
 class OrchestrAIDjangoConfig(AppConfig):
@@ -153,7 +113,7 @@ class OrchestrAIDjangoConfig(AppConfig):
                     except Exception:
                         logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
 
-                    _maybe_ensure_ready(result)
+                    _maybe_start(result)
                     logger.info("OrchestrAI autostart complete via callable entrypoint")
                     return
 
@@ -167,5 +127,5 @@ class OrchestrAIDjangoConfig(AppConfig):
             except Exception:
                 logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
 
-            _maybe_ensure_ready(target)
+            _maybe_start(target)
             logger.info("OrchestrAI autostart complete via object entrypoint")

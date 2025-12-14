@@ -8,6 +8,7 @@ from django.template import TemplateDoesNotExist
 from django.template.loader import get_template
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
+from orchestrai import get_current_app
 
 from core.utils import Formatter
 from simulation.models import Simulation
@@ -73,8 +74,12 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from simulation.ai.services import GenerateHotwashInitialResponse
-            GenerateHotwashInitialResponse.task.enqueue(_simulation_id=simulation_id, _lab_orders=submitted_orders)
+            from simulation.orca.services import GenerateHotwashInitialResponse
+            get_current_app().services.schedule(
+                GenerateHotwashInitialResponse,
+                _simulation_id=simulation_id,
+                _lab_orders=submitted_orders,
+            )
 
             return JsonResponse({"status": "ok", "orders": submitted_orders})
         except json.JSONDecodeError:
