@@ -155,6 +155,47 @@ class PathService(BaseService):
     assert "via" in output
 
 
+def test_run_service_supports_dry_run(monkeypatch):
+    from orchestrai import OrchestrAI
+    from orchestrai.components.services.service import BaseService
+
+    install_fake_django_management(monkeypatch)
+
+    app = OrchestrAI()
+    app.set_as_current()
+
+    class DryRunService(BaseService):
+        abstract = False
+        seen_context: dict | None = None
+        seen_dry_run: bool | None = None
+
+        @classmethod
+        def using(cls, **overrides):
+            instance = super().using(**overrides)
+            cls.seen_context = dict(getattr(instance, "context", {}))
+            cls.seen_dry_run = instance.dry_run
+            return instance
+
+        def execute(self):
+            return {"dry_run": self.dry_run}
+
+    DryRunService._IdentityMixin__identity_cached = types.SimpleNamespace(
+        as_str="tests.dry_run",
+    )
+    app.services.register("dry_run_service", DryRunService)
+
+    from orchestrai_django.management.commands import run_service
+
+    cmd = run_service.Command()
+    cmd.handle(service="dry_run_service", context="{}", mode="start", dry_run=True)
+
+    output = cmd.stdout.getvalue()
+    assert "executed successfully" in output
+    assert DryRunService.seen_dry_run is True
+    assert DryRunService.seen_context == {}
+    assert "\"dry_run\": true" in output
+
+
 def test_ai_healthcheck_runs_against_current_app(monkeypatch):
     from orchestrai import OrchestrAI
 
