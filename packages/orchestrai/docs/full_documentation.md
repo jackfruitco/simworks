@@ -1,354 +1,126 @@
-# simcore_ai Documentation
+# OrchestrAI Documentation
 
-`simcore_ai` supplies framework-agnostic building blocks for orchestrating structured LLM workloads. The library focuses on normalized DTOs, composable prompts, codec-driven validation, and reusable service abstractions that sit above provider SDKs.
+`orchestrai` is a minimal orchestration layer for structured AI workflows. The core focuses on explicit lifecycle control, predictable registries, and import safety.
 
 ## Architecture overview
 
-```
-+-----------------+       +-------------------+       +------------------+
-| Prompt sections |  -->  | Prompt composition|  -->  | Normalized DTOs  |
-+-----------------+       +-------------------+       +------------------+
-                                                             |
-                                                             v
-                                                   +-------------------+
-                                                   | OrcaClient          |
-                                                   +-------------------+
-                                                             |
-                                                             v
-                                                   +-------------------+
-                                                   | Provider adapter  |
-                                                   +-------------------+
-                                                             |
-                                                             v
-                                                   +-------------------+
-                                                   | Codec validation  |
-                                                   +-------------------+
-                                                             |
-                                                             v
-                                                   +-------------------+
-                                                   | Typed result      |
-                                                   +-------------------+
-```
+- **OrchestrAI app** – owns configuration, loader, registries, and lifecycle hooks.
+- **Registries** – lightweight, frozen after `finalize()`, storing services, codecs, providers, clients, and prompt sections.
+- **Shared decorators** – allow registering components before an app exists; callbacks run during `finalize()` for every app.
+- **Loader** – optional autodiscovery helper that imports modules declared in `DISCOVERY_PATHS`.
 
-Key ingredients:
-
-- **PromptKit** builds structured prompts from reusable sections.
-- **DTOs** encode prompts, responses, tool calls, and streaming deltas in a provider-neutral format.
-- **OrcaClient** adapts DTOs into provider SDK calls and back again.
-- **Codecs** validate responses against `pydantic` schemas.
-- **Services** encapsulate prompt rendering, retries, telemetry, and codec selection.
-
-## DTOs (`simcore_ai.types`)
-
-The DTO layer keeps data structures portable across providers:
-
-- `InputItem` &mdash; a single prompt turn with `role` and a list of content parts (text, images, tool calls, etc.).
-- `Request` &mdash; the full request envelope: model choice, normalized messages, streaming flag, tool declarations, and codec hints.
-- `Response` &mdash; the normalized result containing response items, usage statistics, provider metadata, and tool call records.
-- `OutputItem` &mdash; an assistant turn expressed as structured parts (text chunks, tool outputs, images, audio).
-- `StreamChunk` &mdash; incremental streaming deltas emitted while a request is in-flight.
-- `BaseOutputSchema` &mdash; base class for typed response contracts that codecs can validate against.
-
-All DTOs inherit from a strict `BaseModel`, so extra fields raise validation errors and serialization stays predictable.
-
-## Prompt composition (`simcore_ai.promptkit`)
-
-PromptKit revolves around two primitives:
-
-- `Prompt` &mdash; a lightweight container for developer instructions, user messages, and optional extra turns.
-- `PromptSection` &mdash; declarative components that render text dynamically via `PromptEngine`.
-
-For simple flows, instantiate `Prompt` directly and translate it into request messages:
+## Public API
 
 ```python
-from simcore_ai.promptkit import Prompt
-from simcore_ai.types import InputItem
-from simcore_ai.types.content import TextContent
-
-prompt = Prompt(
-    instruction="You are a concise assistant.",
-    message="Reply with JSON containing a 'summary' field for the provided text.",
-)
-
-messages: list[InputItem] = []
-
-if prompt.instruction:
-    messages.append(
-        InputItem(role="developer", content=[TextContent(text=prompt.instruction)])
-    )
-
-if prompt.message:
-    messages.append(
-        InputItem(role="user", content=[TextContent(text=prompt.message)])
-    )
-
-for role, text in prompt.extra_messages:
-    messages.append(InputItem(role=role, content=[TextContent(text=text)]))
+from orchestrai import OrchestrAI, current_app, get_current_app
 ```
 
-For reusable, testable prompt sections, subclass `PromptSection` and use `PromptEngine` to render them. In the example below, `payload` represents the request object carrying runtime data (for example, an instance of `SummaryRequest`).
+- `OrchestrAI` – main application class
+- `current_app` – context-local proxy to the active app
+- `get_current_app()` – returns the active app or creates a default one
+
+## Lifecycle
+
+1. **configure(mapping=None, namespace=None)** – apply settings from a mapping.
+2. **config_from_object(obj, namespace=None)** – load settings from a dotted object path.
+3. **config_from_envvar(envvar="ORCHESTRAI_CONFIG_MODULE", namespace=None)** – load settings from an environment variable.
+4. **setup()** – instantiate the loader and populate registries for `CLIENTS` and `PROVIDERS`.
+5. **discover()** – call the loader’s `autodiscover(app, modules)` for each path in `DISCOVERY_PATHS`.
+6. **finalize()** – run shared decorator callbacks and freeze registries.
+7. **start()/run()** – print the jumping-orca banner, run discovery, finalize, and emit a component summary; idempotent.
+
+Each method is idempotent and avoids network calls; nothing heavy happens during import.
+
+## Configuration keys
+
+- `CLIENT` – name of the default client to expose via `app.client`.
+- `CLIENTS` – mapping of client definitions.
+- `PROVIDERS` – mapping of provider definitions.
+- `DISCOVERY_PATHS` – iterable of dotted module paths to import during discovery.
+- `LOADER` – dotted path to a loader class; defaults to the lightweight base loader.
+- `MODE` – optional runtime mode flag.
+
+Unknown keys are stored but unused by the core, letting extensions consume their own configuration without conflicts.
+
+## Registries
+
+Registries are simple, thread-safe mappings with three phases:
+
+1. **register(name, obj)** – allowed before freeze.
+2. **get(name)** – retrieve a registered object.
+3. **freeze()** – prevent further mutation; invoked automatically during `finalize()`.
+
+The app exposes `services`, `codecs`, `providers`, `clients`, and `prompt_sections` registries. Use `app.clients.register(...)` or decorators to populate them.
+
+## Shared decorators and finalize callbacks
+
+Decorators in `orchestrai.shared` let you register components before an app exists:
 
 ```python
-from simcore_ai.promptkit import PromptEngine, PromptSection
-from simcore_ai.identity import Identity
+from orchestrai.shared import shared_service
 
-class SystemSection(PromptSection):
-    identity = Identity.from_parts("guides", "summaries", "system")
-    instruction = "You are a concise assistant."  # static content
+@shared_service()
+def ping():
+    return "pong"
 
-class ArticleSection(PromptSection):
-    identity = Identity.from_parts("guides", "summaries", "article")
-
-    async def render_message(self, *, title: str, body: str, **_: object) -> str | None:
-        return (
-            "Return JSON with a 'summary' field for the article titled "
-            f"'{title}'.\n\nArticle body:\n{body}"
-        )
-
-prompt = await PromptEngine.abuild_from(SystemSection, ArticleSection, title=payload.title, body=payload.body)
+app = OrchestrAI().finalize()
+assert "ping" in app.services
 ```
 
-The resulting `Prompt` can be converted to `InputItem` instances using the helper shown above.
+Callbacks are consumed during every app’s `finalize()`, so multiple app instances see the shared registrations.
 
-## Codecs (`simcore_ai.codecs`)
+## Current app management
 
-Codecs transform normalized responses into typed models. Subclass `BaseCodec` or decorate a class with `@codecs.codec` to register it.
+Use `app.as_current()` to scope the active application:
 
 ```python
-
-from simcore_ai.components.codecs.codec import BaseCodec
-from simcore_ai.components.schemas.base import BaseOutputSchema
-
-
-class KeywordPlan(BaseOutputSchema):
-    keywords: list[str]
-
-
-class KeywordCodec(BaseCodec):
-    name = "keyword-plan"
-    origin = "guides"
-    bucket = "services"
-    response_schema = KeywordPlan
-
-
-codec = KeywordCodec()
-
-structured = codec.validate_from_response(response)
-if structured is None:
-    raise ValueError("Response did not contain JSON matching KeywordPlan")
+with app.as_current():
+    # proxies such as current_app resolve to `app`
+    client = app.client
 ```
 
-`validate_from_response` extracts structured JSON from the normalized response, validates it against `schema_cls`, and returns an instance of that schema. If validation fails, `None` is returned so you can fall back to manual parsing or trigger a retry.
+Nested contexts restore the previous app automatically.
 
-## Provider clients (`simcore_ai.client`)
+## Discovery and loaders
 
-The client registry wires provider configuration to reusable `OrcaClient` instances.
+The default loader performs no implicit work until `discover()` is called. Provide `DISCOVERY_PATHS` to import modules that register services, codecs, or other components.
 
 ```python
-import os
-
-from simcore_ai.client import create_client_from_dict, get_default_client
-
-create_client_from_dict(
-    {
-        "backend": "openai",
-        "model": "gpt-4o-mini",
-        "api_key": os.environ["OPENAI_API_KEY"],
-    },
-    name="openai-gpt4o",
-    make_default=True,
-)
-
-client = get_default_client()
+app.configure({"DISCOVERY_PATHS": ["myapp.services", "myapp.codecs"]})
+app.discover()
 ```
 
-Send requests using normalized DTOs:
+If you need custom behavior, point `LOADER` to your own loader class implementing `autodiscover(app, modules)`.
+
+## Tracing
+
+The core ships with lightweight span helpers in `orchestrai.tracing.tracing` that collect attributes without external dependencies. Integrations can wrap these spans to feed real tracing backends.
+
+## Error handling and idempotency
+
+- Repeated calls to `setup()`, `discover()`, `finalize()`, and `start()` are safe and return the app unchanged.
+- Registries raise `RuntimeError` if mutated after freeze.
+- Loader failures surface the original import error to aid debugging.
+
+## Deprecations
+
+- `orchestrai.apps` emits a `DeprecationWarning`; import `OrchestrAI` from `orchestrai` instead.
+- Legacy tracing backends were removed in favor of the lightweight span helpers.
+
+## Example end-to-end
 
 ```python
-from simcore_ai.types import Request
+from orchestrai import OrchestrAI
+from orchestrai.shared import shared_service
 
-request = Request(model="gpt-4o-mini", input=messages)
-response = await client.send_request(request)
+@shared_service()
+def hello(name: str = "world"):
+    return f"hello {name}"
+
+app = OrchestrAI()
+app.configure({"CLIENT": "local", "CLIENTS": {"local": {"name": "local"}}})
+app.start()
+
+with app.as_current():
+    print("Services:", app.services.all())
 ```
-
-For streaming, set `stream=True` on the request and iterate over `client.stream_request(request)`.
-
-## Services (`simcore_ai.services`)
-
-`BaseService` wraps prompt rendering, codec selection, retries, telemetry, and event emission around an `OrcaClient`. Services expect two collaborators:
-
-- a **simulation** object carrying runtime context (at minimum an `id` attribute)
-- a **ServiceEmitter** implementation that records requests, responses, failures, and streaming chunks
-
-### Subclassing `BaseService`
-
-```python
-from dataclasses import dataclass
-
-from simcore_ai.client import get_default_client
-from simcore_ai.promptkit import Prompt
-from simcore_ai.services import BaseService
-from simcore_ai.types import InputItem
-from simcore_ai.types.content import TextContent
-
-
-# reuse `codec = KeywordCodec()` from the codecs section above
-
-class ConsoleEmitter:
-    def emit_request(self, simulation_id, identity, request):
-        print("request", identity, request.model)
-
-    def emit_response(self, simulation_id, identity, response):
-        print("response", identity)
-
-    def emit_failure(self, simulation_id, identity, correlation_id, error):
-        print("failure", identity, error)
-
-    def emit_stream_chunk(self, simulation_id, identity, chunk):
-        print("chunk", identity, chunk.delta)
-
-    def emit_stream_complete(self, simulation_id, identity, correlation_id):
-        print("stream complete", identity)
-
-
-class KeywordService(BaseService):
-    origin = "guides"
-    bucket = "services"
-    name = "keyword"
-    provider_name = "openai"  # resolved by client registry
-
-    def select_codec(self):
-        return codec  # return an instance or class of BaseCodec
-
-    async def build_request_messages(self, simulation) -> list[InputItem]:
-        prompt = Prompt(
-            instruction="You return keyword lists as JSON.",
-            message=f"Reply with {{\"keywords\": [...]}} for: {simulation.text}",
-        )
-
-        messages: list[InputItem] = []
-        if prompt.instruction:
-            messages.append(InputItem(role="developer", content=[TextContent(text=prompt.instruction)]))
-        if prompt.message:
-            messages.append(InputItem(role="user", content=[TextContent(text=prompt.message)]))
-        return messages
-
-
-@dataclass
-class Simulation:
-    id: int
-    text: str
-
-
-service = KeywordService(
-    simulation_id=42,
-    emitter=ConsoleEmitter(),
-    client=get_default_client(),
-)
-
-simulation = Simulation(id=42, text="Launch a self-serve workspace tier for startups.")
-response = await service.run(simulation)
-structured = codec.validate_from_response(response)
-```
-
-`run` executes a single request with retries. To stream provider deltas, call `await service.run_stream(simulation)`; streaming chunks are forwarded to the emitter.
-
-### Function services with `llm_service`
-
-The `llm_service` decorator turns an async function into a service class. This is useful when you want to bundle prompt rendering with side effects in a single coroutine.
-
-```python
-from simcore_ai.services import llm_service
-
-@llm_service(origin="guides", bucket="summaries", name="article")
-async def on_summary_complete(simulation, slim):
-    print("completed", simulation.id)
-
-SummaryService = on_summary_complete  # decorator returns the generated subclass
-```
-
-The generated class still expects an emitter and simulation context; only the lifecycle hooks are auto-wired.
-
-## Streaming
-
-- **Direct client streaming** &mdash; set `stream=True` on `Request` and consume `OrcaClient.stream_request(request)` to receive `StreamChunk` items as soon as the provider produces them.
-- **Service streaming** &mdash; call `await service.run_stream(simulation)` to let the service orchestrate streaming, retries, and telemetry; streaming data is pushed through the configured emitter.
-
-Each stream chunk exposes `delta` (text), optional `tool_call_delta`, and incremental usage metadata.
-
-## Schema adapters (`simcore_ai.schemas`)
-
-Schema adapters let you tweak JSON Schemas per provider before they are embedded in requests.
-
-```python
-from simcore_ai.schemas import register_adapter, schema_adapter, compile_schema
-
-@schema_adapter("openai", order=50)
-def enforce_object(adapter_schema: dict) -> dict:
-    schema = dict(adapter_schema)
-    schema.setdefault("type", "object")
-    return schema
-
-compiled = compile_schema(raw_schema, provider="openai")
-```
-
-Adapters run in ascending `order`, allowing you to compose provider-specific adjustments.
-
-## Tool metadata (`simcore_ai.types.tools`)
-
-Declare tool contracts with `BaseLLMTool` and attach them to `Request.tools`. Streaming tool call progress is captured via `LLMToolCallDelta`.
-
-```python
-from simcore_ai.types import BaseLLMTool
-
-search_tool = BaseLLMTool(
-    name="search",
-    description="Look up articles in the knowledge base",
-    input_schema={
-        "type": "object",
-        "properties": {"query": {"type": "string"}},
-        "required": ["query"],
-    },
-)
-
-request.tools.append(search_tool)
-request.tool_choice = "auto"
-```
-
-When the provider triggers a tool call, the normalized response includes `LLMToolCall` entries so your application can execute the requested function and feed results back into the conversation.
-
-## Testing
-
-Because services operate on DTOs and dependency injection, unit testing stays straightforward:
-
-- Inject a fake `OrcaClient` that returns canned `Response` objects.
-- Provide a lightweight emitter that records emitted events for assertions.
-- Assert on prompt rendering by calling your helper that converts prompts into `InputItem` lists.
-
-```python
-from simcore_ai.types import Response
-
-
-class FakeClient:
-    async def send_request(self, request):
-        return Response(output=[], usage=None)
-
-
-fake_service = KeywordService(
-    simulation_id=1,
-    emitter=ConsoleEmitter(),
-    client=FakeClient(),
-)
-
-await fake_service.execute(Simulation(id=1, text="Example payload"))
-```
-
-## Next steps
-
-- Explore the source under `src/simcore_ai/` for additional utilities such as tracing helpers and decorators.
-- Register multiple clients and experiment with routing based on latency or cost.
-- Build custom codecs to validate domain-specific response formats.
-- Combine tool declarations with schema adapters to create robust, provider-agnostic tool-calling workflows.
-
-With these primitives, you can construct resilient AI workflows that remain portable across providers while preserving strong data contracts.
-

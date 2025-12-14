@@ -1,34 +1,62 @@
 # OrchestrAI
 ***or-kis-stray-eye***
 
-A lightweight, provider-agnostic orchestration layer for building structured AI workflows in pure Python. `OrchestrAI` focuses on predictable data contracts, modular prompt construction, and provider plug-ins that can be swapped without rewriting business logic.
+A lightweight, provider-agnostic orchestration layer for building structured AI workflows in pure Python. The refactored core favors explicit lifecycles, import safety, and predictable registries.
 
-## Key features
+Import the application class directly from the top-level package:
 
-- **Prompt-first composition** &mdash; build prompts from reusable sections that render to provider-ready messages.
-- **Typed data models** &mdash; normalized request, response, and tool DTOs keep transport details out of your domain logic.
-- **Codec pipeline** &mdash; attach validation and transformation rules so raw provider responses become strongly-typed Python objects.
-- **Service abstraction** &mdash; encapsulate AI calls behind class-based or function-based services with built-in retry and telemetry hooks.
-- **Provider adapters** &mdash; implement an adapter once and reuse it across services without leaking provider-specific details.
+```python
+from orchestrai import OrchestrAI
 
-## Installation
-
-```bash
-pip install orchestrai
+app = OrchestrAI()
 ```
 
-Extras are provided for specific AI backends. Install the extra that matches your target provider:
+The legacy `orchestrai.apps` entry point emits a `DeprecationWarning`; prefer the canonical import above.
 
-```bash
-pip install orchestrai[openai]
+## Quick start
+
+Create an app, apply configuration, and run the lifecycle explicitly:
+
+```python
+from orchestrai import OrchestrAI
+
+app = (
+    OrchestrAI()
+    .configure(
+        {
+            "CLIENT": "demo-client",
+            "CLIENTS": {"demo-client": {"name": "demo-client", "api_key": "..."}},
+            "PROVIDERS": {"demo-provider": {"backend": "openai", "model": "gpt-4o-mini"}},
+        }
+    )
+    .setup()      # prepare loader and registries
+    .discover()   # optionally import discovery modules
+    .finalize()   # attach shared callbacks and freeze registries
+)
+
+with app.as_current():
+    # resolve the default client from the registry
+    client = app.client
 ```
+
+`start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, prints the jumping-orca welcome banner once, and summarizes registered components.
+
+## Lifecycle overview
+
+1. **configure** – apply settings from mappings, objects, or environment variables.
+2. **setup** – prepare the loader and populate registries for clients, providers, codecs, and services.
+3. **discover** – import configured discovery modules via the loader.
+4. **finalize** – run shared decorators/finalizers and freeze registries.
+5. **start** / **run** – convenience method that prints the banner, runs discovery, and finalizes the app.
+
+The app never performs network or discovery work during import; all actions are explicit.
 
 ## Documentation
 
 Comprehensive guides live in the [`docs/`](docs/) directory:
 
-- [Quick Start](docs/quick_start.md) &mdash; install the package, configure a provider, and run your first service call.
-- [Full Guide](docs/full_documentation.md) &mdash; deep dive into DTOs, prompt composition, codecs, providers, and extension patterns.
+- [Quick Start](docs/quick_start.md) – create an app, configure it, and make your first request.
+- [Full Guide](docs/full_documentation.md) – deep dive into configuration, lifecycle hooks, registries, and discovery.
 
 ## Contributing
 

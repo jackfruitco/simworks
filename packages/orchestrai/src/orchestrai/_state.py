@@ -1,57 +1,57 @@
-"""Thread-local application state inspired by Celery.
+"""Lightweight current-application tracking.
 
-Importing this module must remain lightweight to allow ``from orchestrai import
-current_app`` without triggering expensive initialization.
+This module keeps import-time side effects to a minimum. It uses a
+``ContextVar`` to hold the active application, providing predictable
+nesting semantics via :func:`push_current_app`.
 """
-
 from __future__ import annotations
 
-import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Generator
 
 from .utils.proxy import Proxy
 
+_current_app: ContextVar[object | None] = ContextVar("orchestrai_current_app", default=None)
+_default_app: object | None = None
 
-_state = threading.local()
-_fallback_app = None
 
+def _build_default_app() -> object:
+    """Create the lazily constructed default app.
 
-def _get_fallback_app():
-    global _fallback_app
-    if _fallback_app is None:
-        from .app import OrchestrAI
+    Separated for import-safety: the import of :mod:`orchestrai.app` happens
+    only when no app has been set explicitly.
+    """
+    from .app import OrchestrAI
 
-        _fallback_app = OrchestrAI("default")
-    return _fallback_app
+    return OrchestrAI("default")
 
 
 def get_current_app():
-    """Return the current app, creating a fallback default if missing."""
-
-    app = getattr(_state, "current_app", None)
+    """Return the active app, creating a default one if none is set."""
+    app = _current_app.get()
     if app is None:
-        app = _get_fallback_app()
+        global _default_app
+        if _default_app is None:
+            _default_app = _build_default_app()
+        app = _default_app
         set_current_app(app)
     return app
 
 
-def set_current_app(app) -> None:
-    _state.current_app = app
+def set_current_app(app: object) -> None:
+    _current_app.set(app)
 
 
 @contextmanager
-def push_current_app(app) -> Generator:
-    previous = getattr(_state, "current_app", None)
-    set_current_app(app)
+def push_current_app(app: object) -> Generator[object, None, None]:
+    token = _current_app.set(app)
     try:
         yield app
     finally:
-        if previous is not None:
-            set_current_app(previous)
-        else:
-            _state.__dict__.pop("current_app", None)
+        _current_app.reset(token)
 
 
 current_app = Proxy(get_current_app)
 
+__all__ = ["current_app", "get_current_app", "push_current_app", "set_current_app"]
