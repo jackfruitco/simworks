@@ -7,6 +7,7 @@ from channels.layers import get_channel_layer
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
+from orchestrai import get_current_app
 
 from chatlab.models import ChatSession, Message, MessageMediaLink
 from core.utils import remove_null_keys
@@ -46,11 +47,10 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     from .orca.services import GenerateInitialResponse
-    await GenerateInitialResponse.task.aenqueue(
-        ctx={
-            "simulation_id": simulation.id,
-            "user_id": user.id
-        },
+    await get_current_app().services.aschedule(
+        GenerateInitialResponse,
+        simulation_id=simulation.id,
+        user_id=user.id,
     )
 
     return simulation

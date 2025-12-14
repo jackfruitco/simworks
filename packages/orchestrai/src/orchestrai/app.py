@@ -41,7 +41,7 @@ from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import BaseFixup
 from .loaders.base import BaseLoader
-from .registry.simple import Registry
+from .registry.simple import Registry, ServicesRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +75,7 @@ class OrchestrAI:
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
     _fixup_specs: list[object] = field(default_factory=list, repr=False)
 
-    services: Registry = field(default_factory=Registry)
+    services: ServicesRegistry = field(default_factory=ServicesRegistry)
     codecs: Registry = field(default_factory=Registry)
     providers: Registry = field(default_factory=Registry)
     clients: Registry = field(default_factory=Registry)
