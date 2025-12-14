@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import json
 import logging
 from typing import Any
@@ -12,24 +11,9 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from orchestrai import get_current_app
+from orchestrai.registry.exceptions import RegistryLookupError
 
 logger = logging.getLogger(__name__)
-
-
-def _import_object(path: str) -> Any:
-    if ":" in path:
-        module_name, attr = path.split(":", 1)
-        module = importlib.import_module(module_name)
-        return getattr(module, attr)
-
-    if "." in path:
-        module_name, _, attr = path.rpartition(".")
-        if not module_name:
-            raise ImportError(f"Could not import object from path: {path}")
-        module = importlib.import_module(module_name)
-        return getattr(module, attr)
-
-    raise ImportError(f"Import path must include a module and attribute: {path!r}")
 
 
 class Command(BaseCommand):
@@ -39,7 +23,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "service",
             type=str,
-            help="Service registry name or import path (module:attr or module.attr).",
+            help="Service registry identity (e.g. 'chatlab.standardized_patient.initial').",
         )
         parser.add_argument(
             "-c",
@@ -78,6 +62,8 @@ class Command(BaseCommand):
             raise CommandError(
                 "No OrchestrAI app is active; ensure ORCA_ENTRYPOINT is configured and autostarted."
             )
+
+        app.ensure_ready()
 
         context_raw: str = options.get("context", "{}")
         try:
@@ -121,9 +107,9 @@ class Command(BaseCommand):
         self.stdout.write(rendered)
 
     def _resolve_service(self, app, spec: str):
-        registry = app.services.all()
-        if spec in registry:
+        try:
             return app.services.get(spec)
-
-        # Attempt to import a fully qualified object path.
-        return _import_object(spec)
+        except RegistryLookupError as exc:
+            raise RegistryLookupError(
+                f"Service {spec!r} is not registered; ensure discovery ran and the service is defined."
+            ) from exc

@@ -113,46 +113,59 @@ def test_run_service_supports_async_mode(monkeypatch):
     assert "async" in output
 
 
-def test_run_service_resolves_import_path(monkeypatch, tmp_path):
+def test_run_service_discovers_and_resolves_registry_identity(monkeypatch, tmp_path):
     from orchestrai import OrchestrAI
     from orchestrai.components.services.service import BaseService
+    from orchestrai_django.decorators import service
 
-    install_fake_django_management(monkeypatch)
+    settings = install_fake_django_management(monkeypatch)
 
-    app = OrchestrAI()
-    app.set_as_current()
-
-    module_dir = tmp_path / "demo"
+    module_dir = tmp_path / "demo_pkg"
     module_dir.mkdir()
     (module_dir / "__init__.py").write_text("")
-    (module_dir / "service.py").write_text(
+    (module_dir / "svc_mod.py").write_text(
         """
+from orchestrai_django.decorators import service
 from orchestrai.components.services.service import BaseService
 
 
-class PathService(BaseService):
+@service(namespace="chatlab", kind="standardized_patient", name="initial")
+class DiscoveredService(BaseService):
     abstract = False
 
     def execute(self):
-        return {"via": "import"}
+        return {"source": "registry"}
 """
     )
 
     monkeypatch.syspath_prepend(str(tmp_path))
 
-    module = importlib.import_module("demo.service")
-    module.PathService._IdentityMixin__identity_cached = types.SimpleNamespace(as_str="tests.path")
-
-    importlib.invalidate_caches()
+    app = OrchestrAI()
+    app.conf.update_from_mapping({"DISCOVERY_PATHS": ["demo_pkg.svc_mod"]})
+    app.set_as_current()
 
     from orchestrai_django.management.commands import run_service
 
+    import importlib
+
+    calls: list[str] = []
+    real_import = importlib.import_module
+
+    def tracking_import(name, *args, **kwargs):
+        calls.append(name)
+        if name == "chatlab.standardized_patient.initial":
+            raise AssertionError("service identity should not be imported as a module path")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", tracking_import)
+
     cmd = run_service.Command()
-    cmd.handle(service="demo.service:PathService", context="{}", mode="schedule")
+    cmd.handle(service="chatlab.standardized_patient.initial", context="{}", mode="start")
 
     output = cmd.stdout.getvalue()
-    assert "demo.service:PathService" in output
-    assert "via" in output
+    assert "executed successfully" in output
+    assert "registry" in output
+    assert "chatlab.standardized_patient.initial" not in calls
 
 
 def test_run_service_supports_dry_run(monkeypatch):
@@ -194,6 +207,24 @@ def test_run_service_supports_dry_run(monkeypatch):
     assert DryRunService.seen_dry_run is True
     assert DryRunService.seen_context == {}
     assert "\"dry_run\": true" in output
+
+
+def test_run_service_missing_identity_has_clear_error(monkeypatch):
+    from orchestrai import OrchestrAI
+    from orchestrai_django.management.commands import run_service
+
+    install_fake_django_management(monkeypatch)
+
+    app = OrchestrAI()
+    app.set_as_current()
+
+    cmd = run_service.Command()
+    with pytest.raises(run_service.CommandError) as excinfo:
+        cmd.handle(service="chatlab.standardized_patient.initial", context="{}", mode="start")
+
+    message = str(excinfo.value)
+    assert "chatlab.standardized_patient.initial" in message
+    assert "ensure discovery" in message
 
 
 def test_ai_healthcheck_runs_against_current_app(monkeypatch):

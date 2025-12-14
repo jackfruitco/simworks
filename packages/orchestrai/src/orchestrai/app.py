@@ -145,6 +145,15 @@ class OrchestrAI:
         self.setup()
         return self.autodiscover_components()
 
+    def ensure_ready(self) -> "OrchestrAI":
+        """Ensure discovery/finalization have completed without re-starting the app."""
+
+        if self._finalized:
+            return self
+        self.discover()
+        self.finalize()
+        return self
+
     def finalize(self) -> "OrchestrAI":
         if self._finalized:
             return self
@@ -155,6 +164,8 @@ class OrchestrAI:
         for callback in callbacks:
             callback(self)
 
+        self._attach_discovered_components()
+
         registries: tuple[BaseRegistry[str, Any], ...] = (
             self.services,
             self.codecs,
@@ -163,6 +174,11 @@ class OrchestrAI:
             self.prompt_sections,
         )
         for registry in registries:
+            finalize = getattr(registry, "finalize", None)
+            if callable(finalize):
+                finalize(app=self)
+                continue
+
             registry.freeze()
         self._finalized = True
         self.print_component_report()
@@ -303,6 +319,21 @@ class OrchestrAI:
         self.fixups = resolved
         for fixup in self.fixups:
             fixup.on_setup(self)
+
+    def _attach_discovered_components(self) -> None:
+        """Populate app registries from globally discovered component registries."""
+
+        try:
+            from orchestrai.registry.singletons import services as service_components
+        except Exception:
+            return
+
+        registered = self.services.all()
+        for svc in service_components.all():
+            label = getattr(getattr(svc, "identity", None), "as_str", None) or str(svc)
+            if label in registered:
+                continue
+            self.services.register(label, svc)
 
     def _resolve_fixup(self, spec: object) -> BaseFixup:
         if isinstance(spec, BaseFixup):
