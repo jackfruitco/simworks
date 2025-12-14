@@ -5,8 +5,8 @@ from pydantic import Field
 
 from orchestrai_django.api import simcore
 from orchestrai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
-from simulation.ai.mixins import StandardizedPatientMixin
-from simulation.ai.schemas.output_items import LLMConditionsCheckItem
+from simulation.orca.mixins import StandardizedPatientMixin
+from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 from ..mixins import ChatlabMixin
 
 

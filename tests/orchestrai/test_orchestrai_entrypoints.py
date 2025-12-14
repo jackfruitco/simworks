@@ -25,10 +25,7 @@ def test_default_client_set_from_client_setting():
     app = CoreOrchestrAI()
     app.conf.update_from_mapping(
         {
-            "CLIENT": "default-client",
-            "CLIENTS": {
-                "default-client": {"name": "default-client"},
-            },
+            "CLIENT": {"name": "default-client", "provider": "test"},
         }
     )
 
@@ -41,8 +38,7 @@ def test_default_client_uses_config_definition_over_placeholder():
     app = CoreOrchestrAI()
     app.conf.update_from_mapping(
         {
-            "CLIENT": "configured-client",
-            "CLIENTS": {"configured-client": {"name": "configured-client", "url": "http://example"}},
+            "CLIENT": {"name": "configured-client", "url": "http://example"},
         }
     )
 

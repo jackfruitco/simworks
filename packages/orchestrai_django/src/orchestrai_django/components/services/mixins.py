@@ -7,12 +7,12 @@ Legacy execution mixins for Django services have been removed.
 The old `ServiceExecutionMixin` and its dependency on
 `orchestrai_django.execution.entrypoint` are no longer supported in AIv3.
 
-Execution is now handled exclusively via Django Tasks. Use:
+Execution should go through the core OrchestrAI app:
 
-    MyService.task.enqueue(...)
+    from orchestrai import get_current_app
+    get_current_app().services.schedule(MyService, **context)
 
-for asynchronous dispatch, and rely on the configured Django TASKS backend
-(ImmediateBackend for now) instead of the old execution backends.
+Async workflows can call ``aschedule``/``astart`` instead of Django Tasks.
 """
 
 __all__: list[str] = []

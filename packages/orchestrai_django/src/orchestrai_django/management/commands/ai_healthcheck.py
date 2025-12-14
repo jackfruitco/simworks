@@ -22,6 +22,7 @@ import json
 import logging
 import sys
 from django.core.management.base import BaseCommand
+from orchestrai import get_current_app
 from orchestrai_django.health import healthcheck_all_registered
 from orchestrai.client.registry import list_clients
 
@@ -61,6 +62,13 @@ class Command(BaseCommand):
             self.stdout.write("Running AI healthcheck...")
 
         try:
+            app = get_current_app()
+            if app is not None:
+                try:
+                    app.start()
+                except Exception:
+                    logger.debug("OrchestrAI app failed to start before healthcheck", exc_info=True)
+
             results = healthcheck_all_registered()
             provider_map = {}
             if by_provider:

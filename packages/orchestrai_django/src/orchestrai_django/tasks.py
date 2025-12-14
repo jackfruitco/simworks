@@ -3,18 +3,15 @@
 Celery-based task entrypoints for orchestrai_django have been removed.
 
 The legacy `run_service_task` and its dependency on a Celery queue are no
-longer supported in AIv3. Execution is now handled exclusively via Django
-6.0 Tasks, with one Task auto-registered per service class and exposed as:
+longer supported in AIv3.
 
-    MyService.task
+Execution should go through the OrchestrAI app instance:
 
-To enqueue work, call:
+    from orchestrai import get_current_app
+    get_current_app().services.schedule(MyService, **context)
 
-    MyService.task.enqueue(...)
-
-and rely on the configured Django TASKS backend (ImmediateBackend for now)
-instead of Celery's @shared_task entrypoints.
+Async dispatch is available via ``aschedule``/``astart`` without any Celery or
+Django task wrappers.
 """
-
 
 __all__: list[str] = []

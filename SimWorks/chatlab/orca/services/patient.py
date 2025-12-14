@@ -10,8 +10,8 @@ from orchestrai_django.api.types import DjangoBaseService, PromptEngine
 from orchestrai.types.input import InputTextContent
 from orchestrai.types import ContentRole
 from orchestrai_django.types import DjangoLLMBaseTool, DjangoInputItem
-from simulation.ai.mixins import StandardizedPatientMixin
-from simulation.ai.prompts import PatientNameSection
+from simulation.orca.mixins import StandardizedPatientMixin
+from simulation.orca.prompts import PatientNameSection
 from simulation.models import Simulation
 from ..mixins import ChatlabMixin
 from ..prompts.sections import ChatlabPatientInitialSection
@@ -51,7 +51,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
 
     model: Optional[str] = None
 
-    from chatlab.ai.schemas import PatientReplyOutputSchema as _Schema
+    from chatlab.orca.schemas import PatientReplyOutputSchema as _Schema
     response_format_cls = _Schema
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
