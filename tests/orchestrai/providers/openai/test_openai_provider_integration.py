@@ -1,5 +1,7 @@
 # tests/orchestrai/providers/openai/test_openai_provider_integration.py
 
+import asyncio
+
 import pytest
 
 from orchestrai.contrib.provider_backends.openai import OpenAIResponsesProvider
@@ -42,8 +44,7 @@ class FakeOpenAIResponse:
         }
 
 
-@pytest.mark.asyncio
-async def test_call_uses_provider_response_format_for_text_and_adapts_response(monkeypatch):
+def test_call_uses_provider_response_format_for_text_and_adapts_response(monkeypatch):
     captured: dict = {}
 
     async def fake_create(*args, **kwargs):
@@ -52,11 +53,11 @@ async def test_call_uses_provider_response_format_for_text_and_adapts_response(m
         return FakeOpenAIResponse(text="structured reply")
 
     provider = OpenAIResponsesProvider(
+        alias="openai:test",
         api_key="test-key",
         base_url="https://example.invalid",
         default_model="gpt-4o-mini",
         timeout_s=5,
-        name="openai:test",
     )
 
     # Patch the underlying OpenAI client
@@ -82,7 +83,7 @@ async def test_call_uses_provider_response_format_for_text_and_adapts_response(m
         },
     }
 
-    resp = await provider.call(req)
+    resp = asyncio.run(provider.call(req))
 
     # Ensure the backend called the OpenAI client with `text` derived from provider_response_format
     assert "text" in captured
@@ -107,8 +108,7 @@ async def test_call_uses_provider_response_format_for_text_and_adapts_response(m
     assert resp.usage.total_tokens == 15
 
 
-@pytest.mark.asyncio
-async def test_call_falls_back_to_response_schema_json_when_no_provider_response_format(monkeypatch):
+def test_call_falls_back_to_response_schema_json_when_no_provider_response_format(monkeypatch):
     captured: dict = {}
 
     async def fake_create(*args, **kwargs):
@@ -117,11 +117,11 @@ async def test_call_falls_back_to_response_schema_json_when_no_provider_response
         return FakeOpenAIResponse(text="fallback reply")
 
     provider = OpenAIResponsesProvider(
+        alias="openai:test",
         api_key="test-key",
         base_url="https://example.invalid",
         default_model="gpt-4o-mini",
         timeout_s=5,
-        name="openai:test",
     )
 
     monkeypatch.setattr(provider._client.responses, "create", fake_create)
@@ -133,7 +133,7 @@ async def test_call_falls_back_to_response_schema_json_when_no_provider_response
         response_schema_json=raw_schema,
     )
 
-    resp = await provider.call(req)
+    resp = asyncio.run(provider.call(req))
 
     # When provider_response_format is not set, the backend should fall back to response_schema_json
     assert "text" in captured

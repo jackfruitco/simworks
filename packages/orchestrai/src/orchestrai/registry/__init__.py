@@ -1,7 +1,16 @@
-"""Registry package."""
+"""Lightweight registries."""
+from __future__ import annotations
 
-# Intentionally avoid importing heavy dependencies here to keep ``orchestrai``
-# import light. The Celery-like app uses ``registry.simple.Registry``; the
-# legacy registries remain available by importing their modules directly.
+from .simple import Registry
 
-__all__: tuple[str, ...] = ()
+
+class BaseRegistry(Registry):
+    """Compatibility shim for legacy decorators."""
+
+
+# Basic registries kept for compatibility with provider toolkit.
+provider_backends = Registry()
+providers = Registry()
+codecs = Registry()
+
+__all__ = ["Registry", "BaseRegistry", "provider_backends", "providers", "codecs"]

@@ -2,7 +2,14 @@
 from typing import Any, Protocol
 from uuid import uuid4
 
-from openai.types.responses.response_output_item import ImageGenerationCall
+try:  # pragma: no cover - real client optional
+    from openai.types.responses.response_output_item import ImageGenerationCall
+except Exception:  # pragma: no cover - fallback for test environment
+    class ImageGenerationCall:
+        def __init__(self, id: str | None = None, result: str | None = None, mime_type: str = "image/png"):
+            self.id = id
+            self.result = result
+            self.mime_type = mime_type
 
 from orchestrai.types import LLMToolCall
 from orchestrai.types.content import BaseToolResultContent

@@ -5,14 +5,14 @@ import asyncio
 
 # ----------------------- pydantic stub -----------------------
 class _FieldInfo:
-    def __init__(self, default=... , default_factory=None, repr=True, **kwargs):
+    def __init__(self, default=..., default_factory=None, repr=True, **kwargs):
         self.default = default
         self.default_factory = default_factory
         self.repr = repr
         self.metadata = kwargs
 
 
-def Field(*, default=... , default_factory=None, repr=True, **kwargs):
+def Field(*args, default=..., default_factory=None, repr=True, **kwargs):
     return _FieldInfo(default, default_factory, repr=repr, **kwargs)
 
 
@@ -75,6 +75,29 @@ class BaseModel:
     def model_dump_json(self, **kwargs):
         return json.dumps(self.model_dump(**kwargs))
 
+    @classmethod
+    def model_json_schema(cls):
+        props = {name: {"type": "string"} for name in getattr(cls, "__annotations__", {})}
+        for name, value in cls.__dict__.items():
+            if isinstance(value, _FieldInfo):
+                props[name] = {"type": "string"}
+        return {"type": "object", "properties": props}
+
+
+class RootModel(BaseModel):
+    def __init__(self, root=None, **kwargs):
+        super().__init__(**kwargs)
+        self.root = root
+
+    def model_dump(self, *args, **kwargs):  # noqa: D401
+        data = super().model_dump(*args, **kwargs)
+        data["root"] = getattr(self, "root", None)
+        return data
+
+    @classmethod
+    def __class_getitem__(cls, _item):
+        return cls
+
 
 def field_validator(*_args, **_kwargs):
     def decorator(fn):
@@ -108,6 +131,7 @@ pydantic.Field = Field
 pydantic.BaseModel = BaseModel
 pydantic.ValidationError = ValidationError
 pydantic.ConfigDict = ConfigDict
+pydantic.RootModel = RootModel
 pydantic.field_validator = field_validator
 pydantic.model_validator = model_validator
 pydantic.field_serializer = field_serializer
@@ -129,11 +153,36 @@ def sync_to_async(func):
     return wrapper
 
 
+def async_to_sync(func):
+    import asyncio
+
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        if asyncio.iscoroutine(result):
+            return asyncio.run(result)
+        return result
+
+    return wrapper
+
+
 asgiref_sync.sync_to_async = sync_to_async
+asgiref_sync.async_to_sync = async_to_sync
 sys.modules.setdefault("asgiref.sync", asgiref_sync)
 asgiref = types.ModuleType("asgiref")
 asgiref.sync = asgiref_sync
 sys.modules.setdefault("asgiref", asgiref)
+
+# ----------------------- logfire stub -----------------------
+logfire = types.SimpleNamespace(error=lambda *args, **kwargs: None)
+sys.modules.setdefault("logfire", logfire)
+
+# ----------------------- slugify stub -----------------------
+def _slugify(value):
+    return str(value).replace(" ", "-")
+
+
+slugify_module = types.SimpleNamespace(slugify=_slugify)
+sys.modules.setdefault("slugify", slugify_module)
 
 # ----------------------- opentelemetry stub -----------------------
 class _Span:

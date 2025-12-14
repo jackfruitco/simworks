@@ -199,6 +199,9 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     def encode(self, req: Request) -> None:
         return async_to_sync(self.aencode)(req)
 
+    def decode(self, resp: Response):
+        return async_to_sync(self.adecode)(resp)
+
     # ---- Schema adaptation -------------------------------------------------
     def adapt_schema(self, base_schema: dict[str, Any]) -> dict[str, Any]:
         """Run this codec's schema adapters in order.

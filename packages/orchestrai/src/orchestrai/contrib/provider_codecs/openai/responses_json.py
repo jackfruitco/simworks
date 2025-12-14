@@ -121,8 +121,8 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                         f"{self.__class__.__name__}: schema adapter {type(adapter).__name__} failed"
                     ) from exc
 
-            # Keep adapted schema for diagnostics
-            setattr(req, "provider_response_format", req.response_schema_json)
+            req.response_schema_json = compiled
+            setattr(req, "provider_response_format", compiled)
 
     async def adecode(self, resp: Response) -> Any | None:
         """Decode structured output from a Response into the declared schema, if available.
