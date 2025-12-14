@@ -62,6 +62,11 @@ class Command(BaseCommand):
             default="INFO",
             help="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.",
         )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Instantiate the service with dry_run=True to skip outbound client calls.",
+        )
 
     def handle(self, *args, **options):
         raw_level = options.get("log_level", "INFO").upper()
@@ -90,12 +95,13 @@ class Command(BaseCommand):
 
         mode: str = options.get("mode", "start")
         runner = getattr(app.services, mode)
+        dry_run: bool = options.get("dry_run", False)
 
         try:
             if mode in ("astart", "aschedule"):
-                result = asyncio.run(runner(service_obj, **context))
+                result = asyncio.run(runner(service_obj, dry_run=dry_run, **context))
             else:
-                result = runner(service_obj, **context)
+                result = runner(service_obj, dry_run=dry_run, **context)
         except Exception as exc:
             raise CommandError(f"Failed to execute service {service_spec!r} via {mode}: {exc}") from exc
 

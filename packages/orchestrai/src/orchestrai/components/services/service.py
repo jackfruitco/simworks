@@ -115,6 +115,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             prompt_instruction_override: str | None = None,
             prompt_message_override: str | None = None,
             response_schema: type[StrictBaseModel] | None = None,
+            dry_run: bool | None = None,
             **kwargs: Any,
     ) -> None:
         """
@@ -149,6 +150,19 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         # Client / emitter
         self.client: OrcaClient | None = client
         self.emitter: ServiceEmitter | None = emitter
+
+        # Dry-run flag (prefer explicit arg, then context override, else class default)
+        context_dry_run = None
+        if "dry_run" in self.context:
+            context_dry_run = bool(self.context.pop("dry_run"))
+
+        self.dry_run = (
+            bool(dry_run)
+            if dry_run is not None
+            else context_dry_run
+            if context_dry_run is not None
+            else type(self).dry_run
+        )
 
         # Prompt configuration / overrides
         self._prompt_engine: PromptEngine | None = prompt_engine or type(self).prompt_engine
