@@ -126,8 +126,8 @@ def test_decode_with_invalid_payload_raises_codecdecodeerror():
     payload = {"foo": "not_an_int"}
     resp = _make_response_with_structured_payload(payload, IntSchema)
 
-    result = codec.decode(resp)
-    assert isinstance(result, IntSchema)
+    with pytest.raises(CodecDecodeError):
+        codec.decode(resp)
 
 
 def test_decode_prefers_provider_structured_over_text_json():
