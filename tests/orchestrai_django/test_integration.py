@@ -25,6 +25,12 @@ def install_fake_django(monkeypatch, settings_obj):
     apps_mod = types.ModuleType("django.apps")
     apps_mod.AppConfig = DummyAppConfig
 
+    def get_containing_app_config(module_name):
+        return None
+
+    apps_mod.get_containing_app_config = get_containing_app_config
+    apps_mod.apps = apps_mod
+
     utils_mod = types.ModuleType("django.utils")
     module_loading_mod = types.ModuleType("django.utils.module_loading")
     module_loading_mod.calls = []
@@ -90,6 +96,24 @@ def test_single_mode_configures_client(monkeypatch):
     assert conf["CLIENT"]["provider"] == "stub"
     app.start()
     assert "default" in app.clients.all()
+
+
+def test_identity_strip_tokens_from_django_settings(monkeypatch):
+    settings_obj = types.SimpleNamespace(
+        ORCA_IDENTITY_STRIP_TOKENS="Foo, Bar ,Baz",
+        INSTALLED_APPS=[],
+    )
+    install_fake_django(monkeypatch, settings_obj)
+
+    from orchestrai_django.identity.resolvers import DjangoIdentityResolver
+
+    class Dummy:
+        pass
+
+    resolver = DjangoIdentityResolver()
+    tokens = resolver._collect_strip_tokens(Dummy)
+
+    assert {"Foo", "Bar", "Baz"}.issubset(set(tokens))
 
 
 def test_django_discovery_prefers_orca_and_loads_components(monkeypatch, tmp_path):
