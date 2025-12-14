@@ -42,7 +42,7 @@ from .finalize import consume_finalizers
 from .fixups.base import BaseFixup
 from .loaders.base import BaseLoader
 from .registry.base import BaseRegistry
-from .registry.simple import Registry, ServicesRegistry
+from .registry.simple import AppRegistry, ServiceRunnerRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -76,11 +76,11 @@ class OrchestrAI:
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
     _fixup_specs: list[object] = field(default_factory=list, repr=False)
 
-    services: ServicesRegistry = field(default_factory=ServicesRegistry)
-    codecs: Registry = field(default_factory=Registry)
-    providers: Registry = field(default_factory=Registry)
-    clients: Registry = field(default_factory=Registry)
-    prompt_sections: Registry = field(default_factory=Registry)
+    services: ServiceRunnerRegistry = field(default_factory=ServiceRunnerRegistry)
+    codecs: AppRegistry = field(default_factory=AppRegistry)
+    providers: AppRegistry = field(default_factory=AppRegistry)
+    clients: AppRegistry = field(default_factory=AppRegistry)
+    prompt_sections: AppRegistry = field(default_factory=AppRegistry)
 
     def __post_init__(self) -> None:
         # Capture any provided fixup specs; actual instances are built during setup
