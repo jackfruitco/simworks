@@ -54,6 +54,8 @@ jobs:
         context: .
         file: docker/Dockerfile.prod
         push: true
+        cache-from: type=gha,mode=max,scope=package-build-cache
+        cache-to: type=gha,mode=max,scope=package-build-cache
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
@@ -72,6 +74,8 @@ jobs:
         file: docker/Dockerfile.prod
         target: web
         push: true
+        cache-from: type=gha,mode=max,scope=package-build-cache
+        cache-to: type=gha,mode=max,scope=package-build-cache
         tags: |
           ghcr.io/${{ github.repository }}:web-${{ github.ref_name }}
           ghcr.io/${{ github.repository }}:web-latest
@@ -92,6 +96,8 @@ jobs:
         file: docker/Dockerfile.prod
         target: celery
         push: true
+        cache-from: type=gha,mode=max,scope=package-build-cache
+        cache-to: type=gha,mode=max,scope=package-build-cache
         tags: |
           ghcr.io/${{ github.repository }}:celery-${{ github.ref_name }}
           ghcr.io/${{ github.repository }}:celery-latest
@@ -112,6 +118,8 @@ jobs:
         file: docker/Dockerfile.prod
         target: beat
         push: true
+        cache-from: type=gha,mode=max,scope=package-build-cache
+        cache-to: type=gha,mode=max,scope=package-build-cache
         tags: |
           ghcr.io/${{ github.repository }}:beat-${{ github.ref_name }}
           ghcr.io/${{ github.repository }}:beat-latest
