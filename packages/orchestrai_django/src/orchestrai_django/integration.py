@@ -1,37 +1,55 @@
 # orchestrai_django/integration.py
 
-from typing import Any
+from __future__ import annotations
 
-from orchestrai.client.settings_loader import OrcaSettings, load_orca_settings
+from typing import Any, Mapping
+
 from orchestrai.conf.settings import Settings
 
 
-def configure_from_django_settings(app: Any | None = None, *, namespace: str = "ORCA") -> OrcaSettings:
-    """Load namespaced settings from ``django.conf.settings``."""
+def _coerce_mapping(value: Any) -> Mapping[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return value
+    raise TypeError("Django settings for OrchestrAI must be a mapping or None")
+
+
+def configure_from_django_settings(
+    app: Any | None = None,
+    *,
+    namespace: str = "ORCA_CONFIG",
+    legacy_namespace: str = "ORCA",
+) -> Settings:
+    """Load OrchestrAI configuration from ``django.conf.settings``.
+
+    Preference order:
+    1. A mapping stored under ``ORCA_CONFIG`` (default).
+    2. Namespaced uppercase keys using ``legacy_namespace`` (e.g. ``ORCA_CLIENTS``).
+    """
 
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
     conf = Settings()
-    conf.update_from_mapping(vars(dj_settings), namespace=namespace)
 
-    loaded = load_orca_settings(conf.as_dict())
+    # Preferred path: explicit config mapping
+    mapping = _coerce_mapping(getattr(dj_settings, namespace, None))
+    if mapping or getattr(dj_settings, namespace, None) is not None:
+        conf.update_from_mapping(mapping)
+    else:
+        conf.update_from_mapping(vars(dj_settings), namespace=legacy_namespace)
+
     if app is not None and hasattr(app, "configure"):
-        app.configure(conf.as_dict(), namespace=None)
-    return loaded
+        app.configure(conf.as_dict())
+    return conf
 
 
 def django_autodiscover(app: Any, *, module_names: list[str] | None = None) -> None:
-    """
-    Django-native autodiscovery. Imports module_names across INSTALLED_APPS.
+    """Django-native autodiscovery. Imports module_names across INSTALLED_APPS."""
 
-    Defaults match core: ["orchestrai", "ai"].
-    """
     from django.utils.module_loading import autodiscover_modules  # type: ignore[attr-defined]
 
     if module_names is None:
         module_names = ["orchestrai", "ai"]
 
     autodiscover_modules(*module_names)
-
-    # Registration should happen via decorators/registries during import.
-    # Optionally, if you have an explicit registry you can sync it onto app.components here.
