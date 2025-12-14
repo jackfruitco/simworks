@@ -34,6 +34,7 @@ from typing import Any
 from django.apps import AppConfig
 from django.conf import settings as dj_settings
 
+from orchestrai._state import set_current_app
 from orchestrai.tracing import service_span_sync
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,20 @@ def _maybe_start(app: Any) -> None:
     app.start()
 
 
+def _register_current_app(app: Any) -> None:
+    """Persist the resolved app on settings and the context var."""
+
+    try:
+        setattr(dj_settings, "_ORCA_APP", app)
+    except Exception:
+        logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
+
+    try:
+        set_current_app(app)
+    except Exception:
+        logger.debug("Failed to set current OrchestrAI app", exc_info=True)
+
+
 class OrchestrAIDjangoConfig(AppConfig):
     """Django AppConfig for OrchestrAI Django."""
 
@@ -108,11 +123,7 @@ class OrchestrAIDjangoConfig(AppConfig):
 
                 # If the callable returned an app instance, register it as the default.
                 if result is not None:
-                    try:
-                        setattr(dj_settings, "_ORCA_APP", result)
-                    except Exception:
-                        logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
-
+                    _register_current_app(result)
                     _maybe_start(result)
                     logger.info("OrchestrAI autostart complete via callable entrypoint")
                     return
@@ -122,10 +133,6 @@ class OrchestrAIDjangoConfig(AppConfig):
                 return
 
             # If it's an object (e.g. an app instance), register it and try to ready it.
-            try:
-                setattr(dj_settings, "_ORCA_APP", target)
-            except Exception:
-                logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
-
+            _register_current_app(target)
             _maybe_start(target)
             logger.info("OrchestrAI autostart complete via object entrypoint")
