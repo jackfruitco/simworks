@@ -2,43 +2,42 @@
 
 from __future__ import annotations
 
-from threading import RLock
-from typing import Any, Dict, Iterable, Iterator
+from typing import Any, Dict, Iterator
 
 from orchestrai.components.services.service import BaseService
+from orchestrai.registry.base import BaseRegistry
+from orchestrai.registry.exceptions import RegistryFrozenError
 
 
-class Registry:
+def _coerce_to_str(value: Any) -> str:
+    return str(value)
+
+
+class Registry(BaseRegistry[str, Any]):
     def __init__(self) -> None:
-        self._items: Dict[str, Any] = {}
-        self._lock = RLock()
-        self._frozen = False
+        super().__init__(coerce_key=_coerce_to_str)
 
     def register(self, name: str, obj: Any) -> None:
+        key = self._coerce(name)
         with self._lock:
             if self._frozen:
-                raise RuntimeError("Registry is frozen")
-            if name not in self._items:
-                self._items[name] = obj
+                raise RegistryFrozenError("Registry is frozen")
+            if key not in self._store:
+                self._store[key] = obj
 
     def get(self, name: str) -> Any:
-        with self._lock:
-            return self._items[name]
+        return super().get(name)
 
     def all(self) -> Dict[str, Any]:
         with self._lock:
-            return dict(self._items)
-
-    def freeze(self) -> None:
-        with self._lock:
-            self._frozen = True
+            return dict(self._store)
 
     def __contains__(self, name: str) -> bool:
         with self._lock:
-            return name in self._items
+            return self._coerce(name) in self._store
 
     def __iter__(self) -> Iterator[tuple[str, Any]]:  # pragma: no cover - convenience
-        return iter(self._items.items())
+        return iter(self._store.items())
 
 
 class ServicesRegistry(Registry):
@@ -85,4 +84,3 @@ class ServicesRegistry(Registry):
         """Alias for :meth:`astart` mirroring ``schedule``."""
 
         return await self.astart(service, **context)
-
