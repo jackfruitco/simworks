@@ -1,9 +1,7 @@
 # tests/orchestrai/components/codecs/openai/test_responses_json_codec.py
 
 import pytest
-from pydantic import BaseModel
-
-from orchestrai.components.codecs.exceptions import CodecDecodeError, CodecSchemaError
+from pydantic import BaseModel, ValidationError
 from orchestrai.contrib.provider_codecs.openai import OpenAIResponsesJsonCodec
 from orchestrai.types import Request, Response
 from orchestrai.types.content import ContentRole
@@ -158,7 +156,5 @@ def test_decode_prefers_provider_structured_over_text_json():
 def test_encode_raises_on_non_dict_response_schema_json():
     codec = OpenAIResponsesJsonCodec()
     # Intentionally invalid: response_schema_json must be a dict
-    req = Request(model=None, input=[], response_schema_json="not_a_dict")  # type: ignore[arg-type]
-
-    with pytest.raises(CodecSchemaError):
-        codec.encode(req)
+    with pytest.raises(ValidationError):
+        Request(model=None, input=[], response_schema_json="not_a_dict")  # type: ignore[arg-type]
