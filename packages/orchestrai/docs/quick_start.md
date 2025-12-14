@@ -28,7 +28,7 @@ app.configure(
 
 ## 3. Run the lifecycle
 
-Call the explicit lifecycle steps. `start()` is a shortcut that calls `discover()` and `finalize()` and prints the welcome banner once.
+Call the explicit lifecycle steps. `start()` is a shortcut that calls `discover()` and `finalize()`, prints the jumping-orca banner once, and emits a concise listing of registered components.
 
 ```python
 app.start()

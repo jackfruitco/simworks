@@ -21,17 +21,19 @@ from typing import Callable, Iterable, Sequence
 
 
 ORCA_BANNER = r"""
-              .-""-.
-             /_.-.-._\
-        _.-'`  /|\  `'-._
-      .'      | | |      '.
-     /        | | |        \
-    |         `-'`'         |
-    |   ORCHESTRAI (orca)   |
-     \        .--.        /
-      '.    /`    `\    .'
-        `'-._/|  |\_.-'
-              `--`
+                      __
+                  _.-'  `'-._
+              _.-'          '-._
+            .'    .-'''''-.     '.
+           /    .'  .--.  '.      \
+          /    /   (o  _)   \      \
+         |     |    `-`      |      |
+         |     \  .-'''''-.  /      /
+          \     '.`.___.' .'      /
+           '.      `---`       .'
+             '-._          _.-'
+                 `''----''`
+             ~ jumping orca ~
 """
 
 from ._state import push_current_app, set_current_app
@@ -84,6 +86,7 @@ class OrchestrAI:
     _setup_done: bool = False
     _started: bool = False
     _banner_printed: bool = False
+    _components_reported: bool = False
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
 
     services: Registry = field(default_factory=Registry)
@@ -159,6 +162,7 @@ class OrchestrAI:
         for registry in (self.services, self.codecs, self.providers, self.clients, self.prompt_sections):
             registry.freeze()
         self._finalized = True
+        self.print_component_report()
         return self
 
     def start(self) -> "OrchestrAI":
@@ -229,7 +233,7 @@ class OrchestrAI:
         except Exception:  # pragma: no cover - metadata may be missing in tests
             pkg_version = "unknown"
 
-        header = f"OrchestrAI v{pkg_version}".strip()
+        header = f"ORCHESTRAI v{pkg_version}".strip()
         return f"{ORCA_BANNER}\n{header}\n".rstrip() + "\n"
 
     def print_banner(self, file=None) -> None:
@@ -237,6 +241,29 @@ class OrchestrAI:
             file = sys.stdout
         print(self.banner_text(), file=file)
         self._banner_printed = True
+
+    def component_report_text(self) -> str:
+        sections = (
+            ("services", self.services),
+            ("providers", self.providers),
+            ("clients", self.clients),
+            ("codecs", self.codecs),
+            ("prompt_sections", self.prompt_sections),
+        )
+        lines = ["Registered components:"]
+        for label, registry in sections:
+            names = sorted(registry.all().keys())
+            items = ", ".join(names) if names else "<none>"
+            lines.append(f"- {label}: {items}")
+        return "\n".join(lines) + "\n"
+
+    def print_component_report(self, file=None) -> None:
+        if self._components_reported:
+            return
+        if file is None:
+            file = sys.stdout
+        print(self.component_report_text(), file=file)
+        self._components_reported = True
 
 
 __all__ = ["OrchestrAI"]

@@ -84,3 +84,16 @@ def test_start_prints_orca_banner_once(capsys):
     assert "orca" in first.lower()
     assert first.count("ORCHESTRAI") == 1
     assert second.strip() == ""
+
+
+def test_finalize_outputs_registered_components(capsys):
+    app = CoreOrchestrAI()
+    app.services.register("reporting", object())
+    app.codecs.register("json", object())
+
+    app.finalize()
+
+    output = capsys.readouterr().out
+    assert "Registered components:" in output
+    assert "services: reporting" in output
+    assert "codecs: json" in output

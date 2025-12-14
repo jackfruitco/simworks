@@ -39,7 +39,7 @@ with app.as_current():
     client = app.client
 ```
 
-`start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, and prints the Orca welcome banner once.
+`start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, prints the jumping-orca welcome banner once, and summarizes registered components.
 
 ## Lifecycle overview
 

@@ -27,7 +27,7 @@ from orchestrai import OrchestrAI, current_app, get_current_app
 4. **setup()** – instantiate the loader and populate registries for `CLIENTS` and `PROVIDERS`.
 5. **discover()** – call the loader’s `autodiscover(app, modules)` for each path in `DISCOVERY_PATHS`.
 6. **finalize()** – run shared decorator callbacks and freeze registries.
-7. **start()/run()** – print the Orca banner, run discovery, then finalize; idempotent.
+7. **start()/run()** – print the jumping-orca banner, run discovery, finalize, and emit a component summary; idempotent.
 
 Each method is idempotent and avoids network calls; nothing heavy happens during import.
 
