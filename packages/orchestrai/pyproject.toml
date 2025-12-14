@@ -15,13 +15,13 @@ classifiers = [
 ]
 
 dependencies = [
-  "pydantic>=2.8",
+  "pydantic>=2.12.5",
   "typing-extensions>=4.12",
-  "opentelemetry-api>=1.26",
+  "opentelemetry-api>=1.31",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11"]
+dev = ["pytest>=9", "ruff>=0.6", "mypy>=1.11"]
 
 [build-system]
 requires = ["hatchling>=1.25"]
