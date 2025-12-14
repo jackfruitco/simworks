@@ -1,14 +1,7 @@
-# orchestrai/registry/__init__.py
-from .base import BaseRegistry
-from .singletons import *
+"""Registry package."""
 
-__all__ = (
-    "BaseRegistry",
-    "codecs",
-    "services",
-    "schemas",
-    "prompt_sections",
-    "providers",
-    "provider_backends",
-    "get_registry_for",
-)
+# Intentionally avoid importing heavy dependencies here to keep ``orchestrai``
+# import light. The Celery-like app uses ``registry.simple.Registry``; the
+# legacy registries remain available by importing their modules directly.
+
+__all__: tuple[str, ...] = ()
