@@ -165,7 +165,6 @@ class OrchestrAI:
     def _configure_autoclient(self):
         default_client = self.conf.get("CLIENT")
         if default_client:
-            self.clients.register(default_client, {"name": default_client})
             clients_conf = self.conf.get("CLIENTS", {})
             definition = clients_conf.get(default_client, {"name": default_client})
             self.clients.register(default_client, definition)

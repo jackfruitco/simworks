@@ -1,6 +1,5 @@
 import pytest
 
-
 from orchestrai import OrchestrAI as CoreOrchestrAI
 from orchestrai.shared import shared_service
 
@@ -36,6 +35,20 @@ def test_default_client_set_from_client_setting():
     app.setup()
 
     assert app.client == app.clients.get("default-client")
+
+
+def test_default_client_uses_config_definition_over_placeholder():
+    app = CoreOrchestrAI()
+    app.conf.update_from_mapping(
+        {
+            "CLIENT": "configured-client",
+            "CLIENTS": {"configured-client": {"name": "configured-client", "url": "http://example"}},
+        }
+    )
+
+    app.setup()
+
+    assert app.clients.get("configured-client")["url"] == "http://example"
 
 
 def test_apps_entrypoint_aliases_core_orchestrai():
