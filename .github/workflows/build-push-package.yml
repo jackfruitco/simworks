@@ -57,7 +57,15 @@ jobs:
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
+    - name: Attest default image
+      uses: actions/attest-build-provenance@v3
+      with:
+        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        subject-digest: ${{ steps.push.outputs.digest }}
+        push-to-registry: true
+
     - name: Build and push web image
+      id: push-web
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -69,7 +77,15 @@ jobs:
           ghcr.io/${{ github.repository }}:web-latest
         labels: ${{ steps.meta.outputs.labels }}
 
+    - name: Attest web image
+      uses: actions/attest-build-provenance@v3
+      with:
+        subject-name: ghcr.io/${{ github.repository }}:web-${{ github.ref_name }}
+        subject-digest: ${{ steps.push-web.outputs.digest }}
+        push-to-registry: true
+
     - name: Build and push celery image
+      id: push-celery
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -81,7 +97,15 @@ jobs:
           ghcr.io/${{ github.repository }}:celery-latest
         labels: ${{ steps.meta.outputs.labels }}
 
+    - name: Attest celery image
+      uses: actions/attest-build-provenance@v3
+      with:
+        subject-name: ghcr.io/${{ github.repository }}:celery-${{ github.ref_name }}
+        subject-digest: ${{ steps.push-celery.outputs.digest }}
+        push-to-registry: true
+
     - name: Build and push beat image
+      id: push-beat
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -93,9 +117,9 @@ jobs:
           ghcr.io/${{ github.repository }}:beat-latest
         labels: ${{ steps.meta.outputs.labels }}
 
-    - name: Generate artifact attestation
+    - name: Attest beat image
       uses: actions/attest-build-provenance@v3
       with:
-        subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
-        subject-digest: ${{ steps.push.outputs.digest }}
+        subject-name: ghcr.io/${{ github.repository }}:beat-${{ github.ref_name }}
+        subject-digest: ${{ steps.push-beat.outputs.digest }}
         push-to-registry: true
