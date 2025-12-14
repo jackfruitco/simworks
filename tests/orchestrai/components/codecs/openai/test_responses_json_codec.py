@@ -2,6 +2,8 @@
 
 import pytest
 from pydantic import BaseModel, ValidationError
+
+from orchestrai.components.codecs.exceptions import CodecDecodeError
 from orchestrai.contrib.provider_codecs.openai import OpenAIResponsesJsonCodec
 from orchestrai.types import Request, Response
 from orchestrai.types.content import ContentRole
