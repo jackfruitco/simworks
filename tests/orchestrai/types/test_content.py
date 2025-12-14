@@ -3,6 +3,7 @@ from orchestrai.types.content import (
     BaseToolResultContent,
     ContentRole,
 )
+from orchestrai.types import InputTextContent, OutputTextContent
 from orchestrai.types.messages import InputItem, OutputItem
 
 
@@ -18,7 +19,7 @@ def test_output_tool_result_content_defaults():
 
 
 def test_message_wrappers_accept_content():
-    inp = InputItem(role=ContentRole.USER, content=[BaseTextContent(text="hi")])
-    out = OutputItem(role=ContentRole.ASSISTANT, content=[BaseTextContent(text="ok")])
+    inp = InputItem(role=ContentRole.USER, content=[InputTextContent(text="hi")])
+    out = OutputItem(role=ContentRole.ASSISTANT, content=[OutputTextContent(text="ok")])
     assert inp.role == ContentRole.USER
     assert out.role == ContentRole.ASSISTANT
