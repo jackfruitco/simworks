@@ -28,6 +28,21 @@ def test_setup_is_idempotent():
     assert app.client == {"name": "alpha"}
 
 
+def test_default_client_uses_full_configuration():
+    app = OrchestrAI()
+    app.conf.update_from_mapping(
+        {
+            "CLIENT": "alpha",
+            "CLIENTS": {"alpha": {"name": "alpha", "token": "secret"}},
+            "MODE": "pod",
+        }
+    )
+
+    app.setup()
+
+    assert app.client == {"name": "alpha", "token": "secret"}
+
+
 def test_shared_service_attaches_on_finalize():
     @shared_service()
     def demo():
