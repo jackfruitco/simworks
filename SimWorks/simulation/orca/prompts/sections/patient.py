@@ -3,14 +3,15 @@ from dataclasses import dataclass
 
 from django.core.exceptions import ObjectDoesNotExist
 
+from orchestrai_django.components.promptkit import PromptSection
+from orchestrai_django.decorators import prompt_section
 from simulation.orca.mixins import SimcoreMixin, StandardizedPatientMixin
 from simulation.models import Simulation
-from orchestrai_django.api import simcore
 
 
-@simcore.prompt_section
+@prompt_section
 @dataclass
-class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, simcore.PromptSection):
+class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, PromptSection):
     # name = "name"
 
     weight = 100

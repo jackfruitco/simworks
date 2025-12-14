@@ -21,7 +21,7 @@ from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from core.models import PersistModel
-from orchestrai_django.api.types import Prompt
+from orchestrai_django.components.promptkit import Prompt
 from .utils import randomize_display_name
 
 logger = logging.getLogger(__name__)

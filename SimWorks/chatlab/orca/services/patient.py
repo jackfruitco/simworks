@@ -5,8 +5,9 @@ import logging
 from typing import Type, Optional, Tuple, List, ClassVar
 
 from core.utils import remove_null_keys
-from orchestrai_django.api import simcore
-from orchestrai_django.api.types import DjangoBaseService, PromptEngine
+from orchestrai_django.components.promptkit import PromptEngine
+from orchestrai_django.components.services import DjangoBaseService
+from orchestrai_django.decorators import service
 from orchestrai.types.input import InputTextContent
 from orchestrai.types import ContentRole
 from orchestrai_django.types import DjangoLLMBaseTool, DjangoInputItem
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 # ----------------------------- services ------------------------------------------
-@simcore.service
+@service
 class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate the initial patient response.
 
@@ -41,7 +42,7 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBase
         "simcore.standardized_patient.name",
     )
 
-@simcore.service
+@service
 class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate a reply to a user message.
 
@@ -81,7 +82,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
         return msgs, self.response_format_cls
 
 
-@simcore.service
+@service
 class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate a patient image via backend tool-call.
 

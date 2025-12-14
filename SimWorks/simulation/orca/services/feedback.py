@@ -1,14 +1,14 @@
 # simcore/ai/services/feedback.py
-from orchestrai_django.api.types import DjangoBaseService
-from orchestrai_django.api import simcore
+from orchestrai_django.components.services import DjangoBaseService
+from orchestrai_django.decorators import service
 from ..mixins import FeedbackMixin
 
-@simcore.service
+@service
 class GenerateHotwashInitialResponse(FeedbackMixin, DjangoBaseService):
     """Generate the initial patient feedback."""
 
 
-@simcore.service
+@service
 class GenerateHotwashContinuationResponse(FeedbackMixin, DjangoBaseService):
     """Generate the continuation feedback."""
     pass

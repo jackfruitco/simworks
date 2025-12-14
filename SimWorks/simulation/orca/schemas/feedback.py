@@ -3,12 +3,12 @@
 
 from pydantic import Field
 
-from orchestrai_django.api.types import DjangoBaseOutputSchema
-from orchestrai_django.api import simcore
+from orchestrai_django.components.schemas import DjangoBaseOutputSchema
+from orchestrai_django.decorators import schema
 from .output_items import HotwashInitialBlock, LLMConditionsCheckItem
 
 
-@simcore.schema
+@schema
 class HotwashInitialSchema(DjangoBaseOutputSchema):
     """Initial patient feedback."""
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(..., json_schema_extra={"kind": "conditions_check"})

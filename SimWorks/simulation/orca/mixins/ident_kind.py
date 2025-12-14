@@ -1,7 +1,7 @@
 # simcore/ai/mixins/ident_kind.py
 
 
-from orchestrai_django.api.mixins import DjangoIdentityMixin
+from orchestrai_django.identity import DjangoIdentityMixin
 
 
 class StandardizedPatientMixin(DjangoIdentityMixin):

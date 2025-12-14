@@ -1,14 +1,16 @@
 from dataclasses import dataclass
+from dataclasses import dataclass
 from typing import Any
 
-from orchestrai_django.api import simcore
+from orchestrai_django.components.promptkit import PromptSection
+from orchestrai_django.decorators import prompt_section
 from simulation.orca.mixins import StandardizedPatientMixin
 from ...mixins import ChatlabMixin
 
 
-@simcore.prompt_section
+@prompt_section
 @dataclass
-class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, simcore.PromptSection):
+class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the LLM to generate an initial scenario."""
 
     weight: int = 10
@@ -47,9 +49,9 @@ class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, simco
     message: str = ""
 
 
-@simcore.prompt_section
+@prompt_section
 @dataclass
-class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, simcore.PromptSection):
+class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the patient's reply to the LLM."""
     instruction = None
 
@@ -63,9 +65,9 @@ class ChatlabPatientReplySection(ChatlabMixin, StandardizedPatientMixin, simcore
         raise ValueError("user_msg must be provided")
 
 
-@simcore.prompt_section
+@prompt_section
 @dataclass
-class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, simcore.PromptSection):
+class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, PromptSection):
     """Prompt section for the LLM to generate an image."""
     weight: int = 20
     instruction: str = (

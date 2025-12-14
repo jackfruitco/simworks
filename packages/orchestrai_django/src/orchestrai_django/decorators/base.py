@@ -33,7 +33,7 @@ class DjangoBaseDecorator(BaseDecorator):
     """Thin Django-aware decorator.
 
     - Delegates identity derivation/pinning to core BaseDecorator
-    - Resolves registries via orchestrai_django.api (the blessed facade)
+    - Resolves registries using the Django integration registries
     - Avoids importing core registries directly
     """
 

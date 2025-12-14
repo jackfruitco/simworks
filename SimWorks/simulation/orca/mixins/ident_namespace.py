@@ -1,7 +1,7 @@
 # simcore/ai/mixins/ident_namespace.py
 
 
-from orchestrai_django.api.mixins import DjangoIdentityMixin
+from orchestrai_django.identity import DjangoIdentityMixin
 
 
 class SimcoreMixin(DjangoIdentityMixin):
