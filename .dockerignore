@@ -1,0 +1,33 @@
+# Version control
+.git
+.github
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Environment and virtualenvs
+*.env
+.venv
+.tox
+
+# Build artifacts
+build
+dist
+*.egg-info
+
+# Test outputs
+.pytest_cache
+
+# Editor files
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Documentation and exports
+/docs
+notes

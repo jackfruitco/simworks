@@ -19,9 +19,6 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/usr/local \
     UV_NO_EDITABLE=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # Copy local packages
 COPY packages ./packages
 
@@ -48,7 +45,14 @@ ARG UID=10001
 RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
     --shell "/sbin/nologin" --no-create-home --uid "${UID}" appuser && \
     mkdir -p /app/static /app/media /app/logs && \
-    chown -R appuser:appuser /app/static /app/media /app/logs
+    chown -R appuser:appuser /app
+
+RUN --mount=type=cache,target=/var/lib/apt/lists \
+    --mount=type=cache,target=/var/cache/apt \
+    apt-get update && apt-get install -y --no-install-recommends curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+USER appuser
 
 # === Celery Worker Stage ===
 FROM base AS celery
@@ -71,8 +75,6 @@ COPY SimWorks /app/SimWorks
 COPY docker/entrypoint.prod.sh /app/docker/entrypoint.sh
 COPY docker/healthcheck.sh /app/docker/healthcheck.sh
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN chmod +x /app/docker/*.sh
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app/docker/healthcheck.sh
