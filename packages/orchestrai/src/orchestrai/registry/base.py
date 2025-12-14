@@ -9,7 +9,6 @@ from asgiref.sync import sync_to_async
 
 from .exceptions import RegistryDuplicateError, RegistryCollisionError, RegistryFrozenError, RegistryLookupError
 from ..identity.identity import Identity
-from ..components.exceptions import ComponentNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +82,7 @@ class BaseRegistry(Generic[K, T]):
     def get(self, key: Any) -> type[T]:
         """
         Retrieve a component associated with the given key from the store. If
-        the key does not exist in the store, a `ComponentNotFoundError` is
+        the key does not exist in the store, a `RegistryLookupError` is
         raised.
 
         The method safely handles concurrent access to the store using a lock,
@@ -117,7 +116,7 @@ class BaseRegistry(Generic[K, T]):
         """
         Attempts to retrieve a value associated with the given key from the object,
         returning None if the key is not found. This method leverages the `get`
-        function and handles the `ComponentNotFoundError` exception internally.
+        function and handles the `RegistryLookupError` exception internally.
 
         :param key: The key to retrieve a value for.
         :type key: Any
@@ -126,7 +125,7 @@ class BaseRegistry(Generic[K, T]):
         """
         try:
             return self.get(key)
-        except ComponentNotFoundError:
+        except RegistryLookupError:
             return None
 
     async def atry_get(self, key: Any) -> type[T] | None:
@@ -136,7 +135,7 @@ class BaseRegistry(Generic[K, T]):
         """
         try:
             return await self.aget(key)
-        except ComponentNotFoundError:
+        except RegistryLookupError:
             return None
 
     # --- counting ---
