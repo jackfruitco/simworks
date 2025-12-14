@@ -52,7 +52,35 @@ def test_default_client_uses_config_definition_over_placeholder():
 
 
 def test_apps_entrypoint_aliases_core_orchestrai():
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match="orchestrai.apps" ):
         from orchestrai.apps import OrchestrAI as AppsOrchestrAI
 
     assert AppsOrchestrAI is CoreOrchestrAI
+
+
+def test_apps_entrypoint_warning_includes_example():
+    from orchestrai.app import warn_deprecated_apps_import
+
+    warn_deprecated_apps_import._already_warned = False  # type: ignore[attr-defined]
+
+    with pytest.warns(DeprecationWarning) as recorded:
+        warn_deprecated_apps_import(stacklevel=1)
+
+    message = str(recorded.list[0].message)
+    assert "Example: from orchestrai import OrchestrAI" in message
+
+
+def test_start_prints_orca_banner_once(capsys):
+    app = CoreOrchestrAI()
+
+    app.start()
+    first = capsys.readouterr().out
+
+    # second call should not duplicate banner
+    app.start()
+    second = capsys.readouterr().out
+
+    assert "ORCHESTRAI" in first
+    assert "orca" in first.lower()
+    assert first.count("ORCHESTRAI") == 1
+    assert second.strip() == ""

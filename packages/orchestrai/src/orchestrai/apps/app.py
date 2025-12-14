@@ -7,9 +7,7 @@ canonical application class.
 
 from __future__ import annotations
 
-import warnings
-
-from ..app import OrchestrAI as _CoreOrchestrAI
+from ..app import OrchestrAI as _CoreOrchestrAI, warn_deprecated_apps_import
 
 
 class OrcaMode(str):
@@ -18,12 +16,7 @@ class OrcaMode(str):
     POD = "orca_pod"
 
 
-warnings.warn(
-    "'orchestrai.apps.OrchestrAI' is deprecated; import 'OrchestrAI' from the "
-    "top-level 'orchestrai' package instead.",
-    DeprecationWarning,
-    stacklevel=2,
-)
+warn_deprecated_apps_import()
 
 OrchestrAI = _CoreOrchestrAI
 

@@ -14,8 +14,25 @@ time. Users control the lifecycle explicitly.
 from __future__ import annotations
 
 import importlib
+import sys
+import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Sequence
+
+
+ORCA_BANNER = r"""
+              .-""-.
+             /_.-.-._\
+        _.-'`  /|\  `'-._
+      .'      | | |      '.
+     /        | | |        \
+    |         `-'`'         |
+    |   ORCHESTRAI (orca)   |
+     \        .--.        /
+      '.    /`    `\    .'
+        `'-._/|  |\_.-'
+              `--`
+"""
 
 from ._state import push_current_app, set_current_app
 from .conf.settings import Settings
@@ -36,6 +53,23 @@ def _import_string(path: str):
     return getattr(module, attr) if attr else module
 
 
+_APPS_DEPRECATION = (
+    "'orchestrai.apps' is deprecated; import OrchestrAI from 'orchestrai' instead.\n"
+    "Example: from orchestrai import OrchestrAI"
+)
+
+
+def warn_deprecated_apps_import(stacklevel: int = 2) -> None:
+    """Emit a single deprecation warning for the legacy apps module."""
+
+    if getattr(warn_deprecated_apps_import, "_already_warned", False):
+        return
+    with warnings.catch_warnings():
+        warnings.simplefilter("always", DeprecationWarning)
+        warnings.warn(_APPS_DEPRECATION, DeprecationWarning, stacklevel=stacklevel)
+    warn_deprecated_apps_import._already_warned = True
+
+
 # ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
@@ -49,6 +83,7 @@ class OrchestrAI:
     _finalized: bool = False
     _setup_done: bool = False
     _started: bool = False
+    _banner_printed: bool = False
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
 
     services: Registry = field(default_factory=Registry)
@@ -129,6 +164,8 @@ class OrchestrAI:
     def start(self) -> "OrchestrAI":
         if self._started:
             return self
+        if not self._banner_printed:
+            self.print_banner()
         self.discover()
         self.finalize()
         self._started = True
@@ -178,6 +215,28 @@ class OrchestrAI:
         if self._default_client is None:
             return None
         return self.clients.get(self._default_client)
+
+    # ------------------------------------------------------------------
+    # Presentation helpers
+    # ------------------------------------------------------------------
+    def banner_text(self) -> str:
+        """Return the stdout banner displayed when the app starts."""
+
+        try:
+            from importlib.metadata import PackageNotFoundError, version
+
+            pkg_version = version("orchestrai")
+        except Exception:  # pragma: no cover - metadata may be missing in tests
+            pkg_version = "unknown"
+
+        header = f"OrchestrAI v{pkg_version}".strip()
+        return f"{ORCA_BANNER}\n{header}\n".rstrip() + "\n"
+
+    def print_banner(self, file=None) -> None:
+        if file is None:
+            file = sys.stdout
+        print(self.banner_text(), file=file)
+        self._banner_printed = True
 
 
 __all__ = ["OrchestrAI"]
