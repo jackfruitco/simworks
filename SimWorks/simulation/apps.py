@@ -8,7 +8,7 @@ class SimulationConfig(AppConfig):
     label = name
 
     # e.g. {"app", "App", "AppName"}
-    # simcore_ai_django already adds all app names to this (normed)
+    # orchestrai_django already adds all app names to this (normed)
     identity_strip_tokens = ["Patient"]
 
     def ready(self):

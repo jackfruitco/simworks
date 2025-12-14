@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from simcore_ai_django.api import simcore
+from orchestrai_django.api import simcore
 
 from simulation.ai.mixins import StandardizedPatientMixin
 from ...mixins import ChatlabMixin

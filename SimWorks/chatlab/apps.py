@@ -5,7 +5,7 @@ class ChatLabConfig(AppConfig):
     name = "chatlab"
     label = name
 
-    # simcore_ai_django already adds all app names to this (normed)
+    # orchestrai_django already adds all app names to this (normed)
     AI_IDENTITY_STRIP_TOKENS = ("Patient","Chatlab","chatlab")
 
     def ready(self):

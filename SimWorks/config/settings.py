@@ -56,7 +56,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
     "django_htmx",
-    "simcore_ai_django",
+    "orchestrai_django",
     "core",
     "simulation",
     "chatlab",
@@ -101,7 +101,7 @@ ASGI_APPLICATION = "config.asgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-# Database engine can be chosen via environment variable "DATABASE"
+# Database engine can be chosen via profile variable "DATABASE"
 db_engine = os.getenv("DATABASE", "postgresql")
 
 if db_engine == "sqlite3":
@@ -126,65 +126,42 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 # ---------------------------------------------------------------------------
-# SIMCORE_AI unified configuration (replaces AI_PROVIDERS/AI_CLIENT_DEFAULTS)
+# Orca configugration
 # ---------------------------------------------------------------------------
-SIMCORE_IDENTITY_STRIP_TOKENS = [
-    t for t in re.split(r"[\s,]+", os.getenv("SIMCORE_IDENTITY_STRIP_TOKENS", "").strip()) if t
+ORCA_AUTOSTART = True
+ORCA_ENTRYPOINT = "config.orca:get_orca"
+ORCA_IDENTITY_STRIP_TOKENS = [
+    t for t in re.split(r"[\s,]+", os.getenv("ORCA_IDENTITY_STRIP_TOKENS", "").strip()) if t
 ]
+ORCA_CLIENT = {
+    "provider": "openai",
+    "surface": "responses",
 
-SIMCORE_AI = {
-    "PROVIDERS": {
-        # Provider key: used by clients to reference this provider
-        "openai": {
-            "provider": "openai",
-            # optional human label for observability (e.g., prod/sandbox/gov)
-            "label": os.getenv("AI_PROVIDER_LABEL", "prod"),
-            # supply either api_key OR api_key_env (or both)
-            "api_key": os.getenv("OPENAI_API_KEY") or os.getenv("AI_API_KEY"),
-            "api_key_env": "OPENAI_API_KEY",
-            # optional provider-level defaults
-            "base_url": os.getenv("AI_BASE_URL"),
-            "model": os.getenv("AI_DEFAULT_MODEL", "gpt-4o-mini"),
-            "timeout_s": float(os.getenv("AI_TIMEOUT_S", 60)),
-        },
-        # Additional providers can be added here, e.g. "anthropic": {...}
-    },
+    "api_key_envvar": "ORCA_PROVIDER_API_KEY",
 
-    "CLIENTS": {
-        # The dict key becomes the registry name
-        "default": {
-            "provider": "openai",
-            # client-level overrides are optional; if omitted, provider defaults apply
-            "model": os.getenv("AI_DEFAULT_MODEL", "gpt-4o-mini"),
-            "default": True,
-            "enabled": True,
-        },
-        "openai-images": {
-            "provider": "openai",
-            "model": os.getenv("AI_IMAGE_MODEL", "gpt-image-1"),
-            "enabled": False,
-            # Optional, but not required if enabled=False
-            "healthcheck": False,
-        },
-    },
-
-    # Runtime knobs for AIClient (formerly AI_CLIENT_DEFAULTS)
-    "CLIENT_DEFAULTS": {
-        "max_retries": int(os.getenv("AI_MAX_RETRIES", 2)),
-        "timeout_s": int(float(os.getenv("AI_TIMEOUT_S", 60))),  # seconds
-        "telemetry_enabled": True,
-        "log_prompts": False,
-        "raise_on_error": True,
-    },
-
-    # Startup healthcheck (can be overridden by env SIMCORE_AI_HEALTHCHECK_ON_START)
-    "HEALTHCHECK_ON_START": True,
+    "model": os.getenv("ORCA_DEFAULT_MODEL", None),
 }
+ORCA_DISCOVERY_MODULES = [
+    "orchestrai.identity",
+    "orchestrai.receivers",
+    "orchestrai.prompts",
+    "orchestrai.services",
+    "orchestrai.codecs",
+
+    "ai.identity",
+    "ai.receivers",
+    "ai.prompts",
+    "ai.services",
+    "ai.codecs",
+]
 
 TASKS = {
     "default": {
         "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
-    }
+    },
+    "immediate": {
+        "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
+    },
 }
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")

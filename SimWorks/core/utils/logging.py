@@ -5,8 +5,8 @@ import logging
 class AppColorFormatter(logging.Formatter):
     COLORS = {
         "chatlab": "\033[34m",              # Dark Blue
-        "simcore_ai": "\033[32m",           # Dark Green
-        "simcore_ai_django": "\033[32m",    # Dark Green
+        "orchestrai": "\033[32m",           # Dark Green
+        "orchestrai_django": "\033[32m",    # Dark Green
         "accounts": "\033[35m",             # Dark Magenta
         "notifications": "\033[33m",        # Dark Yellow/Brown
         "simcore": "\033[36m",              # Dark Cyan

@@ -87,12 +87,12 @@ LOGGING = {
         },
 
         # ---------- AI loggers -------------------------------------------------------------------
-        "simcore_ai": {
+        "orchestrai": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-        "simcore_ai_django": {
+        "orchestrai_django": {
             "handlers": ["console", "logfire"],
             "level": check_env("AI_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,

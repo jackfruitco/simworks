@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from simcore_ai_django.api import simcore
+from orchestrai_django.api import simcore
 from simulation.ai.mixins import StandardizedPatientMixin
 from ...mixins import ChatlabMixin
 
@@ -70,7 +70,7 @@ class ChatlabImageSection(ChatlabMixin, StandardizedPatientMixin, simcore.Prompt
     weight: int = 20
     instruction: str = (
         "For this response only, generate an image based off the medical "
-        "provider's request in the message(s)."
+        "backend's request in the message(s)."
         "\n"
         "Images must not be against OpenAI guidelines."
         "\n"

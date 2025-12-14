@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from simulation.ai.mixins import SimcoreMixin, StandardizedPatientMixin
 from simulation.models import Simulation
-from simcore_ai_django.api import simcore
+from orchestrai_django.api import simcore
 
 
 @simcore.prompt_section

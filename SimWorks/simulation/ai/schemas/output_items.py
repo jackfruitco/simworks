@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from simcore_ai_django.api.types import DjangoBaseOutputItem, DjangoBaseOutputBlock
+from orchestrai_django.api.types import DjangoBaseOutputItem, DjangoBaseOutputBlock
 
 class LLMConditionsCheckItem(DjangoBaseOutputItem):
     """LLM conditions check item."""

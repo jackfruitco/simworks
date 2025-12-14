@@ -5,11 +5,11 @@ import logging
 from typing import Type, Optional, Tuple, List, ClassVar
 
 from core.utils import remove_null_keys
-from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoBaseService, PromptEngine
-from simcore_ai.types.input import InputTextContent
-from simcore_ai.types import ContentRole
-from simcore_ai_django.types import DjangoLLMBaseTool, DjangoInputItem
+from orchestrai_django.api import simcore
+from orchestrai_django.api.types import DjangoBaseService, PromptEngine
+from orchestrai.types.input import InputTextContent
+from orchestrai.types import ContentRole
+from orchestrai_django.types import DjangoLLMBaseTool, DjangoInputItem
 from simulation.ai.mixins import StandardizedPatientMixin
 from simulation.ai.prompts import PatientNameSection
 from simulation.models import Simulation
@@ -83,7 +83,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
 
 @simcore.service
 class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
-    """Generate a patient image via provider tool-call.
+    """Generate a patient image via backend tool-call.
 
     Builds a developer instruction via PromptKit and attaches a normalized image
     generation tool. No structured schema is required by default.
