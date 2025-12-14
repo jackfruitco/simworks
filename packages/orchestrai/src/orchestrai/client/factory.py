@@ -1,10 +1,12 @@
 # orchestrai/client/factory.py
 
 import logging
+from collections.abc import Mapping
 
 from .conf_models import OrcaClientsSettings
 from .registry import (
     create_client,
+    create_client_from_dict,
     list_clients,
 )
 from .resolve import (
@@ -23,6 +25,7 @@ from ..components.providerkit.conf_models import (
     ProviderSettingsEntry,
 )
 from ..components.providerkit.provider import ProviderConfig
+from .client import OrcaClient
 
 logger = logging.getLogger(__name__)
 
@@ -199,11 +202,46 @@ def get_orca_client(
             * the provider wiring resolved from PROVIDERS/CLIENTS.
         This per-call client is NOT registered in the global client registry.
     """
+    core = load_orca_settings()
+    if getattr(core, "MODE", "single") == "single":
+        single_client = core.CLIENT
+
+        # Fast path when a concrete client instance is provided directly.
+        if isinstance(single_client, OrcaClient):
+            return single_client
+
+        if single_client is None:
+            raise ValueError("CLIENT is not configured for single mode")
+
+        if not isinstance(single_client, Mapping):
+            raise TypeError("In single mode, CLIENT must be a mapping of client configuration")
+
+        client_alias = single_client.get("name") or "default"
+        existing = list_clients().get(client_alias)
+        if existing is not None:
+            return existing
+
+        defaults = getattr(core, "CLIENTS", OrcaClientsSettings()).defaults
+        client_cfg = OrcaClientConfig(
+            max_retries=single_client.get("max_retries", defaults.max_retries),
+            timeout_s=single_client.get("timeout_s", defaults.timeout_s),
+            telemetry_enabled=single_client.get("telemetry_enabled", defaults.telemetry_enabled),
+            log_prompts=single_client.get("log_prompts", defaults.log_prompts),
+            raise_on_error=single_client.get("raise_on_error", defaults.raise_on_error),
+        )
+
+        return create_client_from_dict(
+            single_client,
+            name=client_alias,
+            make_default=True,
+            replace=True,
+            client_config=client_cfg,
+        )
+
     # Fast path: no overrides, just use the registry-backed client.
     if provider is None and profile is None:
         return get_client(client)
 
-    core = load_orca_settings()
     client_alias = client or getattr(core, "DEFAULT_CLIENT", "default")
 
     providers_settings: ProvidersSettings = core.PROVIDERS
@@ -272,7 +310,6 @@ def get_orca_client(
 
     # Build an ad-hoc provider backend and OrcaClient for this call only.
     from orchestrai.components.providerkit.factory import build_provider
-    from orchestrai.client.client import OrcaClient
 
     backend = build_provider(prov_cfg)
     return OrcaClient(provider=backend, config=client_cfg)

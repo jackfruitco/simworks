@@ -1242,8 +1242,9 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         except Exception as e:
             raise ServiceConfigError(
                 "No AI client available. Either inject `client=...` into the service, "
-                "ensure Django autostart builds at least one Orca client, "
-                "or configure ORCHESTRAI PROVIDERS/CLIENTS so the factory can construct one."
+                "ensure Django autostart builds at least one Orca client, or configure "
+                "an ORCA_CONFIG['CLIENT'] entry (and optional CLIENT defaults) so the factory can "
+                "construct one."
             ) from e
 
     # ----------------------------------------------------------------------

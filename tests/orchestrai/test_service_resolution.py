@@ -3,6 +3,9 @@ import importlib
 import pytest
 
 from orchestrai import OrchestrAI
+from orchestrai.client.registry import clear_clients
+from orchestrai.client.settings_loader import OrcaSettings
+from orchestrai.components.services.exceptions import ServiceConfigError
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators import service
 
@@ -49,3 +52,26 @@ def test_service_resolution_prefers_registry(monkeypatch):
     assert result == {"status": "ok"}
 
     assert "chatlab.standardized_patient" not in calls
+
+
+def test_service_resolution_error_points_to_single_mode(monkeypatch):
+    class DummyService(BaseService):
+        abstract = False
+
+        def execute(self):
+            return None
+
+    clear_clients()
+    monkeypatch.setattr(
+        "orchestrai.client.factory.load_orca_settings",
+        lambda mapping=None: OrcaSettings.from_mapping({"MODE": "single", "CLIENT": None}),
+    )
+
+    svc = DummyService()
+
+    with pytest.raises(ServiceConfigError) as excinfo:
+        svc.get_client()
+
+    assert "ORCA_CONFIG['CLIENT']" in str(excinfo.value)
+
+    clear_clients()
