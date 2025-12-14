@@ -155,6 +155,11 @@ class OrchestrAI:
             callback(self)
 
         for registry in (self.services, self.codecs, self.providers, self.clients, self.prompt_sections):
+            finalize_registry = getattr(registry, "finalize", None)
+            if callable(finalize_registry):
+                finalize_registry(app=self)
+                continue
+
             registry.freeze()
         self._finalized = True
         self.print_component_report()

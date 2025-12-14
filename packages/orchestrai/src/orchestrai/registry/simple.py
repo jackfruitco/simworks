@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import RLock
-from typing import Any, Dict, Iterable, Iterator
+from typing import Any, Dict, Iterable, Iterator, Sequence
 
 from orchestrai.components.services.service import BaseService
 
@@ -13,6 +14,7 @@ class Registry:
         self._items: Dict[str, Any] = {}
         self._lock = RLock()
         self._frozen = False
+        self._finalize_callbacks: list[Callable[[Any], None]] = []
 
     def register(self, name: str, obj: Any) -> None:
         with self._lock:
@@ -32,6 +34,26 @@ class Registry:
     def freeze(self) -> None:
         with self._lock:
             self._frozen = True
+
+    def add_finalize_callback(self, callback: Callable[[Any], None]) -> Callable[[Any], None]:
+        """Register a callback executed during :meth:`finalize`.
+
+        Registries manage their own freeze cycle; attaching callbacks here keeps
+        shared decorators co-located with registry mutation without forcing the
+        app to understand every registry's lifecycle.
+        """
+
+        self._finalize_callbacks.append(callback)
+        return callback
+
+    def finalize(self, *, app: Any | None = None) -> None:
+        """Run registry-level finalizers then freeze the registry."""
+
+        callbacks: Sequence[Callable[[Any], None]]
+        callbacks = tuple(self._finalize_callbacks)
+        for callback in callbacks:
+            callback(app or self)
+        self.freeze()
 
     def __contains__(self, name: str) -> bool:
         with self._lock:
