@@ -17,8 +17,7 @@ from .resolve import (
 )
 from .schemas import OrcaClientConfig, OrcaClientRegistration
 from .utils import effective_provider_config
-from ..apps.conf.loader import get_settings
-from ..apps.conf.models import OrcaSettings
+from .settings_loader import OrcaSettings, load_orca_settings
 from ..components.providerkit.conf_models import (
     ProvidersSettings,
     ProviderSettingsEntry,
@@ -169,7 +168,7 @@ def get_client(name: str | None = None):
       2) Otherwise, build a client from OrcaSettings (PROVIDERS/CLIENTS) and register it.
       3) If `name` is None, use OrcaSettings.DEFAULT_CLIENT.
     """
-    core = get_settings()
+    core = load_orca_settings()
 
     client_alias = name or getattr(core, "DEFAULT_CLIENT", "default")
 
@@ -204,7 +203,7 @@ def get_orca_client(
     if provider is None and profile is None:
         return get_client(client)
 
-    core = get_settings()
+    core = load_orca_settings()
     client_alias = client or getattr(core, "DEFAULT_CLIENT", "default")
 
     providers_settings: ProvidersSettings = core.PROVIDERS

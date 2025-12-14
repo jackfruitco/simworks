@@ -28,6 +28,8 @@ import re
 from collections.abc import Iterable, Callable
 from typing import Optional, Union, TYPE_CHECKING
 
+from .exceptions import IdentityError
+
 if TYPE_CHECKING:
     from . import IdentityLike, Identity
 
@@ -39,6 +41,7 @@ __all__ = [
     "resolve_collision",
     "parse_dot_identity",
     "get_effective_strip_tokens",
+    "coerce_identity_key",
 ]
 
 logger = logging.getLogger(__name__)
@@ -246,4 +249,21 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
             f"Invalid identity '{key}': expected exactly three dot-separated parts."
         )
     return parts[0], parts[1], parts[2]
+
+
+def coerce_identity_key(value: "IdentityLike" | None) -> tuple[str, str, str] | None:
+    """Best-effort conversion of Identity-like inputs to an (namespace, kind, name) tuple."""
+
+    if value is None:
+        return None
+
+    try:
+        from .identity import Identity
+
+        ident = Identity.get(value)
+    except IdentityError:
+        logger.debug("Failed to coerce identity value: %r", value)
+        return None
+
+    return ident.as_tuple3
 
