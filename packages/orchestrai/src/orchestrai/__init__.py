@@ -53,9 +53,18 @@ Import Guidelines:
 #     "service_span_sync"
 # ]
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
+
+from .app import OrchestrAI
+from ._state import current_app, get_current_app
 
 try:
     __version__ = version("orchestrai")
 except PackageNotFoundError:
     __version__ = "0.0.0"
+
+__all__ = [
+    "OrchestrAI",
+    "current_app",
+    "get_current_app",
+]
