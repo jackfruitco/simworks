@@ -15,7 +15,7 @@ from typing import Any, Type
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.decorators.base import BaseDecorator
-from orchestrai.registry import BaseRegistry
+from orchestrai.registry import ComponentRegistry
 from orchestrai.registry.singletons import (
     provider_backends as provider_backend_registry,
     providers as providers_registry,
@@ -44,7 +44,7 @@ class ProviderBackendDecorator(BaseDecorator):
             ...
     """
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         """Return the global provider backends registry singleton (identity-keyed)."""
         return provider_backend_registry
 
@@ -78,7 +78,7 @@ class ProviderDecorator(BaseDecorator):
             ...
     """
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         """Return the global providers registry singleton (identity-keyed)."""
         return providers_registry
 

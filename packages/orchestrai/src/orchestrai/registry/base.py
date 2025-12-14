@@ -8,6 +8,7 @@ from typing import Callable, Generic, TypeVar, Any, overload, Literal
 from asgiref.sync import sync_to_async
 
 from .exceptions import RegistryDuplicateError, RegistryCollisionError, RegistryFrozenError, RegistryLookupError
+from ..identity.identity import Identity
 from ..components.exceptions import ComponentNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -273,3 +274,10 @@ class BaseRegistry(Generic[K, T]):
         Async: mark the registry as frozen (no further mutations).
         """
         return await sync_to_async(self.freeze)()
+
+
+class ComponentRegistry(BaseRegistry[Identity, T]):
+    """Registry specialized for Identity-keyed component classes."""
+
+    def __init__(self) -> None:
+        super().__init__(coerce_key=Identity.get_for)

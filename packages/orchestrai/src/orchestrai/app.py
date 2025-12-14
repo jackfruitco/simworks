@@ -17,7 +17,7 @@ import importlib
 import sys
 from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 
 ORCA_BANNER = r"""
@@ -41,6 +41,7 @@ from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import BaseFixup
 from .loaders.base import BaseLoader
+from .registry.base import BaseRegistry
 from .registry.simple import Registry, ServicesRegistry
 
 
@@ -154,12 +155,14 @@ class OrchestrAI:
         for callback in callbacks:
             callback(self)
 
-        for registry in (self.services, self.codecs, self.providers, self.clients, self.prompt_sections):
-            finalize_registry = getattr(registry, "finalize", None)
-            if callable(finalize_registry):
-                finalize_registry(app=self)
-                continue
-
+        registries: tuple[BaseRegistry[str, Any], ...] = (
+            self.services,
+            self.codecs,
+            self.providers,
+            self.clients,
+            self.prompt_sections,
+        )
+        for registry in registries:
             registry.freeze()
         self._finalized = True
         self.print_component_report()

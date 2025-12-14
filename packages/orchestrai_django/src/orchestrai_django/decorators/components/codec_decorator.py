@@ -1,6 +1,6 @@
 
 
-from orchestrai.registry import BaseRegistry
+from orchestrai.registry import ComponentRegistry
 from orchestrai_django.decorators import DjangoBaseDecorator
 
 """
@@ -43,7 +43,7 @@ class DjangoCodecDecorator(DjangoBaseDecorator):
     """
     default_kind = "default"
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         # Always register into the codecs registry
         return codec_registry
 
