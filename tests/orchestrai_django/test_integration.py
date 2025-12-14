@@ -104,6 +104,25 @@ def test_single_mode_configures_client(monkeypatch):
     assert "default" in app.clients.all()
 
 
+def test_single_mode_exposes_app_client(monkeypatch):
+    from orchestrai import OrchestrAI
+    from orchestrai_django import integration
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub", "name": "solo"}},
+        INSTALLED_APPS=[],
+    )
+    install_fake_django(monkeypatch, settings_obj)
+
+    app = OrchestrAI()
+    integration.configure_from_django_settings(app)
+
+    app.start()
+
+    assert app.client is not None
+    assert app.client.get("name") == "solo"
+
+
 def test_identity_strip_tokens_from_django_settings(monkeypatch):
     settings_obj = types.SimpleNamespace(
         ORCA_IDENTITY_STRIP_TOKENS="Foo, Bar ,Baz",

@@ -15,7 +15,7 @@ class OrcaSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     MODE: str = "single"
-    CLIENT: str | None = None
+    CLIENT: dict | str | None = None
     CLIENTS: OrcaClientsSettings = Field(default_factory=OrcaClientsSettings)
     PROVIDERS: ProvidersSettings = Field(default_factory=ProvidersSettings)
 
