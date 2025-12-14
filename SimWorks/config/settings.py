@@ -130,12 +130,6 @@ else:
 # ---------------------------------------------------------------------------
 ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
-if (strip_tokens := os.getenv("ORCA_IDENTITY_STRIP_TOKENS")) is not None:
-    ORCA_IDENTITY_STRIP_TOKENS = tuple(
-        token for token in re.split(r"[\s,]+", strip_tokens.strip()) if token
-    )
-else:
-    ORCA_IDENTITY_STRIP_TOKENS = ()
 ORCA_CONFIG = {
     "MODE": "single",
     "CLIENT": {

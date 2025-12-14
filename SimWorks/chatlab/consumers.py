@@ -205,6 +205,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _generate_patient_response(self, user_msg: Message) -> None:
         """Generate patient response."""
         from .orca.services import GenerateReplyResponse
+
         await get_current_app().services.aschedule(
             GenerateReplyResponse,
             simulation_id=self.simulation.pk,
