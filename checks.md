@@ -20,3 +20,8 @@ docker compose -f docker/compose.dev.yaml run --rm server python manage.py ai_he
 
 #### Run
 - `docker compose -f docker/compose.dev.yaml up`
+
+#### Tests and coverage
+- `uv run pytest`
+  - Generates `coverage.xml` and a terminal summary via pytest-cov.
+  - Fails if overall coverage drops below 80%.
