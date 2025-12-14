@@ -1,15 +1,16 @@
 from dataclasses import dataclass
 from typing import Any
 
-from orchestrai_django.api import simcore
+from orchestrai_django.components.promptkit import PromptSection
+from orchestrai_django.decorators import prompt_section
 
 from simulation.orca.mixins import StandardizedPatientMixin
 from ...mixins import ChatlabMixin
 
 
-@simcore.prompt_section
+@prompt_section
 @dataclass
-class ChatlabBaseSection(ChatlabMixin, simcore.PromptSection):
+class ChatlabBaseSection(ChatlabMixin, PromptSection):
     """Base class for prompt sections."""
 
     weight: int = 1

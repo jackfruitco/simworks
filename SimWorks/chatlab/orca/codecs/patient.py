@@ -16,7 +16,6 @@ defaults for schema modeling.
 import warnings
 # from chatlab.models import Message, RoleChoices
 # from config.ai.codecs import SimWorksCodec
-# from orchestrai_django.api import simcore
 # from simulation.orca.mixins import StandardizedPatientMixin
 # from simulation.models import SimulationMetadata, PatientHistory, PatientDemographics, LabResult, RadResult
 # from ..mixins import ChatlabMixin

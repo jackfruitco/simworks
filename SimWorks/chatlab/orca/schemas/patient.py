@@ -3,14 +3,15 @@
 
 from pydantic import Field
 
-from orchestrai_django.api import simcore
-from orchestrai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+from orchestrai_django.components.schemas import DjangoBaseOutputSchema
+from orchestrai_django.decorators import schema
+from orchestrai_django.types import DjangoOutputItem
 from simulation.orca.mixins import StandardizedPatientMixin
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 from ..mixins import ChatlabMixin
 
 
-@simcore.schema
+@schema
 class PatientInitialOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """
     Output for the initial patient response turn.
@@ -24,7 +25,7 @@ class PatientInitialOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoB
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
-@simcore.schema
+@schema
 class PatientReplyOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """Output for subsequent patient reply turns."""
     image_requested: bool
@@ -32,7 +33,7 @@ class PatientReplyOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBas
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 
-@simcore.schema
+@schema
 class PatientResultsOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoBaseOutputSchema):
     """
     Final “results” payload for the interaction.

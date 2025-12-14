@@ -1,5 +1,6 @@
 import importlib
 import sys
+import importlib
 import types
 from pathlib import Path
 
@@ -62,6 +63,11 @@ def make_package(tmp_path: Path, name: str, files: dict[str, str]) -> None:
         target = base / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
+
+
+def test_api_facade_removed(monkeypatch):
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("orchestrai_django.api")
 
 
 def test_single_mode_rejects_clients_providers(monkeypatch):
