@@ -1,6 +1,6 @@
 
 
-from orchestrai.registry import BaseRegistry
+from orchestrai.registry import ComponentRegistry
 
 """
 Core codec decorator.
@@ -40,7 +40,7 @@ class SchemaDecorator(BaseDecorator):
             ...
     """
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         # Always register into the schema registry
         return schema_registry
 

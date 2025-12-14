@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, overload, cast, TypeAlias
 
 from orchestrai.identity.identity import Identity
-from orchestrai.registry.base import BaseRegistry
+from orchestrai.registry.base import ComponentRegistry
 
 if TYPE_CHECKING:
     # Only imported for typing; avoids runtime circular imports.
@@ -39,48 +39,46 @@ if TYPE_CHECKING:
 
 
     @overload
-    def get_registry_for(component: type[TSvc]) -> BaseRegistry[Identity, TSvc]:
+    def get_registry_for(component: type[TSvc]) -> ComponentRegistry[TSvc]:
         ...
 
 
     @overload
-    def get_registry_for(component: type[TCod]) -> BaseRegistry[Identity, TCod]:
+    def get_registry_for(component: type[TCod]) -> ComponentRegistry[TCod]:
         ...
 
 
     @overload
-    def get_registry_for(component: type[TSch]) -> BaseRegistry[Identity, TSch]:
+    def get_registry_for(component: type[TSch]) -> ComponentRegistry[TSch]:
         ...
 
 
     @overload
-    def get_registry_for(component: type[TPS]) -> BaseRegistry[Identity, TPS]:
+    def get_registry_for(component: type[TPS]) -> ComponentRegistry[TPS]:
         ...
 
 
     @overload
-    def get_registry_for(component: type[TPrv]) -> BaseRegistry[Identity, TPrv]:
+    def get_registry_for(component: type[TPrv]) -> ComponentRegistry[TPrv]:
         ...
 
 
     @overload
-    def get_registry_for(kind: ComponentKind) -> BaseRegistry[Identity, Any]:
+    def get_registry_for(kind: ComponentKind) -> ComponentRegistry[Any]:
         ...
 else:
     # At runtime we don’t need precise typing – keep it loose.
     ComponentKind = str  # type: ignore[assignment]
     ComponentKey = Any  # type: ignore[assignment]
 
-_coerce = Identity.get_for
-
 # Global registries keyed by Identity.
-services: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
-codecs: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
-schemas: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
-prompt_sections: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
+services: ComponentRegistry[Any] = ComponentRegistry()
+codecs: ComponentRegistry[Any] = ComponentRegistry()
+schemas: ComponentRegistry[Any] = ComponentRegistry()
+prompt_sections: ComponentRegistry[Any] = ComponentRegistry()
 
-provider_backends: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
-providers: BaseRegistry[Identity, Any] = BaseRegistry(coerce_key=_coerce)
+provider_backends: ComponentRegistry[Any] = ComponentRegistry()
+providers: ComponentRegistry[Any] = ComponentRegistry()
 
 
 def _infer_kind_from_type(component_type: type[Any]) -> str | None:
@@ -124,7 +122,7 @@ def _infer_kind_from_type(component_type: type[Any]) -> str | None:
     return None
 
 
-def get_registry_for(component: ComponentKeyLike) -> BaseRegistry[Identity, Any] | None:
+def get_registry_for(component: ComponentKeyLike) -> ComponentRegistry[Any] | None:
     """
     Return the global registry singleton corresponding to the given component.
 
@@ -154,14 +152,14 @@ def get_registry_for(component: ComponentKeyLike) -> BaseRegistry[Identity, Any]
             return None
 
     if kind == "service":
-        return cast(BaseRegistry[Identity, Any], services)
+        return cast(ComponentRegistry[Any], services)
     if kind == "codec":
-        return cast(BaseRegistry[Identity, Any], codecs)
+        return cast(ComponentRegistry[Any], codecs)
     if kind == "schema":
-        return cast(BaseRegistry[Identity, Any], schemas)
+        return cast(ComponentRegistry[Any], schemas)
     if kind == "prompt_section":
-        return cast(BaseRegistry[Identity, Any], prompt_sections)
+        return cast(ComponentRegistry[Any], prompt_sections)
     if kind == "backend":
-        return cast(BaseRegistry[Identity, Any], provider_backends)
+        return cast(ComponentRegistry[Any], provider_backends)
 
     return None

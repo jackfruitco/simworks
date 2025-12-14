@@ -12,7 +12,7 @@ import logging
 from typing import Any, Type, TypeVar
 
 from orchestrai.components.services.service import BaseService
-from orchestrai.registry import BaseRegistry
+from orchestrai.registry import ComponentRegistry
 from orchestrai.registry.singletons import services as _Registry
 from orchestrai_django.decorators.base import DjangoBaseDecorator
 
@@ -47,7 +47,7 @@ class DjangoServiceDecorator(DjangoBaseDecorator):
             ...
     """
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         # Always register into the service registry
         return _Registry
 
