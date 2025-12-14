@@ -32,6 +32,26 @@ class Registry(BaseRegistry[str, Any]):
         with self._lock:
             return dict(self._store)
 
+    def add_finalize_callback(self, callback: Callable[[Any], None]) -> Callable[[Any], None]:
+        """Register a callback executed during :meth:`finalize`.
+
+        Registries manage their own freeze cycle; attaching callbacks here keeps
+        shared decorators co-located with registry mutation without forcing the
+        app to understand every registry's lifecycle.
+        """
+
+        self._finalize_callbacks.append(callback)
+        return callback
+
+    def finalize(self, *, app: Any | None = None) -> None:
+        """Run registry-level finalizers then freeze the registry."""
+
+        callbacks: Sequence[Callable[[Any], None]]
+        callbacks = tuple(self._finalize_callbacks)
+        for callback in callbacks:
+            callback(app or self)
+        self.freeze()
+
     def __contains__(self, name: str) -> bool:
         with self._lock:
             return self._coerce(name) in self._store
