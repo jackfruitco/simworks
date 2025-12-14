@@ -7,7 +7,7 @@ from ..components.providerkit.conf_models import (
     ProvidersSettings,
     ProviderSettingsEntry,
 )
-from ..apps.conf.models import OrcaSettings
+from .settings_loader import OrcaSettings
 
 
 def get_client_entry_or_default(

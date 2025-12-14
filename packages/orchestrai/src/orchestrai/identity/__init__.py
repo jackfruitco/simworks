@@ -13,7 +13,7 @@ from .identity import IdentityLike, Identity
 from .mixins import IdentityMixin
 from .resolvers import Resolve as _Resolve, IdentityResolver, resolve_identity
 from .protocols import IdentityResolverProtocol, IdentityProtocol
-from .utils import DEFAULT_IDENTITY_STRIP_TOKENS
+from .utils import DEFAULT_IDENTITY_STRIP_TOKENS, coerce_identity_key
 
 # Ergonomic namespace without coupling the dataclass to registries:
 Identity.resolve = _Resolve  # type: ignore[attr-defined]
@@ -23,6 +23,8 @@ __all__ = [
     "Identity", "IdentityLike", "IdentityResolver",
     # Constants
     "DEFAULT_IDENTITY_STRIP_TOKENS",
+    # Helpers
+    "coerce_identity_key",
     # Protocols
     "IdentityResolverProtocol", "IdentityProtocol",
 ]
