@@ -12,7 +12,7 @@ from typing import Any, Type, TypeVar
 
 from orchestrai.components.promptkit import PromptSection
 from orchestrai.decorators.base import BaseDecorator
-from orchestrai.registry.base import BaseRegistry
+from orchestrai.registry.base import ComponentRegistry
 from orchestrai.registry.singletons import prompt_sections as _Registry
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class PromptSectionDecorator(BaseDecorator):
             ...
     """
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         return _Registry
 
     def register(self, candidate: Type[Any]) -> None:

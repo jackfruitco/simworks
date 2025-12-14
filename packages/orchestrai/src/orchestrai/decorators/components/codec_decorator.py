@@ -10,7 +10,7 @@ Core codec decorator.
 import logging
 from typing import Any, Type, TypeVar
 
-from orchestrai.registry import BaseRegistry
+from orchestrai.registry import ComponentRegistry
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.codecs.codec import BaseCodec
 from orchestrai.registry.singletons import codecs as codec_registry
@@ -40,7 +40,7 @@ class CodecDecorator(BaseDecorator):
             ...
     """
 
-    def get_registry(self) -> BaseRegistry:
+    def get_registry(self) -> ComponentRegistry:
         """Return the global codecs registry singleton."""
         return codec_registry
 
