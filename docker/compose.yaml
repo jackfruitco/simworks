@@ -89,8 +89,7 @@ services:
       - stack.env
     environment:
       - PYTHONPATH=/app/SimWorks
-    # user: appuser
-    user: root
+    user: appuser
     # command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
     depends_on:
       redis:
@@ -123,6 +122,7 @@ services:
     environment:
       - PYTHONPATH=/app/SimWorks
     # command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
+    user: appuser
     volumes:
       - static-vol:/app/static
       - media-vol:/app/media

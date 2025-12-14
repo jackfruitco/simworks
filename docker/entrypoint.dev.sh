@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Set Django settings module
 export DJANGO_SETTINGS_MODULE=config.settings
 
@@ -50,4 +52,4 @@ fi
 # Start server
 echo
 echo "Starting daphne server..."
-daphne -b 0.0.0.0 -p 8000 --access-log /dev/null config.asgi:application
+exec daphne -b 0.0.0.0 -p 8000 --access-log /dev/null config.asgi:application
