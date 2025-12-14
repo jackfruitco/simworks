@@ -254,9 +254,6 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                 return None
             return self.validate_dict(candidate)
 
-    async def arun(self, resp: Response) -> BaseOutputSchema | None:  # deprecated path
-        return await self.adecode(resp)
-
     # ---- Streaming hooks --------------------------------------------------
     async def adecode_chunk(
             self,

@@ -11,7 +11,7 @@ from typing import Any, Final, Literal, Optional
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.components.providerkit.exceptions import ProviderError
-from orchestrai.decorators import backend
+from orchestrai.decorators import provider_backend
 from orchestrai.tracing import flatten_context as _flatten_context, service_span, service_span_sync
 from orchestrai.types import Request, Response
 from .output_adapters import ImageGenerationOutputAdapter
@@ -42,7 +42,7 @@ class AsyncOpenAI:
 NOT_GIVEN = object()
 
 
-@backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
+@provider_backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
 class OpenAIResponsesProvider(BaseProvider):
     """Minimal OpenAI Responses API backend."""
 

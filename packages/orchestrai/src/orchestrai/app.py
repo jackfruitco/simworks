@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import importlib
 import sys
-import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Sequence
 
@@ -53,23 +52,6 @@ def _import_string(path: str):
         module_name, _, attr = path.rpartition(".")
     module = importlib.import_module(module_name)
     return getattr(module, attr) if attr else module
-
-
-_APPS_DEPRECATION = (
-    "'orchestrai.apps' is deprecated; import OrchestrAI from 'orchestrai' instead.\n"
-    "Example: from orchestrai import OrchestrAI"
-)
-
-
-def warn_deprecated_apps_import(stacklevel: int = 2) -> None:
-    """Emit a single deprecation warning for the legacy apps module."""
-
-    if getattr(warn_deprecated_apps_import, "_already_warned", False):
-        return
-    with warnings.catch_warnings():
-        warnings.simplefilter("always", DeprecationWarning)
-        warnings.warn(_APPS_DEPRECATION, DeprecationWarning, stacklevel=stacklevel)
-    warn_deprecated_apps_import._already_warned = True
 
 
 # ---------------------------------------------------------------------------

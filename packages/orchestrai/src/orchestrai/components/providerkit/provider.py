@@ -2,7 +2,6 @@
 import inspect
 import logging
 import os
-import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any, AsyncIterator, ClassVar, Optional, Protocol, overload
@@ -158,16 +157,6 @@ class BaseProvider(IdentityMixin, ABC):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<AIProvider {str(self.provider)}>"
-
-    @property
-    def provider_key(self):
-        warnings.warn("`provider_key` is deprecated. Use `backend` instead.", DeprecationWarning, stacklevel=2)
-        return getattr(self, "backend", None)
-
-    @property
-    def provider_label(self):
-        warnings.warn("`provider_label` is deprecated. Use `profile` instead.", DeprecationWarning, stacklevel=2)
-        return getattr(self, "profile", None)
 
     @property
     def slug(self):

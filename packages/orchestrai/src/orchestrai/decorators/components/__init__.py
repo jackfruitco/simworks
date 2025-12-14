@@ -11,8 +11,4 @@ schema = SchemaDecorator()
 prompt_section = PromptSectionDecorator()
 provider = ProviderDecorator()
 provider_backend = ProviderBackendDecorator()
-
-# aliases
-backend = provider_backend
-
-__all__ = ["codec", "service", "schema", "prompt_section", "provider", "provider_backend", "backend"]
+__all__ = ["codec", "service", "schema", "prompt_section", "provider", "provider_backend"]

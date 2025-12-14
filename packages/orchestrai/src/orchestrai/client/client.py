@@ -2,7 +2,6 @@
 import asyncio
 import inspect
 import logging
-import warnings
 from typing import AsyncIterator
 
 from contextlib import asynccontextmanager
@@ -32,20 +31,6 @@ class OrcaClient:
         """
         self.provider = provider
         self.config = config or OrcaClientConfig()
-
-    async def call(
-            self,
-            req: Request,
-            *,
-            timeout: float | None = None,
-    ) -> Response:
-        """
-        Convenience wrapper that mirrors backend-style `call()`.
-
-        Delegates to `send_request(...)` for backward-compatibility with existing code.
-        """
-        warnings.warn("OrcaClient.call() is deprecated; use send_request() instead", DeprecationWarning, stacklevel=2)
-        return await self.send_request(req, timeout=timeout)
 
     async def send_request(
             self,
