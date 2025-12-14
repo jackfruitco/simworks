@@ -3,8 +3,8 @@
 
 from pydantic import Field
 
-from simcore_ai_django.api.types import DjangoBaseOutputSchema
-from simcore_ai_django.api import simcore
+from orchestrai_django.api.types import DjangoBaseOutputSchema
+from orchestrai_django.api import simcore
 from .output_items import HotwashInitialBlock, LLMConditionsCheckItem
 
 

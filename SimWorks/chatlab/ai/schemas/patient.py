@@ -3,8 +3,8 @@
 
 from pydantic import Field
 
-from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+from orchestrai_django.api import simcore
+from orchestrai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
 from simulation.ai.mixins import StandardizedPatientMixin
 from simulation.ai.schemas.output_items import LLMConditionsCheckItem
 from ..mixins import ChatlabMixin

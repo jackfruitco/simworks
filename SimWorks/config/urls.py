@@ -1,5 +1,5 @@
 # config/urls.py
-from strawberry.django.views import AsyncGraphQLView
+# from strawberry.django.views import AsyncGraphQLView
 
 from core import views as CoreViews
 from django.contrib import admin
@@ -8,7 +8,7 @@ from django.urls import include
 from django.urls import path
 
 from config.middleware import RequireApiPermissionMiddleware
-from config.schema import schema
+# from config.schema import schema
 
 sitemaps = {
     # "products": ProductSitemap,
@@ -20,7 +20,7 @@ urlpatterns = [
     path("", include("simulation.urls")),
     path("accounts/", include("accounts.urls")),
     path("chatlab/", include("chatlab.urls")),
-    path('graphql', AsyncGraphQLView.as_view(schema=schema), name='graphql'),
+    # path('graphql', AsyncGraphQLView.as_view(schema=schema), name='graphql'),
     # path(
     #     "graphql/",
     #     CoreViews.PrivateGraphQLView.as_view(

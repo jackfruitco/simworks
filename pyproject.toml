@@ -33,16 +33,17 @@ dependencies = [
     "strawberry-graphql-django==0.67.0",
     "typing-extensions>=4.15.0",
     "zope-interface==8.1.1",
-    "simcore-ai>=0.4.0",
-    "simcore-ai-django>=0.4.0",
+    "python-slugify>=8.0.4",
+    "orchestrai",
+    "orchestrai-django",
 ]
 
 [tool.uv.workspace]
-members = ["packages/simcore_ai", "packages/simcore_ai_django"]
+members = ["packages/orchestrai", "packages/orchestrai_django"]
 
 [tool.uv.sources]
-simcore-ai = { workspace = true }
-simcore-ai-django = { workspace = true }
+orchestrai-django = { workspace = true }
+orchestrai = { workspace = true }
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"

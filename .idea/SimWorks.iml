@@ -17,10 +17,12 @@
       <sourceFolder url="file://$MODULE_DIR$/SimWorks" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/packages/simcore_ai/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/packages/simcore_ai_django/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai_django/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.venv-3.13.1" />
     </content>
-    <orderEntry type="jdk" jdkName="uv (SimWorks) (2)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="uv (SimWorks)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TemplatesService">

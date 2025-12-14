@@ -1,7 +1,7 @@
 # simcore/ai/codecs/feedback.py
 
 
-from simcore_ai_django.api.decorators import ai_codec
+from orchestrai_django.api.decorators import ai_codec
 from ..mixins import SimcoreMixin, FeedbackMixin
 
 

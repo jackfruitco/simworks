@@ -5,11 +5,11 @@ import logging
 from typing import Type, Optional, Tuple, List, ClassVar
 
 from core.utils import remove_null_keys
-from simcore_ai_django.api import simcore
-from simcore_ai_django.api.types import DjangoBaseService, PromptEngine
-from simcore_ai.types.content import TextContent
-from simcore_ai.types import ContentRole
-from simcore_ai_django.types import DjangoLLMBaseTool, DjangoInputItem
+from orchestrai_django.api import simcore
+from orchestrai_django.api.types import DjangoBaseService, PromptEngine
+from orchestrai.types.input import InputTextContent
+from orchestrai.types import ContentRole
+from orchestrai_django.types import DjangoLLMBaseTool, DjangoInputItem
 from simulation.ai.mixins import StandardizedPatientMixin
 from simulation.ai.prompts import PatientNameSection
 from simulation.models import Simulation
@@ -76,14 +76,14 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
         if user_msg and user_msg.content:
             msgs.append(DjangoInputItem(
                 role=ContentRole.USER,
-                content=[TextContent(text=user_msg.content)])
+                content=[InputTextContent(text=user_msg.content)])
             )
         return msgs, self.response_format_cls
 
 
 @simcore.service
 class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
-    """Generate a patient image via provider tool-call.
+    """Generate a patient image via backend tool-call.
 
     Builds a developer instruction via PromptKit and attaches a normalized image
     generation tool. No structured schema is required by default.
@@ -105,7 +105,7 @@ class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
         msgs: List[DjangoInputItem] = [
             DjangoInputItem(
                 role=ContentRole.DEVELOPER,
-                content=[TextContent(text=prompt.instruction or "")]
+                content=[InputTextContent(text=prompt.instruction or "")]
             )
         ]
         return msgs, None

@@ -222,7 +222,7 @@ class TrainerLabQuery:
         qs = Injury.objects.all().order_by("-timestamp")
         if simulation:
             qs = qs.filter(simulation_id=simulation)
-        if parent_only is True:
+        if parent_only:
             qs = qs.filter(parent_injury__isnull=True)
         if parent_only is False:
             qs = qs.filter(parent_injury__isnull=False)

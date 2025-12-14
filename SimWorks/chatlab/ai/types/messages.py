@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any
 from pydantic import Field
 
 from chatlab.ai.types.attachments import AttachmentItem
-from simcore_ai_django.types import StrictBaseModel
+from orchestrai_django.types import StrictBaseModel
 
 
 class MessageItem(StrictBaseModel):

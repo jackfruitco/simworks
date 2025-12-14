@@ -1,0 +1,32 @@
+[project]
+name = "orchestrai-django"
+version = "0.4.0"
+description = "Django integration for OrchestrAI (signals, adapters, autodiscovery)"
+readme = "README.md"
+authors = [
+    { name = "Tyler J", email = "tyler@jackfruit.me" }
+]
+requires-python = ">=3.14"
+dependencies = [
+  "django>=5.2",
+  "orchestrai>=0.2.0",
+]
+
+[project.optional-dependencies]
+celery = ["celery>=5.4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orchestrai_django"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/orchestrai_django/**",
+    "tests/orchestrai_django/**",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE*",
+]

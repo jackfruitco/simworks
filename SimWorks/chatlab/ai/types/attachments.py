@@ -4,7 +4,7 @@ from typing import Literal, Optional, Any, Dict
 
 from pydantic import Field
 
-from simcore_ai_django.types import StrictBaseModel
+from orchestrai_django.types import StrictBaseModel
 
 
 class AttachmentItem(StrictBaseModel):

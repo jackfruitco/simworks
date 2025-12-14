@@ -1,16 +1,4 @@
-from django.db import models
-
-
-class ApiAccessControl(models.Model):
-    """Dummy Model to create API permissions"""
-
-    class Meta:
-        permissions = [
-            ("read_api", "Can read API"),
-            ("write_api", "Can write API"),
-        ]
-
-# simcore_ai_django/models/mixins.py
+# orchestrai_django/models/mixins.py
 from typing import Any, Iterable, Mapping, Sequence, Self
 
 from asgiref.sync import iscoroutinefunction
@@ -146,3 +134,13 @@ class PersistModel(models.Model):
 
         obj, _ = await _get_or_create()
         return await obj.apersist(data, translate_keys=translate_keys, using=using, clean=clean)
+
+
+class ApiAccessControl(models.Model):
+    """Dummy Model to create API permissions"""
+
+    class Meta:
+        permissions = [
+            ("read_api", "Can read API"),
+            ("write_api", "Can write API"),
+        ]
