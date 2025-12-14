@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*", "main*"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      - name: Lint and format
+        run: uv run pre-commit run --all-files
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov --cov-report=xml
+
+      - name: Generate coverage summary
+        id: coverage-summary
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+
+          tree = ET.parse("coverage.xml")
+          coverage = float(tree.getroot().get("line-rate", 0)) * 100
+          coverage = round(coverage, 2)
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write("## Coverage Summary\n\n")
+              summary.write(f"- Total coverage: {coverage}%\n")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as outputs:
+            outputs.write(f"coverage={coverage}\n")
+          PY
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const coverage = process.env.coverage;
+            const body = `## CI Coverage\nTotal coverage: ${coverage}%`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+        env:
+          coverage: ${{ steps.coverage-summary.outputs.coverage }}
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
