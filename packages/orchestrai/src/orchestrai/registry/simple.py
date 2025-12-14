@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterator
+from typing import Any, Callable, Dict, Iterator, Sequence
 
 from orchestrai.components.services.service import BaseService
 from orchestrai.registry.base import BaseRegistry
@@ -16,6 +16,7 @@ def _coerce_to_str(value: Any) -> str:
 class Registry(BaseRegistry[str, Any]):
     def __init__(self) -> None:
         super().__init__(coerce_key=_coerce_to_str)
+        self._finalize_callbacks: list[Callable[[Any], None]] = []
 
     def register(self, name: str, obj: Any) -> None:
         key = self._coerce(name)
