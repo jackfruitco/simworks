@@ -13,7 +13,7 @@ def connect_on_app_finalize(callback: Callable[[object], None]) -> None:
 
 
 def consume_finalizers():
-    callbacks = list(_finalize_callbacks)
-    _finalize_callbacks.clear()
-    return callbacks
+    """Return registered finalize callbacks without clearing global storage."""
+
+    return list(_finalize_callbacks)
 

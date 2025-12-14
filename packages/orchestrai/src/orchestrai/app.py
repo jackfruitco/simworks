@@ -169,6 +169,7 @@ class OrchestrAI:
             clients_conf = self.conf.get("CLIENTS", {})
             definition = clients_conf.get(default_client, {"name": default_client})
             self.clients.register(default_client, definition)
+            self._default_client = default_client
 
     def _configure_clients(self):
         for name, definition in self.conf.get("CLIENTS", {}).items():

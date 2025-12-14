@@ -3,6 +3,16 @@
 
 A lightweight, provider-agnostic orchestration layer for building structured AI workflows in pure Python. `OrchestrAI` focuses on predictable data contracts, modular prompt construction, and provider plug-ins that can be swapped without rewriting business logic.
 
+Import the application class directly from the top-level package:
+
+```python
+from orchestrai import OrchestrAI
+
+app = OrchestrAI()
+```
+
+The legacy `orchestrai.apps` entry point remains as a compatibility alias but is deprecated in favor of the canonical import above.
+
 ## Key features
 
 - **Prompt-first composition** &mdash; build prompts from reusable sections that render to provider-ready messages.
