@@ -51,7 +51,7 @@ COPY --from=builder /usr/local /usr/local
 ARG UID=10001
 RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
     --shell "/sbin/nologin" --no-create-home --uid "${UID}" appuser && \
-    mkdir -p /app/static /app/media /app/logs && \
+    mkdir -p /app/static /app/media /app/logs /app/docker && \
     chown -R appuser:appuser /app
 
 RUN --mount=type=cache,target=/var/lib/apt/lists \
@@ -79,10 +79,8 @@ CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django
 FROM base AS web
 
 COPY SimWorks /app/SimWorks
-COPY docker/entrypoint.dev.sh /app/docker/entrypoint.sh
-COPY docker/healthcheck.sh /app/docker/healthcheck.sh
-
-RUN chmod +x /app/docker/*.sh
+COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.dev.sh /app/docker/entrypoint.sh
+COPY --chown=appuser:appuser --chmod=0755 docker/healthcheck.sh /app/docker/healthcheck.sh
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 CMD /app/docker/healthcheck.sh
 
