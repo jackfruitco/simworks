@@ -49,6 +49,20 @@ with app.as_current():
 
 The app never performs network or discovery work during import; all actions are explicit.
 
+### Environment variables for the OpenAI backend
+
+The bundled OpenAI backend expects an API key and model to be provided explicitly. Set the following environment variables (or
+configure equivalent settings) before starting your app:
+
+- `ORCA_PROVIDER_API_KEY` – your OpenAI API key (falls back to `OPENAI_API_KEY` if not set)
+- `ORCA_PROVIDER_MODEL` – the default model name (for example, `gpt-4o-mini`)
+
+In single mode, set `CLIENT["api_key_envvar"]` to the name of your API key
+environment variable (for example, `ORCA_PROVIDER_API_KEY`). In multi-orca pod
+mode, the same `api_key_envvar` field on a `PROVIDERS` entry is passed through to
+the backend factory, which resolves the key from the environment before
+instantiating the provider.
+
 ## Documentation
 
 Comprehensive guides live in the [`docs/`](docs/) directory:
