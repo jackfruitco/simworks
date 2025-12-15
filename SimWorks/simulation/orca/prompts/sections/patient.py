@@ -27,13 +27,13 @@ class PatientNameSection(SimcoreMixin, StandardizedPatientMixin, PromptSection):
                 break
 
         if simulation_ is None and not any(opt in ctx for opt in options_):
-            raise ValueError(f"Missing required context variable(s): {options_}")
+            return "You are a standardized patient."
 
         if not isinstance(simulation_, Simulation):
             try:
                 simulation_ = await Simulation.objects.aget(pk=simulation_)
             except (TypeError, ValueError, ObjectDoesNotExist):
-                raise ValueError(f"Cannot resolve Simulation with input {simulation_!r}")
+                return "You are a standardized patient."
 
         return (
             f"As standardized patient, your name is {simulation_.sim_patient_full_name}."

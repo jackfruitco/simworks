@@ -182,7 +182,15 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
         # Prompt plan instance (from arg or class-level default)
         self._prompt_plan: PromptPlan | None = None
-        plan_spec = prompt_plan if prompt_plan is not None else type(self).prompt_plan
+        self._prompt_plan_source: str | None = None
+        plan_spec = None
+        if prompt_plan is not None:
+            plan_spec = prompt_plan
+            self._prompt_plan_source = "override"
+        elif type(self).prompt_plan is not None:
+            plan_spec = type(self).prompt_plan
+            self._prompt_plan_source = "class"
+
         if plan_spec is not None:
             self._prompt_plan = self._coerce_prompt_plan_spec(plan_spec)
 
@@ -476,6 +484,41 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             ), exc_info=True)
             return None
 
+    def _resolve_prompt_plan(self) -> tuple[PromptPlan | None, str]:
+        """
+        Resolve the prompt plan for this service following precedence rules.
+
+        Precedence:
+          1) Runtime overrides passed to the constructor
+          2) Service class definition
+          3) Automagic identity match (PromptSection.identity == service.identity)
+        """
+        LOG_CAT = "prompt"
+
+        if self._prompt_plan is not None:
+            source = self._prompt_plan_source or "explicit"
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved prompt plan ({source})",
+                indent_level=2,
+                success=True,
+            ))
+            return self._prompt_plan, source
+
+        # Automagic identity fallback
+        section_cls = self._try_get_matching_prompt_section()
+        if section_cls is not None:
+            plan = PromptPlan.from_sections([section_cls])
+            return plan, "automagic"
+
+        logger.debug(self._build_stdout(
+            LOG_CAT,
+            f"no prompt plan resolved for {self.identity.as_str}; continuing without one",
+            indent_level=2,
+            success="non-fatal",
+        ))
+        return None, "none"
+
     async def aget_prompt(self) -> Prompt:
         """
         Async, cache-aware accessor for the Prompt.
@@ -544,23 +587,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 message=str(self.prompt_message_override),
             )
 
-        # 2) Use the explicit plan if provided
-        plan = self._prompt_plan
-        self.context["prompt.plan.source"] = "explicit"
-
-        # 3) Fallback: single section matching identity
-        if not plan:
-            section_cls = self._try_get_matching_prompt_section()
-            if section_cls is None:
-                ident_str = self.identity.as_str
-                raise ServiceBuildRequestError(
-                    f"No prompt plan provided and no PromptSection registered for identity '{ident_str}'."
-                )
-            plan = PromptPlan.from_sections([section_cls])
-            self.context["prompt.plan.source"] = "matching identity"
+        plan, plan_source = self._resolve_prompt_plan()
+        self.context["prompt.plan.source"] = plan_source
 
         # Ensure already coerced to PromptPlan
-        assert isinstance(plan, PromptPlan)
+        if plan is not None:
+            assert isinstance(plan, PromptPlan)
 
         logger.debug(self._build_stdout(
             LOG_CAT,
@@ -598,7 +630,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             LOG_CAT,
             f"initial build complete: "
             f"instruction={prompt_.instruction[:25]}...,"
-            f"message={prompt_.message[:25]}...",
+            f"message={(prompt_.message or '')[:25]}...",
             indent_level=3, success=True
         ))
 
@@ -825,36 +857,54 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Resolution order:
           1) Explicit per-instance override passed to ``__init__`` / ``using(response_schema=...)``
           2) Class-level default declared on the concrete service (``response_schema``)
-          3) Registry lookup by this service's identity
+          3) Schema provided by a configured codec (if any)
+          4) Automagic identity match to BaseOutputSchema (service.identity)
         """
         LOG_CAT = "schema"
 
-        # 1) Explicit per-instance override
-        if override is not None:
+        def _record(source: str, schema: type[StrictBaseModel] | None, *, success: bool | str = True):
+            if schema is None:
+                return
+            self.context["service.response_schema.source"] = source
+            self.context["service.response_schema.name"] = getattr(schema, "__name__", str(schema))
             logger.debug(self._build_stdout(
                 LOG_CAT,
-                f"resolved (from override): {getattr(override, '__name__', str(override))}",
+                f"resolved (from {source}): {getattr(schema, '__name__', str(schema))}",
                 indent_level=2,
-                success=True,
+                success=success,
             ))
-            self.context["service.response_schema.source"] = "override"
-            self.context["service.response_schema.name"] = getattr(override, "__name__", str(override))
+
+        # 1) Explicit per-instance override
+        if override is not None:
+            _record("override", override)
             return override
 
         # 2) Class-level default on the concrete service subclass, if defined
         cls_default: type[StrictBaseModel] | None = getattr(type(self), "response_schema", None)
         if cls_default is not None:
-            logger.debug(self._build_stdout(
-                LOG_CAT,
-                f"resolved (from service class): {getattr(cls_default, '__name__', str(cls_default))}",
-                indent_level=2,
-                success=True,
-            ))
-            self.context["service.response_schema.source"] = "class"
-            self.context["service.response_schema.name"] = getattr(cls_default, "__name__", str(cls_default))
+            _record("class", cls_default)
             return cls_default
 
-        # 3) Identity-based registry lookup
+        # 3) Codec-provided schema (override > instance codec_cls > class codec_cls > codecs list)
+        codec_candidates: list[type[BaseCodec]] = []
+        for candidate in (
+            self._codec_override,
+            self._codec_cls,
+            getattr(type(self), "codec_cls", None),
+        ):
+            if isinstance(candidate, type) and issubclass(candidate, BaseCodec):
+                codec_candidates.append(candidate)
+        for candidate in getattr(type(self), "codecs", ()) or ():
+            if isinstance(candidate, type) and issubclass(candidate, BaseCodec):
+                codec_candidates.append(candidate)
+
+        for codec_cls in codec_candidates:
+            schema_cls = getattr(codec_cls, "response_schema", None)
+            if schema_cls is not None:
+                _record("codec", schema_cls)
+                return schema_cls
+
+        # 4) Identity-based registry lookup (automagic fallback)
         try:
             resolved = Identity.resolve.try_for_(BaseOutputSchema, self.identity)
         except Exception:
@@ -867,22 +917,16 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             return None
 
         if resolved is not None:
-            logger.debug(self._build_stdout(
-                LOG_CAT,
-                f"resolved (from matching identity): {getattr(resolved, '__name__', str(resolved))}",
-                indent_level=2,
-                success=True,
-            ))
-            self.context["service.response_schema.source"] = "identity"
-            self.context["service.response_schema.name"] = getattr(resolved, "__name__", str(resolved))
-        else:
-            logger.warning(self._build_stdout(
-                LOG_CAT,
-                "no schema resolved for service; continuing with response_schema=None",
-                indent_level=2,
-                success="non-fatal",
-            ))
-        return resolved
+            _record("identity", resolved)
+            return resolved
+
+        logger.debug(self._build_stdout(
+            LOG_CAT,
+            "no schema resolved for service; continuing with response_schema=None",
+            indent_level=2,
+            success="non-fatal",
+        ))
+        return None
 
     # ------------------------------------------------------------------------
     # Service run helpers
@@ -1056,9 +1100,17 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             instr_present = bool(getattr(prompt, "instruction", None))
             user_present = bool(getattr(prompt, "message", None))
             if not (instr_present or user_present):
-                raise ServiceBuildRequestError(
-                    "Prompt produced no instruction or user message; cannot build request"
-                )
+                if self.context.get("prompt.plan.source") == "none":
+                    logger.debug(self._build_stdout(
+                        LOG_CAT,
+                        "prompt empty and no plan resolved; continuing",
+                        indent_level=3,
+                        success="non-fatal",
+                    ))
+                else:
+                    raise ServiceBuildRequestError(
+                        "Prompt produced no instruction or user message; cannot build request"
+                    )
 
             # Stamp basic request content metadata into context for tracing
             self._set_context(
