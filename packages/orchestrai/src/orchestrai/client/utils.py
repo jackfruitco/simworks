@@ -1,6 +1,8 @@
 # orchestrai/client/utils.py
 from __future__ import annotations
 
+import os
+
 from orchestrai.components.providerkit.provider import ProviderConfig
 from orchestrai.client.schemas import OrcaClientRegistration
 
