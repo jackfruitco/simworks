@@ -489,8 +489,8 @@ function sidebarGesture() {
   return {
     shouldPulse:  localStorage.getItem('seenSidebarTray') !== 'true',
     sidebarOpen: false,
-    startX: 0,
-    endX: 0,
+    startX: null,
+    endX: null,
     swipeThreshold: 40,
 
     openSidebar() {
@@ -505,12 +505,21 @@ function sidebarGesture() {
     },
 
     startTouch(event) {
+      if (event.target.closest('#chat-form')) {
+        this.startX = null;
+        this.endX = null;
+        return;
+      }
+
       this.startX = event.changedTouches[0].screenX;
+      this.endX = this.startX;
     },
     moveTouch(event) {
+      if (this.startX === null) return;
       this.endX = event.changedTouches[0].screenX;
     },
     endTouch() {
+      if (this.startX === null) return;
       const diff = this.endX - this.startX;
 
     if (!this.sidebarOpen && this.startX > 10 && this.startX < 60 && diff > this.swipeThreshold) {
@@ -518,6 +527,9 @@ function sidebarGesture() {
       } else if (this.sidebarOpen && diff < -this.swipeThreshold) {
         this.closeSidebar();
       }
+
+      this.startX = null;
+      this.endX = null;
     },
 
     maybeClose(event) {
