@@ -41,13 +41,7 @@
         }
     }
 }" x-init="init()">
-    <h1>All Invitations</h1>
-
-    <div class="invite-actions mb-16">
-        <button class="btn pri sm" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
-            Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
-        </button>
-    </div>
+    {% include "partials/_page_header.html" with title="All Invitations" description="Review and manage invitations issued for SimWorks access." actions_partial="accounts/partials/_invite_list_header_actions.html" %}
 
     <div class="filter-bar filter-scroll">
         <select class="filter-input" x-model="claimedFilter">

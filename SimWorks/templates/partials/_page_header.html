@@ -1,0 +1,21 @@
+<header class="page-header">
+    <div class="page-header__content">
+        <div class="page-header__text">
+            {% if title %}
+                <h1 class="page-header__title">{{ title }}</h1>
+            {% endif %}
+            {% if description %}
+                <p class="page-header__description">{{ description }}</p>
+            {% endif %}
+        </div>
+        {% if actions_partial or actions %}
+            <div class="page-header__actions">
+                {% if actions_partial %}
+                    {% include actions_partial %}
+                {% else %}
+                    {{ actions }}
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</header>

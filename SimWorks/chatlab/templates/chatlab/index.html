@@ -3,39 +3,7 @@
 
 {% block content %}
 <section id="content" class="mx-16">
-    <header class="page-header">
-        <h1>Welcome to ChatLab</h1>
-        {% if user.is_authenticated %}
-            <form method="get" action="{% url 'chatlab:create_simulation' %}" class="start-form">
-                <div class="dropdown-wrapper" x-data="modifierSelector()" x-init="fetchModifierGroups()" @click.away="modifierTrayOpen = false">
-                    <div class="button-group">
-                        <button type="submit" class="btn pri sm">Begin New Simulation</button>
-                        <button type="button" class="btn sm" @click="modifierTrayOpen = !modifierTrayOpen">▼</button>
-                    </div>
-
-                    <template x-if="modifierTrayOpen">
-                        <div class="modifier-tray">
-                            <template x-for="group in modifierGroups" :key="group.group">
-                                <fieldset x-show="group.group !== 'Feedback'" style="margin-bottom: 1em;">
-                                    <legend x-text="group.group" style="font-weight: bold;"></legend>
-                                    <template x-for="mod in group.modifiers" :key="mod.key">
-                                        <label style="display: block;">
-                                            <input type="checkbox" :value="mod.key" x-model="selected">
-                                            <span x-text="mod.description"></span>
-                                        </label>
-                                    </template>
-                                </fieldset>
-                            </template>
-                        </div>
-                    </template>
-
-                    <template x-for="mod in selected" :key="mod">
-                        <input type="hidden" name="modifier" :value="mod">
-                    </template>
-                </div>
-            </form>
-        {% endif %}
-    </header>
+    {% include 'partials/_page_header.html' with title="Welcome to ChatLab" actions_partial='chatlab/partials/_start_simulation_header_actions.html' %}
 
     {% if user.is_authenticated %}
         {% include 'chatlab/partials/simulation_history_base.html' %}
