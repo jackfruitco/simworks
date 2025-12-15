@@ -1,44 +1,11 @@
 {# templates/simulation/partials/tools/sidebar_wrapper.html #}
 {% load core_tags %}
 <!-- Simulation Tool: {{ tool.name }} -->
-<div class="tool-panel" x-data="toolPanelState('{{ tool.name|lower }}', {{ simulation.id }})">
-    <div id="{{ tool.name|lower }}-tool-header"
-         class="tool-header px-4"
-         @click="toggle()"
-         @keydown.enter.prevent="toggle()"
-         @keydown.space.prevent="toggle()"
-         role="button"
-         tabindex="0"
-         :aria-expanded="isOpen"
-         :aria-controls="panelId">
-        <h3 class="medium">
-            <span class="iconify" data-icon="material-symbols:menu-open-rounded" data-inline="true"></span>
-            {{ tool.display_name }}
-        </h3>
-
-    {% if tool.name|lower == "simulation_feedback" %}
-    <form method="POST"
-          action="{% url 'chatlab:run_simulation' simulation.id %}?feedback_continue_conversation=true"
-            x-show="
-              {{ simulation_locked|default_if_none:False|yesno:'true,false' }}
-              && !{{ feedback_continuation|default_if_none:False|yesno:'true,false' }}
-            "
-            {% include 'partials/forms/_csrf_form.html' with hx_headers=True %}
-      >
-        <button type="submit" class="btn xs accent" style="font-size: 80%">
-            Continue conversation with Stitch
-        </button>
-    </form>
-    {% endif %}
-
-        <button type="button"
-                @click.stop="toggle()"
-                class="btn pri sm hide-small my-4"
-                :aria-expanded="isOpen"
-                :aria-controls="panelId"
-                x-text="isOpen ? 'Hide' : 'Show'">
-        </button>
-    </div>
+{% include 'simulation/partials/tools/_panel.html' with
+    tool=tool
+    simulation=simulation
+    simulation_locked=simulation_locked
+    feedback_continuation=feedback_continuation %}
 
     <div id="{{ tool.name|lower }}_tool"
          data-checksum="{{ tool.checksum }}"
@@ -50,14 +17,13 @@
          x-transition:leave-start="opacity-100 translate-y-0"
          x-transition:leave-end="opacity-0 -translate-y-2">
 
-        {% with custom_partial='simulation/partials/tools/_'|add:tool.name|add:'.html' %}
-            {% if custom_partial|template_exists %}
-                {% include custom_partial with tool=tool %}
-            {% elif tool.is_generic %}
-                {% include 'simulation/partials/tools/_generic.html' with tool=tool %}
-            {% else %}
-                {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
-            {% endif %}
-        {% endwith %}
-    </div>
+    {% with custom_partial='simulation/partials/tools/_'|add:tool.name|add:'.html' %}
+        {% if custom_partial|template_exists %}
+            {% include custom_partial with tool=tool %}
+        {% elif tool.is_generic %}
+            {% include 'simulation/partials/tools/_generic.html' with tool=tool %}
+        {% else %}
+            {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
+        {% endif %}
+    {% endwith %}
 </div>
