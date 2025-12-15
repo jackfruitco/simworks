@@ -43,6 +43,7 @@ This guide walks you through preparing a local SimWorks development environment,
      make dev-up
      ```
      The `server` container begins as root only long enough to `chown` the mounted static/media/log directories, then re-execs as the non-root `appuser` defined in `docker/entrypoint.dev.sh`.【F:docker/compose.dev.yaml†L1-L22】【F:docker/entrypoint.dev.sh†L5-L22】
+     The entrypoint now performs a dry-run migration check; if you see a pending migrations message, create them manually (for example: `uv run python SimWorks/manage.py makemigrations`).
 
    - Tail server logs:
      ```bash

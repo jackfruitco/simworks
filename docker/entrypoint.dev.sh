@@ -22,8 +22,10 @@ if [ "${DJANGO_COLLECTSTATIC:-0}" = "1" ]; then
 fi
 
 echo
-echo "Making migrations..."
-python manage.py makemigrations
+echo "Checking for pending migrations (dry-run)..."
+if ! python manage.py makemigrations --check --dry-run; then
+  echo "Migrations are pending; generate them locally with 'python manage.py makemigrations' if desired."
+fi
 
 # Apply database migrations
 echo
