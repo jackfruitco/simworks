@@ -23,8 +23,10 @@
     hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
     hx-trigger="load"
     hx-swap="innerHTML"
+    role="list"
+    aria-live="polite"
   >
-    <div id="message-load-anchor"></div>
+    <div id="message-load-anchor" aria-hidden="true"></div>
     <!-- Messages will be swapped here by HTMX -->
   </div>
 
