@@ -6,5 +6,8 @@
     {% endfor %}
   </ul>
 {% else %}
-  <div class="sim-metadata-empty">No data available yet.</div>
+  {% include 'partials/_empty_state.html' with
+      title="No data available"
+      body="We will display details here once they're ready."
+      extra_classes="sim-metadata-empty" %}
 {% endif %}

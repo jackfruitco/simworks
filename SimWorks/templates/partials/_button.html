@@ -1,0 +1,30 @@
+{% comment %}
+Reusable button partial.
+Expected context:
+- label: visible text for the button
+- variant: primary | secondary | ghost | danger (defaults to primary)
+- size: optional size token (e.g., sm, md, lg)
+- type: button type attribute
+- icon: optional iconify name
+Optional helpers:
+- extra_classes: space-delimited classes to append
+- attrs: raw attributes (e.g., Alpine/HTMX bindings)
+- hide_label: when truthy, renders the label visually hidden (screen reader only)
+- label_attrs: raw attributes applied to the label span
+{% endcomment %}
+{% with variant_class=variant|default:'primary' %}
+  {% with size_class=size|default:'' %}
+    <button
+      type="{{ type|default:'button' }}"
+      class="btn {{ variant_class }}{% if size_class %} {{ size_class }}{% endif %}{% if extra_classes %} {{ extra_classes }}{% endif %}"
+      {% if attrs %}{{ attrs|safe }}{% endif %}
+    >
+      {% if icon %}
+        <span class="iconify" data-icon="{{ icon }}" data-inline="false"{% if label and not hide_label %} style="margin-right: 0.35rem;"{% endif %}></span>
+      {% endif %}
+      {% if label %}
+        <span class="{% if hide_label %}sr-only{% endif %}"{% if label_attrs %} {{ label_attrs|safe }}{% endif %}>{{ label }}</span>
+      {% endif %}
+    </button>
+  {% endwith %}
+{% endwith %}

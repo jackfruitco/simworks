@@ -90,6 +90,20 @@ body {
   z-index: 10;
   max-height: 300px;
   overflow-y: auto;
+  transform-origin: top right;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.modifier-group {
+  margin-bottom: 1rem;
+}
+
+.modifier-legend {
+  font-weight: bold;
+}
+
+.modifier-option {
+  display: block;
 }
 /* Layout utilities */
 .flex-column {

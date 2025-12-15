@@ -46,6 +46,17 @@
   color: var(--color-text-dark);
 }
 
+.button.danger,
+.btn.danger {
+  background-color: var(--jckfrt-red);
+  color: var(--color-text-light);
+}
+
+.button.danger:hover,
+.btn.danger:hover {
+  background-color: var(--jckfrt-red-hover);
+}
+
 .button.acct,     /* TODO DEPRECATED - use .btn.accent */
 .button.acct,   /* TODO DEPRECATED - use .btn.accent */
 .btn.accent,      /* TODO DEPRECATED - use .btn.accent */
