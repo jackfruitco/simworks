@@ -26,8 +26,9 @@
       id="sign-orders-form"
       hx-post="{% url 'simulation:sign_orders' simulation.id %}"
       hx-trigger="submit"
-      hx-headers='{"Content-Type": "application/json"}'
+      hx-headers='{"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"}'
     >
+      {% csrf_token %}
       <button type="submit" id="sign-orders-btn" class="btn sm accent">
         <span>Sign Orders</span>
       </button>
