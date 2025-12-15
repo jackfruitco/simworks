@@ -16,20 +16,20 @@
             {{ tool.display_name }}
         </h3>
 
-        {% if tool.name|lower == "simulation_feedback" %}
-        <form method="POST"
-              action="{% url 'chatlab:run_simulation' simulation.id %}?feedback_continue_conversation=true"
-              @click.stop
-              x-show="
-                {{ simulation_locked|default_if_none:False|yesno:'true,false' }}
-                && !{{ feedback_continuation|default_if_none:False|yesno:'true,false' }}
-              ">
-            {% csrf_token %}
-            <button type="submit" class="btn xs accent" style="font-size: 80%">
-                Continue conversation with Stitch
-            </button>
-        </form>
-        {% endif %}
+    {% if tool.name|lower == "simulation_feedback" %}
+    <form method="POST"
+          action="{% url 'chatlab:run_simulation' simulation.id %}?feedback_continue_conversation=true"
+            x-show="
+              {{ simulation_locked|default_if_none:False|yesno:'true,false' }}
+              && !{{ feedback_continuation|default_if_none:False|yesno:'true,false' }}
+            "
+            {% include 'partials/forms/_csrf_form.html' with hx_headers=True %}
+      >
+        <button type="submit" class="btn xs accent" style="font-size: 80%">
+            Continue conversation with Stitch
+        </button>
+    </form>
+    {% endif %}
 
         <button type="button"
                 @click.stop="toggle()"
