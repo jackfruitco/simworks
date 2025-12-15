@@ -23,7 +23,15 @@
                 – {% if sim.is_complete %}✅ Complete{% else %}🟢 In Progress{% endif %}
             </li>
         {% empty %}
-            <li>No simulations yet.</li>
+            <li class="list-style-none">
+                {% url 'chatlab:create_simulation' as create_simulation_url %}
+                {% include 'partials/_empty_state.html' with
+                    title="No simulations yet"
+                    body="Start your first scenario to see it show up here."
+                    cta_url=create_simulation_url
+                    cta_text="Start a simulation"
+                    cta_class="btn sm pri" %}
+            </li>
         {% endfor %}
     </ul>
     <div class="pagination">
@@ -44,4 +52,5 @@
         {% endif %}
     </div>
 </div>
+
 
