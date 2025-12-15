@@ -87,7 +87,7 @@ def test_component_report_lists_discovered_components():
 
 @pytest.mark.asyncio
 async def test_response_schema_resolves_and_attaches_request():
-    @schema(namespace="chatlab", kind="standardized_patient", name="patient-initial")
+    @schema(namespace="chatlab", kind="standardized_patient", name="initial")
     class PatientInitialSchema(BaseOutputSchema):
         value: str
 
