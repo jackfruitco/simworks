@@ -1,4 +1,5 @@
 {# templates/simulation/partials/_fallback.html #}
-<div class="sim-metadata-empty">
-  Tool not available yet. Please check back later.
-</div>
+{% include 'partials/_empty_state.html' with
+    title="Tool not available"
+    body="This tool is still loading. Please check back soon."
+    extra_classes="sim-metadata-empty" %}

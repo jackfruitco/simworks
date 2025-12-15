@@ -1,0 +1,22 @@
+{#
+  Shared form helper to ensure CSRF coverage for standard and HTMX submissions.
+
+  Usage examples:
+  <form method="post"
+        action="..."
+        {% include 'partials/forms/_csrf_form.html' %}
+    ...
+
+  <form hx-post="..."
+        {% include 'partials/forms/_csrf_form.html' with hx_json=True %}
+    ...
+#}
+{% if custom_hx_headers %}
+  hx-headers='{{ custom_hx_headers|safe }}'
+{% elif hx_json %}
+  hx-headers='{"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"}'
+{% elif hx_headers %}
+  hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+{% endif %}
+>
+{% csrf_token %}

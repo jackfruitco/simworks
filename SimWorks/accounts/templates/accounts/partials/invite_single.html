@@ -1,30 +1,32 @@
 {% if view_mode == 'grid' %}
-    {% for invite in invitations %}
-        <div class="tile-card" style="--tile-index: {{ forloop.counter0 }}">
-            <p><strong>Email:</strong> {{ invite.email }}</p>
-            <p><strong>Claimed:</strong> {{ invite.is_claimed }}</p>
-            <p><strong>Expired:</strong> {{ invite.is_expired }}</p>
-            <p><strong>Expires:</strong> {{ invite.expires_at }}</p>
-            <p><strong>Invited By:</strong> {{ invite.invited_by }}</p>
-            <div x-data="{ open: false, copied: false }" class="invite-settings">
-                <button @click="open = !open" class="btn">
-                    <span class="iconify" data-icon="mdi:cog-outline"></span>
-                </button>
-                <div x-show="open" class="settings-menu" @click.outside="open = false">
-                    <button disabled title="Email integration not yet available">Resend Invitation</button>
-                    <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate Invitation</a>
-                    <button
-                        @click="$clipboard(`{{ invite.link }}`)"
-                        @clipboard.copied="copied = true; open = false; setTimeout(() => copied = false, 1500)"
-                    >
-                        <span class="iconify" data-icon="solar:copy-line-duotone" data-inline="true"></span>
-                        Copy Invite URL
+    <div class="tile-grid">
+        {% for invite in invitations %}
+            <div class="tile-card" style="--tile-index: {{ forloop.counter0 }}">
+                <p><strong>Email:</strong> {{ invite.email }}</p>
+                <p><strong>Claimed:</strong> {{ invite.is_claimed }}</p>
+                <p><strong>Expired:</strong> {{ invite.is_expired }}</p>
+                <p><strong>Expires:</strong> {{ invite.expires_at }}</p>
+                <p><strong>Invited By:</strong> {{ invite.invited_by }}</p>
+                <div x-data="{ open: false, copied: false }" class="invite-settings">
+                    <button @click="open = !open" class="btn">
+                        <span class="iconify" data-icon="mdi:cog-outline"></span>
                     </button>
-                    <span x-show="copied" x-transition class="copied-tooltip" style="margin-left: 0.5rem; color: green; font-size: 0.85rem;">Copied!</span>
+                    <div x-show="open" class="settings-menu" @click.outside="open = false">
+                        <button disabled title="Email integration not yet available">Resend Invitation</button>
+                        <a href="{% comment %} TODO {% url 'accounts:recreate_invite' token=invite.token %}{% endcomment %}">Recreate Invitation</a>
+                        <button
+                            @click="$clipboard(`{{ invite.link }}`)"
+                            @clipboard.copied="copied = true; open = false; setTimeout(() => copied = false, 1500)"
+                        >
+                            <span class="iconify" data-icon="solar:copy-line-duotone" data-inline="true"></span>
+                            Copy Invite URL
+                        </button>
+                        <span x-show="copied" x-transition class="copied-tooltip">Copied!</span>
+                    </div>
                 </div>
             </div>
-        </div>
-    {% endfor %}
+        {% endfor %}
+    </div>
 {% else %}
     <div class="overflow-x-auto px-4 invite-table-wrapper">
         <table class="invite-table">
@@ -62,7 +64,7 @@
                                   <span class="iconify" data-icon="solar:copy-line-duotone" data-inline="true"></span>
                                   Copy URL
                                 </button>
-                                <span x-show="copied" x-transition class="copied-tooltip" style="margin-left: 0.5rem; color: green; font-size: 0.85rem;">Copied!</span>
+                                <span x-show="copied" x-transition class="copied-tooltip">Copied!</span>
                             </div>
                         </div>
                     </td>
