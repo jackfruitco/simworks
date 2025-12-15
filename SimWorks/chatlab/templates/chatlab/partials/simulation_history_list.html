@@ -16,14 +16,16 @@
     <ul hx-get="{% url 'chatlab:index' %}"
         hx-trigger="refresh from:closest div"
         hx-target="#simulation-history-list"
-        hx-swap="outerHTML">
+        hx-swap="outerHTML"
+        class="simulation-history-list">
         {% for sim in simulations %}
-            <li>
-                <a href="{% url 'chatlab:run_simulation' sim.id %}">{{ sim }}</a>
-                – {% if sim.is_complete %}✅ Complete{% else %}🟢 In Progress{% endif %}
+            <li class="simulation-history-list__item">
+                {% with status=sim.is_complete|yesno:"Complete,In Progress" %}
+                    {% include 'chatlab/partials/_simulation_card.html' with simulation=sim status=status %}
+                {% endwith %}
             </li>
         {% empty %}
-            <li>No simulations yet.</li>
+            <li class="simulation-history-list__item">No simulations yet.</li>
         {% endfor %}
     </ul>
     <div class="pagination">

@@ -1,0 +1,25 @@
+{% load static %}
+
+<article class="simulation-card" data-simulation-id="{{ simulation.id }}" data-status="{{ status|slugify }}">
+    <div class="simulation-card__header">
+        <div class="simulation-card__title">
+            <a href="{% url 'chatlab:run_simulation' simulation.id %}" class="simulation-card__link">{{ simulation }}</a>
+            {% if simulation.chief_complaint %}
+                <p class="simulation-card__subtitle">{{ simulation.chief_complaint }}</p>
+            {% endif %}
+        </div>
+
+        {% if status %}
+            <span class="status-badge status-badge--{{ status|slugify }}">{{ status }}</span>
+        {% endif %}
+    </div>
+
+    <div class="simulation-card__meta">
+        <span>Started {{ simulation.start_timestamp|date:"M j, Y, g:i A" }}</span>
+        {% if simulation.end_timestamp %}
+            <span>Ended {{ simulation.end_timestamp|date:"M j, Y, g:i A" }}</span>
+        {% elif simulation.time_limit %}
+            <span>Time limit {{ simulation.time_limit }}</span>
+        {% endif %}
+    </div>
+</article>
