@@ -21,6 +21,56 @@ function modifierSelector() {
         modifierTrayOpen: false,
         selected: [],
         modifierGroups: [],
+        init() {
+            this.fetchModifierGroups();
+            this.$watch('modifierTrayOpen', (isOpen) => {
+                if (isOpen) {
+                    this.$nextTick(() => {
+                        if (!this.focusFirst()) {
+                            this.$refs.modifierTray?.focus();
+                        }
+                    });
+                }
+            });
+        },
+        toggleTray() {
+            this.modifierTrayOpen = !this.modifierTrayOpen;
+        },
+        closeTray() {
+            this.modifierTrayOpen = false;
+        },
+        focusableOptions() {
+            return Array.from(this.$refs.modifierTray?.querySelectorAll('input[type="checkbox"]') || []);
+        },
+        focusFirst() {
+            return this.setFocusIndex(0);
+        },
+        focusLast() {
+            return this.setFocusIndex(this.focusableOptions().length - 1);
+        },
+        focusNext() {
+            const options = this.focusableOptions();
+            if (!options.length) return false;
+            const currentIndex = options.indexOf(document.activeElement);
+            const targetIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % options.length;
+            return this.setFocusIndex(targetIndex);
+        },
+        focusPrevious() {
+            const options = this.focusableOptions();
+            if (!options.length) return false;
+            const currentIndex = options.indexOf(document.activeElement);
+            const targetIndex = currentIndex <= 0 ? options.length - 1 : currentIndex - 1;
+            return this.setFocusIndex(targetIndex);
+        },
+        setFocusIndex(index) {
+            const options = this.focusableOptions();
+            const option = options[index];
+            if (option) {
+                option.focus();
+                return true;
+            }
+            return false;
+        },
         async fetchModifierGroups() {
             try {
                 const response = await fetch("{% url 'graphql' %}", {
@@ -46,7 +96,6 @@ function modifierSelector() {
                 });
                 const result = await response.json();
                 this.modifierGroups = result?.data?.modifierGroups || [];
-                console.log("Fetched modifierGroups:", this.modifierGroups)
             } catch (error) {
                 console.error("Failed to load modifier groups", error);
             }

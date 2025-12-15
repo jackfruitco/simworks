@@ -61,10 +61,14 @@
         </select>
     </div>
 
-    <div class="mt-16 mx-auto invite-actions">
-        <button class="btn ghost sm" @click="clearFilters()">
-            Clear Filters
-        </button>
+        <div class="invite-actions">
+            <button class="btn pri sm" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+                Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
+            </button>
+            <button class="btn ghost sm" @click="clearFilters()">
+                Clear Filters
+            </button>
+        </div>
     </div>
 
     <div
@@ -87,7 +91,7 @@
         hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
         x-show="!noMore"
     >
-        <button class="btn pri sm" disabled>Loading more invitations...</button>
+        {% include 'partials/_button.html' with label='Loading more invitations...' variant='primary' size='sm' attrs='disabled' %}
     </div>
 </div>
 {% endblock %}

@@ -6,5 +6,8 @@
     {% endfor %}
   </ul>
 {% else %}
-  <div class="sim-metadata-empty">No known medical history available.</div>
+  {% include 'partials/_empty_state.html' with
+      title="No medical history yet"
+      body="We'll surface known history here once we have it."
+      extra_classes="sim-metadata-empty" %}
 {% endif %}
