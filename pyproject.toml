@@ -31,5 +31,5 @@ dependencies = [
     "redis>=6.1.0",
     "typing-extensions>=4.13.2",
     "zope-interface>=7.2",
-    "strawberry-graphql==0.287.2",
+    "strawberry-graphql==0.287.3",
 ]
