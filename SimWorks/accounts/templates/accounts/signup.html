@@ -28,7 +28,7 @@
                 {% include "partials/forms/_field.html" with field=field %}
             {% endif %}
         {% endfor %}
-        <button class="btn pri" type="submit">Sign Up</button>
+        {% include 'partials/_button.html' with label='Sign Up' variant='primary' type='submit' %}
     </form>
     <p>
       Already have an account? <a href="{% url 'accounts:login' %}">Login</a>.

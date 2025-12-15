@@ -94,9 +94,15 @@
             <span class="iconify fit" data-icon="mdi:register-outline" data-inline="true"></span> Register!</a>
         {% endif %}
         <!-- User Menu Toggle -->
-        <button id="user-menu-toggle" type="button" @click="toggleMenu" :aria-expanded="openMenu.toString()" aria-controls="user-menu-dropdown" class="bar-item button hover-black">
-            <span class="iconify" data-icon="fa-solid:bars" data-inline="false"></span>
-            </button>
+        {% include 'partials/_button.html' with
+            label='Toggle menu'
+            icon='fa-solid:bars'
+            variant='secondary'
+            type='button'
+            hide_label=True
+            extra_classes='bar-item button hover-black'
+            attrs='id="user-menu-toggle" @click="openMenu = ! openMenu" @click.outside="openMenu = false"'
+        %}
     </div>
     <!-- User Menu -->
     <div id="user-menu" class="bar-item top right" @click.outside="closeMenu">
@@ -113,7 +119,13 @@
                     <!--<a href="{% url 'accounts:logout' %}" class="sidebar-item button" @click="openMenu = false">Logout</a>-->
                     <form action="{% url 'accounts:logout' %}" method="post" style="display: inline;">
                         {% csrf_token %}
-                        <button type="submit" class="sidebar-item button my-4 accent" @click="closeMenu">Logout</button>
+                        {% include 'partials/_button.html' with
+                            label='Logout'
+                            variant='danger'
+                            type='submit'
+                            extra_classes='sidebar-item button my-4'
+                            attrs='@click="open-menu = false"'
+                        %}
                     </form>
                 {% else %}
                     <a href="{% url 'accounts:login' %}" class="sidebar-item button acct hide-large hide-medium" @click="closeMenu">Login</a>
