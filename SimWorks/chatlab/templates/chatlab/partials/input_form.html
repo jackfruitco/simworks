@@ -1,18 +1,20 @@
 {% load static %}
 
 <form id="chat-form"
-    @submit.prevent="sendMessage"
-    x-data="{
+    @submit.prevent="send"
+    x-data="chatFormState({
         isLocked: {{ simulation_locked|yesno:'true,false' }},
         isFeedbackContinuation: {{ feedback_continuation|yesno:'true,false' }},
-        }"
+    })"
 >
   <button
           type="button"
           id="emoji-button"
           title="Emoji"
           class="emoji-button hide-small"
-          aria-label="Insert emoji"
+          :aria-label="emojiAriaLabel()"
+          :aria-pressed="showEmojiPicker"
+          @click.prevent="toggleEmojiPicker"
   >
         <span class="iconify chat-icon" data-icon="fa6-regular:face-smile" data-inline="false"></span>
   </button>
@@ -21,21 +23,11 @@
     x-model="messageText"
     id="chat-message-input"
     x-ref="messageInput"
-    x-on:input="$refs.messageInput.style.height = 'auto'; $refs.messageInput.style.height = $refs.messageInput.scrollHeight + 'px'"
+    @input="handleInput"
+    @keydown.enter.exact.prevent="send"
     :disabled="isLocked"
-    :placeholder="
-        isLocked
-            ? 'Simulation locked — chat is read-only'
-            : isFeedbackContinuation
-                ? 'Message Stitch to continue feedback conversation'
-                : 'Message'
-    "
-    :aria-label="
-        isLocked
-            ? 'Simulation locked — chat is read-only'
-            : 'Message'
-    "
-    @input="notifyTyping"
+    :placeholder="placeholderText()"
+    :aria-label="messageAriaLabel()"
     rows="1"
     style="resize: none"
     autofocus
@@ -44,7 +36,9 @@
             class="hide-small"
             type="submit"
             :disabled="isLocked"
-            :aria-label="isLocked ? 'Send message (disabled while simulation is locked)' : 'Send message'">
+            :aria-label="sendAriaLabel()"
+            @click.prevent="send"
+    >
       <span
           class="iconify chat-icon mr-4"
           :class="{ 'color-accent-blue': !isLocked }"
@@ -56,7 +50,9 @@
             class="show-small"
             type="submit"
             :disabled="isLocked"
-            :aria-label="isLocked ? 'Send message (disabled while simulation is locked)' : 'Send message'">
+            :aria-label="sendAriaLabel()"
+            @click.prevent="sendFromMobile"
+    >
       <span
           class="iconify chat-icon"
           :class="{ 'color-accent-blue': !isLocked }"

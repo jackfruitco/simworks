@@ -19,5 +19,8 @@
     {% endfor %}
   </ul>
 {% else %}
-  <div class="sim-metadata-empty">No feedback available yet.</div>
+  {% include 'partials/_empty_state.html' with
+      title="No feedback yet"
+      body="Feedback will appear here after your conversation progresses."
+      extra_classes="sim-metadata-empty" %}
 {% endif %}

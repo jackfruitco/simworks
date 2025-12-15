@@ -3,16 +3,7 @@
 
 {% block content %}
 <div class="profile-container">
-    <h1>Your SimWorks Dashboard</h1>
-
-    <section class="start-simulation">
-        <div class="simulation-buttons">
-            <form method="post" action="{% url 'chatlab:create_simulation' %}" class="start-form">
-                {% csrf_token %}
-                <button type="submit" class="btn pri md" style="margin: auto">New ChatLab Sim</button>
-            </form>
-        </div>
-    </section>
+    {% include "partials/_page_header.html" with title="Your SimWorks Dashboard" description="Launch new ChatLab simulations and review your recent history." actions_partial="accounts/partials/_profile_header_actions.html" %}
 
     <section class="simulation-history">
         <h2>Your Simulation History</h2>
