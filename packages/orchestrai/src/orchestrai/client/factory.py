@@ -90,13 +90,25 @@ def _build_single_client(
     if not isinstance(client_defaults_source, OrcaClientsSettings):
         client_defaults_source = OrcaClientsSettings(**client_defaults_source)
     defaults = client_defaults_source.defaults
-    client_cfg = OrcaClientConfig(
-        max_retries=single_client.get("max_retries", defaults.max_retries),
-        timeout_s=single_client.get("timeout_s", defaults.timeout_s),
-        telemetry_enabled=single_client.get("telemetry_enabled", defaults.telemetry_enabled),
-        log_prompts=single_client.get("log_prompts", defaults.log_prompts),
-        raise_on_error=single_client.get("raise_on_error", defaults.raise_on_error),
-    )
+
+    # Apply explicit single-client overrides, then defaults, and finally fall back
+    # to the OrcaClientConfig model defaults by omitting unset values. This avoids
+    # passing `None` into strict boolean/int fields.
+    cfg_kwargs: dict[str, object] = {}
+    for field in (
+        "max_retries",
+        "timeout_s",
+        "telemetry_enabled",
+        "log_prompts",
+        "raise_on_error",
+    ):
+        value = single_client.get(field)
+        if value is None:
+            value = getattr(defaults, field, None)
+        if value is not None:
+            cfg_kwargs[field] = value
+
+    client_cfg = OrcaClientConfig(**cfg_kwargs)
 
     prov_cfg = _provider_config_from_single_mapping(single_client, client_alias)
     _ensure_provider_backend_loaded(prov_cfg.backend)

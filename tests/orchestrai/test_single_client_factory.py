@@ -33,6 +33,25 @@ def test_single_client_builds_without_providers():
     assert getattr(client.provider, "identity", None) is not None
 
 
+def test_single_client_uses_model_defaults_when_behavior_missing():
+    core = OrcaSettings.from_mapping(
+        {
+            "MODE": "single",
+            "CLIENT": {
+                "provider": "openai",
+                "surface": "responses",
+                "api_key_envvar": "OPENAI_API_KEY",
+            },
+        }
+    )
+
+    client = build_orca_client(core, "default")
+
+    assert client.config.max_retries == 3
+    assert client.config.telemetry_enabled is True
+    assert client.config.log_prompts is False
+
+
 def test_multi_mode_without_providers_hints_single_mode():
     core = OrcaSettings.from_mapping(
         {
