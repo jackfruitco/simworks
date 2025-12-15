@@ -56,18 +56,16 @@
     <div id="invite-list" :hx-get="`/accounts/invitations/list/?page=1&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`" hx-trigger="load" hx-target="#invite-list" hx-swap="beforeend">
     </div>
 
-<div
-    id="pagination-loader"
-    class="mt-16 mx-auto center"
-    :hx-get="`/accounts/invitations/list/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
-    hx-trigger="revealed"
-    hx-target="#invite-list"
-    hx-swap="beforeend"
-    hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
-    x-show="!noMore"
->
-    <button class="btn pri sm" disabled>Loading more invitations...</button>
-</div>
+    <div
+        id="pagination-loader"
+        class="mt-16 mx-auto center"
+        :hx-get="`/accounts/invitations/list/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
+        hx-trigger="revealed"
+        hx-target="#invite-list"
+        hx-swap="beforeend"
+        hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
+        x-show="!noMore"
+    >
         <button class="btn pri sm" disabled>Loading more invitations...</button>
     </div>
 </div>
