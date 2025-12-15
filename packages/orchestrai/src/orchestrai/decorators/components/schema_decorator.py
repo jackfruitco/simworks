@@ -44,6 +44,9 @@ class SchemaDecorator(BaseDecorator):
         # Always register into the schema registry
         return schema_registry
 
+    # Human-friendly log label
+    log_category = "output_schemas"
+
     def register(self, candidate: Type[Any]) -> None:
         # Guard: ensure we only register schema classes
         if not issubclass(candidate, BaseOutputSchema):

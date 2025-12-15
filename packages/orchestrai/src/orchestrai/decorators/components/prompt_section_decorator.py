@@ -41,6 +41,9 @@ class PromptSectionDecorator(BaseDecorator):
     def get_registry(self) -> ComponentRegistry:
         return _Registry
 
+    # Human-friendly log label
+    log_category = "prompt_sections"
+
     def register(self, candidate: Type[Any]) -> None:
         # Guard: ensure we only register prompt_section classes
         if not issubclass(candidate, PromptSection):

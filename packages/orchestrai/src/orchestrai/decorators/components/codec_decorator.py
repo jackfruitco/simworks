@@ -44,6 +44,9 @@ class CodecDecorator(BaseDecorator):
         """Return the global codecs registry singleton."""
         return codec_registry
 
+    # Human-friendly log label
+    log_category = "codecs"
+
     def register(self, candidate: Type[Any]) -> None:
         """Register a codec class after guarding its base type.
 
