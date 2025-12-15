@@ -8,6 +8,9 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
 from orchestrai import get_current_app
+from orchestrai.components.providerkit.exceptions import ProviderCallError
+from orchestrai.components.services.exceptions import ServiceError
+from orchestrai.exceptions import SimCoreError
 
 from chatlab.models import ChatSession, Message, MessageMediaLink
 from core.utils import remove_null_keys
@@ -20,6 +23,10 @@ from .apps import ChatLabConfig
 logger = logging.getLogger(__name__)
 
 APP_NAME = getattr(ChatLabConfig, "name") or getattr(ChatLabConfig, "label") or "<unknown>"
+
+
+class SimulationSchedulingError(ServiceError):
+    """Raised when orchestration for a new simulation cannot be scheduled."""
 
 
 async def create_new_simulation(
@@ -47,11 +54,22 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     from .orca.services import GenerateInitialResponse
-    await get_current_app().services.aschedule(
-        GenerateInitialResponse,
-        simulation_id=simulation.id,
-        user_id=user.id,
-    )
+    try:
+        await get_current_app().services.aschedule(
+            GenerateInitialResponse,
+            simulation_id=simulation.id,
+            user_id=user.id,
+        )
+    except (ProviderCallError, ServiceError, SimCoreError) as exc:
+        logger.exception(
+            "Failed to schedule initial response for simulation %s (user=%s)",
+            simulation.id,
+            user.id,
+        )
+        await simulation.adelete()
+        raise SimulationSchedulingError(
+            "Unable to start your simulation due to an orchestration error."
+        ) from exc
 
     return simulation
 
