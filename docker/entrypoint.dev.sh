@@ -2,13 +2,24 @@
 
 set -euo pipefail
 
+# If running as root, fix perms on mounted volumes then drop to appuser.
+if [ "$(id -u)" = "0" ]; then
+  mkdir -p /app/static /app/media /app/logs
+  chown -R appuser:appuser /app/static /app/media /app/logs || true
+  exec gosu appuser "$0" "$@"
+fi
+
+echo "Entrypoint running as: $(id)"
+
 # Set Django settings module
 export DJANGO_SETTINGS_MODULE=config.settings
 
 # Collect static files
 echo
 echo "Collecting static files..."
-python manage.py collectstatic -v 1 --no-input
+if [ "${DJANGO_COLLECTSTATIC:-0}" = "1" ]; then
+  python manage.py collectstatic --noinput --clear
+fi
 
 echo
 echo "Making migrations..."

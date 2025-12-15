@@ -4,8 +4,11 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.dev
       target: web
+    user: "0:0"
     env_file:
       - .env
+    environment:
+      DJANGO_COLLECTSTATIC: "0"
     expose:
       - 8000
     hostname: 'server'

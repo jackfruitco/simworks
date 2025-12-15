@@ -39,3 +39,11 @@ Background AI workflows are orchestrated through the `simcore_ai_django` package
 
 ## Testing and tooling
 Pytest is configured as the default test runner via `pyproject.toml`, targeting the `config.settings` module and loading tests from the `tests/` hierarchy with quiet reporting enabled.【F:pyproject.toml†L47-L50】 The repository relies on `uv` for workspace-aware dependency management and script execution, including the bundled `simcore-ai` packages that participate in the Django project as editable workspace members.【F:pyproject.toml†L6-L45】 Developers should continue using the `uv run` workflow to install dependencies, run migrations, and execute tests, as detailed in the quick-start guide.
+
+## Development volume recovery
+If your existing development Docker volumes have root-owned files that block `collectstatic` in the new non-root flow, run this one-time rescue command to fix ownership:
+
+```bash
+docker compose -f docker/compose.dev.yaml run --rm --user root server sh -lc \
+  'chown -R 10001:10001 /app/static /app/media && chmod -R u+rwX /app/static /app/media'
+```

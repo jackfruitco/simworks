@@ -3,12 +3,16 @@
 set -euo pipefail
 
 # Set Django settings module
-export DJANGO_SETTINGS_MODULE=config.settings
+export DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-config.settings}
 
 # Collect static files
 echo
 echo "Collecting static files..."
-python manage.py collectstatic -v 1 --no-input
+if [ "${DJANGO_COLLECTSTATIC:-0}" = "1" ]; then
+  python manage.py collectstatic --noinput --clear
+else
+  echo "Skipping collectstatic; using baked assets."
+fi
 
 # Apply database migrations
 echo
