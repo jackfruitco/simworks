@@ -291,7 +291,7 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
-def coerce_identity_key(value: "IdentityLike" | None) -> tuple[str, str, str] | None:
+def coerce_identity_key(value: IdentityLike | None) -> tuple[str, str, str] | None:
     """Best-effort conversion of Identity-like inputs to an (namespace, kind, name) tuple."""
 
     if value is None:
