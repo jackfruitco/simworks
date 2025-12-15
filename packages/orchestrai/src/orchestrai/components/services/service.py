@@ -905,20 +905,15 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 return schema_cls
 
         # 4) Identity-based registry lookup (automagic fallback)
-        try:
-            resolved = Identity.resolve.try_for_(BaseOutputSchema, self.identity)
-        except Exception:
-            logger.debug(self._build_stdout(
-                LOG_CAT,
-                f"could not resolve schema from identity: {self.identity.as_str}",
-                indent_level=2,
-                success="non-fatal",
-            ), exc_info=True)
-            return None
-
+        resolved = Identity.resolve.try_for_(BaseOutputSchema, self.identity)
         if resolved is not None:
             _record("identity", resolved)
             return resolved
+
+        matched = self._match_output_schema_by_namespace()
+        if matched is not None:
+            _record("identity.match", matched)
+            return matched
 
         logger.debug(self._build_stdout(
             LOG_CAT,
@@ -927,6 +922,68 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             success="non-fatal",
         ))
         return None
+
+    def _match_output_schema_by_namespace(self) -> type[StrictBaseModel] | None:
+        """Best-effort schema match within the same namespace/kind.
+
+        Supports automagic pairing when schema names diverge slightly from service
+        names (e.g., ``initial`` service → ``patient-initial`` schema) while keeping
+        matches scoped to the same namespace/kind.
+        """
+
+        try:
+            from orchestrai.registry.singletons import schemas as schema_registry
+        except Exception:
+            return None
+
+        ident = self.identity
+
+        def _same_namespace_kind(candidate) -> bool:
+            cid = getattr(candidate, "identity", None)
+            return bool(
+                isinstance(cid, Identity)
+                and cid.namespace == ident.namespace
+                and cid.kind == ident.kind
+            )
+
+        try:
+            candidates = tuple(schema_registry.filter(_same_namespace_kind))
+        except Exception:
+            return None
+
+        if not candidates:
+            return None
+
+        for candidate in candidates:
+            cid = getattr(candidate, "identity", None)
+            if cid and cid.name == ident.name:
+                return candidate
+
+        for candidate in candidates:
+            cid = getattr(candidate, "identity", None)
+            if cid and cid.name.endswith(ident.name):
+                return candidate
+
+        return candidates[0]
+
+    def _attach_response_schema_to_request(self, req: Request) -> None:
+        """Populate request schema hints when a schema is available."""
+
+        schema_cls = self.response_schema
+        if schema_cls is None:
+            return
+
+        if getattr(req, "response_schema", None) is None:
+            req.response_schema = schema_cls
+
+        try:
+            schema_json = schema_cls.model_json_schema()
+        except Exception:
+            return
+
+        req.response_schema_json = schema_json
+        if getattr(req, "provider_response_format", None) is None:
+            req.provider_response_format = schema_json
 
     # ------------------------------------------------------------------------
     # Service run helpers
@@ -1044,6 +1101,10 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             # Build request and stamp stream flag using the new builder API
             req = await self.abuild_request(**kwargs)
             req.stream = bool(stream)
+
+            # Attach structured output hints early so provider backends can consume
+            # them even when no codec is selected.
+            self._attach_response_schema_to_request(req)
 
             # Attach codec identity to the request when available; schema hints are handled by the codec.
             if codec_label:

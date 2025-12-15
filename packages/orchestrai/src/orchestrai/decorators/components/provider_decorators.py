@@ -48,6 +48,9 @@ class ProviderBackendDecorator(BaseDecorator):
         """Return the global provider backends registry singleton (identity-keyed)."""
         return provider_backend_registry
 
+    # Human-friendly log label
+    log_category = "provider_backends"
+
     def register(self, candidate: Type[Any]) -> None:
         """Register a backend class after guarding its base type.
 
@@ -81,6 +84,9 @@ class ProviderDecorator(BaseDecorator):
     def get_registry(self) -> ComponentRegistry:
         """Return the global providers registry singleton (identity-keyed)."""
         return providers_registry
+
+    # Human-friendly log label
+    log_category = "providers"
 
     def register(self, candidate: Type[Any]) -> None:
         """Register a provider class after guarding its base type.
