@@ -1,41 +1,9 @@
-{% load static %}
-
-<div class="overlay-content" @click.stop>
-  <button class="close-button" id="close-order-request-form">✕</button>
-    <div class="lab-order-form">
-
-      <!-- Input field and Add button -->
-      <div class="form-group">
-        <label for="lab-order-input">Lab order</label>
-        <input
-          type="text"
-          id="lab-order-input"
-          placeholder="Enter lab order"
-          maxlength="30"
-          class="order-input my-2"
-        />
-        <button type="button" id="stage-order-btn" class="btn sm ghost">Add</button>
-      </div>
-
-    <!-- Display orders staged for signature -->
-    <ul id="staged-orders-list" class="staged-orders-list">
-    </ul>
-
-    <!-- Submit signed orders -->
-    <form
-      id="sign-orders-form"
-      hx-post="{% url 'simulation:sign_orders' simulation.id %}"
-      hx-trigger="submit"
-      hx-headers='{"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"}'
-    >
-      {% csrf_token %}
-      <button type="submit" id="sign-orders-btn" class="btn sm accent">
-        <span>Sign Orders</span>
-      </button>
-    </form>
-
-  </div>
-    <div id="orders-spinner" class="spinner">
-        <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3" data-inline="false"></span>
-    </div>
-</div>
+{% include "partials/_modal.html" with
+  modal_id="order-request-form"
+  modal_label_id="order-request-form-label"
+  modal_body_id="order-request-form-body"
+  modal_title="Request labs"
+  modal_close_id="close-order-request-form"
+  modal_body_template="simulation/partials/order-request-form_content.html"
+  modal_extra_attrs="data-simulation-id=\"%s\""|add:simulation.id
+%}
