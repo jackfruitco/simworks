@@ -35,13 +35,48 @@ This guide walks you through preparing a local SimWorks development environment,
    ```
 
 ## Running the stack
-1. **Start the Django development server**
+1. **Run with Docker + Make (recommended for local development)**
+   The repository includes a dev-focused compose file and Make targets that handle permissions on bind-mounted volumes and make collectstatic opt-in by default.【F:docker/compose.dev.yaml†L1-L22】【F:Makefile†L1-L35】
+
+   - Build and start the stack (server, database, Redis):
+     ```bash
+     make dev-up
+     ```
+     The `server` container begins as root only long enough to `chown` the mounted static/media/log directories, then re-execs as the non-root `appuser` defined in `docker/entrypoint.dev.sh`.【F:docker/compose.dev.yaml†L1-L22】【F:docker/entrypoint.dev.sh†L5-L22】
+     The entrypoint now performs a dry-run migration check; if you see a pending migrations message, create them manually (for example: `uv run python SimWorks/manage.py makemigrations`).
+
+   - Tail server logs:
+     ```bash
+     make dev-logs
+     ```
+
+   - Open a shell in the running server container:
+     ```bash
+     make dev-shell
+     ```
+
+   - Run collectstatic into the bound `/app/static` volume when needed (disabled by default):
+     ```bash
+     make dev-collectstatic
+     ```
+
+   - Stop the stack:
+     ```bash
+     make dev-down
+     ```
+
+   If your dev volumes were created before the non-root flow and still contain root-owned files, repair them once with:
+   ```bash
+   make dev-chown-vols
+   ```
+
+2. **Start the Django development server directly**
    ```bash
    uv run python SimWorks/manage.py runserver 0.0.0.0:8000
    ```
    The server loads the installed apps (`accounts`, `core`, `simcore`, `chatlab`, etc.) and exposes the `/health` check for readiness probes.【F:SimWorks/config/settings.py†L45-L83】【F:SimWorks/core/middleware.py†L4-L14】
 
-2. **Launch background workers**
+3. **Launch background workers**
    Celery powers AI services and scheduled jobs. Run at least one worker after Redis is available:
    ```bash
    uv run celery -A SimWorks.config worker -l info
@@ -53,10 +88,10 @@ This guide walks you through preparing a local SimWorks development environment,
    uv run celery -A SimWorks.config beat -l info
    ```
 
-3. **Test WebSocket support (optional)**
+4. **Test WebSocket support (optional)**
    Channels uses Redis-backed layers. Ensure the Redis credentials you configured allow the development server and workers to connect.【F:SimWorks/config/settings.py†L195-L218】
 
-4. **Verify health and GraphQL access**
+5. **Verify health and GraphQL access**
    - Visit `http://localhost:8000/health` to see the JSON health response.【F:SimWorks/core/middleware.py†L4-L14】
    - Access the private GraphQL endpoint after authenticating with a staff or `core.read_api` user. Unauthorized requests are rejected by `PrivateGraphQLView`.【F:SimWorks/core/views/views.py†L26-L43】
 
