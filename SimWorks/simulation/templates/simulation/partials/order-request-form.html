@@ -2,19 +2,20 @@
 
 <div class="overlay-content" @click.stop>
   <button class="close-button" id="close-order-request-form">✕</button>
-  <div class="lab-order-form">
+    <div class="lab-order-form">
 
-    <!-- Input field and Add button -->
-    <div class="form-group">
-      <input
-        type="text"
-        id="lab-order-input"
-        placeholder="Enter lab order"
-        maxlength="30"
-        class="order-input my-2"
-      />
-      <button type="button" id="stage-order-btn" class="btn sm ghost">Add</button>
-    </div>
+      <!-- Input field and Add button -->
+      <div class="form-group">
+        <label for="lab-order-input">Lab order</label>
+        <input
+          type="text"
+          id="lab-order-input"
+          placeholder="Enter lab order"
+          maxlength="30"
+          class="order-input my-2"
+        />
+        <button type="button" id="stage-order-btn" class="btn sm ghost">Add</button>
+      </div>
 
     <!-- Display orders staged for signature -->
     <ul id="staged-orders-list" class="staged-orders-list">
