@@ -174,5 +174,20 @@
             }
         }
     }
+
+    function toolPanelState(toolName, simulationId) {
+        const storageKey = `toolOpen_${toolName}_${simulationId}`;
+        const storedValue = localStorage.getItem(storageKey);
+        return {
+            toolName,
+            panelId: `${toolName}_tool`,
+            storageKey,
+            isOpen: storedValue === null ? true : JSON.parse(storedValue),
+            toggle() {
+                this.isOpen = !this.isOpen;
+                localStorage.setItem(this.storageKey, JSON.stringify(this.isOpen));
+            },
+        }
+    }
     </script>
 {% endblock scripts %}
