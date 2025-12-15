@@ -1,3 +1,65 @@
+function chatFormState({ isLocked, isFeedbackContinuation }) {
+    return {
+        isLocked,
+        isFeedbackContinuation,
+        messageText: '',
+        showEmojiPicker: false,
+        init() {
+            this.syncFromRoot();
+        },
+        toggleEmojiPicker() {
+            this.showEmojiPicker = !this.showEmojiPicker;
+        },
+        handleInput() {
+            this.autoResize();
+            this.notifyTyping();
+        },
+        notifyTyping() {
+            this.$root?.notifyTyping();
+        },
+        autoResize() {
+            if (this.$refs.messageInput) {
+                this.$refs.messageInput.style.height = 'auto';
+                this.$refs.messageInput.style.height = `${this.$refs.messageInput.scrollHeight}px`;
+            }
+        },
+        send() {
+            if (this.isLocked) return;
+
+            if (this.$root) {
+                this.$root.messageText = this.messageText;
+                this.$root.sendMessage();
+                this.messageText = this.$root.messageText;
+            }
+
+            this.showEmojiPicker = false;
+            this.autoResize();
+        },
+        sendFromMobile() {
+            this.send();
+        },
+        syncFromRoot() {
+            if (this.$root && typeof this.$root.messageText === 'string') {
+                this.messageText = this.$root.messageText;
+            }
+        },
+        placeholderText() {
+            if (this.isLocked) return 'Simulation locked — chat is read-only';
+            if (this.isFeedbackContinuation) return 'Message Stitch to continue feedback conversation';
+            return 'Message';
+        },
+        messageAriaLabel() {
+            return this.isLocked ? 'Simulation locked — chat is read-only' : 'Message';
+        },
+        sendAriaLabel() {
+            return this.isLocked ? 'Send message (disabled while simulation is locked)' : 'Send message';
+        },
+        emojiAriaLabel() {
+            return this.showEmojiPicker ? 'Hide emoji picker' : 'Insert emoji';
+        }
+    };
+}
+
 function ChatManager(simulation_id, currentUser, initialChecksum) {
     return {
         currentUser,
@@ -56,23 +118,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     this.loadOlderMessages();
                 }
             });
-
-            // Enhanced message input behavior: auto-resize and send on Enter, Shift+Enter for newline
-            if (this.messageInput) {
-                // Auto-resize on input
-                this.messageInput.addEventListener('input', () => {
-                    this.messageInput.style.height = 'auto';
-                    this.messageInput.style.height = this.messageInput.scrollHeight + 'px';
-                });
-
-                // Send on Enter, allow Shift+Enter for newline
-                this.messageInput.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        this.sendMessage();
-                    }
-                });
-            }
         },
         notifyTyping() {
             const now = Date.now();
@@ -484,6 +529,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 }
 
 window.ChatManager = ChatManager;
+window.chatFormState = chatFormState;
 
 function sidebarGesture() {
   return {
