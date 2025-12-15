@@ -240,6 +240,22 @@ a { color: inherit; }
 .xxxlarge { font-size:48px !important }
 .jumbo { font-size: 64px !important }
 
+.sr-only {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.show-small {
+  display: inline-flex !important;
+  align-items: center;
+}
+
 .overlay {
   position: fixed;
   top: 0;
@@ -295,6 +311,7 @@ a { color: inherit; }
 @media only screen and (min-device-width: 768px) {
     .hide-medium, .hide-large { display: none!important }
     .hide-small { display: block!important;}
+    .show-small { display: none!important; }
 }
 
 .section, .code {
