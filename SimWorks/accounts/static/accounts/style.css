@@ -18,8 +18,29 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+.invite-controls {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+  margin: 1rem 0 1.5rem;
+}
+
+.invite-filter-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+}
+
 .invite-actions {
-  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.invite-actions .btn {
+  width: 100%;
 }
 
 /* Heading styling for forms */
@@ -103,12 +124,32 @@
 }
 
 /* Responsive Layouts */
+@media (min-width: 640px) {
+  .invite-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .invite-actions .btn {
+    width: auto;
+  }
+
+  .invite-filter-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
 @media (min-width: 768px) {
   .invite-container,
   .login-container,
   .signup-container,
   .profile-container {
     max-width: 600px;
+  }
+
+  .invite-controls {
+    grid-template-columns: 2fr 1fr;
   }
 
   .tile-grid {
@@ -130,6 +171,10 @@
 }
 
 @media (max-width: 640px) {
+  .tile-grid {
+    grid-template-columns: 1fr;
+  }
+
   .invite-table {
     min-width: unset;
     display: block;
