@@ -26,13 +26,12 @@
       id="sign-orders-form"
       hx-post="{% url 'simulation:sign_orders' simulation.id %}"
       hx-trigger="submit"
-      hx-headers='{"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"}'
+      {% include 'partials/forms/_csrf_form.html' with hx_json=True %}
     >
-      {% csrf_token %}
-      <button type="submit" id="sign-orders-btn" class="btn sm accent">
-        <span>Sign Orders</span>
-      </button>
-    </form>
+        <button type="submit" id="sign-orders-btn" class="btn sm accent">
+          <span>Sign Orders</span>
+        </button>
+      </form>
 
   </div>
     <div id="orders-spinner" class="spinner">
