@@ -6,10 +6,15 @@
       hx-push-url="true"
       hx-trigger="submit"
       class="search-form flex flex-col gap-2 bg-white dark:bg-zinc-900 p-4 rounded-md shadow">
-    <input type="text" name="q" placeholder="Search for simulations..." value="{{ search_query }}" autocomplete="off">
-    <label class="flex items-center gap-2">
-        <input type="checkbox" name="search_messages" value="1" {% if search_messages %}checked{% endif %}>
-        Look in simulation messages also
-    </label>
+    <div class="form-group">
+        <label for="simulation-search-input">Search for simulations</label>
+        <input id="simulation-search-input" type="text" name="q" placeholder="Search for simulations..." value="{{ search_query }}" autocomplete="off">
+    </div>
+    <div class="form-group">
+        <label class="flex items-center gap-2 font-normal" for="search-messages-checkbox">
+            <input id="search-messages-checkbox" type="checkbox" name="search_messages" value="1" {% if search_messages %}checked{% endif %}>
+            Look in simulation messages also
+        </label>
+    </div>
     <button class="btn ghost" type="submit">Search</button>
 </form>

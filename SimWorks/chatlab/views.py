@@ -152,7 +152,7 @@ def refresh_messages(request, simulation_id):
         "-timestamp"
     )[:5]
     messages = reversed(messages)  # Show oldest at top
-    return render(request, "chatlab/partials/messages.html", {"input": messages})
+    return render(request, "chatlab/partials/messages.html", {"messages": messages})
 
 
 @require_GET
@@ -167,7 +167,7 @@ def load_older_messages(request, simulation_id):
         simulation_id=simulation_id, timestamp__lt=before_message.timestamp
     ).order_by("-timestamp")[:5]
     messages = reversed(messages)
-    return render(request, "chatlab/partials/messages.html", {"input": messages})
+    return render(request, "chatlab/partials/messages.html", {"messages": messages})
 
 
 from django.views.decorators.http import require_POST

@@ -7,9 +7,16 @@
         isFeedbackContinuation: {{ feedback_continuation|yesno:'true,false' }},
         }"
 >
-  <button type="button" id="emoji-button" title="Emoji" class="emoji-button hide-small">
+  <button
+          type="button"
+          id="emoji-button"
+          title="Emoji"
+          class="emoji-button hide-small"
+          aria-label="Insert emoji"
+  >
         <span class="iconify chat-icon" data-icon="fa6-regular:face-smile" data-inline="false"></span>
   </button>
+  <label for="chat-message-input" class="sr-only">Message</label>
   <textarea
     x-model="messageText"
     id="chat-message-input"
@@ -23,6 +30,11 @@
                 ? 'Message Stitch to continue feedback conversation'
                 : 'Message'
     "
+    :aria-label="
+        isLocked
+            ? 'Simulation locked — chat is read-only'
+            : 'Message'
+    "
     @input="notifyTyping"
     rows="1"
     style="resize: none"
@@ -31,9 +43,22 @@
     <button
             class="hide-small"
             type="submit"
-            :disabled="isLocked">
+            :disabled="isLocked"
+            :aria-label="isLocked ? 'Send message (disabled while simulation is locked)' : 'Send message'">
       <span
           class="iconify chat-icon mr-4"
+          :class="{ 'color-accent-blue': !isLocked }"
+          data-icon="bi:arrow-up-circle-fill"
+          data-inline="false"
+      ></span>
+    </button>
+    <button
+            class="show-small"
+            type="submit"
+            :disabled="isLocked"
+            :aria-label="isLocked ? 'Send message (disabled while simulation is locked)' : 'Send message'">
+      <span
+          class="iconify chat-icon"
           :class="{ 'color-accent-blue': !isLocked }"
           data-icon="bi:arrow-up-circle-fill"
           data-inline="false"

@@ -2,7 +2,8 @@
 {% for message in messages %}
   <div class="chat-bubble {% if message.sender.username == user.username %}outgoing{% else %}incoming{% endif %}"
        data-message-id="{{ message.id }}"
-        data-has-media="{{ message.has_media }}">
+       data-has-media="{{ message.has_media }}"
+       role="listitem">
     <strong class="sender-name">
       {{ message.display_name|default:message.sender.get_full_name|default:message.sender.username }}
     </strong>
@@ -17,11 +18,12 @@
     {% endif %}
     {{ message.content|linebreaksbr }}
     <div class="timestamp">
-        <span
+        <time
           class="bubble-time"
+          datetime="{{ message.timestamp|date:'c' }}"
           x-data="{ time: new Date('{{ message.timestamp|date:'c' }}').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) }"
-          x-text="time">
-        </span>
+          x-text="time"
+        >{{ message.timestamp|date:"H:i" }}</time>
         {% if message.sender == user.username %}
         <span class="status-icons" x-data="{ delivered: true, read: false }">
           <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
