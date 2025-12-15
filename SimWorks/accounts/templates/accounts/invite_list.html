@@ -44,9 +44,13 @@
     <h1>All Invitations</h1>
 
     <div class="invite-actions mb-16">
-        <button class="btn pri sm" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
-            Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
-        </button>
+        {% include 'partials/_button.html' with
+            label='Switch view'
+            variant='primary'
+            size='sm'
+            attrs='@click="viewMode = viewMode === \'list\' ? \'grid\' : \'list\'"'
+            label_attrs='x-text="`Switch to ${viewMode === \\'list\\' ? \\'Tile\\' : \\'List\\'} View`"'
+        %}
     </div>
 
     <div class="filter-bar filter-scroll">
@@ -68,9 +72,12 @@
     </div>
 
     <div class="mt-16 mx-auto invite-actions">
-        <button class="btn ghost sm" @click="clearFilters()">
-            Clear Filters
-        </button>
+        {% include 'partials/_button.html' with
+            label='Clear Filters'
+            variant='ghost'
+            size='sm'
+            attrs='@click="clearFilters()"'
+        %}
     </div>
 
     <div
@@ -93,7 +100,7 @@
         hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
         x-show="!noMore"
     >
-        <button class="btn pri sm" disabled>Loading more invitations...</button>
+        {% include 'partials/_button.html' with label='Loading more invitations...' variant='primary' size='sm' attrs='disabled' %}
     </div>
 </div>
 {% endblock %}

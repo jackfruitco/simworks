@@ -28,7 +28,7 @@
                 <label for="id_password">Password:</label>
                 {{ form.password }}
             </div>
-            <button type="submit" class="btn pri">Login</button>
+            {% include 'partials/_button.html' with label='Login' variant='primary' type='submit' %}
         </form>
         {# <p>Don't have an accounts? <a href="{% url 'signup' %}">Sign up</a></p> #}
     </div>
