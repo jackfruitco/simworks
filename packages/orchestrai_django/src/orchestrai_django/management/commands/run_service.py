@@ -34,6 +34,18 @@ class Command(BaseCommand):
             help="JSON-encoded context dict passed to the service (e.g. '{\"simulation_id\": 1}').",
         )
         parser.add_argument(
+            "--context-json",
+            dest="context_json",
+            type=str,
+            help="JSON string merged into the service context (overrides --context when keys overlap).",
+        )
+        parser.add_argument(
+            "--context-file",
+            dest="context_file",
+            type=str,
+            help="Path to a JSON file whose content is merged into the service context.",
+        )
+        parser.add_argument(
             "--mode",
             choices=("start", "schedule", "astart", "aschedule"),
             default="start",
@@ -65,13 +77,7 @@ class Command(BaseCommand):
 
         app.ensure_ready()
 
-        context_raw: str = options.get("context", "{}")
-        try:
-            context: dict[str, Any] = json.loads(context_raw) if context_raw else {}
-            if not isinstance(context, dict):
-                raise TypeError(f"context must be a JSON object, got {type(context).__name__}")
-        except Exception as exc:  # pragma: no cover - defensive parse guard
-            raise CommandError(f"Invalid --context JSON: {exc}") from exc
+        context = self._load_context(options)
 
         service_spec: str = options["service"]
         try:
@@ -113,3 +119,29 @@ class Command(BaseCommand):
             raise RegistryLookupError(
                 f"Service {spec!r} is not registered; ensure discovery ran and the service is defined."
             ) from exc
+
+    def _load_context(self, options: dict[str, Any]) -> dict[str, Any]:
+        def _coerce_json(raw: str | None) -> dict[str, Any]:
+            if not raw:
+                return {}
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise TypeError(f"context must be a JSON object, got {type(parsed).__name__}")
+            return parsed
+
+        base_ctx = _coerce_json(options.get("context", "{}"))
+        json_ctx = _coerce_json(options.get("context_json"))
+
+        file_ctx: dict[str, Any] = {}
+        path = options.get("context_file")
+        if path:
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    file_ctx = _coerce_json(fh.read())
+            except Exception as exc:  # pragma: no cover - defensive guard
+                raise CommandError(f"Invalid --context-file input: {exc}") from exc
+
+        merged: dict[str, Any] = {}
+        for ctx in (base_ctx, json_ctx, file_ctx):
+            merged.update(ctx)
+        return merged

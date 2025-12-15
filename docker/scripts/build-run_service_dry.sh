@@ -17,6 +17,6 @@ docker compose -f "$COMPOSE_FILE" exec "${SERVICE_NAME}" \
 
 echo ">>> Running manage.py run_service inside ${SERVICE_NAME}..."
 docker compose -f "${COMPOSE_FILE}" exec "${SERVICE_NAME}" \
-  python manage.py run_service chatlab.standardized_patient.initial -c "${SIM_CONTEXT}" --dry-run
+  python manage.py run_service chatlab.standardized_patient.initial --context-json "${SIM_CONTEXT}" --dry-run
 
 echo ">>> Done."
