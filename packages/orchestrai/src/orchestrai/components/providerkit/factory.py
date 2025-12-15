@@ -1,6 +1,7 @@
 # orchestrai/components/providerkit/factory.py
 
 import logging
+import os
 
 from .provider import BaseProvider, ProviderConfig
 from .exceptions import ProviderConfigurationError
@@ -67,6 +68,14 @@ def build_provider(cfg: ProviderConfig) -> BaseProvider:
     alias = cfg_dict.pop("alias", None)
 
     init_kwargs = cfg_dict
+
+    # Resolve the API key from an explicitly configured env var if provided.
+    api_key_env = init_kwargs.get("api_key_env")
+    resolved_api_key = init_kwargs.get("api_key") or (
+        api_key_env and os.getenv(str(api_key_env))
+    )
+    if resolved_api_key is not None:
+        init_kwargs["api_key"] = resolved_api_key
 
     if alias is not None:
         init_kwargs.setdefault("alias", alias)

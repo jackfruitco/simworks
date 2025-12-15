@@ -1,12 +1,9 @@
-"""Self-contained OpenAI Responses provider.
-
-The original implementation depended on the real ``openai`` client. For a
-lightweight, test-friendly core we keep a minimal stub client that can be
-monkeypatched in tests while preserving the provider contract.
-"""
+"""OpenAI Responses provider backed by the real client when available."""
 from __future__ import annotations
 
 import logging
+import os
+from importlib import import_module
 from typing import Any, Final, Literal, Optional
 
 from orchestrai.components.providerkit import BaseProvider
@@ -24,19 +21,6 @@ __all__ = ["OpenAIResponsesProvider"]
 PROVIDER_NAME: Final[Literal["openai"]] = "openai"
 API_SURFACE: Final[Literal["responses"]] = "responses"
 API_VERSION: Final[None] = None
-
-
-class _StubResponses:
-    async def create(self, **_: Any):  # pragma: no cover - default path unused in tests
-        raise ProviderError("OpenAI client not configured; monkeypatch in tests")
-
-
-class AsyncOpenAI:
-    def __init__(self, *, api_key: str | None, base_url: str | None, timeout: int | None):
-        self.api_key = api_key
-        self.base_url = base_url
-        self.timeout = timeout
-        self.responses = _StubResponses()
 
 
 NOT_GIVEN = object()
@@ -58,6 +42,7 @@ class OpenAIResponsesProvider(BaseProvider):
         default_model: str | None = None,
         model: str | None = None,
         timeout_s: int = 60,
+        client: Any | None = None,
         profile: str | None = None,
         slug: Optional[str] = None,
         description: str | None = None,
@@ -80,15 +65,47 @@ class OpenAIResponsesProvider(BaseProvider):
         self.base_url = base_url
         self.default_model = default_model if default_model is not None else model
         self.timeout_s = timeout_s
-        self._client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout_s)
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self._client = self._resolve_client(client)
         self.set_tool_adapter(OpenAIToolAdapter())
         self._output_adapters = [ImageGenerationOutputAdapter()]
 
+    def _resolve_client(self, client: Any | None) -> Any:
+        if client is not None:
+            return client
+
+        if not self.api_key:
+            return None
+
+        try:
+            openai_module = import_module("openai")
+        except ModuleNotFoundError:
+            logger.debug("OpenAI package not available; client will remain unset")
+            return None
+
+        client_cls = getattr(openai_module, "AsyncOpenAI", None)
+        if client_cls is None:
+            logger.debug("openai.AsyncOpenAI not found; client will remain unset")
+            return None
+
+        return client_cls(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout_s)
+
     async def healthcheck(self, *, timeout: float | None = None) -> tuple[bool, str]:
-        # Lightweight stubbed healthcheck
-        return True, "openai stub ready"
+        if not self.api_key:
+            return False, "Missing OpenAI API key (set ORCA_PROVIDER_API_KEY or OPENAI_API_KEY)"
+
+        if self._client is None:
+            return False, "OpenAI client unavailable; install the 'openai' package or inject a client"
+
+        return True, "OpenAI client ready"
 
     async def call(self, req: Request, timeout: float | None = None) -> Response:
+        if not self.api_key:
+            raise ProviderError("OpenAI API key is required (set ORCA_PROVIDER_API_KEY or OPENAI_API_KEY)")
+
+        if self._client is None:
+            raise ProviderError("OpenAI client not available; install the 'openai' package or inject a client")
+
         async with service_span(
             "simcore.client.call",
             attributes={
@@ -119,7 +136,7 @@ class OpenAIResponsesProvider(BaseProvider):
             return self.adapt_response(resp, output_schema_cls=req.response_schema)
 
     async def stream(self, req: Request):  # pragma: no cover - streaming not implemented
-        raise ProviderError("Streaming not implemented in stub provider")
+        raise ProviderError("Streaming not implemented for OpenAI responses provider")
 
     # Provider hooks --------------------------------------------------
     def _extract_text(self, resp: Any) -> Optional[str]:
