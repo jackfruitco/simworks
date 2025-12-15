@@ -1,8 +1,8 @@
-from orchestrai.registry.simple import Registry
+from orchestrai.registry.simple import AppRegistry
 
 
 def test_finalize_callbacks_registered_and_invoked_with_app():
-    registry = Registry()
+    registry = AppRegistry()
     calls = []
 
     def callback(app):
@@ -18,7 +18,7 @@ def test_finalize_callbacks_registered_and_invoked_with_app():
 
 
 def test_finalize_defaults_to_registry_when_no_app_provided():
-    registry = Registry()
+    registry = AppRegistry()
     captured = []
 
     registry.add_finalize_callback(lambda app: captured.append(app))

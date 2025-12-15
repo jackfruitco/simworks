@@ -1,4 +1,4 @@
-# orchestrai/contrib/provideR_backends/openai/scheme_adapters.py
+# orchestrai/contrib/provideR_backends/openai/schema_adapters.py
 """
 OpenAI-specific schema adapters.
 

@@ -13,6 +13,7 @@ from orchestrai.tracing import flatten_context as _flatten_context, service_span
 from orchestrai.types import Request, Response
 from .output_adapters import ImageGenerationOutputAdapter
 from .tools import OpenAIToolAdapter
+from orchestrai.utils import clean_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,6 @@ __all__ = ["OpenAIResponsesProvider"]
 PROVIDER_NAME: Final[Literal["openai"]] = "openai"
 API_SURFACE: Final[Literal["responses"]] = "responses"
 API_VERSION: Final[None] = None
-
-
-NOT_GIVEN = object()
 
 
 @provider_backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
@@ -123,16 +121,18 @@ class OpenAIResponsesProvider(BaseProvider):
             model_name = req.model or self.default_model or "gpt-4o-mini"
             response_format = getattr(req, "provider_response_format", None) or getattr(req, "response_schema_json", None)
 
-            resp = await self._client.responses.create(
-                model=model_name,
-                input=input_,
-                previous_response_id=req.previous_response_id or NOT_GIVEN,
-                tools=native_tools or NOT_GIVEN,
-                tool_choice=req.tool_choice or NOT_GIVEN,
-                max_output_tokens=req.max_output_tokens or NOT_GIVEN,
-                timeout=timeout or self.timeout_s or NOT_GIVEN,
-                text=response_format or NOT_GIVEN,
-            )
+            raw_kwargs: dict[str, Any] = {
+                "model": model_name,
+                "input": input_,
+                "previous_response_id": req.previous_response_id,
+                "tools": native_tools if native_tools else None,
+                "tool_choice": req.tool_choice,
+                "max_output_tokens": req.max_output_tokens,
+                "timeout": (timeout if timeout is not None else self.timeout_s),
+                "text": response_format,
+            }
+
+            resp = await self._client.responses.create(**clean_kwargs(raw_kwargs))
             return self.adapt_response(resp, output_schema_cls=req.response_schema)
 
     async def stream(self, req: Request):  # pragma: no cover - streaming not implemented

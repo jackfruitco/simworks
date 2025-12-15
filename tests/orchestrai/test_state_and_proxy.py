@@ -5,7 +5,7 @@ import pytest
 
 from orchestrai import OrchestrAI, current_app, get_current_app
 from orchestrai._state import push_current_app
-from orchestrai.registry.simple import Registry
+from orchestrai.registry.simple import AppRegistry
 from orchestrai.utils.proxy import Proxy, maybe_evaluate
 
 
@@ -37,7 +37,7 @@ def test_proxy_delegates_attributes_and_call():
 
 
 def test_registry_freeze_blocks_registration():
-    reg = Registry()
+    reg = AppRegistry()
     reg.register("one", 1)
     reg.freeze()
 
@@ -46,12 +46,12 @@ def test_registry_freeze_blocks_registration():
 
 
 def test_registry_try_get_returns_none_for_missing_key():
-    reg = Registry()
+    reg = AppRegistry()
 
     assert reg.try_get("missing") is None
 
 
 def test_registry_atry_get_returns_none_for_missing_key():
-    reg = Registry()
+    reg = AppRegistry()
 
     assert asyncio.run(reg.atry_get("missing")) is None
