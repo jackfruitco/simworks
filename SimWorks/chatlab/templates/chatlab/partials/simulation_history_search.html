@@ -6,15 +6,11 @@
       hx-push-url="true"
       hx-trigger="submit"
       class="search-form flex flex-col gap-2 bg-white dark:bg-zinc-900 p-4 rounded-md shadow">
-    <div class="form-group">
-        <label for="simulation-search-input">Search for simulations</label>
-        <input id="simulation-search-input" type="text" name="q" placeholder="Search for simulations..." value="{{ search_query }}" autocomplete="off">
-    </div>
-    <div class="form-group">
-        <label class="flex items-center gap-2 font-normal" for="search-messages-checkbox">
-            <input id="search-messages-checkbox" type="checkbox" name="search_messages" value="1" {% if search_messages %}checked{% endif %}>
-            Look in simulation messages also
-        </label>
-    </div>
+    {% with search_input="<input id='simulation-search-input' type='text' name='q' placeholder='Search for simulations...' value='"|add:search_query|add:"' autocomplete='off'>" %}
+        {% include "partials/forms/_field.html" with label="Search for simulations" id="simulation-search-input" widget=search_input %}
+    {% endwith %}
+    {% with checkbox_input="<input id='search-messages-checkbox' type='checkbox' name='search_messages' value='1' "|add:("checked" if search_messages else "")|add:" >" %}
+        {% include "partials/forms/_field.html" with label="Look in simulation messages also" widget=checkbox_input label_after_widget=True %}
+    {% endwith %}
     <button class="btn ghost" type="submit">Search</button>
 </form>
