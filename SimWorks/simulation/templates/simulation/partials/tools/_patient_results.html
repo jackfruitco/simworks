@@ -44,7 +44,10 @@
             </table>
         </div>
     {% else %}
-      <div class="sim-metadata-empty">No results available yet.</div>
+      {% include 'partials/_empty_state.html' with
+          title="No results yet"
+          body="Order labs or imaging to see results populate here."
+          extra_classes="sim-metadata-empty" %}
     {% endif %}
 
     <!-- Order Request Form -->

@@ -467,6 +467,37 @@ a { color: inherit; }
 }
 
 /* ───────────────────────────────────────────────
+   Shared Styles: Empty States
+────────────────────────────────────────────────── */
+
+.empty-state {
+  background-color: var(--color-bg-alt);
+  border: 1px dashed var(--color-border);
+  border-radius: 0.75rem;
+  color: var(--color-text-dark);
+  padding: 1rem;
+  text-align: center;
+}
+
+.empty-state__title {
+  margin: 0;
+}
+
+.empty-state__body {
+  color: var(--color-muted);
+  margin: 0.35rem 0 0;
+}
+
+.empty-state__cta {
+  margin-top: 0.75rem;
+}
+
+.list-style-none {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* ───────────────────────────────────────────────
    Shared Styles: Error Messages
 ────────────────────────────────────────────────── */
 
