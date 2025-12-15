@@ -12,8 +12,13 @@
         {% include 'chatlab/partials/simulation_history_search.html' %}
         {% include 'chatlab/partials/simulation_history_list.html' %}
     {% else %}
-        <p class="no-simulations-msg">You haven't started any simulations... <a
-                href="{% url 'chatlab:create_simulation' %}" class="btn sm">start one now</a> and let the chaos begin 🩺💥</p>
+        {% url 'chatlab:create_simulation' as create_simulation_url %}
+        {% include 'partials/_empty_state.html' with
+            title="No simulations yet"
+            body="Start your first scenario to see it show up here."
+            cta_url=create_simulation_url
+            cta_text="Start a simulation"
+            cta_class="btn sm pri" %}
     {% endif %}
 
 </section>

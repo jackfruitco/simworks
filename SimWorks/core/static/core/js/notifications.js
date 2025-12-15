@@ -1,10 +1,57 @@
+const PERSISTED_TOASTS_KEY = "persisted_toasts";
+
+const getPersistedToasts = () =>
+  JSON.parse(sessionStorage.getItem(PERSISTED_TOASTS_KEY) || "[]");
+
+const savePersistedToasts = (toasts) =>
+  sessionStorage.setItem(PERSISTED_TOASTS_KEY, JSON.stringify(toasts));
+
+const removePersistedToast = (message) => {
+  if (!message) return;
+  const updated = getPersistedToasts().filter((toast) => toast.message !== message);
+  savePersistedToasts(updated);
+};
+
+document.addEventListener("alpine:init", () => {
+  Alpine.data("toastController", (message, extraTags = "", duration = 5000) => ({
+    show: true,
+    duration,
+    extraTags,
+    message,
+    timeoutId: null,
+    get persistent() {
+      return (this.extraTags || "").includes("persistent");
+    },
+    init() {
+      if (!this.persistent) {
+        this.startTimer();
+      }
+    },
+    startTimer() {
+      this.clearTimer();
+      this.timeoutId = setTimeout(() => this.dismiss(), this.duration);
+    },
+    clearTimer() {
+      if (this.timeoutId) {
+        clearTimeout(this.timeoutId);
+        this.timeoutId = null;
+      }
+    },
+    dismiss() {
+      this.clearTimer();
+      this.show = false;
+      removePersistedToast(this.message);
+    },
+  }));
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
   const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/`;
 
   const notificationSocket = new WebSocket(wsUrl);
 
-  const persisted = JSON.parse(sessionStorage.getItem("persisted_toasts") || "[]");
+  const persisted = getPersistedToasts();
   const now = Date.now();
   const valid = [];
 
@@ -14,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
       valid.push({ message, timestamp });
     }
   });
-  sessionStorage.setItem("persisted_toasts", JSON.stringify(valid));
+  savePersistedToasts(valid);
 
   notificationSocket.onmessage = function(event) {
     const data = JSON.parse(event.data);
@@ -25,10 +72,10 @@ document.addEventListener("DOMContentLoaded", () => {
         type: data.type || "info"
       };
 
-      const stored = JSON.parse(sessionStorage.getItem("persisted_toasts") || "[]");
+      const stored = getPersistedToasts();
       if (!stored.find(n => n.message === data.notification)) {
           stored.push(toastData);
-          sessionStorage.setItem("persisted_toasts", JSON.stringify(stored));
+          savePersistedToasts(stored);
           showToast(toastData);
       }
     }
@@ -70,8 +117,7 @@ function showToast({ message, type }) {
   close.className = "dismiss";
   close.setAttribute("aria-label", "Dismiss");
   close.onclick = () => {
-    const updated = JSON.parse(sessionStorage.getItem("persisted_toasts") || "[]").filter(n => n.message !== message);
-    sessionStorage.setItem("persisted_toasts", JSON.stringify(updated));
+    removePersistedToast(message);
     toast.remove();
   };
 
