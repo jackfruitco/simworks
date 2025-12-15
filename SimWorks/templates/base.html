@@ -11,12 +11,9 @@
     {% endblock style %}
     {% block head-scripts %}
         <script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
-        <!--<script SimWorks="{% static 'js/htmx.min.js' %}" defer></script>-->
-        <!--<script SimWorks="{% static 'js/intersect.min.js'%}" defer></script>--->
-        <!--<script SimWorks="{% static "js/alpine.min.js" %}" defer></script>--->
-        <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-        <script src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.x.x/dist/cdn.min.js" defer></script>
-        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+        <script src="{% static 'js/alpine.min.js' %}" defer></script>
+        <script src="{% static 'js/intersect.min.js' %}" defer></script>
+        <script src="{% static 'js/htmx.min.js' %}"></script>
     {% endblock head-scripts %}
     <meta name="csrf-token" content="{{ csrf_token }}">
     <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1">
@@ -72,7 +69,7 @@
                          <button onclick="this.parentElement.remove()">X</button>`;
       container.insertBefore(toast, container.firstChild);
 
-      const sound = document.getElementById("toast-sound");
+      const sound = document.getElementById("alert-sound");
       if (sound) {
         sound.currentTime = 0;
         sound.play().catch(() => {});
