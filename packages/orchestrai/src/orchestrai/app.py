@@ -92,6 +92,10 @@ class OrchestrAI:
             self._fixup_specs.extend(self.fixups)
             self.fixups = []
 
+        # Load user overrides from the default settings module and optional envvar
+        self.conf.update_from_object("orchestrai.settings")
+        self.conf.update_from_envvar()
+
     # ------------------------------------------------------------------
     # Current app helpers
     # ------------------------------------------------------------------
@@ -139,6 +143,7 @@ class OrchestrAI:
         self._configure_fixups()
         self._configure_clients()
         self._configure_providers()
+        self._refresh_identity_strip_tokens()
 
         self._setup_done = True
         return self
@@ -251,6 +256,14 @@ class OrchestrAI:
             return
         for name, definition in dict(self.conf.get("PROVIDERS", {})).items():
             self.providers.register(name, definition)
+
+    def _refresh_identity_strip_tokens(self) -> None:
+        """Compile and persist identity strip tokens onto app settings."""
+
+        from .identity.utils import get_effective_strip_tokens
+
+        with self.as_current():
+            self.conf["IDENTITY_STRIP_TOKENS"] = get_effective_strip_tokens()
 
     def set_client(self, name: str, client):
         self.clients.register(name, client)

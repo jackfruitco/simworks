@@ -26,7 +26,7 @@ import logging
 import os
 import re
 from collections.abc import Iterable, Callable
-from typing import Optional, Union, TYPE_CHECKING
+from typing import Optional, Union, TYPE_CHECKING, Any
 
 from .exceptions import IdentityError
 
@@ -112,27 +112,65 @@ def _normalize_segments_to_name(segments: list[str], *, lower: bool = True) -> s
     return s.lower() if lower else s
 
 
+def _as_list_from_maybe_csv(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [t for t in re.split(r"[\s,]+", value.strip()) if t]
+    if isinstance(value, (list, tuple)):
+        return [str(t) for t in value if isinstance(t, str) and t]
+    return []
+
+
+def _tokens_from_settings() -> list[str]:
+    try:
+        from orchestrai._state import get_current_app
+
+        app = get_current_app()
+        conf = getattr(app, "conf", None)
+    except Exception:
+        return []
+
+    if conf is None:
+        return []
+
+    try:
+        value = conf.get("IDENTITY_STRIP_TOKENS")
+    except Exception:
+        value = getattr(conf, "IDENTITY_STRIP_TOKENS", None)
+
+    return _as_list_from_maybe_csv(value)
+
+
+def _tokens_from_env() -> list[str]:
+    env_value = os.getenv("IDENTITY_STRIP_TOKENS") or os.getenv("SIMCORE_IDENTITY_STRIP_TOKENS")
+    return _as_list_from_maybe_csv(env_value)
+
+
+def _persist_tokens_on_app(tokens: tuple[str, ...]) -> None:
+    try:
+        from orchestrai._state import get_current_app
+
+        app = get_current_app()
+        conf = getattr(app, "conf", None)
+        if conf is not None:
+            conf["IDENTITY_STRIP_TOKENS"] = tokens
+    except Exception:
+        logger.debug("Failed to persist IDENTITY_STRIP_TOKENS on current app", exc_info=True)
+
+
 def get_effective_strip_tokens(extra_tokens: Iterable[str] = ()) -> tuple[str, ...]:
-    """Return the effective strip tokens, merged from defaults and caller extras.
+    """Return the effective strip tokens merged from defaults, settings, env, extras."""
 
-    Order of precedence (for de-duplication only):
-      1) DEFAULT_IDENTITY_STRIP_TOKENS (built-in segments)
-      2) `extra_tokens` supplied by the caller (e.g., app/framework settings)
-
-    Tokens are treated case-insensitively for uniqueness, but their original
-    spelling is preserved in the returned tuple.
-    """
-    # Start with built-in defaults
     base_tokens = list(DEFAULT_IDENTITY_STRIP_TOKENS)
-    cfg_tokens: list[str] = []
-
-    # Normalize caller extras to a list
+    settings_tokens = _tokens_from_settings()
+    env_tokens = _tokens_from_env()
     extra_list = list(extra_tokens or [])
 
     merged: list[str] = []
     seen: set[str] = set()
 
-    for source in (base_tokens, cfg_tokens, extra_list):
+    for source in (base_tokens, settings_tokens, env_tokens, extra_list):
         for t in source:
             if not isinstance(t, str) or not t:
                 continue
@@ -142,7 +180,9 @@ def get_effective_strip_tokens(extra_tokens: Iterable[str] = ()) -> tuple[str, .
             seen.add(key)
             merged.append(t)
 
-    return tuple(merged)
+    merged_tuple = tuple(merged)
+    _persist_tokens_on_app(merged_tuple)
+    return merged_tuple
 
 
 def strip_tokens(name: str, extra_tokens: Iterable[str] = ()) -> str:
