@@ -51,11 +51,6 @@
     {% endif %}
 
     <!-- Order Request Form -->
-    <div id="order-request-form"
-         class="overlay"
-         data-simulation-id="{{ simulation.id }}"
-         style="display: none;">
-        {% include "simulation/partials/order-request-form.html" %}
-    </div>
+    {% include "simulation/partials/order-request-form.html" %}
 </div>
 <script src="{% static 'js/patient_orders.js' %}"></script>

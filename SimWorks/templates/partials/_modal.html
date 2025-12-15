@@ -1,0 +1,42 @@
+{% comment %}
+  Generic modal partial for accessible dialogs.
+  Expected context variables:
+    - modal_id: unique id for the modal container
+    - modal_label_id: id for the modal title
+    - modal_body_id: id for the modal body/description
+    - modal_title: text for the modal heading
+    - modal_body_template: template path to render inside the modal body
+    - modal_close_id (optional): id for the close button
+    - modal_extra_attrs (optional): extra attributes to add to the modal root
+{% endcomment %}
+<div
+  id="{{ modal_id }}"
+  class="overlay hidden"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="{{ modal_label_id }}"
+  aria-describedby="{{ modal_body_id }}"
+  aria-hidden="true"
+  {% if modal_extra_attrs %}{{ modal_extra_attrs|safe }}{% endif %}
+>
+  <div class="modal-backdrop" data-modal-backdrop></div>
+  <div class="overlay-content" role="document">
+    <div tabindex="0" class="sr-only focus-guard" data-focus-guard="start"></div>
+    <header class="modal-header">
+      <h2 id="{{ modal_label_id }}" class="modal-title">{{ modal_title }}</h2>
+      <button
+        type="button"
+        class="close-button"
+        aria-label="Close dialog"
+        data-modal-close
+        {% if modal_close_id %}id="{{ modal_close_id }}"{% endif %}
+      >
+        ✕
+      </button>
+    </header>
+    <div id="{{ modal_body_id }}" class="modal-body">
+      {% include modal_body_template %}
+    </div>
+    <div tabindex="0" class="sr-only focus-guard" data-focus-guard="end"></div>
+  </div>
+</div>

@@ -1,0 +1,32 @@
+<div class="lab-order-form">
+  <div class="form-group space-y-2">
+    <label for="lab-order-input">Lab order</label>
+    <input
+      type="text"
+      id="lab-order-input"
+      placeholder="Enter lab order"
+      maxlength="30"
+      class="order-input my-2"
+      data-modal-initial-focus
+    />
+    <button type="button" id="stage-order-btn" class="btn sm ghost">Add</button>
+  </div>
+
+  <ul id="staged-orders-list" class="staged-orders-list" aria-live="polite" aria-label="Orders staged for signature"></ul>
+
+  <form
+    id="sign-orders-form"
+    hx-post="{% url 'simulation:sign_orders' simulation.id %}"
+    hx-trigger="submit"
+    hx-headers='{"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"}'
+    aria-label="Sign staged orders"
+  >
+    {% csrf_token %}
+    <button type="submit" id="sign-orders-btn" class="btn sm accent">
+      <span>Sign Orders</span>
+    </button>
+  </form>
+</div>
+<div id="orders-spinner" class="spinner" aria-hidden="true">
+  <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3" data-inline="false"></span>
+</div>

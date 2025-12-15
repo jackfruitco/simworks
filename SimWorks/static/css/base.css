@@ -262,11 +262,21 @@ a { color: inherit; }
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(128, 128, 128, 0.8);
   z-index: 9999;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
+  background-color: transparent;
+}
+
+.overlay.visible {
+  display: flex !important;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(128, 128, 128, 0.8);
 }
 
 .overlay-content {
@@ -278,12 +288,28 @@ a { color: inherit; }
   position: relative;
   max-width: 600px;
   width: 90%;
+  z-index: 1;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.modal-body {
+  display: grid;
+  gap: 1rem;
 }
 
 .close-button {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.75rem;
   background: transparent;
   border: none;
   font-size: 1.25rem;
