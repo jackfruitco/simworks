@@ -5,31 +5,51 @@
 <div class="invite-container" x-data="{
     viewMode: 'list',
     page: 1,
-    loading: false,
     noMore: false,
     claimedFilter: '',
     expiredFilter: '',
     invitedByFilter: [],
-}" x-init="() => {
-    window.addEventListener('scroll', () => {
-        const loader = document.getElementById('pagination-loader');
-        if (loader && loader.getBoundingClientRect().top < window.innerHeight) {
-            loader.dispatchEvent(new Event('revealed'));
+    init() {
+        ['viewMode', 'claimedFilter', 'expiredFilter', 'invitedByFilter'].forEach((key) => {
+            this.$watch(key, () => this.refreshList());
+        });
+    },
+    htmxVals(pageNumber) {
+        return JSON.stringify({
+            page: pageNumber,
+            view_mode: this.viewMode,
+            claimed: this.claimedFilter,
+            expired: this.expiredFilter,
+            invited_by: this.invitedByFilter,
+        });
+    },
+    refreshList() {
+        this.page = 1;
+        this.noMore = false;
+        this.$dispatch('filters-changed');
+    },
+    clearFilters() {
+        this.claimedFilter = '';
+        this.expiredFilter = '';
+        this.invitedByFilter = [];
+    },
+    handleAfterSwap(event) {
+        if (event.detail.xhr && event.detail.xhr.responseText.trim() !== '') {
+            this.page++;
+        } else {
+            this.noMore = true;
         }
-    });
-}">
+    }
+}" x-init="init()">
     <h1>All Invitations</h1>
 
-    <div class="mb-16" style="text-align: right;">
-        <button class="btn pri sm"
-            @click="viewMode = viewMode === 'list' ? 'grid' : 'list';
-                    document.getElementById('invite-list').innerHTML = '';
-                    document.getElementById('invite-list').dispatchEvent(new Event('load'))">
+    <div class="invite-actions mb-16">
+        <button class="btn pri sm" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
             Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
         </button>
     </div>
 
-    <div class="filter-bar" style="max-height: 300px; overflow-y: auto;">
+    <div class="filter-bar filter-scroll">
         <select class="filter-input" x-model="claimedFilter">
             <option value="">All</option>
             <option value="true">Claimed</option>
@@ -47,28 +67,34 @@
         </select>
     </div>
 
-    <div class="mt-16 mx-auto" style="text-align: right;">
-        <button class="btn ghost sm" @click="claimedFilter = ''; expiredFilter = ''; invitedByFilter = []; page = 1; $nextTick(() => { document.getElementById('invite-list').innerHTML = ''; document.getElementById('invite-list').dispatchEvent(new Event('load')); })">
+    <div class="mt-16 mx-auto invite-actions">
+        <button class="btn ghost sm" @click="clearFilters()">
             Clear Filters
         </button>
     </div>
 
-    <div id="invite-list" :hx-get="`/accounts/invitations/list/?page=1&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`" hx-trigger="load" hx-target="#invite-list" hx-swap="beforeend">
+    <div
+        id="invite-list"
+        hx-get="/accounts/invitations/list/"
+        hx-trigger="load, filters-changed from:closest .invite-container"
+        hx-target="#invite-list"
+        hx-swap="innerHTML"
+        :hx-vals="htmxVals(1)"
+    >
     </div>
 
 <div
     id="pagination-loader"
     class="mt-16 mx-auto center"
-    :hx-get="`/accounts/invitations/list/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
+    hx-get="/accounts/invitations/list/"
     hx-trigger="revealed"
     hx-target="#invite-list"
     hx-swap="beforeend"
-    hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
+    :hx-vals="htmxVals(page + 1)"
+    hx-on:htmx:afterSwap="handleAfterSwap($event)"
     x-show="!noMore"
 >
     <button class="btn pri sm" disabled>Loading more invitations...</button>
 </div>
-        <button class="btn pri sm" disabled>Loading more invitations...</button>
-    </div>
 </div>
 {% endblock %}
