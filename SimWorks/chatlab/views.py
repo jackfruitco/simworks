@@ -2,8 +2,13 @@
 import logging
 
 from asgiref.sync import sync_to_async
-from chatlab.utils import create_new_simulation, maybe_start_simulation
+from chatlab.utils import (
+    SimulationSchedulingError,
+    create_new_simulation,
+    maybe_start_simulation,
+)
 from core.decorators import resolve_user, simulation_required
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
@@ -68,7 +73,20 @@ def index(request):
 @resolve_user
 async def create_simulation(request):
     modifiers = request.GET.getlist("modifier")
-    simulation = await create_new_simulation(user=request.user, modifiers=modifiers)
+    try:
+        simulation = await create_new_simulation(user=request.user, modifiers=modifiers)
+    except SimulationSchedulingError as exc:
+        logger.error(
+            "Failed to create chatlab simulation for user=%s: %s",
+            request.user,
+            exc,
+            exc_info=exc,
+        )
+        messages.error(
+            request,
+            "We couldn't start your simulation right now. Please try again shortly.",
+        )
+        return await sync_to_async(redirect)("chatlab:index")
     return await sync_to_async(redirect)(
         "chatlab:run_simulation", simulation_id=simulation.id
     )
