@@ -8,5 +8,6 @@ DEFAULTS: dict[str, object] = {
     "DISCOVERY_PATHS": (),
     "FIXUPS": (),
     "LOADER": "orchestrai.loaders.default:DefaultLoader",
+    "IDENTITY_STRIP_TOKENS": tuple(),
 }
 

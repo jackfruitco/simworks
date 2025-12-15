@@ -45,6 +45,9 @@ class ServiceDecorator(BaseDecorator):
         # Always register into the service registry
         return _Registry
 
+    # Human-friendly log label
+    log_category = "services"
+
     def register(self, candidate: Type[Any]) -> None:
         # Guard: ensure we only register service classes
         if not issubclass(candidate, BaseService):

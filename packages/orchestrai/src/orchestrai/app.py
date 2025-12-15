@@ -80,7 +80,9 @@ class OrchestrAI:
 
     services: ServiceRunnerRegistry = field(default_factory=ServiceRunnerRegistry)
     codecs: AppRegistry = field(default_factory=AppRegistry)
+    output_schemas: AppRegistry = field(default_factory=AppRegistry)
     providers: AppRegistry = field(default_factory=AppRegistry)
+    provider_backends: AppRegistry = field(default_factory=AppRegistry)
     clients: AppRegistry = field(default_factory=AppRegistry)
     prompt_sections: AppRegistry = field(default_factory=AppRegistry)
 
@@ -89,6 +91,10 @@ class OrchestrAI:
         if self.fixups:
             self._fixup_specs.extend(self.fixups)
             self.fixups = []
+
+        # Load user overrides from the default settings module and optional envvar
+        self.conf.update_from_object("orchestrai.settings")
+        self.conf.update_from_envvar()
 
     # ------------------------------------------------------------------
     # Current app helpers
@@ -137,6 +143,7 @@ class OrchestrAI:
         self._configure_fixups()
         self._configure_clients()
         self._configure_providers()
+        self._refresh_identity_strip_tokens()
 
         self._setup_done = True
         return self
@@ -171,7 +178,9 @@ class OrchestrAI:
         registries: tuple[BaseRegistry[str, Any], ...] = (
             self.services,
             self.codecs,
+            self.output_schemas,
             self.providers,
+            self.provider_backends,
             self.clients,
             self.prompt_sections,
         )
@@ -248,6 +257,14 @@ class OrchestrAI:
         for name, definition in dict(self.conf.get("PROVIDERS", {})).items():
             self.providers.register(name, definition)
 
+    def _refresh_identity_strip_tokens(self) -> None:
+        """Compile and persist identity strip tokens onto app settings."""
+
+        from .identity.utils import get_effective_strip_tokens
+
+        with self.as_current():
+            self.conf["IDENTITY_STRIP_TOKENS"] = get_effective_strip_tokens()
+
     def set_client(self, name: str, client):
         self.clients.register(name, client)
 
@@ -288,13 +305,16 @@ class OrchestrAI:
         sections = (
             ("services", self.services),
             ("providers", self.providers),
+            ("provider_backends", self.provider_backends),
             ("clients", self.clients),
             ("codecs", self.codecs),
+            ("output_schemas", self.output_schemas),
             ("prompt_sections", self.prompt_sections),
         )
         lines = ["Registered components:"]
         for label, registry in sections:
-            names = sorted(registry.all().keys())
+            all_items = registry.all()
+            names = sorted(all_items.keys() if isinstance(all_items, dict) else all_items)
             items = ", ".join(names) if names else "<none>"
             lines.append(f"- {label}: {items}")
         return "\n".join(lines) + "\n"
@@ -328,16 +348,35 @@ class OrchestrAI:
         """Populate app registries from globally discovered component registries."""
 
         try:
-            from orchestrai.registry.singletons import services as service_components
+            from orchestrai.registry import singletons as global_components
         except Exception:
             return
 
-        registered = self.services.all()
-        for svc in service_components.all():
-            label = getattr(getattr(svc, "identity", None), "as_str", None) or str(svc)
-            if label in registered:
-                continue
-            self.services.register(label, svc)
+        def _existing_keys(registry: AppRegistry) -> set[str]:
+            current = registry.all()
+            if isinstance(current, dict):
+                return set(current.keys())
+            return set(str(item) for item in current)
+
+        def _attach(global_registry, app_registry: AppRegistry):
+            registered = _existing_keys(app_registry)
+            for component in getattr(global_registry, "all", lambda: ())():
+                label = getattr(getattr(component, "identity", None), "as_str", None) or str(component)
+                if label in registered:
+                    continue
+                app_registry.register(label, component)
+
+        registry_pairs = (
+            (global_components.services, self.services),
+            (global_components.codecs, self.codecs),
+            (global_components.schemas, self.output_schemas),
+            (global_components.prompt_sections, self.prompt_sections),
+            (global_components.provider_backends, self.provider_backends),
+            (global_components.providers, self.providers),
+        )
+
+        for global_registry, app_registry in registry_pairs:
+            _attach(global_registry, app_registry)
 
     def _resolve_fixup(self, spec: object) -> BaseFixup:
         if isinstance(spec, BaseFixup):

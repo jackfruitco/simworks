@@ -3,14 +3,23 @@ from __future__ import annotations
 
 from .base import BaseRegistry, ComponentRegistry
 from .simple import AppRegistry
-from .singletons import codecs, prompt_sections, provider_backends, providers
+from .singletons import (
+    codecs,
+    prompt_sections,
+    provider_backends,
+    providers,
+    schemas,
+    services,
+)
 
 __all__ = [
     "AppRegistry",
     "BaseRegistry",
     "ComponentRegistry",
+    "services",
     "provider_backends",
     "providers",
     "codecs",
     "prompt_sections",
+    "schemas",
 ]
