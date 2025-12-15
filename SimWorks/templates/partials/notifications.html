@@ -1,7 +1,9 @@
 <div class="fixed top-0 right-0 m-4 space-y-2" id="notifications-container">
   {% for message in messages reversed %}
-    {% with is_persistent='persistent' in message.tags %}
-      {% include 'partials/_toast.html' with content=message tone=message.tags persistent=is_persistent %}
-    {% endwith %}
+    {% if 'persistent' in message.tags %}
+      {% include 'partials/_toast.html' with content=message tone=message.tags persistent=True %}
+    {% else %}
+      {% include 'partials/_toast.html' with content=message tone=message.tags persistent=False %}
+    {% endif %}
   {% endfor %}
 </div>
