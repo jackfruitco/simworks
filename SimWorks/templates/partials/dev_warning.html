@@ -1,7 +1,6 @@
 <div class="fixed top-0 right-0 m-4 space-y-2" id="notifications-container">
     <div
-        x-data="{ show: true }"
-        x-init="if (!'toast-warning warning persistent'.includes('persistent')) { setTimeout(() => show = false, 5000) }"
+        x-data="toastController('SimWorks is still under active development.', 'toast-warning warning persistent')"
         x-show="show"
         x-transition:enter="transition ease-out duration-300 transform"
         x-transition:enter-start="opacity-0 translate-y-2"
@@ -30,6 +29,6 @@
                 Sorry for the inconvenience, and thanks for using the app!
             </p>
         </div>
-        <button @click="show = false" class="dismiss" aria-label="Dismiss">&times;</button>
+        <button @click="dismiss()" class="dismiss" aria-label="Dismiss">&times;</button>
     </div>
 </div>

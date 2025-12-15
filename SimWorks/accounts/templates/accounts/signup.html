@@ -18,26 +18,14 @@
     {% endif %}
     <form method="post" action="{% url 'accounts:register' %}">
         {% csrf_token %}
-        <div class="form-group">
-            <label for="{{ form.invitation_token.id_for_label }}">Invitation Token:</label>
-            {% if token %}
-                <input type="text" name="{{ form.invitation_token.name }}" id="{{ form.invitation_token.id_for_label }}" value="{{ token }}" readonly>
-            {% else %}
-                {{ form.invitation_token }}
-            {% endif %}
-        </div>
+        {% if token %}
+            {% include "partials/forms/_field.html" with field=form.invitation_token widget="<input type='text' name='"|add:form.invitation_token.name|add:"' id='"|add:form.invitation_token.id_for_label|add:"' value='"|add:token|add:"' readonly>" %}
+        {% else %}
+            {% include "partials/forms/_field.html" with field=form.invitation_token %}
+        {% endif %}
         {% for field in form %}
             {% if field.name != "invitation_token" %}
-                <p>
-                    {{ field.label_tag }}<br>
-                    {{ field }}
-                    {% if field.errors %}
-                        <span class="error">{{ field.errors }}</span>
-                    {% endif %}
-                    {% if field.help_text %}
-                        <small>{{ field.help_text }}</small>
-                    {% endif %}
-                </p>
+                {% include "partials/forms/_field.html" with field=field %}
             {% endif %}
         {% endfor %}
         {% include 'partials/_button.html' with label='Sign Up' variant='primary' type='submit' %}

@@ -43,41 +43,33 @@
 }" x-init="init()">
     <h1>All Invitations</h1>
 
-    <div class="invite-actions mb-16">
-        {% include 'partials/_button.html' with
-            label='Switch view'
-            variant='primary'
-            size='sm'
-            attrs='@click="viewMode = viewMode === \'list\' ? \'grid\' : \'list\'"'
-            label_attrs='x-text="`Switch to ${viewMode === \\'list\\' ? \\'Tile\\' : \\'List\\'} View`"'
-        %}
-    </div>
+    <div class="invite-controls mb-16">
+        <div class="invite-filter-grid">
+            <select class="filter-input" x-model="claimedFilter">
+                <option value="">All</option>
+                <option value="true">Claimed</option>
+                <option value="false">Unclaimed</option>
+            </select>
+            <select class="filter-input" x-model="expiredFilter">
+                <option value="">All</option>
+                <option value="true">Expired</option>
+                <option value="false">Active</option>
+            </select>
+            <select class="filter-input" multiple x-model="invitedByFilter">
+                <template x-for="inviter in {{ inviter_choices|safe }}">
+                    <option :value="inviter" x-text="inviter"></option>
+                </template>
+            </select>
+        </div>
 
-    <div class="filter-bar filter-scroll">
-        <select class="filter-input" x-model="claimedFilter">
-            <option value="">All</option>
-            <option value="true">Claimed</option>
-            <option value="false">Unclaimed</option>
-        </select>
-        <select class="filter-input" x-model="expiredFilter">
-            <option value="">All</option>
-            <option value="true">Expired</option>
-            <option value="false">Active</option>
-        </select>
-        <select class="filter-input" multiple x-model="invitedByFilter">
-            <template x-for="inviter in {{ inviter_choices|safe }}">
-                <option :value="inviter" x-text="inviter"></option>
-            </template>
-        </select>
-    </div>
-
-    <div class="mt-16 mx-auto invite-actions">
-        {% include 'partials/_button.html' with
-            label='Clear Filters'
-            variant='ghost'
-            size='sm'
-            attrs='@click="clearFilters()"'
-        %}
+        <div class="invite-actions">
+            <button class="btn pri sm" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+                Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
+            </button>
+            <button class="btn ghost sm" @click="clearFilters()">
+                Clear Filters
+            </button>
+        </div>
     </div>
 
     <div
