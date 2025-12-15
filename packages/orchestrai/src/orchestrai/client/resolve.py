@@ -48,8 +48,8 @@ def resolve_provider_alias(
     if not providers_cfg:
         raise ValueError(
             "No providers are configured (PROVIDERS is empty). "
-            "Configure ORCHESTRAI_PROVIDERS/ORCA_PROVIDERS with at least one provider alias, "
-            "or inject an explicit client into the service."
+            "In single-orca mode, supply ORCA_CONFIG['CLIENT'] with provider wiring. "
+            "For multi-orca mode, configure PROVIDERS and CLIENTS explicitly."
         )
 
     provider_alias: str | None = None

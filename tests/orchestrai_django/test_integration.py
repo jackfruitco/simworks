@@ -237,3 +237,48 @@ class RunnableService(BaseService):
     svc = module.RunnableService()
     assert svc.abstract is False
 
+
+def test_appconfig_ready_single_client(monkeypatch, tmp_path):
+    import importlib
+
+    from orchestrai.client.registry import clear_clients, list_clients
+
+    clear_clients()
+    dummy = tmp_path / "dummy_entry.py"
+    dummy.write_text(
+        "from orchestrai import OrchestrAI\n"
+        "from orchestrai_django.integration import configure_from_django_settings\n"
+        "\n"
+        "def get_app():\n"
+        "    app = OrchestrAI()\n"
+        "    configure_from_django_settings(app)\n"
+        "    return app\n"
+    )
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_AUTOSTART=True,
+        ORCA_ENTRYPOINT="dummy_entry:get_app",
+        ORCA_CONFIG={
+            "MODE": "single",
+            "CLIENT": {
+                "provider": "openai",
+                "surface": "responses",
+                "api_key_envvar": "TEST_KEY",
+            },
+        },
+        INSTALLED_APPS=[],
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    install_fake_django(monkeypatch, settings_obj)
+
+    apps_mod = importlib.import_module("orchestrai_django.apps")
+    monkeypatch.setattr(apps_mod, "_started", False)
+    OrchestrAIDjangoConfig = getattr(apps_mod, "OrchestrAIDjangoConfig")
+
+    cfg = OrchestrAIDjangoConfig("orchestrai_django")
+    cfg.ready()
+
+    assert "default" in list_clients()
+    clear_clients()
+

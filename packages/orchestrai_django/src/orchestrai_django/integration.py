@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 from typing import Any, Iterable, Mapping
 
 from orchestrai.conf.settings import Settings

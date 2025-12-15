@@ -1,5 +1,6 @@
 # orchestrai/client/factory.py
 
+import importlib
 import logging
 from collections.abc import Mapping
 
@@ -27,6 +28,89 @@ from ..components.providerkit.conf_models import (
 from ..components.providerkit.provider import ProviderConfig
 from .client import OrcaClient
 
+
+def _provider_config_from_single_mapping(
+        client_conf: Mapping[str, object],
+        client_alias: str,
+) -> ProviderConfig:
+    """Build a ProviderConfig from a single-orca CLIENT mapping."""
+
+    backend = (
+        client_conf.get("backend")
+        or client_conf.get("BACKEND")
+    )
+    if not backend:
+        provider = client_conf.get("provider") or client_conf.get("PROVIDER")
+        if not provider:
+            raise ValueError(
+                "Single-orca CLIENT configuration requires either BACKEND or PROVIDER/SURFACE."
+            )
+        surface = client_conf.get("surface") or client_conf.get("SURFACE") or "default"
+        backend = f"{provider}.{surface}.backend"
+
+    return ProviderConfig(
+        alias=client_conf.get("alias") or client_conf.get("name") or client_alias,
+        backend=str(backend),
+        base_url=client_conf.get("base_url"),
+        api_key=client_conf.get("api_key"),
+        api_key_env=client_conf.get("api_key_envvar") or client_conf.get("API_KEY_ENVVAR"),
+        model=client_conf.get("model"),
+        organization=client_conf.get("organization"),
+        timeout_s=client_conf.get("timeout_s"),
+    )
+
+
+def _ensure_provider_backend_loaded(backend_identity: str) -> None:
+    parts = backend_identity.split(".")
+    if not parts:
+        return
+    namespace = parts[0]
+    try:
+        importlib.import_module(f"orchestrai.contrib.provider_backends.{namespace}.{namespace}")
+    except ModuleNotFoundError:
+        logger.debug("No provider backend module found for namespace %s", namespace)
+
+
+def _build_single_client(
+        core: OrcaSettings,
+        client_alias: str,
+        *,
+        make_default: bool | None = None,
+        replace: bool = True,
+) -> OrcaClient:
+    single_client = core.CLIENT
+
+    if single_client is None:
+        raise ValueError("ORCA_CONFIG['CLIENT'] is required in single mode")
+
+    if not isinstance(single_client, Mapping):
+        raise TypeError("In single mode, CLIENT must be a mapping of client configuration")
+
+    client_defaults_source = getattr(core, "CLIENTS", OrcaClientsSettings())
+    if not isinstance(client_defaults_source, OrcaClientsSettings):
+        client_defaults_source = OrcaClientsSettings(**client_defaults_source)
+    defaults = client_defaults_source.defaults
+    client_cfg = OrcaClientConfig(
+        max_retries=single_client.get("max_retries", defaults.max_retries),
+        timeout_s=single_client.get("timeout_s", defaults.timeout_s),
+        telemetry_enabled=single_client.get("telemetry_enabled", defaults.telemetry_enabled),
+        log_prompts=single_client.get("log_prompts", defaults.log_prompts),
+        raise_on_error=single_client.get("raise_on_error", defaults.raise_on_error),
+    )
+
+    prov_cfg = _provider_config_from_single_mapping(single_client, client_alias)
+    _ensure_provider_backend_loaded(prov_cfg.backend)
+
+    final_make_default = True if make_default is None else make_default
+
+    return create_client(
+        prov_cfg,
+        name=client_alias,
+        make_default=final_make_default,
+        replace=replace,
+        client_config=client_cfg,
+    )
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,8 +129,13 @@ def _build_client_from_settings(
     declared in CLIENTS; it is synthesized from OrcaClientsSettings.defaults
     and DEFAULT_* pointers.
     """
-    providers_settings: ProvidersSettings = core.PROVIDERS
-    clients_settings: OrcaClientsSettings = core.CLIENTS
+    providers_settings: ProvidersSettings | dict = core.PROVIDERS
+    clients_settings: OrcaClientsSettings | dict = core.CLIENTS
+
+    if not isinstance(providers_settings, ProvidersSettings):
+        providers_settings = ProvidersSettings(**providers_settings)
+    if not isinstance(clients_settings, OrcaClientsSettings):
+        clients_settings = OrcaClientsSettings(**clients_settings)
 
     # Resolve the client entry (or None for the synthetic 'default' client)
     centry = get_client_entry_or_default(clients_settings, client_alias)
@@ -134,6 +223,20 @@ def build_orca_client(
     Returns:
         The created OrcaClient instance.
     """
+    if getattr(core, "MODE", "single") == "single":
+        client = _build_single_client(
+            core,
+            client_alias,
+            make_default=make_default,
+            replace=replace,
+        )
+        logger.info(
+            "Configured Orca client '%s' in single mode (backend=%s)",
+            client_alias,
+            getattr(getattr(client, "provider", None), "identity", None) or "<unspecified>",
+        )
+        return client
+
     prov_cfg, reg, client_cfg = _build_client_from_settings(core, client_alias)
     eff_prov_cfg = effective_provider_config(prov_cfg, reg)
 
@@ -211,7 +314,7 @@ def get_orca_client(
             return single_client
 
         if single_client is None:
-            raise ValueError("CLIENT is not configured for single mode")
+            raise ValueError("ORCA_CONFIG['CLIENT'] is required in single mode")
 
         if not isinstance(single_client, Mapping):
             raise TypeError("In single mode, CLIENT must be a mapping of client configuration")
@@ -221,22 +324,7 @@ def get_orca_client(
         if existing is not None:
             return existing
 
-        defaults = getattr(core, "CLIENTS", OrcaClientsSettings()).defaults
-        client_cfg = OrcaClientConfig(
-            max_retries=single_client.get("max_retries", defaults.max_retries),
-            timeout_s=single_client.get("timeout_s", defaults.timeout_s),
-            telemetry_enabled=single_client.get("telemetry_enabled", defaults.telemetry_enabled),
-            log_prompts=single_client.get("log_prompts", defaults.log_prompts),
-            raise_on_error=single_client.get("raise_on_error", defaults.raise_on_error),
-        )
-
-        return create_client_from_dict(
-            single_client,
-            name=client_alias,
-            make_default=True,
-            replace=True,
-            client_config=client_cfg,
-        )
+        return _build_single_client(core, client_alias, make_default=True, replace=True)
 
     # Fast path: no overrides, just use the registry-backed client.
     if provider is None and profile is None:
