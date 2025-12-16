@@ -21,10 +21,18 @@ app.configure(
         "CLIENT": "demo-client",
         "CLIENTS": {"demo-client": {"name": "demo-client", "api_key": "token"}},
         "PROVIDERS": {"demo": {"backend": "openai", "model": "gpt-4o-mini"}},
+        # DISCOVERY_PATHS defaults to built-in contrib modules plus glob patterns such as
+        # "*.orca.services" and "*.ai.services". Override to add custom modules or set to an
+        # empty tuple to disable automatic discovery entirely.
         "DISCOVERY_PATHS": ["my_project.services"],
     }
 )
 ```
+
+If your project follows the `orca` or `ai` conventions (for example `my_project/orca/services`),
+the defaults will attempt to import those modules automatically. Provide your own
+`DISCOVERY_PATHS` list to opt into other modules or set it to an empty tuple `()` to skip
+autodiscovery altogether.
 
 ## 3. Run the lifecycle
 

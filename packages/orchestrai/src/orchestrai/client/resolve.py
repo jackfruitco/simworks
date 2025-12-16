@@ -17,6 +17,7 @@ DEFAULT_CLIENT_MAX_RETRIES = cast(int, DEFAULTS["CLIENT_DEFAULT_MAX_RETRIES"])
 DEFAULT_CLIENT_TELEMETRY_ENABLED = cast(bool, DEFAULTS["CLIENT_DEFAULT_TELEMETRY_ENABLED"])
 DEFAULT_CLIENT_LOG_PROMPTS = cast(bool, DEFAULTS["CLIENT_DEFAULT_LOG_PROMPTS"])
 DEFAULT_CLIENT_RAISE_ON_ERROR = cast(bool, DEFAULTS["CLIENT_DEFAULT_RAISE_ON_ERROR"])
+from .settings_loader import ClientSettings
 
 
 def get_client_entry_or_default(
@@ -40,7 +41,7 @@ def get_client_entry_or_default(
 
 
 def resolve_provider_alias(
-    core: OrcaSettings,
+    core: ClientSettings,
     providers_settings: ProvidersSettings,
     centry: OrcaClientEntry | None,
     client_alias: str,
@@ -91,7 +92,7 @@ def resolve_provider_alias(
 
 
 def resolve_profile_alias(
-    core: OrcaSettings,
+    core: ClientSettings,
     pentry: ProviderSettingsEntry,
     centry: OrcaClientEntry | None,
     provider_alias: str,
@@ -132,7 +133,7 @@ def resolve_profile_alias(
 
 
 def resolve_api_key(
-    core: OrcaSettings,
+    core: ClientSettings,
     pentry: ProviderSettingsEntry,
     centry: OrcaClientEntry | None,
     provider_alias: str,
@@ -236,7 +237,7 @@ def resolve_client_behavior(
 
 
 def resolve_client_flags(
-    core: OrcaSettings,
+    core: ClientSettings,
     clients_settings: OrcaClientsSettings,
     client_alias: str,
     centry: OrcaClientEntry | None,

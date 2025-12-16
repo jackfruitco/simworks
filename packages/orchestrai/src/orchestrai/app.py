@@ -44,7 +44,7 @@ from .loaders.base import BaseLoader
 from .registry.base import BaseRegistry
 from .registry.simple import AppRegistry, ServiceRunnerRegistry
 from .client.factory import build_orca_client
-from .client.settings_loader import load_orca_settings
+from .client.settings_loader import load_client_settings
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ class OrchestrAI:
             name = client_conf.get("name") or "default"
             definition = dict(client_conf)
             definition.setdefault("name", name)
-            settings = load_orca_settings(self.conf.as_dict())
+            settings = load_client_settings(self.conf)
             client = build_orca_client(settings, name)
             self.clients.register(name, client)
             self._default_client = name

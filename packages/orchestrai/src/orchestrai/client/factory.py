@@ -20,7 +20,7 @@ from .resolve import (
 )
 from .schemas import OrcaClientConfig, OrcaClientRegistration
 from .utils import effective_provider_config
-from .settings_loader import OrcaSettings, load_orca_settings
+from .settings_loader import ClientSettings, load_client_settings
 from ..components.providerkit.conf_models import (
     ProvidersSettings,
     ProviderSettingsEntry,
@@ -72,7 +72,7 @@ def _ensure_provider_backend_loaded(backend_identity: str) -> None:
 
 
 def _build_single_client(
-        core: OrcaSettings,
+        core: ClientSettings,
         client_alias: str,
         *,
         make_default: bool | None = None,
@@ -130,7 +130,7 @@ logger = logging.getLogger(__name__)
 # The "default" client alias is autoconfigured if not explicitly declared.
 # It assumes settings are already validated for single vs POD mode by the config layer.
 def _build_client_from_settings(
-        core: OrcaSettings,
+        core: ClientSettings,
         client_alias: str,
 ) -> tuple[ProviderConfig, OrcaClientRegistration, OrcaClientConfig]:
     """
@@ -211,20 +211,20 @@ def _build_client_from_settings(
 
 
 def build_orca_client(
-        core: OrcaSettings,
+        core: ClientSettings,
         client_alias: str,
         *,
         make_default: bool | None = None,
         replace: bool = True,
 ):
     """
-    Build and register a single Orca client from OrcaSettings.
+    Build and register a single Orca client from ClientSettings.
 
     This is the low-level factory that bootstrap should call in a loop.
     It does not perform any alias enumeration or mode detection.
 
     Args:
-        core: Loaded OrcaSettings instance.
+        core: Loaded ClientSettings instance.
         client_alias: The client alias to build (e.g. "default").
         make_default: Optional override for whether this client should be
             registered as the default. If None, uses the value from the
@@ -283,10 +283,10 @@ def get_client(name: str | None = None):
     Resolution:
       1) If `name` is provided and a client by that alias already exists in the registry,
          return it.
-      2) Otherwise, build a client from OrcaSettings (PROVIDERS/CLIENTS) and register it.
-      3) If `name` is None, use OrcaSettings.DEFAULT_CLIENT.
+      2) Otherwise, build a client from ClientSettings (PROVIDERS/CLIENTS) and register it.
+      3) If `name` is None, use ClientSettings.DEFAULT_CLIENT.
     """
-    core = load_orca_settings()
+    core = load_client_settings()
 
     client_alias = name or getattr(core, "DEFAULT_CLIENT", "default")
 
@@ -317,7 +317,7 @@ def get_orca_client(
             * the provider wiring resolved from PROVIDERS/CLIENTS.
         This per-call client is NOT registered in the global client registry.
     """
-    core = load_orca_settings()
+    core = load_client_settings()
     if getattr(core, "MODE", "single") == "single":
         single_client = core.CLIENT
 
