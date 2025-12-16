@@ -14,9 +14,18 @@ Design notes:
 - Backend wiring (base URL, model, API key, etc.) is handled by the provider layer and not represented here.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from pydantic import BaseModel
+
+from orchestrai.conf import DEFAULTS
+
+
+CLIENT_DEFAULT_TIMEOUT = cast(float | None, DEFAULTS["CLIENT_DEFAULT_TIMEOUT"])
+CLIENT_DEFAULT_MAX_RETRIES = cast(int, DEFAULTS["CLIENT_DEFAULT_MAX_RETRIES"])
+CLIENT_DEFAULT_TELEMETRY_ENABLED = cast(bool, DEFAULTS["CLIENT_DEFAULT_TELEMETRY_ENABLED"])
+CLIENT_DEFAULT_LOG_PROMPTS = cast(bool, DEFAULTS["CLIENT_DEFAULT_LOG_PROMPTS"])
+CLIENT_DEFAULT_RAISE_ON_ERROR = cast(bool, DEFAULTS["CLIENT_DEFAULT_RAISE_ON_ERROR"])
 from pydantic.config import ConfigDict
 
 __all__ = [
@@ -99,10 +108,10 @@ class OrcaClientConfig(BaseModel):
         - Extra keys are forbidden to catch typos early.
         - Extend cautiously and mirror in system checks / OrcaClientsSettings.
     """
-    max_retries: int = 3
-    timeout_s: Optional[float] = None
-    telemetry_enabled: bool = True
-    log_prompts: bool = False
-    raise_on_error: bool = True
+    max_retries: int = CLIENT_DEFAULT_MAX_RETRIES
+    timeout_s: Optional[float] = CLIENT_DEFAULT_TIMEOUT
+    telemetry_enabled: bool = CLIENT_DEFAULT_TELEMETRY_ENABLED
+    log_prompts: bool = CLIENT_DEFAULT_LOG_PROMPTS
+    raise_on_error: bool = CLIENT_DEFAULT_RAISE_ON_ERROR
 
     model_config = ConfigDict(extra="forbid")

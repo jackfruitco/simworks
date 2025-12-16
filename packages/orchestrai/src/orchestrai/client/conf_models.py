@@ -1,10 +1,18 @@
 # orchestrai/client/conf_models.py
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict, Optional, cast
 from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 from orchestrai.components.providerkit.exceptions import ProviderConfigurationError
+from orchestrai.conf import DEFAULTS
+
+
+CLIENT_DEFAULT_TIMEOUT = cast(float | None, DEFAULTS["CLIENT_DEFAULT_TIMEOUT"])
+CLIENT_DEFAULT_MAX_RETRIES = cast(int, DEFAULTS["CLIENT_DEFAULT_MAX_RETRIES"])
+CLIENT_DEFAULT_TELEMETRY_ENABLED = cast(bool, DEFAULTS["CLIENT_DEFAULT_TELEMETRY_ENABLED"])
+CLIENT_DEFAULT_LOG_PROMPTS = cast(bool, DEFAULTS["CLIENT_DEFAULT_LOG_PROMPTS"])
+CLIENT_DEFAULT_RAISE_ON_ERROR = cast(bool, DEFAULTS["CLIENT_DEFAULT_RAISE_ON_ERROR"])
 
 
 # ---------------------------------------------------------------------------
@@ -20,11 +28,11 @@ class OrcaClientDefaults(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    timeout_s: float | None = None
-    max_retries: int | None = None
-    telemetry_enabled: bool | None = None
-    log_prompts: bool | None = None
-    raise_on_error: bool | None = None
+    timeout_s: float | None = Field(default=CLIENT_DEFAULT_TIMEOUT)
+    max_retries: int | None = Field(default=CLIENT_DEFAULT_MAX_RETRIES)
+    telemetry_enabled: bool | None = Field(default=CLIENT_DEFAULT_TELEMETRY_ENABLED)
+    log_prompts: bool | None = Field(default=CLIENT_DEFAULT_LOG_PROMPTS)
+    raise_on_error: bool | None = Field(default=CLIENT_DEFAULT_RAISE_ON_ERROR)
 
 
 # ---------------------------------------------------------------------------

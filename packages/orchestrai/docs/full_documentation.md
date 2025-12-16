@@ -43,6 +43,8 @@ Each method is idempotent and avoids network calls; nothing heavy happens during
 - `LOADER` – dotted path to a loader class; defaults to the lightweight base loader.
 - `MODE` – optional runtime mode flag.
 
+Default values for client behavior (timeouts, retries, telemetry/logging flags) and provider fallbacks (profiles/models/timeouts) are centralized in [`src/orchestrai/conf/defaults.py`](../src/orchestrai/conf/defaults.py). Treat this module as the single source of truth when adjusting baseline behaviors.
+
 Unknown keys are stored but unused by the core, letting extensions consume their own configuration without conflicts.
 
 ## Settings flow
