@@ -42,6 +42,27 @@ Each method is idempotent and avoids network calls; nothing heavy happens during
 
 Unknown keys are stored but unused by the core, letting extensions consume their own configuration without conflicts.
 
+## Settings flow
+
+`Settings` (`orchestrai.conf.settings.Settings`) is the authoritative configuration mapping. The `OrchestrAI` constructor instantiates it, applies overrides from `orchestrai.settings`, and then layers the optional `ORCHESTRAI_CONFIG_MODULE` module:
+
+```python
+from orchestrai.conf.settings import Settings
+
+settings = Settings()
+settings.update_from_envvar()  # mirrors the default app bootstrap
+```
+
+Helpers that need typed client/provider configuration use `ClientSettings` from `orchestrai.client.settings_loader`. Convert an existing `Settings` instance instead of rebuilding defaults:
+
+```python
+from orchestrai.client.settings_loader import ClientSettings, load_client_settings
+
+client_settings: ClientSettings = load_client_settings(settings)
+```
+
+The legacy `load_orca_settings` function remains as a shim and emits a deprecation warning; new code should import `ClientSettings` and `load_client_settings` directly.
+
 ## Registries
 
 Registries are simple, thread-safe mappings with three phases:

@@ -7,7 +7,7 @@ from ..components.providerkit.conf_models import (
     ProvidersSettings,
     ProviderSettingsEntry,
 )
-from .settings_loader import OrcaSettings
+from .settings_loader import ClientSettings
 
 
 def get_client_entry_or_default(
@@ -31,7 +31,7 @@ def get_client_entry_or_default(
 
 
 def resolve_provider_alias(
-    core: OrcaSettings,
+    core: ClientSettings,
     providers_settings: ProvidersSettings,
     centry: OrcaClientEntry | None,
     client_alias: str,
@@ -82,7 +82,7 @@ def resolve_provider_alias(
 
 
 def resolve_profile_alias(
-    core: OrcaSettings,
+    core: ClientSettings,
     pentry: ProviderSettingsEntry,
     centry: OrcaClientEntry | None,
     provider_alias: str,
@@ -123,7 +123,7 @@ def resolve_profile_alias(
 
 
 def resolve_api_key(
-    core: OrcaSettings,
+    core: ClientSettings,
     pentry: ProviderSettingsEntry,
     centry: OrcaClientEntry | None,
     provider_alias: str,
@@ -207,7 +207,7 @@ def resolve_client_behavior(
 
 
 def resolve_client_flags(
-    core: OrcaSettings,
+    core: ClientSettings,
     clients_settings: OrcaClientsSettings,
     client_alias: str,
     centry: OrcaClientEntry | None,

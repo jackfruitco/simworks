@@ -2,7 +2,7 @@ import pytest
 
 from orchestrai.client.factory import build_orca_client
 from orchestrai.client.registry import clear_clients, list_clients
-from orchestrai.client.settings_loader import OrcaSettings
+from orchestrai.client.settings_loader import ClientSettings
 
 
 @pytest.fixture(autouse=True)
@@ -13,7 +13,7 @@ def _reset_clients():
 
 
 def test_single_client_builds_without_providers():
-    core = OrcaSettings.from_mapping(
+    core = ClientSettings.from_mapping(
         {
             "MODE": "single",
             "CLIENT": {
@@ -34,7 +34,7 @@ def test_single_client_builds_without_providers():
 
 
 def test_single_client_uses_model_defaults_when_behavior_missing():
-    core = OrcaSettings.from_mapping(
+    core = ClientSettings.from_mapping(
         {
             "MODE": "single",
             "CLIENT": {
@@ -53,7 +53,7 @@ def test_single_client_uses_model_defaults_when_behavior_missing():
 
 
 def test_multi_mode_without_providers_hints_single_mode():
-    core = OrcaSettings.from_mapping(
+    core = ClientSettings.from_mapping(
         {
             "MODE": "multi",
             "PROVIDERS": {},
