@@ -39,6 +39,25 @@ with app.as_current():
 
 `start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, prints the jumping-orca welcome banner once, and summarizes registered components.
 
+## Settings flow
+
+`Settings` is the authoritative configuration mapping. The `OrchestrAI` constructor loads defaults from `orchestrai.settings` and applies overrides from `ORCHESTRAI_CONFIG_MODULE` automatically:
+
+```python
+from orchestrai.conf.settings import Settings
+
+settings = Settings()
+settings.update_from_envvar()  # optional when you want to mirror the app's boot logic
+```
+
+Client-facing helpers accept the typed `ClientSettings` model from `orchestrai.client.settings_loader`. Use `load_client_settings` to convert an already-built `Settings` instance; the legacy `load_orca_settings` shim remains for compatibility but emits a deprecation warning:
+
+```python
+from orchestrai.client.settings_loader import ClientSettings, load_client_settings
+
+client_settings: ClientSettings = load_client_settings(settings)
+```
+
 ## Lifecycle overview
 
 1. **configure** – apply settings from mappings, objects, or environment variables.

@@ -4,7 +4,7 @@ import pytest
 
 from orchestrai import OrchestrAI
 from orchestrai.client.registry import clear_clients
-from orchestrai.client.settings_loader import OrcaSettings
+from orchestrai.client.settings_loader import ClientSettings
 from orchestrai.components.services.exceptions import ServiceConfigError
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators import service
@@ -63,8 +63,8 @@ def test_service_resolution_error_points_to_single_mode(monkeypatch):
 
     clear_clients()
     monkeypatch.setattr(
-        "orchestrai.client.factory.load_orca_settings",
-        lambda mapping=None: OrcaSettings.from_mapping({"MODE": "single", "CLIENT": None}),
+        "orchestrai.client.factory.load_client_settings",
+        lambda mapping=None: ClientSettings.from_mapping({"MODE": "single", "CLIENT": None}),
     )
 
     svc = DummyService()
