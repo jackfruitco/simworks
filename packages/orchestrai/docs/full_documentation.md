@@ -36,7 +36,10 @@ Each method is idempotent and avoids network calls; nothing heavy happens during
 - `CLIENT` – name of the default client to expose via `app.client`.
 - `CLIENTS` – mapping of client definitions.
 - `PROVIDERS` – mapping of provider definitions.
-- `DISCOVERY_PATHS` – iterable of dotted module paths to import during discovery.
+- `DISCOVERY_PATHS` – iterable of dotted module paths to import during discovery. The defaults
+  import OrchestrAI’s contrib provider backends/codecs and include glob patterns for common
+  project layouts (`*.orca.services`, `*.orca.output_schemas`, `*.orca.codecs`, `*.ai.services`).
+  Patterns resolve to real modules before import; unmatched patterns are skipped safely.
 - `LOADER` – dotted path to a loader class; defaults to the lightweight base loader.
 - `MODE` – optional runtime mode flag.
 
@@ -83,12 +86,19 @@ Nested contexts restore the previous app automatically.
 
 ## Discovery and loaders
 
-The default loader performs no implicit work until `discover()` is called. Provide `DISCOVERY_PATHS` to import modules that register services, codecs, or other components.
+The default loader performs no implicit work until `discover()` is called. By default it imports
+OrchestrAI contrib registration modules plus any modules matching the built-in glob patterns.
+Provide your own `DISCOVERY_PATHS` tuple to extend or override that list, or set it to an empty
+tuple to disable all automatic discovery.
 
 ```python
 app.configure({"DISCOVERY_PATHS": ["myapp.services", "myapp.codecs"]})
 app.discover()
 ```
+
+The defaults already scan `orchestrai.contrib.provider_backends` and
+`orchestrai.contrib.provider_codecs`, and attempt to import modules matching `*.orca.services`,
+`*.orca.output_schemas`, `*.orca.codecs`, and `*.ai.services` when they exist on `sys.path`.
 
 If you need custom behavior, point `LOADER` to your own loader class implementing `autodiscover(app, modules)`.
 
