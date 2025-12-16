@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync, sync_to_async
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
-from .. import BaseOutputSchema
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
 from ..mixins import LifecycleMixin
@@ -42,6 +41,12 @@ from ...types.content import ContentRole
 from ...types.input import InputTextContent
 from ...types.messages import InputItem
 from ...registry.exceptions import RegistryLookupError
+from ...resolve import (
+    apply_schema_adapters,
+    resolve_codec,
+    resolve_prompt_plan,
+    resolve_schema,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from orchestrai.client import OrcaClient
@@ -197,7 +202,20 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         # Cached prompt (only used when all sections are non-dynamic)
         self._prompt_cache: Prompt | None = None
 
-        self.response_schema: type[StrictBaseModel] | None = self._resolve_response_schema(response_schema)
+        # Component store (for registry-backed resolution)
+        from ...registry.active_app import get_component_store as _get_component_store
+
+        self.component_store = _get_component_store()
+
+        self._schema_resolution = resolve_schema(
+            identity=self.identity,
+            override=response_schema,
+            default=getattr(type(self), "response_schema", None),
+            store=self.component_store,
+        )
+        self._resolved_schema_json = self._schema_resolution.selected.meta.get("schema_json")
+        self.response_schema: type[StrictBaseModel] | None = self._schema_resolution.value
+        self._set_context(self._schema_resolution.context("schema"), log_cat="schema")
 
     @classmethod
     def using(cls, **overrides: Any) -> BaseService:
@@ -460,30 +478,6 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ----------------------------------------------------------------------
     # Prompt resolution (async-first)
     # ----------------------------------------------------------------------
-    def _try_get_matching_prompt_section(self) -> PromptSectionSpec | None:
-        """
-        Return the PromptSection class with matching Identity for this service, or None if not found.
-        Pure lookup; no exceptions.
-        """
-        LOG_CAT = "prompt"
-        try:
-            section_cls = Identity.resolve.try_for_(PromptSection, self.identity)
-            self.context["prompt.plan.from_identity"] = "True"
-            self.context["prompt.plan.from_identity.label"] = section_cls.identity.label
-            logger.debug(self._build_stdout(
-                LOG_CAT, f"resolved section from identity: {section_cls.identity.label}",
-                indent_level=2, success=True
-            ))
-            return section_cls
-        except Exception:
-            logger.debug(self._build_stdout(
-                LOG_CAT,
-                f"could not resolve section from identity: {self.identity.as_str}",
-                indent_level=2,
-                success="non-fatal"
-            ), exc_info=True)
-            return None
-
     def _resolve_prompt_plan(self) -> tuple[PromptPlan | None, str]:
         """
         Resolve the prompt plan for this service following precedence rules.
@@ -494,30 +488,27 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
           3) Automagic identity match (PromptSection.identity == service.identity)
         """
         LOG_CAT = "prompt"
+        resolution = resolve_prompt_plan(self)
+        self._set_context(resolution.context("prompt.plan"), log_cat=LOG_CAT)
 
-        if self._prompt_plan is not None:
-            source = self._prompt_plan_source or "explicit"
+        branch = resolution.branch
+        plan = resolution.value
+
+        if plan is None:
             logger.debug(self._build_stdout(
                 LOG_CAT,
-                f"resolved prompt plan ({source})",
+                f"no prompt plan resolved for {self.identity.as_str}; continuing without one",
+                indent_level=2,
+                success="non-fatal",
+            ))
+        else:
+            logger.debug(self._build_stdout(
+                LOG_CAT,
+                f"resolved prompt plan ({branch})",
                 indent_level=2,
                 success=True,
             ))
-            return self._prompt_plan, source
-
-        # Automagic identity fallback
-        section_cls = self._try_get_matching_prompt_section()
-        if section_cls is not None:
-            plan = PromptPlan.from_sections([section_cls])
-            return plan, "automagic"
-
-        logger.debug(self._build_stdout(
-            LOG_CAT,
-            f"no prompt plan resolved for {self.identity.as_str}; continuing without one",
-            indent_level=2,
-            success="non-fatal",
-        ))
-        return None, "none"
+        return plan, branch
 
     async def aget_prompt(self) -> Prompt:
         """
@@ -707,54 +698,37 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Uses the new backend-based API.
         """
         LOG_CAT = "codec"
-        sel: list[type[BaseCodec]] = []
 
-        self._set_context(
-            {
-                "codec.selected": "<None>",
-            },
-            log_cat=LOG_CAT,
-        )
-
-        # In this identity model:
-        #   codec.namespace -> backend name (e.g. "openai")
-        #   codec.kind      -> API surface (e.g. "responses")
-        #   codec.name      -> result type (e.g. "json")
         provider_label = (self.provider_name or "").strip()
-        # Normalize provider_label so that "openai.responses.default" collapses to "openai".
         provider_ns = provider_label.split(".", 1)[0] if provider_label else ""
+        constraints = None
         if self.response_schema and provider_ns:
-            try:
-                matches = BaseCodec.select_for(
-                    provider=provider_ns,
-                    api="responses",        # TODO: Hard-coded API surface
-                    result_type="json",
-                )
-            except Exception:
-                logger.debug(
-                    self._build_stdout(
-                        LOG_CAT,
-                        "BaseCodec.select_for failed; continuing without structured codec",
-                        indent_level=3,
-                        success="non-fatal",
-                    ),
-                    exc_info=True,
-                )
-                matches = ()
+            constraints = {"provider": provider_ns, "api": "responses", "result_type": "json"}
 
-            for cand in matches:
-                sel.append(cand)
-                self.context["codec.selected"] += repr(cand)
-                logger.debug(
-                    self._build_stdout(
-                        LOG_CAT,
-                        f"selected codec: {getattr(cand, '__name__', repr(cand))}",
-                        indent_level=3,
-                        success=True,
-                    )
-                )
+        resolution = resolve_codec(
+            service=self,
+            configured=getattr(type(self), "codecs", ()),
+            constraints=constraints,
+            store=self.component_store,
+        )
+        self._set_context(resolution.context("codec.select"), log_cat=LOG_CAT)
 
-        return tuple(sel)
+        candidates = ()
+        if resolution.selected.meta.get("candidate_classes"):
+            candidates = resolution.selected.meta["candidate_classes"]  # type: ignore[assignment]
+        elif resolution.value is not None:
+            candidates = (resolution.value,)
+
+        if candidates:
+            for cand in candidates:
+                logger.debug(self._build_stdout(
+                    LOG_CAT,
+                    f"selected codec candidate: {getattr(cand, '__name__', repr(cand))}",
+                    indent_level=3,
+                    success=True,
+                ))
+
+        return tuple(candidates)
 
     def _select_codec_class(self) -> tuple[type[BaseCodec] | None, str | None]:
         """
@@ -770,203 +744,46 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ident: Identity = self.identity
         ident_label = ident.as_str
 
-        # 1) Explicit per-call override
-        if self._codec_override is not None:
-            codec_cls = self._codec_override
-            label = self._codec_label_from_cls(codec_cls, ident_label)
-            logger.debug(
-                self._build_stdout(
-                    LOG_CAT,
-                    f"resolved (from override): {codec_cls.__name__} ({label})",
-                    indent_level=2,
-                    success=True,
-                )
-            )
-            return codec_cls, label
+        provider_label = (self.provider_name or "").strip()
+        provider_ns = provider_label.split(".", 1)[0] if provider_label else ""
+        constraints = None
+        if self.response_schema and provider_ns:
+            constraints = {"provider": provider_ns, "api": "responses", "result_type": "json"}
 
-        # 2) Explicit codec_cls for this instance, then class-level default
-        if self._codec_cls is not None:
-            codec_cls = self._codec_cls
-            label = self._codec_label_from_cls(codec_cls, ident_label)
-            logger.debug(
-                self._build_stdout(
-                    LOG_CAT,
-                    f"resolved (from service instance): {codec_cls.__name__} ({label})",
-                    indent_level=2,
-                    success=True,
-                )
-            )
-            return codec_cls, label
+        resolution = resolve_codec(
+            service=self,
+            override=self._codec_override,
+            explicit=self._codec_cls or type(self).codec_cls,  # type: ignore[arg-type]
+            configured=getattr(type(self), "codecs", ()),
+            constraints=constraints,
+            store=self.component_store,
+        )
+        self._set_context(resolution.context("codec"), log_cat=LOG_CAT)
 
-        if type(self).codec_cls is not None:
-            codec_cls = type(self).codec_cls  # type: ignore[assignment]
-            label = self._codec_label_from_cls(codec_cls, ident_label)
+        codec_cls = resolution.value
+        if codec_cls is None:
             logger.debug(
                 self._build_stdout(
                     LOG_CAT,
-                    f"resolved (from service class): {codec_cls.__name__} ({label})",
-                    indent_level=2,
-                    success=True,
-                )
-            )
-            return codec_cls, label
-
-        # 3) Automatic selection via the new backend-based API (`select_codecs`)
-        codec_cls: type[BaseCodec] | None = None
-        try:
-            matches = self.select_codecs()
-        except Exception:
-            logger.debug(
-                self._build_stdout(
-                    LOG_CAT,
-                    "select_codecs() failed; continuing without structured codec",
+                    "no codec resolved; continuing without codec",
                     indent_level=2,
                     success="non-fatal",
-                ),
-                exc_info=True,
-            )
-            matches = ()
-
-        if matches:
-            codec_cls = matches[0]
-            label = self._codec_label_from_cls(codec_cls, ident_label)
-            logger.debug(
-                self._build_stdout(
-                    LOG_CAT,
-                    f"resolved (via select_codecs): {codec_cls.__name__} ({label})",
-                    indent_level=2,
-                    success=True,
                 )
             )
-            return codec_cls, label
+            return None, None
 
-        # Nothing matched
+        label = self._codec_label_from_cls(codec_cls, ident_label)
         logger.debug(
             self._build_stdout(
                 LOG_CAT,
-                "no codec resolved; continuing without codec",
+                f"resolved codec ({resolution.branch}): {codec_cls.__name__} ({label})",
                 indent_level=2,
-                success="non-fatal",
+                success=True,
             )
         )
-        return None, None
+        return codec_cls, label
 
-    def _resolve_response_schema(self, override: type[StrictBaseModel] | None) -> type[StrictBaseModel] | None:
-        """Resolve the output schema class for this service.
-
-        Resolution order:
-          1) Explicit per-instance override passed to ``__init__`` / ``using(response_schema=...)``
-          2) Class-level default declared on the concrete service (``response_schema``)
-          3) Schema provided by a configured codec (if any)
-          4) Automagic identity match to BaseOutputSchema (service.identity)
-        """
-        LOG_CAT = "schema"
-
-        def _record(source: str, schema: type[StrictBaseModel] | None, *, success: bool | str = True):
-            if schema is None:
-                return
-            self.context["service.response_schema.source"] = source
-            self.context["service.response_schema.name"] = getattr(schema, "__name__", str(schema))
-            logger.debug(self._build_stdout(
-                LOG_CAT,
-                f"resolved (from {source}): {getattr(schema, '__name__', str(schema))}",
-                indent_level=2,
-                success=success,
-            ))
-
-        # 1) Explicit per-instance override
-        if override is not None:
-            _record("override", override)
-            return override
-
-        # 2) Class-level default on the concrete service subclass, if defined
-        cls_default: type[StrictBaseModel] | None = getattr(type(self), "response_schema", None)
-        if cls_default is not None:
-            _record("class", cls_default)
-            return cls_default
-
-        # 3) Codec-provided schema (override > instance codec_cls > class codec_cls > codecs list)
-        codec_candidates: list[type[BaseCodec]] = []
-        for candidate in (
-            self._codec_override,
-            self._codec_cls,
-            getattr(type(self), "codec_cls", None),
-        ):
-            if isinstance(candidate, type) and issubclass(candidate, BaseCodec):
-                codec_candidates.append(candidate)
-        for candidate in getattr(type(self), "codecs", ()) or ():
-            if isinstance(candidate, type) and issubclass(candidate, BaseCodec):
-                codec_candidates.append(candidate)
-
-        for codec_cls in codec_candidates:
-            schema_cls = getattr(codec_cls, "response_schema", None)
-            if schema_cls is not None:
-                _record("codec", schema_cls)
-                return schema_cls
-
-        # 4) Identity-based registry lookup (automagic fallback)
-        resolved = Identity.resolve.try_for_(BaseOutputSchema, self.identity)
-        if resolved is not None:
-            _record("identity", resolved)
-            return resolved
-
-        matched = self._match_output_schema_by_namespace()
-        if matched is not None:
-            _record("identity.match", matched)
-            return matched
-
-        logger.debug(self._build_stdout(
-            LOG_CAT,
-            "no schema resolved for service; continuing with response_schema=None",
-            indent_level=2,
-            success="non-fatal",
-        ))
-        return None
-
-    def _match_output_schema_by_namespace(self) -> type[StrictBaseModel] | None:
-        """Best-effort schema match within the same namespace/kind.
-
-        Supports automagic pairing when schema names diverge slightly from service
-        names (e.g., ``initial`` service → ``patient-initial`` schema) while keeping
-        matches scoped to the same namespace/kind.
-        """
-
-        try:
-            from orchestrai.registry import schemas as schema_registry
-        except Exception:
-            return None
-
-        ident = self.identity
-
-        def _same_namespace_kind(candidate) -> bool:
-            cid = getattr(candidate, "identity", None)
-            return bool(
-                isinstance(cid, Identity)
-                and cid.namespace == ident.namespace
-                and cid.kind == ident.kind
-            )
-
-        try:
-            candidates = tuple(schema_registry.filter(_same_namespace_kind))
-        except Exception:
-            return None
-
-        if not candidates:
-            return None
-
-        for candidate in candidates:
-            cid = getattr(candidate, "identity", None)
-            if cid and cid.name == ident.name:
-                return candidate
-
-        for candidate in candidates:
-            cid = getattr(candidate, "identity", None)
-            if cid and cid.name.endswith(ident.name):
-                return candidate
-
-        return candidates[0]
-
-    def _attach_response_schema_to_request(self, req: Request) -> None:
+    def _attach_response_schema_to_request(self, req: Request, codec: BaseCodec | None = None) -> None:
         """Populate request schema hints when a schema is available."""
 
         schema_cls = self.response_schema
@@ -976,9 +793,20 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         if getattr(req, "response_schema", None) is None:
             req.response_schema = schema_cls
 
-        try:
-            schema_json = schema_cls.model_json_schema()
-        except Exception:
+        schema_json = self._resolved_schema_json
+        if schema_json is None:
+            try:
+                schema_json = schema_cls.model_json_schema()
+            except Exception:
+                schema_json = None
+
+        if codec is not None and getattr(codec, "schema_adapters", None):
+            try:
+                schema_json = apply_schema_adapters(schema_cls, getattr(codec, "schema_adapters"))
+            except Exception:
+                logger.debug("schema adapter application failed", exc_info=True)
+
+        if schema_json is None:
             return
 
         req.response_schema_json = schema_json
@@ -1104,7 +932,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
             # Attach structured output hints early so provider backends can consume
             # them even when no codec is selected.
-            self._attach_response_schema_to_request(req)
+            self._attach_response_schema_to_request(req, codec)
 
             # Attach codec identity to the request when available; schema hints are handled by the codec.
             if codec_label:
