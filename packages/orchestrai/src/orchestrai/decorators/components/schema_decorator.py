@@ -15,7 +15,7 @@ import logging
 
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.schemas import BaseOutputSchema
-from orchestrai.registry.singletons import schemas as schema_registry
+from orchestrai.registry import schemas as schema_registry
 
 logger = logging.getLogger(__name__)
 

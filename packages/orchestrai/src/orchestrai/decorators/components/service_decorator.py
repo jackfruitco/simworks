@@ -16,7 +16,7 @@ import logging
 
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.services.service import BaseService
-from orchestrai.registry.singletons import services as _Registry
+from orchestrai.registry import services as _Registry
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,10 @@ class ServiceDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "services"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: Type[Any], *, identity=None) -> None:
         # Guard: ensure we only register service classes
         if not issubclass(candidate, BaseService):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseService to use @service"
             )
-        super().register(candidate)
+        super().register(candidate, identity=identity)

@@ -13,7 +13,7 @@ from typing import Any, Type, TypeVar
 from orchestrai.components.promptkit import PromptSection
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.registry.base import ComponentRegistry
-from orchestrai.registry.singletons import prompt_sections as _Registry
+from orchestrai.registry import prompt_sections as _Registry
 
 logger = logging.getLogger(__name__)
 

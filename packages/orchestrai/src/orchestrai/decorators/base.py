@@ -136,7 +136,7 @@ class BaseDecorator:
             self.bind_extras(cls, extras)
 
             # 4) Register (if a registry is present)
-            self.register(cls)
+            self.register(cls, identity=identity)
 
             # 5) Emit a single trace span *after* successful registration with rich attributes
             final_label = identity.as_str
@@ -208,24 +208,28 @@ class BaseDecorator:
         """Optional metadata hook for domain decorators (e.g., prompt plans)."""
         return
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
         """Default registration logic.
 
         - Retrieves a registry via ``get_registry()``.
         - If present, calls **``registry.register(candidate=candidate)``** (strict + idempotent).
         - If no registry, logs at DEBUG and returns.
         """
+        from orchestrai.registry import RegistrationRecord, route_registration
+
         registry = self.get_registry()
         if registry is None:
             logger.debug(
-                "No registry for %s; skipping registration for %s",
+                "No registry for %s; queuing registration for %s",
                 self.__class__.__name__,
                 f"{candidate.__module__}.{candidate.__name__}",
             )
-            return
-
-        # Registries own duplicate vs collision handling; they are strict + idempotent
-        registry.register(candidate)
+        route_registration(
+            RegistrationRecord(
+                component=candidate,
+                identity=identity or Identity.get_for(candidate),
+            )
+        )
         logger.debug(
             "registered %s",
             f"{candidate.__name__}",
