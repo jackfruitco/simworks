@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from threading import RLock
 from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
@@ -39,7 +40,7 @@ ORCA_BANNER = r"""
 from ._state import push_current_app, set_current_app
 from .conf.settings import Settings
 from .finalize import consume_finalizers
-from .fixups.base import BaseFixup
+from .fixups.base import Fixup, FixupStage
 from .loaders.base import BaseLoader
 from .registry import ComponentStore
 from .registry.active_app import (
@@ -72,15 +73,19 @@ class OrchestrAI:
     name: str = "orchestrai"
     loader: BaseLoader | None = None
     conf: Settings = field(default_factory=Settings)
-    fixups: list[BaseFixup] = field(default_factory=list)
+    fixups: list[Fixup] = field(default_factory=list)
     _default_client: str | None = None
+    _configured: bool = False
     _finalized: bool = False
     _setup_done: bool = False
+    _autodiscovered: bool = False
     _started: bool = False
     _banner_printed: bool = False
     _components_reported: bool = False
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
     _fixup_specs: list[object] = field(default_factory=list, repr=False)
+    _ready_lock: RLock = field(default_factory=RLock, init=False, repr=False)
+    _booting: bool = False
 
     component_store: ComponentStore = field(default_factory=ComponentStore)
     clients: dict[str, Any] = field(default_factory=dict)
@@ -91,7 +96,7 @@ class OrchestrAI:
     )
 
     def __post_init__(self) -> None:
-        # Capture any provided fixup specs; actual instances are built during setup
+        # Capture any provided fixup specs; actual instances are built during configure
         if self.fixups:
             self._fixup_specs.extend(self.fixups)
             self.fixups = []
@@ -120,6 +125,11 @@ class OrchestrAI:
     def configure(self, mapping: dict | None = None, *, namespace: str | None = None) -> "OrchestrAI":
         if mapping:
             self.conf.update_from_mapping(mapping, namespace=namespace)
+
+        self._load_fixups_from_settings()
+        self.apply_fixups(FixupStage.CONFIGURE_PRE)
+        self._configured = True
+        self.apply_fixups(FixupStage.CONFIGURE_POST)
         return self
 
     def config_from_object(self, obj: str, *, namespace: str | None = None) -> "OrchestrAI":
@@ -130,10 +140,15 @@ class OrchestrAI:
         self.conf.update_from_envvar(envvar, namespace=namespace)
         return self
 
+    def _ensure_configured(self) -> None:
+        if not self._configured:
+            self.configure()
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
     def setup(self) -> "OrchestrAI":
+        self._ensure_configured()
         if self._setup_done:
             return self
 
@@ -148,7 +163,6 @@ class OrchestrAI:
             loader_cls = _import_string(loader_path)
             self.loader = loader_cls()
 
-        self._configure_fixups()
         self._configure_clients()
         self._configure_providers()
         self._refresh_identity_strip_tokens()
@@ -166,16 +180,26 @@ class OrchestrAI:
 
     def ensure_ready(self) -> "OrchestrAI":
         """Ensure discovery/finalization have completed without re-starting the app."""
-
-        if self._finalized:
-            return self
-        self.discover()
-        self.finalize()
+        with self._ready_lock:
+            if self._finalized or self._booting:
+                return self
+            self._booting = True
+            try:
+                self.apply_fixups(FixupStage.ENSURE_READY_PRE)
+                self.start()
+                self.apply_fixups(FixupStage.ENSURE_READY_POST)
+            finally:
+                self._booting = False
         return self
 
     def finalize(self) -> "OrchestrAI":
         if self._finalized:
             return self
+
+        self._ensure_configured()
+        self.apply_fixups(FixupStage.FINALIZE_PRE)
+        if not self._autodiscovered:
+            self.autodiscover_components()
 
         flush_pending(self.component_store)
 
@@ -191,16 +215,21 @@ class OrchestrAI:
         self.component_store.freeze_all()
         self._finalized = True
         self.print_component_report()
+        self.apply_fixups(FixupStage.FINALIZE_POST)
         return self
 
     def start(self) -> "OrchestrAI":
         if self._started:
             return self
+        self._ensure_configured()
+        self.apply_fixups(FixupStage.START_PRE)
         if not self._banner_printed:
             self.print_banner()
-        self.discover()
+        self.setup()
+        self.autodiscover_components()
         self.finalize()
         self._started = True
+        self.apply_fixups(FixupStage.START_POST)
         return self
 
     run = start
@@ -348,47 +377,69 @@ class OrchestrAI:
     # ------------------------------------------------------------------
     # Fixup helpers
     # ------------------------------------------------------------------
-    def _configure_fixups(self) -> None:
-        specs: list[object] = list(self._fixup_specs)
-        specs.extend(self.conf.get("FIXUPS", ()))
+    def add_fixup(self, spec: object) -> Fixup:
+        if spec in self._fixup_specs:
+            index = self._fixup_specs.index(spec)
+            return self.fixups[index]
 
-        resolved: list[BaseFixup] = []
-        for spec in specs:
-            fixup = self._resolve_fixup(spec)
-            fixup.on_app_init(self)
-            resolved.append(fixup)
+        fixup = self._resolve_fixup(spec)
+        self._fixup_specs.append(spec)
+        self.fixups.append(fixup)
+        return fixup
 
-        self.fixups = resolved
+    def apply_fixups(self, stage: FixupStage, **context: Any) -> list[Any]:
+        results: list[Any] = []
         for fixup in self.fixups:
-            fixup.on_setup(self)
+            result = fixup.apply(stage, self, **context)
+            if result is not None:
+                results.append(result)
+        return results
 
-    def _resolve_fixup(self, spec: object) -> BaseFixup:
-        if isinstance(spec, BaseFixup):
+    def _load_fixups_from_settings(self) -> None:
+        specs: list[object] = []
+        for spec in list(self._fixup_specs) + list(self.conf.get("FIXUPS", ())):
+            if spec not in specs:
+                specs.append(spec)
+
+        self._fixup_specs = specs
+        self.fixups = []
+        for spec in specs:
+            self.fixups.append(self._resolve_fixup(spec))
+
+    def _resolve_fixup(self, spec: object) -> Fixup:
+        if isinstance(spec, Fixup):
             return spec
         if isinstance(spec, str):
             obj = _import_string(spec)
-            if isinstance(obj, type) and issubclass(obj, BaseFixup):
-                return obj()
-            if isinstance(obj, BaseFixup):
-                return obj
-            raise TypeError(f"Fixup path {spec!r} did not resolve to a BaseFixup")
-        if isinstance(spec, type) and issubclass(spec, BaseFixup):
-            return spec()
-        raise TypeError(f"Unsupported fixup spec: {spec!r}")
+            return self._coerce_fixup(obj, spec)
+        return self._coerce_fixup(spec, spec)
+
+    def _coerce_fixup(self, obj: object, label: object) -> Fixup:
+        if isinstance(obj, Fixup):
+            return obj
+        if isinstance(obj, type):
+            instance = obj()
+            if isinstance(instance, Fixup):
+                return instance
+        if hasattr(obj, "apply"):
+            return obj  # type: ignore[return-value]
+        raise TypeError(f"Fixup path {label!r} did not resolve to a Fixup")
 
     def autodiscover_components(self) -> "OrchestrAI":
-        if self.loader is None:
+        if self.loader is None or self._finalized or self._autodiscovered:
             return self
 
+        self._ensure_configured()
+        self.setup()
+
         modules: list[str] = list(self.conf.get("DISCOVERY_PATHS", ()))
-        for fixup in self.fixups:
-            extra = fixup.autodiscover_sources(self)
-            if extra:
+        for extra in self.apply_fixups(FixupStage.AUTODISCOVER_PRE, modules=modules):
+            if isinstance(extra, Iterable) and not isinstance(extra, (str, bytes)):
                 modules.extend(extra)
 
         imported = self.loader.autodiscover(self, modules) or []
-        for fixup in self.fixups:
-            fixup.on_import_modules(self, imported)
+        self.apply_fixups(FixupStage.AUTODISCOVER_POST, modules=tuple(imported))
+        self._autodiscovered = True
         return self
 
 

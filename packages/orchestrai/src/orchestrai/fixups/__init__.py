@@ -1,5 +1,5 @@
 """Framework fixups for OrchestrAI integrations."""
 
-from .base import BaseFixup
+from .base import Fixup, FixupStage, LoggingFixup, NoOpFixup
 
-__all__ = ["BaseFixup"]
+__all__ = ["Fixup", "FixupStage", "LoggingFixup", "NoOpFixup"]
