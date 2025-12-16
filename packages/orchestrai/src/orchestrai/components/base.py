@@ -33,7 +33,7 @@ class BaseComponent(ABC):
     # ----------------------------------------------------------------------------------
     @classmethod
     def get_registry(cls) -> "ComponentRegistry":
-        from orchestrai.registry.singletons import get_registry_for
+        from orchestrai.registry import get_registry_for
 
         registry = get_registry_for(cls)
         if registry is None:

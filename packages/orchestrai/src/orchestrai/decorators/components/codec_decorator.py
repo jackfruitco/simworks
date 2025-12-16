@@ -13,7 +13,7 @@ from typing import Any, Type, TypeVar
 from orchestrai.registry import ComponentRegistry
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.codecs.codec import BaseCodec
-from orchestrai.registry.singletons import codecs as codec_registry
+from orchestrai.registry import codecs as codec_registry
 
 __all__ = ("CodecDecorator", "codec")
 

@@ -41,8 +41,12 @@ from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import BaseFixup
 from .loaders.base import BaseLoader
-from .registry.base import BaseRegistry
-from .registry.simple import AppRegistry, ServiceRunnerRegistry
+from .registry import ComponentStore
+from .registry.active_app import (
+    flush_pending,
+    push_active_registry_app,
+    set_active_registry_app,
+)
 from .client.factory import build_orca_client
 from .client.settings_loader import load_client_settings
 
@@ -78,13 +82,13 @@ class OrchestrAI:
     _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
     _fixup_specs: list[object] = field(default_factory=list, repr=False)
 
-    services: ServiceRunnerRegistry = field(default_factory=ServiceRunnerRegistry)
-    codecs: AppRegistry = field(default_factory=AppRegistry)
-    output_schemas: AppRegistry = field(default_factory=AppRegistry)
-    providers: AppRegistry = field(default_factory=AppRegistry)
-    provider_backends: AppRegistry = field(default_factory=AppRegistry)
-    clients: AppRegistry = field(default_factory=AppRegistry)
-    prompt_sections: AppRegistry = field(default_factory=AppRegistry)
+    component_store: ComponentStore = field(default_factory=ComponentStore)
+    clients: dict[str, Any] = field(default_factory=dict)
+    providers: dict[str, Any] = field(default_factory=dict)
+    service_runners: dict[str, Any] = field(default_factory=dict)
+    _service_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(
+        default_factory=list, repr=False
+    )
 
     def __post_init__(self) -> None:
         # Capture any provided fixup specs; actual instances are built during setup
@@ -96,15 +100,19 @@ class OrchestrAI:
         self.conf.update_from_object("orchestrai.settings")
         self.conf.update_from_envvar()
 
+        set_active_registry_app(self)
+
     # ------------------------------------------------------------------
     # Current app helpers
     # ------------------------------------------------------------------
     def set_as_current(self) -> "OrchestrAI":
         set_current_app(self)
+        set_active_registry_app(self)
         return self
 
     def as_current(self):
-        return push_current_app(self)
+        set_active_registry_app(self)
+        return push_active_registry_app(self)
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -145,6 +153,8 @@ class OrchestrAI:
         self._configure_providers()
         self._refresh_identity_strip_tokens()
 
+        flush_pending(self.component_store)
+
         self._setup_done = True
         return self
 
@@ -167,30 +177,18 @@ class OrchestrAI:
         if self._finalized:
             return self
 
+        flush_pending(self.component_store)
+
         callbacks: list[Callable[["OrchestrAI"], None]] = []
         callbacks.extend(consume_finalizers())
         callbacks.extend(self._local_finalize_callbacks)
         for callback in callbacks:
             callback(self)
 
-        self._attach_discovered_components()
+        for callback in tuple(self._service_finalize_callbacks):
+            callback(self)
 
-        registries: tuple[BaseRegistry[str, Any], ...] = (
-            self.services,
-            self.codecs,
-            self.output_schemas,
-            self.providers,
-            self.provider_backends,
-            self.clients,
-            self.prompt_sections,
-        )
-        for registry in registries:
-            finalize = getattr(registry, "finalize", None)
-            if callable(finalize):
-                finalize(app=self)
-                continue
-
-            registry.freeze()
+        self.component_store.freeze_all()
         self._finalized = True
         self.print_component_report()
         return self
@@ -214,6 +212,17 @@ class OrchestrAI:
         self._local_finalize_callbacks.append(callback)
         return callback
 
+    def add_service_finalize_callback(
+        self, callback: Callable[["OrchestrAI"], None]
+    ) -> Callable[["OrchestrAI"], None]:
+        self._service_finalize_callbacks.append(callback)
+        return callback
+
+    def register_service_runner(self, name: str, runner: Any) -> Any:
+        if name not in self.service_runners:
+            self.service_runners[name] = runner
+        return runner
+
     # ------------------------------------------------------------------
     # Client/provider configuration
     # ------------------------------------------------------------------
@@ -235,7 +244,7 @@ class OrchestrAI:
             definition.setdefault("name", name)
             settings = load_client_settings(self.conf)
             client = build_orca_client(settings, name)
-            self.clients.register(name, client)
+            self.clients[name] = client
             self._default_client = name
             return
 
@@ -245,7 +254,7 @@ class OrchestrAI:
             clients_conf[default_client] = {"name": default_client}
 
         for name, definition in clients_conf.items():
-            self.clients.register(name, definition)
+            self.clients[name] = definition
 
         if default_client is None and clients_conf:
             default_client = next(iter(clients_conf))
@@ -255,7 +264,7 @@ class OrchestrAI:
         if self.mode == "single":
             return
         for name, definition in dict(self.conf.get("PROVIDERS", {})).items():
-            self.providers.register(name, definition)
+            self.providers[name] = definition
 
     def _refresh_identity_strip_tokens(self) -> None:
         """Compile and persist identity strip tokens onto app settings."""
@@ -266,7 +275,7 @@ class OrchestrAI:
             self.conf["IDENTITY_STRIP_TOKENS"] = get_effective_strip_tokens()
 
     def set_client(self, name: str, client):
-        self.clients.register(name, client)
+        self.clients[name] = client
 
     def set_default_client(self, name: str):
         self._default_client = name
@@ -302,21 +311,30 @@ class OrchestrAI:
         self._banner_printed = True
 
     def component_report_text(self) -> str:
-        sections = (
-            ("services", self.services),
-            ("providers", self.providers),
-            ("provider_backends", self.provider_backends),
-            ("clients", self.clients),
-            ("codecs", self.codecs),
-            ("output_schemas", self.output_schemas),
-            ("prompt_sections", self.prompt_sections),
+        registry_items = self.component_store.items()
+        sections = []
+        for kind, registry in sorted(registry_items.items()):
+            try:
+                names = sorted(registry.labels())
+            except Exception:
+                names = []
+            items = ", ".join(names) if names else "<none>"
+            sections.append(f"- {kind}: {items}")
+
+        client_names = sorted(self.clients.keys())
+        provider_names = sorted(self.providers.keys())
+        service_runners = sorted(self.service_runners.keys())
+        sections.append(
+            f"- service_runners: {', '.join(service_runners) if service_runners else '<none>'}"
+        )
+        sections.append(
+            f"- clients: {', '.join(client_names) if client_names else '<none>'}"
+        )
+        sections.append(
+            f"- providers: {', '.join(provider_names) if provider_names else '<none>'}"
         )
         lines = ["Registered components:"]
-        for label, registry in sections:
-            all_items = registry.all()
-            names = sorted(all_items.keys() if isinstance(all_items, dict) else all_items)
-            items = ", ".join(names) if names else "<none>"
-            lines.append(f"- {label}: {items}")
+        lines.extend(sections)
         return "\n".join(lines) + "\n"
 
     def print_component_report(self, file=None) -> None:
@@ -343,40 +361,6 @@ class OrchestrAI:
         self.fixups = resolved
         for fixup in self.fixups:
             fixup.on_setup(self)
-
-    def _attach_discovered_components(self) -> None:
-        """Populate app registries from globally discovered component registries."""
-
-        try:
-            from orchestrai.registry import singletons as global_components
-        except Exception:
-            return
-
-        def _existing_keys(registry: AppRegistry) -> set[str]:
-            current = registry.all()
-            if isinstance(current, dict):
-                return set(current.keys())
-            return set(str(item) for item in current)
-
-        def _attach(global_registry, app_registry: AppRegistry):
-            registered = _existing_keys(app_registry)
-            for component in getattr(global_registry, "all", lambda: ())():
-                label = getattr(getattr(component, "identity", None), "as_str", None) or str(component)
-                if label in registered:
-                    continue
-                app_registry.register(label, component)
-
-        registry_pairs = (
-            (global_components.services, self.services),
-            (global_components.codecs, self.codecs),
-            (global_components.schemas, self.output_schemas),
-            (global_components.prompt_sections, self.prompt_sections),
-            (global_components.provider_backends, self.provider_backends),
-            (global_components.providers, self.providers),
-        )
-
-        for global_registry, app_registry in registry_pairs:
-            _attach(global_registry, app_registry)
 
     def _resolve_fixup(self, spec: object) -> BaseFixup:
         if isinstance(spec, BaseFixup):

@@ -164,7 +164,7 @@ def for_(
             return found
 
     # 4) Global registry dispatcher
-    from orchestrai.registry.singletons import get_registry_for
+    from orchestrai.registry import get_registry_for
 
     try:
         global_registry = get_registry_for(Component)

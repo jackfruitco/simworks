@@ -126,7 +126,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         when orchestrating codec selection.
         """
         # Local import to avoid circular dependency at module import time.
-        from ...registry.singletons import codecs as codec_registry
+        from ...registry import codecs as codec_registry
 
         provider_name = cls._normalize_provider_name(provider)
 

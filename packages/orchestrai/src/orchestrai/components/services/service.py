@@ -932,7 +932,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
 
         try:
-            from orchestrai.registry.singletons import schemas as schema_registry
+            from orchestrai.registry import schemas as schema_registry
         except Exception:
             return None
 
