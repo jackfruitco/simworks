@@ -29,6 +29,7 @@ import importlib
 import logging
 import os
 import threading
+import sys
 from typing import Any
 
 from django.apps import AppConfig
@@ -37,10 +38,66 @@ from django.conf import settings as dj_settings
 from orchestrai._state import set_current_app
 from orchestrai.tracing import service_span_sync
 
+from orchestrai_django.integration import DjangoAdapter
+
 logger = logging.getLogger(__name__)
 
 _startup_lock = threading.RLock()
 _started = False
+
+DEFAULT_SKIP_READY_COMMANDS = {"migrate", "makemigrations", "collectstatic", "shell"}
+
+
+def _coerce_bool(value: Any, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _active_management_command(argv: list[str]) -> str | None:
+    if len(argv) < 2:
+        return None
+    runner = argv[0]
+    if not runner.endswith("manage.py") and "django-admin" not in runner:
+        return None
+    command = argv[1]
+    if command.startswith("-"):
+        return None
+    return command
+
+
+def _commands_to_skip() -> set[str]:
+    configured = getattr(dj_settings, "ORCHESTRAI_SKIP_READY_COMMANDS", None)
+    if configured is None:
+        configured = getattr(dj_settings, "ORCA_SKIP_READY_COMMANDS", None)
+    if configured is None:
+        configured = os.environ.get("ORCHESTRAI_SKIP_READY_COMMANDS")
+    if configured is None:
+        configured = os.environ.get("ORCA_SKIP_READY_COMMANDS")
+
+    if configured is None:
+        return set(DEFAULT_SKIP_READY_COMMANDS)
+
+    if isinstance(configured, str):
+        configured = [p.strip() for p in configured.split(",") if p.strip()]
+    if isinstance(configured, (list, tuple, set)):
+        return {str(item) for item in configured if str(item)}
+    return set(DEFAULT_SKIP_READY_COMMANDS)
+
+
+def _autostart_enabled() -> bool:
+    if os.environ.get("DJANGO_SKIP_READY") == "1":
+        return False
+
+    env_override = os.environ.get("ORCHESTRAI_AUTOSTART") or os.environ.get("ORCA_AUTOSTART")
+    if env_override is not None:
+        return _coerce_bool(env_override)
+
+    return _coerce_bool(getattr(dj_settings, "ORCA_AUTOSTART", True))
 
 
 def _import_from_path(path: str) -> Any:
@@ -68,10 +125,12 @@ def _import_from_path(path: str) -> Any:
 def _maybe_start(app: Any) -> None:
     """Start an OrchestrAI application using the current lifecycle."""
 
-    if not hasattr(app, "start") or not callable(getattr(app, "start")):
-        raise TypeError("ORCA_ENTRYPOINT must resolve to an OrchestrAI instance with .start()")
+    if not hasattr(app, "ensure_ready") or not callable(getattr(app, "ensure_ready")):
+        raise TypeError("ORCA_ENTRYPOINT must resolve to an OrchestrAI instance with .ensure_ready()")
 
-    app.start()
+    adapter = DjangoAdapter(app)
+    adapter.configure()
+    adapter.ensure_ready()
 
 
 def _register_current_app(app: Any) -> None:
@@ -79,6 +138,7 @@ def _register_current_app(app: Any) -> None:
 
     try:
         setattr(dj_settings, "_ORCA_APP", app)
+        setattr(dj_settings, "_ORCHESTRAI_APP", app)
     except Exception:
         logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
 
@@ -97,11 +157,12 @@ class OrchestrAIDjangoConfig(AppConfig):
         global _started
 
         # Allow opt-out for special cases (tests, one-off management commands, etc.)
-        if os.environ.get("DJANGO_SKIP_READY") == "1":
+        if not _autostart_enabled():
             return
 
-        if not getattr(dj_settings, "ORCA_AUTOSTART", True):
-            logger.debug("ORCA_AUTOSTART is False; skipping OrchestrAI autostart")
+        command = _active_management_command(sys.argv)
+        if command and command in _commands_to_skip():
+            logger.debug("Skipping OrchestrAI autostart for management command %s", command)
             return
 
         entrypoint = getattr(dj_settings, "ORCA_ENTRYPOINT", None) or os.environ.get("ORCA_ENTRYPOINT")
