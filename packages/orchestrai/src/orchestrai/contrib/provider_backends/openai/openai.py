@@ -4,11 +4,12 @@ from __future__ import annotations
 import logging
 import os
 from importlib import import_module
-from typing import Any, Final, Literal, Optional
+from typing import Any, Final, Literal, Optional, cast
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.components.providerkit.exceptions import ProviderError
 from orchestrai.decorators import provider_backend
+from orchestrai.conf import DEFAULTS
 from orchestrai.tracing import flatten_context as _flatten_context, service_span, service_span_sync
 from orchestrai.types import Request, Response
 from .output_adapters import ImageGenerationOutputAdapter
@@ -22,6 +23,8 @@ __all__ = ["OpenAIResponsesProvider"]
 PROVIDER_NAME: Final[Literal["openai"]] = "openai"
 API_SURFACE: Final[Literal["responses"]] = "responses"
 API_VERSION: Final[None] = None
+DEFAULT_TIMEOUT_S: Final[int | float] = cast(int | float, DEFAULTS["PROVIDER_DEFAULT_TIMEOUT"])
+DEFAULT_MODEL: Final[str] = cast(str, DEFAULTS["PROVIDER_DEFAULT_MODEL"])
 
 
 @provider_backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
@@ -39,7 +42,7 @@ class OpenAIResponsesProvider(BaseProvider):
         base_url: str | None = None,
         default_model: str | None = None,
         model: str | None = None,
-        timeout_s: int = 60,
+        timeout_s: int | float | None = None,
         client: Any | None = None,
         profile: str | None = None,
         slug: Optional[str] = None,
@@ -61,8 +64,8 @@ class OpenAIResponsesProvider(BaseProvider):
             **kwargs,
         )
         self.base_url = base_url
-        self.default_model = default_model if default_model is not None else model
-        self.timeout_s = timeout_s
+        self.default_model = default_model if default_model is not None else (model or DEFAULT_MODEL)
+        self.timeout_s = timeout_s if timeout_s is not None else DEFAULT_TIMEOUT_S
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self._client = self._resolve_client(client)
         self.set_tool_adapter(OpenAIToolAdapter())
@@ -118,7 +121,7 @@ class OpenAIResponsesProvider(BaseProvider):
         ):
             native_tools = self._tools_to_provider(req.tools)
             input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.input]
-            model_name = req.model or self.default_model or "gpt-4o-mini"
+            model_name = req.model or self.default_model or DEFAULT_MODEL
             response_format = getattr(req, "provider_response_format", None) or getattr(req, "response_schema_json", None)
 
             raw_kwargs: dict[str, Any] = {

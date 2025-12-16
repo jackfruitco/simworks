@@ -39,6 +39,10 @@ with app.as_current():
 
 `start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, prints the jumping-orca welcome banner once, and summarizes registered components.
 
+### Default behaviors
+
+Shared defaults for client/runtime behavior (timeouts, retries, telemetry flags) and provider fallbacks (model/profile/timeouts) live in [`src/orchestrai/conf/defaults.py`](src/orchestrai/conf/defaults.py). Update this module to change baseline behaviors across backends and the client factory.
+
 ## Lifecycle overview
 
 1. **configure** – apply settings from mappings, objects, or environment variables.

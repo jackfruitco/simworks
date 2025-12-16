@@ -1,5 +1,5 @@
 # orchestrai/client/resolve.py
-from typing import Dict, Tuple
+from typing import Dict, Tuple, cast
 
 from .conf_models import OrcaClientsSettings, OrcaClientEntry
 from .schemas import OrcaClientConfig
@@ -8,6 +8,15 @@ from ..components.providerkit.conf_models import (
     ProviderSettingsEntry,
 )
 from .settings_loader import OrcaSettings
+from orchestrai.conf import DEFAULTS
+
+
+DEFAULT_PROVIDER_PROFILE = cast(str, DEFAULTS["PROVIDER_DEFAULT_PROFILE"])
+DEFAULT_CLIENT_TIMEOUT = cast(float | None, DEFAULTS["CLIENT_DEFAULT_TIMEOUT"])
+DEFAULT_CLIENT_MAX_RETRIES = cast(int, DEFAULTS["CLIENT_DEFAULT_MAX_RETRIES"])
+DEFAULT_CLIENT_TELEMETRY_ENABLED = cast(bool, DEFAULTS["CLIENT_DEFAULT_TELEMETRY_ENABLED"])
+DEFAULT_CLIENT_LOG_PROMPTS = cast(bool, DEFAULTS["CLIENT_DEFAULT_LOG_PROMPTS"])
+DEFAULT_CLIENT_RAISE_ON_ERROR = cast(bool, DEFAULTS["CLIENT_DEFAULT_RAISE_ON_ERROR"])
 
 
 def get_client_entry_or_default(
@@ -105,11 +114,11 @@ def resolve_profile_alias(
     elif pentry.defaults.profile:
         profile_alias = pentry.defaults.profile
     else:
-        default_profile = getattr(core, "DEFAULT_PROVIDER_PROFILE", "default")
+        default_profile = getattr(core, "DEFAULT_PROVIDER_PROFILE", DEFAULT_PROVIDER_PROFILE) or DEFAULT_PROVIDER_PROFILE
         if default_profile in profiles:
             profile_alias = default_profile
-        elif "default" in profiles:
-            profile_alias = "default"
+        elif DEFAULT_PROVIDER_PROFILE in profiles:
+            profile_alias = DEFAULT_PROVIDER_PROFILE
         else:
             profile_alias = next(iter(profiles.keys()), None)
 
@@ -181,28 +190,48 @@ def resolve_client_behavior(
     """
     defaults = clients_settings.defaults
 
-    return OrcaClientConfig(
-        max_retries=centry.max_retries
+    max_retries = (
+        centry.max_retries
         if centry is not None and centry.max_retries is not None
-        else defaults.max_retries,
-        timeout_s=centry.timeout_s
+        else defaults.max_retries
+        if defaults.max_retries is not None
+        else DEFAULT_CLIENT_MAX_RETRIES
+    )
+    timeout_s = (
+        centry.timeout_s
         if centry is not None and centry.timeout_s is not None
-        else defaults.timeout_s,
-        telemetry_enabled=(
-            centry.telemetry_enabled
-            if centry is not None and centry.telemetry_enabled is not None
-            else defaults.telemetry_enabled
-        ),
-        log_prompts=(
-            centry.log_prompts
-            if centry is not None and centry.log_prompts is not None
-            else defaults.log_prompts
-        ),
-        raise_on_error=(
-            centry.raise_on_error
-            if centry is not None and centry.raise_on_error is not None
-            else defaults.raise_on_error
-        ),
+        else defaults.timeout_s
+        if defaults.timeout_s is not None
+        else DEFAULT_CLIENT_TIMEOUT
+    )
+    telemetry_enabled = (
+        centry.telemetry_enabled
+        if centry is not None and centry.telemetry_enabled is not None
+        else defaults.telemetry_enabled
+        if defaults.telemetry_enabled is not None
+        else DEFAULT_CLIENT_TELEMETRY_ENABLED
+    )
+    log_prompts = (
+        centry.log_prompts
+        if centry is not None and centry.log_prompts is not None
+        else defaults.log_prompts
+        if defaults.log_prompts is not None
+        else DEFAULT_CLIENT_LOG_PROMPTS
+    )
+    raise_on_error = (
+        centry.raise_on_error
+        if centry is not None and centry.raise_on_error is not None
+        else defaults.raise_on_error
+        if defaults.raise_on_error is not None
+        else DEFAULT_CLIENT_RAISE_ON_ERROR
+    )
+
+    return OrcaClientConfig(
+        max_retries=max_retries,
+        timeout_s=timeout_s,
+        telemetry_enabled=telemetry_enabled,
+        log_prompts=log_prompts,
+        raise_on_error=raise_on_error,
     )
 
 
