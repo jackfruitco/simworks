@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import importlib.util
 import importlib
+import importlib.util
 from typing import Any, Iterable, Mapping
 
 from orchestrai.conf.settings import Settings
+from orchestrai.fixups.base import FixupStage
 
 COMPONENT_MODULES: tuple[str, ...] = (
     "services",
@@ -71,46 +72,104 @@ def _build_discovery_paths(installed_apps: Iterable[str]) -> list[str]:
     return paths
 
 
+def _dedupe_preserve_order(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            ordered.append(value)
+    return ordered
+
+
+def _collect_mapping_from_settings(dj_settings: Any, namespace: str) -> dict[str, Any]:
+    explicit = getattr(dj_settings, namespace, None)
+    if explicit is not None:
+        return dict(_coerce_mapping(explicit))
+
+    # Namespaced attributes (e.g., ORCHESTRAI_CLIENT)
+    prefix = f"{namespace}_"
+    namespaced: dict[str, Any] = {}
+    for name in dir(dj_settings):
+        if not name.startswith(prefix):
+            continue
+        namespaced[name[len(prefix) :]] = getattr(dj_settings, name)
+    if namespaced:
+        return namespaced
+
+    # Legacy fallback to ORCA_CONFIG for backwards compatibility
+    legacy = getattr(dj_settings, "ORCA_CONFIG", None)
+    if legacy is not None:
+        return dict(_coerce_mapping(legacy))
+
+    return {}
+
+
 def configure_from_django_settings(
     app: Any | None = None,
     *,
-    namespace: str = "ORCA_CONFIG",
+    namespace: str = "ORCHESTRAI",
 ) -> Settings:
     """Load OrchestrAI configuration from ``django.conf.settings`` using the current API."""
 
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
-    mapping = dict(_coerce_mapping(getattr(dj_settings, namespace, None)))
+    mapping = _collect_mapping_from_settings(dj_settings, namespace)
     _validate_single_mode(mapping)
 
     conf = Settings()
     conf.update_from_mapping(mapping)
 
-    discovery_paths = list(mapping.get("DISCOVERY_PATHS", ()))
+    discovery_paths: list[str] = []
+    discovery_paths.extend(conf.get("DISCOVERY_PATHS", ()))
     discovery_paths.extend(_build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ())))
-    # Preserve order while deduping
-    seen: set[str] = set()
-    deduped_paths: list[str] = []
-    for path in discovery_paths:
-        if path and path not in seen:
-            seen.add(path)
-            deduped_paths.append(path)
-    conf["DISCOVERY_PATHS"] = tuple(deduped_paths)
-
-    if not conf.get("LOADER"):
-        conf["LOADER"] = "orchestrai.loaders.default:DefaultLoader"
+    conf["DISCOVERY_PATHS"] = tuple(_dedupe_preserve_order(discovery_paths))
 
     if app is not None and hasattr(app, "configure"):
         app.configure(conf.as_dict())
     return conf
 
 
-def django_autodiscover(app: Any, *, module_names: list[str] | None = None) -> None:
+def django_autodiscover(app: Any, *, module_names: list[str] | None = None) -> list[str]:
     """Django-native autodiscovery. Imports module_names across INSTALLED_APPS."""
 
-    from django.utils.module_loading import autodiscover_modules  # type: ignore[attr-defined]
+    from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
-    if module_names is None:
-        module_names = ["orca", "ai"]
+    modules = _build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ()))
+    imported: list[str] = []
+    for module in modules:
+        importlib.import_module(module)
+        imported.append(module)
+    return imported
 
-    autodiscover_modules(*module_names)
+
+class DjangoAutodiscoverFixup:
+    """Hook autodiscovery into the OrchestrAI lifecycle for Django apps."""
+
+    def apply(self, stage: FixupStage, app: Any, **context: Any) -> Any:
+        if stage is not FixupStage.AUTODISCOVER_PRE:
+            return None
+
+        modules = django_autodiscover(app)
+        collector = context.get("modules")
+        if collector is not None:
+            collector.extend(modules)
+        return tuple(modules)
+
+
+class DjangoAdapter:
+    """Adapter wiring Django settings and discovery into an OrchestrAI app."""
+
+    def __init__(self, app: Any, *, namespace: str = "ORCHESTRAI") -> None:
+        self.app = app
+        self.namespace = namespace
+
+    def configure(self) -> Settings:
+        conf = configure_from_django_settings(self.app, namespace=self.namespace)
+        self.app.add_fixup(DjangoAutodiscoverFixup())
+        return conf
+
+    def ensure_ready(self) -> Any:
+        if hasattr(self.app, "ensure_ready"):
+            return self.app.ensure_ready()
+        return None

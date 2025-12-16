@@ -74,7 +74,7 @@ def test_single_mode_rejects_clients_providers(monkeypatch):
     from orchestrai_django import integration
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={
+        ORCHESTRAI={
             "MODE": "single",
             "CLIENT": {"provider": "openai"},
             "CLIENTS": {"bad": {}},
@@ -91,7 +91,7 @@ def test_single_mode_configures_client(monkeypatch):
     from orchestrai_django import integration
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub"}},
         INSTALLED_APPS=[],
     )
     install_fake_django(monkeypatch, settings_obj)
@@ -109,7 +109,7 @@ def test_single_mode_exposes_app_client(monkeypatch):
     from orchestrai_django import integration
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub", "name": "solo"}},
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub", "name": "solo"}},
         INSTALLED_APPS=[],
     )
     install_fake_django(monkeypatch, settings_obj)
@@ -156,7 +156,7 @@ def test_django_discovery_prefers_orca_and_loads_components(monkeypatch, tmp_pat
     monkeypatch.syspath_prepend(str(tmp_path))
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub"}},
         INSTALLED_APPS=["myapp"],
     )
     install_fake_django(monkeypatch, settings_obj)
@@ -164,6 +164,7 @@ def test_django_discovery_prefers_orca_and_loads_components(monkeypatch, tmp_pat
     app = OrchestrAI()
     conf = integration.configure_from_django_settings(app)
 
+    assert "orchestrai.contrib.provider_backends" in conf["DISCOVERY_PATHS"]
     assert "myapp.orca.services" in conf["DISCOVERY_PATHS"]
     app.start()
     assert sys.modules["myapp.orca.services"].IMPORTED is True
@@ -184,7 +185,7 @@ def test_django_discovery_can_load_ai_convention(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(tmp_path))
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub"}},
         INSTALLED_APPS=["legacyapp"],
     )
     install_fake_django(monkeypatch, settings_obj)
@@ -223,7 +224,7 @@ class RunnableService(BaseService):
     monkeypatch.syspath_prepend(str(tmp_path))
 
     settings_obj = types.SimpleNamespace(
-        ORCA_CONFIG={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub"}},
         INSTALLED_APPS=["svcapp"],
     )
     install_fake_django(monkeypatch, settings_obj)
@@ -258,7 +259,7 @@ def test_appconfig_ready_single_client(monkeypatch, tmp_path):
     settings_obj = types.SimpleNamespace(
         ORCA_AUTOSTART=True,
         ORCA_ENTRYPOINT="dummy_entry:get_app",
-        ORCA_CONFIG={
+        ORCHESTRAI={
             "MODE": "single",
             "CLIENT": {
                 "provider": "openai",
@@ -281,4 +282,131 @@ def test_appconfig_ready_single_client(monkeypatch, tmp_path):
 
     assert "default" in list_clients()
     clear_clients()
+
+
+def test_ready_skips_default_management_commands(monkeypatch, tmp_path):
+    import orchestrai_django.apps as django_apps
+
+    entrypoint = tmp_path / "skip_entry.py"
+    entrypoint.write_text(
+        "from orchestrai import OrchestrAI\n\n"
+        "app = OrchestrAI()\n\n"
+        "def get_app():\n"
+        "    return app\n"
+    )
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_AUTOSTART=True,
+        ORCA_ENTRYPOINT="skip_entry:get_app",
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        INSTALLED_APPS=[],
+    )
+
+    monkeypatch.setattr(sys, "argv", ["manage.py", "migrate"])
+    monkeypatch.syspath_prepend(str(tmp_path))
+    install_fake_django(monkeypatch, settings_obj)
+
+    monkeypatch.setattr(django_apps, "_started", False)
+    cfg = django_apps.OrchestrAIDjangoConfig("orchestrai_django")
+    cfg.ready()
+
+    assert not hasattr(settings_obj, "_ORCHESTRAI_APP")
+    assert django_apps._started is False
+
+
+def test_adapter_runs_configure_before_ensure_ready(monkeypatch, tmp_path):
+    import orchestrai_django.apps as django_apps
+    from orchestrai import OrchestrAI
+    from orchestrai_django import integration
+
+    order: list[str] = []
+
+    original_configure = integration.configure_from_django_settings
+    original_ensure_ready = OrchestrAI.ensure_ready
+
+    def tracking_configure(app, **kwargs):
+        order.append("configure")
+        return original_configure(app, **kwargs)
+
+    def tracking_ensure_ready(self):  # type: ignore[override]
+        order.append("ensure_ready")
+        return original_ensure_ready(self)
+
+    monkeypatch.setattr(integration, "configure_from_django_settings", tracking_configure)
+    monkeypatch.setattr(OrchestrAI, "ensure_ready", tracking_ensure_ready)
+
+    entrypoint = tmp_path / "ordered_entry.py"
+    entrypoint.write_text(
+        "from orchestrai import OrchestrAI\n\n"
+        "def get_app():\n"
+        "    return OrchestrAI()\n"
+    )
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_AUTOSTART=True,
+        ORCA_ENTRYPOINT="ordered_entry:get_app",
+        ORCHESTRAI={"MODE": "single", "CLIENT": {"provider": "stub"}},
+        INSTALLED_APPS=[],
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    install_fake_django(monkeypatch, settings_obj)
+    monkeypatch.setattr(sys, "argv", ["manage.py", "runserver"])
+    monkeypatch.setattr(django_apps, "_started", False)
+
+    cfg = django_apps.OrchestrAIDjangoConfig("orchestrai_django")
+    cfg.ready()
+
+    assert order[:2] == ["configure", "ensure_ready"]
+
+
+def test_django_fixup_runs_at_autodiscover_stage(monkeypatch, tmp_path):
+    import orchestrai_django.apps as django_apps
+    from orchestrai.fixups.base import FixupStage
+    from orchestrai_django import integration
+
+    calls: list[str] = []
+    stages: list[FixupStage] = []
+
+    def fake_django_autodiscover(app):
+        calls.append("django_autodiscover")
+        return []
+
+    original_apply = integration.DjangoAutodiscoverFixup.apply
+
+    def tracking_apply(self, stage, app, **context):
+        stages.append(stage)
+        return original_apply(self, stage, app, **context)
+
+    monkeypatch.setattr(integration, "django_autodiscover", fake_django_autodiscover)
+    monkeypatch.setattr(integration.DjangoAutodiscoverFixup, "apply", tracking_apply)
+
+    entrypoint = tmp_path / "fixup_entry.py"
+    entrypoint.write_text(
+        "from orchestrai import OrchestrAI\n\n"
+        "def get_app():\n"
+        "    return OrchestrAI()\n"
+    )
+
+    settings_obj = types.SimpleNamespace(
+        ORCA_AUTOSTART=True,
+        ORCA_ENTRYPOINT="fixup_entry:get_app",
+        ORCHESTRAI={
+            "MODE": "single",
+            "CLIENT": {"provider": "stub"},
+            "DISCOVERY_PATHS": [],
+        },
+        INSTALLED_APPS=[],
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    install_fake_django(monkeypatch, settings_obj)
+    monkeypatch.setattr(sys, "argv", ["manage.py", "runserver"])
+    monkeypatch.setattr(django_apps, "_started", False)
+
+    cfg = django_apps.OrchestrAIDjangoConfig("orchestrai_django")
+    cfg.ready()
+
+    assert calls == ["django_autodiscover"]
+    assert FixupStage.AUTODISCOVER_PRE in stages
 
