@@ -39,7 +39,7 @@ def clear_component_registries():
 def test_decorator_logs_use_category_labels(caplog: pytest.LogCaptureFixture):
     caplog.set_level(logging.INFO)
 
-    @service(namespace="log", kind="demo", name="svc")
+    @service(namespace="log", group="demo", name="svc")
     class LoggedService(BaseService):
         abstract = False
 
@@ -50,27 +50,27 @@ def test_decorator_logs_use_category_labels(caplog: pytest.LogCaptureFixture):
 
 
 def test_component_report_lists_discovered_components():
-    @service(namespace="report", kind="svc", name="demo")
+    @service(namespace="report", group="svc", name="demo")
     class ReportService(BaseService):
         abstract = False
 
         def execute(self):
             return None
 
-    @codec(namespace="report", kind="api", name="json")
+    @codec(namespace="report", group="api", name="json")
     class ReportCodec(BaseCodec):
         abstract = False
 
-    @schema(namespace="report", kind="svc", name="schema")
+    @schema(namespace="report", group="svc", name="schema")
     class ReportSchema(BaseOutputSchema):
         value: str
 
-    @prompt_section(namespace="report", kind="prompt", name="section")
+    @prompt_section(namespace="report", group="prompt", name="section")
     class ReportPrompt(PromptSection):
         abstract = False
         instruction = "demo"
 
-    @provider_backend(namespace="report", kind="api", name="backend")
+    @provider_backend(namespace="report", group="api", name="backend")
     class ReportBackend(BaseProvider):
         abstract = False
 
@@ -78,20 +78,20 @@ def test_component_report_lists_discovered_components():
     app.ensure_ready()
     report = app.component_report_text()
 
-    assert "report.svc.demo" in report
-    assert "report.api.json" in report
-    assert "report.svc.schema" in report
-    assert "report.prompt.section" in report
-    assert "report.api.backend" in report
+    assert "services.report.svc.demo" in report
+    assert "codecs.report.api.json" in report
+    assert "schemas.report.svc.schema" in report
+    assert "prompt-sections.report.prompt.section" in report
+    assert "provider-backends.report.api.backend" in report
 
 
 @pytest.mark.asyncio
 async def test_response_schema_resolves_and_attaches_request():
-    @schema(namespace="chatlab", kind="standardized_patient", name="initial")
+    @schema(namespace="chatlab", group="standardized_patient", name="initial")
     class PatientInitialSchema(BaseOutputSchema):
         value: str
 
-    @service(namespace="chatlab", kind="standardized_patient", name="initial")
+    @service(namespace="chatlab", group="standardized_patient", name="initial")
     class PatientInitialService(BaseService):
         abstract = False
         provider_name = "openai.responses"

@@ -23,7 +23,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "service",
             type=str,
-            help="Service registry identity (e.g. 'chatlab.standardized_patient.initial').",
+            help="Service registry identity (e.g. 'services.chatlab.standardized_patient.initial').",
         )
         parser.add_argument(
             "-c",
