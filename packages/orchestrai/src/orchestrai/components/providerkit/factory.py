@@ -48,7 +48,7 @@ def build_provider(cfg: ProviderConfig) -> BaseProvider:
     # Look up provider class by identity
     # -----------------------------
     with service_span_sync(
-        "simcore.providers.lookup_class",
+        "orchestrai.providers.lookup_class",
         attributes={
             "simcore.provider.backend_identity": backend_identity,
             "simcore.provider.alias": cfg.alias,
@@ -89,7 +89,7 @@ def build_provider(cfg: ProviderConfig) -> BaseProvider:
     # Concrete providers are expected to accept **kwargs and call
     # BaseProvider.__init__(...) internally.
     with service_span_sync(
-        "simcore.providers.build_instance",
+        "orchestrai.providers.build_instance",
         attributes={
             "simcore.provider.class": f"{provider_cls.__module__}.{provider_cls.__name__}",
             "simcore.provider.alias": alias or "",
