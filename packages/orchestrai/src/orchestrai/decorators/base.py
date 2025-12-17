@@ -36,6 +36,7 @@ from typing import Any, Optional, Type, TypeVar, Callable, cast
 
 from orchestrai.tracing import service_span_sync
 from orchestrai.identity import Identity
+from orchestrai.identity.constants import DEFAULT_DOMAIN
 from orchestrai.identity.resolvers import IdentityResolver
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,10 @@ class BaseDecorator:
       `_IdentityMixin__identity_meta_cached` are set to avoid importing the mixin.
     - Subclasses in other packages (e.g., Django) may override `derive_identity()` to call their resolver.
     """
+
+    default_domain: str | None = DEFAULT_DOMAIN
+    default_namespace: str | None = None
+    default_group: str | None = None
 
     def __init__(self, *, resolver: IdentityResolver | None = None) -> None:
         # Allow per-instance override; default to core resolver
@@ -196,18 +201,24 @@ class BaseDecorator:
 
         Precedence (core):
           - name: explicit (arg/attr) preserved-as-is (trim only) or derived from class
-          - domain: arg → class attr → module root → "default"
-          - namespace: arg → class attr → module root → "default"
-          - group: arg → class attr → "default" (legacy `kind` accepted)
+          - domain: arg → class attr → decorator default → error
+          - namespace: arg → class attr → decorator default → module root → "default"
+          - group: arg → class attr → decorator default → "default" (legacy `kind` accepted)
 
         Token stripping & normalization are implemented in the Identity layer.
         """
+        context = {
+            "default_domain": getattr(self, "default_domain", DEFAULT_DOMAIN),
+            "default_namespace": getattr(self, "default_namespace", None),
+            "default_group": getattr(self, "default_group", None),
+        }
         identity, meta = self.resolver.resolve(
             cls,
             domain=domain,
             namespace=namespace,
             group=group,
             name=name,
+            context=context,
         )
         return identity, meta
 

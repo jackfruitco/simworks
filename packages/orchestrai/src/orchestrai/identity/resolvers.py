@@ -17,18 +17,18 @@ Key behaviors
     stripping (case-insensitive; removes tokens at prefix, middle, suffix),
     then normalize.
 - Domain/namespace/group precedence:
-  * domain:    decorator arg → class attribute → module root → "default"
-  * namespace: decorator arg → class attribute → module root → "default"
-  * group:     decorator arg → class attribute (`group` or legacy `kind`) → "default"
+  * domain:    decorator arg → class attribute → decorator default → error
+  * namespace: decorator arg → class attribute → decorator default → module root → "default"
+  * group:     decorator arg → class attribute (`group` or legacy `kind`) → decorator default → "default"
 - Token sources (core):
   * DEFAULT_IDENTITY_STRIP_TOKENS (core constant)
   * SIMCORE_IDENTITY_STRIP_TOKENS (env; comma/space-delimited)
   (Framework layers may extend this with additional sources.)
 - Meta for tracing (flat keys):
-  * ai.tuple4.raw, ai.tuple4.post_strip, ai.tuple4.post_norm
-  * ai.identity.name.explicit (bool)
-  * ai.identity.source.name|domain|namespace|group = "arg"|"attr"|"derived"
-  * ai.strip_tokens (CSV), ai.strip_tokens_list (list)
+  * simcore.tuple4.raw, simcore.tuple4.post_strip, simcore.tuple4.post_norm
+  * simcore.identity.name.explicit (bool)
+  * simcore.identity.source.name|domain|namespace|group = "arg"|"attr"|"derived"|"default"
+  * simcore.strip_tokens (CSV), simcore.strip_tokens_list (list)
 
 This module must not import any decorator or registry code to avoid cycles.
 """
@@ -40,7 +40,8 @@ from typing import Iterable, Optional, Any, TypeVar
 
 from . import registry_resolvers as _rr
 from .identity import Identity, IdentityLike
-from .utils import snake, module_root, get_effective_strip_tokens
+from .constants import DEFAULT_DOMAIN, normalize_domain
+from .utils import module_root, get_effective_strip_tokens, snake
 from ..types.protocols import RegistryProtocol
 
 __all__ = [
@@ -156,16 +157,27 @@ class IdentityResolver:
         Collisions are handled by registries, not by this class.
         """
         context = context or {}
+        if not isinstance(context, dict):
+            context = {}
+
+        defaults_raw = context.get("defaults", {})
+        defaults = dict(defaults_raw) if isinstance(defaults_raw, dict) else {}
+        domain_default = (
+            context.get("default_domain")
+            or defaults.get("domain")
+            or DEFAULT_DOMAIN
+        )
+        namespace_default = context.get("default_namespace") or defaults.get("namespace")
+        group_default = context.get("default_group") or defaults.get("group")
 
         # Domain
         dm_value, dm_source = self._resolve_domain(
-            cls, domain, getattr(cls, "domain", None)
+            cls, domain, getattr(cls, "domain", None), domain_default
         )
-        dm_value = snake(dm_value or "default")
 
         # Namespace
         ns_value, ns_source = self._resolve_namespace(
-            cls, namespace, getattr(cls, "namespace", None)
+            cls, namespace, getattr(cls, "namespace", None), namespace_default
         )
         ns_value = snake(ns_value or "default")
 
@@ -175,6 +187,7 @@ class IdentityResolver:
             group,
             getattr(cls, "group", None),
             getattr(cls, "kind", None),
+            group_default,
         )
         gp_value = snake(gp_value or "default")
 
@@ -222,28 +235,35 @@ class IdentityResolver:
             cls: type,
             domain_arg: Optional[str],
             domain_attr: Optional[str],
+            decorator_default: Optional[str],
     ) -> tuple[str, str]:
-        """Return (value, source). Default: arg > attr > module_root > 'default'."""
+        """Return (normalized value, source). Precedence: arg > attr > decorator default > error."""
         if _is_nonempty_str(domain_arg):
-            return str(domain_arg).strip(), "arg"
+            return normalize_domain(domain_arg), "arg"
         if _is_nonempty_str(domain_attr):
-            return str(domain_attr).strip(), "attr"
-        root = module_root(cls) or "default"
-        return root, "derived"
+            return normalize_domain(domain_attr), "attr"
+        if _is_nonempty_str(decorator_default):
+            return normalize_domain(decorator_default), "default"
+        raise ValueError("domain is required for identity resolution")
 
     def _resolve_namespace(
             self,
             cls: type,
             namespace_arg: Optional[str],
             namespace_attr: Optional[str],
+            decorator_default: Optional[str] = None,
     ) -> tuple[str, str]:
-        """Return (value, source). Default: arg > attr > module_root > 'default'."""
+        """Return (value, source). Default: arg > attr > decorator default > module_root > 'default'."""
         if _is_nonempty_str(namespace_arg):
             return str(namespace_arg).strip(), "arg"
         if _is_nonempty_str(namespace_attr):
             return str(namespace_attr).strip(), "attr"
-        root = module_root(cls) or "default"
-        return root, "derived"
+        if _is_nonempty_str(decorator_default):
+            return str(decorator_default).strip(), "default"
+        root = module_root(cls)
+        if root:
+            return root, "derived"
+        return "default", "derived"
 
     def _resolve_group(
             self,
@@ -251,14 +271,17 @@ class IdentityResolver:
             group_arg: Optional[str],
             group_attr: Optional[str],
             legacy_kind_attr: Optional[str],
+            decorator_default: Optional[str] = None,
     ) -> tuple[str, str]:
-        """Return (value, source). Default: arg > attr/legacy kind > 'default'."""
+        """Return (value, source). Default: arg > attr/legacy kind > decorator default > 'default'."""
         if _is_nonempty_str(group_arg):
             return str(group_arg).strip(), "arg"
         if _is_nonempty_str(group_attr):
             return str(group_attr).strip(), "attr"
         if _is_nonempty_str(legacy_kind_attr):
             return str(legacy_kind_attr).strip(), "attr"
+        if _is_nonempty_str(decorator_default):
+            return str(decorator_default).strip(), "default"
         return "default", "derived"
 
     def _collect_strip_tokens(self, cls: type) -> tuple[str, ...]:
@@ -362,12 +385,17 @@ class Resolve:
 
     @staticmethod
     def as_tuple(ident: IdentityLike) -> tuple[str, str, str, str]:
-        """Return (domain, namespace, group, name) for any `IdentityLike`."""
+        """Return (domain, namespace, group, name) for any `IdentityLike` (tuple4 only)."""
+        return _rr.tuple4(ident)
+
+    @staticmethod
+    def as_tuple4(ident: IdentityLike) -> tuple[str, str, str, str]:
+        """Alias for `as_tuple`; always returns a 4-part identity tuple."""
         return _rr.tuple4(ident)
 
     @staticmethod
     def as_label(ident: IdentityLike) -> str:
-        """Return 'domain.namespace.group.name' for any `IdentityLike`."""
+        """Return canonical 'domain.namespace.group.name' for any `IdentityLike`."""
         return _rr.label(ident)
 
     @staticmethod
