@@ -8,17 +8,16 @@ Core service decorator.
 """
 
 import logging
-from typing import Any, Type, TypeVar
+from typing import Any, Type
 
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators.base import BaseDecorator
-from orchestrai.identity.identity import Identity
 from orchestrai.registry import ComponentRegistry
-from orchestrai.registry import services as _Registry
+from orchestrai.registry import services as services_registry
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=Type[Any])
+__all__ = ("ServiceDecorator",)
 
 
 class ServiceDecorator(BaseDecorator):
@@ -41,15 +40,15 @@ class ServiceDecorator(BaseDecorator):
 
     def get_registry(self) -> ComponentRegistry:
         # Always register into the service registry
-        return _Registry
+        return services_registry
 
     # Human-friendly log label
     log_category = "services"
 
-    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
+    def register(self, candidate: Type[Any]) -> None:
         # Guard: ensure we only register service classes
         if not issubclass(candidate, BaseService):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseService to use @service"
             )
-        super().register(candidate, identity=identity)
+        super().register(candidate)

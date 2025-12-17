@@ -15,16 +15,15 @@ from typing import Any, Type
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.decorators.base import BaseDecorator
-from orchestrai.identity.identity import Identity
 from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import (
     provider_backends as provider_backend_registry,
     providers as providers_registry,
 )
 
-__all__ = ("ProviderBackendDecorator", "ProviderDecorator")
-
 logger = logging.getLogger(__name__)
+
+__all__ = ("ProviderBackendDecorator", "ProviderDecorator")
 
 
 class ProviderBackendDecorator(BaseDecorator):
@@ -52,7 +51,7 @@ class ProviderBackendDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "provider_backends"
 
-    def register(self, candidate: Type[Any], *, identity=None) -> None:
+    def register(self, candidate: Type[Any]) -> None:
         """Register a backend class after guarding its base type.
 
         Ensures only BaseProvider subclasses are registered into the provider backends registry.
@@ -61,7 +60,7 @@ class ProviderBackendDecorator(BaseDecorator):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseProvider to use @provider_backend"
             )
-        super().register(candidate, identity=identity)
+        super().register(candidate)
 
 
 class ProviderDecorator(BaseDecorator):
@@ -89,7 +88,7 @@ class ProviderDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "providers"
 
-    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
+    def register(self, candidate: Type[Any]) -> None:
         """Register a provider class after guarding its base type.
 
         Ensures only BaseProvider subclasses are registered into the providers registry.
@@ -98,4 +97,4 @@ class ProviderDecorator(BaseDecorator):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseProvider to use @provider"
             )
-        super().register(candidate, identity=identity)
+        super().register(candidate)

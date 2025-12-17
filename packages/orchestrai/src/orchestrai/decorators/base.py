@@ -72,7 +72,7 @@ class BaseDecorator:
       • ``get_registry(self) -> Any | None``
       • ``derive_identity(self, cls, *, namespace, kind, name) -> Identity | (Identity, meta)``
       • ``bind_extras(self, cls, extras: dict[str, Any]) -> None``
-      • ``register(self, cls) -> None`` (defaults to `registry.register(candidate=cls)`)
+      • ``register(self, candidate) -> None`` (defaults to routing a RegistrationRecord)
 
     Identity semantics
     ------------------
@@ -136,7 +136,7 @@ class BaseDecorator:
             self.bind_extras(cls, extras)
 
             # 4) Register (if a registry is present)
-            self.register(cls, identity=identity)
+            self.register(cls)
 
             # 5) Emit a single trace span *after* successful registration with rich attributes
             final_label = identity.as_str
@@ -208,7 +208,7 @@ class BaseDecorator:
         """Optional metadata hook for domain decorators (e.g., prompt plans)."""
         return
 
-    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
+    def register(self, candidate: Type[Any]) -> None:
         """Default registration logic.
 
         - Retrieves a registry via ``get_registry()``.
@@ -227,7 +227,7 @@ class BaseDecorator:
         route_registration(
             RegistrationRecord(
                 component=candidate,
-                identity=identity or Identity.get_for(candidate),
+                identity=Identity.get_for(candidate),
             )
         )
         logger.debug(

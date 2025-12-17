@@ -8,19 +8,16 @@ Core codec decorator.
 - Enforces that only BaseCodec subclasses can be decorated.
 """
 import logging
-from typing import Any, Type, TypeVar
+from typing import Any, Type
 
 from orchestrai.components.codecs.codec import BaseCodec
 from orchestrai.decorators.base import BaseDecorator
-from orchestrai.identity.identity import Identity
 from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import codecs as codec_registry
 
-__all__ = ("CodecDecorator", "codec")
+__all__ = ("CodecDecorator",)
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T", bound=Type[Any])
 
 
 class CodecDecorator(BaseDecorator):
@@ -48,7 +45,7 @@ class CodecDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "codecs"
 
-    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
+    def register(self, candidate: Type[Any]) -> None:
         """Register a codec class after guarding its base type.
 
         Ensures only BaseCodec subclasses are registered into the codecs registry.
@@ -58,7 +55,3 @@ class CodecDecorator(BaseDecorator):
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseCodec to use @codec"
             )
         super().register(candidate)
-
-
-# Public instance used as the decorator in app code
-codec = CodecDecorator()
