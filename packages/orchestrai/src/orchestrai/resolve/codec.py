@@ -6,6 +6,7 @@ import logging
 from typing import Iterable
 
 from orchestrai.components.codecs import BaseCodec
+from orchestrai.identity.domains import CODECS_DOMAIN
 
 from .result import ResolutionBranch, ResolutionResult
 
@@ -93,9 +94,9 @@ def resolve_codec(
     registry_candidates: list[type[BaseCodec]] = []
     if store is not None and constraints:
         try:
-            registry = store.registry("codec")
+            registry = store.registry(CODECS_DOMAIN)
             for cand in registry.items():
-                if _matches_constraints(cand, constraints):
+                if issubclass(cand, BaseCodec) and _matches_constraints(cand, constraints):
                     registry_candidates.append(cand)
         except Exception:
             logger.debug("codec resolution: registry lookup failed", exc_info=True)

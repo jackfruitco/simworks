@@ -8,16 +8,16 @@ from .records import RegistrationRecord
 
 
 class ComponentStore:
-    """Container managing component registries by kind."""
+    """Container managing component registries by domain."""
 
     def __init__(self) -> None:
         self._registries: dict[str, ComponentRegistry[Any]] = {}
         self._lock = RLock()
 
-    def registry(self, kind: str) -> ComponentRegistry[Any]:
-        key = str(kind).strip()
+    def registry(self, domain: str) -> ComponentRegistry[Any]:
+        key = str(domain).strip()
         if not key:
-            raise ValueError("registry kind must be a non-empty string")
+            raise ValueError("registry domain must be a non-empty string")
 
         with self._lock:
             if key not in self._registries:
@@ -25,22 +25,26 @@ class ComponentStore:
             return self._registries[key]
 
     def register(self, record: RegistrationRecord) -> None:
-        registry = self.registry(record.kind)
+        registry = self.registry(record.domain)
         registry.register(record.component)
 
-    def try_get(self, kind: str, ident: Any):
-        return self.registry(kind).try_get(ident)
+    def try_get(self, domain: str, ident: Any):
+        return self.registry(domain).try_get(ident)
 
-    def get(self, kind: str, ident: Any):
-        return self.registry(kind).get(ident)
+    def get(self, domain: str, ident: Any):
+        return self.registry(domain).get(ident)
 
     def items(self) -> dict[str, ComponentRegistry[Any]]:
         with self._lock:
             return dict(self._registries)
 
-    def kinds(self) -> tuple[str, ...]:
+    def domains(self) -> tuple[str, ...]:
         with self._lock:
             return tuple(sorted(self._registries.keys()))
+
+    # Backward-compatible alias
+    def kinds(self) -> tuple[str, ...]:
+        return self.domains()
 
     def freeze_all(self) -> None:
         for registry in self.items().values():
