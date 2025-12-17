@@ -1,9 +1,9 @@
 # orchestrai/decorators/components/prompt_section_decorator.py
 """
-Core codec decorator.
+Core prompt section decorator.
 
-- Derives & pins identity via IdentityResolver (kind defaults to "codec" if not provided).
-- Registers the class in the global `codecs` registry.
+- Derives & pins identity via IdentityResolver (domain/namespace/group/name via resolver + hints).
+- Registers the class in the global `prompt_sections` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
 
@@ -12,6 +12,7 @@ from typing import Any, Type
 
 from orchestrai.components.promptkit import PromptSection
 from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.domains import PROMPT_SECTIONS_DOMAIN
 from orchestrai.registry import prompt_sections as _Registry
 from orchestrai.registry.base import ComponentRegistry
 
@@ -22,7 +23,7 @@ __all__ = ("PromptSectionDecorator",)
 
 class PromptSectionDecorator(BaseDecorator):
     """
-    Codec decorator specialized for DjangoPromptSectionDecorator subclasses.
+    Prompt section decorator specialized for PromptSection subclasses.
 
     Usage
     -----
@@ -33,10 +34,12 @@ class PromptSectionDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @prompt_section(namespace="simcore", name="my_section")
+        @prompt_section(namespace="simcore", group="sections", name="my_section")
         class MyPromptSection(PromptSection):
             ...
     """
+
+    default_domain = PROMPT_SECTIONS_DOMAIN
 
     def get_registry(self) -> ComponentRegistry:
         return _Registry

@@ -1,11 +1,8 @@
-from orchestrai.decorators.components import PromptSectionDecorator
-from orchestrai.registry import ComponentRegistry
-
 """
-Core codec decorator.
+Core schema decorator.
 
-- Derives & pins identity via IdentityResolver (kind defaults to "codec" if not provided).
-- Registers the class in the global `codecs` registry.
+- Derives & pins identity via IdentityResolver (domain/namespace/group/name via resolver + hints).
+- Registers the class in the global `schemas` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
 
@@ -14,11 +11,13 @@ import logging
 
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.schemas import BaseOutputSchema
+from orchestrai.identity.domains import SCHEMAS_DOMAIN
+from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import schemas as schema_registry
 
 logger = logging.getLogger(__name__)
 
-__all__ = ("PromptSectionDecorator",)
+__all__ = ("SchemaDecorator",)
 
 T = TypeVar("T", bound=Type[Any])
 
@@ -36,10 +35,12 @@ class SchemaDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @schema(namespace="simcore", name="my_schema")
+        @schema(namespace="simcore", group="schemas", name="my_schema")
         class MySchema(BaseOutputSchema):
             ...
     """
+
+    default_domain = SCHEMAS_DOMAIN
 
     def get_registry(self) -> ComponentRegistry:
         # Always register into the schema registry
