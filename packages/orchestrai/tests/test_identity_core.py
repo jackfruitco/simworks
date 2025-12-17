@@ -1,6 +1,7 @@
 import pytest
 
 from orchestrai.identity import Identity, IdentityResolver
+from orchestrai.identity.domains import SERVICES_DOMAIN, normalize_domain
 
 
 def test_domain_precedence_and_normalization_default_context():
@@ -9,9 +10,9 @@ def test_domain_precedence_and_normalization_default_context():
         group = "Group"
         name = "ExplicitName"
 
-    ident, meta = IdentityResolver().resolve(Demo, context={"default_domain": "SIM.Core"})
+    ident, meta = IdentityResolver().resolve(Demo, context={"default_domain": " SERVICES "})
 
-    assert ident.domain == "sim-core"
+    assert ident.domain == SERVICES_DOMAIN
     assert meta["simcore.identity.source.domain"] == "default"
     assert ident.namespace == "demo_space"
     assert ident.group == "group"
@@ -22,8 +23,8 @@ def test_domain_precedence_and_normalization_default_context():
 @pytest.mark.parametrize(
     "domain_arg, domain_attr, expected, source",
     [
-        ("Explicit", "AttrDomain", "explicit", "arg"),
-        (None, "AttrDomain", "attrdomain", "attr"),
+        ("Provider Backends", "AttrDomain", "provider-backends", "arg"),
+        (None, "CODECS", "codecs", "attr"),
     ],
 )
 def test_domain_arg_overrides_and_attr_precedence(domain_arg, domain_attr, expected, source):
@@ -36,6 +37,17 @@ def test_domain_arg_overrides_and_attr_precedence(domain_arg, domain_attr, expec
 
     assert ident.domain == expected
     assert meta["simcore.identity.source.domain"] == source
+
+
+def test_normalize_domain_supported_and_rejected():
+    assert normalize_domain("prompt_sections") == "prompt-sections"
+    assert normalize_domain("schemas") == "schemas"
+
+    with pytest.raises(ValueError):
+        normalize_domain("unknown-domain")
+
+    with pytest.raises(ValueError):
+        normalize_domain(None, default=None)
 
 
 def test_resolve_facade_tuple_helpers_are_four_part_only():

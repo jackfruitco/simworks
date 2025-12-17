@@ -36,7 +36,7 @@ from typing import Any, Optional, Type, TypeVar, Callable, cast
 
 from orchestrai.tracing import service_span_sync
 from orchestrai.identity import Identity
-from orchestrai.identity.constants import DEFAULT_DOMAIN
+from orchestrai.identity.domains import DEFAULT_DOMAIN
 from orchestrai.identity.resolvers import IdentityResolver
 
 logger = logging.getLogger(__name__)

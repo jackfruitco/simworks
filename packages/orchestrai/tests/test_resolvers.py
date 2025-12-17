@@ -6,6 +6,7 @@ from orchestrai.components.promptkit import PromptPlan, PromptSection
 from orchestrai.components.schemas import BaseOutputSchema
 from orchestrai.contrib.provider_backends.openai.schema_adapters import OpenaiWrapper
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry import ComponentStore
 from orchestrai.registry.records import RegistrationRecord
 from orchestrai.registry.active_app import set_active_registry_app
@@ -13,7 +14,7 @@ from orchestrai.resolve import resolve_codec, resolve_prompt_plan, resolve_schem
 from orchestrai.components.services.service import BaseService
 
 
-DOMAIN = "demo"
+DOMAIN = SERVICES_DOMAIN
 
 
 class DemoSchema(BaseOutputSchema):

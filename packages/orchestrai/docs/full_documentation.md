@@ -125,6 +125,19 @@ The defaults already scan `orchestrai.contrib.provider_backends` and
 
 If you need custom behavior, point `LOADER` to your own loader class implementing `autodiscover(app, modules)`.
 
+## Identity domains
+
+OrchestrAI core ships with a small, validated set of identity domains exported from `orchestrai.identity.domains`:
+
+- `services`
+- `codecs`
+- `prompt-sections`
+- `schemas`
+- `provider-backends`
+- `providers`
+
+`normalize_domain()` collapses dots/underscores/hyphens/spaces into a single hyphen, lowercases the result, and raises a `ValueError` if the normalized value is not in the supported set. Decorators and resolvers default to the `DEFAULT_DOMAIN` constant (`services`) and validate any explicit `domain` argument before constructing an `Identity`.
+
 ## Tracing
 
 The core ships with lightweight span helpers in `orchestrai.tracing.tracing` that collect attributes without external dependencies. Integrations can wrap these spans to feed real tracing backends.

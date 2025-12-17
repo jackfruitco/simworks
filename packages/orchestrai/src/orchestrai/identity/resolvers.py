@@ -40,7 +40,7 @@ from typing import Iterable, Optional, Any, TypeVar
 
 from . import registry_resolvers as _rr
 from .identity import Identity, IdentityLike
-from .constants import DEFAULT_DOMAIN, normalize_domain
+from .domains import DEFAULT_DOMAIN, normalize_domain
 from .utils import module_root, get_effective_strip_tokens, snake
 from ..types.protocols import RegistryProtocol
 
