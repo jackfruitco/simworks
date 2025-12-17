@@ -184,7 +184,7 @@ class Identity:
         if isinstance(value, IdentityKey):
             return _from_key(value)
 
-        # Tuple3
+        # Tuple4
         if isinstance(value, tuple):
             return _from_tuple(value)
 

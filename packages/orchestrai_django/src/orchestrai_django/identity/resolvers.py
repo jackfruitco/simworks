@@ -185,11 +185,19 @@ class DjangoIdentityResolver(IdentityResolver):
 def resolve_identity_django(
         cls: type,
         *,
+        domain: Optional[str] = None,
         namespace: Optional[str] = None,
-        kind: Optional[str] = None,
+        group: Optional[str] = None,
         name: Optional[str] = None,
         context: Optional[dict[str, Any]] = None,
 ) -> tuple["Identity", dict[str, Any]]:
     r = DjangoIdentityResolver()
-    ident, meta = r.resolve(cls, namespace=namespace, kind=kind, name=name, context=context)
+    ident, meta = r.resolve(
+        cls,
+        domain=domain,
+        namespace=namespace,
+        group=group,
+        name=name,
+        context=context,
+    )
     return ident, meta

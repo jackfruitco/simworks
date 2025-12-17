@@ -22,6 +22,7 @@ from orchestrai.decorators.components.codec_decorator import CodecDecorator
 from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
+from orchestrai.identity.constants import DEFAULT_DOMAIN
 from orchestrai_django.identity.resolvers import DjangoIdentityResolver
 
 __all__ = [
@@ -41,15 +42,23 @@ class DjangoBaseDecoratorMixin:
             self,
             cls,  # type: ignore[no-untyped-def]
             *,
+            domain: str | None,
             namespace: str | None,
-            kind: str | None,
+            group: str | None,
             name: str | None,
     ):
+        context = {
+            "default_domain": getattr(self, "default_domain", DEFAULT_DOMAIN),
+            "default_namespace": getattr(self, "default_namespace", None),
+            "default_group": getattr(self, "default_group", None),
+        }
         return DjangoIdentityResolver().resolve(
             cls,
+            domain=domain,
             namespace=namespace,
-            kind=kind,
+            group=group,
             name=name,
+            context=context,
         )
 
     # Optional collision policy hook for registries.
