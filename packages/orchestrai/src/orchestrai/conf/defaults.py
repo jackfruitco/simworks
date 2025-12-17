@@ -6,8 +6,10 @@ DEFAULTS: dict[str, object] = {
     "CLIENTS": {},
     "PROVIDERS": {},
     "DISCOVERY_PATHS": (
-        "orchestrai.contrib.provider_backends",
+        "orchestrai.contrib.provider_backends.*",
+        # "orchestrai.contrib.provider_backends.openai",
         "orchestrai.contrib.provider_codecs",
+        "orchestrai.contrib.provider_codecs.openai",
         "*.orca.services",
         "*.orca.output_schemas",
         "*.orca.codecs",

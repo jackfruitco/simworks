@@ -1,5 +1,3 @@
-
-
 from orchestrai.registry import ComponentRegistry
 
 """
@@ -16,6 +14,7 @@ import logging
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.schemas import BaseOutputSchema
 from orchestrai.registry import schemas as schema_registry
+from orchestrai.identity.identity import Identity
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ class SchemaDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "output_schemas"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
         # Guard: ensure we only register schema classes
         if not issubclass(candidate, BaseOutputSchema):
             raise TypeError(

@@ -1,8 +1,4 @@
 # orchestrai/decorators/components/service_decorator.py
-
-
-from orchestrai.registry import ComponentRegistry
-
 """
 Core service decorator.
 
@@ -11,11 +7,13 @@ Core service decorator.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
 
-from typing import Any, Type, TypeVar
 import logging
+from typing import Any, Type, TypeVar
 
-from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.services.service import BaseService
+from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.identity import Identity
+from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import services as _Registry
 
 logger = logging.getLogger(__name__)
@@ -48,7 +46,7 @@ class ServiceDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "services"
 
-    def register(self, candidate: Type[Any], *, identity=None) -> None:
+    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
         # Guard: ensure we only register service classes
         if not issubclass(candidate, BaseService):
             raise TypeError(

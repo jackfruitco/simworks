@@ -7,7 +7,6 @@ import importlib.util
 from typing import Any, Iterable, Mapping
 
 from orchestrai.conf.settings import Settings
-from orchestrai.fixups.base import FixupStage
 
 COMPONENT_MODULES: tuple[str, ...] = (
     "services",
@@ -110,8 +109,12 @@ def configure_from_django_settings(
     *,
     namespace: str = "ORCHESTRAI",
 ) -> Settings:
-    """Load OrchestrAI configuration from ``django.conf.settings`` using the current API."""
+    """Load OrchestrAI configuration from ``django.conf.settings`` using the current API.
 
+    Django's responsibility here is ONLY to compute DISCOVERY_PATHS from INSTALLED_APPS
+    and inject it into the core Settings. Core OrchestrAI discovery imports everything
+    uniformly via app.autodiscover_components().
+    """
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
     mapping = _collect_mapping_from_settings(dj_settings, namespace)
@@ -130,44 +133,19 @@ def configure_from_django_settings(
     return conf
 
 
-def django_autodiscover(app: Any, *, module_names: list[str] | None = None) -> list[str]:
-    """Django-native autodiscovery. Imports module_names across INSTALLED_APPS."""
-
-    from django.conf import settings as dj_settings  # type: ignore[attr-defined]
-
-    modules = _build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ()))
-    imported: list[str] = []
-    for module in modules:
-        importlib.import_module(module)
-        imported.append(module)
-    return imported
-
-
-class DjangoAutodiscoverFixup:
-    """Hook autodiscovery into the OrchestrAI lifecycle for Django apps."""
-
-    def apply(self, stage: FixupStage, app: Any, **context: Any) -> Any:
-        if stage is not FixupStage.AUTODISCOVER_PRE:
-            return None
-
-        modules = django_autodiscover(app)
-        collector = context.get("modules")
-        if collector is not None:
-            collector.extend(modules)
-        return tuple(modules)
-
-
 class DjangoAdapter:
-    """Adapter wiring Django settings and discovery into an OrchestrAI app."""
+    """Adapter wiring Django settings into an OrchestrAI app.
+
+    Note: We do NOT import modules here. We only populate Settings (incl. DISCOVERY_PATHS).
+    Core OrchestrAI will import those paths during its normal autodiscover_components() flow.
+    """
 
     def __init__(self, app: Any, *, namespace: str = "ORCHESTRAI") -> None:
         self.app = app
         self.namespace = namespace
 
     def configure(self) -> Settings:
-        conf = configure_from_django_settings(self.app, namespace=self.namespace)
-        self.app.add_fixup(DjangoAutodiscoverFixup())
-        return conf
+        return configure_from_django_settings(self.app, namespace=self.namespace)
 
     def ensure_ready(self) -> Any:
         if hasattr(self.app, "ensure_ready"):

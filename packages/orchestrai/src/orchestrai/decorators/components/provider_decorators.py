@@ -15,6 +15,7 @@ from typing import Any, Type
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.identity import Identity
 from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import (
     provider_backends as provider_backend_registry,
@@ -88,7 +89,7 @@ class ProviderDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "providers"
 
-    def register(self, candidate: Type[Any], *, identity=None) -> None:
+    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
         """Register a provider class after guarding its base type.
 
         Ensures only BaseProvider subclasses are registered into the providers registry.

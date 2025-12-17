@@ -12,8 +12,9 @@ from typing import Any, Type, TypeVar
 
 from orchestrai.components.promptkit import PromptSection
 from orchestrai.decorators.base import BaseDecorator
-from orchestrai.registry.base import ComponentRegistry
+from orchestrai.identity.identity import Identity
 from orchestrai.registry import prompt_sections as _Registry
+from orchestrai.registry.base import ComponentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class PromptSectionDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "prompt_sections"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
         # Guard: ensure we only register prompt_section classes
         if not issubclass(candidate, PromptSection):
             raise TypeError(

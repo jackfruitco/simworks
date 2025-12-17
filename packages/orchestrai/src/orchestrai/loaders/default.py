@@ -4,14 +4,24 @@ from __future__ import annotations
 
 import glob
 import importlib
+import importlib.util
 import os
 import sys
-from typing import Iterable, List
+from typing import Iterable, List, Sequence
 
 from .base import BaseLoader
 
 
 class DefaultLoader(BaseLoader):
+    COMPONENT_SUFFIXES: tuple[str, ...] = (
+        "services",
+        "codecs",
+        "schemas",
+        "prompts",
+        "prompt_sections",
+        "tools",
+    )
+
     def read_configuration(self, app) -> None:
         app.conf.update_from_envvar("ORCHESTRAI_CONFIG_MODULE")
 
@@ -21,10 +31,50 @@ class DefaultLoader(BaseLoader):
 
     def autodiscover(self, app, modules: Iterable[str]) -> List[str]:
         imported: list[str] = []
-        for module in self._resolve_modules(modules):
+        resolved = self._resolve_modules(modules)
+        expanded = self._expand_package_roots(resolved)
+        for module in expanded:
             importlib.import_module(module)
             imported.append(module)
         return imported
+
+    def _expand_package_roots(self, modules: Sequence[str]) -> list[str]:
+        """Expand package roots to include known component submodules when present.
+
+        This keeps discovery behavior consistent when callers provide only `<pkg>.orca` or `<pkg>.ai`
+        (or other package roots) by also importing `<root>.<suffix>` modules if they exist.
+
+        Pattern entries (globs) are left unchanged; they are already expanded by `_resolve_modules`.
+        """
+
+        expanded: list[str] = []
+        for module in modules:
+            if not module:
+                continue
+            expanded.append(module)
+
+            # If this is a pattern, don't attempt suffix expansion.
+            if self._is_pattern(module):
+                continue
+
+            try:
+                spec = importlib.util.find_spec(module)
+            except ModuleNotFoundError:
+                spec = None
+
+            # Only expand if it's a package.
+            if spec is None or spec.submodule_search_locations is None:
+                continue
+
+            for suffix in self.COMPONENT_SUFFIXES:
+                child = f"{module}.{suffix}"
+                try:
+                    if importlib.util.find_spec(child):
+                        expanded.append(child)
+                except ModuleNotFoundError:
+                    continue
+
+        return self._dedupe(expanded)
 
     def _resolve_modules(self, modules: Iterable[str]) -> list[str]:
         resolved: list[str] = []

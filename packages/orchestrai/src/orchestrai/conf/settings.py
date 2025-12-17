@@ -1,6 +1,5 @@
 """Mapping-like configuration inspired by Celery settings handling."""
 
-from __future__ import annotations
 
 import importlib
 import os

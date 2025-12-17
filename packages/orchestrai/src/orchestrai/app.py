@@ -1,43 +1,32 @@
+# orchestrai/app.py
 """A compact, explicit OrchestrAI application object.
 
 The refactored app focuses on a predictable lifecycle:
 
 1. ``configure``   -> apply settings from mappings/env/object
-2. ``setup``       -> prepare loader and registries based on config
+2. ``setup``       -> prepare loader and registries based on config (NO client/provider construction)
 3. ``discover``    -> import configured discovery modules
 4. ``finalize``    -> attach shared callbacks and freeze registries
 5. ``start``/``run`` -> convenience wrapper performing the full flow
 
-The class intentionally avoids implicit discovery or networking at import
-time. Users control the lifecycle explicitly.
+Client/provider construction is intentionally LAZY and happens on first access
+(e.g. app.client / app.get_client()) so registered backends are available.
 """
 from __future__ import annotations
 
 import importlib
 import sys
-from threading import RLock
+from collections.abc import Iterable
 from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable
+from threading import RLock
+from typing import Any, Callable
 
-
-ORCA_BANNER = r"""
-                      __
-                  _.-'  `'-._
-              _.-'          '-._
-            .'    .-'''''-.     '.
-           /    .'  .--.  '.      \
-          /    /   (o  _)   \      \
-         |     |    `-`      |      |
-         |     \  .-'''''-.  /      /
-          \     '.`.___.' .'      /
-           '.      `---`       .'
-             '-._          _.-'
-                 `''----''`
-             ~ jumping orca ~
-"""
+ORCA_BANNER = r"""...."""
 
 from ._state import push_current_app, set_current_app
+from .client.factory import build_orca_client
+from .client.settings_loader import load_client_settings
 from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import Fixup, FixupStage
@@ -48,8 +37,6 @@ from .registry.active_app import (
     push_active_registry_app,
     set_active_registry_app,
 )
-from .client.factory import build_orca_client
-from .client.settings_loader import load_client_settings
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +61,7 @@ class OrchestrAI:
     loader: BaseLoader | None = None
     conf: Settings = field(default_factory=Settings)
     fixups: list[Fixup] = field(default_factory=list)
+
     _default_client: str | None = None
     _configured: bool = False
     _finalized: bool = False
@@ -82,14 +70,19 @@ class OrchestrAI:
     _started: bool = False
     _banner_printed: bool = False
     _components_reported: bool = False
-    _local_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(default_factory=list)
+    _local_finalize_callbacks: list[Callable[[OrchestrAI], None]] = field(default_factory=list)
     _fixup_specs: list[object] = field(default_factory=list, repr=False)
     _ready_lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _booting: bool = False
 
     component_store: ComponentStore = field(default_factory=ComponentStore)
+
+    # NOTE: these dicts hold either:
+    #  - a concrete built instance (Any), OR
+    #  - a definition mapping (dict) that will be built lazily later
     clients: dict[str, Any] = field(default_factory=dict)
     providers: dict[str, Any] = field(default_factory=dict)
+
     service_runners: dict[str, Any] = field(default_factory=dict)
     _service_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(
         default_factory=list, repr=False
@@ -110,7 +103,7 @@ class OrchestrAI:
     # ------------------------------------------------------------------
     # Current app helpers
     # ------------------------------------------------------------------
-    def set_as_current(self) -> "OrchestrAI":
+    def set_as_current(self) -> OrchestrAI:
         set_current_app(self)
         set_active_registry_app(self)
         return self
@@ -122,7 +115,7 @@ class OrchestrAI:
     # ------------------------------------------------------------------
     # Configuration helpers
     # ------------------------------------------------------------------
-    def configure(self, mapping: dict | None = None, *, namespace: str | None = None) -> "OrchestrAI":
+    def configure(self, mapping: dict | None = None, *, namespace: str | None = None) -> OrchestrAI:
         if mapping:
             self.conf.update_from_mapping(mapping, namespace=namespace)
 
@@ -132,11 +125,13 @@ class OrchestrAI:
         self.apply_fixups(FixupStage.CONFIGURE_POST)
         return self
 
-    def config_from_object(self, obj: str, *, namespace: str | None = None) -> "OrchestrAI":
+    def config_from_object(self, obj: str, *, namespace: str | None = None) -> OrchestrAI:
         self.conf.update_from_object(obj, namespace=namespace)
         return self
 
-    def config_from_envvar(self, envvar: str = "ORCHESTRAI_CONFIG_MODULE", *, namespace: str | None = None) -> "OrchestrAI":
+    def config_from_envvar(
+        self, envvar: str = "ORCHESTRAI_CONFIG_MODULE", *, namespace: str | None = None
+    ) -> OrchestrAI:
         self.conf.update_from_envvar(envvar, namespace=namespace)
         return self
 
@@ -147,7 +142,7 @@ class OrchestrAI:
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
-    def setup(self) -> "OrchestrAI":
+    def setup(self) -> OrchestrAI:
         self._ensure_configured()
         if self._setup_done:
             return self
@@ -163,6 +158,7 @@ class OrchestrAI:
             loader_cls = _import_string(loader_path)
             self.loader = loader_cls()
 
+        # IMPORTANT: normalize config only (NO backend resolution/build here)
         self._configure_clients()
         self._configure_providers()
         self._refresh_identity_strip_tokens()
@@ -172,13 +168,13 @@ class OrchestrAI:
         self._setup_done = True
         return self
 
-    def discover(self) -> "OrchestrAI":
+    def discover(self) -> OrchestrAI:
         if self._finalized:
             return self
         self.setup()
         return self.autodiscover_components()
 
-    def ensure_ready(self) -> "OrchestrAI":
+    def ensure_ready(self) -> OrchestrAI:
         """Ensure discovery/finalization have completed without re-starting the app."""
         with self._ready_lock:
             if self._finalized or self._booting:
@@ -192,7 +188,7 @@ class OrchestrAI:
                 self._booting = False
         return self
 
-    def finalize(self) -> "OrchestrAI":
+    def finalize(self) -> OrchestrAI:
         if self._finalized:
             return self
 
@@ -203,7 +199,7 @@ class OrchestrAI:
 
         flush_pending(self.component_store)
 
-        callbacks: list[Callable[["OrchestrAI"], None]] = []
+        callbacks: list[Callable[[OrchestrAI], None]] = []
         callbacks.extend(consume_finalizers())
         callbacks.extend(self._local_finalize_callbacks)
         for callback in callbacks:
@@ -218,7 +214,7 @@ class OrchestrAI:
         self.apply_fixups(FixupStage.FINALIZE_POST)
         return self
 
-    def start(self) -> "OrchestrAI":
+    def start(self) -> OrchestrAI:
         if self._started:
             return self
         self._ensure_configured()
@@ -237,7 +233,7 @@ class OrchestrAI:
     # ------------------------------------------------------------------
     # Registration helpers
     # ------------------------------------------------------------------
-    def add_finalize_callback(self, callback: Callable[["OrchestrAI"], None]) -> Callable[["OrchestrAI"], None]:
+    def add_finalize_callback(self, callback: Callable[[OrchestrAI], None]) -> Callable[[OrchestrAI], None]:
         self._local_finalize_callbacks.append(callback)
         return callback
 
@@ -253,13 +249,14 @@ class OrchestrAI:
         return runner
 
     # ------------------------------------------------------------------
-    # Client/provider configuration
+    # Client/provider configuration (lazy)
     # ------------------------------------------------------------------
     @property
     def mode(self) -> str:
-        return self.conf.get("MODE", "single")
+        return str(self.conf.get("MODE", "single"))
 
     def _configure_clients(self) -> None:
+        # SINGLE MODE: store definition only; build lazily on access.
         if self.mode == "single":
             client_conf = self.conf.get("CLIENT")
             if client_conf is None:
@@ -271,12 +268,13 @@ class OrchestrAI:
             name = client_conf.get("name") or "default"
             definition = dict(client_conf)
             definition.setdefault("name", name)
-            settings = load_client_settings(self.conf)
-            client = build_orca_client(settings, name)
-            self.clients[name] = client
+
+            # LAZY: do NOT call build_orca_client here.
+            self.clients[name] = definition
             self._default_client = name
             return
 
+        # POD MODE: already definition-driven; keep as-is.
         clients_conf = dict(self.conf.get("CLIENTS", {}))
         default_client = self.conf.get("CLIENT")
         if default_client and default_client not in clients_conf:
@@ -290,6 +288,7 @@ class OrchestrAI:
         self._default_client = default_client
 
     def _configure_providers(self) -> None:
+        # Providers are also definitions (construction happens when used by client build)
         if self.mode == "single":
             return
         for name, definition in dict(self.conf.get("PROVIDERS", {})).items():
@@ -297,35 +296,64 @@ class OrchestrAI:
 
     def _refresh_identity_strip_tokens(self) -> None:
         """Compile and persist identity strip tokens onto app settings."""
-
         from .identity.utils import get_effective_strip_tokens
 
         with self.as_current():
             self.conf["IDENTITY_STRIP_TOKENS"] = get_effective_strip_tokens()
 
-    def set_client(self, name: str, client):
+    # ------------------------------------------------------------------
+    # Lazy client resolution
+    # ------------------------------------------------------------------
+    def get_client(self, name: str | None = None) -> Any | None:
+        """
+        Return a built client.
+
+        If the stored value is a mapping definition, build the client on demand
+        (after autodiscovery has run so provider backends are registered), then cache it.
+        """
+        if name is None:
+            name = self._default_client
+        if not name:
+            return None
+
+        existing = self.clients.get(name)
+        if existing is None:
+            return None
+
+        # Already built (non-mapping)
+        if not isinstance(existing, AbcMapping):
+            return existing
+
+        # Ensure discovery has happened before building clients that rely on registries.
+        # This keeps Django/non-Django behavior consistent.
+        if not self._autodiscovered and not self._finalized:
+            self.autodiscover_components()
+
+        settings = load_client_settings(self.conf)
+        client = build_orca_client(settings, name)
+        self.clients[name] = client
+        return client
+
+    def set_client(self, name: str, client: Any) -> None:
         self.clients[name] = client
 
-    def set_default_client(self, name: str):
+    def set_default_client(self, name: str) -> None:
         self._default_client = name
 
     @property
-    def client(self):
-        if self._default_client is None:
-            return None
-        return self.clients.get(self._default_client)
+    def client(self) -> Any | None:
+        return self.get_client()
 
     # ------------------------------------------------------------------
     # Presentation helpers
     # ------------------------------------------------------------------
     def banner_text(self) -> str:
         """Return the stdout banner displayed when the app starts."""
-
         try:
-            from importlib.metadata import PackageNotFoundError, version
+            from importlib.metadata import version
 
             pkg_version = version("orchestrai")
-        except Exception:  # pragma: no cover - metadata may be missing in tests
+        except Exception:  # pragma: no cover
             pkg_version = "unknown"
 
         header = f"OrchestrAI™ v{pkg_version}".strip()
@@ -356,12 +384,8 @@ class OrchestrAI:
         sections.append(
             f"- service_runners: {', '.join(service_runners) if service_runners else '<none>'}"
         )
-        sections.append(
-            f"- clients: {', '.join(client_names) if client_names else '<none>'}"
-        )
-        sections.append(
-            f"- providers: {', '.join(provider_names) if provider_names else '<none>'}"
-        )
+        sections.append(f"- clients: {', '.join(client_names) if client_names else '<none>'}")
+        sections.append(f"- providers: {', '.join(provider_names) if provider_names else '<none>'}")
         lines = ["Registered components:"]
         lines.extend(sections)
         return "\n".join(lines) + "\n"
@@ -425,7 +449,10 @@ class OrchestrAI:
             return obj  # type: ignore[return-value]
         raise TypeError(f"Fixup path {label!r} did not resolve to a Fixup")
 
-    def autodiscover_components(self) -> "OrchestrAI":
+    # ------------------------------------------------------------------
+    # Discovery
+    # ------------------------------------------------------------------
+    def autodiscover_components(self) -> OrchestrAI:
         if self.loader is None or self._finalized or self._autodiscovered:
             return self
 

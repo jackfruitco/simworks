@@ -1,3 +1,4 @@
+# orchestrai/registry/active_app.py
 """Registry-aware active app helpers."""
 
 from __future__ import annotations

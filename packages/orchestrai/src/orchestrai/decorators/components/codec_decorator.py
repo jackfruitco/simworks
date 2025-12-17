@@ -1,4 +1,4 @@
-
+# orchestrai/decorators/components/codec_decorator.py
 """
 Core codec decorator.
 
@@ -10,9 +10,10 @@ Core codec decorator.
 import logging
 from typing import Any, Type, TypeVar
 
-from orchestrai.registry import ComponentRegistry
-from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.codecs.codec import BaseCodec
+from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.identity import Identity
+from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import codecs as codec_registry
 
 __all__ = ("CodecDecorator", "codec")
@@ -47,7 +48,7 @@ class CodecDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "codecs"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: Type[Any], *, identity: Identity | None = None) -> None:
         """Register a codec class after guarding its base type.
 
         Ensures only BaseCodec subclasses are registered into the codecs registry.
