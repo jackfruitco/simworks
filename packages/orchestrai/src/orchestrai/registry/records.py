@@ -28,7 +28,11 @@ class RegistrationRecord:
 
     @property
     def kind(self) -> str:
-        return self.identity.group
+        return self.domain
+
+    @property
+    def domain(self) -> str:
+        return self.identity.domain
 
     @property
     def label(self) -> str:
