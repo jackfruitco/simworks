@@ -8,9 +8,10 @@ from orchestrai.client.settings_loader import ClientSettings
 from orchestrai.components.services.exceptions import ServiceConfigError
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators import service
+from orchestrai.identity.domains import SERVICES_DOMAIN
 
 
-@service(namespace="chatlab", kind="standardized_patient", name="initial")
+@service(namespace="chatlab", group="standardized_patient", name="initial")
 class RegistryService(BaseService):
     abstract = False
 
@@ -35,7 +36,7 @@ def test_service_resolution_prefers_registry(monkeypatch):
 
     def tracking_import(name, *args, **kwargs):
         calls.append(name)
-        if name == "chatlab.standardized_patient":
+        if name == "services.chatlab.standardized_patient":
             raise AssertionError("service identity should not be imported for resolution")
         return real_import(name, *args, **kwargs)
 
@@ -45,13 +46,13 @@ def test_service_resolution_prefers_registry(monkeypatch):
     app.set_as_current()
     app.ensure_ready()
 
-    resolved = app.services.get("chatlab.standardized_patient.initial")
+    resolved = app.services.get("services.chatlab.standardized_patient.initial")
     assert resolved is RegistryService
 
-    result = app.services.start("chatlab.standardized_patient.initial")
+    result = app.services.start("services.chatlab.standardized_patient.initial")
     assert result == {"status": "ok"}
 
-    assert "chatlab.standardized_patient" not in calls
+    assert "services.chatlab.standardized_patient" not in calls
 
 
 def test_service_resolution_error_points_to_single_mode(monkeypatch):

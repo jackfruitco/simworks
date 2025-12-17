@@ -10,6 +10,7 @@ from orchestrai.decorators import prompt_section, schema
 from orchestrai.registry.singletons import prompt_sections as prompt_registry
 from orchestrai.registry.singletons import schemas as schema_registry
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import CODECS_DOMAIN, SERVICES_DOMAIN
 
 
 @pytest.fixture(autouse=True)
@@ -18,19 +19,23 @@ def _reset_registries():
     schema_registry._store.clear()
     prompt_registry.register(AutoPromptSection)
     schema_registry.register(AutoSchema)
-    AutomagicService.pin_identity(Identity("auto", "service", "match"))
-    NoPromptService.pin_identity(Identity("auto", "service", "nomatch"))
+    AutomagicService.pin_identity(
+        Identity(domain=SERVICES_DOMAIN, namespace="auto", group="service", name="match")
+    )
+    NoPromptService.pin_identity(
+        Identity(domain=SERVICES_DOMAIN, namespace="auto", group="service", name="nomatch")
+    )
     yield
     prompt_registry._store.clear()
     schema_registry._store.clear()
 
 
-@prompt_section(namespace="auto", kind="service", name="match")
+@prompt_section(namespace="auto", group="service", name="match")
 class AutoPromptSection(PromptSection):
     instruction = "automagic"
 
 
-@schema(namespace="auto", kind="service", name="match")
+@schema(namespace="auto", group="service", name="match")
 class AutoSchema(BaseOutputSchema):
     foo: str | None = None
 
@@ -40,7 +45,7 @@ class AutomagicService(BaseService):
     kind = "service"
     name = "match"
     abstract = False
-    identity = Identity(namespace, kind, name)
+    identity = Identity(domain=SERVICES_DOMAIN, namespace=namespace, group=kind, name=name)
 
 
 class NoPromptService(BaseService):
@@ -48,7 +53,7 @@ class NoPromptService(BaseService):
     kind = "service"
     name = "nomatch"
     abstract = False
-    identity = Identity(namespace, kind, name)
+    identity = Identity(domain=SERVICES_DOMAIN, namespace=namespace, group=kind, name=name)
 
 
 def test_prompt_plan_automagic_match():
@@ -74,17 +79,17 @@ def test_schema_automagic_match():
 
 
 def test_schema_precedence_override_vs_class_vs_codec(monkeypatch):
-    @schema(namespace="auto", kind="service", name="override")
+    @schema(namespace="auto", group="service", name="override")
     class OverrideSchema(BaseOutputSchema):
         bar: str | None = None
 
-    @schema(namespace="auto", kind="service", name="codec")
+    @schema(namespace="auto", group="service", name="codec")
     class CodecSchema(BaseOutputSchema):
         baz: str | None = None
 
     class CodecWithSchema(BaseCodec):
         response_schema = CodecSchema
-        identity = Identity("auto", "codec", "json")
+        identity = Identity(domain=CODECS_DOMAIN, namespace="auto", group="codec", name="json")
 
     class ClassSchemaService(AutomagicService):
         response_schema = AutoSchema
