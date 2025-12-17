@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 def parse_backend_identity(value: str) -> Identity:
     """
-    Parse a backend identity string like 'openai.responses.backend'.
+    Parse a backend identity string like 'provider.openai.responses.backend'.
 
     This is the ONLY place where backend identities are parsed.
     `alias` strings no longer participate in identity logic.
@@ -33,7 +33,7 @@ def get_backend_class(backend_identity: str) -> type["BaseProvider"]:
     Parameters
     ----------
     backend_identity : str
-        A full identity string such as 'openai.responses.backend'.
+        A full identity string such as 'provider.openai.responses.backend'.
 
     Raises
     ------

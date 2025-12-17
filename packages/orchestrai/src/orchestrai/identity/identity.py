@@ -21,14 +21,16 @@ __all__ = [
 # -----------------------------------------------------------------------------
 
 class IdentityKey(NamedTuple):
-    """Lightweight triple for (namespace, kind, name)."""
+    """Lightweight quadruple for (domain, namespace, group, name)."""
+
+    domain: str
     namespace: str
-    kind: str
+    group: str
     name: str
 
 
 # Union type callers can use for “identity-like” inputs
-IdentityLike = Union["Identity", IdentityKey, tuple[str, str, str], str]
+IdentityLike = Union["Identity", IdentityKey, tuple[str, str, str, str], str]
 
 # -----------------------------------------------------------------------------
 # Validation constraints (single source of truth)
@@ -40,7 +42,7 @@ _ALLOWED_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 def _validate_label(value: str, field: str) -> str:
     """
-    Validate a single identity label (namespace/kind/name).
+    Validate a single identity label (domain/namespace/group/name).
 
     Rules:
     - must be a string
@@ -69,13 +71,14 @@ def _validate_label(value: str, field: str) -> str:
 @dataclass(frozen=True, slots=True)
 class Identity:
     """
-    Immutable identity with validation. Canonical form uses (namespace, kind, name).
+    Immutable identity with validation. Canonical form uses (domain, namespace, group, name).
 
-    Canonical string: "namespace.kind.name".
+    Canonical string: "domain.namespace.group.name".
     """
 
+    domain: str
     namespace: str
-    kind: str
+    group: str
     name: str
 
     # Typed placeholder for the dynamically attached facade (set in __init__.py)
@@ -83,29 +86,39 @@ class Identity:
 
     # ------------------- Validation -------------------
     def __post_init__(self) -> None:
+        _validate_label(self.domain, "domain")
         _validate_label(self.namespace, "namespace")
-        _validate_label(self.kind, "kind")
+        _validate_label(self.group, "group")
         _validate_label(self.name, "name")
 
     # ------------------- Canonical forms -------------------
     @property
-    def as_tuple3(self) -> tuple[str, str, str]:
-        return self.namespace, self.kind, self.name
+    def as_tuple(self) -> tuple[str, str, str, str]:
+        return self.domain, self.namespace, self.group, self.name
+
+    @property
+    def as_tuple4(self) -> tuple[str, str, str, str]:
+        return self.as_tuple
 
     @property
     def as_str(self) -> str:
-        """Return canonical dot form: 'namespace.kind.name'."""
-        return f"{self.namespace}.{self.kind}.{self.name}"
+        """Return canonical dot form: 'domain.namespace.group.name'."""
+        return f"{self.domain}.{self.namespace}.{self.group}.{self.name}"
 
     @property
     def key(self) -> IdentityKey:
-        """Return (namespace, kind, name) tuple."""
-        return IdentityKey(self.namespace, self.kind, self.name)
+        """Return (domain, namespace, group, name) tuple."""
+        return IdentityKey(self.domain, self.namespace, self.group, self.name)
 
     @property
     def label(self) -> str:
-        """Return 'namespace.kind.name' string."""
+        """Return 'domain.namespace.group.name' string."""
         return self.as_str
+
+    # Backward-compatible alias (read-only)
+    @property
+    def kind(self) -> str:
+        return self.group
 
     def __str__(self) -> str:  # pragma: no cover
         return self.as_str
@@ -114,12 +127,12 @@ class Identity:
         return f"Identity({self.as_str})"
 
     def __hash__(self) -> int:
-        return hash(self.as_tuple3)
+        return hash(self.as_tuple)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Identity):
             return NotImplemented
-        return self.as_tuple3 == other.as_tuple3
+        return self.as_tuple == other.as_tuple
 
     # ------------------- Constructors -------------------
     @classmethod
@@ -133,18 +146,22 @@ class Identity:
         """
 
         def _from_key(key: IdentityKey) -> Identity:
-            return cls(namespace=key.namespace, kind=key.kind, name=key.name)
+            return cls(domain=key.domain, namespace=key.namespace, group=key.group, name=key.name)
 
-        def _from_tuple(value_: tuple[str, str, str]) -> "Identity":
-            ns_, kd_, nm_ = value_
-            return cls(namespace=str(ns_), kind=str(kd_), name=str(nm_))
+        def _from_tuple(value_: tuple[str, str, str, str]) -> "Identity":
+            if len(value_) != 4:
+                raise IdentityError(
+                    f"Expected a tuple of 4 parts (domain, namespace, group, name); got {value_!r}"
+                )
+            dm_, ns_, gp_, nm_ = value_
+            return cls(domain=str(dm_), namespace=str(ns_), group=str(gp_), name=str(nm_))
 
         def _from_str(value_: str) -> Identity:
-            parts_ = [p.strip() for p in value_.split(".", 2)]
-            if len(parts_) != 3 or any(p == "" for p in parts_):
-                raise IdentityError(f"Expected 'namespace.kind.name', got {value!r}")
-            ns_, kd_, nm_ = parts_
-            return cls(namespace=ns_, kind=kd_, name=nm_)
+            parts_ = [p.strip() for p in value_.split(".", 3)]
+            if len(parts_) != 4 or any(p == "" for p in parts_):
+                raise IdentityError(f"Expected 'domain.namespace.group.name', got {value!r}")
+            dm_, ns_, gp_, nm_ = parts_
+            return cls(domain=dm_, namespace=ns_, group=gp_, name=nm_)
 
         def _fallback(value_: object) -> Identity:
             if not isinstance(value_, str):
@@ -152,11 +169,11 @@ class Identity:
 
             s = value_.strip("()").replace("'", "").replace('"', "")
             parts = [p.strip() for p in s.split(",")]
-            if len(parts) == 3:
-                return cls(namespace=parts[0], kind=parts[1], name=parts[2])
+            if len(parts) == 4:
+                return cls(domain=parts[0], namespace=parts[1], group=parts[2], name=parts[3])
             raise IdentityResolutionError(
                 f"Unrecognized identity string format: {value!r}. "
-                "Use 'namespace.kind.name' or '(namespace, kind, name)'."
+                "Use 'domain.namespace.group.name' or '(domain, namespace, group, name)'."
             )
 
         # Fast-path for Identity
@@ -168,7 +185,7 @@ class Identity:
             return _from_key(value)
 
         # Tuple3
-        if isinstance(value, tuple) and len(value) == 3:
+        if isinstance(value, tuple):
             return _from_tuple(value)
 
         # String inputs
@@ -201,9 +218,9 @@ class Identity:
         return cls.get(value)  # may raise IdentityError
 
     @classmethod
-    def validate(cls, namespace: str, kind: str, name: str) -> None:
+    def validate(cls, domain: str, namespace: str, group: str, name: str) -> None:
         """Validate parts by attempting construction (raises on failure)."""
-        cls(namespace=namespace, kind=kind, name=name)
+        cls(domain=domain, namespace=namespace, group=group, name=name)
 
     # ------------------- Coercion helpers -------------------
     @classmethod

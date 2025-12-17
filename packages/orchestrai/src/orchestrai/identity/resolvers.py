@@ -3,7 +3,7 @@
 Identity resolution (core).
 
 Central, framework-agnostic resolver that derives a canonical identity
-(namespace, kind, name) for any class. This is the **single source of truth**
+(domain, namespace, group, name) for any class. This is the **single source of truth**
 for identity rules in core. Decorators should delegate to this resolver,
 attach the resulting Identity to the class, register it, and emit a single
 trace span using the returned metadata.
@@ -16,17 +16,18 @@ Key behaviors
   * Otherwise derive from class name and perform **segment-aware** token
     stripping (case-insensitive; removes tokens at prefix, middle, suffix),
     then normalize.
-- Namespace/kind precedence:
+- Domain/namespace/group precedence:
+  * domain:    decorator arg → class attribute → module root → "default"
   * namespace: decorator arg → class attribute → module root → "default"
-  * kind:      decorator arg → class attribute → "default"
+  * group:     decorator arg → class attribute (`group` or legacy `kind`) → "default"
 - Token sources (core):
   * DEFAULT_IDENTITY_STRIP_TOKENS (core constant)
   * SIMCORE_IDENTITY_STRIP_TOKENS (env; comma/space-delimited)
   (Framework layers may extend this with additional sources.)
 - Meta for tracing (flat keys):
-  * ai.tuple3.raw, ai.tuple3.post_strip, ai.tuple3.post_norm
+  * ai.tuple4.raw, ai.tuple4.post_strip, ai.tuple4.post_norm
   * ai.identity.name.explicit (bool)
-  * ai.identity.source.name|namespace|kind = "arg"|"attr"|"derived"
+  * ai.identity.source.name|domain|namespace|group = "arg"|"attr"|"derived"
   * ai.strip_tokens (CSV), ai.strip_tokens_list (list)
 
 This module must not import any decorator or registry code to avoid cycles.
@@ -99,7 +100,7 @@ def _normalize_name(name: str, *, lower: bool = True) -> str:
     return s.lower() if lower else s
 
 
-def _validate_parts(namespace: str, kind: str, name: str) -> None:
+def _validate_parts(domain: str, namespace: str, group: str, name: str) -> None:
     """Basic safety validation for identity parts.
 
     - non-empty strings
@@ -107,7 +108,7 @@ def _validate_parts(namespace: str, kind: str, name: str) -> None:
     - allowed chars: A–Z, a–z, 0–9, '.', '_', '-'
     """
     allowed_re = re.compile(r"^[A-Za-z0-9._-]+$")
-    for label, value in (("namespace", namespace), ("kind", kind), ("name", name)):
+    for label, value in (("domain", domain), ("namespace", namespace), ("group", group), ("name", name)):
         if not isinstance(value, str):
             raise TypeError(f"{label} must be a string (got {type(value)!r})")
         v = value.strip()
@@ -131,7 +132,7 @@ class NameResolution:
 
 
 class IdentityResolver:
-    """Core resolver for (namespace, kind, name).
+    """Core resolver for (domain, namespace, group, name).
 
     Subclass in framework layers (e.g., Django) to override token collection or
     namespace inference. This class is intentionally free of decorator/registry
@@ -143,8 +144,9 @@ class IdentityResolver:
             self,
             cls: type,
             *,
+            domain: Optional[str] = None,
             namespace: Optional[str] = None,
-            kind: Optional[str] = None,
+            group: Optional[str] = None,
             name: Optional[str] = None,
             context: Optional[dict[str, Any]] = None,
     ) -> tuple[Identity, dict[str, Any]]:
@@ -155,17 +157,26 @@ class IdentityResolver:
         """
         context = context or {}
 
+        # Domain
+        dm_value, dm_source = self._resolve_domain(
+            cls, domain, getattr(cls, "domain", None)
+        )
+        dm_value = snake(dm_value or "default")
+
         # Namespace
         ns_value, ns_source = self._resolve_namespace(
             cls, namespace, getattr(cls, "namespace", None)
         )
         ns_value = snake(ns_value or "default")
 
-        # Kind
-        kd_value, kd_source = self._resolve_kind(
-            cls, kind, getattr(cls, "kind", None)
+        # Group
+        gp_value, gp_source = self._resolve_group(
+            cls,
+            group,
+            getattr(cls, "group", None),
+            getattr(cls, "kind", None),
         )
-        kd_value = snake(kd_value or "default")
+        gp_value = snake(gp_value or "default")
 
         # Tokens (core)
         tokens = self._collect_strip_tokens(cls)
@@ -181,23 +192,24 @@ class IdentityResolver:
         )
 
         # Final identity
-        ident = Identity(namespace=ns_value, kind=kd_value, name=name_res.value)
+        ident = Identity(domain=dm_value, namespace=ns_value, group=gp_value, name=name_res.value)
 
         # Build meta (full; caller may filter by trace level)
         meta: dict[str, Any] = {
-            "simcore.tuple3.raw": f"{ns_value}.{kd_value}.{name_res.raw}",
-            "simcore.tuple3.post_strip": f"{ns_value}.{kd_value}.{name_res.post_strip}",
-            "simcore.tuple3.post_norm": ident.as_str,
+            "simcore.tuple4.raw": f"{dm_value}.{ns_value}.{gp_value}.{name_res.raw}",
+            "simcore.tuple4.post_strip": f"{dm_value}.{ns_value}.{gp_value}.{name_res.post_strip}",
+            "simcore.tuple4.post_norm": ident.as_str,
             "simcore.identity.name.explicit": name_res.explicit,
             "simcore.identity.source.name": name_res.source,
+            "simcore.identity.source.domain": dm_source,
             "simcore.identity.source.namespace": ns_source,
-            "simcore.identity.source.kind": kd_source,
+            "simcore.identity.source.group": gp_source,
             "simcore.strip_tokens": tokens_csv,
             "simcore.strip_tokens_list": tokens_list,
         }
 
         # Validate last to keep meta available for debugging on failure
-        _validate_parts(ident.namespace, ident.kind, ident.name)
+        _validate_parts(ident.domain, ident.namespace, ident.group, ident.name)
         return ident, meta
 
     def preview(self, *args: Any, **kwargs: Any) -> tuple[Identity, dict[str, Any]]:
@@ -205,6 +217,20 @@ class IdentityResolver:
         return self.resolve(*args, **kwargs)
 
     # ----- hook methods / override points -----
+    def _resolve_domain(
+            self,
+            cls: type,
+            domain_arg: Optional[str],
+            domain_attr: Optional[str],
+    ) -> tuple[str, str]:
+        """Return (value, source). Default: arg > attr > module_root > 'default'."""
+        if _is_nonempty_str(domain_arg):
+            return str(domain_arg).strip(), "arg"
+        if _is_nonempty_str(domain_attr):
+            return str(domain_attr).strip(), "attr"
+        root = module_root(cls) or "default"
+        return root, "derived"
+
     def _resolve_namespace(
             self,
             cls: type,
@@ -219,17 +245,20 @@ class IdentityResolver:
         root = module_root(cls) or "default"
         return root, "derived"
 
-    def _resolve_kind(
+    def _resolve_group(
             self,
             cls: type,
-            kind_arg: Optional[str],
-            kind_attr: Optional[str],
+            group_arg: Optional[str],
+            group_attr: Optional[str],
+            legacy_kind_attr: Optional[str],
     ) -> tuple[str, str]:
-        """Return (value, source). Default: arg > attr > 'default'."""
-        if _is_nonempty_str(kind_arg):
-            return str(kind_arg).strip(), "arg"
-        if _is_nonempty_str(kind_attr):
-            return str(kind_attr).strip(), "attr"
+        """Return (value, source). Default: arg > attr/legacy kind > 'default'."""
+        if _is_nonempty_str(group_arg):
+            return str(group_arg).strip(), "arg"
+        if _is_nonempty_str(group_attr):
+            return str(group_attr).strip(), "attr"
+        if _is_nonempty_str(legacy_kind_attr):
+            return str(legacy_kind_attr).strip(), "attr"
         return "default", "derived"
 
     def _collect_strip_tokens(self, cls: type) -> tuple[str, ...]:
@@ -286,14 +315,15 @@ def resolve_identity(
         cls: type,
         *,
         resolver: Optional[IdentityResolver] = None,
+        domain: Optional[str] = None,
         namespace: Optional[str] = None,
-        kind: Optional[str] = None,
+        group: Optional[str] = None,
         name: Optional[str] = None,
         context: Optional[dict[str, Any]] = None,
 ) -> tuple[Identity, dict[str, Any]]:
     """Public helper to resolve identity using a provided or default resolver."""
     r = resolver or IdentityResolver()
-    return r.resolve(cls, namespace=namespace, kind=kind, name=name, context=context)
+    return r.resolve(cls, domain=domain, namespace=namespace, group=group, name=name, context=context)
 
 
 # ------------------------- facade (ergonomic sugar) -------------------------
@@ -331,13 +361,13 @@ class Resolve:
         return _rr.try_for_(component, identity, __from=__from)
 
     @staticmethod
-    def as_tuple3(ident: IdentityLike) -> tuple[str, str, str]:
-        """Return (namespace, kind, name) for any `IdentityLike`."""
-        return _rr.tuple3(ident)
+    def as_tuple(ident: IdentityLike) -> tuple[str, str, str, str]:
+        """Return (domain, namespace, group, name) for any `IdentityLike`."""
+        return _rr.tuple4(ident)
 
     @staticmethod
     def as_label(ident: IdentityLike) -> str:
-        """Return 'namespace.kind.name' for any `IdentityLike`."""
+        """Return 'domain.namespace.group.name' for any `IdentityLike`."""
         return _rr.label(ident)
 
     @staticmethod

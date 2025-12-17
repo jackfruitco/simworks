@@ -51,16 +51,16 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
         return attrs
     base_keys = {
         "simcore.decorator", "simcore.class", "simcore.identity",
-        "simcore.tuple3.post_norm", "simcore.identity.name.explicit",
+        "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
         # helpful snapshots when present
-        "simcore.tuple3.raw", "simcore.tuple3.post_strip",
+        "simcore.tuple4.raw", "simcore.tuple4.post_strip",
         "simcore.strip_tokens", "simcore.strip_tokens_list",
     }
     if level == "info":
         return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("simcore.")}
     minimal_keys = {
         "simcore.decorator", "simcore.class", "simcore.identity",
-        "simcore.tuple3.post_norm", "simcore.identity.name.explicit",
+        "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
     }
     return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("simcore.")}
 
@@ -70,7 +70,7 @@ class BaseDecorator:
 
     Subclasses may override:
       • ``get_registry(self) -> Any | None``
-      • ``derive_identity(self, cls, *, namespace, kind, name) -> Identity | (Identity, meta)``
+      • ``derive_identity(self, cls, *, domain, namespace, group, name) -> Identity | (Identity, meta)``
       • ``bind_extras(self, cls, extras: dict[str, Any]) -> None``
       • ``register(self, candidate) -> None`` (defaults to routing a RegistrationRecord)
 
@@ -94,7 +94,9 @@ class BaseDecorator:
         self,
         _cls: Optional[T] = None,
         *,
+        domain: Optional[str] = None,
         namespace: Optional[str] = None,
+        group: Optional[str] = None,
         kind: Optional[str] = None,
         name: Optional[str] = None,
         **extras: Any,
@@ -104,7 +106,7 @@ class BaseDecorator:
             @decorator
             class Foo: ...
 
-            @decorator(namespace="x", kind="y", name="z")
+            @decorator(domain="d", namespace="x", group="y", name="z")
             class Foo: ...
         """
 
@@ -114,8 +116,9 @@ class BaseDecorator:
             # 1) Derive identity (subclasses may return (Identity, meta))
             result = self.derive_identity(
                 cls,
+                domain=domain,
                 namespace=namespace,
-                kind=kind,
+                group=group or kind,
                 name=name,
             )
             if isinstance(result, tuple) and len(result) == 2:
@@ -144,11 +147,12 @@ class BaseDecorator:
                 "simcore.decorator": self.__class__.__name__,
                 "simcore.class": fqcn,
                 "simcore.identity": final_label,
-                # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple3.*)
+                # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple4.*)
                 **({} if not isinstance(meta, dict) else meta),
                 # Echo e    xplicit args if provided (drop Nones below)
+                "simcore.domain_arg": domain,
                 "simcore.namespace_arg": namespace,
-                "simcore.kind_arg": kind,
+                "simcore.group_arg": group or kind,
                 "simcore.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
@@ -183,23 +187,26 @@ class BaseDecorator:
         self,
         cls: Type[Any],
         *,
+        domain: Optional[str],
         namespace: Optional[str],
-        kind: Optional[str],
+        group: Optional[str],
         name: Optional[str],
     ) -> tuple[Identity, dict[str, Any] | None]:
         """Derive + validate identity using the configured resolver (core default).
 
         Precedence (core):
           - name: explicit (arg/attr) preserved-as-is (trim only) or derived from class
+          - domain: arg → class attr → module root → "default"
           - namespace: arg → class attr → module root → "default"
-          - kind: arg → class attr → "default"
+          - group: arg → class attr → "default" (legacy `kind` accepted)
 
         Token stripping & normalization are implemented in the Identity layer.
         """
         identity, meta = self.resolver.resolve(
             cls,
+            domain=domain,
             namespace=namespace,
-            kind=kind,
+            group=group,
             name=name,
         )
         return identity, meta

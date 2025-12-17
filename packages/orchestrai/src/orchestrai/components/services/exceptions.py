@@ -29,10 +29,12 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
 
     Parameters (all keyword-only)
     -----------------------------
+    domain: str
+        The resolved domain for the service (e.g., "orchestrai").
     namespace: str
         The resolved namespace for the service (e.g., "chatlab").
-    kind: str
-        The resolved kind/bucket for the service (e.g., "default").
+    group: str
+        The resolved group/bucket for the service (e.g., "default").
     name: str
         The resolved service leaf name (snake_case).
     codec: str | None
@@ -42,7 +44,7 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
 
     Notes
     -----
-    The canonical service identity is dot-only: "namespace.kind.name".
+    The canonical service identity is dot-only: "domain.namespace.group.name".
     """
 
     def __init__(self, *, ident: IdentityLike = None, codec: Optional[str], service: str):
@@ -62,7 +64,9 @@ class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
         super().__init__(msg)
         # Attach context for callers/logs to inspect programmatically.
         self.IdentityLie = ident
-        self.kind = I.kind if I is not None else None
+        self.domain = I.domain if I is not None else None
+        self.group = I.group if I is not None else None
+        self.kind = self.group
         self.name = I.name if I is not None else None
         self.codec = codec if codec is not None else None
         self.service = service if service is not None else None

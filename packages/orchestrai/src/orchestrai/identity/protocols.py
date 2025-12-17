@@ -10,7 +10,16 @@ __all__ = ["IdentityResolverProtocol", "IdentityProtocol"]
 
 
 class IdentityResolverProtocol(Protocol):
-    def resolve(self, candidate: type, **hints: Any) -> "Identity": ...
+    def resolve(
+            self,
+            candidate: type,
+            *,
+            domain: str | None = ...,
+            namespace: str | None = ...,
+            group: str | None = ...,
+            name: str | None = ...,
+            context: dict[str, Any] | None = ...,
+    ) -> "Identity": ...
 
 
 @runtime_checkable

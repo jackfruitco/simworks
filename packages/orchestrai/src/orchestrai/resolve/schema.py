@@ -78,7 +78,12 @@ def resolve_schema(
     if store is not None:
         lookup_ident = identity
         if isinstance(identity, Identity):
-            lookup_ident = Identity(namespace=identity.namespace, kind="schema", name=identity.name)
+            lookup_ident = Identity(
+                domain=identity.domain,
+                namespace=identity.namespace,
+                group="schema",
+                name=identity.name,
+            )
         try:
             candidate = store.try_get("schema", lookup_ident)
         except Exception:

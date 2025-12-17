@@ -1,6 +1,6 @@
 # SimWorks AI Service Quickstart Guide
 
-This guide explains how to create a fully functional AI service in SimWorks using the new **tuple3 identity** model.
+This guide explains how to create a fully functional AI service in SimWorks using the new **tuple4 identity** model.
 
 ---
 
@@ -12,7 +12,7 @@ Each AI pipeline (service → prompt → codec → schema) is automatically link
 (origin, bucket, name)
 ```
 
-If all components share the same tuple3 identity, they work together automatically — no extra configuration required.
+If all components share the same tuple4 identity, they work together automatically — no extra configuration required.
 
 ---
 

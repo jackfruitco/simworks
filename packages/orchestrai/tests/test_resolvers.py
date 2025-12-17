@@ -1,4 +1,5 @@
 import pytest
+from typing import ClassVar
 
 from orchestrai.components.codecs import BaseCodec
 from orchestrai.components.promptkit import PromptPlan, PromptSection
@@ -12,27 +13,30 @@ from orchestrai.resolve import resolve_codec, resolve_prompt_plan, resolve_schem
 from orchestrai.components.services.service import BaseService
 
 
+DOMAIN = "demo"
+
+
 class DemoSchema(BaseOutputSchema):
-    identity = Identity("demo", "schema", "svc")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="schema", name="svc")
     foo: str
 
 
 class DemoPrompt(PromptSection):
     abstract = False
-    identity = Identity("demo", "prompt_section", "svc")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="prompt_section", name="svc")
     instruction = "hello"
     message = "world"
 
 
 class AltPrompt(PromptSection):
     abstract = False
-    identity = Identity("demo", "prompt_section", "alt")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="prompt_section", name="alt")
     instruction = "alt"
 
 
 class LowCodec(BaseCodec):
     abstract = False
-    identity = Identity("demo", "codec", "low")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="codec", name="low")
     priority = 1
     response_schema = DemoSchema
 
@@ -43,7 +47,7 @@ class LowCodec(BaseCodec):
 
 class HighCodec(BaseCodec):
     abstract = False
-    identity = Identity("demo", "codec", "high")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="codec", name="high")
     priority = 5
     response_schema = DemoSchema
 
@@ -54,7 +58,7 @@ class HighCodec(BaseCodec):
 
 class AdapterCodec(BaseCodec):
     abstract = False
-    identity = Identity("demo", "codec", "adapter")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="codec", name="adapter")
     response_schema = DemoSchema
     schema_adapters = (OpenaiWrapper(order=0),)
 
@@ -65,7 +69,7 @@ class AdapterCodec(BaseCodec):
 
 class DemoService(BaseService):
     abstract = False
-    identity = Identity("demo", "service", "svc")
+    identity: ClassVar[Identity] = Identity(domain=DOMAIN, namespace="demo", group="service", name="svc")
     provider_name = "demo"
 
 
@@ -108,7 +112,7 @@ def test_prompt_plan_resolution_branches(store):
 
 
 def test_schema_resolution_branches(store):
-    ident = Identity("demo", "service", "svc")
+    ident = Identity(domain=DOMAIN, namespace="demo", group="service", name="svc")
 
     # override wins
     res_override = resolve_schema(identity=ident, override=DemoSchema, store=store)
@@ -134,7 +138,7 @@ def test_schema_resolution_branches(store):
 
 
 def test_schema_adapter_application():
-    ident = Identity("demo", "service", "svc")
+    ident = Identity(domain=DOMAIN, namespace="demo", group="service", name="svc")
     res = resolve_schema(identity=ident, override=DemoSchema, adapters=AdapterCodec.schema_adapters)
     schema_json = res.selected.meta.get("schema_json")
     assert res.branch == "override"

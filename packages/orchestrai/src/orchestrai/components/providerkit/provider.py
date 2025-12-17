@@ -509,7 +509,7 @@ class ProviderConfig(BaseModel):
     Fields:
         alias:   User-facing alias / connection name (e.g. "default", "openai", "openai-low-cost").
         backend: Backend identity string registered in the provider_backends registry,
-                 e.g. "openai.responses.backend".
+                 e.g. "provider.openai.responses.backend".
         label:   Optional disambiguator for multiple accounts/environments (e.g., "prod", "staging").
         base_url:     Optional custom endpoint.
         api_key:      Direct secret value (already resolved). Prefer env usage in production.
@@ -541,16 +541,16 @@ class ProviderConfig(BaseModel):
 
     @staticmethod
     def _validate_backend_identity(v: str) -> str:
-        """Validate a backend identity string like 'openai.responses.backend'."""
+        """Validate a backend identity string like 'provider.openai.responses.backend'."""
         parts = v.split(".")
-        if len(parts) != 3:
+        if len(parts) != 4:
             raise ProviderConfigurationError(
-                f"BACKEND must be 'namespace.kind.name', e.g. 'openai.responses.backend' (got {v!r})"
+                f"BACKEND must be 'domain.namespace.group.name', e.g. 'provider.openai.responses.backend' (got {v!r})"
             )
 
-        namespace, kind, name = parts
+        domain, namespace, group, name = parts
 
-        if not namespace or not kind or not name:
+        if not domain or not namespace or not group or not name:
             raise ProviderConfigurationError(
                 f"BACKEND identity '{v}' must not contain empty segments"
             )
