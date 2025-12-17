@@ -33,10 +33,20 @@ class BaseRegistry(Generic[K, T]):
             if self._frozen:
                 raise RegistryFrozenError("Registry is frozen")
             if key in self._store:
-                if self._store[key] is cls:
+                existing = self._store[key]
+                if existing is cls:
                     raise RegistryDuplicateError(f"Component already registered: {key}")
+
+                existing_fqcn = f"{existing.__module__}.{existing.__name__}"
+                candidate_fqcn = f"{cls.__module__}.{cls.__name__}"
+
                 raise RegistryCollisionError(
-                    f"Key already registered to different instance: {key}"
+                    "Key already registered to different instance: {key} "
+                    "(existing={existing_fqcn}, candidate={candidate_fqcn})".format(
+                        key=key,
+                        existing_fqcn=existing_fqcn,
+                        candidate_fqcn=candidate_fqcn,
+                    )
                 )
             self._store[key] = cls
 
