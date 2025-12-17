@@ -53,6 +53,9 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
     base_keys = {
         "simcore.decorator", "simcore.class", "simcore.identity",
         "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
+        "simcore.identity.label", "simcore.identity.tuple4",
+        "simcore.identity.domain", "simcore.identity.namespace",
+        "simcore.identity.group", "simcore.identity.name",
         # helpful snapshots when present
         "simcore.tuple4.raw", "simcore.tuple4.post_strip",
         "simcore.strip_tokens", "simcore.strip_tokens_list",
@@ -62,6 +65,9 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
     minimal_keys = {
         "simcore.decorator", "simcore.class", "simcore.identity",
         "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
+        "simcore.identity.label", "simcore.identity.tuple4",
+        "simcore.identity.domain", "simcore.identity.namespace",
+        "simcore.identity.group", "simcore.identity.name",
     }
     return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("simcore.")}
 
@@ -119,26 +125,38 @@ class BaseDecorator:
             fqcn = f"{cls.__module__}.{cls.__name__}"
 
             # 1) Derive identity (subclasses may return (Identity, meta))
-            result = self.derive_identity(
+            identity_result = self.derive_identity(
                 cls,
                 domain=domain,
                 namespace=namespace,
                 group=group or kind,
                 name=name,
             )
-            if isinstance(result, tuple) and len(result) == 2:
-                identity, meta = result  # type: ignore[misc]
+            if isinstance(identity_result, tuple) and len(identity_result) == 2:
+                identity, meta = identity_result  # type: ignore[misc]
             else:
-                identity, meta = result, {}
+                identity, meta = identity_result, {}
+
+            meta_dict: dict[str, Any] = dict(meta or {}) if isinstance(meta, dict) else {}
+            meta_dict.update(
+                {
+                    "simcore.identity.label": identity.as_str,
+                    "simcore.identity.tuple4": identity.as_tuple,
+                    "simcore.identity.domain": identity.domain,
+                    "simcore.identity.namespace": identity.namespace,
+                    "simcore.identity.group": identity.group,
+                    "simcore.identity.name": identity.name,
+                }
+            )
 
             # 2) Pin identity to class (avoid clobbering .identity descriptor)
             pin_func = getattr(cls, "pin_identity", None)
             if callable(pin_func):
-                pin_func(identity, meta)
+                pin_func(identity, meta_dict)
             else:
                 # fallback: set private cache attributes to avoid importing IdentityMixin here
                 setattr(cls, "_IdentityMixin__identity_cached", identity)
-                setattr(cls, "_IdentityMixin__identity_meta_cached", meta)
+                setattr(cls, "_IdentityMixin__identity_meta_cached", meta_dict)
 
             # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
@@ -153,8 +171,8 @@ class BaseDecorator:
                 "simcore.class": fqcn,
                 "simcore.identity": final_label,
                 # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple4.*)
-                **({} if not isinstance(meta, dict) else meta),
-                # Echo e    xplicit args if provided (drop Nones below)
+                **meta_dict,
+                # Echo explicit args if provided (drop Nones below)
                 "simcore.domain_arg": domain,
                 "simcore.namespace_arg": namespace,
                 "simcore.group_arg": group or kind,

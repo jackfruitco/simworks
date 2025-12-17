@@ -4,7 +4,7 @@ Core provider decorators.
 
 This module defines two decorators: one for Provider Backends, and one for Provider instances.
 
-- Derive & pin identity via IdentityResolver (kind/namespace/name via resolver + hints).
+- Derive & pin identity via IdentityResolver (domain/namespace/group/name via resolver + hints).
 - Register provider backend classes in the global `provider_backends` registry.
 - Register provider “wiring” classes in the global `providers` registry.
 - Preserve the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
@@ -15,6 +15,10 @@ from typing import Any, Type
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.domains import (
+    PROVIDER_BACKENDS_DOMAIN,
+    PROVIDERS_DOMAIN,
+)
 from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import (
     provider_backends as provider_backend_registry,
@@ -39,10 +43,12 @@ class ProviderBackendDecorator(BaseDecorator):
             ...
 
         # or with explicit hints (for a backend, name should be "backend")
-        @backend(namespace="openai", kind="responses", name="backend")
+        @backend(namespace="openai", group="responses", name="backend")
         class OpenAiResponsesBackend(BaseProvider):
             ...
     """
+
+    default_domain = PROVIDER_BACKENDS_DOMAIN
 
     def get_registry(self) -> ComponentRegistry:
         """Return the global provider backends registry singleton (identity-keyed)."""
@@ -76,10 +82,12 @@ class ProviderDecorator(BaseDecorator):
             ...
 
         # or with explicit hints (name corresponds to the provider profile, e.g. "default" or "prod")
-        @provider(namespace="openai", kind="responses", name="prod")
+        @provider(namespace="openai", group="responses", name="prod")
         class OpenAiResponsesProvider(BaseProvider):
             ...
     """
+
+    default_domain = PROVIDERS_DOMAIN
 
     def get_registry(self) -> ComponentRegistry:
         """Return the global providers registry singleton (identity-keyed)."""
