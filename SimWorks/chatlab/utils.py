@@ -7,7 +7,6 @@ from channels.layers import get_channel_layer
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
-from orchestrai import get_current_app
 from orchestrai.components.providerkit.exceptions import ProviderCallError
 from orchestrai.components.services.exceptions import ServiceError
 from orchestrai.exceptions import SimCoreError
@@ -55,11 +54,10 @@ async def create_new_simulation(
 
     from .orca.services import GenerateInitialResponse
     try:
-        await get_current_app().services.aschedule(
-            GenerateInitialResponse,
+        await GenerateInitialResponse.using(
             simulation_id=simulation.id,
             user_id=user.id,
-        )
+        ).enqueue()
     except (ProviderCallError, ServiceError, SimCoreError) as exc:
         logger.exception(
             "Failed to schedule initial response for simulation %s (user=%s)",
