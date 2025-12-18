@@ -77,13 +77,13 @@ def write_request_audit(dj_req: DjangoRequest) -> int:
     - Stores response_schema_json* fields if they are already attached at emit time.
     """
     with service_span_sync(
-        "simcore.audit.request",
+        "orchestrai.audit.request",
         attributes={
-            "simcore.namespace": getattr(dj_req, "namespace", None),
-            "simcore.provider_name": getattr(dj_req, "provider_name", None),
-            "simcore.client_name": getattr(dj_req, "client_name", None),
-            "simcore.model": getattr(dj_req, "model", None),
-            "simcore.stream": bool(getattr(dj_req, "stream", False)),
+            "orchestrai.namespace": getattr(dj_req, "namespace", None),
+            "orchestrai.provider_name": getattr(dj_req, "provider_name", None),
+            "orchestrai.client_name": getattr(dj_req, "client_name", None),
+            "orchestrai.model": getattr(dj_req, "model", None),
+            "orchestrai.stream": bool(getattr(dj_req, "stream", False)),
         },
     ):
         messages = dj_req.messages_rich or dj_req.input or []
@@ -132,7 +132,7 @@ def update_request_audit_formats(
     Backfill/refresh the request audit row with final response format details
     (e.g., after backend-specific adapters/wrappers are applied).
     """
-    with service_span_sync("simcore.audit.request_update_formats"):
+    with service_span_sync("orchestrai.audit.request_update_formats"):
         cls_name = response_format_cls.__name__ if response_format_cls else None
         AIRequestAudit.objects.filter(pk=request_audit_pk).update(
             response_format_cls=cls_name,
@@ -153,13 +153,13 @@ def write_response_audit(
     - Links to AIRequestAudit via FK when provided.
     """
     with service_span_sync(
-        "simcore.audit.response",
+        "orchestrai.audit.response",
         attributes={
-            "simcore.namespace": getattr(dj_resp, "namespace", None),
-            "simcore.provider_name": getattr(dj_resp, "provider_name", None),
-            "simcore.client_name": getattr(dj_resp, "client_name", None),
-            "simcore.model": getattr(dj_resp, "model", None),
-            "simcore.error.present": bool(getattr(dj_resp, "error", None)),
+            "orchestrai.namespace": getattr(dj_resp, "namespace", None),
+            "orchestrai.provider_name": getattr(dj_resp, "provider_name", None),
+            "orchestrai.client_name": getattr(dj_resp, "client_name", None),
+            "orchestrai.model": getattr(dj_resp, "model", None),
+            "orchestrai.error.present": bool(getattr(dj_resp, "error", None)),
         },
     ):
         request_row = None

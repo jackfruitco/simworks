@@ -1,4 +1,4 @@
-# Schemas in simcore_ai_django
+# Schemas in orchestrai_django
 
 > Define strict, Pydantic-based schemas that validate AI output and align by identity.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-A **Response Schema** describes the structured output expected from the LLM. In `simcore_ai_django`, schemas:
+A **Response Schema** describes the structured output expected from the LLM. In `orchestrai_django`, schemas:
 
 - Inherit from **`DjangoBaseOutputSchema`** (a strict Pydantic model with Django-aware identity helpers).
 - Participate in the **tuple³ identity** system (`origin.bucket.name`).
@@ -18,7 +18,7 @@ A **Response Schema** describes the structured output expected from the LLM. In 
 ## Base Classes
 
 ```python
-from simcore_ai_django.api.types import (
+from orchestrai_django.api.types import (
     DjangoBaseOutputSchema,
     DjangoBaseOutputBlock,
     DjangoBaseOutputItem,
@@ -35,7 +35,7 @@ from simcore_ai_django.api.types import (
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+from orchestrai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
 
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema):
@@ -49,7 +49,7 @@ Identity autoderives (e.g., `chatlab.standardized_patient.initial`) when your ap
 ## Identity Mixins (Recommended)
 
 ```python
-from simcore_ai_django.identity.mixins import DjangoIdentityMixin
+from orchestrai_django.identity.mixins import DjangoIdentityMixin
 
 class ChatlabMixin(DjangoIdentityMixin):
     origin = "chatlab"
@@ -79,7 +79,7 @@ You can compose items and blocks for clarity and strong typing.
 ```python
 from typing import Literal
 from pydantic import Field
-from simcore_ai_django.api.types import DjangoBaseOutputItem, DjangoBaseOutputBlock
+from orchestrai_django.api.types import DjangoBaseOutputItem, DjangoBaseOutputBlock
 
 
 class CorrectDiagnosisItem(DjangoBaseOutputItem):
@@ -188,4 +188,4 @@ print(PatientInitialOutputSchema.identity_str())    # 'chatlab.standardized_pati
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

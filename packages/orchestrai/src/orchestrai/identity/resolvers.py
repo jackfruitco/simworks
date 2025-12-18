@@ -209,16 +209,16 @@ class IdentityResolver:
 
         # Build meta (full; caller may filter by trace level)
         meta: dict[str, Any] = {
-            "simcore.tuple4.raw": f"{dm_value}.{ns_value}.{gp_value}.{name_res.raw}",
-            "simcore.tuple4.post_strip": f"{dm_value}.{ns_value}.{gp_value}.{name_res.post_strip}",
-            "simcore.tuple4.post_norm": ident.as_str,
-            "simcore.identity.name.explicit": name_res.explicit,
-            "simcore.identity.source.name": name_res.source,
-            "simcore.identity.source.domain": dm_source,
-            "simcore.identity.source.namespace": ns_source,
-            "simcore.identity.source.group": gp_source,
-            "simcore.strip_tokens": tokens_csv,
-            "simcore.strip_tokens_list": tokens_list,
+            "orchestrai.tuple4.raw": f"{dm_value}.{ns_value}.{gp_value}.{name_res.raw}",
+            "orchestrai.tuple4.post_strip": f"{dm_value}.{ns_value}.{gp_value}.{name_res.post_strip}",
+            "orchestrai.tuple4.post_norm": ident.as_str,
+            "orchestrai.identity.name.explicit": name_res.explicit,
+            "orchestrai.identity.source.name": name_res.source,
+            "orchestrai.identity.source.domain": dm_source,
+            "orchestrai.identity.source.namespace": ns_source,
+            "orchestrai.identity.source.group": gp_source,
+            "orchestrai.strip_tokens": tokens_csv,
+            "orchestrai.strip_tokens_list": tokens_list,
         }
 
         # Validate last to keep meta available for debugging on failure

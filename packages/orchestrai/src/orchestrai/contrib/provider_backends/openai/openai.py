@@ -108,14 +108,14 @@ class OpenAIResponsesProvider(BaseProvider):
             raise ProviderError("OpenAI client not available; install the 'openai' package or inject a client")
 
         async with service_span(
-            "simcore.client.call",
+            "orchestrai.client.call",
             attributes={
-                "simcore.provider_name": self.provider,
-                "simcore.client_name": getattr(self, "provider", self.__class__.__name__),
-                "simcore.model": req.model or self.default_model or "<unspecified>",
-                "simcore.stream": bool(getattr(req, "stream", False)),
-                "simcore.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
-                "simcore.codec": getattr(req, "codec", None),
+                "orchestrai.provider_name": self.provider,
+                "orchestrai.client_name": getattr(self, "provider", self.__class__.__name__),
+                "orchestrai.model": req.model or self.default_model or "<unspecified>",
+                "orchestrai.stream": bool(getattr(req, "stream", False)),
+                "orchestrai.request.correlation_id": str(getattr(req, "correlation_id", "")) or None,
+                "orchestrai.codec": getattr(req, "codec", None),
                 **_flatten_context(getattr(req, "context", {}) or {}),
             },
         ):
@@ -167,7 +167,7 @@ class OpenAIResponsesProvider(BaseProvider):
         return base
 
     def _normalize_tool_output(self, item: Any):
-        with service_span_sync("simcore.tools.handle_output", attributes={"simcore.provider_name": self.provider}):
+        with service_span_sync("orchestrai.tools.handle_output", attributes={"orchestrai.provider_name": self.provider}):
             for adapter in getattr(self, "_output_adapters", []):
                 result = adapter.adapt(item)
                 if result is not None:

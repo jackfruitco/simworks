@@ -34,7 +34,7 @@ class PromptSectionDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @prompt_section(namespace="simcore", group="sections", name="my_section")
+        @prompt_section(namespace="orchestrai", group="sections", name="my_section")
         class MyPromptSection(PromptSection):
             ...
     """

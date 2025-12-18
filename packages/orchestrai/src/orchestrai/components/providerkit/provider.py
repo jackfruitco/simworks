@@ -260,7 +260,7 @@ class BaseProvider(IdentityMixin, ABC):
 
     def _provider_namespace_key(self) -> str:
         """
-        Return a stable backend namespace like 'simcore.ai_v1.providers.<label>'
+        Return a stable backend namespace like 'orchestrai.ai_v1.providers.<label>'
         regardless of whether the class lives in ...<label>, ...<label>.base, etc.
         """
         mod = self.__class__.__module__
@@ -294,11 +294,11 @@ class BaseProvider(IdentityMixin, ABC):
         # output_schema_cls is retained for call-site compatibility but is no longer used.
         _ = output_schema_cls
         with service_span_sync(
-                "simcore.response.adapt",
+                "orchestrai.response.adapt",
                 attributes={
-                    "simcore.backend.backend": getattr(self, "backend", self.__class__.__name__),
-                    "simcore.backend.profile": getattr(self, "profile", None),
-                    "simcore.backend.api_family": getattr(self, "api_family", None),
+                    "orchestrai.backend.backend": getattr(self, "backend", self.__class__.__name__),
+                    "orchestrai.backend.profile": getattr(self, "profile", None),
+                    "orchestrai.backend.api_family": getattr(self, "api_family", None),
                 },
         ) as span:
             messages: list[OutputItem] = []
@@ -362,9 +362,9 @@ class BaseProvider(IdentityMixin, ABC):
 
             # Attach summary attributes for observability
             try:
-                span.set_attribute("simcore.parts.count", len(messages))
-                span.set_attribute("simcore.tool_calls.count", len(tool_calls))
-                span.set_attribute("simcore.text.present", bool(text_out))
+                span.set_attribute("orchestrai.parts.count", len(messages))
+                span.set_attribute("orchestrai.tool_calls.count", len(tool_calls))
+                span.set_attribute("orchestrai.text.present", bool(text_out))
             except Exception:
                 pass
 
@@ -480,19 +480,19 @@ class BaseProvider(IdentityMixin, ABC):
         """
         try:
             attrs = {
-                "simcore.provider_name": getattr(self, "name", self.__class__.__name__),
+                "orchestrai.provider_name": getattr(self, "name", self.__class__.__name__),
                 "http.status_code": status_code if status_code is not None else 429,
             }
             pk = getattr(self, "provider_key", None)
             pl = getattr(self, "provider_label", None)
             if pk is not None:
-                attrs["simcore.provider_key"] = pk
+                attrs["orchestrai.provider_key"] = pk
             if pl is not None:
-                attrs["simcore.provider_label"] = pl
+                attrs["orchestrai.provider_label"] = pl
             if retry_after_ms is not None:
                 attrs["retry_after_ms"] = retry_after_ms
 
-            with service_span_sync("simcore.backend.ratelimit", attributes=attrs):
+            with service_span_sync("orchestrai.backend.ratelimit", attributes=attrs):
                 if detail:
                     logger.debug("%s rate-limited: %s", self.name, detail)
         except Exception:  # pragma: no cover - never break on tracing errors

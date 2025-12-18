@@ -51,25 +51,25 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
     if level == "debug":
         return attrs
     base_keys = {
-        "simcore.decorator", "simcore.class", "simcore.identity",
-        "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
-        "simcore.identity.label", "simcore.identity.tuple4",
-        "simcore.identity.domain", "simcore.identity.namespace",
-        "simcore.identity.group", "simcore.identity.name",
+        "orchestrai.decorator", "orchestrai.class", "orchestrai.identity",
+        "orchestrai.tuple4.post_norm", "orchestrai.identity.name.explicit",
+        "orchestrai.identity.label", "orchestrai.identity.tuple4"
+        "orchestrai.identity.domain", "orchestrai.identity.namespace",
+        "orchestrai.identity.group", "orchestrai.identity.name",
         # helpful snapshots when present
-        "simcore.tuple4.raw", "simcore.tuple4.post_strip",
-        "simcore.strip_tokens", "simcore.strip_tokens_list",
+        "orchestrai.tuple3.raw", "orchestrai.tuple3.post_strip",
+        "orchestrai.strip_tokens", "orchestrai.strip_tokens_list",
     }
     if level == "info":
-        return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("simcore.")}
+        return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("orchestrai.")}
     minimal_keys = {
-        "simcore.decorator", "simcore.class", "simcore.identity",
-        "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
-        "simcore.identity.label", "simcore.identity.tuple4",
-        "simcore.identity.domain", "simcore.identity.namespace",
-        "simcore.identity.group", "simcore.identity.name",
+        "orchestrai.decorator", "orchestrai.class", "orchestrai.identity",
+        "orchestrai.tuple4.post_norm", "orchestrai.identity.name.explicit",
+        "orchestrai.identity.label", "orchestrai.identity.tuple4",
+        "orchestrai.identity.domain", "orchestrai.identity.namespace",
+        "orchestrai.identity.group", "orchestrai.identity.name",
     }
-    return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("simcore.")}
+    return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("orchestrai.")}
 
 
 class BaseDecorator:
@@ -167,20 +167,20 @@ class BaseDecorator:
             # 5) Emit a single trace span *after* successful registration with rich attributes
             final_label = identity.as_str
             span_attrs_raw = {
-                "simcore.decorator": self.__class__.__name__,
-                "simcore.class": fqcn,
-                "simcore.identity": final_label,
+                "orchestrai.decorator": self.__class__.__name__,
+                "orchestrai.class": fqcn,
+                "orchestrai.identity": final_label,
                 # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple4.*)
                 **meta_dict,
                 # Echo explicit args if provided (drop Nones below)
-                "simcore.domain_arg": domain,
-                "simcore.namespace_arg": namespace,
-                "simcore.group_arg": group or kind,
-                "simcore.name_arg": name,
+                "orchestrai.domain_arg": domain,
+                "orchestrai.namespace_arg": namespace,
+                "orchestrai.group_arg": group or kind,
+                "orchestrai.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
             span_attrs = _filter_trace_attrs(span_attrs)
-            with service_span_sync(f"simcore.decorator.apply ({cls.__name__})", attributes=span_attrs):
+            with service_span_sync(f"orchestrai.decorator.apply ({cls.__name__})", attributes=span_attrs):
                 label = getattr(self, "log_category", None) or self.__class__.__name__
                 label = str(label).upper()
                 logger.info("[%s] ✅ discovered `%s`", label, identity.as_str)

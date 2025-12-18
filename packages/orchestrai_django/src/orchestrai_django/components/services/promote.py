@@ -130,8 +130,8 @@ def promote_request_for_service(
             "svc.promote_request_for_service",
             attributes={
                 "svc.class": service.__class__.__name__,
-                "simcore.identity.service": _svc_identity_str(service),
-                "simcore.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
+                "orchestrai.identity.service": _svc_identity_str(service),
+                "orchestrai.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
                 "svc.backend": prov,
                 "svc.client": cli,
                 "req.correlation_id": getattr(req, "correlation_id", None),
@@ -184,8 +184,8 @@ def promote_response_for_service(
             "svc.promote_response_for_service",
             attributes={
                 "svc.class": service.__class__.__name__,
-                "simcore.identity.service": _svc_identity_str(service),
-                "simcore.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
+                "orchestrai.identity.service": _svc_identity_str(service),
+                "orchestrai.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
                 "svc.backend": prov,
                 "svc.client": cli,
                 "resp.correlation_id": getattr(resp, "correlation_id", None),

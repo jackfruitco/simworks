@@ -408,12 +408,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         Root span path for this service.
 
         Subclasses may override the class-level `_span_root` with a `SpanPath`
-        instance. If not set, this defaults to `simcore.svc.<ClassName>`.
+        instance. If not set, this defaults to `orchestrai.svc.<ClassName>`.
         """
         root = getattr(type(self), "_span_root", None)
         if isinstance(root, SpanPath):
             return root
-        return SpanPath(("simcore", "svc", self.__class__.__name__))
+        return SpanPath(("orchestrai", "svc", self.__class__.__name__))
 
     def _span(self, *segments: str) -> str:
         """Helper to build a child span name from the service's span root."""
@@ -1392,7 +1392,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         Streaming send/receive with retries, codec chunk decode, and logging.
         """
-        logger.info("simcore.service.%s.run_stream", self.__class__.__name__, extra=attrs)
+        logger.info("orchestrai.service.%s.run_stream", self.__class__.__name__, extra=attrs)
         async with service_span(
                 f"{self.span_prefix}.run.stream",
                 attributes=self.flatten_context(),

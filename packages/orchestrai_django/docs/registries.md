@@ -1,4 +1,4 @@
-# Registries — simcore_ai_django
+# Registries — orchestrai_django
 
 > How identity-aware registries discover and link Services, Codecs, and Prompt Sections.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Registries map **tuple³ identities** to concrete classes so the framework can wire components automatically. In `simcore_ai_django`, the important registries are:
+Registries map **tuple³ identities** to concrete classes so the framework can wire components automatically. In `orchestrai_django`, the important registries are:
 
 - **Prompt Registry** — maps identities → `PromptSection` classes.
 - **Codec Registry** — maps identities → `DjangoBaseCodec` classes.
@@ -16,14 +16,14 @@ Registries map **tuple³ identities** to concrete classes so the framework can w
 
 ## Prompt Registry
 
-**Module:** `simcore_ai.promptkit.registry`
+**Module:** `orchestrai.promptkit.registry`
 
 - Populated by the `@prompt_section` decorator.
 - Accepts dot-only strings like `"chatlab.standardized_patient.initial"`.
 - Used by `PromptEngine` and services to resolve section classes.
 
 ```python
-from simcore_ai_django.components.promptkit import PromptRegistry
+from orchestrai_django.components.promptkit import PromptRegistry
 
 # Lookup
 Section = PromptRegistry.require_str("chatlab.standardized_patient.initial")
@@ -38,15 +38,15 @@ all_sections = list(PromptRegistry.all())
 
 ## Codec Registry
 
-**Module:** `simcore_ai_django.codecs.registry`
+**Module:** `orchestrai_django.codecs.registry`
 
 - Populated by the `@codec` decorator.
 - Keys are `(origin, bucket, name)` tuples stored in lowercase snake_case.
 - Lookups support exact identity plus fallbacks to `(bucket, "default")` and `("default", "default")` for backwards compatibility.
 
 ```python
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.components.codecs import CodecRegistry, get_codec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.components.codecs import CodecRegistry, get_codec
 
 
 @codec
@@ -63,7 +63,7 @@ assert codec_cls is PatientInitialCodec
 1. Explicit `codec_class` attribute or injected codec instance.
 2. `select_codec()` override return value.
 3. `CodecRegistry.get_codec(origin, bucket, name)` (with fallbacks).
-4. Core `simcore_ai.codecs.registry` as a final fallback.
+4. Core `orchestrai.codecs.registry` as a final fallback.
 5. Raise `ServiceCodecResolutionError` if nothing matches.
 
 ---
@@ -80,7 +80,7 @@ Pattern:
 
 ```python
 try:
-    from simcore_ai.services.registry import ServiceRegistry
+    from orchestrai.services.registry import ServiceRegistry
 except ImportError:
     ServiceRegistry = None
 
@@ -97,12 +97,12 @@ The Django `@llm_service` decorator calls `resolve_collision_django` before regi
 
 ```python
 # Prompt sections
-from simcore_ai_django.components.promptkit import PromptRegistry
+from orchestrai_django.components.promptkit import PromptRegistry
 
 print([cls.identity_static().to_string() for cls in PromptRegistry.all()])
 
 # Codecs
-from simcore_ai_django.components.codecs import CodecRegistry
+from orchestrai_django.components.codecs import CodecRegistry
 
 print(list(CodecRegistry.names()))
 ```
@@ -130,7 +130,7 @@ class ChatlabConfig(AppConfig):
 Use the helper directly when you need to preflight identities:
 
 ```python
-from simcore_ai_django.identity import resolve_collision_django
+from orchestrai_django.identity import resolve_collision_django
 
 origin, bucket, name = resolve_collision_django(
     "codec",
@@ -149,4 +149,4 @@ origin, bucket, name = resolve_collision_django(
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

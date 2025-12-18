@@ -25,7 +25,7 @@ If all components share the same tuple4 identity, they work together automatical
 Define your output fields only.
 
 ```python
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+from orchestrai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
 
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema):
@@ -46,8 +46,8 @@ Tip: To align identities across all components without extra wiring, add identit
 Provide either a static `instruction` or a custom render method.
 
 ```python
-from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.api.types import PromptSection
+from orchestrai_django.api.decorators import prompt_section
+from orchestrai_django.api.types import PromptSection
 
 @prompt_section
 class InitialSection(PromptSection):
@@ -67,8 +67,8 @@ class InitialSection(PromptSection):
 Implement a `persist()` method.
 
 ```python
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseCodec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.api.types import DjangoBaseCodec
 
 
 @codec
@@ -91,7 +91,7 @@ class InitialCodec(DjangoBaseCodec):
 Usually no overrides needed.
 
 ```python
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 
 @llm_service  # or: @llm_service(namespace="chatlab", kind="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):

@@ -1,4 +1,4 @@
-# Execution Backends — simcore_ai_django
+# Execution Backends — orchestrai_django
 
 > Control how AI Services are dispatched in Django: inline, deferred, or background.
 
@@ -36,8 +36,8 @@ These values can be:
 ## Example
 
 ```python
-from simcore_ai_django.api.decorators import llm_service
-from simcore_ai_django.api.types import DjangoExecutableLLMService
+from orchestrai_django.api.decorators import llm_service
+from orchestrai_django.api.types import DjangoExecutableLLMService
 
 @llm_service
 class GenerateInitialResponse(DjangoExecutableLLMService):
@@ -96,12 +96,12 @@ Custom keys are ignored by the built-in helpers but can be consumed by your back
 
 - Dispatches work to a Celery worker.
 - Reads `queue_default` from `AI_EXECUTION_BACKENDS["CELERY"]` if provided.
-- Requires `simcore_ai_django.execution.celery_backend` to be importable (Celery optional dependency).
+- Requires `orchestrai_django.execution.celery_backend` to be importable (Celery optional dependency).
 
 Register additional backends with the helper:
 
 ```python
-from simcore_ai_django.execution.registry import register_backend
+from orchestrai_django.execution.registry import register_backend
 
 @register_backend("rq")
 def enqueue_rq(service_cls, *, call_ctx):
@@ -115,8 +115,8 @@ Then use via `.using(backend="rq")`.
 ## Debugging Dispatch
 
 - The execution entrypoint emits OpenTelemetry spans (`ai.execute`, `ai.enqueue`) detailing backend, mode, and correlation IDs.
-- Inspect the context passed to backends via `simcore_ai_django.execution.helpers.span_attrs_from_ctx`.
-- Loggers under `simcore_ai_django.execution` provide additional diagnostics when set to DEBUG.
+- Inspect the context passed to backends via `orchestrai_django.execution.helpers.span_attrs_from_ctx`.
+- Loggers under `orchestrai_django.execution` provide additional diagnostics when set to DEBUG.
 
 ---
 
@@ -128,4 +128,4 @@ Then use via `.using(backend="rq")`.
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

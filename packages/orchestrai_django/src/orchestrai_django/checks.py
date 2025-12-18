@@ -92,7 +92,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
         "HEALTHCHECK_ON_START": True | False # optional, defaults True
     }
     """
-    with service_span_sync("simcore.clients.checks"):
+    with service_span_sync("orchestrai.clients.checks"):
         messages: List[checks.CheckMessage] = []
 
         sim: Mapping[str, Any] = getattr(settings, "orchestrai", {}) or {}
@@ -131,7 +131,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
             )
 
         for pkey, cfg in providers.items():
-            with service_span_sync("simcore.clients.checks.backend", attributes={"simcore.provider_key": pkey}):
+            with service_span_sync("orchestrai.clients.checks.backend", attributes={"orchestrai.provider_key": pkey}):
                 if not isinstance(cfg, Mapping):
                     messages.append(
                         checks.Error(
@@ -213,7 +213,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
 
         default_clients: list[str] = []
         for cname, cfg in clients.items():
-            with service_span_sync("simcore.clients.checks.client", attributes={"simcore.client_name": cname}):
+            with service_span_sync("orchestrai.clients.checks.client", attributes={"orchestrai.client_name": cname}):
                 if not isinstance(cfg, Mapping):
                     messages.append(
                         checks.Error(
@@ -372,7 +372,7 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
     - Collisions → `SIMCORE-ID-001` (Error if strict, Warning if non-strict)
     - Invalid identities → `SIMCORE-ID-002` (Error)
     """
-    with service_span_sync("simcore.registries.checks"):
+    with service_span_sync("orchestrai.registries.checks"):
         messages: List[checks.CheckMessage] = []
         strict = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", True))
 
@@ -470,7 +470,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
     from orchestrai.identity import Identity
     from orchestrai.identity import IdentityLike
 
-    with service_span_sync("simcore.services.pairing.checks"):
+    with service_span_sync("orchestrai.services.pairing.checks"):
         messages: List[checks.CheckMessage] = []
 
         try:
@@ -495,7 +495,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                 continue
 
             # ---- CODEC (required) ----
-            with service_span_sync("simcore.services.pairing.codec", attributes={"service": ident_str}):
+            with service_span_sync("orchestrai.services.pairing.codec", attributes={"service": ident_str}):
                 codec_ok = False
 
                 # 1) exact service.identity
@@ -526,7 +526,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                     )
 
             # ---- SCHEMA (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
-            with service_span_sync("simcore.services.pairing.schema", attributes={"service": ident_str}):
+            with service_span_sync("orchestrai.services.pairing.schema", attributes={"service": ident_str}):
                 explicit_schema_hint: IdentityLike | None = getattr(svc_cls, "response_schema_identity", None)
                 auto_candidates: tuple[tuple[str, str, str, str], ...] = (
                     (dm, ns, kd, nm),
@@ -577,7 +577,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                         )
 
             # ---- PROMPTS (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
-            with service_span_sync("simcore.services.pairing.prompts", attributes={"service": ident_str}):
+            with service_span_sync("orchestrai.services.pairing.prompts", attributes={"service": ident_str}):
                 required_prompts: Tuple[IdentityLike, ...] | None = getattr(svc_cls, "required_prompt_sections", None)
 
                 # Helper: auto resolve prompt by identity (exact or bucket default)

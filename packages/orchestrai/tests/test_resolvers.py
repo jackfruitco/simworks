@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import pytest
 from typing import ClassVar
 

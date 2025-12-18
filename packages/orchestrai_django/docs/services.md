@@ -1,4 +1,4 @@
-# Services in simcore_ai_django
+# Services in orchestrai_django
 
 > How to define, register, and execute AI-backed Django services.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-A **Service** in `simcore_ai_django` is an executable unit that orchestrates:
+A **Service** in `orchestrai_django` is an executable unit that orchestrates:
 
 ```
 Prompt → Request → Codec → Response
@@ -25,7 +25,7 @@ Identity derivation is **Django-aware** and **collision-safe**, automatically us
 
 | Class | Description |
 |:--|:--|
-| `BaseService` | Core provider-agnostic logic (in `simcore_ai`) |
+| `BaseService` | Core provider-agnostic logic (in `orchestrai`) |
 | `DjangoBaseService` | Adds Django-specific defaults (signals, renderers, codecs) |
 | `DjangoExecutableLLMService` | Adds `.execute()` and `.enqueue()` builder helpers |
 
@@ -34,7 +34,7 @@ Identity derivation is **Django-aware** and **collision-safe**, automatically us
 ## Decorator
 
 ```python
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 ```
 
 The `@llm_service` decorator wraps your **async function** (or class) into a service and ensures that:
@@ -48,7 +48,7 @@ Supports both `@llm_service` and `@llm_service(origin="...", bucket="...", name=
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 
 @llm_service  # or: @llm_service(namespace="chatlab", group="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
@@ -73,7 +73,7 @@ and link to matching `PromptSection`, `Codec`, and `Schema` with the same identi
 It’s best practice to mix in your app’s `origin` and `bucket`:
 
 ```python
-from simcore_ai_django.identity.mixins import DjangoIdentityMixin
+from orchestrai_django.identity.mixins import DjangoIdentityMixin
 
 class ChatlabMixin(DjangoIdentityMixin):
     origin = "chatlab"
@@ -132,7 +132,7 @@ generate_initial.using(backend="celery", run_after=30).enqueue(simulation=my_sim
 ## Example (Full)
 
 ```python
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin  # optional if using class-based style
 
 @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
@@ -193,7 +193,7 @@ print(generate_initial.identity_str())
 ## Advanced Example
 
 ```python
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 
 @llm_service(origin="chatlab", bucket="triage", name="differential_diagnosis")
 async def generate_differential(simulation):
@@ -224,4 +224,4 @@ await generate_initial.execute(simulation=my_sim)
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

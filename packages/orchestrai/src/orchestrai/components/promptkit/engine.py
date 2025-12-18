@@ -323,22 +323,22 @@ class PromptEngine:
                 )
 
         _attrs = {
-            "simcore.section_count": len(self._sections),
+            "orchestrai.section_count": len(self._sections),
             **flatten_context(ctx),
         }
         # annotate plan usage if present
         try:
             if ctx.get("prompt_plan.item_count") is not None:
-                _attrs["simcore.plan.used"] = True
-                _attrs["simcore.plan.items"] = int(ctx["prompt_plan.item_count"])
+                _attrs["orchestrai.plan.used"] = True
+                _attrs["orchestrai.plan.items"] = int(ctx["prompt_plan.item_count"])
                 if "prompt_plan.added" in ctx:
-                    _attrs["simcore.plan.added"] = int(ctx["prompt_plan.added"])
+                    _attrs["orchestrai.plan.added"] = int(ctx["prompt_plan.added"])
                 if "prompt_plan.skipped" in ctx:
-                    _attrs["simcore.plan.skipped"] = int(ctx["prompt_plan.skipped"])
+                    _attrs["orchestrai.plan.skipped"] = int(ctx["prompt_plan.skipped"])
         except Exception:
             pass
 
-        async with service_span("simcore.prompt.build", attributes=_attrs):
+        async with service_span("orchestrai.prompt.build", attributes=_attrs):
             logger.debug(
                 "PromptEngine.abuild: sections=%s",
                 [_get_section_label(s) for s in self._sections],
@@ -360,12 +360,12 @@ class PromptEngine:
                 label = _get_section_label(sec)
 
                 async with service_span(
-                        "simcore.prompt.section",
+                        "orchestrai.prompt.section",
                         attributes={
-                            "simcore.section": label,
-                            "simcore.category": getattr(sec, "category", None),
-                            "simcore.name": getattr(sec, "name", None),
-                            "simcore.weight": getattr(sec, "weight", None),
+                            "orchestrai.section": label,
+                            "orchestrai.category": getattr(sec, "category", None),
+                            "orchestrai.name": getattr(sec, "name", None),
+                            "orchestrai.weight": getattr(sec, "weight", None),
                             **flatten_context(ctx),
                         },
                 ) as section_span:
@@ -374,10 +374,10 @@ class PromptEngine:
 
                     # Render instruction
                     async with service_span(
-                            "simcore.prompt.render_instruction",
+                            "orchestrai.prompt.render_instruction",
                             attributes={
-                                "simcore.section": label,
-                                "simcore.weight": getattr(sec, "weight", None),
+                                "orchestrai.section": label,
+                                "orchestrai.weight": getattr(sec, "weight", None),
                                 **flatten_context(ctx),
                             },
                     ):
@@ -390,10 +390,10 @@ class PromptEngine:
 
                     # Render message
                     async with service_span(
-                            "simcore.prompt.render_message",
+                            "orchestrai.prompt.render_message",
                             attributes={
-                                "simcore.section": label,
-                                "simcore.weight": getattr(sec, "weight", None),
+                                "orchestrai.section": label,
+                                "orchestrai.weight": getattr(sec, "weight", None),
                                 **flatten_context(ctx),
                             },
                     ):
@@ -406,12 +406,12 @@ class PromptEngine:
 
                     # Annotate the parent section span with outcomes
                     try:
-                        section_span.set_attribute("simcore.instruction.present", bool(instr and str(instr).strip()))
-                        section_span.set_attribute("simcore.message.present", bool(msg and str(msg).strip()))
+                        section_span.set_attribute("orchestrai.instruction.present", bool(instr and str(instr).strip()))
+                        section_span.set_attribute("orchestrai.message.present", bool(msg and str(msg).strip()))
                         if instr:
-                            section_span.set_attribute("simcore.instruction.len", len(instr))
+                            section_span.set_attribute("orchestrai.instruction.len", len(instr))
                         if msg:
-                            section_span.set_attribute("simcore.message.len", len(msg))
+                            section_span.set_attribute("orchestrai.message.len", len(msg))
                     except Exception:
                         pass
 
@@ -422,10 +422,10 @@ class PromptEngine:
 
             # Merge sections (sync span ok inside async)
             with service_span_sync(
-                    "simcore.prompt.merge",
+                    "orchestrai.prompt.merge",
                     attributes={
-                        "simcore.sections.used_count": len(used_labels),
-                        "simcore.sections.errors_count": len(errors),
+                        "orchestrai.sections.used_count": len(used_labels),
+                        "orchestrai.sections.errors_count": len(errors),
                         **flatten_context(ctx),
                     },
             ):
@@ -506,16 +506,16 @@ def _merge_sections(outputs: list[tuple[str | None, str | None]]) -> Prompt:
         # In some environments, a non-recording default span may be returned
         is_recording = getattr(span, "is_recording", lambda: False)()
         if is_recording:
-            span.set_attribute("simcore.instruction.len", len(instruction))
-            span.set_attribute("simcore.message.len", len(message) if message is not None else 0)
-            span.set_attribute("simcore.instruction.sha256", sha256(instruction.encode()).hexdigest())
-            span.set_attribute("simcore.message.sha256", sha256((message or "").encode()).hexdigest())
+            span.set_attribute("orchestrai.instruction.len", len(instruction))
+            span.set_attribute("orchestrai.message.len", len(message) if message is not None else 0)
+            span.set_attribute("orchestrai.instruction.sha256", sha256(instruction.encode()).hexdigest())
+            span.set_attribute("orchestrai.message.sha256", sha256((message or "").encode()).hexdigest())
 
             # Optional truncated preview (512 chars cap)
             preview_instr = instruction[:512]
             preview_msg = (message or "")[:512]
             span.add_event(
-                "simcore.prompt.preview",
+                "orchestrai.prompt.preview",
                 {
                     "instruction.preview": preview_instr,
                     "message.preview": preview_msg,

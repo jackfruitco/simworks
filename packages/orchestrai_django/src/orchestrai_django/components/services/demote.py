@@ -43,7 +43,7 @@ def _identity_str(ns: str | None, kd: str | None, nm: str | None) -> str | None:
 def _span_attrs_from_request(dj: DjangoRequest) -> dict[str, Any]:
     ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
     return {
-        "simcore.identity": ident or None,
+        "orchestrai.identity": ident or None,
         "dj.correlation_id": getattr(dj, "correlation_id", None),
         "dj.namespace": getattr(dj, "namespace", None),
         "dj.kind": getattr(dj, "kind", None),
@@ -58,7 +58,7 @@ def _span_attrs_from_request(dj: DjangoRequest) -> dict[str, Any]:
 def _span_attrs_from_response(dj: DjangoResponse) -> dict[str, Any]:
     ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
     return {
-        "simcore.identity": ident or None,
+        "orchestrai.identity": ident or None,
         "dj.correlation_id": getattr(dj, "correlation_id", None),
         "dj.request_correlation_id": getattr(dj, "request_correlation_id", None),
         "dj.namespace": getattr(dj, "namespace", None),

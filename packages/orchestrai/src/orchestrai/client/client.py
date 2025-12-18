@@ -67,14 +67,14 @@ class OrcaClient:
         span_factory = service_span if getattr(self.config, "telemetry_enabled", True) else _noop_span
 
         async with span_factory(
-                "simcore.client.send_request",
+                "orchestrai.client.send_request",
                 attributes={
-                    "simcore.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
-                    "simcore.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
-                    "simcore.stream": bool(getattr(req, "stream", False)),
-                    "simcore.timeout": effective_timeout,
-                    "simcore.provider_key": getattr(self.provider, "provider_key", None),
-                    "simcore.provider_label": getattr(self.provider, "provider_label", None),
+                    "orchestrai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
+                    "orchestrai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
+                    "orchestrai.stream": bool(getattr(req, "stream", False)),
+                    "orchestrai.timeout": effective_timeout,
+                    "orchestrai.provider_key": getattr(self.provider, "provider_key", None),
+                    "orchestrai.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
             if getattr(self.config, "log_prompts", False):
@@ -92,7 +92,7 @@ class OrcaClient:
             # TODO: remove legacy adapter integration. Now in codec.encode
             # # Let the backend compile + wrap into a final payload on req.response_schema_json
             # try:
-            #     async with service_span("simcore.client.build_final_schema"):
+            #     async with service_span("orchestrai.client.build_final_schema"):
             #         self.backend.build_final_schema(req)
             # except Exception:
             #     logger.exception(
@@ -109,10 +109,10 @@ class OrcaClient:
             for attempt in range(1, attempts + 1):
                 try:
                     async with span_factory(
-                            "simcore.client.provider_call",
+                            "orchestrai.client.provider_call",
                             attributes={
-                                "simcore.attempt": attempt,
-                                "simcore.max_attempts": attempts,
+                                "orchestrai.attempt": attempt,
+                                "orchestrai.max_attempts": attempts,
                             },
                     ):
                         if inspect.iscoroutinefunction(self.provider.call):
@@ -149,12 +149,12 @@ class OrcaClient:
 
                     # Retry with backoff
                     async with span_factory(
-                            "simcore.client.retry",
+                            "orchestrai.client.retry",
                             attributes={
-                                "simcore.attempt": attempt + 1,
-                                "simcore.backoff_ms": backoff_ms,
-                                "simcore.error.class": type(e).__name__,
-                                "simcore.rate_limited": bool(is_rl),
+                                "orchestrai.attempt": attempt + 1,
+                                "orchestrai.backoff_ms": backoff_ms,
+                                "orchestrai.error.class": type(e).__name__,
+                                "orchestrai.rate_limited": bool(is_rl),
                             },
                     ):
                         await asyncio.sleep(backoff_ms / 1000.0)
@@ -191,13 +191,13 @@ class OrcaClient:
         """Pass-through streaming; providers may yield StreamChunk deltas."""
         span_factory = service_span if getattr(self.config, "telemetry_enabled", True) else _noop_span
         async with span_factory(
-                "simcore.client.stream_request",
+                "orchestrai.client.stream_request",
                 attributes={
-                    "simcore.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
-                    "simcore.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
-                    "simcore.stream": True,
-                    "simcore.provider_key": getattr(self.provider, "provider_key", None),
-                    "simcore.provider_label": getattr(self.provider, "provider_label", None),
+                    "orchestrai.provider_name": getattr(self.provider, "name", type(self.provider).__name__),
+                    "orchestrai.model": req.model or getattr(self.provider, "default_model", None) or "<unspecified>",
+                    "orchestrai.stream": True,
+                    "orchestrai.provider_key": getattr(self.provider, "provider_key", None),
+                    "orchestrai.provider_label": getattr(self.provider, "provider_label", None),
                 },
         ):
             if not hasattr(self.provider, "stream") or not inspect.iscoroutinefunction(

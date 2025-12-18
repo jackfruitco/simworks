@@ -1,4 +1,4 @@
-# Settings & Environment Variables — simcore_ai_django
+# Settings & Environment Variables — orchestrai_django
 
 > Reference guide for configuration knobs that influence AI service behavior.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-`simcore_ai_django` leans on Django settings for configuration. Environment variables are minimal; most options live under structured settings so they can be overridden per environment.
+`orchestrai_django` leans on Django settings for configuration. Environment variables are minimal; most options live under structured settings so they can be overridden per environment.
 
 Configuration precedence:
 
@@ -64,7 +64,7 @@ While most configuration lives in Django settings, a few environment variables a
 | Variable | Purpose |
 |----------|---------|
 | `SIMCORE_AI_IDENTITY_STRIP_TOKENS` | CSV string parsed into the setting of the same name (useful for twelve-factor deployments). |
-| Provider-specific keys (e.g., `OPENAI_API_KEY`) | Consumed by your chosen `simcore_ai` provider implementation. |
+| Provider-specific keys (e.g., `OPENAI_API_KEY`) | Consumed by your chosen `orchestrai` provider implementation. |
 
 Everything else—including execution mode, codecs, registries, and signals—is controlled via Django settings or service-level overrides.
 
@@ -75,10 +75,10 @@ Everything else—including execution mode, codecs, registries, and signals—is
 Quick helpers you can run from `manage.py shell`:
 
 ```python
-from simcore_ai_django.execution.helpers import get_settings_dict
+from orchestrai_django.execution.helpers import get_settings_dict
 print(get_settings_dict())  # AI_EXECUTION_BACKENDS snapshot
 
-from simcore_ai_django.identity import derive_django_identity_for_class
+from orchestrai_django.identity import derive_django_identity_for_class
 from myapp.ai.prompts.sections import PatientInitialSection
 print(derive_django_identity_for_class(PatientInitialSection))
 ```
@@ -94,4 +94,4 @@ print(derive_django_identity_for_class(PatientInitialSection))
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

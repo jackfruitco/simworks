@@ -160,9 +160,9 @@ class AIOutbox(TimestampedModel):
     """
 
     EVENT_CHOICES = [
-        ("simcore.request.sent", "AI request sent"),
-        ("simcore.response.received", "AI response received"),
-        ("simcore.response.ready", "AI response ready"),
+        ("orchestrai.request.sent", "AI request sent"),
+        ("orchestrai.response.received", "AI response received"),
+        ("orchestrai.response.ready", "AI response ready"),
     ]
 
     event_type = models.CharField(max_length=64, choices=EVENT_CHOICES, db_index=True)
