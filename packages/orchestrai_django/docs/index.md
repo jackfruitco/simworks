@@ -1,14 +1,14 @@
-# simcore_ai_django Documentation
+# orchestrai_django Documentation
 
-Welcome to the **simcore_ai_django** documentation — the Django integration layer for the `simcore_ai` AI framework.
+Welcome to the **orchestrai_django** documentation — the Django integration layer for the `orchestrai` AI framework.
 
-This package extends the core `simcore_ai` library so Django apps can register AI services, codecs, prompt sections, and response schemas that cooperate automatically via shared tuple³ identities.
+This package extends the core `orchestrai` library so Django apps can register AI services, codecs, prompt sections, and response schemas that cooperate automatically via shared tuple³ identities.
 
 ---
 
 ## 📘 Overview
 
-`simcore_ai_django` allows you to:
+`orchestrai_django` allows you to:
 
 - Define **LLM services** that can be executed synchronously or asynchronously through `.execute()` and `.enqueue()`.
 - Create **PromptSections** that render developer and user-facing messages.
@@ -88,7 +88,7 @@ Each step is linked by **identity** so long as the `origin`, `bucket`, and `name
 
 - Python 3.11+
 - Django 5.0+
-- `simcore_ai`
+- `orchestrai`
 
 ---
 
@@ -96,8 +96,8 @@ Each step is linked by **identity** so long as the `origin`, `bucket`, and `name
 
 | Package | Description |
 |---------|-------------|
-| `simcore_ai` | Core AI utilities and provider abstractions |
-| `simcore_ai_django` | Django integration and execution layer |
+| `orchestrai` | Core AI utilities and provider abstractions |
+| `orchestrai_django` | Django integration and execution layer |
 | `simworks` | Example Django project that consumes this package |
 
 ---
@@ -108,4 +108,4 @@ If you’re just starting, begin with the **[Quick Start Guide](quick-start.md)*
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

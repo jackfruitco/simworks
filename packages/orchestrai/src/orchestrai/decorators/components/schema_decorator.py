@@ -36,7 +36,7 @@ class SchemaDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @schema(namespace="simcore", name="my_schema")
+        @schema(namespace="orchestrai", name="my_schema")
         class MySchema(BaseOutputSchema):
             ...
     """

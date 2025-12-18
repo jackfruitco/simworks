@@ -82,13 +82,13 @@ def create_client(
         The newly registered `OrcaClient`.
     """
     with service_span_sync(
-            "simcore.clients.create",
+            "orchestrai.clients.create",
             attributes={
-                "simcore.provider_name": cfg.backend,
-                "simcore.model": cfg.model or "<unspecified>",
-                "simcore.client_name": name or _default_name_for(cfg),
-                "simcore.make_default": bool(make_default),
-                "simcore.replace": bool(replace),
+                "orchestrai.provider_name": cfg.backend,
+                "orchestrai.model": cfg.model or "<unspecified>",
+                "orchestrai.client_name": name or _default_name_for(cfg),
+                "orchestrai.make_default": bool(make_default),
+                "orchestrai.replace": bool(replace),
             },
     ):
         provider = build_provider(cfg)
@@ -124,11 +124,11 @@ def create_client_from_dict(
         is retained for convenience and test helpers.
     """
     with service_span_sync(
-            "simcore.clients.create_from_dict",
+            "orchestrai.clients.create_from_dict",
             attributes={
-                "simcore.client_name": name or "<auto>",
-                "simcore.make_default": bool(make_default),
-                "simcore.replace": bool(replace),
+                "orchestrai.client_name": name or "<auto>",
+                "orchestrai.make_default": bool(make_default),
+                "orchestrai.replace": bool(replace),
             },
     ):
         cfg = ProviderConfig(**cfg_dict)  # type: ignore[arg-type]
@@ -195,10 +195,10 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> OrcaC
         provider: The backend slug (e.g., "openai"), matching ProviderConfig.backend / BaseProvider.provider.
     """
     with service_span_sync(
-            "simcore.client.resolve",
+            "orchestrai.client.resolve",
             attributes={
-                "simcore.client_name": name or "",
-                "simcore.provider_name": provider or "",
+                "orchestrai.client_name": name or "",
+                "orchestrai.provider_name": provider or "",
             },
     ) as span:
         with _lock:
@@ -206,9 +206,9 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> OrcaC
                 try:
                     resolved = _clients[name]
                     try:
-                        span.set_attribute("simcore.client.resolved_name", name)
+                        span.set_attribute("orchestrai.client.resolved_name", name)
                         span.set_attribute(
-                            "simcore.backend.resolved",
+                            "orchestrai.backend.resolved",
                             getattr(resolved.provider, "provider", None) or "",
                         )
                     except Exception:
@@ -225,9 +225,9 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> OrcaC
                         # find its registry name (reverse lookup)
                         for k, v in _clients.items():
                             if v is resolved:
-                                span.set_attribute("simcore.client.resolved_name", k)
+                                span.set_attribute("orchestrai.client.resolved_name", k)
                                 break
-                        span.set_attribute("simcore.backend.resolved", provider)
+                        span.set_attribute("orchestrai.backend.resolved", provider)
                     except Exception:
                         pass
                     return resolved
@@ -240,9 +240,9 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> OrcaC
 
             resolved = _get_default_client_locked()
             try:
-                span.set_attribute("simcore.client.resolved_name", _default_name or "")
+                span.set_attribute("orchestrai.client.resolved_name", _default_name or "")
                 span.set_attribute(
-                    "simcore.backend.resolved",
+                    "orchestrai.backend.resolved",
                     getattr(resolved.provider, "provider", None) or "",
                 )
             except Exception:
@@ -253,14 +253,14 @@ def get_ai_client(name: str | None = None, provider: str | None = None) -> OrcaC
 def list_clients() -> Dict[str, OrcaClient]:
     """Return a shallow copy of the registered clients mapping."""
     with _lock:
-        with service_span_sync("simcore.clients.list", attributes={"simcore.clients.count": len(_clients)}):
+        with service_span_sync("orchestrai.clients.list", attributes={"orchestrai.clients.count": len(_clients)}):
             return dict(_clients)
 
 
 def set_default_client(name: str) -> None:
     """Set the default client by registry name."""
     with _lock:
-        with service_span_sync("simcore.clients.set_default", attributes={"simcore.client_name": name}):
+        with service_span_sync("orchestrai.clients.set_default", attributes={"orchestrai.client_name": name}):
             if name not in _clients:
                 raise RegistryLookupError(f"No AI client named '{name}'")
             global _default_name
@@ -270,7 +270,7 @@ def set_default_client(name: str) -> None:
 def clear_clients() -> None:
     """Clear all clients and default — useful in tests."""
     with _lock:
-        with service_span_sync("simcore.clients.clear", attributes={"simcore.clients.prev_count": len(_clients)}):
+        with service_span_sync("orchestrai.clients.clear", attributes={"orchestrai.clients.prev_count": len(_clients)}):
             _clients.clear()
             global _default_name
             _default_name = None

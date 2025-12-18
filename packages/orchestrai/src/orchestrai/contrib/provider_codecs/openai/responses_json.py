@@ -77,11 +77,11 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
           - Build the OpenAI JSON wrapper and assign it to `req.provider_response_format`.
         """
         with service_span_sync(
-                "simcore.codec.encode",
+                "orchestrai.codec.encode",
                 attributes={
-                    "simcore.codec": self.__class__.__name__,
-                    "simcore.provider_name": "openai",
-                    "simcore.codec.kind": "responses.json",
+                    "orchestrai.codec": self.__class__.__name__,
+                    "orchestrai.provider_name": "openai",
+                    "orchestrai.codec.kind": "responses.json",
                 },
         ):
             base_schema: dict[str, Any] | None = None
@@ -133,11 +133,11 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
         - If no schema is available, returns the raw dict.
         """
         with service_span_sync(
-                "simcore.codec.decode",
+                "orchestrai.codec.decode",
                 attributes={
-                    "simcore.codec": self.__class__.__name__,
-                    "simcore.provider_name": "openai",
-                    "simcore.codec.kind": "responses.json",
+                    "orchestrai.codec": self.__class__.__name__,
+                    "orchestrai.provider_name": "openai",
+                    "orchestrai.codec.kind": "responses.json",
                 },
         ):
             candidate = self.extract_structured_candidate(resp)

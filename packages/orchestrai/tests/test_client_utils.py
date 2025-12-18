@@ -10,6 +10,8 @@ def test_resolve_from_env_returns_value(monkeypatch):
     monkeypatch.setenv(env_key, env_value)
 
     client = SimpleNamespace(api_key_env=env_key)
-    provider = ProviderConfig(alias="alias", backend="backend", api_key_env="OTHER_ENV")
+    provider = ProviderConfig(
+        alias="alias", backend="openai.responses.backend", api_key_env="OTHER_ENV"
+    )
 
     assert _resolve_from_env(client, provider) == env_value

@@ -112,7 +112,7 @@ class IdentityMixin:
 
             # Either replace incoming meta or merge; we enforce a pinned source.
             base_meta = dict(meta or {})
-            base_meta["simcore.identity.source"] = "pinned"
+            base_meta["orchestrai.identity.source"] = "pinned"
             cls.__identity_meta_cached = base_meta
 
             return cls.__identity_cached, cls.__identity_meta_cached

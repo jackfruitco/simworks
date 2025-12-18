@@ -171,10 +171,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
             return
 
         with service_span_sync(
-                "simcore.codec.encode",
+                "orchestrai.codec.encode",
                 attributes={
-                    "simcore.codec": cls.__name__,
-                    "simcore.response_schema": getattr(schema_cls_, "__name__", "<Not Set>"),
+                    "orchestrai.codec": cls.__name__,
+                    "orchestrai.response_schema": getattr(schema_cls_, "__name__", "<Not Set>"),
                 },
         ):
             try:
@@ -243,10 +243,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         if schema_cls is None:
             return None
         with service_span_sync(
-                "simcore.codec.decode",
+                "orchestrai.codec.decode",
                 attributes={
-                    "simcore.codec": cls.__name__,
-                    "simcore.response_schema": getattr(schema_cls, "__name__", "<Not Set>"),
+                    "orchestrai.codec": cls.__name__,
+                    "orchestrai.response_schema": getattr(schema_cls, "__name__", "<Not Set>"),
                 },
         ):
             candidate = self.extract_structured_candidate(resp)
@@ -312,10 +312,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         """
         schema_cls = self._get_schema_from_service()
         with service_span_sync(
-                "simcore.codec.validate",
+                "orchestrai.codec.validate",
                 attributes={
-                    "simcore.codec": self.__class__.__name__,
-                    "simcore.schema": getattr(schema_cls, "__name__", None) if schema_cls else None,
+                    "orchestrai.codec": self.__class__.__name__,
+                    "orchestrai.schema": getattr(schema_cls, "__name__", None) if schema_cls else None,
                 },
         ):
             try:
@@ -336,7 +336,7 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
         Priority: backend-native → OutputJsonContent → JSON text → tool-result JSON.
         """
-        with service_span_sync("simcore.codec.extract", attributes={"simcore.codec": self.__class__.__name__}):
+        with service_span_sync("orchestrai.codec.extract", attributes={"orchestrai.codec": self.__class__.__name__}):
             for extractor in (
                     self._extract_from_provider,
                     self._extract_from_json_content,

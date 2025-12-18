@@ -79,7 +79,7 @@ class LifecycleMixin(SetupTeardownMixin):
             except Exception:
                 attrs = {}
 
-        span_root = SpanPath(("simcore", "svc", self.__class__.__name__))
+        span_root = SpanPath(("orchestrai", "svc", self.__class__.__name__))
 
         async with service_span(span_root.child("execute"), attributes=attrs):
             async with service_span(span_root.child("execute", "setup"), attributes=attrs):

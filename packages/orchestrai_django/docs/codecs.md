@@ -1,4 +1,4 @@
-# Codecs in simcore_ai_django
+# Codecs in orchestrai_django
 
 > Codecs bridge the gap between raw AI responses and structured Django data.
 
@@ -20,7 +20,7 @@ it is discovered and linked automatically.
 
 | Class | Description |
 |:--|:--|
-| `BaseCodec` | Provider‑agnostic logic (in `simcore_ai`) |
+| `BaseCodec` | Provider‑agnostic logic (in `orchestrai`) |
 | `DjangoBaseCodec` | Django‑aware codec base (with persistence hooks and identity autoderivation) |
 
 ---
@@ -28,7 +28,7 @@ it is discovered and linked automatically.
 ## Decorator
 
 ```python
-from simcore_ai_django.api.decorators import codec
+from orchestrai_django.api.decorators import codec
 ```
 
 The `@codec` decorator:
@@ -42,8 +42,8 @@ The `@codec` decorator:
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseCodec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.api.types import DjangoBaseCodec
 
 
 @codec
@@ -123,8 +123,8 @@ You can override `validate_response()` if you need to preprocess data first.
 ## Advanced Example
 
 ```python
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseCodec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.api.types import DjangoBaseCodec
 
 
 @codec
@@ -147,7 +147,7 @@ print(MyCodec.identity_str())    # 'chatlab.standardized_patient.initial'
 To see all registered codecs:
 
 ```python
-from simcore_ai_django.components.codecs import CodecRegistry
+from orchestrai_django.components.codecs import CodecRegistry
 
 # Check whether a codec is registered by identity
 print(CodecRegistry.has("chatlab", "standardized_patient", "initial"))

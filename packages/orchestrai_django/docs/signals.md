@@ -1,4 +1,4 @@
-# Signals & Emitters — simcore_ai_django
+# Signals & Emitters — orchestrai_django
 
 > Observe AI requests and responses with Django-friendly signals.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-`simcore_ai_django` ships with a **signal-based emitter** so your app can observe
+`orchestrai_django` ships with a **signal-based emitter** so your app can observe
 and react to AI activity (requests, streaming chunks, failures) without tightly
 coupling business logic to the service layer.
 
@@ -23,7 +23,7 @@ This is ideal for:
 A default emitter instance is provided and used by `DjangoBaseService`:
 
 ```python
-from simcore_ai_django.signals import emitter  # DjangoSignalEmitter
+from orchestrai_django.signals import emitter  # DjangoSignalEmitter
 ```
 
 Services set this automatically unless overridden:
@@ -154,7 +154,7 @@ Add receivers in any `apps.py` `ready()` or module import path:
 ```python
 # myapp/ai/signals.py
 from django.dispatch import receiver
-from simcore_ai_django.signals import (
+from orchestrai_django.signals import (
     request_signal,
     response_signal,
     failure_signal,
@@ -247,4 +247,4 @@ AIResponse.objects.get_or_create(
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

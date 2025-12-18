@@ -1,4 +1,4 @@
-# Prompt Engine — simcore_ai_django
+# Prompt Engine — orchestrai_django
 
 > Compose PromptSections into a single prompt payload for LLM services.
 
@@ -13,7 +13,7 @@ The **Prompt Engine** takes one or more `PromptSection` classes/instances and pr
 - `extra_messages` (additional role/text pairs)
 - `meta` (metadata captured during rendering)
 
-`simcore_ai_django` re-exports the core engine from `simcore_ai.promptkit`, so the API is identical across both packages.
+`orchestrai_django` re-exports the core engine from `orchestrai.promptkit`, so the API is identical across both packages.
 
 ---
 
@@ -22,7 +22,7 @@ The **Prompt Engine** takes one or more `PromptSection` classes/instances and pr
 ### Build from sections
 
 ```python
-from simcore_ai_django.components.promptkit import PromptEngine
+from orchestrai_django.components.promptkit import PromptEngine
 from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
 
 prompt = await PromptEngine.abuild_from(
@@ -54,7 +54,7 @@ prompt = await engine.abuild(simulation=my_sim, service=my_service)
 The resulting prompt is a dataclass:
 
 ```python
-from simcore_ai_django.components.promptkit import Prompt
+from orchestrai_django.components.promptkit import Prompt
 
 print(prompt.instruction)
 print(prompt.message)
@@ -94,7 +94,7 @@ Sections can opt into any subset of these by signature. The engine never mutates
 2. Call `PromptEngine.abuild_from(...)` with the resolved classes.
 3. Cache the resulting prompt for the lifetime of the service instance.
 
-If a section spec cannot be resolved, the service falls back to Django template rendering via `simcore_ai_django.prompts.render_section`.
+If a section spec cannot be resolved, the service falls back to Django template rendering via `orchestrai_django.prompts.render_section`.
 
 ---
 
@@ -103,7 +103,7 @@ If a section spec cannot be resolved, the service falls back to Django template 
 `PromptEngine` is a regular class, so you can subclass it for advanced behavior:
 
 ```python
-from simcore_ai_django.components.promptkit import PromptEngine
+from orchestrai_django.components.promptkit import PromptEngine
 
 
 class CustomPromptEngine(PromptEngine):
@@ -129,4 +129,4 @@ class MyService(DjangoBaseService):
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

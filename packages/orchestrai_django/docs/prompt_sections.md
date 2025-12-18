@@ -1,4 +1,4 @@
-# Prompt Sections in simcore_ai_django
+# Prompt Sections in orchestrai_django
 
 > PromptSections define the modular building blocks of prompts used by Services.
 
@@ -17,10 +17,10 @@ When all prompt components share the same **tuple³ identity** (`origin.bucket.n
 ## Base Class
 
 ```python
-from simcore_ai_django.api.types import PromptSection
+from orchestrai_django.api.types import PromptSection
 ```
 
-`PromptSection` (from `simcore_ai.promptkit`) provides:
+`PromptSection` (from `orchestrai.promptkit`) provides:
 
 - `instruction`: developer/system guidance.
 - `message`: user-facing text.
@@ -32,7 +32,7 @@ from simcore_ai_django.api.types import PromptSection
 ## Decorator
 
 ```python
-from simcore_ai_django.api.decorators import prompt_section
+from orchestrai_django.api.decorators import prompt_section
 ```
 
 The `@prompt_section` decorator:
@@ -48,8 +48,8 @@ Supports both `@prompt_section` and `@prompt_section(origin="...", bucket="...",
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.api.types import PromptSection
+from orchestrai_django.api.decorators import prompt_section
+from orchestrai_django.api.types import PromptSection
 
 @prompt_section
 class PatientInitialSection(PromptSection):
@@ -114,7 +114,7 @@ class CustomPrompt(PromptSection):
 or provide an explicit dot identity:
 
 ```python
-from simcore_ai.identity import Identity
+from orchestrai.identity import Identity
 
 @prompt_section
 class CustomPrompt(PromptSection):
@@ -132,7 +132,7 @@ Each service may define a **prompt_plan**, a sequence of sections (identities or
 ## Registry Helpers
 
 ```python
-from simcore_ai_django.components.promptkit import PromptRegistry
+from orchestrai_django.components.promptkit import PromptRegistry
 
 print([cls.identity_static().to_string() for cls in PromptRegistry.all()])
 SectionCls = PromptRegistry.require_str("chatlab.standardized_patient.initial")
@@ -172,4 +172,4 @@ If a section fails to render, inspect `prompt.meta["errors"]` on the resulting p
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

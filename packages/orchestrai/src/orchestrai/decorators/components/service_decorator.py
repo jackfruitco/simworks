@@ -33,7 +33,7 @@ class ServiceDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @service(namespace="simcore", name="json")
+        @service(namespace="orchestrai", name="json")
         class MyService(BaseService):
             ...
     """

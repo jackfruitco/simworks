@@ -1,4 +1,4 @@
-# Decorators — simcore_ai_django
+# Decorators — orchestrai_django
 
 > Reference for Django-aware decorators that register and auto-wire Services, Codecs, and Prompt Sections.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-`simcore_ai_django` provides three primary decorators:
+`orchestrai_django` provides three primary decorators:
 
 | Decorator | Applies To | Purpose |
 |---|---|---|
@@ -34,7 +34,7 @@ The shared tuple3 identity is:
 Use **identity mixins** to keep `origin` and `bucket` consistent across types:
 
 ```python
-from simcore_ai_django.identity.mixins import DjangoIdentityMixin
+from orchestrai_django.identity.mixins import DjangoIdentityMixin
 
 class ChatlabMixin(DjangoIdentityMixin):
     origin = "chatlab"
@@ -52,7 +52,7 @@ Registers a **DjangoExecutableLLMService** (or compatible base) with identity, e
 
 ### Usage (function-based)
 ```python
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 
 @llm_service  # or: @llm_service(namespace="chatlab", kind="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
@@ -89,8 +89,8 @@ Registers a **DjangoBaseCodec** that validates model output against a schema and
 ### Usage
 
 ```python
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseCodec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.api.types import DjangoBaseCodec
 from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 
@@ -119,8 +119,8 @@ Registers a **PromptSection** (PromptKit) in the global registry for the Prompt 
 
 ### Usage
 ```python
-from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.api.types import PromptSection
+from orchestrai_django.api.decorators import prompt_section
+from orchestrai_django.api.types import PromptSection
 from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 @prompt_section
@@ -156,7 +156,7 @@ class PatientFollowupSection(PromptSection, ChatlabMixin):
   ```
 - **Registries**:
   ```python
-  from simcore_ai.components.promptkit.registry import PromptRegistry
+  from orchestrai.components.promptkit.registry import PromptRegistry
   print([c.__name__ for c in PromptRegistry.all()])
   ```
 
@@ -169,13 +169,13 @@ class PatientFollowupSection(PromptSection, ChatlabMixin):
   - Remove legacy `namespace` or tuple2 (`bucket:name`) usages — **dot-only tuple3** is the standard.
   - Keep imports via the `api` facade for forward compatibility:
     ```python
-    from simcore_ai_django.api.decorators import llm_service, codec, prompt_section
-    from simcore_ai_django.api.types import DjangoExecutableLLMService, DjangoBaseCodec, PromptSection, DjangoStrictSchema
+    from orchestrai_django.api.decorators import llm_service, codec, prompt_section
+    from orchestrai_django.api.types import DjangoExecutableLLMService, DjangoBaseCodec, PromptSection, DjangoStrictSchema
     ```
   - Always import decorators via the Django API facade: 
     
     ```python
-    from simcore_ai_django.api.decorators import llm_service, codec, prompt_section
+    from orchestrai_django.api.decorators import llm_service, codec, prompt_section
     ```
     
 
@@ -202,4 +202,4 @@ With identity mixins and edge-only token stripping, most boilerplate disappears 
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

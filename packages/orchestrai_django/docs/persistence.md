@@ -1,4 +1,4 @@
-# Persistence with Codecs — simcore_ai_django
+# Persistence with Codecs — orchestrai_django
 
 > How to validate AI output with Schemas and **persist** results with Codecs in Django.
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-In `simcore_ai_django`, **Codecs** are responsible for:
+In `orchestrai_django`, **Codecs** are responsible for:
 1. **Validating** the LLM response with a **Response Schema** (Pydantic)
 2. **Persisting** validated data to your Django models
 3. Returning a **lightweight summary** (e.g., IDs, counts) to the caller/UI
@@ -35,8 +35,8 @@ Service.execute()
 ## Minimal Example
 
 ```python
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.api.types import DjangoBaseCodec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.api.types import DjangoBaseCodec
 
 
 @codec
@@ -249,4 +249,4 @@ def test_feedback_codec_persist(db, simulation):
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

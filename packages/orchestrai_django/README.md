@@ -1,6 +1,6 @@
-# simcore_ai_django
+# orchestrai_django
 
-`simcore_ai_django` provides the Django integration layer for the `simcore_ai` framework. It wires tuple³ identities (`origin.bucket.name`) into Django apps so AI services, prompt sections, codecs, and response schemas can find each other automatically.
+`orchestrai_django` provides the Django integration layer for the `orchestrai` framework. It wires tuple³ identities (`origin.bucket.name`) into Django apps so AI services, prompt sections, codecs, and response schemas can find each other automatically.
 
 ## Key capabilities
 
@@ -26,7 +26,7 @@ Detailed docs live in [`docs/`](docs/index.md):
 Install the package in editable mode and run the test suite from the project root:
 
 ```bash
-uv pip install -e packages/simcore_ai_django
+uv pip install -e packages/orchestrai_django
 pytest
 ```
 

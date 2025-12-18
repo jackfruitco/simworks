@@ -1,4 +1,4 @@
-# Prompts and Prompt Plans in simcore_ai_django
+# Prompts and Prompt Plans in orchestrai_django
 
 > Prompts assemble PromptSections into the final input for an LLM service.
 
@@ -58,7 +58,7 @@ from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSe
 prompt_plan = [PatientInitialSection, PatientFollowupSection]
 ```
 
-Each spec is resolved via `simcore_ai.promptkit.resolvers.resolve_section`, so canonical strings or classes both work.
+Each spec is resolved via `orchestrai.promptkit.resolvers.resolve_section`, so canonical strings or classes both work.
 
 ---
 
@@ -81,7 +81,7 @@ print(prompt.meta["sections"])  # labels rendered in order
 ## Working with PromptRegistry
 
 ```python
-from simcore_ai_django.components.promptkit import PromptRegistry
+from orchestrai_django.components.promptkit import PromptRegistry
 
 sections = [cls.__name__ for cls in PromptRegistry.all()]
 print(sections)
@@ -144,4 +144,4 @@ This service will automatically render `PatientInitialSection` without specifyin
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django

@@ -1,6 +1,6 @@
-"""Tool-related DTOs for simcore-ai.
+"""Tool-related DTOs for orchestrai-ai.
 
-This module defines data transfer objects (DTOs) related to tools used within simcore-ai,
+This module defines data transfer objects (DTOs) related to tools used within orchestrai-ai,
 including backend-agnostic tool declarations at request time, normalized tool call records
 at response time, and streaming deltas for tool calls.
 """

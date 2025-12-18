@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import pytest
 
 from orchestrai.components.codecs import BaseCodec
@@ -13,26 +15,26 @@ from orchestrai.components.services.service import BaseService
 
 
 class DemoSchema(BaseOutputSchema):
-    identity = Identity("demo", "schema", "svc")
+    identity: ClassVar[Identity] = Identity("demo", "schema", "svc")
     foo: str
 
 
 class DemoPrompt(PromptSection):
     abstract = False
-    identity = Identity("demo", "prompt_section", "svc")
+    identity: ClassVar[Identity] = Identity("demo", "prompt_section", "svc")
     instruction = "hello"
     message = "world"
 
 
 class AltPrompt(PromptSection):
     abstract = False
-    identity = Identity("demo", "prompt_section", "alt")
+    identity: ClassVar[Identity] = Identity("demo", "prompt_section", "alt")
     instruction = "alt"
 
 
 class LowCodec(BaseCodec):
     abstract = False
-    identity = Identity("demo", "codec", "low")
+    identity: ClassVar[Identity] = Identity("demo", "codec", "low")
     priority = 1
     response_schema = DemoSchema
 
@@ -43,7 +45,7 @@ class LowCodec(BaseCodec):
 
 class HighCodec(BaseCodec):
     abstract = False
-    identity = Identity("demo", "codec", "high")
+    identity: ClassVar[Identity] = Identity("demo", "codec", "high")
     priority = 5
     response_schema = DemoSchema
 
@@ -54,7 +56,7 @@ class HighCodec(BaseCodec):
 
 class AdapterCodec(BaseCodec):
     abstract = False
-    identity = Identity("demo", "codec", "adapter")
+    identity: ClassVar[Identity] = Identity("demo", "codec", "adapter")
     response_schema = DemoSchema
     schema_adapters = (OpenaiWrapper(order=0),)
 
@@ -65,7 +67,7 @@ class AdapterCodec(BaseCodec):
 
 class DemoService(BaseService):
     abstract = False
-    identity = Identity("demo", "service", "svc")
+    identity: ClassVar[Identity] = Identity("demo", "service", "svc")
     provider_name = "demo"
 
 

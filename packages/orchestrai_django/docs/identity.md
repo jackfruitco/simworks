@@ -1,8 +1,8 @@
-# Identity System (simcore_ai_django)
+# Identity System (orchestrai_django)
 
 > How `(origin, bucket, name)` stitches Services, Codecs, Prompt Sections, and Schemas together — with minimal configuration.
 
-The **tuple³ identity** model is the backbone of `simcore_ai_django`. When your **Service**, **PromptSection**, **Codec**, and **Response Schema** all share the same identity, the framework wires them together automatically.
+The **tuple³ identity** model is the backbone of `orchestrai_django`. When your **Service**, **PromptSection**, **Codec**, and **Response Schema** all share the same identity, the framework wires them together automatically.
 
 ```
 (origin, bucket, name)  →  "origin.bucket.name"
@@ -11,7 +11,7 @@ The **tuple³ identity** model is the backbone of `simcore_ai_django`. When your
 Examples:
 - `chatlab.standardized_patient.initial`
 - `trainerlab.triage.reply`
-- `simcore.feedback.create`
+- `orchestrai.feedback.create`
 
 ---
 
@@ -27,7 +27,7 @@ All four building blocks (Service, Codec, PromptSection, Schema) carry the same 
 
 ## Autoderive Rules (Django)
 
-`simcore_ai_django` extends the core identity utilities so classes can **autoderive** their identity:
+`orchestrai_django` extends the core identity utilities so classes can **autoderive** their identity:
 
 - **origin** → Django **app label** when available (falls back to module root → `"default"`).
 - **bucket** → `"default"` unless set on the class/mixin or provided explicitly.
@@ -59,7 +59,7 @@ Use mixins to **fix** identity parts across multiple classes:
 
 ```python
 # chatlab/ai/mixins.py
-from simcore_ai_django.identity.mixins import DjangoIdentityMixin
+from orchestrai_django.identity.mixins import DjangoIdentityMixin
 
 class ChatlabMixin(DjangoIdentityMixin):
     origin = "chatlab"
@@ -108,7 +108,7 @@ print(MySchema.identity_tuple())         # ditto
 And you can parse/build canonical strings:
 
 ```python
-from simcore_ai_django.identity import parse_dot_identity
+from orchestrai_django.identity import parse_dot_identity
 
 origin, bucket, name = parse_dot_identity("chatlab.standardized_patient.initial")
 ```
@@ -116,7 +116,7 @@ origin, bucket, name = parse_dot_identity("chatlab.standardized_patient.initial"
 You can also derive identities directly without registering:
 
 ```python
-from simcore_ai_django.identity import derive_django_identity_for_class
+from orchestrai_django.identity import derive_django_identity_for_class
 print(derive_django_identity_for_class(MyPromptSection))
 ```
 
@@ -128,7 +128,7 @@ When all four share the same identity, the service can run with almost no config
 
 ```python
 # mixins.py
-from simcore_ai_django.identity.mixins import DjangoIdentityMixin
+from orchestrai_django.identity.mixins import DjangoIdentityMixin
 
 class ChatlabMixin(DjangoIdentityMixin): origin = "chatlab"
 class StandardizedPatientMixin(DjangoIdentityMixin): bucket = "standardized_patient"
@@ -136,7 +136,7 @@ class StandardizedPatientMixin(DjangoIdentityMixin): bucket = "standardized_pati
 
 ```python
 # schemas/patient.py
-from simcore_ai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
+from orchestrai_django.api.types import DjangoBaseOutputSchema, DjangoOutputItem
 
 
 class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, StandardizedPatientMixin):
@@ -145,8 +145,8 @@ class PatientInitialOutputSchema(DjangoBaseOutputSchema, ChatlabMixin, Standardi
 
 ```python
 # prompts/chatlab_base.py
-from simcore_ai_django.api.decorators import prompt_section
-from simcore_ai_django.components.promptkit import PromptSection
+from orchestrai_django.api.decorators import prompt_section
+from orchestrai_django.components.promptkit import PromptSection
 
 
 @prompt_section
@@ -156,8 +156,8 @@ class ChatlabPatientInitialSection(PromptSection, ChatlabMixin, StandardizedPati
 
 ```python
 # codecs/patient.py
-from simcore_ai_django.api.decorators import codec
-from simcore_ai_django.components.codecs import DjangoBaseCodec
+from orchestrai_django.api.decorators import codec
+from orchestrai_django.components.codecs import DjangoBaseCodec
 
 
 @codec
@@ -169,7 +169,7 @@ class PatientInitialResponseCodec(ChatlabMixin, StandardizedPatientMixin, Django
 
 ```python
 # services/patient.py
-from simcore_ai_django.api.decorators import llm_service
+from orchestrai_django.api.decorators import llm_service
 
 @llm_service  # or: @llm_service(namespace="chatlab", kind="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
@@ -193,4 +193,4 @@ async def generate_initial(simulation, slim):
 
 ---
 
-© 2025 Jackfruit SimWorks • simcore_ai_django
+© 2025 Jackfruit SimWorks • orchestrai_django
