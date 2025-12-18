@@ -67,7 +67,10 @@ async def create_new_simulation(
     )
 
     try:
-        await await_if_needed(service_call.enqueue())
+        await GenerateInitialResponse.using(
+            simulation_id=simulation.id,
+            user_id=user.id,
+        ).enqueue()
     except (ProviderCallError, ServiceError, SimCoreError) as exc:
         logger.exception(
             "Failed to schedule initial response for simulation %s (user=%s)",

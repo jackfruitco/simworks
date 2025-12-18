@@ -206,10 +206,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Generate patient response."""
         from .orca.services import GenerateReplyResponse
 
-        service_call = GenerateReplyResponse.using(
+        await GenerateReplyResponse.using(
             simulation_id=self.simulation.pk,
             user_msg_id=user_msg.pk,
-        )
+        ).enqueue()
 
         await await_if_needed(service_call.enqueue())
 
