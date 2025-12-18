@@ -8,7 +8,7 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
-from orchestrai import get_current_app
+from chatlab.utils import await_if_needed
 
 from simulation.models import Simulation
 from simulation.utils import get_user_initials
@@ -206,11 +206,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Generate patient response."""
         from .orca.services import GenerateReplyResponse
 
-        await get_current_app().services.aschedule(
-            GenerateReplyResponse,
+        service_call = GenerateReplyResponse.using(
             simulation_id=self.simulation.pk,
             user_msg_id=user_msg.pk,
         )
+
+        await await_if_needed(service_call.enqueue())
 
 
     async def _generate_stitch_response(self, user_msg: Message) -> None:
