@@ -27,21 +27,23 @@ def _as_dict(obj: Any) -> dict:
     return {"value": repr(obj)}
 
 
-def _split_identity(identity: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def _split_identity(identity: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
-    Split an identity string like 'chatlab.standardized_patient.initial'
-    into (namespace, kind, service_name). Any missing pieces are None.
+    Split an identity string like 'services.chatlab.standardized_patient.initial'
+    into (domain, namespace, kind/group, service_name). Any missing pieces are None.
     """
     parts = (identity or "").split(".")
-    namespace = parts[0] if len(parts) > 0 else None
-    kind = parts[1] if len(parts) > 1 else None
-    service_name = parts[2] if len(parts) > 2 else None
-    return namespace, kind, service_name
+    domain = parts[0] if len(parts) > 0 else None
+    namespace = parts[1] if len(parts) > 1 else None
+    kind = parts[2] if len(parts) > 2 else None
+    service_name = parts[3] if len(parts) > 3 else None
+    return domain, namespace, kind, service_name
 
 
 class RequestSentPayload(TypedDict, total=False):
     request: dict
     request_audit_pk: Optional[int]
+    domain: Optional[str]
     namespace: Optional[str]
     kind: Optional[str]
     service_name: Optional[str]
@@ -60,6 +62,7 @@ class ResponseReceivedPayload(TypedDict, total=False):
     response: dict
     response_audit_pk: Optional[int]
     request_audit_pk: Optional[int]
+    domain: Optional[str]
     namespace: Optional[str]
     kind: Optional[str]
     service_name: Optional[str]
@@ -78,6 +81,7 @@ class ResponseReadyPayload(TypedDict, total=False):
     response: dict
     response_audit_pk: Optional[int]
     request_audit_pk: Optional[int]
+    domain: Optional[str]
     namespace: Optional[str]
     kind: Optional[str]
     service_name: Optional[str]
@@ -95,6 +99,7 @@ class ResponseReadyPayload(TypedDict, total=False):
 class ResponseFailedPayload(TypedDict, total=False):
     error: str
     request_audit_pk: Optional[int]
+    domain: Optional[str]
     namespace: Optional[str]
     kind: Optional[str]
     service_name: Optional[str]
@@ -110,6 +115,7 @@ class ResponseFailedPayload(TypedDict, total=False):
 
 class OutboxDispatchPayload(TypedDict, total=False):
     message: dict
+    domain: Optional[str]
     namespace: Optional[str]
     # Generic DB linkage (preferred) + legacy name for back-compat
     object_db_pk: Optional[Union[int, UUID]]
@@ -160,10 +166,11 @@ class DjangoSignalEmitter:
 
     def emit_request(self, context: dict, identity: str, request_dto: Any) -> None:
         """Adapter for BaseService→Django signals on request send."""
-        namespace, kind, service_name = _split_identity(identity)
+        domain, namespace, kind, service_name = _split_identity(identity)
         ctx = dict(context or {})
         payload: RequestSentPayload = {
             "request": _as_dict(request_dto),
+            "domain": domain,
             "namespace": namespace,
             "kind": kind,
             "service_name": service_name,
@@ -176,10 +183,11 @@ class DjangoSignalEmitter:
 
     def emit_response(self, context: dict, identity: str, response_dto: Any) -> None:
         """Adapter for BaseService→Django signals on final response."""
-        namespace, kind, service_name = _split_identity(identity)
+        domain, namespace, kind, service_name = _split_identity(identity)
         ctx = dict(context or {})
         payload: ResponseReadyPayload = {
             "response": _as_dict(response_dto),
+            "domain": domain,
             "namespace": namespace,
             "kind": kind,
             "service_name": service_name,
@@ -195,10 +203,11 @@ class DjangoSignalEmitter:
 
     def emit_failure(self, context: dict, identity: str, correlation_id: Any, error: str) -> None:
         """Adapter for BaseService→Django signals on failure."""
-        namespace, kind, service_name = _split_identity(identity)
+        domain, namespace, kind, service_name = _split_identity(identity)
         ctx = dict(context or {})
         payload: ResponseFailedPayload = {
             "error": str(error),
+            "domain": domain,
             "namespace": namespace,
             "kind": kind,
             "service_name": service_name,
@@ -210,10 +219,11 @@ class DjangoSignalEmitter:
 
     def emit_stream_chunk(self, context: dict, identity: str, chunk_dto: Any) -> None:
         """Adapter for streaming chunks; forwarded via outbox_dispatch."""
-        namespace, _, _ = _split_identity(identity)
+        domain, namespace, _, _ = _split_identity(identity)
         ctx = dict(context or {})
         payload: OutboxDispatchPayload = {
             "message": _as_dict(chunk_dto),
+            "domain": domain,
             "namespace": namespace,
             "object_db_pk": ctx.get("object_db_pk"),
             "context": ctx,

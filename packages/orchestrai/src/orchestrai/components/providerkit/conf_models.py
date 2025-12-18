@@ -59,13 +59,13 @@ class ProviderSettingsEntry(BaseModel):
     Configuration for a single provider alias in PROVIDERS.
 
     "provider alias" = the key in the PROVIDERS dict.
-    "backend identity" = dot-separated registry identity, e.g. "openai.responses.backend".
+    "backend identity" = dot-separated registry identity, e.g. "provider.openai.responses.backend".
     """
 
     # Allow both BACKEND (Django-style) and backend (field name) via populate_by_name.
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    # Backend identity, e.g. "openai.responses.backend"
+    # Backend identity, e.g. "provider.openai.responses.backend"
     # May be provided directly via BACKEND, or derived from PROVIDER + SURFACE.
     backend: str | None = Field(None, alias="BACKEND")
     # Optional sugar: PROVIDER + SURFACE can be used instead of BACKEND,
@@ -94,15 +94,20 @@ class ProviderSettingsEntry(BaseModel):
     def validate_backend_identity(cls, v: str) -> str:
         """
         Ensure BACKEND is a proper provider identity like:
-            'openai.responses.backend'
+            'provider.openai.responses.backend'
         """
         parts = v.split(".")
-        if len(parts) != 3:
+        if len(parts) != 4:
             raise ProviderConfigurationError(
-                f"BACKEND must be 'namespace.kind.name', e.g. 'openai.responses.backend' (got {v!r})"
+                f"BACKEND must be 'domain.namespace.group.name', e.g. 'provider.openai.responses.backend' (got {v!r})"
             )
 
-        namespace, kind, name = parts
+        domain, namespace, kind, name = parts
+
+        if not domain:
+            raise ProviderConfigurationError(
+                f"BACKEND must include a non-empty domain (got {v!r})"
+            )
 
         if namespace not in AVAILABLE_PROVIDER_BACKENDS:
             raise ProviderConfigurationError(
@@ -124,9 +129,9 @@ class ProviderSettingsEntry(BaseModel):
 
         Semantics:
           - If BACKEND is explicitly provided, it wins and is validated as a full
-            identity string like 'openai.responses.backend'.
+            identity string like 'provider.openai.responses.backend'.
           - Otherwise, both PROVIDER and SURFACE must be provided, and a backend
-            identity string 'PROVIDER.SURFACE.backend' is synthesized and validated.
+            identity string 'provider.PROVIDER.SURFACE.backend' is synthesized and validated.
         """
         # If backend is already set, just validate it (field_validator may have
         # already done this, but we enforce once more for safety).
@@ -141,7 +146,7 @@ class ProviderSettingsEntry(BaseModel):
             )
 
         surface = self.surface or "default"
-        backend = f"{self.provider}.{surface}.backend"
+        backend = f"provider.{self.provider}.{surface}.backend"
         self.backend = self.validate_backend_identity(backend)
         return self
 
@@ -206,7 +211,7 @@ class ProvidersSettings(RootModel[Dict[str, ProviderSettingsEntry]]):
 
         PROVIDERS = {
             "default": {
-                "backend": "openai.responses.backend",  # or: "PROVIDER": "openai", "SURFACE": "responses",
+                "backend": "provider.openai.responses.backend",  # or: "PROVIDER": "openai", "SURFACE": "responses",
                 "api_key_envvar": {
                     "prod": "ORCA_PROVIDER_API_KEY",
                     "dev": "ORCA_PROVIDER_API_KEY_DEV",

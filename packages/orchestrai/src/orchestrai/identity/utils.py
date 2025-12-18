@@ -12,8 +12,8 @@ This module provides pure helpers used by the identity *resolver*:
 
 Design:
 - Pure-Python; no Django dependencies.
-- Canonical identity uses the vocabulary `(namespace, kind, name)`.
-- Canonical string form is dot-only: "namespace.kind.name".
+- Canonical identity uses the vocabulary `(domain, namespace, group, name)`.
+- Canonical string form is dot-only: "domain.namespace.group.name".
 
 Notes:
 - *Derivation* of identities is handled by `orchestrai.identity.resolution.IdentityResolver`.
@@ -227,11 +227,11 @@ def module_root(cls_or_module: Union[str, type]) -> Optional[str]:
 
 def resolve_collision(
         kind: str,
-        ident_tuple: tuple[str, str, str],
+        ident_tuple: tuple[str, str, str, str],
         *,
         debug: Optional[bool] = None,
-        exists: Callable[[tuple[str, str, str]], bool],
-) -> tuple[str, str, str]:
+        exists: Callable[[tuple[str, str, str, str]], bool],
+) -> tuple[str, str, str, str]:
     """Resolve identity collisions.
 
     If `exists(ident_tuple)` is True:
@@ -240,14 +240,14 @@ def resolve_collision(
 
     Args:
         kind: Human label for error/warn input ("codec", "service", "prompt", etc.).
-        ident_tuple: (namespace, kind, name)
+        ident_tuple: (domain, namespace, group, name)
         debug: If None, falls back to orchestrai_DEBUG env var.
         exists: Callable that returns True if the identity already exists.
     """
     if debug is None:
         debug = _DEBUG_FALLBACK
 
-    namespace, kind_part, name = ident_tuple
+    domain, namespace, kind_part, name = ident_tuple
     if not exists(ident_tuple):
         return ident_tuple
 
@@ -257,7 +257,7 @@ def resolve_collision(
     # Append name suffixes until unique
     suffix = 2
     while True:
-        candidate = (namespace, kind_part, f"{name}-{suffix}")
+        candidate = (domain, namespace, kind_part, f"{name}-{suffix}")
         if not exists(candidate):
             logger.warning(
                 "Collision detected for %s identity %s, renaming to %s.",
@@ -267,11 +267,11 @@ def resolve_collision(
         suffix += 1
 
 
-def parse_dot_identity(key: str) -> tuple[str, str, str]:
-    """Parse a dot-only identity string into (namespace, kind, name).
+def parse_dot_identity(key: str) -> tuple[str, str, str, str]:
+    """Parse a dot-only identity string into (domain, namespace, group, name).
 
     Strict rules:
-      - Exactly 3 non-empty components
+      - Exactly 4 non-empty components
       - Dot separator only (no colons)
       - Surrounding whitespace is ignored
 
@@ -281,18 +281,18 @@ def parse_dot_identity(key: str) -> tuple[str, str, str]:
     key = key.strip()
     if ":" in key:
         raise ValueError(
-            f"Invalid identity '{key}': colons are not allowed. Use 'namespace.kind.name' only."
+            f"Invalid identity '{key}': colons are not allowed. Use 'domain.namespace.group.name' only."
         )
     parts = [p.strip() for p in key.split(".")]
-    if len(parts) != 3 or not all(parts):
+    if len(parts) != 4 or not all(parts):
         raise ValueError(
-            f"Invalid identity '{key}': expected exactly three dot-separated parts."
+            f"Invalid identity '{key}': expected exactly four dot-separated parts."
         )
-    return parts[0], parts[1], parts[2]
+    return parts[0], parts[1], parts[2], parts[3]
 
 
-def coerce_identity_key(value: IdentityLike | None) -> tuple[str, str, str] | None:
-    """Best-effort conversion of Identity-like inputs to an (namespace, kind, name) tuple."""
+def coerce_identity_key(value: IdentityLike | None) -> tuple[str, str, str, str] | None:
+    """Best-effort conversion of Identity-like inputs to a (domain, namespace, group, name) tuple."""
 
     if value is None:
         return None
@@ -305,5 +305,4 @@ def coerce_identity_key(value: IdentityLike | None) -> tuple[str, str, str] | No
         logger.debug("Failed to coerce identity value: %r", value)
         return None
 
-    return ident.as_tuple3
-
+    return ident.as_tuple

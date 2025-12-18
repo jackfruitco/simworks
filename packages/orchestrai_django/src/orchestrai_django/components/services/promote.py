@@ -5,14 +5,14 @@
 Service-level promotion helpers (Django layer).
 
 These helpers promote core `orchestrai` request/response models into Django DTOs,
-enriching them with **service-derived identity** (namespace/kind/name), backend/client
+enriching them with **service-derived identity** (domain/namespace/group/name), backend/client
 metadata, and optional database PKs. They build on the lower-level DTO helpers in
 `orchestrai_django.types.promote`.
 
 Identity is resolved **upstream** (decorators / identity resolvers). This module assumes
 `service.identity` is an `Identity` instance and does **not** perform token stripping or
 normalization. When `service.identity` is unavailable, we make a best-effort fallback to
-`service.namespace/kind/name` without mutating the service.
+`service.domain/namespace/group/name` (with defaults) without mutating the service.
 """
 
 from typing import Any, Optional
@@ -39,15 +39,16 @@ __all__ = ["promote_request_for_service", "promote_response_for_service"]
 # ---------------------------------------------------------------------------
 
 def _svc_identity_str(service: Any) -> Optional[str]:
-    """Return canonical `namespace.kind.name` string for a service if available."""
+    """Return canonical `domain.namespace.group.name` string for a service if available."""
     ident: Optional[Identity] = getattr(service, "identity", None)
-    if isinstance(ident, Identity) and all((ident.namespace, ident.kind, ident.name)):
+    if isinstance(ident, Identity) and all((ident.domain, ident.namespace, ident.group, ident.name)):
         return ident.as_str
+    dm = getattr(service, "domain", None) or "default"
     ns = getattr(service, "namespace", None)
-    kd = getattr(service, "kind", None)
+    gp = getattr(service, "group", None) or getattr(service, "kind", None)
     nm = getattr(service, "name", None)
-    if ns and kd and nm:
-        return f"{ns}.{kd}.{nm}"
+    if ns and gp and nm:
+        return f"{dm}.{ns}.{gp}.{nm}"
     return None
 
 
@@ -55,21 +56,21 @@ def _svc_identity_str(service: Any) -> Optional[str]:
 # helpers
 # ---------------------------------------------------------------------------
 
-def _svc_identity_tuple3(service: Any) -> tuple[Optional[str], Optional[str], Optional[str]]:
-    """Return (namespace, kind, name) for a service, preferring `service.identity`.
+def _svc_identity_tuple4(service: Any) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """Return (domain, namespace, group, name) for a service, preferring `service.identity`.
 
     We *do not* mutate the service or synthesize an Identity. This is a read-only
     extraction for tracing/DTO enrichment.
     """
     ident: Optional[Identity] = getattr(service, "identity", None)
     if isinstance(ident, Identity):
-        ns, kd, nm = ident.namespace, ident.kind, ident.name
-        return ns, kd, nm
+        return ident.domain, ident.namespace, ident.group, ident.name
     # best-effort fallbacks for legacy callers
+    dm = getattr(service, "domain", None) or "default"
     ns = getattr(service, "namespace", None)
-    kd = getattr(service, "kind", None)
+    gp = getattr(service, "group", None) or getattr(service, "kind", None)
     nm = getattr(service, "name", None)
-    return ns, kd, nm
+    return dm, ns, gp, nm
 
 
 def _extract_provider_client(service: Any) -> tuple[Optional[str], Optional[str]]:
@@ -108,8 +109,8 @@ def promote_request_for_service(
 ) -> DjangoRequest:
     """Promote a core Request into a DjangoRequest with identity + metadata.
 
-    Identity comes from `service.identity` (preferred) or legacy `namespace/kind/name`.
-    Identities are expected to be already normalized (dot-only triples) upstream.
+    Identity comes from `service.identity` (preferred) or legacy `domain/namespace/group/name`.
+    Identities are expected to be already normalized (dot-only quads) upstream.
     This function does not perform token stripping or normalization.
 
     Parameters
@@ -122,7 +123,7 @@ def promote_request_for_service(
     -------
     DjangoRequest populated with rich `messages_rich` and metadata.
     """
-    ns, kd, nm = _svc_identity_tuple3(service)
+    dm, ns, kd, nm = _svc_identity_tuple4(service)
     prov, cli = _extract_provider_client(service)
 
     with service_span_sync(
@@ -130,7 +131,7 @@ def promote_request_for_service(
             attributes={
                 "svc.class": service.__class__.__name__,
                 "orchestrai.identity.service": _svc_identity_str(service),
-                "orchestrai.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
+                "orchestrai.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
                 "svc.backend": prov,
                 "svc.client": cli,
                 "req.correlation_id": getattr(req, "correlation_id", None),
@@ -160,8 +161,8 @@ def promote_response_for_service(
 ) -> DjangoResponse:
     """Promote a core Response into a DjangoResponse with identity + metadata.
 
-    Identity comes from `service.identity` (preferred) or legacy `namespace/kind/name`.
-    Identities are expected to be already normalized (dot-only triples) upstream.
+    Identity comes from `service.identity` (preferred) or legacy `domain/namespace/group/name`.
+    Identities are expected to be already normalized (dot-only quads) upstream.
     This function does not perform token stripping or normalization.
 
     Parameters
@@ -176,7 +177,7 @@ def promote_response_for_service(
     -------
     DjangoResponse populated with rich `outputs_rich`/`usage_rich` and metadata.
     """
-    ns, kd, nm = _svc_identity_tuple3(service)
+    dm, ns, kd, nm = _svc_identity_tuple4(service)
     prov, cli = _extract_provider_client(service)
 
     with service_span_sync(
@@ -184,7 +185,7 @@ def promote_response_for_service(
             attributes={
                 "svc.class": service.__class__.__name__,
                 "orchestrai.identity.service": _svc_identity_str(service),
-                "orchestrai.identity.service.tuple3": (ns, kd, nm) if all([ns, kd, nm]) else None,
+                "orchestrai.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
                 "svc.backend": prov,
                 "svc.client": cli,
                 "resp.correlation_id": getattr(resp, "correlation_id", None),

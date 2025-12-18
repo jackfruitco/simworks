@@ -7,8 +7,9 @@ Identity
 • Identity is a class-level concept provided by `IdentityMixin`.
   Each concrete service class has a stable `identity: Identity`.
 • Instances read `self.identity`, which mirrors the class identity.
-• Class attributes `namespace`, `kind`, and `name` are treated as hints passed to the resolver.
-• Prefer `self.identity.as_str` ("namespace.kind.name") or `self.identity.as_tuple3` anywhere a
+• Class attributes `domain`, `namespace`, `group`, and `name` are treated as hints passed to the resolver.
+  Legacy `kind` is also accepted as an alias for `group`.
+• Prefer `self.identity.as_str` ("domain.namespace.group.name") or `self.identity.as_tuple` anywhere a
   label/tuple is needed. Avoid carrying separate string copies.
 
 Prompt plans
@@ -77,7 +78,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     Abstract base for LLM-backed AI services.
 
     • Identity is exposed as `self.identity: Identity`, resolved by `IdentityMixin`.
-    • Class attributes (namespace/kind/name) are resolver hints only.
+    • Class attributes (domain/namespace/group/name) are resolver hints only (legacy `kind` is accepted as group).
     • Concrete services should rely on `self.identity.as_str` etc. instead of duplicating labels.
     Codec precedence
     ----------------

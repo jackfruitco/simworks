@@ -11,7 +11,7 @@ What we do here:
 
 Notes
 -----
-• Strict dot-only identities are preferred ("namespace.kind.name").
+• Strict dot-only identities are preferred ("domain.namespace.group.name").
 • All output are normalized to lowercase for consistency in logs/metrics.
 """
 
@@ -27,16 +27,16 @@ __all__ = [
 ]
 
 
-def _parse_codec_identity(codec_identity: str) -> tuple[str | None, str | None, str | None]:
-    """Strictly parse a codec identity into (namespace, kind, name).
+def _parse_codec_identity(codec_identity: str) -> tuple[str | None, str | None, str | None, str | None]:
+    """Strictly parse a codec identity into (domain, namespace, group, name).
 
     Expected forms
     --------------
-    • "namespace.kind.name"     (preferred; dot-only)
+    • "domain.namespace.group.name"     (preferred; dot-only)
 
     Behavior
     --------
-    • Returns a lowercased (ns, kind, name) tuple on success.
+    • Returns a lowercased (domain, ns, group, name) tuple on success.
     • Returns (None, None, None) if parsing/validation fails.
     • Delegates to the centralized `coerce_identity_key(...)` so parsing rules
       stay consistent across the codebase.
@@ -50,8 +50,8 @@ def _parse_codec_identity(codec_identity: str) -> tuple[str | None, str | None, 
     if key is None:
         return None, None, None
 
-    ns, kd, nm = key
-    return ns.lower(), kd.lower(), nm.lower()
+    dm, ns, kd, nm = key
+    return dm.lower(), ns.lower(), kd.lower(), nm.lower()
 
 
 def _kind_name_from_codec_name(
@@ -72,7 +72,7 @@ def _kind_name_from_codec_name(
     Notes
     -----
     • This helper is intentionally narrow in scope; it does not support
-      "namespace.kind.name" (that’s a full identity and should be passed
+      "domain.namespace.group.name" (that’s a full identity and should be passed
       through `_parse_codec_identity` / Identity utilities instead).
     """
     if not codec_name:

@@ -11,7 +11,7 @@ In `orchestrai_django`, **Codecs** are responsible for:
 2. **Persisting** validated data to your Django models
 3. Returning a **lightweight summary** (e.g., IDs, counts) to the caller/UI
 
-When your Codec shares the same **tuple3 identity** as the Service and Schema
+When your Codec shares the same **tuple4 identity** as the Service and Schema
 (`origin.bucket.name`), the framework auto-wires them together.
 
 ---

@@ -2,7 +2,9 @@
 Django-aware identity resolver.
 
 Subclass of the core IdentityResolver that:
-- infers `namespace` from (arg → class attr → Django app label → module root → "default"),
+- infers `namespace` from (arg → class attr → decorator default → Django app label → module root → "default"),
+- honors `domain` precedence from the core resolver (arg → class attr → decorator default → error),
+- resolves `group` without legacy ``kind`` fallbacks (arg → class attr → decorator default → "default"),
 - collects strip tokens from core defaults + Django sources:
   * DJANGO_BASE_STRIP_TOKENS = ("Django", "Mixin")
   * settings.ORCA_IDENTITY_STRIP_TOKENS (list/tuple/CSV) (SIMCORE_* accepted for back-compat)
@@ -29,7 +31,6 @@ if TYPE_CHECKING:  # type-only import to avoid runtime cycles
 __all__ = [
     "DjangoIdentityResolver",
     "resolve_identity_django",
-        "q  a",
 ]
 
 
@@ -140,6 +141,7 @@ class DjangoIdentityResolver(IdentityResolver):
             cls: type,
             namespace_arg: Optional[str],
             namespace_attr: Optional[str],
+            decorator_default: Optional[str] = None,
     ) -> tuple[str, str]:
         # arg wins
         if isinstance(namespace_arg, str) and namespace_arg.strip():
@@ -147,6 +149,9 @@ class DjangoIdentityResolver(IdentityResolver):
         # class attr next
         if isinstance(namespace_attr, str) and namespace_attr.strip():
             return namespace_attr.strip(), "attr"
+        # decorator default
+        if isinstance(decorator_default, str) and decorator_default.strip():
+            return decorator_default.strip(), "default"
         # Django app label
         cfg = _app_config_for_class(cls)
         if cfg is not None and getattr(cfg, "label", None):
@@ -154,6 +159,23 @@ class DjangoIdentityResolver(IdentityResolver):
         # fallback to module root, then default (the base will snake-case)
         root = module_root(cls) or "default"
         return root, "derived"
+
+    def _resolve_group(
+            self,
+            cls: type,
+            group_arg: Optional[str],
+            group_attr: Optional[str],
+            legacy_kind_attr: Optional[str],
+            decorator_default: Optional[str] = None,
+    ) -> tuple[str, str]:
+        """Return (value, source) without legacy `kind` fallbacks."""
+        if isinstance(group_arg, str) and group_arg.strip():
+            return group_arg.strip(), "arg"
+        if isinstance(group_attr, str) and group_attr.strip():
+            return group_attr.strip(), "attr"
+        if isinstance(decorator_default, str) and decorator_default.strip():
+            return decorator_default.strip(), "default"
+        return "default", "derived"
 
     def _collect_strip_tokens(self, cls: type) -> tuple[str, ...]:
         extra: list[str] = []
@@ -185,11 +207,19 @@ class DjangoIdentityResolver(IdentityResolver):
 def resolve_identity_django(
         cls: type,
         *,
+        domain: Optional[str] = None,
         namespace: Optional[str] = None,
-        kind: Optional[str] = None,
+        group: Optional[str] = None,
         name: Optional[str] = None,
         context: Optional[dict[str, Any]] = None,
 ) -> tuple["Identity", dict[str, Any]]:
     r = DjangoIdentityResolver()
-    ident, meta = r.resolve(cls, namespace=namespace, kind=kind, name=name, context=context)
+    ident, meta = r.resolve(
+        cls,
+        domain=domain,
+        namespace=namespace,
+        group=group,
+        name=name,
+        context=context,
+    )
     return ident, meta

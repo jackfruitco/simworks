@@ -5,7 +5,7 @@
 Service-level demotion helpers.
 
 These helpers demote Django DTOs back into core `orchestrai` request/response
-models. They intentionally preserve the dot‑only identity string (namespace.kind.name),
+models. They intentionally preserve the dot‑only identity string (domain.namespace.group.name),
 backend/client metadata, and `received_at` on responses, aligning with the
 core model decisions.
 """

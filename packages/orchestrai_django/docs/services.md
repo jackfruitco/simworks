@@ -13,7 +13,7 @@ Prompt → Request → Codec → Response
 ```
 
 Each service:
-- Uses a shared **tuple3 identity** (`origin.bucket.name`)
+- Uses a shared **tuple4 identity** (`domain.origin.bucket.name`, domain defaults to `default`)
 - Can be executed synchronously or asynchronously
 - Automatically resolves its PromptSection, Codec, and Schema by matching identity
 
@@ -50,7 +50,7 @@ Supports both `@llm_service` and `@llm_service(origin="...", bucket="...", name=
 ```python
 from orchestrai_django.api.decorators import llm_service
 
-@llm_service  # or: @llm_service(namespace="chatlab", kind="standardized_patient", name="initial")
+@llm_service  # or: @llm_service(namespace="chatlab", group="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):
     print("✅ AI service executed successfully")
     return {"ok": True}
@@ -92,7 +92,7 @@ class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, Standard
 
 Resulting identity:
 ```
-chatlab.standardized_patient.initial
+default.chatlab.standardized_patient.initial
 ```
 
 ---

@@ -2,7 +2,7 @@
 """
 Core codec decorator.
 
-- Derives & pins identity via IdentityResolver (kind/namespace/name via resolver + hints).
+- Derives & pins identity via IdentityResolver (domain/namespace/group/name via resolver + hints).
 - Registers codec classes in the global `codecs` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 - Enforces that only BaseCodec subclasses can be decorated.
@@ -12,6 +12,7 @@ from typing import Any, Type
 
 from orchestrai.components.codecs.codec import BaseCodec
 from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.domains import CODECS_DOMAIN
 from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import codecs as codec_registry
 
@@ -33,10 +34,12 @@ class CodecDecorator(BaseDecorator):
             ...
 
         # or with explicit hints
-        @codec(namespace="openai", kind="responses", name="json")
+        @codec(namespace="openai", group="responses", name="json")
         class OpenAIJSONCodec(BaseCodec):
             ...
     """
+
+    default_domain = CODECS_DOMAIN
 
     def get_registry(self) -> ComponentRegistry:
         """Return the global codecs registry singleton."""

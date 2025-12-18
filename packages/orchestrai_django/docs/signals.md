@@ -44,7 +44,7 @@ class MyService(DjangoBaseService):
 ```python
 {
   "simulation_id": int,
-  "identity": "namespace.kind.name",
+  "identity": "domain.namespace.group.name",
   "request": {
     "correlation_id": "uuid4",
     "namespace": "namespace",
@@ -71,7 +71,7 @@ Useful for logging, auditing, and correlating with subsequent events.
 ```python
 {
   "simulation_id": int,
-  "identity": "namespace.kind.name",
+  "identity": "domain.namespace.group.name",
   "response": {
     "request_correlation_id": "uuid4",
     "codec": "namespace.kind.codec_name",
@@ -98,7 +98,7 @@ Use this to persist final AI output, run post-processing, or update UI.
 ```python
 {
   "simulation_id": int,
-  "identity": "namespace.kind.name",
+  "identity": "domain.namespace.group.name",
   "correlation_id": "uuid4",
   "error": "trace or message"
 }
@@ -116,7 +116,7 @@ Best used to capture errors, retry counts, and notify monitoring systems.
 ```python
 {
   "simulation_id": int,
-  "identity": "namespace.kind.name",
+  "identity": "domain.namespace.group.name",
   "chunk": {
     "request_correlation_id": "uuid4",
     "delta": "text or structured piece",
@@ -138,7 +138,7 @@ You can broadcast these events over websockets to update the UI in real-time.
 ```python
 {
   "simulation_id": int,
-  "identity": "namespace.kind.name",
+  "identity": "domain.namespace.group.name",
   "correlation_id": "uuid4"
 }
 ```

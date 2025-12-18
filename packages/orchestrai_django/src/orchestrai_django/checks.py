@@ -419,9 +419,9 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
 
         # Invalid identities (SIMCORE-ID-002) — should not happen because registries validate,
         # but we defensively re-check the stored keys and surface errors if any slipped through.
-        def _validate_tuple3(t: Tuple[str, str, str]) -> Optional[str]:
-            ns, kd, nm = t
-            for label, val in (("namespace", ns), ("kind", kd), ("name", nm)):
+        def _validate_tuple4(t: Tuple[str, str, str, str]) -> Optional[str]:
+            dm, ns, kd, nm = t
+            for label, val in (("domain", dm), ("namespace", ns), ("group", kd), ("name", nm)):
                 if not isinstance(val, str) or not val.strip():
                     return f"{label} is empty or not a string: {val!r}"
                 if not _ALLOWED_RE.match(val):
@@ -435,7 +435,7 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
                 LOGGER.exception("registry.list.failed %s", kind)
                 continue
             for item in registered:
-                problem = _validate_tuple3(item.identity)
+                problem = _validate_tuple4(item.identity)
                 if problem:
                     messages.append(
                         checks.Error(
@@ -463,7 +463,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
     Notes:
       - We intentionally do NOT warn about prompts globally unless the service declares requirements,
         to avoid noise for services that synthesize prompts or use engines that select dynamically.
-      - Codec resolution mirrors runtime: try exact service.identity, then bucket default `(ns, kind, "default")`,
+      - Codec resolution mirrors runtime: try exact service.identity, then bucket default `(domain, namespace, group, "default")`,
         then an explicit `default_codec_identity` attribute if present.
     """
     from orchestrai.identity import coerce_identity_key  # lazy import
@@ -482,7 +482,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
         for svc_cls in svc_classes:
             try:
                 ident: Identity = Identity.get_for(svc_cls)
-                ns, kd, nm = ident.as_tuple3
+                dm, ns, kd, nm = ident.as_tuple
                 ident_str = ident.as_str
             except Exception as exc:
                 messages.append(
@@ -499,17 +499,17 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                 codec_ok = False
 
                 # 1) exact service.identity
-                if codec_registry.get((ns, kd, nm)) is not None:
+                if codec_registry.get((dm, ns, kd, nm)) is not None:
                     codec_ok = True
                 # 2) bucket default
-                elif codec_registry.get((ns, kd, "default")) is not None:
+                elif codec_registry.get((dm, ns, kd, "default")) is not None:
                     codec_ok = True
                 else:
                     # 3) explicit hint on the class (optional)
                     hinted = getattr(svc_cls, "default_codec_identity", None)
                     if hinted is not None:
-                        t3 = coerce_identity_key(hinted)
-                        if t3 and codec_registry.get(t3) is not None:
+                        t4 = coerce_identity_key(hinted)
+                        if t4 and codec_registry.get(t4) is not None:
                             codec_ok = True
 
                 if not codec_ok:
@@ -518,7 +518,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                             f"Service has no resolvable codec: {ident_str}",
                             hint=(
                                 "Register a codec at the same identity, or a bucket default "
-                                f"({ns}.{kd}.default), or set `default_codec_identity` on the service."
+                                f"({dm}.{ns}.{kd}.default), or set `default_codec_identity` on the service."
                             ),
                             obj=svc_cls,
                             id=f"{CHECK_ID_PREFIX}-011",
@@ -528,7 +528,10 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
             # ---- SCHEMA (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
             with service_span_sync("orchestrai.services.pairing.schema", attributes={"service": ident_str}):
                 explicit_schema_hint: IdentityLike | None = getattr(svc_cls, "response_schema_identity", None)
-                auto_candidates: tuple[tuple[str, str, str], ...] = ((ns, kd, nm), (ns, kd, "default"))
+                auto_candidates: tuple[tuple[str, str, str, str], ...] = (
+                    (dm, ns, kd, nm),
+                    (dm, ns, kd, "default"),
+                )
 
                 # Helper: attempt auto resolve by identity
                 def _auto_schema_resolved() -> bool:
@@ -538,10 +541,10 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                     return False
 
                 if explicit_schema_hint is not None:
-                    t3 = coerce_identity_key(explicit_schema_hint)
-                    ok = bool(t3) and (schema_registry.get(t3) is not None)
+                    t4 = coerce_identity_key(explicit_schema_hint)
+                    ok = bool(t4) and (schema_registry.get(t4) is not None)
                     if not ok:
-                        display = ".".join(t3) if t3 else repr(explicit_schema_hint)
+                        display = ".".join(t4) if t4 else repr(explicit_schema_hint)
                         LOGGER.error("service.schema.missing (explicit) service=%s schema=%s", ident_str, display)
                         messages.append(
                             checks.Error(
@@ -565,7 +568,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                                 "Service has no resolvable response schema via identity.",
                                 hint=(
                                     "If this service should emit structured output, register a schema at the "
-                                    f"service identity ({ns}.{kd}.{nm}) or bucket default ({ns}.{kd}.default), "
+                                    f"service identity ({dm}.{ns}.{kd}.{nm}) or bucket default ({dm}.{ns}.{kd}.default), "
                                     "or set `response_schema_identity` on the service."
                                 ),
                                 obj=svc_cls,
@@ -579,18 +582,18 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
 
                 # Helper: auto resolve prompt by identity (exact or bucket default)
                 def _auto_prompt_resolved() -> bool:
-                    if prompt_registry.get((ns, kd, nm)) is not None:
+                    if prompt_registry.get((dm, ns, kd, nm)) is not None:
                         return True
-                    if prompt_registry.get((ns, kd, "default")) is not None:
+                    if prompt_registry.get((dm, ns, kd, "default")) is not None:
                         return True
                     return False
 
                 if required_prompts:
                     missing: list[str] = []
                     for req in required_prompts:
-                        t3 = coerce_identity_key(req)
-                        if not t3 or prompt_registry.get(t3) is None:
-                            missing.append(".".join(t3) if t3 else repr(req))
+                        t4 = coerce_identity_key(req)
+                        if not t4 or prompt_registry.get(t4) is None:
+                            missing.append(".".join(t4) if t4 else repr(req))
                     if missing:
                         LOGGER.error(
                             "service.prompts.missing (explicit) service=%s missing=%s",
@@ -611,15 +614,15 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                         LOGGER.warning(
                             "service.prompts.unresolved (implicit) service=%s tried=(%s, %s)",
                             ident_str,
-                            ".".join((ns, kd, nm)),
-                            ".".join((ns, kd, "default")),
+                            ".".join((dm, ns, kd, nm)),
+                            ".".join((dm, ns, kd, "default")),
                         )
                         messages.append(
                             checks.Warning(
                                 "Service has no resolvable PromptSection via identity.",
                                 hint=(
                                     "If this service should include prompts, register a section at the service identity "
-                                    f"({ns}.{kd}.{nm}) or bucket default ({ns}.{kd}.default), "
+                                    f"({dm}.{ns}.{kd}.{nm}) or bucket default ({dm}.{ns}.{kd}.default), "
                                     "or declare `required_prompt_sections` on the service."
                                 ),
                                 obj=svc_cls,

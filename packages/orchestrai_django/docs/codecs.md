@@ -11,7 +11,7 @@ A **Codec** is responsible for:
 - Validating it against a **Response Schema**
 - Persisting the parsed data into your Django models or other stores
 
-When your Codec shares the same **tuple3 identity** as a Service, PromptSection, and Schema,
+When your Codec shares the same **tuple4 identity** as a Service, PromptSection, and Schema,
 it is discovered and linked automatically.
 
 ---
@@ -55,7 +55,7 @@ class PatientInitialResponseCodec(DjangoBaseCodec):
 ```
 
 ✅ This class will automatically match a Service, Prompt, and Schema
-with the same tuple3 identity (e.g., `chatlab.standardized_patient.initial`).
+with the same tuple4 identity (e.g., `default.chatlab.standardized_patient.initial`).
 
 ---
 

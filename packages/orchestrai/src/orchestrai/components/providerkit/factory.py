@@ -22,7 +22,7 @@ def build_provider(cfg: ProviderConfig) -> BaseProvider:
         It is *not* used for identity resolution.
 
       - `cfg.backend` is the *backend identity string* registered in
-        the provider_backends registry, e.g. "openai.responses.backend".
+        the provider_backends registry, e.g. "provider.openai.responses.backend".
         This value is expected to be fully normalized by the config layer
         (e.g. from BACKEND or from PROVIDER/SURFACE in settings); the factory
         does not perform any additional parsing beyond identity resolution.
@@ -82,7 +82,7 @@ def build_provider(cfg: ProviderConfig) -> BaseProvider:
 
     # NOTE:
     # We intentionally do NOT set `provider=backend` here.
-    # `backend` is an identity string like "openai.responses.backend", not
+    # `backend` is an identity string like "provider.openai.responses.backend", not
     # the provider slug ("openai"). Concrete backend classes are responsible
     # for setting their own `provider` / `api_surface` defaults.
 

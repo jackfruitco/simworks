@@ -8,6 +8,9 @@ import types
 
 import pytest
 
+from orchestrai.identity import Identity
+from orchestrai.identity.domains import SERVICES_DOMAIN
+
 
 def install_fake_django_management(monkeypatch, settings_obj=None):
     django_mod = types.ModuleType("django")
@@ -68,14 +71,23 @@ def test_run_service_executes_registered_service(monkeypatch):
         async def aexecute(self):  # pragma: no cover - async path tested separately
             return {"ok": True, "ctx": dict(self.context)}
 
-    SimpleService._IdentityMixin__identity_cached = types.SimpleNamespace(as_str="tests.simple")
+    SimpleService._IdentityMixin__identity_cached = Identity(
+        domain=SERVICES_DOMAIN,
+        namespace="tests",
+        group="service",
+        name="simple",
+    )
 
-    app.services.register("simple", SimpleService)
+    app.services.register(SimpleService)
 
     from orchestrai_django.management.commands import run_service
 
     cmd = run_service.Command()
-    cmd.handle(service="simple", context='{"foo": "bar"}', mode="start")
+    cmd.handle(
+        service="services.tests.service.simple",
+        context='{"foo": "bar"}',
+        mode="start",
+    )
 
     output = cmd.stdout.getvalue()
     assert "executed successfully" in output
@@ -100,17 +112,26 @@ def test_run_service_supports_async_mode(monkeypatch):
         async def aexecute(self):
             return {"async": True}
 
-    AsyncService._IdentityMixin__identity_cached = types.SimpleNamespace(as_str="tests.async")
+    AsyncService._IdentityMixin__identity_cached = Identity(
+        domain=SERVICES_DOMAIN,
+        namespace="tests",
+        group="service",
+        name="async",
+    )
 
-    app.services.register("async_service", AsyncService)
+    app.services.register(AsyncService)
 
     from orchestrai_django.management.commands import run_service
 
     cmd = run_service.Command()
-    cmd.handle(service="async_service", context="{}", mode="astart")
+    cmd.handle(
+        service="services.tests.service.async",
+        context="{}",
+        mode="astart",
+    )
 
     output = cmd.stdout.getvalue()
-    assert "async_service" in output
+    assert "services.tests.service.async" in output
     assert "async" in output
 
 
@@ -130,7 +151,7 @@ from orchestrai_django.decorators import service
 from orchestrai.components.services.service import BaseService
 
 
-@service(namespace="chatlab", kind="standardized_patient", name="initial")
+@service(namespace="chatlab", group="standardized_patient", name="initial")
 class DiscoveredService(BaseService):
     abstract = False
 
@@ -154,19 +175,23 @@ class DiscoveredService(BaseService):
 
     def tracking_import(name, *args, **kwargs):
         calls.append(name)
-        if name == "chatlab.standardized_patient.initial":
+        if name == "services.chatlab.standardized_patient.initial":
             raise AssertionError("service identity should not be imported as a module path")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(importlib, "import_module", tracking_import)
 
     cmd = run_service.Command()
-    cmd.handle(service="chatlab.standardized_patient.initial", context="{}", mode="start")
+    cmd.handle(
+        service="services.chatlab.standardized_patient.initial",
+        context="{}",
+        mode="start",
+    )
 
     output = cmd.stdout.getvalue()
     assert "executed successfully" in output
     assert "registry" in output
-    assert "chatlab.standardized_patient.initial" not in calls
+    assert "services.chatlab.standardized_patient.initial" not in calls
 
 
 def test_run_service_supports_dry_run(monkeypatch):
@@ -193,15 +218,23 @@ def test_run_service_supports_dry_run(monkeypatch):
         def execute(self):
             return {"dry_run": self.dry_run}
 
-    DryRunService._IdentityMixin__identity_cached = types.SimpleNamespace(
-        as_str="tests.dry_run",
+    DryRunService._IdentityMixin__identity_cached = Identity(
+        domain=SERVICES_DOMAIN,
+        namespace="tests",
+        group="service",
+        name="dry_run",
     )
-    app.services.register("dry_run_service", DryRunService)
+    app.services.register(DryRunService)
 
     from orchestrai_django.management.commands import run_service
 
     cmd = run_service.Command()
-    cmd.handle(service="dry_run_service", context="{}", mode="start", dry_run=True)
+    cmd.handle(
+        service="services.tests.service.dry_run",
+        context="{}",
+        mode="start",
+        dry_run=True,
+    )
 
     output = cmd.stdout.getvalue()
     assert "executed successfully" in output
@@ -239,6 +272,8 @@ def test_autostart_sets_current_app_for_run_service(monkeypatch, tmp_path):
             """
             from orchestrai import OrchestrAI
             from orchestrai.components.services.service import BaseService
+            from orchestrai.identity import Identity
+            from orchestrai.identity.domains import SERVICES_DOMAIN
 
             autostart_app = OrchestrAI()
 
@@ -248,7 +283,13 @@ def test_autostart_sets_current_app_for_run_service(monkeypatch, tmp_path):
                 def execute(self):
                     return {"from_autostart": True}
 
-            autostart_app.services.register("autostart.service", AutostartService)
+            AutostartService._IdentityMixin__identity_cached = Identity(
+                domain=SERVICES_DOMAIN,
+                namespace="autostart",
+                group="service",
+                name="default",
+            )
+            autostart_app.services.register(AutostartService)
             autostart_app.conf.update_from_mapping(
                 {"CLIENT": {"name": "auto_client", "provider": "stub"}}
             )
@@ -281,13 +322,17 @@ def test_autostart_sets_current_app_for_run_service(monkeypatch, tmp_path):
     from orchestrai_django.management.commands import run_service
 
     cmd = run_service.Command()
-    cmd.handle(service="autostart.service", context="{}", mode="start")
+    cmd.handle(
+        service="services.autostart.service.default",
+        context="{}",
+        mode="start",
+    )
 
     output = cmd.stdout.getvalue()
     assert "executed successfully" in output
 
     report = app.component_report_text()
-    assert "autostart.service" in report
+    assert "services.autostart.service.default" in report
     assert "auto_client" in report
 
 
@@ -302,10 +347,14 @@ def test_run_service_missing_identity_has_clear_error(monkeypatch):
 
     cmd = run_service.Command()
     with pytest.raises(run_service.CommandError) as excinfo:
-        cmd.handle(service="chatlab.standardized_patient.initial", context="{}", mode="start")
+        cmd.handle(
+            service="services.chatlab.standardized_patient.initial",
+            context="{}",
+            mode="start",
+        )
 
     message = str(excinfo.value)
-    assert "chatlab.standardized_patient.initial" in message
+    assert "services.chatlab.standardized_patient.initial" in message
     assert "ensure discovery" in message
 
 

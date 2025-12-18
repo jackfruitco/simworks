@@ -37,9 +37,9 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBase
     #     PatientNameSection,
     # )
     prompt_plan = (
-        "chatlab.default.base",
-        "chatlab.standardized_patient.initial",
-        "simcore.standardized_patient.name",
+        "prompt-sections.chatlab.default.base",
+        "prompt-sections.chatlab.standardized_patient.initial",
+        "prompt-sections.simcore.standardized_patient.name",
     )
 
 @service

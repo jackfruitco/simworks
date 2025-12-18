@@ -9,23 +9,23 @@ Main components
 ---------------
 - **DjangoBaseCodec** – Abstract base class implementing the codec pipeline:
   validate → restructure → persist (atomic) → emit.
-- **codec** – Class decorator that registers codecs using a tuple3 identity
-  `(namespace, kind, name)`. Supports both `@codec` and `@codec(namespace=..., ...)`.
+- **codec** – Class decorator that registers codecs using a tuple4 identity
+  `(domain, namespace, group, name)`. Supports both `@codec` and `@codec(namespace=..., ...)`.
 - **CodecRegistry** – Central registry storing codec *classes*, keyed by
-  their tuple3 identity. Used internally by services and executors.
+  their tuple4 identity. Used internally by services and executors.
 - **get_codec** – Convenience access to the registry lookup.
 
 Conventions
 -----------
 - Identities are normalized to lowercase snake_case.
-- kind defaults to `"default"` with a DeprecationWarning.
+- group defaults to `"default"` with a DeprecationWarning.
 - Each codec class is registered, not instantiated; instances are created per-use.
 
 Example
 -------
     from orchestrai_django.codecs import codec, DjangoBaseCodec
 
-    @codec(namespace="chatlab", kind="sim_responses")
+    @codec(namespace="chatlab", group="sim_responses")
     class PatientInitialResponseCodec(DjangoBaseCodec):
         response_schema = PatientInitialOutputSchema
 
