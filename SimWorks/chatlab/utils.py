@@ -1,4 +1,5 @@
 # chatlab/utils.py
+import inspect
 import logging
 
 from asgiref.sync import sync_to_async
@@ -28,6 +29,12 @@ class SimulationSchedulingError(ServiceError):
     """Raised when orchestration for a new simulation cannot be scheduled."""
 
 
+async def await_if_needed(result):
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
 async def create_new_simulation(
         user, modifiers: list = None, force: bool = False
 ) -> Simulation:
@@ -53,6 +60,12 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     from .orca.services import GenerateInitialResponse
+
+    service_call = GenerateInitialResponse.using(
+        simulation_id=simulation.id,
+        user_id=user.id,
+    )
+
     try:
         await GenerateInitialResponse.using(
             simulation_id=simulation.id,
