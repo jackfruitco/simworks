@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, TYPE_CHECKING
 
 from orchestrai._state import get_current_app
+from orchestrai.service_runners import BaseServiceRunner
 
 if TYPE_CHECKING:  # pragma: no cover
     from orchestrai.components.services.service import BaseService
@@ -39,7 +40,7 @@ class ServiceCall:
         merged_kwargs = {**self.runner_kwargs, **runner_kwargs}
         return replace(self, runner_name=name or self.runner_name, runner_kwargs=merged_kwargs)
 
-    def _resolve_runner(self) -> tuple[str, Any]:
+    def _resolve_runner(self) -> tuple[str, BaseServiceRunner]:
         app = get_current_app()
         runners = getattr(app, "service_runners", None)
         if runners is None:

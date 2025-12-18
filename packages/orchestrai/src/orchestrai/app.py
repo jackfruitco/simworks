@@ -37,6 +37,7 @@ from .registry.active_app import (
     push_active_registry_app,
     set_active_registry_app,
 )
+from .service_runners import BaseServiceRunner
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +84,8 @@ class OrchestrAI:
     clients: dict[str, Any] = field(default_factory=dict)
     providers: dict[str, Any] = field(default_factory=dict)
 
-    service_runners: dict[str, Any] = field(default_factory=dict)
+    #: Registered service runner implementations keyed by name (see BaseServiceRunner).
+    service_runners: dict[str, BaseServiceRunner] = field(default_factory=dict)
     _service_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(
         default_factory=list, repr=False
     )
@@ -243,7 +245,8 @@ class OrchestrAI:
         self._service_finalize_callbacks.append(callback)
         return callback
 
-    def register_service_runner(self, name: str, runner: Any) -> Any:
+    def register_service_runner(self, name: str, runner: BaseServiceRunner) -> BaseServiceRunner:
+        """Register a :class:`BaseServiceRunner` implementation by name."""
         if name not in self.service_runners:
             self.service_runners[name] = runner
         return runner
