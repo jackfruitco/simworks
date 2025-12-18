@@ -23,8 +23,16 @@ class RegistrationRecord:
     meta: dict[str, Any] = field(default_factory=dict)
 
     @property
+    def group(self) -> str:
+        return self.identity.group
+
+    @property
     def kind(self) -> str:
-        return self.identity.kind
+        return self.domain
+
+    @property
+    def domain(self) -> str:
+        return self.identity.domain
 
     @property
     def label(self) -> str:

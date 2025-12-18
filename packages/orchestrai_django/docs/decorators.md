@@ -21,7 +21,7 @@ All three decorators are **identity-aware**: they cooperate with Django’s auto
 
 ## Identity Recap
 
-The shared tuple3 identity is:
+The shared tuple4 identity is:
 
 ```
 (origin, bucket, name) → "origin.bucket.name"
@@ -166,7 +166,7 @@ class PatientFollowupSection(PromptSection, ChatlabMixin):
 
 - If you’re migrating from older decorator forms:
   - Prefer **function-based** @llm_service for Django.
-  - Remove legacy `namespace` or tuple2 (`bucket:name`) usages — **dot-only tuple3** is the standard.
+  - Remove legacy `namespace` or tuple2 (`bucket:name`) usages — **dot-only tuple4** is the standard.
   - Keep imports via the `api` facade for forward compatibility:
     ```python
     from simcore_ai_django.api.decorators import llm_service, codec, prompt_section

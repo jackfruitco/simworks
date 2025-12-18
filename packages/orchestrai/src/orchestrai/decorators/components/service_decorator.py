@@ -2,7 +2,7 @@
 """
 Core service decorator.
 
-- Derives & pins identity via IdentityResolver (kind defaults to "service" if not provided).
+- Derives & pins identity via IdentityResolver (group defaults handled by resolver).
 - Registers the class in the global `services` registry.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
@@ -12,6 +12,7 @@ from typing import Any, Type
 
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry import ComponentRegistry
 from orchestrai.registry import services as services_registry
 
@@ -37,6 +38,8 @@ class ServiceDecorator(BaseDecorator):
         class MyService(BaseService):
             ...
     """
+
+    default_domain = SERVICES_DOMAIN
 
     def get_registry(self) -> ComponentRegistry:
         # Always register into the service registry

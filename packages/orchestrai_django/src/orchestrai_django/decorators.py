@@ -4,12 +4,13 @@
 Django-aware public decorators for OrchestrAI.
 
 This module mirrors the core OrchestrAI decorator surface (codec, service, schema,
-prompt_section) but derives identities using Django context.
+prompt_section, provider, provider_backend) but derives identities using Django context.
 
-Implementation notes
---------------------
-- We reuse the core *domain* decorators (CodecDecorator, ServiceDecorator, SchemaDecorator,
-  PromptSectionDecorator) so we keep the same registry selection, type guards, and logging.
+Identity behavior
+-----------------
+- Identities are 4-part labels (domain.namespace.group.name). Django decorators honor the
+  same precedence as core (arg → class attr → decorator defaults → derived fallbacks) while
+  relying on Django-aware namespace/token inference.
 - The only Django-specific behavior is identity derivation: a small mixin overrides
   ``derive_identity`` to call :class:`~orchestrai_django.identity.resolvers.DjangoIdentityResolver`.
 - The mixin is placed first in the MRO to ensure Django identity derivation wins.
@@ -17,11 +18,15 @@ Implementation notes
 This module is intentionally side-effect free (no autodiscovery/autostart).
 """
 
-from orchestrai.decorators import provider, provider_backend
 from orchestrai.decorators.components.codec_decorator import CodecDecorator
 from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
+from orchestrai.decorators.components.provider_decorators import (
+    ProviderBackendDecorator,
+    ProviderDecorator,
+)
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
+from orchestrai.identity.domains import DEFAULT_DOMAIN
 from orchestrai_django.identity.resolvers import DjangoIdentityResolver
 
 __all__ = [
@@ -31,6 +36,12 @@ __all__ = [
     "prompt_section",
     "provider",
     "provider_backend",
+    "DjangoCodecDecorator",
+    "DjangoServiceDecorator",
+    "DjangoSchemaDecorator",
+    "DjangoPromptSectionDecorator",
+    "DjangoProviderDecorator",
+    "DjangoProviderBackendDecorator",
 ]
 
 
@@ -41,15 +52,23 @@ class DjangoBaseDecoratorMixin:
             self,
             cls,  # type: ignore[no-untyped-def]
             *,
+            domain: str | None,
             namespace: str | None,
-            kind: str | None,
+            group: str | None,
             name: str | None,
     ):
+        context = {
+            "default_domain": getattr(self, "default_domain", DEFAULT_DOMAIN),
+            "default_namespace": getattr(self, "default_namespace", None),
+            "default_group": getattr(self, "default_group", None),
+        }
         return DjangoIdentityResolver().resolve(
             cls,
+            domain=domain,
             namespace=namespace,
-            kind=kind,
+            group=group,
             name=name,
+            context=context,
         )
 
     # Optional collision policy hook for registries.
@@ -78,7 +97,17 @@ class DjangoServiceDecorator(DjangoBaseDecoratorMixin, ServiceDecorator):
     """Django-aware service decorator (core behavior + Django identity)."""
 
 
+class DjangoProviderDecorator(DjangoBaseDecoratorMixin, ProviderDecorator):
+    """Django-aware provider decorator (core behavior + Django identity)."""
+
+
+class DjangoProviderBackendDecorator(DjangoBaseDecoratorMixin, ProviderBackendDecorator):
+    """Django-aware provider backend decorator (core behavior + Django identity)."""
+
+
 codec = DjangoCodecDecorator()
 service = DjangoServiceDecorator()
 schema = DjangoSchemaDecorator()
 prompt_section = DjangoPromptSectionDecorator()
+provider = DjangoProviderDecorator()
+provider_backend = DjangoProviderBackendDecorator()

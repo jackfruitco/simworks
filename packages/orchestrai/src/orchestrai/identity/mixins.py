@@ -29,8 +29,9 @@ class IdentityMixin:
       - Decorators/registration may *pin* identity via `pin_identity(...)`.
 
     Class attributes (hints only):
-      namespace/kind/name: Optional[str]
-        Hints consumed by the resolver. They are not required.
+      domain/namespace/group/name: Optional[str]
+        Hints consumed by the resolver. They are not required. Legacy ``kind`` is
+        accepted but normalized to ``group``.
 
     Resolution:
       Centralized via Identity.resolve.for_(...). Mixins delegate to that API.
@@ -43,9 +44,12 @@ class IdentityMixin:
     """
 
     # ----- identity hints (optional) -----
+    domain: ClassVar[Optional[str]] = None
     namespace: ClassVar[Optional[str]] = None
-    kind: ClassVar[Optional[str]] = None
+    group: ClassVar[Optional[str]] = None
     name: ClassVar[Optional[str]] = None
+    # Legacy compatibility (read by resolver fallback)
+    kind: ClassVar[Optional[str]] = None
 
     __identity_abstract__: ClassVar[bool] = False
 
@@ -74,17 +78,19 @@ class IdentityMixin:
             if cls.__identity_cached is not None:
                 return cls.__identity_cached
 
-            # Support both legacy (namespace/kind/name) and newer (origin/bucket/name) hints.
+            # Support both legacy (namespace/kind/name) and newer (domain/namespace/group/name) hints.
             # Prefer explicit hints present on the class; fall back to legacy names.
             hints = {}
 
             hints.update(
+                domain=getattr(cls, "domain", None),
                 namespace=getattr(cls, "namespace", None),
-                kind=getattr(cls, "kind", None),
+                group=getattr(cls, "group", None) or getattr(cls, "kind", None),
                 name=getattr(cls, "name", None),
             )
+            from orchestrai.identity.resolvers import resolve_identity as _resolve_identity
 
-            ident, meta = _Identity.resolve.for_(cls, **hints, context=None)
+            ident, meta = _resolve_identity(cls, **hints, context=None)
             cls.__identity_cached = ident
             cls.__identity_meta_cached = dict(meta or {})
             return ident
@@ -120,7 +126,7 @@ class IdentityMixin:
     def __init_subclass__(cls, **kwargs) -> None:  # pragma: no cover - light guardrails
         super().__init_subclass__(**kwargs)
         # Enforce identity hint types if provided
-        for attr in ("namespace", "kind", "name"):
+        for attr in ("domain", "namespace", "group", "kind", "name"):
             val = getattr(cls, attr, None)
             if val is not None and not isinstance(val, str):
                 raise TypeError(f"{cls.__name__}.{attr} must be a str or None")

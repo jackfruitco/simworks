@@ -8,7 +8,7 @@ from ...registry.exceptions import RegistryNotFoundError
 """
 Resolver utilities for PromptSections (AIv3).
 
-- Accepts dot identity strings ("namespace.kind.name"), tuple3 identities (namespace, kind, name),
+- Accepts dot identity strings ("domain.namespace.group.name"), tuple4 identities (domain, namespace, group, name),
   or a direct PromptSection subclass/instance.
 - Normalizes to a PromptSection *class* so callers can instantiate uniformly.
 - No legacy colon identities, no role-paired plans.
@@ -31,8 +31,8 @@ def resolve_section(entry: IdentityLike) -> Type["PromptSection"]:
     """Resolve a plan entry into a PromptSection *class*.
 
     Accepted forms:
-      - str: canonical identity "namespace.kind.name" (dot-only)
-      - tuple3: (namespace, kind, name) with non-empty strings
+      - str: canonical identity "domain.namespace.group.name" (dot-only)
+      - tuple4: (domain, namespace, group, name) with non-empty strings
       - class: a PromptSection subclass (returned as-is)
       - instance: a PromptSection instance (its class is returned)
 

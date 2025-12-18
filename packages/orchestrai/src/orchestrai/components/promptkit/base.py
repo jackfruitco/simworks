@@ -14,7 +14,7 @@ This module defines lightweight types shared by the prompt system:
   to InputItem objects (default: developer instruction + user message).
 - `PromptSection`: declarative section base class. Sections advertise identity
   via a class-level `identity: Identity`. The canonical identity string uses
-  dot form: `namespace.kind.name`.
+  dot form: `domain.namespace.group.name`.
 - `context` (on `Prompt`): a plain dict passed through by services/engines so
   downstream layers (runner/client/backend) can enrich telemetry or perform
   app-specific logic without coupling. The core does not interpret these keys.
@@ -136,7 +136,7 @@ class PromptSection(IdentityMixin, BaseComponent, ABC):
     Instances may also carry static `instruction`/`message` text, which an
     engine may use directly when present.
 
-    The canonical identity string is dot-based: `namespace.kind.name`.
+    The canonical identity string is dot-based: `domain.namespace.group.name`.
 
     Subclasses may optionally override `assess_confidence(context=...)` to
     provide an advisory ConfidenceNote for future auto-planners. This is not

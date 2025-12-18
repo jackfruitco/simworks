@@ -48,7 +48,7 @@ class DjangoBaseService(BaseService, ABC):
     Codec resolution
     ----------------
     Codecs are registered once in the core codec registry and addressed by
-    tuple3 identity. `DjangoBaseService` does not override codec resolution;
+    tuple4 identity. `DjangoBaseService` does not override codec resolution;
     it inherits the async-first resolver from `BaseService` and the per-call
     codec lifecycle (`aprepare` + `arun` / `run_stream`).
     """

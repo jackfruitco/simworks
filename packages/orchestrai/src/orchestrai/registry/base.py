@@ -37,13 +37,14 @@ class BaseRegistry(Generic[K, T]):
                 if existing is cls:
                     raise RegistryDuplicateError(f"Component already registered: {key}")
 
+                key_label = getattr(key, "as_str", None) or str(key)
                 existing_fqcn = f"{existing.__module__}.{existing.__name__}"
                 candidate_fqcn = f"{cls.__module__}.{cls.__name__}"
 
                 raise RegistryCollisionError(
                     "Key already registered to different instance: {key} "
                     "(existing={existing_fqcn}, candidate={candidate_fqcn})".format(
-                        key=key,
+                        key=key_label,
                         existing_fqcn=existing_fqcn,
                         candidate_fqcn=candidate_fqcn,
                     )

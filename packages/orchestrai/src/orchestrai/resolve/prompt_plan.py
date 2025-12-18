@@ -7,6 +7,7 @@ from typing import Iterable
 
 from orchestrai.components.promptkit import PromptPlan, PromptSection
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import PROMPT_SECTIONS_DOMAIN
 
 from .result import ResolutionBranch, ResolutionResult
 
@@ -44,11 +45,16 @@ def resolve_prompt_plan(service) -> ResolutionResult[PromptPlan | None]:
     # Registry match: prompt section whose identity matches the service
     section_cls = None
     if store is not None:
-        lookup_ident = getattr(service, "identity", None)
-        if isinstance(lookup_ident, Identity):
-            lookup_ident = Identity(namespace=lookup_ident.namespace, kind="prompt_section", name=lookup_ident.name)
+        lookup_ident = Identity.try_get(getattr(service, "identity", None))
+        if lookup_ident is not None:
+            lookup_ident = Identity(
+                domain=PROMPT_SECTIONS_DOMAIN,
+                namespace=lookup_ident.namespace,
+                group="prompt_section",
+                name=lookup_ident.name,
+            )
         try:
-            section_cls = store.try_get("prompt_section", lookup_ident or service.identity)
+            section_cls = store.try_get(PROMPT_SECTIONS_DOMAIN, lookup_ident or service.identity)
         except Exception:  # pragma: no cover - defensive
             logger.debug("prompt plan resolution: prompt_section lookup failed", exc_info=True)
 

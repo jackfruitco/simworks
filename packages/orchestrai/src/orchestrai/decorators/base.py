@@ -36,6 +36,7 @@ from typing import Any, Optional, Type, TypeVar, Callable, cast
 
 from orchestrai.tracing import service_span_sync
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import DEFAULT_DOMAIN
 from orchestrai.identity.resolvers import IdentityResolver
 
 logger = logging.getLogger(__name__)
@@ -51,16 +52,22 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
         return attrs
     base_keys = {
         "simcore.decorator", "simcore.class", "simcore.identity",
-        "simcore.tuple3.post_norm", "simcore.identity.name.explicit",
+        "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
+        "simcore.identity.label", "simcore.identity.tuple4",
+        "simcore.identity.domain", "simcore.identity.namespace",
+        "simcore.identity.group", "simcore.identity.name",
         # helpful snapshots when present
-        "simcore.tuple3.raw", "simcore.tuple3.post_strip",
+        "simcore.tuple4.raw", "simcore.tuple4.post_strip",
         "simcore.strip_tokens", "simcore.strip_tokens_list",
     }
     if level == "info":
         return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("simcore.")}
     minimal_keys = {
         "simcore.decorator", "simcore.class", "simcore.identity",
-        "simcore.tuple3.post_norm", "simcore.identity.name.explicit",
+        "simcore.tuple4.post_norm", "simcore.identity.name.explicit",
+        "simcore.identity.label", "simcore.identity.tuple4",
+        "simcore.identity.domain", "simcore.identity.namespace",
+        "simcore.identity.group", "simcore.identity.name",
     }
     return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("simcore.")}
 
@@ -70,7 +77,7 @@ class BaseDecorator:
 
     Subclasses may override:
       • ``get_registry(self) -> Any | None``
-      • ``derive_identity(self, cls, *, namespace, kind, name) -> Identity | (Identity, meta)``
+      • ``derive_identity(self, cls, *, domain, namespace, group, name) -> Identity | (Identity, meta)``
       • ``bind_extras(self, cls, extras: dict[str, Any]) -> None``
       • ``register(self, candidate) -> None`` (defaults to routing a RegistrationRecord)
 
@@ -85,6 +92,10 @@ class BaseDecorator:
     - Subclasses in other packages (e.g., Django) may override `derive_identity()` to call their resolver.
     """
 
+    default_domain: str | None = DEFAULT_DOMAIN
+    default_namespace: str | None = None
+    default_group: str | None = None
+
     def __init__(self, *, resolver: IdentityResolver | None = None) -> None:
         # Allow per-instance override; default to core resolver
         self.resolver: IdentityResolver = resolver or IdentityResolver()
@@ -94,7 +105,9 @@ class BaseDecorator:
         self,
         _cls: Optional[T] = None,
         *,
+        domain: Optional[str] = None,
         namespace: Optional[str] = None,
+        group: Optional[str] = None,
         kind: Optional[str] = None,
         name: Optional[str] = None,
         **extras: Any,
@@ -104,7 +117,7 @@ class BaseDecorator:
             @decorator
             class Foo: ...
 
-            @decorator(namespace="x", kind="y", name="z")
+            @decorator(domain="d", namespace="x", group="y", name="z")
             class Foo: ...
         """
 
@@ -112,25 +125,38 @@ class BaseDecorator:
             fqcn = f"{cls.__module__}.{cls.__name__}"
 
             # 1) Derive identity (subclasses may return (Identity, meta))
-            result = self.derive_identity(
+            identity_result = self.derive_identity(
                 cls,
+                domain=domain,
                 namespace=namespace,
-                kind=kind,
+                group=group or kind,
                 name=name,
             )
-            if isinstance(result, tuple) and len(result) == 2:
-                identity, meta = result  # type: ignore[misc]
+            if isinstance(identity_result, tuple) and len(identity_result) == 2:
+                identity, meta = identity_result  # type: ignore[misc]
             else:
-                identity, meta = result, {}
+                identity, meta = identity_result, {}
+
+            meta_dict: dict[str, Any] = dict(meta or {}) if isinstance(meta, dict) else {}
+            meta_dict.update(
+                {
+                    "simcore.identity.label": identity.as_str,
+                    "simcore.identity.tuple4": identity.as_tuple,
+                    "simcore.identity.domain": identity.domain,
+                    "simcore.identity.namespace": identity.namespace,
+                    "simcore.identity.group": identity.group,
+                    "simcore.identity.name": identity.name,
+                }
+            )
 
             # 2) Pin identity to class (avoid clobbering .identity descriptor)
             pin_func = getattr(cls, "pin_identity", None)
             if callable(pin_func):
-                pin_func(identity, meta)
+                pin_func(identity, meta_dict)
             else:
                 # fallback: set private cache attributes to avoid importing IdentityMixin here
                 setattr(cls, "_IdentityMixin__identity_cached", identity)
-                setattr(cls, "_IdentityMixin__identity_meta_cached", meta)
+                setattr(cls, "_IdentityMixin__identity_meta_cached", meta_dict)
 
             # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
@@ -144,11 +170,12 @@ class BaseDecorator:
                 "simcore.decorator": self.__class__.__name__,
                 "simcore.class": fqcn,
                 "simcore.identity": final_label,
-                # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple3.*)
-                **({} if not isinstance(meta, dict) else meta),
-                # Echo e    xplicit args if provided (drop Nones below)
+                # Optional debug/meta provided by resolvers (e.g., ai.strip_tokens, ai.tuple4.*)
+                **meta_dict,
+                # Echo explicit args if provided (drop Nones below)
+                "simcore.domain_arg": domain,
                 "simcore.namespace_arg": namespace,
-                "simcore.kind_arg": kind,
+                "simcore.group_arg": group or kind,
                 "simcore.name_arg": name,
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
@@ -183,24 +210,33 @@ class BaseDecorator:
         self,
         cls: Type[Any],
         *,
+        domain: Optional[str],
         namespace: Optional[str],
-        kind: Optional[str],
+        group: Optional[str],
         name: Optional[str],
     ) -> tuple[Identity, dict[str, Any] | None]:
         """Derive + validate identity using the configured resolver (core default).
 
         Precedence (core):
           - name: explicit (arg/attr) preserved-as-is (trim only) or derived from class
-          - namespace: arg → class attr → module root → "default"
-          - kind: arg → class attr → "default"
+          - domain: arg → class attr → decorator default → error
+          - namespace: arg → class attr → decorator default → module root → "default"
+          - group: arg → class attr → decorator default → "default" (legacy `kind` accepted)
 
         Token stripping & normalization are implemented in the Identity layer.
         """
+        context = {
+            "default_domain": getattr(self, "default_domain", DEFAULT_DOMAIN),
+            "default_namespace": getattr(self, "default_namespace", None),
+            "default_group": getattr(self, "default_group", None),
+        }
         identity, meta = self.resolver.resolve(
             cls,
+            domain=domain,
             namespace=namespace,
-            kind=kind,
+            group=group,
             name=name,
+            context=context,
         )
         return identity, meta
 

@@ -5,6 +5,12 @@ import pytest
 
 from orchestrai import OrchestrAI, current_app
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import (
+    CODECS_DOMAIN,
+    PROMPT_SECTIONS_DOMAIN,
+    SCHEMAS_DOMAIN,
+    SERVICES_DOMAIN,
+)
 from orchestrai.components.codecs.codec import BaseCodec
 from orchestrai.components.promptkit import PromptPlan, PromptSection
 from orchestrai.components.schemas import BaseOutputSchema
@@ -60,17 +66,17 @@ class RecordingClient:
         yield {"stream": True}
 
 
-@schema(namespace="svc", kind="result", name="explicit")
+@schema(namespace="svc", group="result", name="explicit")
 class ExplicitSchema(BaseOutputSchema):
     foo: str | None = None
 
 
-@schema(namespace="svc", kind="service", name="identity")
+@schema(namespace="svc", group="service", name="identity")
 class IdentitySchema(BaseOutputSchema):
     bar: str | None = None
 
 
-@codec(namespace="fake", kind="responses", name="json")
+@codec(namespace="fake", group="responses", name="json")
 class RegistryCodec(BaseCodec):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -87,7 +93,7 @@ class RegistryCodec(BaseCodec):
 
 
 class InlineCodec(BaseCodec):
-    identity = Identity("svc", "codec", "inline")
+    identity = Identity(domain=CODECS_DOMAIN, namespace="svc", group="codec", name="inline")
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.encoded: Request | None = None
@@ -102,9 +108,9 @@ class InlineCodec(BaseCodec):
         return resp
 
 
-@prompt_section(namespace="svc", kind="section", name="base")
+@prompt_section(namespace="svc", group="section", name="base")
 class IdentitySection(PromptSection):
-    identity = Identity("svc", "section", "base")
+    identity = Identity(domain=PROMPT_SECTIONS_DOMAIN, namespace="svc", group="section", name="base")
     instruction = "identity instruction"
     message = "identity message"
 
@@ -113,7 +119,9 @@ class OverrideSection(PromptSection):
     namespace = "svc"
     kind = "section"
     name = "override"
-    identity = Identity(namespace, kind, name)
+    identity = Identity(
+        domain=PROMPT_SECTIONS_DOMAIN, namespace=namespace, group=kind, name=name
+    )
     instruction = "override instruction"
     message = "override message"
 
@@ -148,7 +156,10 @@ def _reset_registries():
     schema_registry.register(ExplicitSchema)
     schema_registry.register(IdentitySchema)
     prompt_section_registry.register(IdentitySection)
-    SimpleService.pin_identity(Identity("svc", "service", "base"), {})
+    SimpleService.pin_identity(
+        Identity(domain=SERVICES_DOMAIN, namespace="svc", group="service", name="base"),
+        {},
+    )
     yield
     codec_registry._store.clear()
     schema_registry._store.clear()
@@ -170,15 +181,15 @@ def client():
 
 
 def test_service_definition_methods_register_and_pin_identity():
-    @service(namespace="svc", kind="service", name="decorated")
+    @service(namespace="svc", group="service", name="decorated")
     class DecoratedService(SimpleService):
         pass
 
-    assert DecoratedService.identity.as_str == "svc.service.decorated"
-    assert service_registry.get("svc.service.decorated") is DecoratedService
+    assert DecoratedService.identity.as_str == "services.svc.service.decorated"
+    assert service_registry.get("services.svc.service.decorated") is DecoratedService
 
     inline = SimpleService()
-    assert inline.identity.as_str == "svc.service.base"
+    assert inline.identity.as_str == "services.svc.service.base"
 
     built = DecoratedService.using()
     assert isinstance(built, DecoratedService)
@@ -227,16 +238,30 @@ def test_response_schema_precedence_override_class_identity(emitter, client):
     class ClassSchema(BaseOutputSchema):
         val: str | None = None
 
-    @schema(namespace="svc", kind="service", name="identity_match")
+    @schema(namespace="svc", group="service", name="identity_match")
     class IdentityResolved(BaseOutputSchema):
         data: str | None = None
-    IdentityResolved.pin_identity(Identity("svc", "service", "identity_match"), {})
+    IdentityResolved.pin_identity(
+        Identity(
+            domain=SERVICES_DOMAIN, namespace="svc", group="service", name="identity_match"
+        ),
+        {},
+    )
     schema_registry.register(IdentityResolved)
-    assert schema_registry.get(Identity("svc", "service", "identity_match")) is IdentityResolved
+    assert (
+        schema_registry.get(
+            Identity(
+                domain=SERVICES_DOMAIN, namespace="svc", group="service", name="identity_match"
+            )
+        )
+        is IdentityResolved
+    )
 
     class SchemaService(SimpleService):
         response_schema = ClassSchema
-    SchemaService.pin_identity(Identity("svc", "service", "schema"), {})
+    SchemaService.pin_identity(
+        Identity(domain=SERVICES_DOMAIN, namespace="svc", group="service", name="schema"), {}
+    )
 
     # override wins
     svc_override = SchemaService(
@@ -262,7 +287,12 @@ def test_response_schema_precedence_override_class_identity(emitter, client):
     # identity lookup when no class/override
     class IdentityService(SimpleService):
         pass
-    IdentityService.pin_identity(Identity("svc", "service", "identity_match"), {})
+    IdentityService.pin_identity(
+        Identity(
+            domain=SERVICES_DOMAIN, namespace="svc", group="service", name="identity_match"
+        ),
+        {},
+    )
 
     svc_identity = IdentityService(
         emitter=emitter,
@@ -279,12 +309,14 @@ def test_response_schema_precedence_override_class_identity(emitter, client):
 
 def test_codec_precedence_override_then_class_then_registry(emitter, client):
     class ClassCodec(BaseCodec):
-        identity = Identity("svc", "codec", "class")
+        identity = Identity(domain=CODECS_DOMAIN, namespace="svc", group="codec", name="class")
 
     class CodecService(SimpleService):
         codec_cls = ClassCodec
         response_schema = ExplicitSchema
-    CodecService.pin_identity(Identity("svc", "service", "codec"), {})
+    CodecService.pin_identity(
+        Identity(domain=SERVICES_DOMAIN, namespace="svc", group="service", name="codec"), {}
+    )
 
     # override wins over class
     svc_override = CodecService(
@@ -327,7 +359,9 @@ def test_codec_precedence_override_then_class_then_registry(emitter, client):
 def test_prompt_plan_precedence(emitter, client):
     class PlanService(SimpleService):
         prompt_plan = PromptPlan.from_sections([IdentitySection])
-    PlanService.pin_identity(Identity("svc", "service", "plan"), {})
+    PlanService.pin_identity(
+        Identity(domain=SERVICES_DOMAIN, namespace="svc", group="service", name="plan"), {}
+    )
 
     svc_class = PlanService(emitter=emitter, client=client)
     prompt_class = asyncio.run(svc_class.aget_prompt())
@@ -339,7 +373,9 @@ def test_prompt_plan_precedence(emitter, client):
     assert prompt_override.instruction == OverrideSection.instruction
 
     class MatchingSection(PromptSection):
-        identity = Identity("svc", "service", "base")
+        identity = Identity(
+            domain=PROMPT_SECTIONS_DOMAIN, namespace="svc", group="service", name="base"
+        )
         instruction = "identity instruction"
         message = "identity message"
 
@@ -417,4 +453,3 @@ def test_streaming_path_emits_chunks(emitter, client):
     )
     asyncio.run(svc.run_stream())
     assert emitter.stream_complete, "stream completion should be emitted"
-

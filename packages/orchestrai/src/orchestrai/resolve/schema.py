@@ -7,6 +7,7 @@ from typing import Iterable
 
 from orchestrai.components.schemas import BaseOutputSchema, sort_adapters
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import SCHEMAS_DOMAIN
 
 from .result import ResolutionBranch, ResolutionResult
 
@@ -76,11 +77,16 @@ def resolve_schema(
 
     candidate = None
     if store is not None:
-        lookup_ident = identity
-        if isinstance(identity, Identity):
-            lookup_ident = Identity(namespace=identity.namespace, kind="schema", name=identity.name)
+        lookup_ident = Identity.try_get(identity)
+        if lookup_ident is not None:
+            lookup_ident = Identity(
+                domain=SCHEMAS_DOMAIN,
+                namespace=lookup_ident.namespace,
+                group="schema",
+                name=lookup_ident.name,
+            )
         try:
-            candidate = store.try_get("schema", lookup_ident)
+            candidate = store.try_get(SCHEMAS_DOMAIN, lookup_ident or identity)
         except Exception:
             logger.debug("schema resolution: ComponentStore lookup failed", exc_info=True)
 

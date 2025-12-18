@@ -25,8 +25,8 @@ def label(ident: IdentityLike) -> str:
     return Identity.get_for(ident).as_str
 
 
-def tuple3(ident: IdentityLike) -> tuple[str, str, str]:
-    return Identity.get_for(ident).as_tuple3
+def tuple4(ident: IdentityLike) -> tuple[str, str, str, str]:
+    return Identity.get_for(ident).as_tuple4
 
 
 def from_(ident: IdentityLike) -> Identity:

@@ -16,7 +16,7 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
-# Identity fields now use the centralized tuple3 (namespace, kind, name).
+# Identity fields now use the centralized tuple4 (domain, namespace, group, name).
 # The 'service_name' field has been migrated to 'name' for consistency.
 class AIRequestAudit(TimestampedModel):
     """Audit row for an outbound AI request.
@@ -69,15 +69,17 @@ class AIRequestAudit(TimestampedModel):
     # ---- identity conveniences (read-side) ---------------------------------
     @property
     def identity(self) -> Identity:
+        domain = getattr(self, "domain", None) or "default"
         return Identity(
+            domain=domain,
             namespace=self.namespace or "default",
-            kind=self.kind or "default",
+            group=self.kind or "default",
             name=self.name or "default",
         )
 
     @property
-    def identity_tuple(self) -> tuple[str, str, str]:
-        return self.identity.as_tuple3
+    def identity_tuple(self) -> tuple[str, str, str, str]:
+        return self.identity.as_tuple
 
     @property
     def identity_str(self) -> str:
@@ -133,15 +135,17 @@ class AIResponseAudit(TimestampedModel):
     # ---- identity conveniences (read-side) ---------------------------------
     @property
     def identity(self) -> Identity:
+        domain = getattr(self, "domain", None) or "default"
         return Identity(
+            domain=domain,
             namespace=self.namespace or "default",
-            kind=self.kind or "default",
+            group=self.kind or "default",
             name=self.name or "default",
         )
 
     @property
-    def identity_tuple(self) -> tuple[str, str, str]:
-        return self.identity.as_tuple3
+    def identity_tuple(self) -> tuple[str, str, str, str]:
+        return self.identity.as_tuple
 
     @property
     def identity_str(self) -> str:
@@ -189,15 +193,17 @@ class AIOutbox(TimestampedModel):
     # ---- identity conveniences (read-side) ---------------------------------
     @property
     def identity(self) -> Identity:
+        domain = getattr(self, "domain", None) or "default"
         return Identity(
+            domain=domain,
             namespace=self.namespace or "default",
-            kind=self.kind or "default",
+            group=self.kind or "default",
             name=self.name or "default",
         )
 
     @property
-    def identity_tuple(self) -> tuple[str, str, str]:
-        return self.identity.as_tuple3
+    def identity_tuple(self) -> tuple[str, str, str, str]:
+        return self.identity.as_tuple
 
     @property
     def identity_str(self) -> str:

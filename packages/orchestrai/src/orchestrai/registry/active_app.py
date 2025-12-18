@@ -7,6 +7,15 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Callable, Generator
 
+from orchestrai.identity import Identity
+from orchestrai.identity.domains import (
+    CODECS_DOMAIN,
+    PROMPT_SECTIONS_DOMAIN,
+    PROVIDER_BACKENDS_DOMAIN,
+    PROVIDERS_DOMAIN,
+    SCHEMAS_DOMAIN,
+    SERVICES_DOMAIN,
+)
 from orchestrai.utils.proxy import Proxy
 
 from .component_store import ComponentStore
@@ -17,7 +26,7 @@ _active_app: ContextVar[Any | None] = ContextVar("orca_registry_app", default=No
 _pending = PendingRegistrations()
 
 
-def _infer_kind_from_type(component_type: type[Any]) -> str | None:
+def _infer_domain_from_type(component_type: type[Any]) -> str | None:
     try:
         from orchestrai.components.services.service import BaseService as _BaseService
         from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
@@ -28,15 +37,15 @@ def _infer_kind_from_type(component_type: type[Any]) -> str | None:
         return None
 
     if issubclass(component_type, _BaseService):
-        return "service"
+        return SERVICES_DOMAIN
     if issubclass(component_type, _BaseCodec):
-        return "codec"
+        return CODECS_DOMAIN
     if issubclass(component_type, _BaseOutputSchema):
-        return "schema"
+        return SCHEMAS_DOMAIN
     if issubclass(component_type, _PromptSection):
-        return "prompt_section"
+        return PROMPT_SECTIONS_DOMAIN
     if issubclass(component_type, _BaseProvider):
-        return "backend"
+        return PROVIDERS_DOMAIN
     return None
 
 
@@ -100,23 +109,42 @@ def get_registry_for(component: type[Any] | str) -> Any | None:
     if store is None:
         return None
 
-    kind = component if isinstance(component, str) else _infer_kind_from_type(component)
-    if kind is None:
+    domain: str | None
+    if isinstance(component, str):
+        domain = component
+    else:
+        identity = getattr(component, "identity", None)
+        try:
+            domain = Identity.get_for(identity).domain if identity is not None else None
+        except Exception:
+            domain = None
+
+        if domain is None:
+            domain = _infer_domain_from_type(component)
+
+    if domain is None:
         return None
-    return store.registry(kind)
+    return store.registry(domain)
 
 
-def registry_proxy(kind: str) -> Proxy:
-    return Proxy(lambda: get_component_store().registry(kind))
+def _proxy_target(domain: str):
+    store = get_component_store()
+    if store is None:
+        return None
+    return store.registry(domain)
 
 
-# Public proxies for common kinds
-services = registry_proxy("service")
-codecs = registry_proxy("codec")
-schemas = registry_proxy("schema")
-prompt_sections = registry_proxy("prompt_section")
-provider_backends = registry_proxy("backend")
-providers = registry_proxy("provider")
+def registry_proxy(domain: str) -> Proxy:
+    return Proxy(lambda: _proxy_target(domain))
+
+
+# Public proxies for common domains
+services = registry_proxy(SERVICES_DOMAIN)
+codecs = registry_proxy(CODECS_DOMAIN)
+schemas = registry_proxy(SCHEMAS_DOMAIN)
+prompt_sections = registry_proxy(PROMPT_SECTIONS_DOMAIN)
+provider_backends = registry_proxy(PROVIDER_BACKENDS_DOMAIN)
+providers = registry_proxy(PROVIDERS_DOMAIN)
 
 
 __all__ = [

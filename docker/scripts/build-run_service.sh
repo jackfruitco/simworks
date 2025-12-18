@@ -9,8 +9,8 @@ SERVER_SERVICE="${SERVER_SERVICE:-server}"
 # Usage:
 #   ./build-run_service.sh [service_identity] [sim_context_json]
 # Example:
-#   ./build-run_service.sh chatlab.standardized_patient.initial '{"simulation_id": 1}'
-SERVICE_IDENTITY="${1:-chatlab.standardized_patient.initial}"
+#   ./build-run_service.sh services.chatlab.standardized_patient.initial '{"simulation_id": 1}'
+SERVICE_IDENTITY="${1:-services.chatlab.standardized_patient.initial}"
 SIM_CONTEXT_JSON="${2:-{\"simulation_id\": 1}}"
 
 echo ">>> Building images (no cache) using ${DEV_COMPOSE_FILE}..."
