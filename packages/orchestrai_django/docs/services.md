@@ -115,6 +115,9 @@ You can also use `.using()` for overrides:
 generate_initial.using(backend="celery", run_after=30).enqueue(simulation=my_sim)
 ```
 
+> Context must be passed as a single dictionary: `Service.using(ctx={"simulation_id": ...})`.
+> Passing runtime identifiers as direct keyword args will raise a `TypeError`.
+
 ---
 
 ## Common Hooks

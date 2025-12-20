@@ -1,4 +1,5 @@
 # chatlab/utils.py
+import inspect
 import logging
 
 from asgiref.sync import sync_to_async
@@ -7,7 +8,6 @@ from channels.layers import get_channel_layer
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
-from orchestrai import get_current_app
 from orchestrai.components.providerkit.exceptions import ProviderCallError
 from orchestrai.components.services.exceptions import ServiceError
 from orchestrai.exceptions import SimCoreError
@@ -27,6 +27,12 @@ APP_NAME = getattr(ChatLabConfig, "name") or getattr(ChatLabConfig, "label") or 
 
 class SimulationSchedulingError(ServiceError):
     """Raised when orchestration for a new simulation cannot be scheduled."""
+
+
+async def await_if_needed(result):
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 
 async def create_new_simulation(
@@ -54,12 +60,14 @@ async def create_new_simulation(
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
     from .orca.services import GenerateInitialResponse
+
     try:
-        await get_current_app().services.aschedule(
-            GenerateInitialResponse,
-            simulation_id=simulation.id,
-            user_id=user.id,
-        )
+        await GenerateInitialResponse.using(
+            ctx={
+                "simulation_id": simulation.id,
+                "user_id": user.id,
+            }
+        ).task.enqueue()
     except (ProviderCallError, ServiceError, SimCoreError) as exc:
         logger.exception(
             "Failed to schedule initial response for simulation %s (user=%s)",

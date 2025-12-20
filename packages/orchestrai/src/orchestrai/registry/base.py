@@ -107,12 +107,15 @@ class BaseRegistry(Generic[K, T]):
             key is not found or is not registered.
         """
         k = self._coerce(key)
+        if isinstance(k, Identity):
+            k = k.label
+
         with self._lock:
             try:
                 return self._store[k]
             except KeyError as err:
                 raise RegistryLookupError(
-                    f"Component with identity {key!r} not found or not registered"
+                    f"Component with identity {key!r} not found or not registered (expected one of: {self._store})"
                 ) from err
 
     async def aget(self, key: Any) -> type[T]:
@@ -290,4 +293,4 @@ class ComponentRegistry(BaseRegistry[Identity, T]):
     """Registry specialized for Identity-keyed component classes."""
 
     def __init__(self) -> None:
-        super().__init__(coerce_key=Identity.get_for)
+        super().__init__(coerce_key=lambda x: Identity.get_for(x).label)

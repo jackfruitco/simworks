@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, TYPE_CHECKING
 
 from orchestrai._state import get_current_app
+from orchestrai.service_runners import BaseServiceRunner
 
 if TYPE_CHECKING:  # pragma: no cover
     from orchestrai.components.services.service import BaseService

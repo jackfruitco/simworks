@@ -113,11 +113,18 @@ def get_registry_for(component: type[Any] | str) -> Any | None:
     if isinstance(component, str):
         domain = component
     else:
-        identity = getattr(component, "identity", None)
-        try:
-            domain = Identity.get_for(identity).domain if identity is not None else None
-        except Exception:
-            domain = None
+        domain = getattr(component, "DOMAIN", None)
+
+        if domain is None:
+            identity = getattr(component, "identity", None)
+            try:
+                domain = Identity.get_for(identity).domain if identity is not None else None
+            except Exception:
+                domain = None
+
+        if domain is None:
+            domain_hint = getattr(component, "domain", None)
+            domain = domain_hint if isinstance(domain_hint, str) else None
 
         if domain is None:
             domain = _infer_domain_from_type(component)
