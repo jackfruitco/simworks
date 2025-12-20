@@ -62,7 +62,7 @@ async def create_new_simulation(
     from .orca.services import GenerateInitialResponse
 
     try:
-        await GenerateInitialResponse.using(
+        GenerateInitialResponse.using(
             ctx={
                 "simulation_id": simulation.id,
                 "user_id": user.id,
