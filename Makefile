@@ -1,5 +1,6 @@
 DEV_COMPOSE=docker/compose.dev.yaml
 PROD_COMPOSE=docker/compose.prod.yaml
+DEV_PROFILES ?= core,workers
 
 .PHONY: help dev-up dev-down dev-logs dev-shell dev-chown-vols dev-collectstatic prod-build prod-up prod-down prod-logs
 
@@ -17,7 +18,13 @@ help:
 	@echo "  prod-logs          Tail prod web logs"
 
 dev-up:
-	docker compose -f $(DEV_COMPOSE) up --build
+	docker compose -f $(DEV_COMPOSE) --profile $(DEV_PROFILES) up --build
+
+dev-up-core:
+	$(MAKE) dev-up DEV_PROFILES=core
+
+dev-up-full:
+	$(MAKE) dev-up DEV_PROFILES=core,workers
 
 dev-down:
 	docker compose -f $(DEV_COMPOSE) down
