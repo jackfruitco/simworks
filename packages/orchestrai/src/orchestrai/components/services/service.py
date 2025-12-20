@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
 
+from orchestrai.services import ServiceCall
+
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
@@ -107,6 +109,26 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     backoff_jitter: float = 0.1  # +/- seconds
 
     dry_run: bool = False
+
+    # ------------------------------------------------------------------
+    # Task helpers
+    # ------------------------------------------------------------------
+    @classmethod
+    def using(cls, **service_kwargs: Any) -> ServiceCall:
+        return ServiceCall(service_cls=cls, service_kwargs=service_kwargs, phase="service")
+
+    @property
+    def task(self) -> ServiceCall:
+        context = getattr(self, "context", None)
+        service_kwargs: dict[str, Any] = {}
+
+        if context is not None:
+            try:
+                service_kwargs["context"] = dict(context)
+            except Exception:
+                service_kwargs["context"] = context
+
+        return ServiceCall(service_cls=type(self), service_kwargs=service_kwargs, phase="runner")
 
     def __init__(
             self,

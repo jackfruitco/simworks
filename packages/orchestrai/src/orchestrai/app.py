@@ -84,6 +84,7 @@ class OrchestrAI:
     providers: dict[str, Any] = field(default_factory=dict)
 
     service_runners: dict[str, Any] = field(default_factory=dict)
+    default_service_runner: str | None = None
     _service_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(
         default_factory=list, repr=False
     )
@@ -97,6 +98,12 @@ class OrchestrAI:
         # Load user overrides from the default settings module and optional envvar
         self.conf.update_from_object("orchestrai.settings")
         self.conf.update_from_envvar()
+
+        try:
+            # Register built-in service runners (no-op if already imported)
+            import orchestrai.components.service_runners.local  # noqa: F401
+        except Exception:
+            pass
 
         set_active_registry_app(self)
 

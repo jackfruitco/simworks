@@ -123,6 +123,17 @@ def configure_from_django_settings(
     conf = Settings()
     conf.update_from_mapping(mapping)
 
+    # Ensure Django-backed service runners register finalize callbacks early.
+    try:
+        import orchestrai_django.components.service_runners.django_tasks  # noqa: F401
+    except Exception:
+        pass
+
+    try:
+        setattr(app, "default_service_runner", "django")
+    except Exception:
+        pass
+
     discovery_paths: list[str] = []
     discovery_paths.extend(conf.get("DISCOVERY_PATHS", ()))
     discovery_paths.extend(_build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ())))
