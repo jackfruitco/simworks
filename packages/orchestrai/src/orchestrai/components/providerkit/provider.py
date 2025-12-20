@@ -12,6 +12,7 @@ from slugify import slugify
 
 from .exceptions import ProviderConfigurationError
 from ...identity import IdentityMixin
+from ...identity.domains import PROVIDERS_DOMAIN
 from ...tracing import service_span_sync
 from ...types import (
     Request, Response, StreamChunk,
@@ -73,6 +74,8 @@ class BaseProvider(IdentityMixin, ABC):
     api_surface: ClassVar[str | None ] = None
     api_version: ClassVar[str | None] = None
     api_key_required: ClassVar[bool] = False
+    DOMAIN: ClassVar[str] = PROVIDERS_DOMAIN
+    domain: ClassVar[str | None] = PROVIDERS_DOMAIN
 
     _tool_adapter: Optional["BaseProvider.ToolAdapter"] = None
 

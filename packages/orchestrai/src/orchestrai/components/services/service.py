@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync, sync_to_async
 
 from orchestrai.services import ServiceCall
+from orchestrai.identity.domains import SERVICES_DOMAIN
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..base import BaseComponent
@@ -90,6 +91,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     3) Registry by service identity
     """
     abstract: ClassVar[bool] = True
+    DOMAIN: ClassVar[str] = SERVICES_DOMAIN
+    domain: ClassVar[str | None] = SERVICES_DOMAIN
 
     # Class-level configuration / hints
     required_context_keys: ClassVar[tuple[str, ...]] = ()

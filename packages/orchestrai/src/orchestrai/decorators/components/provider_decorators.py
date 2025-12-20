@@ -11,7 +11,7 @@ This module defines two decorators: one for Provider Backends, and one for Provi
 - Enforce that only BaseProvider subclasses can be decorated.
 """
 import logging
-from typing import Any, Type
+from typing import Any, Optional, Type
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.decorators.base import BaseDecorator
@@ -57,6 +57,24 @@ class ProviderBackendDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "provider_backends"
 
+    def derive_identity(
+            self,
+            cls: Type[Any],
+            *,
+            domain: Optional[str],
+            namespace: Optional[str],
+            group: Optional[str],
+            name: Optional[str],
+    ):
+        domain_override = domain or self.default_domain
+        return super().derive_identity(
+            cls,
+            domain=domain_override,
+            namespace=namespace,
+            group=group,
+            name=name,
+        )
+
     def register(self, candidate: Type[Any]) -> None:
         """Register a backend class after guarding its base type.
 
@@ -66,6 +84,11 @@ class ProviderBackendDecorator(BaseDecorator):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseProvider to use @provider_backend"
             )
+        candidate.DOMAIN = PROVIDER_BACKENDS_DOMAIN
+        try:
+            candidate.domain = PROVIDER_BACKENDS_DOMAIN
+        except Exception:
+            pass
         super().register(candidate)
 
 
