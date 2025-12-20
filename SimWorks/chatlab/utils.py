@@ -61,20 +61,13 @@ async def create_new_simulation(
 
     from .orca.services import GenerateInitialResponse
 
-    service_call = GenerateInitialResponse.using(
-        ctx={
-            "simulation_id": simulation.id,
-            "user_id": user.id,
-        }
-    )
-
     try:
         await GenerateInitialResponse.using(
             ctx={
                 "simulation_id": simulation.id,
                 "user_id": user.id,
             }
-        ).enqueue()
+        ).task.enqueue()
     except (ProviderCallError, ServiceError, SimCoreError) as exc:
         logger.exception(
             "Failed to schedule initial response for simulation %s (user=%s)",

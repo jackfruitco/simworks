@@ -51,7 +51,10 @@ class ServiceCall:
         try:
             runner = runners[runner_name]
         except KeyError as exc:  # pragma: no cover - defensive
-            raise LookupError(f"Service runner '{runner_name}' is not registered") from exc
+            raise LookupError(
+                f"Service runner '{runner_name}' is not registered "
+                f"(expected one of: {list(runners.keys())})"
+            ) from exc
 
         return runner_name, runner
 
