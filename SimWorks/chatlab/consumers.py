@@ -207,11 +207,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         from .orca.services import GenerateReplyResponse
 
         await GenerateReplyResponse.using(
-            simulation_id=self.simulation.pk,
-            user_msg_id=user_msg.pk,
+            ctx={
+                "simulation_id": self.simulation.pk,
+                "user_msg_id": user_msg.pk,
+            },
         ).enqueue()
-
-        await await_if_needed(service_call.enqueue())
 
 
     async def _generate_stitch_response(self, user_msg: Message) -> None:

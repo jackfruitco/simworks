@@ -1,6 +1,9 @@
 # orchestrai/components/schemas/base.py
 
+from typing import ClassVar
+
 from orchestrai.identity import IdentityMixin
+from orchestrai.identity.domains import SCHEMAS_DOMAIN
 from orchestrai.types import StrictBaseModel
 
 
@@ -14,4 +17,5 @@ class BaseOutputSchema(StrictBaseModel, IdentityMixin):
 
     Async-first registry access with a sync convenience wrapper.
     """
-    pass
+    DOMAIN: ClassVar[str] = SCHEMAS_DOMAIN
+    domain: ClassVar[str | None] = SCHEMAS_DOMAIN

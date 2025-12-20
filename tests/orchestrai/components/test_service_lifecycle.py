@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from orchestrai import OrchestrAI, current_app
+from orchestrai.components.base import BaseComponent
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
@@ -193,6 +194,47 @@ def test_service_definition_methods_register_and_pin_identity():
 
     built = DecoratedService.using()
     assert isinstance(built, DecoratedService)
+
+
+def test_using_rejects_context_kwargs():
+    with pytest.raises(TypeError) as excinfo:
+        SimpleService.using(simulation_id=1, user_id=2)
+
+    msg = str(excinfo.value)
+    assert "does not accept context as kwargs" in msg
+    assert "simulation_id" in msg
+
+
+def test_using_accepts_ctx_mapping():
+    built = SimpleService.using(ctx={"simulation_id": 1, "user_id": 2})
+
+    assert isinstance(built, SimpleService)
+    assert built.context["simulation_id"] == 1
+    assert built.context["user_id"] == 2
+
+
+def test_using_accepts_context_alias():
+    built = SimpleService.using(context={"simulation_id": 1})
+
+    assert isinstance(built, SimpleService)
+    assert built.context["simulation_id"] == 1
+
+
+def test_context_not_forwarded_to_base_component(monkeypatch):
+    calls: list[dict] = []
+
+    original_init = BaseComponent.__init__
+
+    def spy(self):
+        calls.append({})
+        return original_init(self)
+
+    monkeypatch.setattr(BaseComponent, "__init__", spy)
+
+    built = SimpleService.using(ctx={"simulation_id": 1, "user_id": 2})
+
+    assert isinstance(built, SimpleService)
+    assert calls == [{}]
 
 
 def test_shared_service_registration_via_finalize(tmp_path):

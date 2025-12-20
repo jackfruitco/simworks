@@ -62,14 +62,18 @@ async def create_new_simulation(
     from .orca.services import GenerateInitialResponse
 
     service_call = GenerateInitialResponse.using(
-        simulation_id=simulation.id,
-        user_id=user.id,
+        ctx={
+            "simulation_id": simulation.id,
+            "user_id": user.id,
+        }
     )
 
     try:
         await GenerateInitialResponse.using(
-            simulation_id=simulation.id,
-            user_id=user.id,
+            ctx={
+                "simulation_id": simulation.id,
+                "user_id": user.id,
+            }
         ).enqueue()
     except (ProviderCallError, ServiceError, SimCoreError) as exc:
         logger.exception(
