@@ -220,6 +220,21 @@ class IdentityResolver:
             "orchestrai.strip_tokens": tokens_csv,
             "orchestrai.strip_tokens_list": tokens_list,
         }
+        # Backward-compatible aliases
+        meta.update(
+            {
+                "simcore.tuple4.raw": meta["orchestrai.tuple4.raw"],
+                "simcore.tuple4.post_strip": meta["orchestrai.tuple4.post_strip"],
+                "simcore.tuple4.post_norm": meta["orchestrai.tuple4.post_norm"],
+                "simcore.identity.name.explicit": meta["orchestrai.identity.name.explicit"],
+                "simcore.identity.source.name": meta["orchestrai.identity.source.name"],
+                "simcore.identity.source.domain": meta["orchestrai.identity.source.domain"],
+                "simcore.identity.source.namespace": meta["orchestrai.identity.source.namespace"],
+                "simcore.identity.source.group": meta["orchestrai.identity.source.group"],
+                "simcore.strip_tokens": meta["orchestrai.strip_tokens"],
+                "simcore.strip_tokens_list": meta["orchestrai.strip_tokens_list"],
+            }
+        )
 
         # Validate last to keep meta available for debugging on failure
         _validate_parts(ident.domain, ident.namespace, ident.group, ident.name)

@@ -23,12 +23,16 @@ Prompt plans
 """
 
 import asyncio
+import inspect
 import logging
 from abc import ABC
 from typing import Any, ClassVar, Union, Optional, Protocol
 from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
+
+from orchestrai.services import ServiceCall
+from orchestrai.identity.domains import SERVICES_DOMAIN
 
 from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
 from ..base import BaseComponent
@@ -87,6 +91,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     3) Registry by service identity
     """
     abstract: ClassVar[bool] = True
+    DOMAIN: ClassVar[str] = SERVICES_DOMAIN
+    domain: ClassVar[str | None] = SERVICES_DOMAIN
 
     # Class-level configuration / hints
     required_context_keys: ClassVar[tuple[str, ...]] = ()
@@ -107,6 +113,26 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     backoff_jitter: float = 0.1  # +/- seconds
 
     dry_run: bool = False
+
+    # ------------------------------------------------------------------
+    # Task helpers
+    # ------------------------------------------------------------------
+    @classmethod
+    def using(cls, **service_kwargs: Any) -> ServiceCall:
+        return ServiceCall(service_cls=cls, service_kwargs=service_kwargs, phase="service")
+
+    @property
+    def task(self) -> ServiceCall:
+        context = getattr(self, "context", None)
+        service_kwargs: dict[str, Any] = {}
+
+        if context is not None:
+            try:
+                service_kwargs["context"] = dict(context)
+            except Exception:
+                service_kwargs["context"] = context
+
+        return ServiceCall(service_cls=type(self), service_kwargs=service_kwargs, phase="runner")
 
     def __init__(
             self,
@@ -219,26 +245,56 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         self._set_context(self._schema_resolution.context("schema"), log_cat="schema")
 
     @classmethod
-    def using(cls, **overrides: Any) -> BaseService:
+    def using(
+        cls,
+        *,
+        ctx: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        **overrides: Any,
+    ) -> BaseService:
+        """Construct a new service instance with an explicit context mapping.
+
+        Notes
+        -----
+        - Context **must** be provided as a dictionary via ``ctx`` (or ``context``).
+        - Passing arbitrary keyword arguments that do not match the service
+          constructor is rejected early with a descriptive error.
         """
-        Construct a new service instance with per-call configuration overrides.
 
-        This helper is intentionally backend-agnostic. It simply forwards the given
-        keyword arguments to the service constructor. Typical overrides include:
+        if ctx is not None and context is not None:
+            raise TypeError(
+                f"{cls.__name__}.using() received both 'ctx' and 'context'. "
+                "Use a single context mapping."
+            )
 
-            - context: dict[str, Any]
-            - codec / codec_cls: CodecLike
-            - prompt_plan: PromptPlan | list[PromptSectionSpec | str] | IdentityLike
-            - prompt_engine: PromptEngine
-            - client: OrcaClient
-            - emitter: ServiceEmitter
-            - prompt_instruction_override / prompt_message_override: str
-            - dry_run: bool
+        if ctx is not None and not isinstance(ctx, dict):
+            raise TypeError("ctx must be a dict when provided")
+        if context is not None and not isinstance(context, dict):
+            raise TypeError("context must be a dict when provided")
 
-        Task-level concerns (priority, queue, retries, etc.) are handled by the
-        Django Tasks layer and MUST NOT be passed here.
-        """
-        return cls(**overrides)
+        context_dict: dict[str, Any] = {}
+        if ctx is not None:
+            context_dict = dict(ctx)
+        elif context is not None:
+            context_dict = dict(context)
+
+        allowed_params = {
+            name
+            for name, param in inspect.signature(cls.__init__).parameters.items()
+            if name != "self" and param.kind is not inspect.Parameter.VAR_KEYWORD
+        }
+        allowed_params.add("context")
+
+        unexpected_kwargs = [key for key in overrides if key not in allowed_params]
+        if unexpected_kwargs:
+            unexpected_labels = ", ".join(sorted(unexpected_kwargs))
+            raise TypeError(
+                f"{cls.__name__}.using() does not accept context as kwargs.\n"
+                "Use: .using(ctx={...})\n"
+                f"Unexpected kwargs: {unexpected_labels}"
+            )
+
+        return cls(context=context_dict, **overrides)
 
     @property
     def slug(self) -> str:

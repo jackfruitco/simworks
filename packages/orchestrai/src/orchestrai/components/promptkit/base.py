@@ -30,6 +30,7 @@ from typing import Any, Awaitable, Optional, ClassVar
 import logging
 
 from orchestrai.identity.mixins import IdentityMixin
+from orchestrai.identity.domains import PROMPT_SECTIONS_DOMAIN
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,8 @@ class PromptSection(IdentityMixin, BaseComponent, ABC):
     invoked by core today; it’s here to keep section signatures stable.
     """
     abstract: ClassVar[bool] = True
+    DOMAIN: ClassVar[str] = PROMPT_SECTIONS_DOMAIN
+    domain: ClassVar[str | None] = PROMPT_SECTIONS_DOMAIN
 
     weight: int = field(default=100, compare=True)  # to order/sort during Prompt build
     is_dynamic: ClassVar[bool] = False              # to enable/disable prompt caching

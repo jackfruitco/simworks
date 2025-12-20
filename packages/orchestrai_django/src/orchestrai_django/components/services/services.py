@@ -66,6 +66,14 @@ class DjangoBaseService(BaseService, ABC):
         keys (e.g., "simulation_id"). Services/apps are responsible for placing
         any required identifiers into `context` and validating them.
         """
+        ctx_from_kwargs = kwargs.pop("ctx", None)
+        context_from_kwargs = kwargs.pop("context", None)
+        if ctx_from_kwargs is not None or context_from_kwargs is not None:
+            raise TypeError(
+                f"{type(self).__name__}.__init__ does not accept context via arbitrary kwargs. "
+                "Pass context through the 'context' parameter or using(ctx={...})."
+            )
+
         super().__init__(context=context or {}, **kwargs)
 
         # Inject Django defaults only if not provided explicitly

@@ -12,6 +12,7 @@ from .exceptions import CodecDecodeError, CodecSchemaError
 from ..base import BaseComponent
 from ..schemas import BaseOutputSchema, sort_adapters
 from ...identity import IdentityMixin
+from ...identity.domains import CODECS_DOMAIN
 from ...tracing import service_span_sync
 from ...types import (
     Request, Response, StreamChunk,
@@ -46,6 +47,8 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
     """
 
     response_schema: ClassVar[type[BaseOutputSchema] | None] = None
+    DOMAIN: ClassVar[str] = CODECS_DOMAIN
+    domain: ClassVar[str | None] = CODECS_DOMAIN
 
     # Ordered list of schema adapters for this codec.
     # Provider-wide adapters live on codec base classes; result-type-specific adapters

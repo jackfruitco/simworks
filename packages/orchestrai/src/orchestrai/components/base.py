@@ -8,7 +8,7 @@ from .exceptions import ComponentNotFoundError
 from ..identity import IdentityLike
 
 if TYPE_CHECKING:
-    from orchestrai.registry import ComponentRegistry
+    from orchestrai.registry import ComponentRegistry, BaseRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class BaseComponent(ABC):
     # Registry accessors
     # ----------------------------------------------------------------------------------
     @classmethod
-    def get_registry(cls) -> "ComponentRegistry":
+    def get_registry(cls) -> ComponentRegistry:
         from orchestrai.registry import get_registry_for
 
         registry = get_registry_for(cls)
@@ -43,11 +43,11 @@ class BaseComponent(ABC):
         return registry
 
     @classmethod
-    async def aget_registry(cls) -> "ComponentRegistry":
+    async def aget_registry(cls) -> ComponentRegistry:
         return cls.get_registry()
 
     @classmethod
-    def try_get_registry(cls) -> "ComponentRegistry" | None:
+    def try_get_registry(cls) -> ComponentRegistry | None:
         """Return the registry for this component class, or None if not available."""
         from ..registry.exceptions import RegistryNotFoundError
 

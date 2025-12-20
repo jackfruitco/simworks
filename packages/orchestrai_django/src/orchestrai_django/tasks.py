@@ -1,17 +1,21 @@
 # orchestrai_django/tasks.py
-"""
-Celery-based task entrypoints for orchestrai_django have been removed.
+"""Minimal Django Tasks shims used by the service runner."""
 
-The legacy `run_service_task` and its dependency on a Celery queue are no
-longer supported in AIv3.
+from __future__ import annotations
 
-Execution should go through the OrchestrAI app instance:
+from typing import Any
 
-    from orchestrai import get_current_app
-    get_current_app().services.schedule(MyService, **context)
+_ENQUEUED: list[dict[str, Any]] = []
 
-Async dispatch is available via ``aschedule``/``astart`` without any Celery or
-Django task wrappers.
-"""
 
-__all__: list[str] = []
+def enqueue_service(**payload: Any) -> dict[str, Any]:
+    record = dict(payload)
+    _ENQUEUED.append(record)
+    return record
+
+
+def get_service_status(**payload: Any) -> dict[str, Any]:
+    return {"status": "queued", **payload}
+
+
+__all__ = ["enqueue_service", "get_service_status"]
