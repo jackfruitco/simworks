@@ -10,9 +10,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from orchestrai.components.services.service import BaseService
 
 
-def _coerce_runner_name(service_cls: type[BaseService], explicit: str | None) -> str:
+def _coerce_runner_name(app: Any, service_cls: type[BaseService], explicit: str | None) -> str:
     if explicit:
         return explicit
+
+    default = getattr(app, "default_service_runner", None)
+    if default:
+        return str(default)
 
     identity = getattr(service_cls, "identity", None)
     label = getattr(identity, "name", None) or getattr(identity, "as_str", None)
@@ -40,21 +44,18 @@ class ServiceCall:
         merged_kwargs = {**self.runner_kwargs, **runner_kwargs}
         return replace(self, runner_name=name or self.runner_name, runner_kwargs=merged_kwargs)
 
-    def _resolve_runner(self) -> tuple[str, BaseServiceRunner]:
+    def _resolve_runner(self) -> tuple[str, Any]:
         app = get_current_app()
         runners = getattr(app, "service_runners", None)
         if runners is None:
             raise LookupError("Current app does not expose service runners")
 
-        runner_name = _coerce_runner_name(self.service_cls, self.runner_name)
+        runner_name = _coerce_runner_name(app, self.service_cls, self.runner_name)
 
         try:
             runner = runners[runner_name]
         except KeyError as exc:  # pragma: no cover - defensive
-            raise LookupError(
-                f"Service runner '{runner_name}' is not registered "
-                f"(expected one of: {list(runners.keys())})"
-            ) from exc
+            raise LookupError(f"Service runner '{runner_name}' is not registered") from exc
 
         return runner_name, runner
 

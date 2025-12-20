@@ -115,6 +115,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     dry_run: bool = False
 
     # ------------------------------------------------------------------
+    # Task helpers
+    # ------------------------------------------------------------------
+    @classmethod
+    def using(cls, **service_kwargs: Any) -> ServiceCall:
+        return ServiceCall(service_cls=cls, service_kwargs=service_kwargs, phase="service")
+
     @property
     def task(self) -> ServiceCall:
         context = getattr(self, "context", None)
