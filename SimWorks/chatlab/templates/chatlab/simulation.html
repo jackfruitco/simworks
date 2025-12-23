@@ -33,8 +33,8 @@
 
             <form method="POST" action="{% url 'chatlab:end_simulation' simulation.id %}"
                   x-show="!{{ simulation.is_ended|yesno:'true,false' }}"
-                  {% include 'partials/forms/_csrf_form.html' with hx_headers=True %}
             >
+                {% csrf_token %}
                 <button type="submit" class="btn acct">End Simulation</button>
             </form>
         </div>
