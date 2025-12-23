@@ -18,7 +18,9 @@
          x-transition:leave-end="opacity-0 -translate-y-2">
 
     {% with custom_partial='simulation/partials/tools/_'|add:tool.name|add:'.html' %}
-        {% if custom_partial|template_exists %}
+        {% if custom_partial == 'simulation/partials/tools/_wrapper.html' %}
+            {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
+        {% elif custom_partial|template_exists %}
             {% include custom_partial with tool=tool %}
         {% elif tool.is_generic %}
             {% include 'simulation/partials/tools/_generic.html' with tool=tool %}

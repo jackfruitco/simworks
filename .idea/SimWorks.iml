@@ -19,6 +19,8 @@
       <sourceFolder url="file://$MODULE_DIR$/packages/simcore_ai_django/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai_django/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai_django" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.venv-3.13.1" />
     </content>

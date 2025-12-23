@@ -17,8 +17,8 @@
             hx-target="#invite-content"
             hx-swap="innerHTML transition:true"
             hx-indicator="#invite-loading"
-            {% include 'partials/forms/_csrf_form.html' with hx_headers=True %}
       >
+          {% csrf_token %}
           {{ form.as_p }}
           <button class="btn pri m-auto" type="submit" hx-indicator="#invite-loading">
               Create Invite Token

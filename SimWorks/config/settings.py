@@ -40,6 +40,33 @@ else:
 
 CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "true").lower() == "true"
 
+# ---------------------------------------------------------------------------
+# Reverse-proxy / Cloudflare Tunnel settings
+# ---------------------------------------------------------------------------
+# Set DJANGO_BEHIND_PROXY=true in environments where a reverse proxy (nginx,
+# Cloudflare Tunnel, LB) terminates TLS and forwards requests to Django.
+DJANGO_BEHIND_PROXY = os.getenv("DJANGO_BEHIND_PROXY", "false").lower() == "true"
+
+# If true, Django will treat requests as HTTPS when the proxy sets
+# `X-Forwarded-Proto: https`.
+# (Note: Django expects the setting value to be the *header name* as seen in
+# request.META, hence HTTP_X_FORWARDED_PROTO.)
+if DJANGO_BEHIND_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+
+# Optional hardening (recommended for prod behind TLS-terminating proxy)
+SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "false").lower() == "true"
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
+
+# HSTS (only safe if the public site is always HTTPS)
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
+SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "false").lower() == "true"
+
+# If you're using CSRF_TRUSTED_ORIGINS in prod behind Cloudflare, make sure it
+# includes the public https origin(s), e.g. https://example.com.
+
 AUTH_USER_MODEL = "accounts.CustomUser"
 
 # Application definition
