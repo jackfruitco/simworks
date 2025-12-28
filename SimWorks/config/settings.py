@@ -64,9 +64,6 @@ SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
 SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "false").lower() == "true"
 
-# If you're using CSRF_TRUSTED_ORIGINS in prod behind Cloudflare, make sure it
-# includes the public https origin(s), e.g. https://example.com.
-
 AUTH_USER_MODEL = "accounts.CustomUser"
 
 # Application definition
