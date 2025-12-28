@@ -8,7 +8,7 @@ from typing import Any, Callable, Protocol
 from orchestrai.finalize import connect_on_app_finalize
 
 
-class ServiceRunner(Protocol):
+class ServiceRunnerProto(Protocol):
     def start(self, **payload: Any) -> Any: ...
 
     def enqueue(self, **payload: Any) -> Any: ...
@@ -16,7 +16,7 @@ class ServiceRunner(Protocol):
 
 def register_service_runner(
     name: str,
-    runner: ServiceRunner | type[ServiceRunner] | Callable[..., ServiceRunner],
+    runner: ServiceRunnerProto | type[ServiceRunnerProto] | Callable[..., ServiceRunnerProto],
     *,
     make_default: bool = False,
     allow_override: bool = False,
@@ -31,7 +31,7 @@ def register_service_runner(
     if not runner_name:
         raise ValueError("service runner name must be a non-empty string")
 
-    def _get_runner() -> ServiceRunner:
+    def _get_runner() -> ServiceRunnerProto:
         if inspect.isclass(runner):
             return runner()  # type: ignore[return-value]
         if callable(runner) and not hasattr(runner, "enqueue"):
@@ -60,4 +60,4 @@ def register_service_runner(
     connect_on_app_finalize(_attach)
 
 
-__all__ = ["ServiceRunner", "register_service_runner"]
+__all__ = ["ServiceRunnerProto", "register_service_runner"]

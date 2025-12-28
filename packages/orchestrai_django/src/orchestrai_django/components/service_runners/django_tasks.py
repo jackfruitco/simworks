@@ -1,6 +1,6 @@
+# orchestrai_django/components/service_runners/django_tasks.py
 """Django Tasks-backed runner."""
 
-from __future__ import annotations
 
 from typing import Any
 
@@ -16,24 +16,39 @@ class DjangoTaskServiceRunner:
     def __init__(self) -> None:
         self._local = LocalServiceRunner()
 
-    def enqueue(self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None):
-        payload = {
-            "service_cls": service_cls,
+    def enqueue(
+        self,
+        *,
+        service_cls: type[Any],
+        service_kwargs: dict[str, Any],
+        phase: str,
+        runner_kwargs: dict[str, Any] | None = None,
+    ) -> Any:
+        service_path = f"{service_cls.__module__}:{service_cls.__qualname__}"
+        payload: dict[str, Any] = {
+            "service_path": service_path,
             "service_kwargs": dict(service_kwargs),
             "phase": phase,
+            "runner_name": self.name,
         }
         if runner_kwargs:
             payload["runner_kwargs"] = dict(runner_kwargs)
         return tasks.enqueue_service(**payload)
 
-    def start(self, **payload: Any):
+    def start(self, **payload: Any) -> Any:
         return self._local.start(**payload)
 
-    def stream(self, **payload: Any):
+    def stream(self, **payload: Any) -> Any:
         return self._local.stream(**payload)
 
-    def get_status(self, **payload: Any):
-        return tasks.get_service_status(**payload)
+    def get_status(
+        self,
+        *,
+        service_cls: type[Any],
+        phase: str,
+    ) -> Any:
+        service_path = f"{service_cls.__module__}:{service_cls.__qualname__}"
+        return tasks.get_service_status(service_path=service_path, phase=phase)
 
 
 register_service_runner(
@@ -42,6 +57,5 @@ register_service_runner(
     make_default=True,
     allow_override=True,
 )
-
 
 __all__ = ["DjangoTaskServiceRunner"]

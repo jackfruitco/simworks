@@ -6,6 +6,11 @@ from typing import Any, TYPE_CHECKING
 from orchestrai._state import get_current_app
 from orchestrai.service_runners import BaseServiceRunner
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 if TYPE_CHECKING:  # pragma: no cover
     from orchestrai.components.services.service import BaseService
 
@@ -67,6 +72,9 @@ class ServiceCall:
         runner_kwargs: dict[str, Any] | None = None,
     ) -> Any:
         call = self
+
+        logger.debug(f"dispatching via '{method_name}' with {service_kwargs}")
+
         if service_kwargs:
             call = call.using(**service_kwargs)
         if runner_kwargs:
@@ -74,6 +82,7 @@ class ServiceCall:
 
         runner_name, runner = call._resolve_runner()
         runner_method = getattr(runner, method_name, None)
+
         if not callable(runner_method):
             raise AttributeError(
                 f"Service runner '{runner_name}' does not implement '{method_name}'"
@@ -87,6 +96,7 @@ class ServiceCall:
         if call.runner_kwargs:
             payload["runner_kwargs"] = dict(call.runner_kwargs)
 
+        logger.debug(f"... trying `{runner_name}.{runner_method}` using payload '{payload}'")
         return runner_method(**payload)
 
     def enqueue(self, **service_kwargs: Any) -> Any:

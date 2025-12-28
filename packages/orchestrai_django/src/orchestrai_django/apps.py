@@ -1,6 +1,4 @@
 # orchestrai_django/apps.py
-
-
 """
 orchestrai_django.apps
 ======================
@@ -40,7 +38,6 @@ from orchestrai._state import get_current_app, set_current_app
 from orchestrai.tracing import service_span_sync
 
 from orchestrai_django.integration import DjangoAdapter
-from orchestrai_django.service_runners.django_tasks import DjangoTaskRunner
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +111,7 @@ def _import_from_path(path: str) -> Any:
         mod_path = ".".join(parts[:i])
         try:
             mod = importlib.import_module(mod_path)
-        except Exception:
+        except ModuleNotFoundError:
             continue
         obj: Any = mod
         for a in parts[i:]:
@@ -176,6 +173,8 @@ def _service_task_map(app: Any) -> dict[str, Task]:
 
 
 def _register_task_runner(app: Any) -> None:
+    from orchestrai_django.components.service_runners.django_tasks import DjangoTaskServiceRunner
+
     tasks = _service_task_map(app)
     if not tasks:
         return
@@ -184,7 +183,7 @@ def _register_task_runner(app: Any) -> None:
     if not callable(register):
         return
 
-    runner = DjangoTaskRunner(tasks)
+    runner = DjangoTaskServiceRunner()
     for name in tasks:
         register(name, runner)
 

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block style %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'trainerlab/css/style.css' %}">
+{% endblock style %}
+
+{% block scripts %}
+    {{ block.super }}
+{% endblock scripts %}
+
