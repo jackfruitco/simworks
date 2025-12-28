@@ -1,81 +1,6 @@
 {% load static %}
 
-<header id="header" x-data="{
-    openMenu: false,
-    previouslyFocused: null,
-    toggleMenu() {
-        this.openMenu ? this.closeMenu() : this.openMenuPanel();
-    },
-    openMenuPanel() {
-        this.previouslyFocused = document.activeElement;
-        this.openMenu = true;
-        this.$nextTick(() => {
-            (this.$refs.closeButton || this.$refs.menuPanel)?.focus();
-        });
-    },
-    closeMenu() {
-        this.openMenu = false;
-        this.$nextTick(() => {
-            if (this.previouslyFocused && typeof this.previouslyFocused.focus === 'function') {
-                this.previouslyFocused.focus();
-            }
-        });
-    },
-    handleKeydown(event) {
-        if (!this.openMenu) return;
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            this.closeMenu();
-            return;
-        }
-
-        if (event.key !== 'Tab') return;
-
-        const focusable = this.$refs.menuPanel
-            ? Array.from(this.$refs.menuPanel.querySelectorAll('a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'))
-            : [];
-
-        if (!focusable.length) return;
-
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (event.shiftKey) {
-            if (document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            }
-        } else if (document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    }
-}" @keydown.window="handleKeydown($event)">
-        openMenu: false,
-        toggleMenu() { this.openMenu = !this.openMenu },
-        closeMenu() { this.openMenu = false },
-        trapFocus(event) {
-            if (!this.openMenu || event.key !== 'Tab') return;
-
-            const dropdown = this.$refs.userMenuDropdown;
-            const focusable = dropdown ? dropdown.querySelectorAll('a, button, [tabindex]:not([tabindex="-1"])') : [];
-            if (!focusable.length) return;
-
-            const first = focusable[0];
-            const last = focusable[focusable.length - 1];
-
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-                event.preventDefault();
-                first.focus();
-            }
-        }
-    }" x-init="$watch('openMenu', value => { if (value) { $nextTick(() => {
-            const firstFocusable = $refs.userMenuDropdown?.querySelector('a, button, [tabindex]:not([tabindex="-1"])');
-            (firstFocusable || $refs.userMenuDropdown)?.focus();
-        }) } })" @keydown.escape.window="closeMenu">
+<header id="header">
     <!-- Header Navigation Bar  -->
     <div id="navBar" class="top bar flex">
         <a href="{% url 'home' %}" class="bar-item button">
@@ -93,17 +18,31 @@
         <a href="{% url 'accounts:register' %}" class="bar-item button acct hide-small">
             <span class="iconify fit" data-icon="mdi:register-outline" data-inline="true"></span> Register!</a>
         {% endif %}
+
         <!-- User Menu Toggle -->
-        {% include 'partials/_button.html' with
-            label='Toggle menu'
-            icon='fa-solid:bars'
-            variant='secondary'
-            type='button'
-            hide_label=True
-            extra_classes='bar-item button hover-black'
-            attrs='id="user-menu-toggle" @click="openMenu = ! openMenu" @click.outside="openMenu = false"'
-        %}
+        <div x-data>
+            <div x-menu>
+                <button x-menu:button>
+                    Menu
+                </button>
+
+                <!-- User Menu Items -->
+                <div x-menu:items>
+                    <a x-menu:item href="{% url 'accounts:profile' %}">
+                        My Profile
+                    </a>
+                    <a x-menu:item href="{% url 'accounts:new-invite' %}">
+                        Invite a friend
+                    </a>
+                    <a x-menu:item href="{% url 'accounts:logout' %}">
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
+
+{% comment %}
     <!-- User Menu -->
     <div id="user-menu" class="bar-item top right" @click.outside="closeMenu">
         <!-- User Menu Dropdown -->
@@ -140,4 +79,5 @@
             </div>
         </div>
     </div>
+    {% endcomment %}
 </header>
