@@ -37,7 +37,7 @@ from .registry.active_app import (
     push_active_registry_app,
     set_active_registry_app,
 )
-from .service_runners import BaseServiceRunner
+from orchestrai.components.services.runners import BaseServiceRunner
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ class OrchestrAI:
 
         try:
             # Register built-in service runners (no-op if already imported)
-            import orchestrai.components.service_runners.local  # noqa: F401
+            import orchestrai.components.services.runners.local  # noqa: F401
         except Exception:
             pass
 

@@ -4,7 +4,7 @@
 
 from typing import Any
 
-from orchestrai.components.service_runners import LocalServiceRunner, register_service_runner
+from orchestrai.components.services.runners import LocalServiceRunner, register_service_runner
 from orchestrai_django import tasks
 
 

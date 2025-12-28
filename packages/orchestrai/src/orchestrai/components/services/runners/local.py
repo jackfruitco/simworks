@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
+import logging
 from typing import Any
 
-import asyncio
-
-from asgiref.sync import async_to_sync, sync_to_async
+from asgiref.sync import sync_to_async
 
 from .base import register_service_runner
+
+logger = logging.getLogger(__name__)
 
 
 class LocalServiceRunner:
@@ -34,6 +36,10 @@ class LocalServiceRunner:
         without risking deadlocks. In that case, the caller must use `astart()`.
         """
         if LocalServiceRunner._in_running_loop():
+            try:
+                coro.close()
+            except Exception:
+                pass
             raise RuntimeError(
                 "LocalServiceRunner.start() was called from an async context. "
                 "Use `await runner.astart(...)` instead."
@@ -73,7 +79,7 @@ class LocalServiceRunner:
 
         execute = getattr(service, "execute", None)
         if callable(execute):
-            return await sync_to_async(execute, thread_sensitive=True)(**kwargs)
+            return await sync_to_async(execute)(**kwargs)
 
         raise AttributeError(f"Service {service_cls} does not expose execute/aexecute")
 
@@ -107,7 +113,7 @@ class LocalServiceRunner:
             return await run_stream(**kwargs)
 
         if callable(run_stream):
-            return await sync_to_async(run_stream, thread_sensitive=True)(**kwargs)
+            return await sync_to_async(run_stream)(**kwargs)
 
         raise AttributeError(f"Service {service_cls} does not support streaming")
 

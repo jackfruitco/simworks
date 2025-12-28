@@ -3,10 +3,15 @@ from types import SimpleNamespace
 import pytest
 
 from orchestrai._state import push_current_app
+from types import SimpleNamespace
+
+import pytest
+
+from orchestrai._state import push_current_app
+from orchestrai.components.services.dispatch import ServiceCall, _coerce_runner_name
+from orchestrai.components.services.runners import BaseServiceRunner, TaskStatus
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
-from orchestrai.service_runners import BaseServiceRunner, TaskStatus
-from orchestrai.services.call import ServiceCall, _coerce_runner_name
 
 
 class DemoService(BaseService):
@@ -41,13 +46,19 @@ class UnsupportedRunner(BaseServiceRunner):
         raise NotImplementedError("status not supported")
 
 
-def test_coerce_runner_name_prefers_explicit_and_identity():
-    assert _coerce_runner_name(DemoService, explicit="custom") == "custom"
+def test_coerce_runner_name_prefers_explicit_and_defaults_to_class_name():
+    app = SimpleNamespace(default_service_runner=None)
+    assert _coerce_runner_name(app, DemoService, explicit="custom") == "custom"
 
     class NoIdentity(BaseService):
         abstract = False
 
-    assert _coerce_runner_name(NoIdentity, explicit=None) == "no-identity"
+    assert _coerce_runner_name(app, NoIdentity, explicit=None) == "no-identity"
+
+
+def test_coerce_runner_name_uses_app_default():
+    app = SimpleNamespace(default_service_runner="fallback")
+    assert _coerce_runner_name(app, DemoService, explicit=None) == "fallback"
 
 
 def test_service_call_dispatch_merges_kwargs_and_uses_phase():

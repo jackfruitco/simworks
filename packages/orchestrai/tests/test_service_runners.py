@@ -1,6 +1,7 @@
 import pytest
 
 from orchestrai import OrchestrAI
+from orchestrai.components.services.exceptions import ServiceDispatchError
 from orchestrai.components.services.service import BaseService
 
 
@@ -31,5 +32,5 @@ def test_missing_runner_raises():
         app.start()
         call = DummyService().task.with_runner("bogus")
 
-        with pytest.raises(LookupError):
+        with pytest.raises(ServiceDispatchError):
             call.enqueue()

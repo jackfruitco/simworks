@@ -26,15 +26,14 @@ import asyncio
 import inspect
 import logging
 from abc import ABC
-from typing import Any, ClassVar, Union, Optional, Protocol
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
 
 from asgiref.sync import async_to_sync, sync_to_async
 
-from orchestrai.services import ServiceCall
+from orchestrai.components.services.dispatch import ServiceCall
 from orchestrai.identity.domains import SERVICES_DOMAIN
 
-from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
+from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
 from ..mixins import LifecycleMixin

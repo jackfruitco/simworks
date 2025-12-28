@@ -3,6 +3,8 @@
 from threading import RLock
 from typing import Any
 
+from orchestrai.identity.domains import SERVICES_DOMAIN
+
 from .base import ComponentRegistry
 from .records import RegistrationRecord
 
@@ -21,7 +23,12 @@ class ComponentStore:
 
         with self._lock:
             if key not in self._registries:
-                self._registries[key] = ComponentRegistry()
+                if key == SERVICES_DOMAIN:
+                    from orchestrai.components.services.registry import ServiceRegistry
+
+                    self._registries[key] = ServiceRegistry()
+                else:
+                    self._registries[key] = ComponentRegistry()
             return self._registries[key]
 
     def register(self, record: RegistrationRecord) -> None:
