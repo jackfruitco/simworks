@@ -221,6 +221,41 @@ def test_coerce_runner_name_handles_identity_failure(monkeypatch):
     assert _coerce_runner_name(app, TempService, explicit=None) == "TempService"
 
 
+def test_coerce_runner_name_prefers_registered_identity(monkeypatch):
+    class TempService(BaseService):
+        abstract = False
+
+    identity = SimpleNamespace(as_str="svc.identity", name=None)
+    monkeypatch.setattr(TempService, "identity", identity)
+    monkeypatch.setattr(Identity, "get_for", lambda value: value)
+    app = SimpleNamespace(default_service_runner=None)
+    runners = {"svc.identity": object(), "local": object()}
+
+    assert _coerce_runner_name(app, TempService, explicit=None, runners=runners) == "svc.identity"
+
+
+def test_coerce_runner_name_falls_back_to_local_when_unregistered(monkeypatch):
+    class TempService(BaseService):
+        abstract = False
+
+    monkeypatch.setattr(TempService, "identity", SimpleNamespace(name="other"))
+    app = SimpleNamespace(default_service_runner=None)
+    runners = {"local": object()}
+
+    assert _coerce_runner_name(app, TempService, explicit=None, runners=runners) == "local"
+
+
+def test_coerce_runner_name_uses_singleton_runner(monkeypatch):
+    class TempService(BaseService):
+        abstract = False
+
+    monkeypatch.setattr(TempService, "identity", None)
+    app = SimpleNamespace(default_service_runner=None)
+    runners = {"singleton": object()}
+
+    assert _coerce_runner_name(app, TempService, explicit=None, runners=runners) == "singleton"
+
+
 def test_discover_services_skips_child_module_errors(monkeypatch):
     import importlib
     from orchestrai.components.services import discovery as discovery_module

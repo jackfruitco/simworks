@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 from orchestrai._state import get_current_app
 from orchestrai.components.services.exceptions import ServiceDispatchError
@@ -12,7 +12,12 @@ if TYPE_CHECKING:  # pragma: no cover
     from orchestrai.components.services.service import BaseService
 
 
-def _coerce_runner_name(app: Any, service_cls: type[BaseService], explicit: str | None) -> str:
+def _coerce_runner_name(
+    app: Any,
+    service_cls: type[BaseService],
+    explicit: str | None,
+    runners: Mapping[str, BaseServiceRunner] | None = None,
+) -> str:
     if explicit:
         return explicit
 
@@ -20,7 +25,9 @@ def _coerce_runner_name(app: Any, service_cls: type[BaseService], explicit: str 
     if default:
         return str(default)
 
+    resolved_label: str | None = None
     identity = getattr(service_cls, "identity", None)
+    resolved = None
     try:
         resolved = Identity.get_for(identity) if identity is not None else None
     except Exception:
@@ -28,7 +35,21 @@ def _coerce_runner_name(app: Any, service_cls: type[BaseService], explicit: str 
 
     label = getattr(resolved, "name", None) or getattr(resolved, "as_str", None)
     if label:
-        return str(label)
+        resolved_label = str(label)
+
+    runner_map = runners or getattr(app, "service_runners", None) or {}
+
+    if resolved_label and resolved_label in runner_map:
+        return resolved_label
+
+    if "local" in runner_map:
+        return "local"
+
+    if resolved_label:
+        return resolved_label
+
+    if len(runner_map) == 1:
+        return next(iter(runner_map))
 
     return getattr(service_cls, "__name__", "<unknown service>")
 
@@ -57,7 +78,7 @@ class ServiceCall:
         if runners is None:
             raise ServiceDispatchError("Current app does not expose service runners")
 
-        runner_name = _coerce_runner_name(app, self.service_cls, self.runner_name)
+        runner_name = _coerce_runner_name(app, self.service_cls, self.runner_name, runners)
 
         try:
             runner = runners[runner_name]
