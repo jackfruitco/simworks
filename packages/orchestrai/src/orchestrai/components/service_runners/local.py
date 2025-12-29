@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any
 
 import asyncio
@@ -10,6 +11,9 @@ import asyncio
 from asgiref.sync import async_to_sync, sync_to_async
 
 from .base import register_service_runner
+
+
+logger = logging.getLogger(__name__)
 
 
 class LocalServiceRunner:

@@ -39,6 +39,18 @@ class ServiceCall:
     runner_kwargs: dict[str, Any] = field(default_factory=dict)
     phase: str = "service"
 
+    @property
+    def task(self) -> "ServiceCall":
+        """Return a copy configured for runner/task execution.
+
+        This preserves backwards compatibility for workflows that call
+        ``ServiceClass.using(...).task.enqueue()``. Prefer calling
+        ``enqueue()``/``stream()``/``start()`` directly on the service call
+        when possible.
+        """
+
+        return replace(self, phase="runner")
+
     def using(self, **service_kwargs: Any) -> "ServiceCall":
         """Return a new call with updated service kwargs."""
         merged = {**self.service_kwargs, **service_kwargs}
