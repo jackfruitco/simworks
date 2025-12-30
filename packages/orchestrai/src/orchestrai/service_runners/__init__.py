@@ -1,5 +1,3 @@
-"""Interfaces for orchestrating service execution across backends."""
+"""Service runners have been removed; this module is kept for compatibility errors."""
 
-from orchestrai.components.services.runners import BaseServiceRunner, TaskStatus
-
-__all__ = ["BaseServiceRunner", "TaskStatus"]
+raise ImportError("Service runners are no longer supported. Use inline task execution.")

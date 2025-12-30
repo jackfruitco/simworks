@@ -1,100 +1,57 @@
-from types import SimpleNamespace
+import asyncio
+import importlib
 
 import pytest
 
-from orchestrai._state import push_current_app
-from types import SimpleNamespace
-
-import pytest
-
-from orchestrai._state import push_current_app
-from orchestrai.components.services.dispatch import ServiceCall, _coerce_runner_name
-from orchestrai.components.services.runners import BaseServiceRunner, TaskStatus
+from orchestrai.components.services.calls import ServiceCall
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
+from orchestrai.identity.domains import SERVICES_DOMAIN
 
 
-class DemoService(BaseService):
+class SyncTaskService(BaseService):
     abstract = False
-    identity = Identity(domain="services", namespace="demo", group="svc", name="demo")
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="sync")
+
+    async def arun(self, **ctx):
+        return {"mode": "sync", **ctx}
 
 
-class RecordingRunner(BaseServiceRunner):
-    def __init__(self):
-        self.calls: list[tuple[str, dict]] = []
+class AsyncTaskService(BaseService):
+    abstract = False
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="async")
 
-    def start(self, **payload):
-        self.calls.append(("start", payload))
-        return payload
-
-    def enqueue(self, **payload):
-        self.calls.append(("enqueue", payload))
-        return TaskStatus(id="task-1", state="queued")
+    async def arun(self, **ctx):
+        await asyncio.sleep(0)
+        return {"mode": "async", **ctx}
 
 
-class UnsupportedRunner(BaseServiceRunner):
-    def start(self, **payload):
-        return payload
+def test_task_run_executes_inline():
+    sync_call = SyncTaskService().task.run(foo=1)
 
-    def enqueue(self, **payload):  # pragma: no cover - exercised indirectly
-        return payload
-
-    def stream(self, **_payload):
-        raise NotImplementedError("streaming not supported")
-
-    def get_status(self, **_payload):
-        raise NotImplementedError("status not supported")
+    assert isinstance(sync_call, ServiceCall)
+    assert sync_call.status == "succeeded"
+    assert sync_call.result["mode"] == "sync"
+    assert sync_call.dispatch["service"] == SyncTaskService.identity.as_str
 
 
-def test_coerce_runner_name_prefers_explicit_and_defaults_to_class_name():
-    app = SimpleNamespace(default_service_runner=None)
-    assert _coerce_runner_name(app, DemoService, explicit="custom") == "custom"
+@pytest.mark.asyncio
+async def test_task_arun_executes_inline():
+    async_call = await AsyncTaskService().task.arun(bar=2)
 
-    class NoIdentity(BaseService):
-        abstract = False
-
-    assert _coerce_runner_name(app, NoIdentity, explicit=None) == "no-identity"
-
-
-def test_coerce_runner_name_uses_app_default():
-    app = SimpleNamespace(default_service_runner="fallback")
-    assert _coerce_runner_name(app, DemoService, explicit=None) == "fallback"
+    assert isinstance(async_call, ServiceCall)
+    assert async_call.status == "succeeded"
+    assert async_call.result["bar"] == 2
+    assert async_call.dispatch["service"] == AsyncTaskService.identity.as_str
 
 
-def test_service_call_dispatch_merges_kwargs_and_uses_phase():
-    runner = RecordingRunner()
-    app = SimpleNamespace(service_runners={"demo": runner})
-
-    call = ServiceCall(service_cls=DemoService, service_kwargs={"foo": "bar"})
-
-    with push_current_app(app):
-        result = call.start(extra=1)
-
-    assert result["service_kwargs"] == {"foo": "bar", "extra": 1}
-    assert result["phase"] == "service"
-    assert runner.calls[0][0] == "start"
+def test_task_using_queue_is_rejected():
+    with pytest.raises(ValueError):
+        SyncTaskService.task.using(queue="hi-priority")
 
 
-def test_service_call_raises_for_unsupported_operations():
-    runner = UnsupportedRunner()
-    app = SimpleNamespace(service_runners={"demo": runner})
-    call = ServiceCall(service_cls=DemoService, runner_name=None)
-
-    with push_current_app(app):
-        with pytest.raises(NotImplementedError):
-            call.stream()
-        with pytest.raises(NotImplementedError):
-            call.get_status()
-
-
-def test_service_task_wraps_context_and_runner_phase():
-    ctx = {"user": "demo", "nested": {"a": 1}}
-    service = DemoService(context=ctx)
-
-    call = service.task
-
-    assert call.service_cls is DemoService
-    assert call.phase == "runner"
-    assert call.service_kwargs["context"]["user"] == "demo"
-    assert call.service_kwargs["context"]["nested"] == {"a": 1}
-    assert call.service_kwargs["context"] is not ctx
+def test_legacy_runner_imports_are_guarded():
+    with pytest.raises(ImportError):
+        importlib.import_module("orchestrai.components.services.runners")
+    with pytest.raises(ImportError):
+        importlib.import_module("orchestrai.components.services.dispatch")

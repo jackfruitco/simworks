@@ -1,11 +1,5 @@
-"""Built-in service runners."""
+"""Service runners have been removed in favor of inline task execution."""
 
-from .base import BaseServiceRunner, TaskStatus, register_service_runner
-from .local import LocalServiceRunner
-
-__all__ = [
-    "BaseServiceRunner",
-    "TaskStatus",
-    "LocalServiceRunner",
-    "register_service_runner",
-]
+raise ImportError(
+    "Service runners are no longer available; use service.task.run/arun for inline execution."
+)

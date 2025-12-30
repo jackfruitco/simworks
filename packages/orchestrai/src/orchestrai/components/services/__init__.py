@@ -1,7 +1,8 @@
 """Service components and helpers."""
 
-from .dispatch import ServiceCall, dispatch_service
+from .calls import ServiceCall, assert_jsonable, to_jsonable
 from .discovery import discover_services, list_services
+from .execution import ExecutionLifecycleMixin
 from .exceptions import (
     MissingRequiredContextKeys,
     ServiceBuildRequestError,
@@ -13,22 +14,22 @@ from .exceptions import (
     ServiceStreamError,
 )
 from .registry import ServiceRegistry, ensure_service_registry, service_registry
-from .runners import BaseServiceRunner, LocalServiceRunner, TaskStatus, register_service_runner
 from .service import BaseService
+from .task_proxy import CoreTaskProxy, ServiceSpec
 
 __all__ = (
     "BaseService",
-    "BaseServiceRunner",
-    "LocalServiceRunner",
-    "TaskStatus",
+    "CoreTaskProxy",
+    "ServiceSpec",
     "ServiceCall",
-    "dispatch_service",
+    "assert_jsonable",
+    "to_jsonable",
+    "ExecutionLifecycleMixin",
     "discover_services",
     "list_services",
     "ServiceRegistry",
     "service_registry",
     "ensure_service_registry",
-    "register_service_runner",
     "ServiceError",
     "ServiceConfigError",
     "ServiceCodecResolutionError",

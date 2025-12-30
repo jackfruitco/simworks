@@ -11,6 +11,7 @@ from contextvars import ContextVar
 from typing import Generator
 
 from .utils.proxy import Proxy
+from .registry.active_app import set_active_registry_app
 
 _current_app: ContextVar[object | None] = ContextVar("orchestrai_current_app", default=None)
 _default_app: object | None = None
@@ -36,6 +37,10 @@ def get_current_app():
             _default_app = _build_default_app()
         app = _default_app
         set_current_app(app)
+    try:
+        set_active_registry_app(app)
+    except Exception:
+        pass
     return app
 
 

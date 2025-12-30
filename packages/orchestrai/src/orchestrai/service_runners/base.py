@@ -1,5 +1,3 @@
-"""Compatibility shim for service runner protocol."""
+"""Compatibility shim for removed service runner types."""
 
-from orchestrai.components.services.runners.base import BaseServiceRunner, TaskStatus
-
-__all__ = ["BaseServiceRunner", "TaskStatus"]
+raise ImportError("Service runners are deprecated; inline tasks should be used instead.")
