@@ -123,14 +123,10 @@ def configure_from_django_settings(
     conf = Settings()
     conf.update_from_mapping(mapping)
 
-    # Ensure Django-backed service runners register finalize callbacks early.
     try:
-        import orchestrai_django.components.service_runners.django_tasks  # noqa: F401
-    except Exception:
-        pass
+        from orchestrai.components.services.django import use_django_task_proxy
 
-    try:
-        setattr(app, "default_service_runner", "django")
+        use_django_task_proxy()
     except Exception:
         pass
 

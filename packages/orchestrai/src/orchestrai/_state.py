@@ -41,6 +41,12 @@ def get_current_app():
         set_active_registry_app(app)
     except Exception:
         pass
+    try:
+        from orchestrai.components.services.django import use_django_task_proxy
+
+        use_django_task_proxy()
+    except Exception:
+        pass
     return app
 
 
