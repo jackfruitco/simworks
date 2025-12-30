@@ -1,12 +1,14 @@
 import asyncio
 import importlib
+from datetime import datetime
 
 import pytest
 
-from orchestrai.components.services.calls import ServiceCall
+from orchestrai.components.services.calls import ServiceCall, to_jsonable
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import SERVICES_DOMAIN
+from orchestrai.types.transport import Response
 
 
 class SyncTaskService(BaseService):
@@ -55,3 +57,21 @@ def test_legacy_runner_imports_are_guarded():
         importlib.import_module("orchestrai.components.services.runners")
     with pytest.raises(ImportError):
         importlib.import_module("orchestrai.components.services.dispatch")
+
+
+def test_to_jsonable_serializes_response_result():
+    call = ServiceCall(
+        id="1",
+        status="succeeded",
+        input={},
+        context=None,
+        result=Response(output=[]),
+        error=None,
+        dispatch={"service": SyncTaskService.identity.as_str},
+        created_at=datetime.now(),
+    )
+
+    payload = to_jsonable(call)
+
+    assert payload["result"]["output"] == []
+    assert payload["dispatch"]["service"] == SyncTaskService.identity.as_str

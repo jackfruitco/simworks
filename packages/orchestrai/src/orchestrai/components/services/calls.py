@@ -4,6 +4,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel
+
 JsonPrimitive = str | int | float | bool | None
 
 
@@ -31,6 +33,8 @@ def assert_jsonable(value: Any, *, path: str = "root") -> None:
 def _coerce(value: Any) -> JsonPrimitive | dict[str, Any] | list[Any]:
     if isinstance(value, datetime):
         return value.isoformat()
+    if isinstance(value, BaseModel):
+        return _coerce(value.model_dump(mode="json"))
     if isinstance(value, dict):
         return {str(k): _coerce(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
