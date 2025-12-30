@@ -13,6 +13,7 @@ from orchestrai.components.services.exceptions import ServiceError
 from orchestrai.exceptions import SimCoreError
 
 from chatlab.models import ChatSession, Message, MessageMediaLink
+from core.orm_mode import must_be_async
 from core.utils import remove_null_keys
 from simulation.models import (
     LabResult, RadResult, Simulation, SimulationMetadata,
@@ -39,6 +40,7 @@ async def create_new_simulation(
         user, modifiers: list = None, force: bool = False
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
+    must_be_async()
     logger.debug(
         f"received request to create new simulation for {user.username!r} "
         f"with modifiers {modifiers!r} (force {force!r})"
@@ -62,12 +64,13 @@ async def create_new_simulation(
     from .orca.services import GenerateInitialResponse
 
     try:
-        GenerateInitialResponse.using(
+        spec = GenerateInitialResponse.using(
             ctx={
                 "simulation_id": simulation.id,
                 "user_id": user.id,
             }
-        ).task.enqueue()
+        )
+        await spec.task.aenqueue()
     except (ProviderCallError, ServiceError, SimCoreError) as exc:
         logger.exception(
             "Failed to schedule initial response for simulation %s (user=%s)",

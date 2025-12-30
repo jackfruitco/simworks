@@ -27,10 +27,21 @@ def django_setup():
                 "django.contrib.contenttypes",
                 "orchestrai_django",
             ],
-            DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}},
+            DATABASES={
+                "default": {
+                    "ENGINE": "django.db.backends.sqlite3",
+                    "NAME": "file:memorydb_default?mode=memory&cache=shared",
+                    "OPTIONS": {"uri": True},
+                }
+            },
             USE_TZ=True,
+            EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
             SECRET_KEY="test",  # nosec - test only
         )
+    from django.core import mail
+
+    if not hasattr(mail, "outbox"):
+        mail.outbox = []
     django.setup()
 
     from orchestrai_django.models import ServiceCallRecord
@@ -82,3 +93,18 @@ def test_service_call_record_jsonable(registered_service):
     assert payload["service_kwargs"] == {}
     # Should be JSON serializable (raises if not)
     assert isinstance(payload["dispatch"], dict)
+
+
+@pytest.mark.asyncio
+async def test_async_enqueue_uses_async_orm(registered_service):
+    from orchestrai_django.models import ServiceCallRecord
+
+    record = await registered_service.task.using(
+        backend="celery", queue="priority"
+    ).aenqueue(value=1)
+
+    assert isinstance(record, ServiceCallRecord)
+    fetched = await ServiceCallRecord.objects.aget(id=record.id)
+    assert fetched.queue == "priority"
+    assert fetched.dispatch.get("queue") == "priority"
+    assert fetched.status == "queued"

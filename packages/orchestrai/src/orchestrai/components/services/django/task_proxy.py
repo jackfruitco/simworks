@@ -7,6 +7,7 @@ from typing import Any
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
 from orchestrai.components.services.execution import ExecutionLifecycleMixin
 from orchestrai.components.services.task_proxy import ServiceSpec
+from orchestrai.orm_mode import must_be_async, must_be_sync
 
 
 def _split_kwargs(kwargs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -60,7 +61,7 @@ class DjangoTaskProxy:
         dispatch.setdefault("backend", "immediate")
         return dispatch
 
-    def _persist_call(self, call: ServiceCall, dispatch: dict[str, Any]) -> Any:
+    def _build_record(self, call: ServiceCall, dispatch: dict[str, Any]):
         from orchestrai_django.models import ServiceCallRecord
         from django.utils import timezone
 
@@ -70,7 +71,7 @@ class DjangoTaskProxy:
 
         assert_jsonable(self._spec.service_kwargs, path="service_kwargs")
 
-        record = ServiceCallRecord(
+        return ServiceCallRecord(
             id=call.id,
             service_identity=dispatch.get("service") or call.dispatch.get("service"),
             service_kwargs=self._spec.service_kwargs,
@@ -93,7 +94,17 @@ class DjangoTaskProxy:
             if call.finished_at and not timezone.is_aware(call.finished_at)
             else call.finished_at,
         )
+
+    def _persist_call_sync(self, call: ServiceCall, dispatch: dict[str, Any]) -> Any:
+        must_be_sync()
+        record = self._build_record(call, dispatch)
         record.save(force_insert=True)
+        return record
+
+    async def _persist_call_async(self, call: ServiceCall, dispatch: dict[str, Any]) -> Any:
+        must_be_async()
+        record = self._build_record(call, dispatch)
+        await record.asave(force_insert=True)
         return record
 
     def _dispatch_immediate(self, call_id: str) -> Any:
@@ -105,6 +116,7 @@ class DjangoTaskProxy:
     # Public API
     # ------------------------------------------------------------------
     def enqueue(self, **payload: Any):
+        must_be_sync()
         service = self._build()
         dispatch = self._build_dispatch(service)
         call = service._create_call(
@@ -116,7 +128,7 @@ class DjangoTaskProxy:
         if dispatch.get("backend") not in {None, "immediate"}:
             call.status = "queued"
 
-        record = self._persist_call(call, dispatch)
+        record = self._persist_call_sync(call, dispatch)
 
         backend = dispatch.get("backend") or "immediate"
         if backend == "immediate":
@@ -125,6 +137,7 @@ class DjangoTaskProxy:
         return record
 
     async def aenqueue(self, **payload: Any):
+        must_be_async()
         service = self._build()
         dispatch = self._build_dispatch(service)
         call = service._create_call(
@@ -136,7 +149,7 @@ class DjangoTaskProxy:
         if dispatch.get("backend") not in {None, "immediate"}:
             call.status = "queued"
 
-        record = self._persist_call(call, dispatch)
+        record = await self._persist_call_async(call, dispatch)
 
         backend = dispatch.get("backend") or "immediate"
         if backend == "immediate":
