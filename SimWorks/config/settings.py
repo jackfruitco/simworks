@@ -249,7 +249,12 @@ SITE_ADMIN = {
     "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
 }
 
-logfire.configure(token=os.getenv("LOGFIRE_TOKEN"))
+logfire_token = os.getenv("LOGFIRE_TOKEN")
+if logfire_token:
+    logfire.configure(token=logfire_token)
+else:
+    # Allow local/test environments to run without Logfire authentication.
+    logfire.configure(send_to_logfire=False)
 logfire.instrument_httpx(
     capture_all=True
     # capture_response_body=True,
