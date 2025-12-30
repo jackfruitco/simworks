@@ -32,11 +32,11 @@ from typing import Any
 
 from django.apps import AppConfig
 from django.conf import settings as dj_settings
-from django.tasks.base import Task
 
 from orchestrai._state import get_current_app, set_current_app
 from orchestrai.tracing import service_span_sync
 
+from orchestrai.components.services.django import use_django_task_proxy
 from orchestrai_django.integration import DjangoAdapter
 
 logger = logging.getLogger(__name__)
@@ -147,47 +147,6 @@ def _register_current_app(app: Any) -> None:
         logger.debug("Failed to set current OrchestrAI app", exc_info=True)
 
 
-def _default_runner_name(service_cls: Any) -> str:
-    identity = getattr(service_cls, "identity", None)
-    label = getattr(identity, "as_str", None) or getattr(identity, "name", None)
-    return str(label or getattr(service_cls, "__name__", "<unknown service>"))
-
-
-def _service_task_map(app: Any) -> dict[str, Task]:
-    try:
-        registry = app.component_store.registry("services")
-    except Exception:
-        return {}
-
-    try:
-        services = registry.all()
-    except Exception:
-        return {}
-
-    task_map: dict[str, Task] = {}
-    for service_cls in services:
-        task = getattr(service_cls, "task", None)
-        if isinstance(task, Task):
-            task_map[_default_runner_name(service_cls)] = task
-    return task_map
-
-
-def _register_task_runner(app: Any) -> None:
-    from orchestrai_django.components.service_runners.django_tasks import DjangoTaskServiceRunner
-
-    tasks = _service_task_map(app)
-    if not tasks:
-        return
-
-    register = getattr(app, "register_service_runner", None)
-    if not callable(register):
-        return
-
-    runner = DjangoTaskServiceRunner()
-    for name in tasks:
-        register(name, runner)
-
-
 class OrchestrAIDjangoConfig(AppConfig):
     """Django AppConfig for OrchestrAI Django."""
 
@@ -245,5 +204,7 @@ class OrchestrAIDjangoConfig(AppConfig):
         if app_instance is None:
             app_instance = getattr(dj_settings, "_ORCHESTRAI_APP", None) or get_current_app()
 
-        if app_instance is not None:
-            _register_task_runner(app_instance)
+        try:
+            use_django_task_proxy()
+        except Exception:
+            logger.debug("Failed to install Django task proxy", exc_info=True)
