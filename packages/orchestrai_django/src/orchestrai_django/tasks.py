@@ -47,10 +47,20 @@ def run_service_call(call_id: str):
             pass
 
     try:
+        payload = record.input or {}
+
         if hasattr(service, "execute") and callable(service.execute):
-            result = service.execute(**(record.input or {}))
-        elif hasattr(service, "aexecute") and inspect.iscoroutinefunction(service.aexecute):
-            result = async_to_sync(service.aexecute)(**(record.input or {}))
+            execute = service.execute
+            if inspect.iscoroutinefunction(execute):
+                result = async_to_sync(execute)(**payload)
+            else:
+                result = execute(**payload)
+        elif hasattr(service, "aexecute") and callable(service.aexecute):
+            aexecute = service.aexecute
+            if inspect.iscoroutinefunction(aexecute):
+                result = async_to_sync(aexecute)(**payload)
+            else:  # pragma: no cover - defensive fallback
+                result = aexecute(**payload)
         else:  # pragma: no cover - defensive
             raise RuntimeError("Service does not implement execute/aexecute")
 
