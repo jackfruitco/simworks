@@ -1,5 +1,7 @@
-"""Django-backed service runners."""
+"""Service runner shims are deprecated and raise immediately."""
 
-from .django_tasks import DjangoTaskServiceRunner
+from ._messages import REMOVED_SERVICE_RUNNER_MESSAGE
 
-__all__ = ["DjangoTaskServiceRunner"]
+raise RuntimeError(REMOVED_SERVICE_RUNNER_MESSAGE)
+
+__all__: list[str] = []
