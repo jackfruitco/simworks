@@ -31,17 +31,20 @@ from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
 
 from asgiref.sync import async_to_sync, sync_to_async
 
-from orchestrai.components.services.calls import ServiceCall
-from orchestrai.components.services.execution import ExecutionLifecycleMixin, resolve_call_client
-from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
-from orchestrai.identity.domains import SERVICES_DOMAIN
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Optional, Protocol, Union
 
+from asgiref.sync import async_to_sync, sync_to_async
+
+from .calls import ServiceCall
 from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
+from .execution import ExecutionLifecycleMixin, resolve_call_client
+from .task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
 from ..mixins import LifecycleMixin
 from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
 from ...identity import Identity, IdentityLike, IdentityMixin
+from ...identity.domains import SERVICES_DOMAIN
 from ...tracing import get_tracer, service_span, SpanPath
 from ...types import Request, Response, StrictBaseModel
 from ...types.content import ContentRole
@@ -120,10 +123,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
     # ------------------------------------------------------------------
     # Task helpers
     # ------------------------------------------------------------------
-    @classmethod
-    def using(cls, **service_kwargs: Any) -> ServiceSpec:
-        return ServiceSpec(service_cls=cls, service_kwargs=service_kwargs)
-
     def __init__(
             self,
             *,
@@ -251,6 +250,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
           constructor is rejected early with a descriptive error.
         """
 
+        runner_style_keys = {"queue", "runner", "runner_kwargs", "phase"}
+        if any(key in overrides for key in runner_style_keys):
+            cls._using_service_spec(**overrides)
+
         if ctx is not None and context is not None:
             raise TypeError(
                 f"{cls.__name__}.using() received both 'ctx' and 'context'. "
@@ -285,6 +288,14 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
             )
 
         return cls(context=context_dict, **overrides)
+
+    @classmethod
+    def _using_service_spec(cls, **service_kwargs: Any) -> NoReturn:
+        message = (
+            f"{cls.__name__}.using(...) no longer builds service runner specs. "
+            "Use cls.task.using(...) for inline execution or instantiate cls(...) directly."
+        )
+        raise RuntimeError(message)
 
     @property
     def slug(self) -> str:
