@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from importlib import import_module
-from typing import Any, Final, Literal, Optional, cast
+from typing import Any, Final, Iterable, Literal, Optional, cast
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.components.providerkit.exceptions import ProviderError
@@ -19,13 +19,54 @@ from orchestrai.utils import clean_kwargs
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["OpenAIResponsesProvider"]
+__all__ = ["OpenAIResponsesProvider", "normalize_responses_output"]
 
 PROVIDER_NAME: Final[Literal["openai"]] = "openai"
 API_SURFACE: Final[Literal["responses"]] = "responses"
 API_VERSION: Final[None] = None
 DEFAULT_TIMEOUT_S: Final[int | float] = cast(int | float, DEFAULTS["PROVIDER_DEFAULT_TIMEOUT"])
 DEFAULT_MODEL: Final[str] = cast(str, DEFAULTS["PROVIDER_DEFAULT_MODEL"])
+
+
+def normalize_responses_output(resp: Any) -> tuple[str, list[Any], dict[str, list[str]]]:
+    """Normalize OpenAI Responses API output items.
+
+    Args:
+        resp: Provider-native response object exposing an ``output`` collection.
+
+    Returns:
+        text: Combined assistant-visible text content.
+        passthrough: Unhandled output items that may contain attachments.
+        meta: Metadata about unhandled item types for diagnostics.
+    """
+
+    text_parts: list[str] = []
+    passthrough: list[Any] = []
+    meta: dict[str, list[str]] = {"unhandled_items": []}
+
+    output: Iterable[Any] = getattr(resp, "output", []) or []
+    for item in output:
+        item_type = getattr(item, "type", None)
+
+        if item_type in {"reasoning", "ResponseReasoningItem"}:
+            continue
+
+        if item_type in {"message", "output_message", "ResponseOutputMessage"}:
+            for content in getattr(item, "content", []) or []:
+                content_type = getattr(content, "type", None)
+                if content_type in {"output_text", "text"}:
+                    text = getattr(content, "text", None)
+                    if text:
+                        text_parts.append(text)
+            continue
+
+        passthrough.append(item)
+        meta["unhandled_items"].append(item_type)
+
+    if not meta["unhandled_items"]:
+        meta = {}
+
+    return "".join(text_parts).strip(), passthrough, meta
 
 
 @provider_backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
@@ -71,6 +112,10 @@ class OpenAIResponsesProvider(BaseProvider):
         self._client = self._resolve_client(client)
         self.set_tool_adapter(OpenAIToolAdapter())
         self._output_adapters = [ImageGenerationOutputAdapter()]
+        self._last_output_source: Any | None = None
+        self._last_output_text: str | None = None
+        self._last_output_passthrough: list[Any] | None = None
+        self._last_output_meta: dict[str, list[str]] | None = None
 
     def _resolve_client(self, client: Any | None) -> Any:
         if client is not None:
@@ -141,10 +186,13 @@ class OpenAIResponsesProvider(BaseProvider):
 
     # Provider hooks --------------------------------------------------
     def _extract_text(self, resp: Any) -> Optional[str]:
-        return getattr(resp, "output_text", None) or getattr(resp, "text", None) or None
+        text, _, _ = self._normalize_output(resp)
+        fallback = getattr(resp, "output_text", None) or getattr(resp, "text", None) or None
+        return text or fallback
 
     def _extract_outputs(self, resp: Any):
-        return getattr(resp, "output", None) or []
+        _, passthrough, _ = self._normalize_output(resp)
+        return passthrough
 
     def _is_image_output(self, item: Any) -> bool:
         return hasattr(item, "result") and hasattr(item, "mime_type")
@@ -162,7 +210,25 @@ class OpenAIResponsesProvider(BaseProvider):
             base["raw"] = resp.model_dump() if hasattr(resp, "model_dump") else None
         except Exception:  # pragma: no cover - defensive
             base["raw"] = None
+        output_meta = self._last_output_meta or {}
+        if output_meta:
+            base["output_meta"] = output_meta
         return base
+
+    def _normalize_output(self, resp: Any) -> tuple[str, list[Any], dict[str, list[str]]]:
+        if self._last_output_source is resp and self._last_output_passthrough is not None:
+            return (
+                self._last_output_text or "",
+                self._last_output_passthrough,
+                self._last_output_meta or {},
+            )
+
+        text, passthrough, meta = normalize_responses_output(resp)
+        self._last_output_source = resp
+        self._last_output_text = text
+        self._last_output_passthrough = passthrough
+        self._last_output_meta = meta
+        return text, passthrough, meta
 
     def _normalize_tool_output(self, item: Any):
         with service_span_sync("orchestrai.tools.handle_output", attributes={"orchestrai.provider_name": self.provider}):

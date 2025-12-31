@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import logging
+import threading
 from typing import Any
+
+from django.db import transaction
 
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
 from orchestrai.components.services.execution import ServiceCallMixin
 from orchestrai.components.services.task_proxy import ServiceSpec
 from orchestrai.orm_mode import must_be_async, must_be_sync
+logger = logging.getLogger(__name__)
 
 
 def _split_kwargs(kwargs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -112,6 +117,33 @@ class DjangoTaskProxy:
 
         return run_service_call(call_id)
 
+    def _dispatch_immediate_async(self, call_id: str) -> None:
+        """Fire-and-forget wrapper around :meth:`_dispatch_immediate`.
+
+        Dispatch is scheduled as soon as the current transaction (if any)
+        commits to avoid reading uncommitted records. Execution happens in a
+        daemon thread so the caller never blocks on service execution.
+        """
+
+        def _runner() -> None:
+            try:
+                self._dispatch_immediate(call_id)
+            except Exception:  # pragma: no cover - defensive logging only
+                logger.exception("orchestrai_django: background dispatch failed", extra={"call_id": call_id})
+
+        def _start_thread() -> None:
+            thread = threading.Thread(
+                target=_runner,
+                name=f"orchestrai-service-{call_id}",
+                daemon=True,
+            )
+            thread.start()
+
+        try:
+            transaction.on_commit(_start_thread)
+        except Exception:
+            _start_thread()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -132,30 +164,38 @@ class DjangoTaskProxy:
 
         backend = dispatch.get("backend") or "immediate"
         if backend == "immediate":
-            return self._dispatch_immediate(record.id)
+            self._dispatch_immediate_async(record.id)
 
-        return record
+        return record.id
 
     async def aenqueue(self, **payload: Any):
         must_be_async()
-        service = self._build()
-        dispatch = self._build_dispatch(service)
-        call = service._create_call(
-            payload=payload,
-            context=getattr(service, "context", None),
-            dispatch=dispatch,
-        )
 
-        if dispatch.get("backend") not in {None, "immediate"}:
-            call.status = "queued"
+        async def _run() -> str:
+            service = self._build()
+            dispatch = self._build_dispatch(service)
+            call = service._create_call(
+                payload=payload,
+                context=getattr(service, "context", None),
+                dispatch=dispatch,
+            )
 
-        record = await self._persist_call_async(call, dispatch)
+            if dispatch.get("backend") not in {None, "immediate"}:
+                call.status = "queued"
 
-        backend = dispatch.get("backend") or "immediate"
-        if backend == "immediate":
-            return await asyncio.to_thread(self._dispatch_immediate, record.id)
+            record = await self._persist_call_async(call, dispatch)
 
-        return record
+            backend = dispatch.get("backend") or "immediate"
+            if backend == "immediate":
+                self._dispatch_immediate_async(record.id)
+
+            return record.id
+
+        try:
+            return await asyncio.shield(_run())
+        except asyncio.CancelledError:
+            logger.debug("aenqueue cancelled by caller; dispatch shielded", exc_info=True)
+            raise
 
     # Compatibility helpers (inline execution)
     def run(self, **payload: Any):
