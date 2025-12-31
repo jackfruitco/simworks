@@ -26,11 +26,13 @@ import asyncio
 import inspect
 import logging
 from abc import ABC
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
 
 from asgiref.sync import async_to_sync, sync_to_async
 
-from orchestrai.components.services.execution import ExecutionLifecycleMixin
+from orchestrai.components.services.calls import ServiceCall
+from orchestrai.components.services.execution import ExecutionLifecycleMixin, resolve_call_client
 from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
 from orchestrai.identity.domains import SERVICES_DOMAIN
 
@@ -1259,6 +1261,55 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
         """
         LOG_CAT = "svc.run"
 
+        call: ServiceCall | None = ctx.pop("call", None)
+        if call is None:
+            dispatch_meta = {"service": getattr(self.identity, "as_str", None) or self.__class__.__name__}
+            call = self._create_call(
+                payload=ctx,
+                context=getattr(self, "context", None),
+                dispatch=dispatch_meta,
+                service=dispatch_meta["service"],
+            )
+            call.status = "running"
+            call.started_at = datetime.utcnow()
+            logger.debug(
+                self._build_stdout(
+                    "call",
+                    f"created inline service call {call.id} inside run",
+                    indent_level=2,
+                    success=True,
+                )
+            )
+
+        client_override = getattr(self, "client", None)
+        service_default = getattr(type(self), "provider_name", None) or getattr(
+            self, "provider_name", None
+        )
+        resolve_call_client(
+            self,
+            call,
+            client_override=client_override,
+            service_default=service_default,
+            required=True,
+        )
+        try:
+            self.client = call.client  # type: ignore[attr-defined]
+        except Exception:
+            logger.debug("could not persist resolved client on service", exc_info=True)
+
+        client = call.client
+        if client is None:
+            raise ServiceConfigError("Client resolution failed for service call")
+
+        logger.debug(
+            self._build_stdout(
+                "client",
+                f"resolved client {type(client).__name__} for call {call.id}",
+                indent_level=2,
+                success=True,
+            )
+        )
+
         # Normalize and merge contextual overrides, if provided
         ctx = dict(ctx) if ctx else {}
         raw_ctx = ctx.pop("context", None)
@@ -1290,6 +1341,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
         ):
             # Build request + codec + attrs
             req, codec, attrs = await self.aprepare(stream=stream, **ctx)
+            call.request = req
 
             try:
                 # Prepare codec for this call
@@ -1311,7 +1363,19 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
                         self._span("run", "prepare", "client"),
                         attributes=self.flatten_context(),
                 ):
-                    client: OrcaClient = self.get_client()
+                    client: OrcaClient | None = call.client
+                    if client is None:
+                        raise ServiceConfigError(
+                            f"Service '{ident.as_str}' has no resolved client for call {call.id}"
+                        )
+                    logger.debug(
+                        self._build_stdout(
+                            "client",
+                            f"using resolved client {type(client).__name__} for call {call.id}",
+                            indent_level=2,
+                            success=True,
+                        )
+                    )
 
                 # Emit outbound request event
                 async with service_span(
