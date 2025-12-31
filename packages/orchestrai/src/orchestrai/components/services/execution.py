@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import uuid
 from datetime import datetime
 from typing import Any
 import logging
-
-from asgiref.sync import async_to_sync
 
 from orchestrai.components.services.calls import ServiceCall
 from orchestrai.components.services.exceptions import ServiceConfigError
@@ -36,8 +35,59 @@ _STATUS_SUCCEEDED = "succeeded"
 _STATUS_FAILED = "failed"
 
 
-class ExecutionLifecycleMixin:
-    """Async-first execution helpers that normalize service call records."""
+class ServiceCallMixin:
+    """
+    Call-envelope helpers for services.
+
+    This mixin is responsible for orchestrating :class:`ServiceCall` records
+    around a service's lifecycle execution. It exposes public ``call`` / ``acall``
+    entrypoints that wrap the service's ``execute`` / ``aexecute`` lifecycle
+    (provided by :class:`~orchestrai.components.mixins.LifecycleMixin`).
+
+    Key semantics:
+      * ``execute`` / ``aexecute`` return the raw service result.
+      * ``call`` / ``acall`` return a :class:`ServiceCall` record and inject the
+        ``call`` into the execution payload so service logic can reference it.
+    """
+
+    async def acall(
+        self,
+        *,
+        payload: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        dispatch: dict[str, Any] | None = None,
+    ) -> ServiceCall:
+        """Execute the service and return the populated :class:`ServiceCall`.
+
+        The returned call record reflects status, timestamps, result/error, and
+        dispatch metadata. The underlying service execution receives the same
+        ``payload`` plus an injected ``call`` entry.
+        """
+
+        return await self._run_call(payload=payload, context=context, dispatch=dispatch)
+
+    def call(
+        self,
+        *,
+        payload: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
+        dispatch: dict[str, Any] | None = None,
+    ) -> ServiceCall:
+        """Synchronous wrapper around :meth:`acall`."""
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(
+                self.acall(payload=payload, context=context, dispatch=dispatch)
+            )
+
+        if loop.is_running():
+            raise RuntimeError("Cannot call service while an event loop is running")
+
+        return loop.run_until_complete(
+            self.acall(payload=payload, context=context, dispatch=dispatch)
+        )
 
     def _create_call(
         self,
@@ -86,6 +136,7 @@ class ExecutionLifecycleMixin:
         context: dict[str, Any] | None = None,
         dispatch: dict[str, Any] | None = None,
     ) -> ServiceCall:
+        """Internal implementation for ``call`` / ``acall``."""
         identity = getattr(self, "identity", None)
         service_label = getattr(identity, "as_str", None) or self.__class__.__name__
 
@@ -156,7 +207,16 @@ class ExecutionLifecycleMixin:
         return call
 
     def _sync_run_call(self, **payload: Any) -> ServiceCall:
-        return async_to_sync(self._run_call)(payload=payload)
+        """Deprecated compatibility wrapper. Use :meth:`call` instead."""
+
+        return self.call(payload=payload)
+
+
+# Backwards compatibility
+ExecutionLifecycleMixin = ServiceCallMixin
+ExecutionLifecycleMixin.__doc__ = (
+    "Deprecated alias for ServiceCallMixin. Prefer ServiceCallMixin.call/acall."
+)
 
 
 def _resolve_client_label(label: str | None) -> Any | None:
@@ -276,4 +336,4 @@ def resolve_call_client(
     return resolved
 
 
-__all__ = ["ExecutionLifecycleMixin", "resolve_call_client"]
+__all__ = ["ServiceCallMixin", "ExecutionLifecycleMixin", "resolve_call_client"]

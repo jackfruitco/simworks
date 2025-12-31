@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
-from orchestrai.components.services.execution import ExecutionLifecycleMixin
+from orchestrai.components.services.execution import ServiceCallMixin
 from orchestrai.components.services.task_proxy import ServiceSpec
 from orchestrai.orm_mode import must_be_async, must_be_sync
 
@@ -45,7 +45,7 @@ class DjangoTaskProxy:
     # ------------------------------------------------------------------
     # Builders
     # ------------------------------------------------------------------
-    def _build(self) -> ExecutionLifecycleMixin:
+    def _build(self) -> ServiceCallMixin:
         return self._spec.service_cls(**self._spec.service_kwargs)
 
     def using(self, **service_kwargs: Any) -> "DjangoTaskProxy":
@@ -54,7 +54,7 @@ class DjangoTaskProxy:
     # ------------------------------------------------------------------
     # Dispatch helpers
     # ------------------------------------------------------------------
-    def _build_dispatch(self, service: ExecutionLifecycleMixin) -> dict[str, Any]:
+    def _build_dispatch(self, service: ServiceCallMixin) -> dict[str, Any]:
         dispatch = {"service": getattr(getattr(service, "identity", None), "as_str", None)}
         if self._spec.dispatch_kwargs:
             dispatch.update(self._spec.dispatch_kwargs)
@@ -163,19 +163,17 @@ class DjangoTaskProxy:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(
-                service._run_call(
-                    payload=payload,
-                    context=getattr(service, "context", None),
-                    dispatch=self._build_dispatch(service),
-                )
+            return service.call(
+                payload=payload,
+                context=getattr(service, "context", None),
+                dispatch=self._build_dispatch(service),
             )
 
         if loop.is_running():
             raise RuntimeError("Cannot run inline task while an event loop is already running")
 
         return loop.run_until_complete(
-            service._run_call(
+            service.acall(
                 payload=payload,
                 context=getattr(service, "context", None),
                 dispatch=self._build_dispatch(service),
@@ -184,7 +182,7 @@ class DjangoTaskProxy:
 
     async def arun(self, **payload: Any):
         service = self._build()
-        return await service._run_call(
+        return await service.acall(
             payload=payload,
             context=getattr(service, "context", None),
             dispatch=self._build_dispatch(service),

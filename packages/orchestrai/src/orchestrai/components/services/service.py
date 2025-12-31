@@ -37,7 +37,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 
 from .calls import ServiceCall
 from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
-from .execution import ExecutionLifecycleMixin, resolve_call_client
+from .execution import ExecutionLifecycleMixin, ServiceCallMixin, resolve_call_client
 from .task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
@@ -82,13 +82,15 @@ class ServiceEmitter(Protocol):
 CodecLike = Union[type[BaseCodec], BaseCodec, IdentityLike]
 
 
-class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseComponent, ABC):
+class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent, ABC):
     """
     Abstract base for LLM-backed AI services.
 
     • Identity is exposed as `self.identity: Identity`, resolved by `IdentityMixin`.
     • Class attributes (domain/namespace/group/name) are resolver hints only (legacy `kind` is accepted as group).
     • Concrete services should rely on `self.identity.as_str` etc. instead of duplicating labels.
+    • Lifecycle execution lives in :class:`LifecycleMixin` (`execute` / `aexecute` return results).
+    • Service call orchestration lives in :class:`ServiceCallMixin` (`call` / `acall` return :class:`ServiceCall`).
     Codec precedence
     ----------------
     1) Per-call override provided at init (`codec=...`)
