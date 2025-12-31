@@ -1,8 +1,7 @@
 # orchestrai_django/models.py
-
-
 from django.db import models
 from django.utils import timezone
+from orchestrai.components.services.calls import ServiceCall, assert_jsonable
 from orchestrai.identity import Identity
 
 
@@ -209,9 +208,95 @@ class AIOutbox(TimestampedModel):
     def identity_str(self) -> str:
         return self.identity.as_str
 
-    def mark_dispatched(self) -> None:
-        self.dispatched_at = timezone.now()
-        self.save(update_fields=["dispatched_at", "updated_at"])
+
+class ServiceCallRecord(TimestampedModel):
+    """Persistent record of a service call dispatched from Django."""
+
+    id = models.CharField(primary_key=True, max_length=64)
+    service_identity = models.CharField(max_length=255, db_index=True)
+    service_kwargs = models.JSONField(default=dict)
+    status = models.CharField(max_length=32)
+    input = models.JSONField(default=dict)
+    context = models.JSONField(null=True, blank=True)
+    result = models.JSONField(null=True, blank=True)
+    error = models.TextField(null=True, blank=True)
+    dispatch = models.JSONField(default=dict)
+    backend = models.CharField(max_length=64, default="immediate")
+    queue = models.CharField(max_length=128, null=True, blank=True)
+    task_id = models.CharField(max_length=128, null=True, blank=True)
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "service_call_record"
+        indexes = [
+            models.Index(fields=["service_identity", "backend"]),
+            models.Index(fields=["queue"]),
+        ]
+
+    def _coerce_datetime(self, value):
+        if value is None:
+            return None
+        if timezone.is_aware(value):
+            return value
+        try:
+            return timezone.make_aware(value)
+        except Exception:
+            return value
+
+    def update_from_call(self, call: ServiceCall) -> None:
+        """Synchronize stored fields from a :class:`ServiceCall`."""
+
+        dispatch = dict(call.dispatch or {})
+        backend = dispatch.get("backend") or self.backend
+        queue = dispatch.get("queue") or self.queue
+        task_id = dispatch.get("task_id") or self.task_id
+
+        self.status = call.status
+        self.input = call.input
+        self.context = call.context
+        self.result = call.result
+        self.error = call.error
+        self.dispatch = dispatch
+        self.backend = backend
+        self.queue = queue
+        self.task_id = task_id
+
+        self.created_at = self._coerce_datetime(call.created_at)
+        self.started_at = self._coerce_datetime(call.started_at)
+        self.finished_at = self._coerce_datetime(call.finished_at)
+
+    def as_call(self) -> ServiceCall:
+        """Rehydrate a :class:`ServiceCall` from the persisted payload."""
+
+        dispatch = dict(self.dispatch or {})
+        dispatch.setdefault("backend", self.backend)
+        if self.queue:
+            dispatch.setdefault("queue", self.queue)
+        if self.task_id:
+            dispatch.setdefault("task_id", self.task_id)
+
+        call = ServiceCall(
+            id=self.id,
+            status=self.status,
+            input=self.input,
+            context=self.context,
+            result=self.result,
+            error=self.error,
+            dispatch=dispatch,
+            created_at=self.created_at,
+            started_at=self.started_at,
+            finished_at=self.finished_at,
+        )
+        return call
+
+    def to_jsonable(self) -> dict:
+        payload = self.as_call().to_jsonable()
+        payload["service_identity"] = self.service_identity
+        payload["service_kwargs"] = self.service_kwargs
+        assert_jsonable(payload)
+        return payload
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"AIOutbox(id={self.pk}, event={self.event_type}, ident={self.identity.as_str}, dispatched={bool(self.dispatched_at)})"
+        return f"ServiceCallRecord(id={self.pk}, service={self.service_identity}, status={self.status})"

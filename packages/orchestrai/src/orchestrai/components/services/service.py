@@ -30,7 +30,8 @@ from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
 
 from asgiref.sync import async_to_sync, sync_to_async
 
-from orchestrai.components.services.dispatch import ServiceCall
+from orchestrai.components.services.execution import ExecutionLifecycleMixin
+from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
 from orchestrai.identity.domains import SERVICES_DOMAIN
 
 from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
@@ -76,7 +77,7 @@ class ServiceEmitter(Protocol):
 CodecLike = Union[type[BaseCodec], BaseCodec, IdentityLike]
 
 
-class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
+class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseComponent, ABC):
     """
     Abstract base for LLM-backed AI services.
 
@@ -92,6 +93,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     abstract: ClassVar[bool] = True
     DOMAIN: ClassVar[str] = SERVICES_DOMAIN
     domain: ClassVar[str | None] = SERVICES_DOMAIN
+    task: ClassVar[CoreTaskProxy] = TaskDescriptor()
 
     # Class-level configuration / hints
     required_context_keys: ClassVar[tuple[str, ...]] = ()
@@ -117,21 +119,8 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # Task helpers
     # ------------------------------------------------------------------
     @classmethod
-    def using(cls, **service_kwargs: Any) -> ServiceCall:
-        return ServiceCall(service_cls=cls, service_kwargs=service_kwargs, phase="service")
-
-    @property
-    def task(self) -> ServiceCall:
-        context = getattr(self, "context", None)
-        service_kwargs: dict[str, Any] = {}
-
-        if context is not None:
-            try:
-                service_kwargs["context"] = dict(context)
-            except Exception:
-                service_kwargs["context"] = context
-
-        return ServiceCall(service_cls=type(self), service_kwargs=service_kwargs, phase="runner")
+    def using(cls, **service_kwargs: Any) -> ServiceSpec:
+        return ServiceSpec(service_cls=cls, service_kwargs=service_kwargs)
 
     def __init__(
             self,

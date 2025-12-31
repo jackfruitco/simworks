@@ -4,7 +4,7 @@
 
 from typing import Any
 
-from orchestrai.components.services.runners import LocalServiceRunner, register_service_runner
+from orchestrai.components.services.runners import LocalServiceRunner
 from orchestrai_django import tasks
 
 
@@ -50,12 +50,5 @@ class DjangoTaskServiceRunner:
         service_path = f"{service_cls.__module__}:{service_cls.__qualname__}"
         return tasks.get_service_status(service_path=service_path, phase=phase)
 
-
-register_service_runner(
-    DjangoTaskServiceRunner.name,
-    DjangoTaskServiceRunner,
-    make_default=True,
-    allow_override=True,
-)
 
 __all__ = ["DjangoTaskServiceRunner"]

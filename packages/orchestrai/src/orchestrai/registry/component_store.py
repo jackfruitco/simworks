@@ -24,7 +24,7 @@ class ComponentStore:
         with self._lock:
             if key not in self._registries:
                 if key == SERVICES_DOMAIN:
-                    from orchestrai.components.services.registry import ServiceRegistry
+                    from orchestrai.registry.services import ServiceRegistry
 
                     self._registries[key] = ServiceRegistry()
                 else:

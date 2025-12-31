@@ -4,7 +4,7 @@ import importlib
 from typing import Iterable
 
 from orchestrai.components.services.exceptions import ServiceDiscoveryError
-from orchestrai.components.services.registry import ensure_service_registry
+from orchestrai.registry.services import ensure_service_registry
 
 
 def discover_services(modules: Iterable[str]) -> list[str]:

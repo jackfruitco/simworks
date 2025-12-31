@@ -12,6 +12,7 @@ from orchestrai.decorators import provider_backend
 from orchestrai.conf import DEFAULTS
 from orchestrai.tracing import flatten_context as _flatten_context, service_span, service_span_sync
 from orchestrai.types import Request, Response
+from orchestrai.components.services.providers.openai_responses.build import build_responses_request
 from .output_adapters import ImageGenerationOutputAdapter
 from .tools import OpenAIToolAdapter
 from orchestrai.utils import clean_kwargs
@@ -120,20 +121,17 @@ class OpenAIResponsesProvider(BaseProvider):
             },
         ):
             native_tools = self._tools_to_provider(req.tools)
-            input_ = [m.model_dump(include={"role", "content"}, exclude_none=True) for m in req.input]
             model_name = req.model or self.default_model or DEFAULT_MODEL
-            response_format = getattr(req, "provider_response_format", None) or getattr(req, "response_schema_json", None)
+            timeout_s = timeout if timeout is not None else self.timeout_s
 
-            raw_kwargs: dict[str, Any] = {
-                "model": model_name,
-                "input": input_,
-                "previous_response_id": req.previous_response_id,
-                "tools": native_tools if native_tools else None,
-                "tool_choice": req.tool_choice,
-                "max_output_tokens": req.max_output_tokens,
-                "timeout": (timeout if timeout is not None else self.timeout_s),
-                "text": response_format,
-            }
+            raw_kwargs = build_responses_request(
+                req=req,
+                model=model_name,
+                provider_tools=native_tools or None,
+                response_format=getattr(req, "provider_response_format", None)
+                or getattr(req, "response_schema_json", None),
+                timeout=timeout_s,
+            )
 
             resp = await self._client.responses.create(**clean_kwargs(raw_kwargs))
             return self.adapt_response(resp, output_schema_cls=req.response_schema)

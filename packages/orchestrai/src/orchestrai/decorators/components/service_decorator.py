@@ -15,7 +15,7 @@ from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry import ComponentRegistry
 
-from ...components.services.registry import service_registry
+from orchestrai.registry.services import service_registry
 
 logger = logging.getLogger(__name__)
 
