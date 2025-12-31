@@ -1,7 +1,7 @@
 # orchestrai/components/mixins.py
+import asyncio
 from inspect import iscoroutinefunction
 
-from asgiref.sync import async_to_sync
 from asgiref.sync import sync_to_async
 
 from ..tracing import service_span, SpanPath
@@ -48,6 +48,11 @@ class LifecycleMixin(SetupTeardownMixin):
     Exposes:
         - aexecute(**ctx): async orchestration
         - execute(**ctx): sync wrapper around `aexecute(**ctx)`
+
+    These helpers return the raw service result. Pair with
+    :class:`orchestrai.components.services.execution.ServiceCallMixin` when a
+    structured :class:`~orchestrai.components.services.calls.ServiceCall`
+    envelope is needed.
     """
 
     async def arun(self, **ctx):
@@ -98,4 +103,13 @@ class LifecycleMixin(SetupTeardownMixin):
 
     def execute(self, **ctx):
         """Sync wrapper around `aexecute`."""
-        return async_to_sync(self.aexecute)(**ctx)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.aexecute(**ctx))
+
+        if loop.is_running():
+            raise RuntimeError("Cannot execute service while an event loop is running")
+
+        return loop.run_until_complete(self.aexecute(**ctx))

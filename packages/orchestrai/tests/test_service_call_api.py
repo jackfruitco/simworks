@@ -28,6 +28,27 @@ class AsyncTaskService(BaseService):
         return {"mode": "async", **ctx}
 
 
+class EchoLifecycleService(BaseService):
+    abstract = False
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="echo")
+
+    async def arun(self, **ctx):
+        call = ctx.get("call")
+        return {
+            "value": ctx.get("value"),
+            "call_id": getattr(call, "id", None),
+            "has_call": call is not None,
+        }
+
+
+class ErrorService(BaseService):
+    abstract = False
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="error")
+
+    async def arun(self, **ctx):
+        raise RuntimeError("boom")
+
+
 def test_task_run_executes_inline():
     sync_call = SyncTaskService().task.run(foo=1)
 
@@ -80,3 +101,53 @@ def test_to_jsonable_serializes_response_result():
 
     assert payload["result"]["output"] == []
     assert payload["dispatch"]["service"] == SyncTaskService.identity.as_str
+
+
+def test_execute_returns_raw_result():
+    service = EchoLifecycleService()
+
+    result = service.execute(value=3)
+
+    assert isinstance(result, dict)
+    assert result["value"] == 3
+    assert result["has_call"] is False
+
+
+def test_call_returns_service_call_and_injects_call_into_payload():
+    service = EchoLifecycleService()
+
+    call = service.call(payload={"value": 5})
+
+    assert isinstance(call, ServiceCall)
+    assert call.status == "succeeded"
+    assert call.result["value"] == 5
+    assert call.result["call_id"] == call.id
+    assert call.result["has_call"] is True
+    assert call.dispatch["service"] == EchoLifecycleService.identity.as_str
+    assert call.started_at is not None and call.finished_at is not None
+
+
+@pytest.mark.asyncio
+async def test_acall_returns_service_call_and_injects_call_into_payload():
+    service = EchoLifecycleService()
+
+    call = await service.acall(payload={"value": 7})
+
+    assert isinstance(call, ServiceCall)
+    assert call.status == "succeeded"
+    assert call.result["value"] == 7
+    assert call.result["call_id"] == call.id
+    assert call.result["has_call"] is True
+    assert call.dispatch["service"] == EchoLifecycleService.identity.as_str
+    assert call.started_at is not None and call.finished_at is not None
+
+
+def test_call_records_failure_and_error_message():
+    service = ErrorService()
+
+    call = service.call()
+
+    assert isinstance(call, ServiceCall)
+    assert call.status == "failed"
+    assert call.result is None
+    assert call.error

@@ -2,7 +2,7 @@
 
 from .calls import ServiceCall, assert_jsonable, to_jsonable
 from .discovery import discover_services, list_services
-from .execution import ExecutionLifecycleMixin
+from .execution import ExecutionLifecycleMixin, ServiceCallMixin
 from .exceptions import (
     MissingRequiredContextKeys,
     ServiceBuildRequestError,
@@ -24,6 +24,7 @@ __all__ = (
     "ServiceCall",
     "assert_jsonable",
     "to_jsonable",
+    "ServiceCallMixin",
     "ExecutionLifecycleMixin",
     "discover_services",
     "list_services",
