@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
-from orchestrai.components.services.execution import ServiceCallMixin
+from orchestrai.components.services.calls.mixins import ServiceCallMixin
 from orchestrai.components.services.task_proxy import ServiceSpec
 from orchestrai.orm_mode import must_be_async, must_be_sync
 

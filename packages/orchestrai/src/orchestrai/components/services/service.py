@@ -27,22 +27,19 @@ import inspect
 import logging
 from abc import ABC
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
-
-from asgiref.sync import async_to_sync, sync_to_async
 
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Optional, Protocol, Union
 
-from asgiref.sync import async_to_sync, sync_to_async
+from asgiref.sync import async_to_sync
 
 from .calls import ServiceCall
 from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
-from .execution import ExecutionLifecycleMixin, ServiceCallMixin, resolve_call_client
-from .task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
+from orchestrai.components.services.calls.mixins import ServiceCallMixin, resolve_call_client
+from .task_proxy import CoreTaskProxy, TaskDescriptor
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
 from ..mixins import LifecycleMixin
-from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
+from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSectionSpec
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...identity.domains import SERVICES_DOMAIN
 from ...tracing import get_tracer, service_span, SpanPath

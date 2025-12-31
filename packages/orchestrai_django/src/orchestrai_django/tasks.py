@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from orchestrai import get_current_app
 from orchestrai.components.services.calls import to_jsonable
-from orchestrai.components.services.execution import _STATUS_FAILED, _STATUS_RUNNING, _STATUS_SUCCEEDED, _NullEmitter
+from orchestrai.components.services.calls.mixins import _STATUS_FAILED, _STATUS_RUNNING, _STATUS_SUCCEEDED, _NullEmitter
 from orchestrai.identity import Identity
 from orchestrai.registry.services import ensure_service_registry
 

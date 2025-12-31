@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
-from orchestrai.components.services.execution import ServiceCallMixin
+from orchestrai.components.services.calls.mixins import ServiceCallMixin
 
 
 @dataclass(frozen=True)

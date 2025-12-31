@@ -2,7 +2,7 @@
 
 from .calls import ServiceCall, assert_jsonable, to_jsonable
 from .discovery import discover_services, list_services
-from .execution import ExecutionLifecycleMixin, ServiceCallMixin
+from orchestrai.components.services.calls.mixins import ExecutionLifecycleMixin, ServiceCallMixin
 from .exceptions import (
     MissingRequiredContextKeys,
     ServiceBuildRequestError,
