@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from typing import Any
 
@@ -56,9 +56,14 @@ class ServiceCall:
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    service: str | None = None
+    client: Any | None = field(default=None, repr=False, compare=False)
+    request: Any | None = field(default=None, repr=False, compare=False)
 
     def to_jsonable(self) -> dict[str, Any]:
         payload = asdict(self)
+        payload.pop("client", None)
+        payload.pop("request", None)
         payload = {key: _coerce(val) for key, val in payload.items()}
         assert_jsonable(payload)
         return payload
