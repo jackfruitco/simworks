@@ -26,12 +26,12 @@ import asyncio
 import inspect
 import logging
 from abc import ABC
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Optional, Protocol, Union
 
 from asgiref.sync import async_to_sync, sync_to_async
 
 from orchestrai.components.services.execution import ExecutionLifecycleMixin
-from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
+from orchestrai.components.services.task_proxy import CoreTaskProxy, TaskDescriptor
 from orchestrai.identity.domains import SERVICES_DOMAIN
 
 from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
@@ -118,10 +118,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
     # ------------------------------------------------------------------
     # Task helpers
     # ------------------------------------------------------------------
-    @classmethod
-    def using(cls, **service_kwargs: Any) -> ServiceSpec:
-        return ServiceSpec(service_cls=cls, service_kwargs=service_kwargs)
-
     def __init__(
             self,
             *,
@@ -249,6 +245,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
           constructor is rejected early with a descriptive error.
         """
 
+        runner_style_keys = {"queue", "runner", "runner_kwargs", "phase"}
+        if any(key in overrides for key in runner_style_keys):
+            cls._using_service_spec(**overrides)
+
         if ctx is not None and context is not None:
             raise TypeError(
                 f"{cls.__name__}.using() received both 'ctx' and 'context'. "
@@ -283,6 +283,14 @@ class BaseService(IdentityMixin, LifecycleMixin, ExecutionLifecycleMixin, BaseCo
             )
 
         return cls(context=context_dict, **overrides)
+
+    @classmethod
+    def _using_service_spec(cls, **service_kwargs: Any) -> NoReturn:
+        message = (
+            f"{cls.__name__}.using(...) no longer builds service runner specs. "
+            "Use cls.task.using(...) for inline execution or instantiate cls(...) directly."
+        )
+        raise RuntimeError(message)
 
     @property
     def slug(self) -> str:

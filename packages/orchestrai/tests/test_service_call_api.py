@@ -52,6 +52,11 @@ def test_task_using_queue_is_rejected():
         SyncTaskService.task.using(queue="hi-priority")
 
 
+def test_runner_style_using_is_blocked():
+    with pytest.raises(RuntimeError, match="task\\.using"):
+        SyncTaskService.using(queue="legacy-runner")
+
+
 def test_legacy_runner_imports_are_guarded():
     with pytest.raises(ImportError):
         importlib.import_module("orchestrai.components.services.runners")
