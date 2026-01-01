@@ -27,12 +27,9 @@ import inspect
 import logging
 from abc import ABC
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, Protocol, Union
-
-from asgiref.sync import async_to_sync, sync_to_async
-
 from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Optional, Protocol, Union
 
+import httpx
 from asgiref.sync import async_to_sync, sync_to_async
 
 from .calls import ServiceCall
@@ -455,6 +452,40 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if delay < 0:
             delay = 0
         await asyncio.sleep(delay)
+
+    def _is_retryable_exc(self, exc: Exception) -> bool:
+        """Return True for provider/network failures that should be retried."""
+
+        from ..providerkit.exceptions import ProviderCallError
+
+        retryable_types: tuple[type[Exception], ...] = (
+            asyncio.TimeoutError,
+            TimeoutError,
+            ProviderCallError,
+            httpx.TimeoutException,
+            httpx.TransportError,
+        )
+
+        if isinstance(exc, retryable_types):
+            return True
+
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+
+        try:
+            if status_code is not None:
+                status_int = int(status_code)
+                if status_int == 429 or 500 <= status_int < 600:
+                    return True
+        except Exception:
+            pass
+
+        if isinstance(exc, RuntimeError) and "no running event loop" in str(exc).lower():
+            return False
+
+        return False
 
     def flatten_context(self) -> dict:
         """Flatten `self.context` to `context.*` keys for tracing/logging."""
@@ -1451,7 +1482,45 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                     ):
                         try:
                             resp: Response = await client.send_request(req)
+                        except Exception as e:
+                            retryable = self._is_retryable_exc(e)
+                            if not retryable or attempt >= max_attempts:
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.exception(
+                                    "llm.service.error",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "error.type": type(e).__name__,
+                                        "error.message": str(e),
+                                    },
+                                )
+                                raise
 
+                            logger.warning(
+                                "llm.service.retrying",
+                                extra={
+                                    **attrs,
+                                    "attempt": attempt,
+                                    "max_attempts": max_attempts,
+                                    "correlation_id": str(req.correlation_id),
+                                    "error.type": type(e).__name__,
+                                    "error.message": str(e),
+                                },
+                            )
+                            await self._backoff_sleep(attempt)
+                            attempt += 1
+                            continue
+
+                        postprocess_extra = {
+                            **attrs,
+                            "correlation_id": str(req.correlation_id),
+                            "attempt": attempt,
+                        }
+
+                        try:
                             # Tag response identity/correlation
                             resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
                             if getattr(resp, "request_correlation_id", None) is None:
@@ -1473,27 +1542,14 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
                             self.emitter.emit_response(self.context, ident.as_str, resp)
                             await self.on_success(self.context, resp)
+                        except Exception:
+                            logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
-                            logger.info(
-                                "llm.service.success",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
-                            )
-                            return resp
-                        except Exception as e:
-                            if attempt >= max_attempts:
-                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
-                                await self.on_failure(self.context, e)
-                                logger.exception(
-                                    "llm.service.error",
-                                    extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
-                                )
-                                raise
-                            logger.warning(
-                                "llm.service.retrying",
-                                extra={**attrs, "attempt": attempt, "max_attempts": max_attempts},
-                            )
-                            await self._backoff_sleep(attempt)
-                            attempt += 1
+                        logger.info(
+                            "llm.service.success",
+                            extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                        )
+                        return resp
             finally:
                 if codec is not None:
                     try:
@@ -1524,6 +1580,12 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 started = False
                 while attempt <= max_attempts and not started:
                     try:
+                        postprocess_extra = {
+                            **attrs,
+                            "correlation_id": str(req.correlation_id),
+                            "attempt": attempt,
+                        }
+
                         async for chunk in client.stream_request(req):
                             started = True
                             # Let the codec inspect/transform chunks
@@ -1533,7 +1595,12 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                                 except AttributeError:
                                     # Older codecs may not implement the hook
                                     pass
-                            self.emitter.emit_stream_chunk(self.context, ident.as_str, chunk)
+                                except Exception:
+                                    logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
+                            try:
+                                self.emitter.emit_stream_chunk(self.context, ident.as_str, chunk)
+                            except Exception:
+                                logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
                         # Allow codec to finalize any stream-level state
                         if codec is not None:
@@ -1541,21 +1608,40 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                                 await codec.afinalize_stream()
                             except AttributeError:
                                 pass
+                            except Exception:
+                                logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
-                        self.emitter.emit_stream_complete(self.context, ident.as_str, req.correlation_id)
+                        try:
+                            self.emitter.emit_stream_complete(self.context, ident.as_str, req.correlation_id)
+                        except Exception:
+                            logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
                         return
                     except Exception as e:
-                        if started or attempt >= max_attempts:
+                        retryable = not started and self._is_retryable_exc(e)
+                        if started or attempt >= max_attempts or not retryable:
                             self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
                             await self.on_failure(self.context, e)
                             logger.exception(
                                 "llm.service.stream.error",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                                extra={
+                                    **attrs,
+                                    "correlation_id": str(req.correlation_id),
+                                    "attempt": attempt,
+                                    "error.type": type(e).__name__,
+                                    "error.message": str(e),
+                                },
                             )
                             raise
                         logger.warning(
                             "llm.service.stream.retrying",
-                            extra={**attrs, "attempt": attempt, "max_attempts": max_attempts},
+                            extra={
+                                **attrs,
+                                "attempt": attempt,
+                                "max_attempts": max_attempts,
+                                "correlation_id": str(req.correlation_id),
+                                "error.type": type(e).__name__,
+                                "error.message": str(e),
+                            },
                         )
                         await self._backoff_sleep(attempt)
                         attempt += 1
