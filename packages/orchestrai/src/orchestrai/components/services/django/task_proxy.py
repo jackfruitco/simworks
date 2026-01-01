@@ -125,8 +125,23 @@ class DjangoTaskProxy:
         daemon thread so the caller never blocks on service execution.
         """
 
+        try:
+            from orchestrai import get_current_app
+            from orchestrai._state import set_current_app
+            from orchestrai.registry.active_app import set_active_registry_app
+
+            parent_app = get_current_app()
+        except Exception:
+            parent_app = None
+
         def _runner() -> None:
             try:
+                if parent_app is not None:
+                    try:
+                        set_current_app(parent_app)
+                        set_active_registry_app(parent_app)
+                    except Exception:
+                        logger.debug("Failed to bind parent app into background dispatch", exc_info=True)
                 self._dispatch_immediate(call_id)
             except Exception:  # pragma: no cover - defensive logging only
                 logger.exception("orchestrai_django: background dispatch failed", extra={"call_id": call_id})
