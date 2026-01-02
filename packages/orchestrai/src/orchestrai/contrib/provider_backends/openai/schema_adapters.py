@@ -89,8 +89,8 @@ class OpenaiWrapper(OpenaiBaseSchemaAdapter):
     def adapt(self, target_: Dict[str, Any]) -> dict[str, Any]:
         """Wrap the schema in OpenAI's required envelope."""
         return {
-            "type": "json_schema",
-            "json_schema": {
+            "format": {
+                "type": "json_schema",
                 "name": "response",
                 "schema": target_,
             }
