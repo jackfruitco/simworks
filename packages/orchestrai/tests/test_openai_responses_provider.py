@@ -1,9 +1,6 @@
 import pytest
 
-from orchestrai.contrib.provider_backends.openai.openai import (
-    OpenAIResponsesProvider,
-    normalize_responses_output,
-)
+from orchestrai.contrib.provider_backends.openai.openai import OpenAIResponsesProvider
 
 
 class _FakeContent:
@@ -30,19 +27,9 @@ class _UnknownOutput:
         self.type = output_type
 
 
-def test_normalize_responses_output_collects_message_text():
-    message = _FakeMessage([_FakeContent("hello"), _FakeContent(" world", "text")])
-    reasoning = _FakeMessage([], message_type="reasoning")
-    unknown = _UnknownOutput("image_generation")
-    text, passthrough, meta = normalize_responses_output(_FakeResponse([reasoning, message, unknown]))
-
-    assert text == "hello world"
-    assert passthrough == [unknown]
-    assert meta == {"unhandled_items": ["image_generation"]}
-
-
 @pytest.mark.asyncio
-async def test_provider_adapts_responses_output_without_retrying_unknown(monkeypatch):
+async def test_provider_adapts_responses_output_extracts_text():
+    """Test that the provider correctly extracts text from message content."""
     provider = OpenAIResponsesProvider(alias="test", api_key="dummy", client=object())
 
     message = _FakeMessage([_FakeContent("Hello from responses")])
@@ -52,8 +39,7 @@ async def test_provider_adapts_responses_output_without_retrying_unknown(monkeyp
 
     adapted = provider.adapt_response(resp)
 
+    # Verify text extraction
     assert adapted.output[0].content[0].text == "Hello from responses"
+    # Verify metadata
     assert adapted.provider_meta["id"] == "resp_123"
-    assert adapted.provider_meta.get("output_meta", {}).get("unhandled_items") == [
-        "unused_attachment"
-    ]

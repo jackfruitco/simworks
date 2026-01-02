@@ -1,9 +1,15 @@
-# orchestrai/contrib/provideR_backends/openai/schema_adapters.py
-"""
-OpenAI-specific schema adapters.
+# orchestrai/contrib/provider_backends/openai/schema_adapters.py
+"""OpenAI-specific schema adapters.
 
-These helpers are used by backend-aware codecs to adapt JSON Schemas
-for the OpenAI Responses API (e.g., flattening oneOf unions).
+Schema adapters transform JSON schemas to accommodate OpenAI Responses API requirements:
+
+1. **FlattenUnions** (order=0): Flattens JSON Schema `oneOf` unions into single objects
+   because OpenAI doesn't support union types.
+
+2. **OpenaiWrapper** (order=999): Wraps the schema in OpenAI's required format:
+   `{"type": "json_schema", "json_schema": {"name": "response", "schema": {...}}}`
+
+Adapters are applied in order (low to high) to build the final schema.
 """
 from typing import Any, Dict
 
@@ -15,27 +21,19 @@ class OpenaiBaseSchemaAdapter(BaseSchemaAdapter):
     provider_slug = "openai-prod"
 
 
-class OpenaiWrapper(OpenaiBaseSchemaAdapter):
-    """OpenAI-specific wrapper for JSON Schemas."""
-    order = 999                # run last
-
-    def adapt(self, target_: Dict[str, Any]) -> dict[str, Any]:
-        return {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "response",
-                "schema": target_,
-            }
-        }
-
-
 class FlattenUnions(OpenaiBaseSchemaAdapter):
     """Flatten oneOf unions into a single object schema.
 
-    This is an OpenAI-specific workaround for providers that do not support
-    JSON Schema `oneOf` unions. Codecs for OpenAI JSON output should call
-    this adapter as part of their schema pipeline.
+    OpenAI's Responses API does not support JSON Schema `oneOf` unions.
+    This adapter walks the schema tree and flattens any `oneOf` constructs
+    by merging all variant properties into a single object type.
+
+    **Important**: The prompt must use a discriminator field to guide the model
+    when multiple variants exist, since the schema no longer enforces exclusivity.
+
+    **Order**: 0 (runs first, before wrapper)
     """
+    order = 0  # Run before wrapper
 
     def adapt(self, schema: Dict[str, Any]) -> Dict[str, Any]:
         def walk(node: Any) -> Any:
@@ -66,3 +64,34 @@ class FlattenUnions(OpenaiBaseSchemaAdapter):
             return node
 
         return walk(schema)
+
+
+class OpenaiWrapper(OpenaiBaseSchemaAdapter):
+    """Wrap JSON schema in OpenAI Responses API format.
+
+    OpenAI requires schemas to be wrapped in a specific envelope:
+    ```json
+    {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "response",
+            "schema": {...}
+        }
+    }
+    ```
+
+    This adapter applies that wrapper after all other transformations.
+
+    **Order**: 999 (runs last, after all transformations)
+    """
+    order = 999  # Run last
+
+    def adapt(self, target_: Dict[str, Any]) -> dict[str, Any]:
+        """Wrap the schema in OpenAI's required envelope."""
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "response",
+                "schema": target_,
+            }
+        }

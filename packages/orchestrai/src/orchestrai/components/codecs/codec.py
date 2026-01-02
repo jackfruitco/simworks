@@ -340,18 +340,29 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         Priority: backend-native → OutputJsonContent → JSON text → tool-result JSON.
         """
         with service_span_sync("orchestrai.codec.extract", attributes={"orchestrai.codec": self.__class__.__name__}):
-            for extractor in (
-                    self._extract_from_provider,
-                    self._extract_from_json_content,
-                    self._extract_from_json_text,
-                    self._extract_from_tool_result,
-            ):
+            extractors = (
+                ("provider_meta", self._extract_from_provider),
+                ("json_content", self._extract_from_json_content),
+                ("json_text", self._extract_from_json_text),
+                ("tool_result", self._extract_from_tool_result),
+            )
+            for priority, (name, extractor) in enumerate(extractors):
                 try:
                     data = extractor(resp)
-                except Exception:
+                    if isinstance(data, dict):
+                        logger.debug(
+                            f"Extracted structured output via {name} (priority={priority})",
+                            extra={"extractor": name, "priority": priority}
+                        )
+                        return data
+                except Exception as e:
+                    logger.debug(
+                        f"Extractor {name} failed: {e}",
+                        exc_info=True,
+                        extra={"extractor": name, "priority": priority}
+                    )
                     data = None
-                if isinstance(data, dict):
-                    return data
+            logger.debug("No structured output candidate found")
             return None
 
     @staticmethod

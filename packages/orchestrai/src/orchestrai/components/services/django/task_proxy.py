@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
-import threading
 from typing import Any
 
 from django.db import transaction
@@ -113,51 +112,24 @@ class DjangoTaskProxy:
         return record
 
     def _dispatch_immediate(self, call_id: str) -> Any:
-        from orchestrai_django.tasks import run_service_call
-
-        return run_service_call(call_id)
-
-    def _dispatch_immediate_async(self, call_id: str) -> None:
-        """Fire-and-forget wrapper around :meth:`_dispatch_immediate`.
-
-        Dispatch is scheduled as soon as the current transaction (if any)
-        commits to avoid reading uncommitted records. Execution happens in a
-        daemon thread so the caller never blocks on service execution.
         """
+        Dispatch a service call via Django Tasks framework.
 
-        try:
-            from orchestrai import get_current_app
-            from orchestrai._state import set_current_app
-            from orchestrai.registry.active_app import set_active_registry_app
+        Uses run_service_call_task (decorated with @task) to execute
+        the service in the background via the configured Django Tasks backend.
+        """
+        from orchestrai_django.tasks import run_service_call_task
 
-            parent_app = get_current_app()
-        except Exception:
-            parent_app = None
+        # Enqueue via Django Tasks (fire-and-forget)
+        task_result = run_service_call_task.enqueue(call_id=call_id)
 
-        def _runner() -> None:
-            try:
-                if parent_app is not None:
-                    try:
-                        set_current_app(parent_app)
-                        set_active_registry_app(parent_app)
-                    except Exception:
-                        logger.debug("Failed to bind parent app into background dispatch", exc_info=True)
-                self._dispatch_immediate(call_id)
-            except Exception:  # pragma: no cover - defensive logging only
-                logger.exception("orchestrai_django: background dispatch failed", extra={"call_id": call_id})
+        logger.debug(
+            "DjangoTaskProxy: Enqueued service call %s as Django task %s",
+            call_id,
+            task_result.id
+        )
 
-        def _start_thread() -> None:
-            thread = threading.Thread(
-                target=_runner,
-                name=f"orchestrai-service-{call_id}",
-                daemon=True,
-            )
-            thread.start()
-
-        try:
-            transaction.on_commit(_start_thread)
-        except Exception:
-            _start_thread()
+        return task_result.id
 
     # ------------------------------------------------------------------
     # Public API
@@ -179,7 +151,10 @@ class DjangoTaskProxy:
 
         backend = dispatch.get("backend") or "immediate"
         if backend == "immediate":
-            self._dispatch_immediate_async(record.id)
+            task_id = self._dispatch_immediate(record.id)
+            # Store Django task ID in the record
+            record.task_id = task_id
+            record.save(update_fields=["task_id"])
 
         return record.id
 
@@ -202,7 +177,11 @@ class DjangoTaskProxy:
 
             backend = dispatch.get("backend") or "immediate"
             if backend == "immediate":
-                self._dispatch_immediate_async(record.id)
+                # Use Django Tasks for async dispatch (sync call is safe here)
+                task_id = self._dispatch_immediate(record.id)
+                # Store Django task ID in the record
+                record.task_id = task_id
+                await record.asave(update_fields=["task_id"])
 
             return record.id
 

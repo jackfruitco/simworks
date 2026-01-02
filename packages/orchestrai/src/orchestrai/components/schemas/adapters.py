@@ -32,8 +32,10 @@ class BaseAdapter(ABC):
     ):
         if order is not None:
             self.order = order
-        else:
+        # Only set default if no class-level order exists
+        elif getattr(type(self), 'order', None) is None:
             self.order = 0
+        # Otherwise, keep the class-level order attribute (don't overwrite it)
 
 
 class BaseSchemaAdapter(BaseAdapter):
