@@ -39,7 +39,7 @@ class PersistenceRegistryFixup:
                 )
 
             if isinstance(existing_registry, PersistenceHandlerRegistry):
-                logger.debug(
+                logger.info(
                     "Component store already has a PersistenceHandlerRegistry;"
                     " reusing existing instance",
                 )
@@ -48,8 +48,9 @@ class PersistenceRegistryFixup:
             if hasattr(store, "set_registry"):
                 if existing_registry is None:
                     store.set_registry(PERSIST_DOMAIN, registry)
-                    logger.debug(
-                        "Installed PersistenceHandlerRegistry on component store"
+                    logger.info(
+                        "Installed PersistenceHandlerRegistry on empty component"
+                        " store",
                     )
                     return None
 
@@ -61,22 +62,28 @@ class PersistenceRegistryFixup:
 
                 if existing_count:
                     migrated = 0
-                    if hasattr(existing_registry, "items"):
-                        for component in existing_registry.items():
-                            try:
-                                registry.register(component)
-                                migrated += 1
-                            except Exception:
-                                logger.warning(
-                                    "Skipping migration of persistence component %s",
-                                    component,
-                                    exc_info=True,
-                                )
+                    components = (
+                        existing_registry.items()
+                        if hasattr(existing_registry, "items")
+                        else ()
+                    )
+
+                    for component in components:
+                        try:
+                            registry.register(component)
+                            migrated += 1
+                        except Exception:
+                            logger.warning(
+                                "Skipping migration of persistence component %s",
+                                component,
+                                exc_info=True,
+                            )
 
                     if migrated == existing_count:
                         try:
                             if hasattr(existing_registry, "clear"):
                                 existing_registry.clear()
+
                             store.set_registry(
                                 PERSIST_DOMAIN, registry, replace=True
                             )
@@ -93,17 +100,17 @@ class PersistenceRegistryFixup:
                             )
                     else:
                         logger.info(
-                            "Component store already has %s persistence registrations;"
-                            " keeping existing registry",
+                            "Component store already has %s persistence"
+                            " registrations; keeping existing registry",
                             existing_count,
                         )
                 else:
                     store.set_registry(
                         PERSIST_DOMAIN, registry, replace=True
                     )
-                    logger.debug(
+                    logger.info(
                         "Installed PersistenceHandlerRegistry, replacing empty"
-                        " existing registry"
+                        " existing registry",
                     )
                 return None
             else:
