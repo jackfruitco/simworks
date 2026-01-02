@@ -96,11 +96,17 @@ class ServiceCallRecord(TimestampedModel):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
+    # Domain persistence tracking (for two-phase commit pattern)
+    domain_persisted = models.BooleanField(default=False)
+    domain_persist_error = models.TextField(null=True, blank=True)
+    domain_persist_attempts = models.IntegerField(default=0)
+
     class Meta:
         db_table = "service_call_record"
         indexes = [
             models.Index(fields=["service_identity", "backend"]),
             models.Index(fields=["queue"]),
+            models.Index(fields=["status", "domain_persisted", "finished_at"]),
         ]
 
     def _coerce_datetime(self, value):

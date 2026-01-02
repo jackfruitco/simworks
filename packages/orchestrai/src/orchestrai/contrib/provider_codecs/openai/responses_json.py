@@ -113,14 +113,10 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                     )
                 base_schema = candidate
             req.response_schema_json = base_schema
-            logger.debug(f"[OpenAICodec] Base schema title: {base_schema.get('title') if base_schema else None}")
 
             # Apply schema adapters (OpenAI-specific quirks such as flattening oneOf).
             compiled = base_schema
             for adapter in self.schema_adapters:
-                adapter_name = type(adapter).__name__
-                adapter_order = getattr(adapter, 'order', None)
-                logger.debug(f"[OpenAICodec] Applying adapter: {adapter_name} (order={adapter_order})")
                 try:
                     compiled = adapter.adapt(compiled)
                 except Exception as exc:  # pragma: no cover - defensive
@@ -128,14 +124,8 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                         f"{self.__class__.__name__}: schema adapter {type(adapter).__name__} failed"
                     ) from exc
 
-            has_wrapper = isinstance(compiled, dict) and 'json_schema' in compiled
-            logger.debug(f"[OpenAICodec] Compiled schema has wrapper: {has_wrapper}")
-
             req.response_schema_json = compiled
             setattr(req, "provider_response_format", compiled)
-
-            has_wrapper_after = isinstance(getattr(req, 'provider_response_format', None), dict) and 'json_schema' in getattr(req, 'provider_response_format', {})
-            logger.debug(f"[OpenAICodec] Set provider_response_format with wrapper: {has_wrapper_after}")
 
     async def adecode(self, resp: Response) -> Any | None:
         """Decode structured output from a Response into the declared schema, if available.

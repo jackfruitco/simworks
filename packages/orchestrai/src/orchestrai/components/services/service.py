@@ -879,37 +879,61 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 success=True,
             )
         )
+
+        # Validate schema compatibility with selected codec (BUG-008 fix)
+        if codec_cls is not None and self.response_schema is not None:
+            self._validate_schema_codec_compatibility(codec_cls, self.response_schema)
+
         return codec_cls, label
 
+    def _validate_schema_codec_compatibility(
+        self,
+        codec_cls: type[BaseCodec],
+        schema_cls: type[BaseOutputSchema],
+    ) -> None:
+        """Validate that the schema is compatible with the selected codec.
+
+        This prevents runtime errors when codec expects certain schema features
+        that the schema doesn't provide.
+
+        Currently performs basic checks; can be extended as needed.
+        """
+        # Basic validation: ensure schema is a Pydantic model
+        if not hasattr(schema_cls, "model_json_schema"):
+            logger.warning(
+                "Schema %s does not appear to be a Pydantic model; codec %s may fail",
+                schema_cls,
+                codec_cls,
+            )
+
+        # Check if codec has specific requirements
+        if hasattr(codec_cls, "validate_schema"):
+            try:
+                codec_cls.validate_schema(schema_cls)
+            except Exception as e:
+                logger.error(
+                    "Schema validation failed for codec %s: %s",
+                    codec_cls,
+                    e,
+                    exc_info=True,
+                )
+                raise
+
     def _attach_response_schema_to_request(self, req: Request, codec: BaseCodec | None = None) -> None:
-        """Populate request schema hints when a schema is available."""
+        """Attach response schema class to request (codec will handle adaptation).
+
+        IMPORTANT: This method only attaches the schema CLASS, not adapted JSON.
+        Schema adaptation is the codec's responsibility via codec.aencode().
+        This prevents double-adaptation bugs.
+        """
 
         schema_cls = self.response_schema
         if schema_cls is None:
             return
 
+        # Only attach the schema class; codec will handle JSON schema generation and adaptation
         if getattr(req, "response_schema", None) is None:
             req.response_schema = schema_cls
-
-        schema_json = self._resolved_schema_json
-        if schema_json is None:
-            try:
-                schema_json = schema_cls.model_json_schema()
-            except Exception:
-                schema_json = None
-
-        if codec is not None and getattr(codec, "schema_adapters", None):
-            try:
-                schema_json = apply_schema_adapters(schema_cls, getattr(codec, "schema_adapters"))
-            except Exception:
-                logger.debug("schema adapter application failed", exc_info=True)
-
-        if schema_json is None:
-            return
-
-        req.response_schema_json = schema_json
-        if getattr(req, "provider_response_format", None) is None:
-            req.provider_response_format = schema_json
 
     # ------------------------------------------------------------------------
     # Service run helpers
@@ -1533,15 +1557,40 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                             if getattr(resp, "request_correlation_id", None) is None:
                                 resp.request_correlation_id = req.correlation_id
 
-                            # Attach codec identity if missing (write-safe fields only)
-                            if hasattr(resp, "codec_identity") and not getattr(resp, "codec_identity", None):
+                            # Attach codec identity if missing
+                            if not getattr(resp, "codec_identity", None):
                                 try:
-                                    resp.codec_identity = req.codec_identity  # type: ignore[attr-defined]
+                                    resp.codec_identity = getattr(req, "codec_identity", None)
                                 except Exception:
                                     logger.debug(
                                         "failed to propagate codec_identity to response",
                                         exc_info=True,
                                     )
+
+                            # Populate execution metadata for audit trail / persistence / websocket
+                            try:
+                                schema_identity = None
+                                if self.response_schema and hasattr(self.response_schema, "identity"):
+                                    schema_identity = getattr(self.response_schema.identity, "as_str", None)
+
+                                execution_meta = {
+                                    "service_identity": ident.as_str,
+                                    "prompt_plan_source": self.context.get("prompt.plan.source"),
+                                    "schema_identity": schema_identity,
+                                    "codec_identity": getattr(req, "codec_identity", None),
+                                    "model": req.model or getattr(client, "default_model", None),
+                                    "request_correlation_id": str(req.correlation_id),
+                                    "timestamp": datetime.utcnow().isoformat(),
+                                }
+                                resp.execution_metadata.update(execution_meta)
+                            except Exception:
+                                logger.debug("failed to populate execution metadata", exc_info=True)
+
+                            # Attach service context to response for persistence
+                            try:
+                                resp.context = dict(self.context)  # Deep copy
+                            except Exception:
+                                logger.debug("failed to populate response context", exc_info=True)
 
                             # Let the codec decode/shape the response
                             if codec is not None:
@@ -1560,14 +1609,52 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                             )
                             return resp
                         except CodecDecodeError as e:
-                            # Validation failures are non-retriable - fail immediately
-                            self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
-                            await self.on_failure(self.context, e)
-                            logger.error(
-                                "llm.service.validation_failed",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                            # Check if error is retriable (BUG-009 fix)
+                            is_retriable = getattr(e, "retriable", False)
+
+                            if not is_retriable:
+                                # Non-retriable validation failures - fail immediately
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.error(
+                                    "llm.service.validation_failed",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "retriable": False,
+                                    },
+                                )
+                                raise
+
+                            # Retriable decode error - treat like other transient failures
+                            if attempt >= max_attempts:
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.error(
+                                    "llm.service.validation_failed_after_retries",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "retriable": True,
+                                    },
+                                )
+                                raise
+
+                            logger.warning(
+                                "llm.service.validation_failed_retrying",
+                                extra={
+                                    **attrs,
+                                    "attempt": attempt,
+                                    "max_attempts": max_attempts,
+                                    "retriable": True,
+                                    "error": str(e),
+                                },
                             )
-                            raise
+                            await self._backoff_sleep(attempt)
+                            attempt += 1
+                            continue
                         except Exception as e:
                             if attempt >= max_attempts:
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))

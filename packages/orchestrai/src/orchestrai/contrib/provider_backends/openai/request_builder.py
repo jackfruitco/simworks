@@ -105,17 +105,6 @@ def build_responses_request(
         else getattr(req, "provider_response_format", None) or getattr(req, "response_schema_json", None)
     )
 
-    logger.debug(f"[RequestBuilder] response_format param: {type(response_format)}")
-    logger.debug(f"[RequestBuilder] req.provider_response_format: {type(getattr(req, 'provider_response_format', None))}")
-    logger.debug(f"[RequestBuilder] req.response_schema_json: {type(getattr(req, 'response_schema_json', None))}")
-
-    if isinstance(resolved_response_format, dict):
-        has_wrapper = 'json_schema' in resolved_response_format
-        schema_type = resolved_response_format.get('type') if has_wrapper else resolved_response_format.get('title')
-        logger.debug(f"[RequestBuilder] resolved_response_format has wrapper: {has_wrapper}, schema_type: {schema_type}")
-    else:
-        logger.debug(f"[RequestBuilder] resolved_response_format is not a dict: {type(resolved_response_format)}")
-
     metadata: dict[str, Any] = {}
     codec_identity = getattr(req, "codec_identity", None)
     if codec_identity:
@@ -138,8 +127,6 @@ def build_responses_request(
         "timeout": timeout,
         "text": resolved_response_format,
     }
-
-    logger.debug(f"[RequestBuilder] Final payload text field has wrapper: {isinstance(payload.get('text'), dict) and 'json_schema' in payload.get('text', {})}")
 
     if metadata:
         # OpenAI expects metadata.orchestrai to be a string, not an object

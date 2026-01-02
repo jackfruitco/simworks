@@ -47,7 +47,12 @@ def resolve_schema(
         adapters: Iterable | None = None,
         store=None,
 ) -> ResolutionResult[type[BaseOutputSchema] | None]:
-    """Resolve a response schema with simple precedence."""
+    """Resolve a response schema with simple precedence.
+
+    NOTE: Schema adapters are NOT applied here. Codecs are responsible for
+    schema adaptation via codec.aencode(). This prevents double-adaptation bugs.
+    The 'adapters' parameter is kept for API compatibility but ignored.
+    """
 
     if store is None:
         from orchestrai.registry.active_app import get_component_store as _get_component_store
@@ -62,7 +67,8 @@ def resolve_schema(
             identity=getattr(override, "identity", None).as_str if hasattr(override, "identity") else None,
             reason="response_schema override provided",
         )
-        branch.meta["schema_json"] = apply_schema_adapters(override, adapters or ())
+        # Schema adaptation is codec's responsibility; don't apply here
+        branch.meta["schema_json"] = None
         return ResolutionResult(override, branch, branches + [branch])
 
     if default is not None:
@@ -72,7 +78,8 @@ def resolve_schema(
             identity=getattr(default, "identity", None).as_str if hasattr(default, "identity") else None,
             reason="class-level response_schema",
         )
-        branch.meta["schema_json"] = apply_schema_adapters(default, adapters or ())
+        # Schema adaptation is codec's responsibility; don't apply here
+        branch.meta["schema_json"] = None
         return ResolutionResult(default, branch, branches + [branch])
 
     candidate = None
@@ -97,7 +104,8 @@ def resolve_schema(
             identity=getattr(candidate, "identity", None).as_str if hasattr(candidate, "identity") else None,
             reason="matched schema in ComponentStore",
         )
-        branch.meta["schema_json"] = apply_schema_adapters(candidate, adapters or ())
+        # Schema adaptation is codec's responsibility; don't apply here
+        branch.meta["schema_json"] = None
         return ResolutionResult(candidate, branch, branches + [branch])
 
     branch = ResolutionBranch("none", None, reason="no response schema resolved")
