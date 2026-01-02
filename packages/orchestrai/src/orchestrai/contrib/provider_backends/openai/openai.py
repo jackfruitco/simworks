@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["OpenAIResponsesProvider"]
 
-
 @provider_backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
 class OpenAIResponsesProvider(BaseProvider):
     """Minimal OpenAI Responses API backend."""
