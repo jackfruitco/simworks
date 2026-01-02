@@ -27,18 +27,45 @@ class ComponentStore:
                     from orchestrai.registry.services import ServiceRegistry
 
                     self._registries[key] = ServiceRegistry()
-                elif key == PERSIST_DOMAIN:
-                    try:
-                        from orchestrai_django.registry.persistence import (
-                            PersistenceHandlerRegistry,
-                        )
-
-                        self._registries[key] = PersistenceHandlerRegistry()
-                    except Exception:
-                        self._registries[key] = ComponentRegistry()
                 else:
                     self._registries[key] = ComponentRegistry()
             return self._registries[key]
+
+    def set_registry(
+        self,
+        domain: str,
+        registry: ComponentRegistry[Any],
+        *,
+        replace: bool = False,
+    ) -> ComponentRegistry[Any]:
+        """Mount a concrete registry instance for a domain.
+
+        If a registry already exists and ``replace`` is False, the existing registry
+        is returned unchanged. When ``replace`` is True, the registry is swapped out
+        only if the existing registry is empty; otherwise a ``ValueError`` is raised
+        to avoid losing registrations.
+        """
+
+        key = str(domain).strip()
+        if not key:
+            raise ValueError("registry domain must be a non-empty string")
+        if not isinstance(registry, ComponentRegistry):
+            raise TypeError("registry must be a ComponentRegistry instance")
+
+        with self._lock:
+            existing = self._registries.get(key)
+            if existing is registry:
+                return registry
+            if existing and not replace:
+                return existing
+            if existing and existing.count():
+                raise ValueError(
+                    f"cannot replace populated registry for domain {key!r}; "
+                    "clear it first or supply an empty registry"
+                )
+
+            self._registries[key] = registry
+            return registry
 
     def register(self, record: RegistrationRecord) -> None:
         registry = self.registry(record.domain)

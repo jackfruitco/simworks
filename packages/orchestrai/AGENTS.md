@@ -12,6 +12,9 @@ These instructions cover the OrchestrAI library under `packages/orchestrai/` (in
 - Prefer clear lifecycle naming (`configure()`, `setup()`, `discover()`, `finalize()`, `start()`).
 - Keep registries predictable: validate keys early and surface helpful errors for collisions.
 - Document new behaviors in `packages/orchestrai/docs/` when adding or changing workflow steps.
+- Keep `orchestrai` framework-agnostic: do **not** import from `orchestrai_django` (or other
+  integrations). Platform-specific wiring should be injected via fixups or adapters, not
+  baked into the core package.
 
 ## Documentation
 - Update `packages/orchestrai/README.md` if usage or installation changes.
