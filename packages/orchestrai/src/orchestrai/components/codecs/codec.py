@@ -89,14 +89,23 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         """Return the effective response schema for this codec.
 
         Codecs do not own schemas; they read the schema resolved by the service.
-        The service is expected to expose a `response_schema` attribute that has
-        already applied per-call overrides, class-level defaults, and identity-based
-        resolution in that order.
+
+        Fallback chain (consistent with decode):
+        1. service.response_schema (resolved schema from service)
+        2. self.response_schema (codec's class-level default)
+
+        This ensures encode and decode use the same schema resolution logic.
         """
         svc = getattr(self, "service", None)
-        if svc is None:
-            return None
-        return getattr(svc, "response_schema", None)
+
+        # First: try service's resolved schema
+        if svc is not None:
+            schema = getattr(svc, "response_schema", None)
+            if schema is not None:
+                return schema
+
+        # Fallback: codec's class-level schema
+        return getattr(type(self), "response_schema", None)
 
     # ---- Selection helpers -------------------------------------------------
     @classmethod
@@ -302,8 +311,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
         try:
             return schema_cls.model_validate(data)
         except ValidationError as e:
+            # Validation errors are non-retriable (schema mismatch)
             raise CodecDecodeError(
-                f"Validation failed for codec '{self.__class__.__name__}'"
+                f"Validation failed for codec '{self.__class__.__name__}'",
+                retriable=False,
             ) from e
 
     async def avalidate_from_response(self, resp: Response) -> BaseOutputSchema | None:
@@ -393,6 +404,15 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                         parsed = json.loads(text)
                         if isinstance(parsed, dict):
                             return parsed
+                    except json.JSONDecodeError as e:
+                        # JSON parse errors may be retriable (incomplete/truncated response)
+                        # Log but continue trying other extraction methods
+                        logger.debug(
+                            "JSON parse failed (potentially retriable): %s",
+                            e,
+                            extra={"text_length": len(text), "text_preview": text[:100]},
+                        )
+                        continue
                     except Exception:
                         continue
         return None

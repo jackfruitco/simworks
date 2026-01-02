@@ -879,7 +879,45 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 success=True,
             )
         )
+
+        # Validate schema compatibility with selected codec (BUG-008 fix)
+        if codec_cls is not None and self.response_schema is not None:
+            self._validate_schema_codec_compatibility(codec_cls, self.response_schema)
+
         return codec_cls, label
+
+    def _validate_schema_codec_compatibility(
+        self,
+        codec_cls: type[BaseCodec],
+        schema_cls: type[BaseOutputSchema],
+    ) -> None:
+        """Validate that the schema is compatible with the selected codec.
+
+        This prevents runtime errors when codec expects certain schema features
+        that the schema doesn't provide.
+
+        Currently performs basic checks; can be extended as needed.
+        """
+        # Basic validation: ensure schema is a Pydantic model
+        if not hasattr(schema_cls, "model_json_schema"):
+            logger.warning(
+                "Schema %s does not appear to be a Pydantic model; codec %s may fail",
+                schema_cls,
+                codec_cls,
+            )
+
+        # Check if codec has specific requirements
+        if hasattr(codec_cls, "validate_schema"):
+            try:
+                codec_cls.validate_schema(schema_cls)
+            except Exception as e:
+                logger.error(
+                    "Schema validation failed for codec %s: %s",
+                    codec_cls,
+                    e,
+                    exc_info=True,
+                )
+                raise
 
     def _attach_response_schema_to_request(self, req: Request, codec: BaseCodec | None = None) -> None:
         """Attach response schema class to request (codec will handle adaptation).
@@ -1565,14 +1603,52 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                             )
                             return resp
                         except CodecDecodeError as e:
-                            # Validation failures are non-retriable - fail immediately
-                            self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
-                            await self.on_failure(self.context, e)
-                            logger.error(
-                                "llm.service.validation_failed",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                            # Check if error is retriable (BUG-009 fix)
+                            is_retriable = getattr(e, "retriable", False)
+
+                            if not is_retriable:
+                                # Non-retriable validation failures - fail immediately
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.error(
+                                    "llm.service.validation_failed",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "retriable": False,
+                                    },
+                                )
+                                raise
+
+                            # Retriable decode error - treat like other transient failures
+                            if attempt >= max_attempts:
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.error(
+                                    "llm.service.validation_failed_after_retries",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "retriable": True,
+                                    },
+                                )
+                                raise
+
+                            logger.warning(
+                                "llm.service.validation_failed_retrying",
+                                extra={
+                                    **attrs,
+                                    "attempt": attempt,
+                                    "max_attempts": max_attempts,
+                                    "retriable": True,
+                                    "error": str(e),
+                                },
                             )
-                            raise
+                            await self._backoff_sleep(attempt)
+                            attempt += 1
+                            continue
                         except Exception as e:
                             if attempt >= max_attempts:
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))

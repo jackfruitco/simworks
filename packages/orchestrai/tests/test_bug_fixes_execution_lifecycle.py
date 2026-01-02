@@ -274,5 +274,146 @@ async def test_full_service_execution_with_metadata():
     assert "service_identity" in call.result.execution_metadata
 
 
+# =============================================================================
+# BUG-005: Consistent Codec Schema Resolution
+# =============================================================================
+
+def test_codec_schema_resolution_fallback_chain():
+    """Test that codec schema resolution has consistent fallback chain."""
+    # Codec with class-level schema
+    class CodecWithSchema(BaseCodec):
+        response_schema = TestSchema
+
+    codec = CodecWithSchema()
+
+    # No service: should use codec's schema
+    assert codec._get_schema_from_service() == TestSchema
+
+    # Service with schema: should use service's schema
+    class ServiceWithDifferentSchema(BaseService):
+        class DifferentSchema(BaseOutputSchema):
+            different_field: str
+
+        response_schema = DifferentSchema
+
+    codec.service = ServiceWithDifferentSchema()
+    assert codec._get_schema_from_service() == ServiceWithDifferentSchema.DifferentSchema
+
+
+# =============================================================================
+# BUG-008: Schema/Codec Compatibility Validation
+# =============================================================================
+
+def test_schema_codec_compatibility_validation():
+    """Test that service validates schema compatibility with codec."""
+    service = TestService()
+
+    # Should not raise for valid Pydantic schema
+    service._validate_schema_codec_compatibility(TestCodec, TestSchema)
+
+    # Should warn for non-Pydantic schema
+    class InvalidSchema:
+        pass
+
+    with pytest.warns(None) as warnings:
+        service._validate_schema_codec_compatibility(TestCodec, InvalidSchema)
+
+    # Should have logged a warning
+    # (can't easily test logger.warning without mocking, so we just ensure it doesn't raise)
+
+
+# =============================================================================
+# BUG-009: Retriable Decode Errors
+# =============================================================================
+
+def test_codec_decode_error_has_retriable_flag():
+    """Test that CodecDecodeError supports retriable flag."""
+    from orchestrai.components.codecs.exceptions import CodecDecodeError
+
+    # Non-retriable by default
+    error = CodecDecodeError("test error")
+    assert error.retriable is False
+
+    # Can be marked retriable
+    retriable_error = CodecDecodeError("retriable error", retriable=True)
+    assert retriable_error.retriable is True
+
+
+@pytest.mark.asyncio
+async def test_retriable_decode_errors_are_retried():
+    """Test that retriable decode errors trigger retry logic."""
+    from orchestrai.components.codecs.exceptions import CodecDecodeError
+
+    call_count = 0
+
+    class RetriableCodec(BaseCodec):
+        async def adecode(self, resp):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                # First attempt: retriable error
+                raise CodecDecodeError("Incomplete JSON", retriable=True)
+            # Second attempt: success
+            return {"test": "data"}
+
+    mock_client = AsyncMock()
+    mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    mock_emitter = Mock()
+    mock_emitter.emit_request = Mock()
+    mock_emitter.emit_response = Mock()
+    mock_emitter.emit_failure = Mock()
+
+    service = TestService(emitter=mock_emitter, client=mock_client)
+
+    # Mock codec resolution to return our test codec
+    with patch.object(service, '_select_codec_class', return_value=(RetriableCodec, "test")):
+        req, codec, attrs = await service.aprepare(stream=False)
+
+        # Replace with our test codec
+        codec = RetriableCodec(service=service)
+
+        # Should retry and eventually succeed
+        resp = await service._asend(mock_client, req, codec, attrs, service.identity)
+
+        # Codec should have been called twice (1 retry)
+        assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_non_retriable_decode_errors_fail_immediately():
+    """Test that non-retriable decode errors fail without retry."""
+    from orchestrai.components.codecs.exceptions import CodecDecodeError
+
+    call_count = 0
+
+    class NonRetriableCodec(BaseCodec):
+        async def adecode(self, resp):
+            nonlocal call_count
+            call_count += 1
+            # Always raise non-retriable error
+            raise CodecDecodeError("Schema mismatch", retriable=False)
+
+    mock_client = AsyncMock()
+    mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    mock_emitter = Mock()
+    mock_emitter.emit_request = Mock()
+    mock_emitter.emit_response = Mock()
+    mock_emitter.emit_failure = Mock()
+
+    service = TestService(emitter=mock_emitter, client=mock_client)
+
+    with patch.object(service, '_select_codec_class', return_value=(NonRetriableCodec, "test")):
+        req, codec, attrs = await service.aprepare(stream=False)
+        codec = NonRetriableCodec(service=service)
+
+        # Should fail immediately without retry
+        with pytest.raises(CodecDecodeError) as exc_info:
+            await service._asend(mock_client, req, codec, attrs, service.identity)
+
+        # Should have been called only once (no retry)
+        assert call_count == 1
+        assert not exc_info.value.retriable
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

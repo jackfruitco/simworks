@@ -22,7 +22,15 @@ class CodecEncodeError(CodecError):
 
 
 class CodecDecodeError(CodecError):
-    """Failed to decode or validate structured response output."""
+    """Failed to decode or validate structured response output.
+
+    By default, these errors are non-retriable (immediate failure).
+    Set `retriable=True` for transient failures that may succeed on retry.
+    """
+
+    def __init__(self, message: str, *, retriable: bool = False):
+        super().__init__(message)
+        self.retriable = retriable
 
 
 class CodecLifecycleError(CodecError):
