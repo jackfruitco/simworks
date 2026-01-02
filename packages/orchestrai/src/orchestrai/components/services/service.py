@@ -41,6 +41,7 @@ from .execution import ExecutionLifecycleMixin, ServiceCallMixin, resolve_call_c
 from .task_proxy import CoreTaskProxy, ServiceSpec, TaskDescriptor
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
+from ..codecs.exceptions import CodecDecodeError
 from ..mixins import LifecycleMixin
 from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
 from ...identity import Identity, IdentityLike, IdentityMixin
@@ -805,6 +806,13 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         ident_label = ident.as_str
 
         provider_label = (self.provider_name or "").strip()
+
+        # Fallback: derive provider name from resolved client
+        if not provider_label and hasattr(self, 'client') and self.client:
+            provider_obj = getattr(self.client, "provider", None)
+            if provider_obj:
+                provider_label = (getattr(provider_obj, "provider", None) or "").strip()
+
         provider_ns = provider_label.split(".", 1)[0] if provider_label else ""
         constraints = None
         if self.response_schema and provider_ns:
@@ -1469,7 +1477,9 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
                             # Let the codec decode/shape the response
                             if codec is not None:
-                                await codec.adecode(resp)
+                                validated = await codec.adecode(resp)
+                                if validated is not None:
+                                    resp.structured_data = validated
 
                             self.emitter.emit_response(self.context, ident.as_str, resp)
                             await self.on_success(self.context, resp)
@@ -1479,6 +1489,15 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                                 extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
                             )
                             return resp
+                        except CodecDecodeError as e:
+                            # Validation failures are non-retriable - fail immediately
+                            self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                            await self.on_failure(self.context, e)
+                            logger.error(
+                                "llm.service.validation_failed",
+                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                            )
+                            raise
                         except Exception as e:
                             if attempt >= max_attempts:
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))

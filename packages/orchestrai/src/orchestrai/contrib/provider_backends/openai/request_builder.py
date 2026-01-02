@@ -1,16 +1,23 @@
-"""Helpers for building OpenAI Responses API requests.
+"""OpenAI Responses API request builder.
 
-This builder normalizes internal Request objects into JSON-serializable
-payloads expected by the OpenAI Responses API. It preserves structured
-response formats and lightweight codec/tool metadata for diagnostics while
-avoiding non-serializable objects.
+This module builds JSON-serializable payloads for the OpenAI Responses API from
+OrchestrAI's internal Request objects. It handles:
+- Message normalization
+- Tool declarations
+- Response format/schema attachment
+- Metadata serialization
+
+All OpenAI-specific request formatting logic is centralized here.
 """
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Mapping, Sequence
 
 from orchestrai.types import Request
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["build_responses_request"]
 
@@ -79,13 +86,35 @@ def build_responses_request(
     response_format: Mapping[str, Any] | None = None,
     timeout: float | int | None = None,
 ) -> dict[str, Any]:
-    """Build a JSON-safe request payload for the OpenAI Responses API."""
+    """Build a JSON-safe request payload for the OpenAI Responses API.
+
+    Args:
+        req: OrchestrAI Request object
+        model: Model name (e.g., "gpt-4o-mini")
+        provider_tools: Provider-specific tool definitions
+        response_format: Optional response format override
+        timeout: Request timeout in seconds
+
+    Returns:
+        JSON-serializable dict ready for OpenAI Responses API
+    """
 
     resolved_response_format: Any = (
         response_format
         if response_format is not None
         else getattr(req, "provider_response_format", None) or getattr(req, "response_schema_json", None)
     )
+
+    logger.debug(f"[RequestBuilder] response_format param: {type(response_format)}")
+    logger.debug(f"[RequestBuilder] req.provider_response_format: {type(getattr(req, 'provider_response_format', None))}")
+    logger.debug(f"[RequestBuilder] req.response_schema_json: {type(getattr(req, 'response_schema_json', None))}")
+
+    if isinstance(resolved_response_format, dict):
+        has_wrapper = 'json_schema' in resolved_response_format
+        schema_type = resolved_response_format.get('type') if has_wrapper else resolved_response_format.get('title')
+        logger.debug(f"[RequestBuilder] resolved_response_format has wrapper: {has_wrapper}, schema_type: {schema_type}")
+    else:
+        logger.debug(f"[RequestBuilder] resolved_response_format is not a dict: {type(resolved_response_format)}")
 
     metadata: dict[str, Any] = {}
     codec_identity = getattr(req, "codec_identity", None)
@@ -110,8 +139,11 @@ def build_responses_request(
         "text": resolved_response_format,
     }
 
+    logger.debug(f"[RequestBuilder] Final payload text field has wrapper: {isinstance(payload.get('text'), dict) and 'json_schema' in payload.get('text', {})}")
+
     if metadata:
-        payload["metadata"] = {"orchestrai": metadata}
+        # OpenAI expects metadata.orchestrai to be a string, not an object
+        payload["metadata"] = {"orchestrai": json.dumps(metadata)}
 
     # Final check: ensure the overall payload is JSON-serializable
     return _json_safe(payload)

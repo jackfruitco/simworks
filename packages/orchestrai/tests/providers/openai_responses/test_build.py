@@ -1,6 +1,6 @@
 import json
 
-from orchestrai.components.services.providers.openai_responses.build import build_responses_request
+from orchestrai.contrib.provider_backends.openai.request_builder import build_responses_request
 from orchestrai.contrib.provider_backends.openai.tools import OpenAIToolAdapter
 from orchestrai.types import Request
 from orchestrai.types.content import ContentRole
@@ -52,8 +52,11 @@ def test_build_responses_request_with_codec_and_tools() -> None:
     assert len(payload["input"]) == 2
     assert payload["tools"] == [provider_tool]
     assert payload["text"]["json_schema"]["name"] == "response"
-    assert payload["metadata"]["orchestrai"].get("response_format") == "text"
-    assert "sum_numbers" in payload["metadata"]["orchestrai"].get("tools_declared", [])
+
+    # Metadata is now JSON-stringified per OpenAI's requirements
+    metadata = json.loads(payload["metadata"]["orchestrai"])
+    assert metadata.get("response_format") == "text"
+    assert "sum_numbers" in metadata.get("tools_declared", [])
 
     # Must serialize cleanly for logging/inspection
     json.dumps(payload)
@@ -71,7 +74,10 @@ def test_build_responses_request_uses_schema_fallback_and_is_json_safe() -> None
     payload = build_responses_request(req=req, model="gpt-4.1", provider_tools=None)
 
     assert payload["text"] == schema
+
     # Metadata should include a hint that a response format is present
-    assert payload.get("metadata", {}).get("orchestrai", {}).get("response_format") == "text"
+    # Metadata is JSON-stringified per OpenAI's requirements
+    metadata = json.loads(payload.get("metadata", {}).get("orchestrai", "{}"))
+    assert metadata.get("response_format") == "text"
 
     json.dumps(payload)
