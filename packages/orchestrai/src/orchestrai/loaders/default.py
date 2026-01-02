@@ -20,6 +20,7 @@ class DefaultLoader(BaseLoader):
         "prompts",
         "prompt_sections",
         "tools",
+        "persist",
     )
 
     def read_configuration(self, app) -> None:

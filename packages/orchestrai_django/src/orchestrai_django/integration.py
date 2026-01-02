@@ -15,6 +15,7 @@ COMPONENT_MODULES: tuple[str, ...] = (
     "prompts",
     "prompt_sections",
     "tools",
+    "persist",
     "types",
     "mixins",
 )

@@ -128,6 +128,7 @@ ai_response_received = Signal()
 ai_response_ready = Signal()
 ai_response_failed = Signal()
 ai_outbox_dispatch = Signal()
+domain_object_created = Signal()  # Emitted after persistence handler creates domain object
 
 
 # -----------------------------------------------------------------------------
@@ -253,5 +254,6 @@ __all__ = [
     "ai_response_ready",
     "ai_response_failed",
     "ai_outbox_dispatch",
+    "domain_object_created",
     "emitter",
 ]

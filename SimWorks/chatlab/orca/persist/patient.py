@@ -44,7 +44,18 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         Raises:
             ValueError: If simulation_id missing from context
         """
-        # Validate required context
+        # Idempotency check - ensure exactly-once persistence
+        chunk, created = await self.ensure_idempotent(response)
+
+        if not created and chunk.domain_object:
+            # Already persisted - return existing Message
+            logger.info(
+                f"Idempotent skip: Message {chunk.object_id} already exists "
+                f"for call {chunk.call_id}"
+            )
+            return chunk.domain_object
+
+        # First persistence - validate and create domain objects
         simulation_id = response.context.get("simulation_id")
         if not simulation_id:
             raise ValueError("Response context missing 'simulation_id'")
@@ -74,6 +85,13 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         await self._persist_metadata_items(data.metadata, simulation_id)
 
         # 4. llm_conditions_check - SKIP (not persisted per user decision)
+
+        # Link to idempotency tracker
+        from django.contrib.contenttypes.models import ContentType
+
+        chunk.content_type = await ContentType.objects.aget_for_model(Message)
+        chunk.object_id = message.id
+        await chunk.asave()
 
         return message
 
@@ -161,7 +179,18 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
 
         Similar to PatientInitialPersistence but for reply schema.
         """
-        # Validate required context
+        # Idempotency check - ensure exactly-once persistence
+        chunk, created = await self.ensure_idempotent(response)
+
+        if not created and chunk.domain_object:
+            # Already persisted - return existing Message
+            logger.info(
+                f"Idempotent skip: Reply Message {chunk.object_id} already exists "
+                f"for call {chunk.call_id}"
+            )
+            return chunk.domain_object
+
+        # First persistence - validate and create domain objects
         simulation_id = response.context.get("simulation_id")
         if not simulation_id:
             raise ValueError("Response context missing 'simulation_id'")
@@ -205,5 +234,12 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
                 f"image generation workflow should trigger"
             )
             # TODO: Trigger image generation workflow if needed
+
+        # Link to idempotency tracker
+        from django.contrib.contenttypes.models import ContentType
+
+        chunk.content_type = await ContentType.objects.aget_for_model(Message)
+        chunk.object_id = message.id
+        await chunk.asave()
 
         return message

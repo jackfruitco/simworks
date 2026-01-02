@@ -23,6 +23,7 @@ Settings
   The callable may return an OrchestrAI instance, or may perform initialization itself.
 """
 
+import importlib
 import logging
 import os
 import threading

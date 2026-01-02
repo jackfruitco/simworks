@@ -250,6 +250,100 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
         pass
 ```
 
+### Creating Persistence Handlers
+
+**Persistence handlers** are Django-specific components that persist structured LLM outputs (validated schemas) to domain models. They operate out-of-band via a drain worker for reliability and scalability.
+
+**Two-Phase Persistence**:
+1. **Phase 1** (service execution): Response JSON saved atomically to `ServiceCallRecord.result`
+2. **Phase 2** (drain worker): Persistence handler creates domain objects (Message, Metadata, etc.)
+
+**Identity Conventions**:
+- **Domain**: `persist`
+- **Namespace**: Django app name (e.g., `chatlab`)
+- **Group**: Semantic grouping (e.g., `standardized_patient`)
+- **Name**: Handler class name
+
+**Example**:
+```python
+from orchestrai_django.decorators import persistence_handler
+from orchestrai_django.components.persistence import BasePersistenceHandler
+from orchestrai.types import Response
+from chatlab.orca.mixins import ChatlabMixin
+from chatlab.orca.schemas import PatientInitialOutputSchema
+from chatlab.models import Message
+from simulation.orca.mixins import StandardizedPatientMixin
+
+@persistence_handler
+class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersistenceHandler):
+    """
+    Persist PatientInitialOutputSchema to Message + Metadata.
+
+    Identity: persist.chatlab.standardized_patient.PatientInitialPersistence
+    Handles: (chatlab, schemas.chatlab.standardized_patient.PatientInitialOutputSchema)
+    """
+
+    schema = PatientInitialOutputSchema
+
+    async def persist(self, response: Response) -> Message:
+        # Idempotency check - ensures exactly-once persistence
+        chunk, created = await self.ensure_idempotent(response)
+
+        if not created and chunk.domain_object:
+            # Already persisted - return existing
+            return chunk.domain_object
+
+        # First persistence - create domain objects
+        simulation_id = response.context["simulation_id"]
+        data = self.schema.model_validate(response.structured_data)
+
+        # Create Message
+        message = await Message.objects.acreate(
+            simulation_id=simulation_id,
+            content=data.messages[0].content[0].text,
+            role="assistant",
+            is_from_ai=True,
+        )
+
+        # Link to idempotency tracker
+        from django.contrib.contenttypes.models import ContentType
+        chunk.content_type = await ContentType.objects.aget_for_model(Message)
+        chunk.object_id = message.id
+        await chunk.asave()
+
+        return message
+```
+
+**Discovery**: Handlers discovered from `{app}/orca/persist/*.py` automatically
+
+**Resolution Order**:
+1. Try app-specific handler: `(response.namespace, schema_identity)`
+2. Fallback to core: `("core", schema_identity)`
+3. Skip if no handler found (debug-log only, not an error)
+
+**Idempotency**: Tracked via `PersistedChunk` model
+- Unique key: `(call_id, schema_identity)`
+- Safe for retries (get_or_create pattern)
+- Links to domain object via GenericForeignKey
+
+**Drain Worker**: `process_pending_persistence` task
+- Runs periodically (e.g., every 10-30 seconds)
+- Claims work with `select_for_update(skip_locked=True)` for concurrency safety
+- Processes batch of 100 records
+- Retries on failure (max 10 attempts by default)
+
+**Configuration** (Django settings):
+```python
+ORCHESTRAI = {
+    'DOMAIN_PERSIST_MAX_ATTEMPTS': 10,      # Max retry attempts
+    'DOMAIN_PERSIST_BATCH_SIZE': 100,        # Records per drain cycle
+}
+```
+
+**Signals**:
+- `domain_object_created`: Emitted after successful persistence
+  - Use for side effects like media attachment, WebSocket broadcasts
+
 ### Background Tasks with Celery
 
 **Configuration**: Redis broker on queue 1, result backend on queue 2

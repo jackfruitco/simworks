@@ -294,12 +294,13 @@ def process_pending_persistence():
     happened yet.
 
     Design:
-        - Idempotent: Safe to run multiple times on same record
+        - Idempotent: Uses PersistedChunk tracking for exactly-once semantics
+        - Concurrent-safe: Uses select_for_update(skip_locked=True)
         - Retriable: LLM not re-called, only persistence retried
         - Two-phase: Response stored first (atomic), domain persistence separate
 
     Returns:
-        dict with processing stats (processed, failed, pending)
+        dict with processing stats (processed, failed, pending, skipped)
     """
     from orchestrai.types import Response
 
@@ -310,73 +311,124 @@ def process_pending_persistence():
         logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
 
     app = get_current_app()
-    persistence_registry = app.context.get("persistence_registry")
+    store = get_component_store(app)
 
-    if not persistence_registry:
-        logger.error("No persistence_registry in app context, skipping")
-        return {"error": "No persistence_registry"}
+    if not store:
+        logger.error("No component store available, skipping persistence")
+        return {"error": "No component store"}
 
-    # Find records needing persistence (batch of 100)
-    pending_records = ServiceCallRecord.objects.filter(
-        status=_STATUS_SUCCEEDED,
-        domain_persisted=False,
-    ).order_by("finished_at")[:100]
+    # Get persistence registry from component store
+    try:
+        from orchestrai.identity.domains import PERSIST_DOMAIN
+        persistence_registry = store.registry(PERSIST_DOMAIN)
+    except Exception as exc:
+        logger.error(f"Failed to get persistence registry: {exc}", exc_info=True)
+        return {"error": f"No persistence registry: {exc}"}
 
-    stats = {"processed": 0, "failed": 0, "pending": pending_records.count()}
+    # Configuration
+    max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
+    batch_size = getattr(settings, "DOMAIN_PERSIST_BATCH_SIZE", 100)
 
+    # Atomic claim of work with concurrent safety
+    # - select_for_update(skip_locked=True) prevents race conditions
+    # - Filter out exhausted records upfront to avoid wasted work
+    with transaction.atomic():
+        pending_records = list(
+            ServiceCallRecord.objects.filter(
+                status=_STATUS_SUCCEEDED,
+                domain_persisted=False,
+                domain_persist_attempts__lt=max_attempts,
+            )
+            .select_for_update(skip_locked=True)
+            .order_by("finished_at")[:batch_size]
+        )
+
+        # Increment attempt counter for claimed records (inside lock)
+        for record in pending_records:
+            record.domain_persist_attempts += 1
+
+        # Bulk update attempts (fast, within transaction)
+        if pending_records:
+            ServiceCallRecord.objects.bulk_update(
+                pending_records, ["domain_persist_attempts"]
+            )
+
+    stats = {
+        "processed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "claimed": len(pending_records),
+    }
+
+    # Process claimed records (outside lock, can take time)
     for record in pending_records:
         try:
             # Deserialize Response from JSON
             response = Response.model_validate(record.result)
 
-            # Persist domain objects (schema-aware routing)
+            # Persist domain objects (schema-aware routing with idempotency)
+            # The registry.persist() method will:
+            # 1. Route to appropriate handler by (namespace, schema_identity)
+            # 2. Handler uses ensure_idempotent() for exactly-once semantics
+            # 3. Returns None if no handler found (skip gracefully)
             domain_obj = async_to_sync(persistence_registry.persist)(response)
 
-            # Mark success
+            if domain_obj is None:
+                # No handler found - not an error, just skip
+                stats["skipped"] += 1
+                logger.debug(
+                    f"No persistence handler for call {record.id} "
+                    f"(namespace={response.namespace}, "
+                    f"schema={response.execution_metadata.get('schema_identity')})"
+                )
+
+                # Mark as persisted to avoid reprocessing
+                with transaction.atomic():
+                    record.domain_persisted = True
+                    record.domain_persist_error = None
+                    record.save(update_fields=["domain_persisted", "domain_persist_error"])
+                continue
+
+            # Success - mark as persisted
             with transaction.atomic():
                 record.domain_persisted = True
                 record.domain_persist_error = None
-                record.save(update_fields=[
-                    "domain_persisted",
-                    "domain_persist_error",
-                ])
+                record.save(update_fields=["domain_persisted", "domain_persist_error"])
 
             stats["processed"] += 1
-            logger.info(f"Persisted domain objects for service call {record.id}")
-
-            # Side effects (outside transaction, can fail safely)
-            # Note: WebSocket broadcast is now handled by post_save signal on Message
-            # (see chatlab/signals.py)
-
-        except Exception as exc:
-            # Log error but don't mark as persisted (will retry later)
-            stats["failed"] += 1
-            logger.exception(
-                f"Domain persistence failed for service call {record.id}: {exc}"
+            logger.info(
+                f"Persisted domain objects for service call {record.id} "
+                f"(attempt {record.domain_persist_attempts}/{max_attempts})"
             )
 
-            # Track attempts and errors
-            with transaction.atomic():
-                record.domain_persist_attempts += 1
-                record.domain_persist_error = str(exc)
-                record.save(update_fields=[
-                    "domain_persist_attempts",
-                    "domain_persist_error",
-                ])
+        except Exception as exc:
+            # Persistence failed - log and track error
+            stats["failed"] += 1
+            logger.exception(
+                f"Domain persistence failed for service call {record.id} "
+                f"(attempt {record.domain_persist_attempts}/{max_attempts}): {exc}"
+            )
 
-            # Give up after max attempts
-            max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
+            # Track error
+            with transaction.atomic():
+                record.domain_persist_error = str(exc)[:1000]  # Truncate long errors
+                record.save(update_fields=["domain_persist_error"])
+
+            # Check if exhausted
             if record.domain_persist_attempts >= max_attempts:
                 logger.error(
                     f"Giving up on domain persistence for {record.id} "
-                    f"after {max_attempts} attempts"
+                    f"after {max_attempts} attempts. Last error: {exc}"
                 )
-                # Could emit alert or mark with special status
+                # Mark as persisted to stop retrying (error tracked in domain_persist_error)
+                with transaction.atomic():
+                    record.domain_persisted = True  # Prevents infinite retries
+                    record.save(update_fields=["domain_persisted"])
 
     logger.info(
         f"Domain persistence batch complete: "
-        f"{stats['processed']} processed, {stats['failed']} failed, "
-        f"{stats['pending']} pending"
+        f"claimed={stats['claimed']}, processed={stats['processed']}, "
+        f"failed={stats['failed']}, skipped={stats['skipped']}"
     )
 
     return stats

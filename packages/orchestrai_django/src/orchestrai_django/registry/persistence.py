@@ -4,11 +4,12 @@ import logging
 from typing import Any
 from orchestrai.types import Response
 from orchestrai_django.components.persistence import BasePersistenceHandler
+from orchestrai.registry import ComponentRegistry
 
 logger = logging.getLogger(__name__)
 
 
-class PersistenceHandlerRegistry:
+class PersistenceHandlerRegistry(ComponentRegistry):
     """
     Registry for persistence handler components.
 
@@ -24,6 +25,9 @@ class PersistenceHandlerRegistry:
     """
 
     def __init__(self):
+        # Initialize parent registry (provides _lock, _frozen, _store, _coerce)
+        super().__init__()
+
         # Key: (namespace, schema_identity_str)
         # Value: Handler class
         self._handlers: dict[tuple[str, str], type[BasePersistenceHandler]] = {}
