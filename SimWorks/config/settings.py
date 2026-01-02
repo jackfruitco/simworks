@@ -166,12 +166,16 @@ ORCA_CONFIG = {
 
 TASKS = {
     "default": {
-        "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
+        "BACKEND": "orchestrai_django.backends.async_thread.AsyncThreadBackend",
     },
     "immediate": {
         "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
     },
 }
+
+# Django Tasks Retry Configuration (for orchestrai_django)
+DJANGO_TASKS_MAX_RETRIES = int(os.getenv("DJANGO_TASKS_MAX_RETRIES", "3"))
+DJANGO_TASKS_RETRY_DELAY = int(os.getenv("DJANGO_TASKS_RETRY_DELAY", "5"))  # seconds
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)
@@ -249,7 +253,12 @@ SITE_ADMIN = {
     "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
 }
 
-logfire.configure(token=os.getenv("LOGFIRE_TOKEN"))
+logfire_token = os.getenv("LOGFIRE_TOKEN")
+if logfire_token:
+    logfire.configure(token=logfire_token)
+else:
+    # Allow local/test environments to run without Logfire authentication.
+    logfire.configure(send_to_logfire=False)
 logfire.instrument_httpx(
     capture_all=True
     # capture_response_body=True,

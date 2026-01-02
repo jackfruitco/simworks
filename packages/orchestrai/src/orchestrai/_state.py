@@ -6,11 +6,13 @@ nesting semantics via :func:`push_current_app`.
 """
 from __future__ import annotations
 
+import importlib.util
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Generator
 
 from .utils.proxy import Proxy
+from .registry.active_app import set_active_registry_app
 
 _current_app: ContextVar[object | None] = ContextVar("orchestrai_current_app", default=None)
 _default_app: object | None = None
@@ -36,6 +38,24 @@ def get_current_app():
             _default_app = _build_default_app()
         app = _default_app
         set_current_app(app)
+    try:
+        set_active_registry_app(app)
+    except Exception:
+        pass
+    django_ready = False
+    if importlib.util.find_spec("django") is not None:
+        from django.apps import apps as django_apps
+        from django.conf import settings
+
+        django_ready = settings.configured and django_apps.ready
+
+    if django_ready and importlib.util.find_spec("orchestrai_django") is not None:
+        from orchestrai.components.services.django import use_django_task_proxy
+
+        try:
+            use_django_task_proxy()
+        except Exception:
+            pass
     return app
 
 

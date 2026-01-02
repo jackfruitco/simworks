@@ -8,11 +8,9 @@ from channels.layers import get_channel_layer
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
-from orchestrai.components.providerkit.exceptions import ProviderCallError
-from orchestrai.components.services.exceptions import ServiceError
-from orchestrai.exceptions import SimCoreError
 
 from chatlab.models import ChatSession, Message, MessageMediaLink
+from core.orm_mode import must_be_async
 from core.utils import remove_null_keys
 from simulation.models import (
     LabResult, RadResult, Simulation, SimulationMetadata,
@@ -25,10 +23,6 @@ logger = logging.getLogger(__name__)
 APP_NAME = getattr(ChatLabConfig, "name") or getattr(ChatLabConfig, "label") or "<unknown>"
 
 
-class SimulationSchedulingError(ServiceError):
-    """Raised when orchestration for a new simulation cannot be scheduled."""
-
-
 async def await_if_needed(result):
     if inspect.isawaitable(result):
         return await result
@@ -39,6 +33,7 @@ async def create_new_simulation(
         user, modifiers: list = None, force: bool = False
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
+    must_be_async()
     logger.debug(
         f"received request to create new simulation for {user.username!r} "
         f"with modifiers {modifiers!r} (force {force!r})"
@@ -59,25 +54,23 @@ async def create_new_simulation(
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
+    # Enqueue initial AI response (fire-and-forget)
+    # Failures will be handled via ai_response_failed signal receiver
     from .orca.services import GenerateInitialResponse
 
-    try:
-        GenerateInitialResponse.using(
-            ctx={
-                "simulation_id": simulation.id,
-                "user_id": user.id,
-            }
-        ).task.enqueue()
-    except (ProviderCallError, ServiceError, SimCoreError) as exc:
-        logger.exception(
-            "Failed to schedule initial response for simulation %s (user=%s)",
-            simulation.id,
-            user.id,
-        )
-        await simulation.adelete()
-        raise SimulationSchedulingError(
-            "Unable to start your simulation due to an orchestration error."
-        ) from exc
+    spec = GenerateInitialResponse.using(
+        ctx={
+            "simulation_id": simulation.id,
+            "user_id": user.id,
+        }
+    )
+    call_id = await spec.task.aenqueue()
+
+    logger.info(
+        "Simulation %s created, initial response enqueued as call %s",
+        simulation.id,
+        call_id
+    )
 
     return simulation
 

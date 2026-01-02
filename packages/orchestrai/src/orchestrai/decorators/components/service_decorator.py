@@ -14,7 +14,8 @@ from orchestrai.components.services.service import BaseService
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry import ComponentRegistry
-from orchestrai.registry import services as services_registry
+
+from orchestrai.registry.services import service_registry
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class ServiceDecorator(BaseDecorator):
 
     def get_registry(self) -> ComponentRegistry:
         # Always register into the service registry
-        return services_registry
+        return service_registry
 
     # Human-friendly log label
     log_category = "services"

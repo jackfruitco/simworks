@@ -25,21 +25,23 @@ Prompt plans
 import asyncio
 import inspect
 import logging
+import httpx
 from abc import ABC
-from typing import Any, ClassVar, Union, Optional, Protocol
-from typing import TYPE_CHECKING
-
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Optional, Protocol, Union
 from asgiref.sync import async_to_sync, sync_to_async
 
-from orchestrai.services import ServiceCall
-from orchestrai.identity.domains import SERVICES_DOMAIN
-
-from .exceptions import ServiceConfigError, ServiceCodecResolutionError, ServiceBuildRequestError
+from .calls import ServiceCall
+from .exceptions import ServiceBuildRequestError, ServiceCodecResolutionError, ServiceConfigError
+from orchestrai.components.services.calls.mixins import ServiceCallMixin, resolve_call_client
+from .task_proxy import CoreTaskProxy, TaskDescriptor
 from ..base import BaseComponent
 from ..codecs.codec import BaseCodec
+from ..codecs.exceptions import CodecDecodeError
 from ..mixins import LifecycleMixin
-from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSection, PromptSectionSpec
+from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSectionSpec
 from ...identity import Identity, IdentityLike, IdentityMixin
+from ...identity.domains import SERVICES_DOMAIN
 from ...tracing import get_tracer, service_span, SpanPath
 from ...types import Request, Response, StrictBaseModel
 from ...types.content import ContentRole
@@ -77,13 +79,15 @@ class ServiceEmitter(Protocol):
 CodecLike = Union[type[BaseCodec], BaseCodec, IdentityLike]
 
 
-class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
+class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent, ABC):
     """
     Abstract base for LLM-backed AI services.
 
     • Identity is exposed as `self.identity: Identity`, resolved by `IdentityMixin`.
     • Class attributes (domain/namespace/group/name) are resolver hints only (legacy `kind` is accepted as group).
     • Concrete services should rely on `self.identity.as_str` etc. instead of duplicating labels.
+    • Lifecycle execution lives in :class:`LifecycleMixin` (`execute` / `aexecute` return results).
+    • Service call orchestration lives in :class:`ServiceCallMixin` (`call` / `acall` return :class:`ServiceCall`).
     Codec precedence
     ----------------
     1) Per-call override provided at init (`codec=...`)
@@ -93,6 +97,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     abstract: ClassVar[bool] = True
     DOMAIN: ClassVar[str] = SERVICES_DOMAIN
     domain: ClassVar[str | None] = SERVICES_DOMAIN
+    task: ClassVar[CoreTaskProxy] = TaskDescriptor()
 
     # Class-level configuration / hints
     required_context_keys: ClassVar[tuple[str, ...]] = ()
@@ -117,23 +122,6 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
     # ------------------------------------------------------------------
     # Task helpers
     # ------------------------------------------------------------------
-    @classmethod
-    def using(cls, **service_kwargs: Any) -> ServiceCall:
-        return ServiceCall(service_cls=cls, service_kwargs=service_kwargs, phase="service")
-
-    @property
-    def task(self) -> ServiceCall:
-        context = getattr(self, "context", None)
-        service_kwargs: dict[str, Any] = {}
-
-        if context is not None:
-            try:
-                service_kwargs["context"] = dict(context)
-            except Exception:
-                service_kwargs["context"] = context
-
-        return ServiceCall(service_cls=type(self), service_kwargs=service_kwargs, phase="runner")
-
     def __init__(
             self,
             *,
@@ -261,6 +249,10 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
           constructor is rejected early with a descriptive error.
         """
 
+        runner_style_keys = {"queue", "runner", "runner_kwargs", "phase"}
+        if any(key in overrides for key in runner_style_keys):
+            cls._using_service_spec(**overrides)
+
         if ctx is not None and context is not None:
             raise TypeError(
                 f"{cls.__name__}.using() received both 'ctx' and 'context'. "
@@ -295,6 +287,14 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
             )
 
         return cls(context=context_dict, **overrides)
+
+    @classmethod
+    def _using_service_spec(cls, **service_kwargs: Any) -> NoReturn:
+        message = (
+            f"{cls.__name__}.using(...) no longer builds service runner specs. "
+            "Use cls.task.using(...) for inline execution or instantiate cls(...) directly."
+        )
+        raise RuntimeError(message)
 
     @property
     def slug(self) -> str:
@@ -452,6 +452,40 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         if delay < 0:
             delay = 0
         await asyncio.sleep(delay)
+
+    def _is_retryable_exc(self, exc: Exception) -> bool:
+        """Return True for provider/network failures that should be retried."""
+
+        from ..providerkit.exceptions import ProviderCallError
+
+        retryable_types: tuple[type[Exception], ...] = (
+            asyncio.TimeoutError,
+            TimeoutError,
+            ProviderCallError,
+            httpx.TimeoutException,
+            httpx.TransportError,
+        )
+
+        if isinstance(exc, retryable_types):
+            return True
+
+        status_code = getattr(exc, "status_code", None)
+        if status_code is None:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
+
+        try:
+            if status_code is not None:
+                status_int = int(status_code)
+                if status_int == 429 or 500 <= status_int < 600:
+                    return True
+        except Exception:
+            pass
+
+        if isinstance(exc, RuntimeError) and "no running event loop" in str(exc).lower():
+            return False
+
+        return False
 
     def flatten_context(self) -> dict:
         """Flatten `self.context` to `context.*` keys for tracing/logging."""
@@ -802,6 +836,13 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ident_label = ident.as_str
 
         provider_label = (self.provider_name or "").strip()
+
+        # Fallback: derive provider name from resolved client
+        if not provider_label and hasattr(self, 'client') and self.client:
+            provider_obj = getattr(self.client, "provider", None)
+            if provider_obj:
+                provider_label = (getattr(provider_obj, "provider", None) or "").strip()
+
         provider_ns = provider_label.split(".", 1)[0] if provider_label else ""
         constraints = None
         if self.response_schema and provider_ns:
@@ -1271,6 +1312,55 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         """
         LOG_CAT = "svc.run"
 
+        call: ServiceCall | None = ctx.pop("call", None)
+        if call is None:
+            dispatch_meta = {"service": getattr(self.identity, "as_str", None) or self.__class__.__name__}
+            call = self._create_call(
+                payload=ctx,
+                context=getattr(self, "context", None),
+                dispatch=dispatch_meta,
+                service=dispatch_meta["service"],
+            )
+            call.status = "running"
+            call.started_at = datetime.utcnow()
+            logger.debug(
+                self._build_stdout(
+                    "call",
+                    f"created inline service call {call.id} inside run",
+                    indent_level=2,
+                    success=True,
+                )
+            )
+
+        client_override = getattr(self, "client", None)
+        service_default = getattr(type(self), "provider_name", None) or getattr(
+            self, "provider_name", None
+        )
+        resolve_call_client(
+            self,
+            call,
+            client_override=client_override,
+            service_default=service_default,
+            required=True,
+        )
+        try:
+            self.client = call.client  # type: ignore[attr-defined]
+        except Exception:
+            logger.debug("could not persist resolved client on service", exc_info=True)
+
+        client = call.client
+        if client is None:
+            raise ServiceConfigError("Client resolution failed for service call")
+
+        logger.debug(
+            self._build_stdout(
+                "client",
+                f"resolved client {type(client).__name__} for call {call.id}",
+                indent_level=2,
+                success=True,
+            )
+        )
+
         # Normalize and merge contextual overrides, if provided
         ctx = dict(ctx) if ctx else {}
         raw_ctx = ctx.pop("context", None)
@@ -1302,6 +1392,7 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
         ):
             # Build request + codec + attrs
             req, codec, attrs = await self.aprepare(stream=stream, **ctx)
+            call.request = req
 
             try:
                 # Prepare codec for this call
@@ -1323,7 +1414,19 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                         self._span("run", "prepare", "client"),
                         attributes=self.flatten_context(),
                 ):
-                    client: OrcaClient = self.get_client()
+                    client: OrcaClient | None = call.client
+                    if client is None:
+                        raise ServiceConfigError(
+                            f"Service '{ident.as_str}' has no resolved client for call {call.id}"
+                        )
+                    logger.debug(
+                        self._build_stdout(
+                            "client",
+                            f"using resolved client {type(client).__name__} for call {call.id}",
+                            indent_level=2,
+                            success=True,
+                        )
+                    )
 
                 # Emit outbound request event
                 async with service_span(
@@ -1386,7 +1489,45 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                     ):
                         try:
                             resp: Response = await client.send_request(req)
+                        except Exception as e:
+                            retryable = self._is_retryable_exc(e)
+                            if not retryable or attempt >= max_attempts:
+                                self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                                await self.on_failure(self.context, e)
+                                logger.exception(
+                                    "llm.service.error",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "error.type": type(e).__name__,
+                                        "error.message": str(e),
+                                    },
+                                )
+                                raise
 
+                            logger.warning(
+                                "llm.service.retrying",
+                                extra={
+                                    **attrs,
+                                    "attempt": attempt,
+                                    "max_attempts": max_attempts,
+                                    "correlation_id": str(req.correlation_id),
+                                    "error.type": type(e).__name__,
+                                    "error.message": str(e),
+                                },
+                            )
+                            await self._backoff_sleep(attempt)
+                            attempt += 1
+                            continue
+
+                        postprocess_extra = {
+                            **attrs,
+                            "correlation_id": str(req.correlation_id),
+                            "attempt": attempt,
+                        }
+
+                        try:
                             # Tag response identity/correlation
                             resp.namespace, resp.kind, resp.name = ident.namespace, ident.kind, ident.name
                             if getattr(resp, "request_correlation_id", None) is None:
@@ -1404,16 +1545,29 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
 
                             # Let the codec decode/shape the response
                             if codec is not None:
-                                await codec.adecode(resp)
+                                validated = await codec.adecode(resp)
+                                if validated is not None:
+                                    resp.structured_data = validated
 
                             self.emitter.emit_response(self.context, ident.as_str, resp)
                             await self.on_success(self.context, resp)
+                        except Exception:
+                            logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
                             logger.info(
                                 "llm.service.success",
                                 extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
                             )
                             return resp
+                        except CodecDecodeError as e:
+                            # Validation failures are non-retriable - fail immediately
+                            self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
+                            await self.on_failure(self.context, e)
+                            logger.error(
+                                "llm.service.validation_failed",
+                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                            )
+                            raise
                         except Exception as e:
                             if attempt >= max_attempts:
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
@@ -1429,6 +1583,11 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                             )
                             await self._backoff_sleep(attempt)
                             attempt += 1
+                        logger.info(
+                            "llm.service.success",
+                            extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                        )
+                        return resp
             finally:
                 if codec is not None:
                     try:
@@ -1459,6 +1618,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                 started = False
                 while attempt <= max_attempts and not started:
                     try:
+                        postprocess_extra = {
+                            **attrs,
+                            "correlation_id": str(req.correlation_id),
+                            "attempt": attempt,
+                        }
+
                         async for chunk in client.stream_request(req):
                             started = True
                             # Let the codec inspect/transform chunks
@@ -1468,7 +1633,12 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                                 except AttributeError:
                                     # Older codecs may not implement the hook
                                     pass
-                            self.emitter.emit_stream_chunk(self.context, ident.as_str, chunk)
+                                except Exception:
+                                    logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
+                            try:
+                                self.emitter.emit_stream_chunk(self.context, ident.as_str, chunk)
+                            except Exception:
+                                logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
                         # Allow codec to finalize any stream-level state
                         if codec is not None:
@@ -1476,21 +1646,40 @@ class BaseService(IdentityMixin, LifecycleMixin, BaseComponent, ABC):
                                 await codec.afinalize_stream()
                             except AttributeError:
                                 pass
+                            except Exception:
+                                logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
-                        self.emitter.emit_stream_complete(self.context, ident.as_str, req.correlation_id)
+                        try:
+                            self.emitter.emit_stream_complete(self.context, ident.as_str, req.correlation_id)
+                        except Exception:
+                            logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
                         return
                     except Exception as e:
-                        if started or attempt >= max_attempts:
+                        retryable = not started and self._is_retryable_exc(e)
+                        if started or attempt >= max_attempts or not retryable:
                             self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
                             await self.on_failure(self.context, e)
                             logger.exception(
                                 "llm.service.stream.error",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                                extra={
+                                    **attrs,
+                                    "correlation_id": str(req.correlation_id),
+                                    "attempt": attempt,
+                                    "error.type": type(e).__name__,
+                                    "error.message": str(e),
+                                },
                             )
                             raise
                         logger.warning(
                             "llm.service.stream.retrying",
-                            extra={**attrs, "attempt": attempt, "max_attempts": max_attempts},
+                            extra={
+                                **attrs,
+                                "attempt": attempt,
+                                "max_attempts": max_attempts,
+                                "correlation_id": str(req.correlation_id),
+                                "error.type": type(e).__name__,
+                                "error.message": str(e),
+                            },
                         )
                         await self._backoff_sleep(attempt)
                         attempt += 1

@@ -4,10 +4,10 @@ import importlib
 import logging
 from collections.abc import Mapping
 
+from .client import OrcaClient
 from .conf_models import OrcaClientsSettings
 from .registry import (
     create_client,
-    create_client_from_dict,
     list_clients,
 )
 from .resolve import (
@@ -19,14 +19,13 @@ from .resolve import (
     resolve_client_flags,
 )
 from .schemas import OrcaClientConfig, OrcaClientRegistration
-from .utils import effective_provider_config
 from .settings_loader import ClientSettings, load_client_settings
+from .utils import effective_provider_config
 from ..components.providerkit.conf_models import (
     ProvidersSettings,
     ProviderSettingsEntry,
 )
 from ..components.providerkit.provider import ProviderConfig
-from .client import OrcaClient
 
 
 def _provider_config_from_single_mapping(
@@ -46,7 +45,7 @@ def _provider_config_from_single_mapping(
                 "Single-orca CLIENT configuration requires either BACKEND or PROVIDER/SURFACE."
             )
         surface = client_conf.get("surface") or client_conf.get("SURFACE") or "default"
-        backend = f"{provider}.{surface}.backend"
+        backend = f"provider-backends.{provider}.{surface}.backend"
 
     return ProviderConfig(
         alias=client_conf.get("alias") or client_conf.get("name") or client_alias,
@@ -96,11 +95,11 @@ def _build_single_client(
     # passing `None` into strict boolean/int fields.
     cfg_kwargs: dict[str, object] = {}
     for field in (
-        "max_retries",
-        "timeout_s",
-        "telemetry_enabled",
-        "log_prompts",
-        "raise_on_error",
+            "max_retries",
+            "timeout_s",
+            "telemetry_enabled",
+            "log_prompts",
+            "raise_on_error",
     ):
         value = single_client.get(field)
         if value is None:
@@ -122,6 +121,7 @@ def _build_single_client(
         replace=replace,
         client_config=client_cfg,
     )
+
 
 logger = logging.getLogger(__name__)
 

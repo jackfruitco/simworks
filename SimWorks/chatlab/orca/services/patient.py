@@ -32,6 +32,9 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBase
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
 
+    from chatlab.orca.schemas import PatientInitialOutputSchema as _Schema
+    response_schema = _Schema
+
     # prompt_plan = (
     #     ChatlabPatientInitialSection,
     #     PatientNameSection,

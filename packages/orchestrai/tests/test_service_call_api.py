@@ -1,89 +1,153 @@
-from types import SimpleNamespace
+import asyncio
+import importlib
+from datetime import datetime
 
 import pytest
 
-from orchestrai._state import push_current_app
+from orchestrai.components.services.calls import ServiceCall, to_jsonable
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
-from orchestrai.service_runners import BaseServiceRunner, TaskStatus
-from orchestrai.services.call import ServiceCall, _coerce_runner_name
+from orchestrai.identity.domains import SERVICES_DOMAIN
+from orchestrai.types.transport import Response
 
 
-class DemoService(BaseService):
+class SyncTaskService(BaseService):
     abstract = False
-    identity = Identity(domain="services", namespace="demo", group="svc", name="demo")
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="sync")
+
+    async def arun(self, **ctx):
+        return {"mode": "sync", **ctx}
 
 
-class RecordingRunner(BaseServiceRunner):
-    def __init__(self):
-        self.calls: list[tuple[str, dict]] = []
+class AsyncTaskService(BaseService):
+    abstract = False
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="async")
 
-    def start(self, **payload):
-        self.calls.append(("start", payload))
-        return payload
-
-    def enqueue(self, **payload):
-        self.calls.append(("enqueue", payload))
-        return TaskStatus(id="task-1", state="queued")
+    async def arun(self, **ctx):
+        await asyncio.sleep(0)
+        return {"mode": "async", **ctx}
 
 
-class UnsupportedRunner(BaseServiceRunner):
-    def start(self, **payload):
-        return payload
+class EchoLifecycleService(BaseService):
+    abstract = False
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="echo")
 
-    def enqueue(self, **payload):  # pragma: no cover - exercised indirectly
-        return payload
-
-    def stream(self, **_payload):
-        raise NotImplementedError("streaming not supported")
-
-    def get_status(self, **_payload):
-        raise NotImplementedError("status not supported")
-
-
-def test_coerce_runner_name_prefers_explicit_and_identity():
-    assert _coerce_runner_name(DemoService, explicit="custom") == "custom"
-
-    class NoIdentity(BaseService):
-        abstract = False
-
-    assert _coerce_runner_name(NoIdentity, explicit=None) == "no-identity"
+    async def arun(self, **ctx):
+        call = ctx.get("call")
+        return {
+            "value": ctx.get("value"),
+            "call_id": getattr(call, "id", None),
+            "has_call": call is not None,
+        }
 
 
-def test_service_call_dispatch_merges_kwargs_and_uses_phase():
-    runner = RecordingRunner()
-    app = SimpleNamespace(service_runners={"demo": runner})
+class ErrorService(BaseService):
+    abstract = False
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="error")
 
-    call = ServiceCall(service_cls=DemoService, service_kwargs={"foo": "bar"})
-
-    with push_current_app(app):
-        result = call.start(extra=1)
-
-    assert result["service_kwargs"] == {"foo": "bar", "extra": 1}
-    assert result["phase"] == "service"
-    assert runner.calls[0][0] == "start"
+    async def arun(self, **ctx):
+        raise RuntimeError("boom")
 
 
-def test_service_call_raises_for_unsupported_operations():
-    runner = UnsupportedRunner()
-    app = SimpleNamespace(service_runners={"demo": runner})
-    call = ServiceCall(service_cls=DemoService, runner_name=None)
+def test_task_run_executes_inline():
+    sync_call = SyncTaskService().task.run(foo=1)
 
-    with push_current_app(app):
-        with pytest.raises(NotImplementedError):
-            call.stream()
-        with pytest.raises(NotImplementedError):
-            call.get_status()
+    assert isinstance(sync_call, ServiceCall)
+    assert sync_call.status == "succeeded"
+    assert sync_call.result["mode"] == "sync"
+    assert sync_call.dispatch["service"] == SyncTaskService.identity.as_str
 
 
-def test_service_task_wraps_context_and_runner_phase():
-    ctx = {"user": "demo", "nested": {"a": 1}}
-    service = DemoService(context=ctx)
+@pytest.mark.asyncio
+async def test_task_arun_executes_inline():
+    async_call = await AsyncTaskService().task.arun(bar=2)
 
-    call = service.task
+    assert isinstance(async_call, ServiceCall)
+    assert async_call.status == "succeeded"
+    assert async_call.result["bar"] == 2
+    assert async_call.dispatch["service"] == AsyncTaskService.identity.as_str
 
-    assert call.service_cls is DemoService
-    assert call.phase == "runner"
-    assert call.service_kwargs["context"]["user"] == "demo"
-    assert call.service_kwargs["context"]["nested"] == {"a": 1}
-    assert call.service_kwargs["context"] is not ctx
+
+def test_task_using_queue_is_rejected():
+    with pytest.raises(ValueError):
+        SyncTaskService.task.using(queue="hi-priority")
+
+
+def test_runner_style_using_is_blocked():
+    with pytest.raises(RuntimeError, match="task\\.using"):
+        SyncTaskService.using(queue="legacy-runner")
+
+
+def test_legacy_runner_imports_are_guarded():
+    with pytest.raises(ImportError):
+        importlib.import_module("orchestrai.components.services.runners")
+    with pytest.raises(ImportError):
+        importlib.import_module("orchestrai.components.services.dispatch")
+
+
+def test_to_jsonable_serializes_response_result():
+    call = ServiceCall(
+        id="1",
+        status="succeeded",
+        input={},
+        context=None,
+        result=Response(output=[]),
+        error=None,
+        dispatch={"service": SyncTaskService.identity.as_str},
+        created_at=datetime.now(),
+    )
+
+    payload = to_jsonable(call)
+
+    assert payload["result"]["output"] == []
+    assert payload["dispatch"]["service"] == SyncTaskService.identity.as_str
+
+
+def test_execute_returns_raw_result():
+    service = EchoLifecycleService()
+
+    result = service.execute(value=3)
+
+    assert isinstance(result, dict)
+    assert result["value"] == 3
+    assert result["has_call"] is False
+
+
+def test_call_returns_service_call_and_injects_call_into_payload():
+    service = EchoLifecycleService()
+
+    call = service.call(payload={"value": 5})
+
+    assert isinstance(call, ServiceCall)
+    assert call.status == "succeeded"
+    assert call.result["value"] == 5
+    assert call.result["call_id"] == call.id
+    assert call.result["has_call"] is True
+    assert call.dispatch["service"] == EchoLifecycleService.identity.as_str
+    assert call.started_at is not None and call.finished_at is not None
+
+
+@pytest.mark.asyncio
+async def test_acall_returns_service_call_and_injects_call_into_payload():
+    service = EchoLifecycleService()
+
+    call = await service.acall(payload={"value": 7})
+
+    assert isinstance(call, ServiceCall)
+    assert call.status == "succeeded"
+    assert call.result["value"] == 7
+    assert call.result["call_id"] == call.id
+    assert call.result["has_call"] is True
+    assert call.dispatch["service"] == EchoLifecycleService.identity.as_str
+    assert call.started_at is not None and call.finished_at is not None
+
+
+def test_call_records_failure_and_error_message():
+    service = ErrorService()
+
+    call = service.call()
+
+    assert isinstance(call, ServiceCall)
+    assert call.status == "failed"
+    assert call.result is None
+    assert call.error
