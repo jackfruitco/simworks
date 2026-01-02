@@ -110,6 +110,9 @@ class Response(StrictBaseModel):
     # Execution metadata for audit trail / persistence / websocket
     execution_metadata: dict[str, Any] = Field(default_factory=dict)
 
+    # Service execution context (simulation_id, user_id, etc.)
+    context: dict[str, Any] | None = None
+
 
 class StreamChunk(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)
