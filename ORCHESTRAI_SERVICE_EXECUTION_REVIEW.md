@@ -107,27 +107,26 @@ Precedence:
 
 ## 2. Ranked Bug List
 
-### P0 (Critical - Breaks Production)
+### ~~P0 (Critical - Breaks Production)~~ — CORRECTED
 
-#### **BUG-001: Wrong API Field Name in OpenAI Request Builder**
+#### **~~BUG-001: Wrong API Field Name in OpenAI Request Builder~~** ❌ FALSE POSITIVE
 - **Location**: `packages/orchestrai/src/orchestrai/contrib/provider_backends/openai/request_builder.py:139`
-- **Symptom**: OpenAI Responses API calls fail with 400 Bad Request or ignore structured outputs entirely
-- **Root Cause**:
+- **Status**: **NOT A BUG** - Code is correct
+- **Correction**: Per official OpenAI Responses API documentation, the field name **IS** `text`, not `response_format`
+  - The Responses API differs from Chat Completions API
+  - `text` parameter accepts "plain text or structured JSON data"
+  - For structured outputs: `{ "type": "json_schema", "json_schema": {...} }`
+
   ```python
   payload = {
       "model": model,
       "input": ...,
-      "text": resolved_response_format,  # ❌ WRONG FIELD NAME
+      "text": resolved_response_format,  # ✅ CORRECT for Responses API
   }
   ```
-  The OpenAI Responses API does NOT accept a `text` field for structured outputs. Based on OpenAI's SDK and API patterns, structured outputs should be passed via `response_format` parameter.
 
-- **Fix**: Replace `"text"` with the correct field name for OpenAI Responses API structured outputs
-- **Impact**: All services using structured outputs with OpenAI Responses API are broken
-- **Evidence**:
-  - Line 139 uses `"text": resolved_response_format`
-  - `resolved_response_format` contains the wrapped schema: `{"type": "json_schema", "json_schema": {...}}`
-  - This wrapper format matches OpenAI's expected `response_format` structure, not a `text` parameter
+- **Original Error**: I incorrectly assumed Responses API uses same field names as Chat Completions API
+- **Impact**: None - this was a false positive in the review
 
 ---
 
@@ -309,46 +308,14 @@ Precedence:
 
 ## 3. Patch Plan
 
-### Phase 1: Critical Fixes (P0)
+### ~~Phase 1: Critical Fixes (P0)~~ — NO P0 BUGS FOUND
 
-#### Patch 1.1: Fix OpenAI Request Field Name
-**Files**: `request_builder.py`
-
-**Change**:
-```python
-# OLD (line 139)
-payload = {
-    ...
-    "text": resolved_response_format,
-}
-
-# NEW
-payload = {
-    ...
-    "response_format": resolved_response_format,  # Correct field name for OpenAI Responses API
-}
-```
-
-**Test**:
-```python
-def test_build_responses_request_uses_correct_field_for_structured_output():
-    req = Request(input=[], response_schema_json={"type": "object"})
-    wrapped = {"type": "json_schema", "json_schema": {"name": "response", "schema": {"type": "object"}}}
-
-    payload = build_responses_request(
-        req=req,
-        model="gpt-4o-mini",
-        response_format=wrapped,
-    )
-
-    assert "response_format" in payload
-    assert payload["response_format"] == wrapped
-    assert "text" not in payload  # Ensure old field is gone
-```
+#### ~~Patch 1.1: Fix OpenAI Request Field Name~~ ❌ NOT NEEDED
+**Status**: False positive - code is already correct per OpenAI Responses API spec
 
 ---
 
-### Phase 2: High-Priority Fixes (P1)
+### Phase 1: High-Priority Fixes (P1)
 
 #### Patch 2.1: Remove Double Schema Adaptation
 **Files**: `service.py`, `resolve/schema.py`
@@ -525,7 +492,7 @@ class Response(StrictBaseModel):
 {
     "model": "gpt-4o-mini",
     "input": [/* normalized messages */],
-    "response_format": {  # ❌ CURRENTLY "text" (BUG-001)
+    "text": {  # ✅ CORRECT field name for Responses API
         "type": "json_schema",
         "json_schema": {
             "name": "response",
@@ -649,19 +616,21 @@ class Response(StrictBaseModel):
 
 ## Summary
 
-**Total Bugs Found**: 12
-**P0 (Critical)**: 1
+**Total Bugs Found**: 11 (1 false positive corrected)
+**P0 (Critical)**: 0 (BUG-001 was false positive)
 **P1 (High)**: 3
 **P2 (Medium)**: 5
 **P3 (Low)**: 3
 
-**Most Critical Issue**: BUG-001 (Wrong API field name) completely breaks OpenAI Responses API structured outputs.
+**Most Critical Issues**:
+1. BUG-002: Double schema adaptation (causes schema corruption)
+2. BUG-003: Schema adaptation runs after codec encode (wrong execution order)
+3. BUG-004: Missing response metadata (blocks persistence/websocket)
 
 **Recommended Fix Order**:
-1. Patch 1.1 (BUG-001): Fix field name → enables basic structured output
-2. Patch 2.1 (BUG-002, BUG-003): Remove double adaptation → fixes schema corruption
-3. Patch 2.2 (BUG-004): Add metadata → enables persistence/websocket
-4. Remaining P2/P3 as time permits
+1. Patch 2.1 (BUG-002, BUG-003): Remove double adaptation → fixes schema corruption
+2. Patch 2.2 (BUG-004): Add metadata → enables persistence/websocket
+3. Remaining P2/P3 as time permits
 
 **Test Coverage**:
 - Unit tests for request builder (field names, schema wrapping)
