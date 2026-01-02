@@ -1,4 +1,6 @@
 # orchestrai_django/models.py
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
@@ -174,3 +176,62 @@ class ServiceCallRecord(TimestampedModel):
 
     def __str__(self) -> str:  # pragma: no cover
         return f"ServiceCallRecord(id={self.pk}, service={self.service_identity}, status={self.status})"
+
+
+class PersistedChunk(TimestampedModel):
+    """Tracks which structured outputs have been persisted to domain models.
+
+    Provides idempotency for the persistence drain worker - ensures each
+    schema output is persisted exactly once even with retries.
+
+    Key Concept:
+        A "chunk" is a structured output (validated by a schema) from a service
+        response that needs to be persisted to domain models. This table tracks
+        which chunks have been successfully persisted.
+
+    Idempotency:
+        Unique constraint on (call_id, schema_identity) ensures each chunk
+        is persisted exactly once. Handlers use get_or_create pattern.
+
+    Example:
+        Service returns PatientInitialOutputSchema → creates Message + Metadata
+        PersistedChunk records: call_id="abc123", schema_identity="schemas.chatlab...",
+                                domain_object points to Message instance
+    """
+
+    # Service call that produced this chunk
+    call_id = models.CharField(max_length=64, db_index=True)
+
+    # Schema that structured this output
+    schema_identity = models.CharField(max_length=255, db_index=True)
+
+    # Originating namespace (Django app that owns the handler)
+    namespace = models.CharField(max_length=255, db_index=True)
+
+    # Handler that persisted this chunk
+    handler_identity = models.CharField(max_length=255)
+
+    # Primary domain object created (polymorphic reference)
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+    object_id = models.PositiveIntegerField(null=True, blank=True)
+    domain_object = GenericForeignKey("content_type", "object_id")
+
+    # Tracking metadata
+    persisted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "persisted_chunk"
+        unique_together = [("call_id", "schema_identity")]
+        indexes = [
+            models.Index(fields=["call_id", "schema_identity"]),
+            models.Index(fields=["namespace", "schema_identity"]),
+            models.Index(fields=["persisted_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"PersistedChunk(call={self.call_id}, schema={self.schema_identity})"

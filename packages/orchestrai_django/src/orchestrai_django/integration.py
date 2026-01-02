@@ -15,6 +15,7 @@ COMPONENT_MODULES: tuple[str, ...] = (
     "prompts",
     "prompt_sections",
     "tools",
+    "persist",
     "types",
     "mixins",
 )
@@ -134,6 +135,12 @@ def configure_from_django_settings(
     discovery_paths.extend(conf.get("DISCOVERY_PATHS", ()))
     discovery_paths.extend(_build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ())))
     conf["DISCOVERY_PATHS"] = tuple(_dedupe_preserve_order(discovery_paths))
+
+    django_fixups = ("orchestrai_django.fixups:PersistenceRegistryFixup",)
+    existing_fixups = tuple(conf.get("FIXUPS", ()))
+    conf["FIXUPS"] = tuple(existing_fixups) + tuple(
+        fx for fx in django_fixups if fx not in existing_fixups
+    )
 
     if app is not None and hasattr(app, "configure"):
         app.configure(conf.as_dict())

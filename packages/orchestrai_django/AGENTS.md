@@ -7,6 +7,7 @@ Applies to the Django integration package in `packages/orchestrai_django/`, incl
 - Run tests from the repo root with `uv run pytest packages/orchestrai_django`.
 - Keep Django wiring explicit: registrations and signal emitters should not fire at import time unless necessary for Django app loading.
 - Align examples and docs with the current package name and API surface.
+- Maintain one-way dependencies: plug into core `orchestrai` via fixups or adapters; never add imports in the core package back to `orchestrai_django`.
 
 ## Coding guidance
 - Validate tuple³ identities (`origin.bucket.name`) before registry insertion; raise clear errors on collisions.
