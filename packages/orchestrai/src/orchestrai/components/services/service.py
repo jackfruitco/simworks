@@ -882,34 +882,20 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         return codec_cls, label
 
     def _attach_response_schema_to_request(self, req: Request, codec: BaseCodec | None = None) -> None:
-        """Populate request schema hints when a schema is available."""
+        """Attach response schema class to request (codec will handle adaptation).
+
+        IMPORTANT: This method only attaches the schema CLASS, not adapted JSON.
+        Schema adaptation is the codec's responsibility via codec.aencode().
+        This prevents double-adaptation bugs.
+        """
 
         schema_cls = self.response_schema
         if schema_cls is None:
             return
 
+        # Only attach the schema class; codec will handle JSON schema generation and adaptation
         if getattr(req, "response_schema", None) is None:
             req.response_schema = schema_cls
-
-        schema_json = self._resolved_schema_json
-        if schema_json is None:
-            try:
-                schema_json = schema_cls.model_json_schema()
-            except Exception:
-                schema_json = None
-
-        if codec is not None and getattr(codec, "schema_adapters", None):
-            try:
-                schema_json = apply_schema_adapters(schema_cls, getattr(codec, "schema_adapters"))
-            except Exception:
-                logger.debug("schema adapter application failed", exc_info=True)
-
-        if schema_json is None:
-            return
-
-        req.response_schema_json = schema_json
-        if getattr(req, "provider_response_format", None) is None:
-            req.provider_response_format = schema_json
 
     # ------------------------------------------------------------------------
     # Service run helpers
@@ -1533,15 +1519,34 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                             if getattr(resp, "request_correlation_id", None) is None:
                                 resp.request_correlation_id = req.correlation_id
 
-                            # Attach codec identity if missing (write-safe fields only)
-                            if hasattr(resp, "codec_identity") and not getattr(resp, "codec_identity", None):
+                            # Attach codec identity if missing
+                            if not getattr(resp, "codec_identity", None):
                                 try:
-                                    resp.codec_identity = req.codec_identity  # type: ignore[attr-defined]
+                                    resp.codec_identity = getattr(req, "codec_identity", None)
                                 except Exception:
                                     logger.debug(
                                         "failed to propagate codec_identity to response",
                                         exc_info=True,
                                     )
+
+                            # Populate execution metadata for audit trail / persistence / websocket
+                            try:
+                                schema_identity = None
+                                if self.response_schema and hasattr(self.response_schema, "identity"):
+                                    schema_identity = getattr(self.response_schema.identity, "as_str", None)
+
+                                execution_meta = {
+                                    "service_identity": ident.as_str,
+                                    "prompt_plan_source": self.context.get("prompt.plan.source"),
+                                    "schema_identity": schema_identity,
+                                    "codec_identity": getattr(req, "codec_identity", None),
+                                    "model": req.model or getattr(client, "default_model", None),
+                                    "request_correlation_id": str(req.correlation_id),
+                                    "timestamp": datetime.utcnow().isoformat(),
+                                }
+                                resp.execution_metadata.update(execution_meta)
+                            except Exception:
+                                logger.debug("failed to populate execution metadata", exc_info=True)
 
                             # Let the codec decode/shape the response
                             if codec is not None:

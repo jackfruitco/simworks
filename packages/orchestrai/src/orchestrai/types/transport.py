@@ -104,6 +104,12 @@ class Response(StrictBaseModel):
     # Structured output (validated Pydantic model from codec)
     structured_data: Any | None = None
 
+    # Codec identity (for decode/persistence)
+    codec_identity: str | None = None
+
+    # Execution metadata for audit trail / persistence / websocket
+    execution_metadata: dict[str, Any] = Field(default_factory=dict)
+
 
 class StreamChunk(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)
