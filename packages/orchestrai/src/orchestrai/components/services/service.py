@@ -1586,6 +1586,12 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                             except Exception:
                                 logger.debug("failed to populate execution metadata", exc_info=True)
 
+                            # Attach service context to response for persistence
+                            try:
+                                resp.context = dict(self.context)  # Deep copy
+                            except Exception:
+                                logger.debug("failed to populate response context", exc_info=True)
+
                             # Let the codec decode/shape the response
                             if codec is not None:
                                 validated = await codec.adecode(resp)

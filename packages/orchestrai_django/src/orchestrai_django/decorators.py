@@ -36,6 +36,7 @@ __all__ = [
     "prompt_section",
     "provider",
     "provider_backend",
+    "persistence_handler",
     "DjangoCodecDecorator",
     "DjangoServiceDecorator",
     "DjangoSchemaDecorator",
@@ -111,3 +112,57 @@ schema = DjangoSchemaDecorator()
 prompt_section = DjangoPromptSectionDecorator()
 provider = DjangoProviderDecorator()
 provider_backend = DjangoProviderBackendDecorator()
+
+
+def persistence_handler(cls):
+    """
+    Mark a class as a persistence handler component.
+
+    Persistence handlers are discovered from app/orca/persist/ directories
+    and registered by (namespace, schema_identity) for routing.
+
+    Validates:
+        - Inherits from BasePersistenceHandler
+        - Has 'persist' method
+        - Has 'schema' class attribute
+
+    Example:
+        @persistence_handler
+        class PatientInitialPersistence(ChatlabMixin, BasePersistenceHandler):
+            schema = PatientInitialOutputSchema
+
+            async def persist(self, response: Response) -> Message:
+                # Implementation
+                ...
+
+    Args:
+        cls: The persistence handler class to decorate
+
+    Returns:
+        The decorated class with __component_type__ marker
+
+    Raises:
+        TypeError: If class doesn't meet interface requirements
+    """
+    from orchestrai_django.components.persistence import BasePersistenceHandler
+
+    # Validate interface
+    if not issubclass(cls, BasePersistenceHandler):
+        raise TypeError(
+            f"{cls.__name__} must inherit from BasePersistenceHandler"
+        )
+
+    if not callable(getattr(cls, "persist", None)):
+        raise TypeError(
+            f"{cls.__name__} must implement async persist(response) method"
+        )
+
+    if not hasattr(cls, "schema") or cls.schema is None:
+        raise TypeError(
+            f"{cls.__name__} must declare 'schema' class attribute"
+        )
+
+    # Mark for discovery
+    cls.__component_type__ = "persistence_handler"
+
+    return cls

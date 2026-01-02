@@ -173,32 +173,50 @@ def run_service_call(call_id: str):
         else:  # pragma: no cover - defensive
             raise RuntimeError("Service does not implement execute/aexecute")
 
-        # Success!
-        call.result = result
-        call.status = _STATUS_SUCCEEDED
-        call.finished_at = timezone.now()
+        # Success! Store Response and mark for domain persistence
+        # Phase 1: Store full Response object (atomic)
+        with transaction.atomic():
+            # Serialize Response to JSON if it's a Response object
+            if hasattr(result, "model_dump"):
+                result_json = result.model_dump()
+            else:
+                result_json = result
 
-        record.update_from_call(call)
-        record.status = _STATUS_SUCCEEDED
-        record.result = result
-        record.error = None
-        record.finished_at = call.finished_at
-        record.save(update_fields=[
-            "status",
-            "input",
-            "context",
-            "result",
-            "error",
-            "dispatch",
-            "backend",
-            "queue",
-            "task_id",
-            "created_at",
-            "started_at",
-            "finished_at",
-        ])
+            call.result = result_json
+            call.status = _STATUS_SUCCEEDED
+            call.finished_at = timezone.now()
 
-        logger.info("Service call %s succeeded on attempt %d", call_id, current_attempt)
+            record.update_from_call(call)
+            record.status = _STATUS_SUCCEEDED
+            record.result = result_json
+            record.error = None
+            record.finished_at = call.finished_at
+            record.domain_persisted = False  # Mark for persistence worker
+            record.save(update_fields=[
+                "status",
+                "input",
+                "context",
+                "result",
+                "error",
+                "dispatch",
+                "backend",
+                "queue",
+                "task_id",
+                "created_at",
+                "started_at",
+                "finished_at",
+                "domain_persisted",
+            ])
+
+        logger.info(
+            "Service call %s succeeded on attempt %d (domain persistence pending)",
+            call_id,
+            current_attempt
+        )
+
+        # Phase 2: Domain persistence happens in separate worker
+        # (see process_pending_persistence task)
+
         return to_jsonable(record.as_call())
 
     except Exception as exc:
@@ -266,4 +284,102 @@ def run_service_call(call_id: str):
             return to_jsonable(call)
 
 
-__all__ = ["run_service_call", "run_service_call_task"]
+@task
+def process_pending_persistence():
+    """
+    Process ServiceCallRecords that need domain persistence.
+
+    This task runs periodically (e.g., every 10-30 seconds) and processes
+    records where service execution succeeded but domain persistence hasn't
+    happened yet.
+
+    Design:
+        - Idempotent: Safe to run multiple times on same record
+        - Retriable: LLM not re-called, only persistence retried
+        - Two-phase: Response stored first (atomic), domain persistence separate
+
+    Returns:
+        dict with processing stats (processed, failed, pending)
+    """
+    from orchestrai.types import Response
+
+    try:
+        from orchestrai_django.apps import ensure_autostarted
+        ensure_autostarted()
+    except Exception:
+        logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
+
+    app = get_current_app()
+    persistence_registry = app.context.get("persistence_registry")
+
+    if not persistence_registry:
+        logger.error("No persistence_registry in app context, skipping")
+        return {"error": "No persistence_registry"}
+
+    # Find records needing persistence (batch of 100)
+    pending_records = ServiceCallRecord.objects.filter(
+        status=_STATUS_SUCCEEDED,
+        domain_persisted=False,
+    ).order_by("finished_at")[:100]
+
+    stats = {"processed": 0, "failed": 0, "pending": pending_records.count()}
+
+    for record in pending_records:
+        try:
+            # Deserialize Response from JSON
+            response = Response.model_validate(record.result)
+
+            # Persist domain objects (schema-aware routing)
+            domain_obj = async_to_sync(persistence_registry.persist)(response)
+
+            # Mark success
+            with transaction.atomic():
+                record.domain_persisted = True
+                record.domain_persist_error = None
+                record.save(update_fields=[
+                    "domain_persisted",
+                    "domain_persist_error",
+                ])
+
+            stats["processed"] += 1
+            logger.info(f"Persisted domain objects for service call {record.id}")
+
+            # Side effects (outside transaction, can fail safely)
+            # Note: WebSocket broadcast is now handled by post_save signal on Message
+            # (see chatlab/signals.py)
+
+        except Exception as exc:
+            # Log error but don't mark as persisted (will retry later)
+            stats["failed"] += 1
+            logger.exception(
+                f"Domain persistence failed for service call {record.id}: {exc}"
+            )
+
+            # Track attempts and errors
+            with transaction.atomic():
+                record.domain_persist_attempts += 1
+                record.domain_persist_error = str(exc)
+                record.save(update_fields=[
+                    "domain_persist_attempts",
+                    "domain_persist_error",
+                ])
+
+            # Give up after max attempts
+            max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
+            if record.domain_persist_attempts >= max_attempts:
+                logger.error(
+                    f"Giving up on domain persistence for {record.id} "
+                    f"after {max_attempts} attempts"
+                )
+                # Could emit alert or mark with special status
+
+    logger.info(
+        f"Domain persistence batch complete: "
+        f"{stats['processed']} processed, {stats['failed']} failed, "
+        f"{stats['pending']} pending"
+    )
+
+    return stats
+
+
+__all__ = ["run_service_call", "run_service_call_task", "process_pending_persistence"]
