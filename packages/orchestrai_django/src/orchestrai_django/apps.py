@@ -88,6 +88,17 @@ def _commands_to_skip() -> set[str]:
     return set(DEFAULT_SKIP_READY_COMMANDS)
 
 
+def _resolve_entrypoint() -> str | None:
+    return getattr(dj_settings, "ORCA_ENTRYPOINT", None) or os.environ.get("ORCA_ENTRYPOINT")
+
+
+def _should_skip_ready_command(argv: list[str]) -> str | None:
+    command = _active_management_command(argv)
+    if command and command in _commands_to_skip():
+        return command
+    return None
+
+
 def _autostart_enabled() -> bool:
     if os.environ.get("DJANGO_SKIP_READY") == "1":
         return False
@@ -147,64 +158,99 @@ def _register_current_app(app: Any) -> None:
         logger.debug("Failed to set current OrchestrAI app", exc_info=True)
 
 
+def _autostart(entrypoint: str) -> Any | None:
+    """Shared autostart implementation (idempotent under `_startup_lock`)."""
+
+    app_instance: Any | None = None
+
+    with service_span_sync("orchestrai.django.autostart"):
+        target = _import_from_path(entrypoint)
+
+        if callable(target):
+            result = target()
+
+            if result is not None:
+                _register_current_app(result)
+                _maybe_start(result)
+                app_instance = result
+                logger.info("OrchestrAI autostart complete via callable entrypoint")
+            else:
+                app_instance = get_current_app()
+                logger.info(
+                    "OrchestrAI autostart complete via callable entrypoint (no return value)"
+                )
+
+        else:
+            _register_current_app(target)
+            _maybe_start(target)
+            app_instance = target
+            logger.info("OrchestrAI autostart complete via object entrypoint")
+
+    if app_instance is None:
+        app_instance = getattr(dj_settings, "_ORCHESTRAI_APP", None) or get_current_app()
+
+    try:
+        use_django_task_proxy()
+    except Exception:
+        logger.debug("Failed to install Django task proxy", exc_info=True)
+
+    try:
+        from orchestrai_django.tasks import _debug_app_context
+
+        _debug_app_context("autostart")
+    except Exception:
+        logger.debug("Failed to log app context after autostart", exc_info=True)
+
+    return app_instance
+
+
+def ensure_autostarted(entrypoint: str | None = None, *, check_skip_commands: bool = True) -> Any | None:
+    """Ensure the OrchestrAI app has autostarted (idempotent, thread-safe)."""
+
+    if not _autostart_enabled():
+        return getattr(dj_settings, "_ORCHESTRAI_APP", None)
+
+    if check_skip_commands:
+        command = _should_skip_ready_command(sys.argv)
+        if command:
+            logger.debug("Skipping OrchestrAI autostart for management command %s", command)
+            return getattr(dj_settings, "_ORCHESTRAI_APP", None)
+
+    entrypoint = entrypoint or _resolve_entrypoint()
+    if not entrypoint:
+        logger.debug("ORCA_ENTRYPOINT not set; skipping OrchestrAI autostart")
+        return getattr(dj_settings, "_ORCHESTRAI_APP", None)
+
+    with _startup_lock:
+        global _started
+        if _started:
+            return getattr(dj_settings, "_ORCHESTRAI_APP", None) or get_current_app()
+        _started = True
+
+    return _autostart(entrypoint)
+
+
 class OrchestrAIDjangoConfig(AppConfig):
     """Django AppConfig for OrchestrAI Django."""
 
     name = "orchestrai_django"
 
     def ready(self) -> None:
-        global _started
-        app_instance: Any | None = None
-
         # Allow opt-out for special cases (tests, one-off management commands, etc.)
         if not _autostart_enabled():
             return
 
-        command = _active_management_command(sys.argv)
-        if command and command in _commands_to_skip():
+        command = _should_skip_ready_command(sys.argv)
+        if command:
             logger.debug("Skipping OrchestrAI autostart for management command %s", command)
             return
 
-        entrypoint = getattr(dj_settings, "ORCA_ENTRYPOINT", None) or os.environ.get("ORCA_ENTRYPOINT")
+        entrypoint = _resolve_entrypoint()
         if not entrypoint:
             logger.debug("ORCA_ENTRYPOINT not set; skipping OrchestrAI autostart")
             return
 
-        with _startup_lock:
-            if _started:
-                return
-            _started = True
-
-        with service_span_sync("orchestrai.django.autostart"):
-            target = _import_from_path(entrypoint)
-
-            # If the entrypoint is callable (recommended), call it.
-            if callable(target):
-                result = target()
-
-                # If the callable returned an app instance, register it as the default.
-                if result is not None:
-                    _register_current_app(result)
-                    _maybe_start(result)
-                    app_instance = result
-                    logger.info("OrchestrAI autostart complete via callable entrypoint")
-                else:
-                    app_instance = get_current_app()
-                    logger.info(
-                        "OrchestrAI autostart complete via callable entrypoint (no return value)"
-                    )
-
-            # If it's an object (e.g. an app instance), register it and try to ready it.
-            else:
-                _register_current_app(target)
-                _maybe_start(target)
-                app_instance = target
-                logger.info("OrchestrAI autostart complete via object entrypoint")
+        app_instance = ensure_autostarted(entrypoint=entrypoint, check_skip_commands=False)
 
         if app_instance is None:
             app_instance = getattr(dj_settings, "_ORCHESTRAI_APP", None) or get_current_app()
-
-        try:
-            use_django_task_proxy()
-        except Exception:
-            logger.debug("Failed to install Django task proxy", exc_info=True)

@@ -101,6 +101,9 @@ class Response(StrictBaseModel):
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
     provider_meta: dict[str, Any] = Field(default_factory=dict)
 
+    # Structured output (validated Pydantic model from codec)
+    structured_data: Any | None = None
+
 
 class StreamChunk(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)

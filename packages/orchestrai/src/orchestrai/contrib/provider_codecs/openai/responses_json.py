@@ -12,11 +12,14 @@ It is intentionally OpenAI-specific but still registered in the global codecs re
 keyed by identity (namespace='openai', kind='responses', name='json').
 """
 
+import logging
 from typing import Any, ClassVar, Sequence
 
 from pydantic import ValidationError
 
-from ...provider_backends.openai.openai import PROVIDER_NAME
+logger = logging.getLogger(__name__)
+
+from ...provider_backends.openai.constants import PROVIDER_NAME
 from ...provider_backends.openai.schema_adapters import FlattenUnions, OpenaiWrapper
 from ....components.codecs import BaseCodec
 from ....components.codecs.exceptions import CodecDecodeError, CodecSchemaError
@@ -110,10 +113,14 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                     )
                 base_schema = candidate
             req.response_schema_json = base_schema
+            logger.debug(f"[OpenAICodec] Base schema title: {base_schema.get('title') if base_schema else None}")
 
             # Apply schema adapters (OpenAI-specific quirks such as flattening oneOf).
             compiled = base_schema
             for adapter in self.schema_adapters:
+                adapter_name = type(adapter).__name__
+                adapter_order = getattr(adapter, 'order', None)
+                logger.debug(f"[OpenAICodec] Applying adapter: {adapter_name} (order={adapter_order})")
                 try:
                     compiled = adapter.adapt(compiled)
                 except Exception as exc:  # pragma: no cover - defensive
@@ -121,8 +128,14 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                         f"{self.__class__.__name__}: schema adapter {type(adapter).__name__} failed"
                     ) from exc
 
+            has_wrapper = isinstance(compiled, dict) and 'json_schema' in compiled
+            logger.debug(f"[OpenAICodec] Compiled schema has wrapper: {has_wrapper}")
+
             req.response_schema_json = compiled
             setattr(req, "provider_response_format", compiled)
+
+            has_wrapper_after = isinstance(getattr(req, 'provider_response_format', None), dict) and 'json_schema' in getattr(req, 'provider_response_format', {})
+            logger.debug(f"[OpenAICodec] Set provider_response_format with wrapper: {has_wrapper_after}")
 
     async def adecode(self, resp: Response) -> Any | None:
         """Decode structured output from a Response into the declared schema, if available.
@@ -149,6 +162,14 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
             req = getattr(resp, "request", None)
             if req is not None:
                 schema_cls = getattr(req, "response_schema", None)
+
+            # Fallback to service's schema if request schema not available
+            if schema_cls is None:
+                schema_cls = self._get_schema_from_service()
+
+            # Fallback to codec's class-level schema
+            if schema_cls is None:
+                schema_cls = self.response_schema
 
             # No schema: return the raw dict (already normalized).
             if schema_cls is None:

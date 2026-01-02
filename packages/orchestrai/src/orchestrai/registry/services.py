@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from orchestrai.identity import Identity
@@ -11,6 +12,8 @@ if TYPE_CHECKING:  # pragma: no cover - type hints only
     from orchestrai.components.services.service import BaseService
 else:  # pragma: no cover - runtime fallback to break cycles
     BaseService = object  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 class ServiceRegistry(BaseRegistry[Identity, "BaseService"]):
@@ -51,8 +54,19 @@ def ensure_service_registry(app: Any | None = None) -> ServiceRegistry:
     if isinstance(registry, ServiceRegistry):
         return registry
 
+    try:
+        items = list(registry.items())
+    except Exception:
+        items = []
+    if not items:
+        logger.warning(
+            "ensure_service_registry: upgrading empty registry; check autostart/app context (app=%r, store=%r)",
+            app,
+            store,
+        )
+
     upgraded = ServiceRegistry()
-    for cls in registry.items():
+    for cls in items:
         upgraded.register(cls, strict=True)
     store._registries[SERVICES_DOMAIN] = upgraded  # type: ignore[attr-defined]
     return upgraded

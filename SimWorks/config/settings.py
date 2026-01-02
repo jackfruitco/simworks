@@ -166,12 +166,16 @@ ORCA_CONFIG = {
 
 TASKS = {
     "default": {
-        "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
+        "BACKEND": "orchestrai_django.backends.async_thread.AsyncThreadBackend",
     },
     "immediate": {
         "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
     },
 }
+
+# Django Tasks Retry Configuration (for orchestrai_django)
+DJANGO_TASKS_MAX_RETRIES = int(os.getenv("DJANGO_TASKS_MAX_RETRIES", "3"))
+DJANGO_TASKS_RETRY_DELAY = int(os.getenv("DJANGO_TASKS_RETRY_DELAY", "5"))  # seconds
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)
