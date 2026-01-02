@@ -9,6 +9,9 @@ class ChatLabConfig(AppConfig):
     AI_IDENTITY_STRIP_TOKENS = ("Patient","Chatlab","chatlab")
 
     def ready(self):
+        # Import signals to register receivers
+        from . import signals  # noqa: F401
+
         from simulation.history_registry import register_history_provider
         from .models import Message
 

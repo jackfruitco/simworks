@@ -4,69 +4,23 @@ from __future__ import annotations
 import logging
 import os
 from importlib import import_module
-from typing import Any, Final, Iterable, Literal, Optional, cast
+from typing import Any, Iterable, Literal, Optional
 
 from orchestrai.components.providerkit import BaseProvider
 from orchestrai.components.providerkit.exceptions import ProviderError
 from orchestrai.decorators import provider_backend
-from orchestrai.conf import DEFAULTS
 from orchestrai.tracing import flatten_context as _flatten_context, service_span, service_span_sync
 from orchestrai.types import Request, Response
-from orchestrai.components.services.providers.openai_responses.build import build_responses_request
-from .output_adapters import ImageGenerationOutputAdapter
-from .tools import OpenAIToolAdapter
 from orchestrai.utils import clean_kwargs
+
+from .constants import API_SURFACE, API_VERSION, DEFAULT_MODEL, DEFAULT_TIMEOUT_S, PROVIDER_NAME
+from .output_adapters import ImageGenerationOutputAdapter
+from .request_builder import build_responses_request
+from .tools import OpenAIToolAdapter
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["OpenAIResponsesProvider", "normalize_responses_output"]
-
-PROVIDER_NAME: Final[Literal["openai"]] = "openai"
-API_SURFACE: Final[Literal["responses"]] = "responses"
-API_VERSION: Final[None] = None
-DEFAULT_TIMEOUT_S: Final[int | float] = cast(int | float, DEFAULTS["PROVIDER_DEFAULT_TIMEOUT"])
-DEFAULT_MODEL: Final[str] = cast(str, DEFAULTS["PROVIDER_DEFAULT_MODEL"])
-
-
-def normalize_responses_output(resp: Any) -> tuple[str, list[Any], dict[str, list[str]]]:
-    """Normalize OpenAI Responses API output items.
-
-    Args:
-        resp: Provider-native response object exposing an ``output`` collection.
-
-    Returns:
-        text: Combined assistant-visible text content.
-        passthrough: Unhandled output items that may contain attachments.
-        meta: Metadata about unhandled item types for diagnostics.
-    """
-
-    text_parts: list[str] = []
-    passthrough: list[Any] = []
-    meta: dict[str, list[str]] = {"unhandled_items": []}
-
-    output: Iterable[Any] = getattr(resp, "output", []) or []
-    for item in output:
-        item_type = getattr(item, "type", None)
-
-        if item_type in {"reasoning", "ResponseReasoningItem"}:
-            continue
-
-        if item_type in {"message", "output_message", "ResponseOutputMessage"}:
-            for content in getattr(item, "content", []) or []:
-                content_type = getattr(content, "type", None)
-                if content_type in {"output_text", "text"}:
-                    text = getattr(content, "text", None)
-                    if text:
-                        text_parts.append(text)
-            continue
-
-        passthrough.append(item)
-        meta["unhandled_items"].append(item_type)
-
-    if not meta["unhandled_items"]:
-        meta = {}
-
-    return "".join(text_parts).strip(), passthrough, meta
+__all__ = ["OpenAIResponsesProvider"]
 
 
 @provider_backend(namespace=PROVIDER_NAME, kind=API_SURFACE, name="backend")
@@ -112,10 +66,6 @@ class OpenAIResponsesProvider(BaseProvider):
         self._client = self._resolve_client(client)
         self.set_tool_adapter(OpenAIToolAdapter())
         self._output_adapters = [ImageGenerationOutputAdapter()]
-        self._last_output_source: Any | None = None
-        self._last_output_text: str | None = None
-        self._last_output_passthrough: list[Any] | None = None
-        self._last_output_meta: dict[str, list[str]] | None = None
 
     def _resolve_client(self, client: Any | None) -> Any:
         if client is not None:
@@ -186,22 +136,52 @@ class OpenAIResponsesProvider(BaseProvider):
 
     # Provider hooks --------------------------------------------------
     def _extract_text(self, resp: Any) -> Optional[str]:
-        text, _, _ = self._normalize_output(resp)
-        fallback = getattr(resp, "output_text", None) or getattr(resp, "text", None) or None
-        return text or fallback
+        """Extract text content from OpenAI response output."""
+        text_parts: list[str] = []
+        output: Iterable[Any] = getattr(resp, "output", []) or []
+
+        for item in output:
+            item_type = getattr(item, "type", None)
+            # Skip reasoning items
+            if item_type in {"reasoning", "ResponseReasoningItem"}:
+                continue
+            # Extract text from message items
+            if item_type in {"message", "output_message", "ResponseOutputMessage"}:
+                for content in getattr(item, "content", []) or []:
+                    content_type = getattr(content, "type", None)
+                    if content_type in {"output_text", "text"}:
+                        text = getattr(content, "text", None)
+                        if text:
+                            text_parts.append(text)
+
+        result = "".join(text_parts).strip()
+        # Fallback to legacy text fields if no output items found
+        return result or getattr(resp, "output_text", None) or getattr(resp, "text", None) or None
 
     def _extract_outputs(self, resp: Any):
-        _, passthrough, _ = self._normalize_output(resp)
+        """Extract non-message output items (e.g., tool calls, images)."""
+        passthrough: list[Any] = []
+        output: Iterable[Any] = getattr(resp, "output", []) or []
+
+        for item in output:
+            item_type = getattr(item, "type", None)
+            # Skip reasoning and message items, keep everything else
+            if item_type not in {"reasoning", "ResponseReasoningItem", "message", "output_message", "ResponseOutputMessage"}:
+                passthrough.append(item)
+
         return passthrough
 
     def _is_image_output(self, item: Any) -> bool:
+        """Check if an output item is an image generation result."""
         return hasattr(item, "result") and hasattr(item, "mime_type")
 
     def _extract_usage(self, resp: Any) -> dict:
+        """Extract usage/token statistics from response."""
         usage = getattr(resp, "usage", None) or {}
         return usage if isinstance(usage, dict) else getattr(usage, "__dict__", {}) or {}
 
     def _extract_provider_meta(self, resp: Any) -> dict:
+        """Extract provider-specific metadata from response."""
         base = {
             "model": getattr(resp, "model", None),
             "id": getattr(resp, "id", None),
@@ -210,27 +190,10 @@ class OpenAIResponsesProvider(BaseProvider):
             base["raw"] = resp.model_dump() if hasattr(resp, "model_dump") else None
         except Exception:  # pragma: no cover - defensive
             base["raw"] = None
-        output_meta = self._last_output_meta or {}
-        if output_meta:
-            base["output_meta"] = output_meta
         return base
 
-    def _normalize_output(self, resp: Any) -> tuple[str, list[Any], dict[str, list[str]]]:
-        if self._last_output_source is resp and self._last_output_passthrough is not None:
-            return (
-                self._last_output_text or "",
-                self._last_output_passthrough,
-                self._last_output_meta or {},
-            )
-
-        text, passthrough, meta = normalize_responses_output(resp)
-        self._last_output_source = resp
-        self._last_output_text = text
-        self._last_output_passthrough = passthrough
-        self._last_output_meta = meta
-        return text, passthrough, meta
-
     def _normalize_tool_output(self, item: Any):
+        """Adapt provider-specific tool outputs into normalized format."""
         with service_span_sync("orchestrai.tools.handle_output", attributes={"orchestrai.provider_name": self.provider}):
             for adapter in getattr(self, "_output_adapters", []):
                 result = adapter.adapt(item)
