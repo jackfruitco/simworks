@@ -13,6 +13,8 @@ DEFAULTS: dict[str, object] = {
         "*.orca.services",
         "*.orca.output_schemas",
         "*.orca.codecs",
+        "*.orca.persist",
+        "*.orca.persistence",
         "*.ai.services",
     ),
     "FIXUPS": (),

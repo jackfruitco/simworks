@@ -23,7 +23,6 @@ Settings
   The callable may return an OrchestrAI instance, or may perform initialization itself.
 """
 
-import importlib
 import logging
 import os
 import threading
@@ -230,74 +229,6 @@ def ensure_autostarted(entrypoint: str | None = None, *, check_skip_commands: bo
     return _autostart(entrypoint)
 
 
-def _discover_persistence_handlers(app: Any) -> None:
-    """
-    Discover and register persistence handlers from all Django apps.
-
-    Scans app/orca/persist/ directories for @persistence_handler decorated
-    classes and registers them in the PersistenceHandlerRegistry.
-
-    Args:
-        app: OrchestrAI app instance
-    """
-    from django.apps import apps as django_apps
-    from pathlib import Path
-    import inspect
-    from orchestrai_django.registry.persistence import PersistenceHandlerRegistry
-
-    # Get or create registry
-    registry = app.context.get("persistence_registry")
-    if registry is None:
-        registry = PersistenceHandlerRegistry()
-        app.context["persistence_registry"] = registry
-
-    # Scan all Django apps for orca/persist/ directories
-    for app_config in django_apps.get_app_configs():
-        persist_path = Path(app_config.path) / "orca" / "persist"
-
-        if not persist_path.exists() or not persist_path.is_dir():
-            continue
-
-        logger.debug(f"Scanning {persist_path} for persistence handlers")
-
-        # Import all .py files in orca/persist/
-        for py_file in persist_path.glob("*.py"):
-            if py_file.name.startswith("_"):
-                continue
-
-            try:
-                # Import module
-                module_name = f"{app_config.name}.orca.persist.{py_file.stem}"
-                module = importlib.import_module(module_name)
-
-                # Find @persistence_handler decorated classes
-                for name, obj in inspect.getmembers(module, inspect.isclass):
-                    if hasattr(obj, "__component_type__") and \
-                       obj.__component_type__ == "persistence_handler":
-                        try:
-                            registry.register(obj)
-                            logger.debug(
-                                f"Registered persistence handler: {obj.__name__} "
-                                f"from {module_name}"
-                            )
-                        except Exception as exc:
-                            logger.error(
-                                f"Failed to register persistence handler {obj.__name__}: {exc}",
-                                exc_info=True
-                            )
-
-            except Exception as exc:
-                logger.warning(
-                    f"Failed to import {module_name} for persistence handlers: {exc}",
-                    exc_info=True
-                )
-
-    logger.info(
-        f"Persistence handler discovery complete: "
-        f"{registry.count()} handlers registered"
-    )
-
-
 class OrchestrAIDjangoConfig(AppConfig):
     """Django AppConfig for OrchestrAI Django."""
 
@@ -318,11 +249,4 @@ class OrchestrAIDjangoConfig(AppConfig):
             logger.debug("ORCA_ENTRYPOINT not set; skipping OrchestrAI autostart")
             return
 
-        app_instance = ensure_autostarted(entrypoint=entrypoint, check_skip_commands=False)
-
-        if app_instance is None:
-            app_instance = getattr(dj_settings, "_ORCHESTRAI_APP", None) or get_current_app()
-
-        # Discover and register persistence handlers
-        if app_instance is not None:
-            _discover_persistence_handlers(app_instance)
+        ensure_autostarted(entrypoint=entrypoint, check_skip_commands=False)

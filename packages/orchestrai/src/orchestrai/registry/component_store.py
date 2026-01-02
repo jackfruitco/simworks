@@ -3,7 +3,7 @@
 from threading import RLock
 from typing import Any
 
-from orchestrai.identity.domains import SERVICES_DOMAIN
+from orchestrai.identity.domains import PERSIST_DOMAIN, SERVICES_DOMAIN
 
 from .base import ComponentRegistry
 from .records import RegistrationRecord
@@ -27,6 +27,15 @@ class ComponentStore:
                     from orchestrai.registry.services import ServiceRegistry
 
                     self._registries[key] = ServiceRegistry()
+                elif key == PERSIST_DOMAIN:
+                    try:
+                        from orchestrai_django.registry.persistence import (
+                            PersistenceHandlerRegistry,
+                        )
+
+                        self._registries[key] = PersistenceHandlerRegistry()
+                    except Exception:
+                        self._registries[key] = ComponentRegistry()
                 else:
                     self._registries[key] = ComponentRegistry()
             return self._registries[key]
@@ -56,6 +65,15 @@ class ComponentStore:
     def freeze_all(self) -> None:
         for registry in self.items().values():
             registry.freeze()
+
+    # Convenience aliases for persistence handlers
+    @property
+    def persist(self) -> ComponentRegistry[Any]:
+        return self.registry(PERSIST_DOMAIN)
+
+    @property
+    def persistence_handlers(self) -> ComponentRegistry[Any]:
+        return self.registry(PERSIST_DOMAIN)
 
 
 __all__ = ["ComponentStore"]
