@@ -423,6 +423,8 @@ class OrchestrAI:
             self.fixups.append(self._resolve_fixup(spec))
 
     def _resolve_fixup(self, spec: object) -> Fixup:
+        if isinstance(spec, type):
+            return self._coerce_fixup(spec, spec)
         if isinstance(spec, Fixup):
             return spec
         if isinstance(spec, str):
@@ -431,12 +433,12 @@ class OrchestrAI:
         return self._coerce_fixup(spec, spec)
 
     def _coerce_fixup(self, obj: object, label: object) -> Fixup:
-        if isinstance(obj, Fixup):
-            return obj
         if isinstance(obj, type):
             instance = obj()
             if isinstance(instance, Fixup):
                 return instance
+        if isinstance(obj, Fixup):
+            return obj
         if hasattr(obj, "apply"):
             return obj  # type: ignore[return-value]
         raise TypeError(f"Fixup path {label!r} did not resolve to a Fixup")
