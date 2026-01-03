@@ -49,11 +49,20 @@ class HotwashInitialPersistence(SimcoreMixin, FeedbackMixin, BasePersistenceHand
         chunk, created = await self.ensure_idempotent(response)
 
         if not created and chunk.domain_object:
-            # Already persisted - return empty list
+            # Already persisted - retrieve existing feedback items
             logger.info(
                 f"Idempotent skip: Hotwash feedback already persisted "
                 f"for call {chunk.call_id}"
             )
+            # Retrieve existing feedback items from metadata or query
+            if hasattr(chunk, 'metadata') and chunk.metadata:
+                feedback_ids = chunk.metadata.get('feedback_item_ids', [])
+                if feedback_ids:
+                    feedback_items = await SimulationFeedback.objects.filter(
+                        id__in=feedback_ids
+                    ).ato_list()
+                    return list(feedback_items)
+            # Fallback: return empty list if metadata not available
             return []
 
         # First persistence - validate and create domain objects
@@ -76,10 +85,16 @@ class HotwashInitialPersistence(SimcoreMixin, FeedbackMixin, BasePersistenceHand
 
         # llm_conditions_check - SKIP (not persisted per user decision)
 
-        # Link to idempotency tracker (use first feedback item if available)
+        # Link to idempotency tracker (store all feedback item IDs)
         from django.contrib.contenttypes.models import ContentType
 
         if feedback_items:
+            # Store all feedback item IDs in chunk metadata for idempotency
+            chunk.metadata = {
+                "feedback_item_ids": [item.id for item in feedback_items],
+                "count": len(feedback_items),
+            }
+            # Link primary object for domain_object accessor
             chunk.content_type = await ContentType.objects.aget_for_model(
                 SimulationFeedback
             )
@@ -128,7 +143,13 @@ class HotwashInitialPersistence(SimcoreMixin, FeedbackMixin, BasePersistenceHand
 
             except Exception as exc:
                 logger.warning(
-                    f"Failed to persist feedback item {key}: {exc}", exc_info=True
+                    f"Failed to persist feedback item: {exc}",
+                    exc_info=True,
+                    extra={
+                        "simulation_id": simulation_id,
+                        "feedback_key": key,
+                        "value_preview": value[:100] if isinstance(value, str) else str(value),
+                    }
                 )
                 # Continue with other items
 

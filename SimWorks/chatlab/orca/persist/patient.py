@@ -287,12 +287,20 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         chunk, created = await self.ensure_idempotent(response)
 
         if not created and chunk.domain_object:
-            # Already persisted - return existing metadata
+            # Already persisted - retrieve existing metadata items
             logger.info(
                 f"Idempotent skip: Results metadata already persisted "
                 f"for call {chunk.call_id}"
             )
-            # Return empty list since we can't easily retrieve all metadata items
+            # Retrieve existing metadata items from chunk metadata
+            if hasattr(chunk, 'metadata') and chunk.metadata:
+                metadata_ids = chunk.metadata.get('metadata_item_ids', [])
+                if metadata_ids:
+                    metadata_items = await SimulationMetadata.objects.filter(
+                        id__in=metadata_ids
+                    ).ato_list()
+                    return list(metadata_items)
+            # Fallback: return empty list if metadata not available
             return []
 
         # First persistence - validate and create domain objects
@@ -313,10 +321,16 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
 
         # llm_conditions_check - SKIP (not persisted per user decision)
 
-        # Link to idempotency tracker (use first metadata item if available)
+        # Link to idempotency tracker (store all metadata item IDs)
         from django.contrib.contenttypes.models import ContentType
 
         if metadata_items:
+            # Store all metadata item IDs in chunk metadata for idempotency
+            chunk.metadata = {
+                "metadata_item_ids": [item.id for item in metadata_items],
+                "count": len(metadata_items),
+            }
+            # Link primary object for domain_object accessor
             chunk.content_type = await ContentType.objects.aget_for_model(SimulationMetadata)
             chunk.object_id = metadata_items[0].id
             await chunk.asave()
@@ -366,7 +380,14 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
 
             except Exception as exc:
                 logger.warning(
-                    f"Failed to persist results metadata item: {exc}", exc_info=True
+                    f"Failed to persist results metadata item: {exc}",
+                    exc_info=True,
+                    extra={
+                        "simulation_id": simulation_id,
+                        "metadata_key": key,
+                        "item_type": item_type,
+                        "text_preview": text[:100] if text else "(empty)",
+                    }
                 )
                 # Continue with other items
 

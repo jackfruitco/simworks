@@ -159,10 +159,6 @@ class SchemaDecorator(BaseDecorator):
         setattr(candidate, '_validated_schema', schema_json)
         setattr(candidate, '_validated_at', 'decoration')
 
-        # Cache for performance (avoid regenerating schema)
-        # This is used by codecs to skip schema generation at request time
-        setattr(candidate, '_cached_openai_schema', schema_json)
-
         logger.debug(
             f"Schema {candidate.__name__} tagged with compatibility: {compatibility}"
         )
