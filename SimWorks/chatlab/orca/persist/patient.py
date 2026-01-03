@@ -142,9 +142,14 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
                         text = content.text
                         break
 
-                # Extract key from item_meta
-                key = meta_item.item_meta.get("key", "metadata")
-                item_type = meta_item.item_meta.get("type")
+                # Extract key from item_meta (now list[Metafield])
+                key = "metadata"  # default
+                item_type = None
+                for metafield in meta_item.item_meta:
+                    if metafield.key == "key":
+                        key = metafield.value
+                    elif metafield.key == "type":
+                        item_type = metafield.value
 
                 # For now, use generic SimulationMetadata
                 # TODO: Route to LabResult, RadResult based on item_type
@@ -364,9 +369,14 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
                         text = content.text
                         break
 
-                # Extract key from item_meta
-                key = meta_item.item_meta.get("key", "result")
-                item_type = meta_item.item_meta.get("type", "assessment")
+                # Extract key from item_meta (now list[Metafield])
+                key = "result"  # default
+                item_type = "assessment"  # default
+                for metafield in meta_item.item_meta:
+                    if metafield.key == "key":
+                        key = metafield.value
+                    elif metafield.key == "type":
+                        item_type = metafield.value
 
                 # Create metadata record
                 metadata_obj = await SimulationMetadata.objects.acreate(

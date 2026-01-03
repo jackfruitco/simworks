@@ -71,14 +71,17 @@ class TestPatientInitialSchema:
                 {
                     "role": "assistant",
                     "content": [{"type": "output_text", "text": "Hello, I'm the patient."}],
-                    "item_meta": {},
+                    "item_meta": [],
                 }
             ],
             "metadata": [
                 {
                     "role": "assistant",
                     "content": [{"type": "output_text", "text": "Patient age: 45"}],
-                    "item_meta": {"key": "age", "type": "demographic"},
+                    "item_meta": [
+                        {"key": "key", "value": "age"},
+                        {"key": "type", "value": "demographic"}
+                    ],
                 }
             ],
             "llm_conditions_check": [
@@ -94,7 +97,10 @@ class TestPatientInitialSchema:
         assert parsed.messages[0].content[0].text == "Hello, I'm the patient."
 
         assert len(parsed.metadata) == 1
-        assert parsed.metadata[0].item_meta["key"] == "age"
+        # Verify item_meta as list[Metafield]
+        meta_keys = {mf.key: mf.value for mf in parsed.metadata[0].item_meta}
+        assert meta_keys["key"] == "age"
+        assert meta_keys["type"] == "demographic"
 
         assert len(parsed.llm_conditions_check) == 1
         assert parsed.llm_conditions_check[0].key == "ready_for_questions"
@@ -187,7 +193,9 @@ class TestPatientResultsSchema:
                 {
                     "role": "assistant",
                     "content": [{"type": "output_text", "text": "Final diagnosis: ..."}],
-                    "item_meta": {"key": "final_diagnosis"},
+                    "item_meta": [
+                        {"key": "key", "value": "final_diagnosis"}
+                    ],
                 }
             ],
             "llm_conditions_check": [],
@@ -195,3 +203,6 @@ class TestPatientResultsSchema:
 
         parsed = PatientResultsOutputSchema.model_validate(sample_output)
         assert len(parsed.metadata) == 1
+        # Verify item_meta as list[Metafield]
+        meta_keys = {mf.key: mf.value for mf in parsed.metadata[0].item_meta}
+        assert meta_keys["key"] == "final_diagnosis"
