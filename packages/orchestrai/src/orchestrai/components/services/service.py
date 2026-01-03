@@ -43,7 +43,13 @@ from ..promptkit import Prompt, PromptEngine, PromptPlan, PromptSectionSpec
 from ...identity import Identity, IdentityLike, IdentityMixin
 from ...identity.domains import SERVICES_DOMAIN
 from ...tracing import get_tracer, service_span, SpanPath
-from ...types import Request, Response, StrictBaseModel
+from ...types import (
+    Request,
+    Response,
+    StrictBaseModel,
+    dict_to_metafields,
+    metafields_to_dict,
+)
 from ...types.content import ContentRole
 from ...types.input import InputTextContent
 from ...types.messages import InputItem
@@ -1582,7 +1588,9 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                                     "request_correlation_id": str(req.correlation_id),
                                     "timestamp": datetime.utcnow().isoformat(),
                                 }
-                                resp.execution_metadata.update(execution_meta)
+                                merged_metadata = metafields_to_dict(resp.execution_metadata)
+                                merged_metadata.update(execution_meta)
+                                resp.execution_metadata = dict_to_metafields(merged_metadata)
                             except Exception:
                                 logger.debug("failed to populate execution metadata", exc_info=True)
 

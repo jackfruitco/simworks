@@ -17,7 +17,8 @@ from ...tracing import service_span_sync
 from ...types import (
     Request, Response, StreamChunk,
     LLMToolCall, BaseLLMTool,
-    OutputItem, UsageContent, ContentRole, OutputTextContent, OutputToolResultContent
+    OutputItem, UsageContent, ContentRole, OutputTextContent, OutputToolResultContent,
+    dict_to_metafields, Metafield, MetafieldValue,
 )
 
 # NOTE:
@@ -383,7 +384,7 @@ class BaseProvider(IdentityMixin, ABC):
                 output=messages,
                 usage=usage,
                 tool_calls=tool_calls,
-                provider_meta=self._extract_provider_meta(resp),
+                provider_meta=dict_to_metafields(self._extract_provider_meta(resp)),
             )
 
     # ---------------------------------------------------------------------
@@ -410,7 +411,7 @@ class BaseProvider(IdentityMixin, ABC):
         ...
 
     @abstractmethod
-    def _extract_provider_meta(self, resp: Any) -> dict:
+    def _extract_provider_meta(self, resp: Any) -> dict[str, MetafieldValue] | list[Metafield]:
         """Return backend-specific metadata for diagnostics (model, ids, raw dump)."""
         ...
 
