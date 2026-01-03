@@ -6,6 +6,7 @@ from .transport import *
 from .tools import *
 from .input import *
 from .output import *
+from .meta import *
 
 __all__ = [
     "StrictBaseModel",
@@ -17,6 +18,10 @@ __all__ = [
     "Boolish",
     "BaseLLMTool",
     "ContentRole",
+
+    # Metadata for OpenAI strict mode compliance
+    "Metafield",
+    "HasItemMeta",
 
     "InputItem",
     "InputContent",
@@ -34,7 +39,7 @@ __all__ = [
 
     "OutputToolCallContent",
     "OutputToolResultContent",
-    
+
     "BaseLLMTool",
     "LLMToolCall",
     "UsageContent",
