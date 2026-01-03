@@ -23,7 +23,10 @@ MODEL_MAP: dict[ResponseType, type[PatientReplySchema | PatientInitialSchema]] =
 def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam:
     """
     Build the `text` param for openai.responses.create() that
-    tells the API to emit JSON matching `model`’s schema.
+    tells the API to emit JSON matching `model`'s schema.
+
+    Performance optimization: Uses cached schema from OrchestrAI @schema decorator
+    if available, otherwise generates fresh schema.
 
     :param model: The Pydantic model class to generate a schema for.
     :type model: Type[BaseModel]
@@ -31,11 +34,23 @@ def build_response_text_param(model: Type[BaseModel]) -> ResponseTextConfigParam
     :return: The `text` param for openai.responses.create().
     :rtype: ResponseTextConfigParam
     """
+    # Check for cached schema from @schema decorator (OrchestrAI integration)
+    cached_schema = getattr(model, "_validated_schema", None)
+
+    if cached_schema is not None:
+        # Use cached schema (validated at import time)
+        schema = cached_schema
+        logger.debug(f"Using cached schema for {model.__name__}")
+    else:
+        # Fallback: generate fresh schema (for undecorated models)
+        schema = model.model_json_schema()
+        logger.debug(f"Generating fresh schema for {model.__name__} (not decorated)")
+
     return {
         "format": {
             "type": "json_schema",
             "name": model.__name__,
-            "schema": model.model_json_schema(),
+            "schema": schema,
         }
     }
 
