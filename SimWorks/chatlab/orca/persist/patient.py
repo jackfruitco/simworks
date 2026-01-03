@@ -5,7 +5,11 @@ from orchestrai_django.decorators import persistence_handler
 from orchestrai_django.components.persistence import BasePersistenceHandler
 from orchestrai.types import Response
 from chatlab.orca.mixins import ChatlabMixin
-from chatlab.orca.schemas import PatientInitialOutputSchema, PatientReplyOutputSchema
+from chatlab.orca.schemas import (
+    PatientInitialOutputSchema,
+    PatientReplyOutputSchema,
+    PatientResultsOutputSchema,
+)
 from chatlab.models import Message
 from simulation.orca.mixins import StandardizedPatientMixin
 from simulation.models import SimulationMetadata
@@ -243,3 +247,127 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
         await chunk.asave()
 
         return message
+
+
+@persistence_handler
+class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersistenceHandler):
+    """
+    Persist PatientResultsOutputSchema to SimulationMetadata.
+
+    Identity: persist.chatlab.standardized_patient.PatientResultsPersistence
+    Handles: (chatlab, schemas.chatlab.standardized_patient.PatientResultsOutputSchema)
+
+    Schema structure:
+        - metadata: list[DjangoOutputItem] → SimulationMetadata (scored observations, assessments)
+        - llm_conditions_check: list[...] → NOT PERSISTED
+
+    Unlike PatientInitialPersistence and PatientReplyPersistence, this handler
+    does NOT create a Message because PatientResultsOutputSchema contains only
+    metadata/scoring, not user-facing messages.
+    """
+
+    schema = PatientResultsOutputSchema
+
+    async def persist(self, response: Response) -> list:
+        """
+        Extract and persist patient results metadata.
+
+        Args:
+            response: Full Response with:
+                - structured_data: PatientResultsOutputSchema instance
+                - context: {"simulation_id": int, ...}
+
+        Returns:
+            List of created SimulationMetadata instances
+
+        Raises:
+            ValueError: If simulation_id missing from context
+        """
+        # Idempotency check - ensure exactly-once persistence
+        chunk, created = await self.ensure_idempotent(response)
+
+        if not created and chunk.domain_object:
+            # Already persisted - return existing metadata
+            logger.info(
+                f"Idempotent skip: Results metadata already persisted "
+                f"for call {chunk.call_id}"
+            )
+            # Return empty list since we can't easily retrieve all metadata items
+            return []
+
+        # First persistence - validate and create domain objects
+        simulation_id = response.context.get("simulation_id")
+        if not simulation_id:
+            raise ValueError("Response context missing 'simulation_id'")
+
+        # Type-safe deserialization
+        data = self.schema.model_validate(response.structured_data)
+
+        # Persist metadata items (scored observations, final assessments)
+        metadata_items = await self._persist_results_metadata(data.metadata, simulation_id)
+
+        logger.info(
+            f"Persisted {len(metadata_items)} results metadata items for simulation {simulation_id} "
+            f"(schema: PatientResultsOutputSchema)"
+        )
+
+        # llm_conditions_check - SKIP (not persisted per user decision)
+
+        # Link to idempotency tracker (use first metadata item if available)
+        from django.contrib.contenttypes.models import ContentType
+
+        if metadata_items:
+            chunk.content_type = await ContentType.objects.aget_for_model(SimulationMetadata)
+            chunk.object_id = metadata_items[0].id
+            await chunk.asave()
+
+        return metadata_items
+
+    async def _persist_results_metadata(
+        self, metadata: list, simulation_id: int
+    ) -> list:
+        """
+        Persist results metadata items to SimulationMetadata.
+
+        Results metadata includes scored observations, final diagnosis assessment,
+        treatment plan evaluation, etc.
+
+        Args:
+            metadata: List of DjangoOutputItem with results metadata
+            simulation_id: Simulation to attach metadata to
+
+        Returns:
+            List of created SimulationMetadata instances
+        """
+        created_items = []
+
+        for meta_item in metadata:
+            try:
+                # Extract text content
+                text = ""
+                for content in meta_item.content:
+                    if hasattr(content, "type") and content.type == "output_text":
+                        text = content.text
+                        break
+
+                # Extract key from item_meta
+                key = meta_item.item_meta.get("key", "result")
+                item_type = meta_item.item_meta.get("type", "assessment")
+
+                # Create metadata record
+                metadata_obj = await SimulationMetadata.objects.acreate(
+                    simulation_id=simulation_id,
+                    key=key,
+                    value=text,
+                )
+
+                created_items.append(metadata_obj)
+                logger.debug(f"Created results metadata: {key} = {text[:50]}...")
+
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to persist results metadata item: {exc}", exc_info=True
+                )
+                # Continue with other items
+
+        return created_items

@@ -10,13 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from simulation.orca.schemas.feedback import HotwashInitialSchema
-from simulation.orca.schemas.output_items import (
-    HotwashInitialBlock,
-    CorrectDiagnosisItem,
-    CorrectTreatmentPlanItem,
-    PatientExperienceItem,
-    OverallFeedbackItem,
-)
+from simulation.orca.schemas.output_items import HotwashInitialBlock
 
 
 class TestHotwashInitialSchema:
@@ -52,22 +46,10 @@ class TestHotwashInitialSchema:
                 {"key": "feedback_complete", "value": "true"}
             ],
             "metadata": {
-                "correct_diagnosis": {
-                    "key": "correct_diagnosis",
-                    "value": True,
-                },
-                "correct_treatment_plan": {
-                    "key": "correct_treatment_plan",
-                    "value": False,
-                },
-                "patient_experience": {
-                    "key": "patient_experience",
-                    "value": 4,
-                },
-                "overall_feedback": {
-                    "key": "overall_feedback",
-                    "value": "Good bedside manner, but missed key symptoms.",
-                },
+                "correct_diagnosis": True,
+                "correct_treatment_plan": False,
+                "patient_experience": 4,
+                "overall_feedback": "Good bedside manner, but missed key symptoms.",
             },
         }
 
@@ -75,9 +57,10 @@ class TestHotwashInitialSchema:
 
         # Verify structure
         assert len(parsed.llm_conditions_check) == 1
-        assert parsed.metadata.correct_diagnosis.value is True
-        assert parsed.metadata.correct_treatment_plan.value is False
-        assert parsed.metadata.patient_experience.value == 4
+        assert parsed.metadata.correct_diagnosis is True
+        assert parsed.metadata.correct_treatment_plan is False
+        assert parsed.metadata.patient_experience == 4
+        assert parsed.metadata.overall_feedback == "Good bedside manner, but missed key symptoms."
 
 
 class TestHotwashInitialBlock:
@@ -101,23 +84,64 @@ class TestHotwashInitialBlock:
         """Verify patient_experience has 0-5 constraint."""
         # Valid: 0-5
         for value in range(6):
-            item = PatientExperienceItem(key="patient_experience", value=value)
-            assert item.value == value
+            block = HotwashInitialBlock(
+                correct_diagnosis=True,
+                correct_treatment_plan=True,
+                patient_experience=value,
+                overall_feedback="Test feedback",
+            )
+            assert block.patient_experience == value
 
         # Invalid: negative
         with pytest.raises(ValidationError):
-            PatientExperienceItem(key="patient_experience", value=-1)
+            HotwashInitialBlock(
+                correct_diagnosis=True,
+                correct_treatment_plan=True,
+                patient_experience=-1,
+                overall_feedback="Test feedback",
+            )
 
         # Invalid: > 5
         with pytest.raises(ValidationError):
-            PatientExperienceItem(key="patient_experience", value=6)
+            HotwashInitialBlock(
+                correct_diagnosis=True,
+                correct_treatment_plan=True,
+                patient_experience=6,
+                overall_feedback="Test feedback",
+            )
 
-    def test_literal_keys_enforced(self):
-        """Verify literal keys are enforced on feedback items."""
-        # Correct key
-        item = CorrectDiagnosisItem(key="correct_diagnosis", value=True)
-        assert item.key == "correct_diagnosis"
+    def test_field_types(self):
+        """Verify correct field types for direct fields."""
+        # Valid block
+        block = HotwashInitialBlock(
+            correct_diagnosis=True,
+            correct_treatment_plan=False,
+            patient_experience=4,
+            overall_feedback="Good bedside manner.",
+        )
 
-        # Wrong key should fail
+        assert isinstance(block.correct_diagnosis, bool)
+        assert isinstance(block.correct_treatment_plan, bool)
+        assert isinstance(block.patient_experience, int)
+        assert isinstance(block.overall_feedback, str)
+
+    def test_required_fields_enforced(self):
+        """Verify all fields are required."""
+        # Missing overall_feedback
         with pytest.raises(ValidationError):
-            CorrectDiagnosisItem(key="wrong_key", value=True)
+            HotwashInitialBlock(
+                correct_diagnosis=True,
+                correct_treatment_plan=True,
+                patient_experience=4,
+            )
+
+    def test_overall_feedback_min_length(self):
+        """Verify overall_feedback requires at least 1 character."""
+        # Empty string should fail
+        with pytest.raises(ValidationError):
+            HotwashInitialBlock(
+                correct_diagnosis=True,
+                correct_treatment_plan=True,
+                patient_experience=4,
+                overall_feedback="",
+            )
