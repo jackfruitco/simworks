@@ -6,6 +6,7 @@ from .transport import *
 from .tools import *
 from .input import *
 from .output import *
+from .meta import *
 
 __all__ = [
     "StrictBaseModel",
@@ -38,4 +39,10 @@ __all__ = [
     "BaseLLMTool",
     "LLMToolCall",
     "UsageContent",
+    "Metafield",
+    "HasItemMeta",
+    "MetafieldValue",
+    "MetafieldContainer",
+    "dict_to_metafields",
+    "metafields_to_dict",
 ]

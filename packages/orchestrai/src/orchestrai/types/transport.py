@@ -20,9 +20,10 @@ from datetime import datetime
 from typing import Any, Dict, TypeAlias
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, model_validator
 
 from .base import StrictBaseModel
+from .meta import Metafield, MetafieldContainer, dict_to_metafields
 from .messages import InputItem, OutputItem, UsageContent
 from .tools import BaseLLMTool, LLMToolChoice, LLMToolCall, LLMToolCallDelta
 
@@ -99,7 +100,7 @@ class Response(StrictBaseModel):
     output: list[OutputItem] = Field(default_factory=list)
     usage: UsageContent | None = None
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
-    provider_meta: dict[str, Any] = Field(default_factory=dict)
+    provider_meta: MetafieldContainer = Field(default_factory=MetafieldContainer)
 
     # Structured output (validated Pydantic model from codec)
     structured_data: Any | None = None
@@ -108,10 +109,22 @@ class Response(StrictBaseModel):
     codec_identity: str | None = None
 
     # Execution metadata for audit trail / persistence / websocket
-    execution_metadata: dict[str, Any] = Field(default_factory=dict)
+    execution_metadata: MetafieldContainer = Field(default_factory=MetafieldContainer)
 
     # Service execution context (simulation_id, user_id, etc.)
     context: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_meta(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        for key in ("provider_meta", "execution_metadata"):
+            raw_value = values.get(key)
+            if isinstance(raw_value, dict):
+                values[key] = dict_to_metafields(raw_value)
+            elif isinstance(raw_value, list):
+                values[key] = MetafieldContainer(raw_value)
+
+        return values
 
 
 class StreamChunk(StrictBaseModel):

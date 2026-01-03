@@ -9,7 +9,7 @@ tasks in the AI module.
 The classes in this module ensure strict type validation using Pydantic and support
 dynamic addition of fields for extensibility.
 """
-from typing import Any, Dict
+from typing import Dict
 
 from pydantic import Field
 
@@ -17,6 +17,7 @@ from .base import StrictBaseModel
 from .content import ContentRole
 from .input import InputContent
 from .output import OutputContent
+from .meta import HasItemMeta
 
 
 class InputItem(StrictBaseModel):
@@ -25,11 +26,10 @@ class InputItem(StrictBaseModel):
     content: list[InputContent]
 
 
-class OutputItem(StrictBaseModel):
+class OutputItem(HasItemMeta):
     """Single output message with a role and one or more content parts."""
     role: ContentRole
     content: list[OutputContent]
-    item_meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class UsageContent(StrictBaseModel):

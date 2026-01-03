@@ -16,7 +16,8 @@ from ...identity.domains import CODECS_DOMAIN
 from ...tracing import service_span_sync
 from ...types import (
     Request, Response, StreamChunk,
-    OutputTextContent, OutputToolResultContent, OutputJsonContent
+    OutputTextContent, OutputToolResultContent, OutputJsonContent,
+    metafields_to_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -378,7 +379,8 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
 
     @staticmethod
     def _extract_from_provider(resp: Response) -> dict | None:
-        obj = (resp.provider_meta or {}).get("structured")
+        provider_meta = metafields_to_dict(getattr(resp, "provider_meta", None))
+        obj = provider_meta.get("structured")
         return obj if isinstance(obj, dict) else None
 
     @staticmethod
