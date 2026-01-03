@@ -6,7 +6,7 @@ from typing import ClassVar
 from orchestrai.components.codecs import BaseCodec
 from orchestrai.components.promptkit import PromptPlan, PromptSection
 from orchestrai.components.schemas import BaseOutputSchema
-from orchestrai.contrib.provider_backends.openai.schema_adapters import OpenaiWrapper
+from orchestrai.contrib.provider_backends.openai.schema.adapt import OpenaiFormatAdapter as OpenaiWrapper
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
