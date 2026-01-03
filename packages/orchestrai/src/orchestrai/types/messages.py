@@ -29,7 +29,10 @@ class OutputItem(StrictBaseModel):
     """Single output message with a role and one or more content parts."""
     role: ContentRole
     content: list[OutputContent]
-    item_meta: dict[str, Any] = Field(default_factory=dict)
+    item_meta: dict[str, Any] = Field(
+        default_factory=dict,
+        json_schema_extra={"additionalProperties": False}
+    )
 
 
 class UsageContent(StrictBaseModel):

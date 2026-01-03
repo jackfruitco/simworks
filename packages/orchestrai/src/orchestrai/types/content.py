@@ -71,7 +71,10 @@ class BaseToolCallContent(StrictBaseModel):
     """Base shape for tool call content."""
     call_id: str
     name: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(
+        default_factory=dict,
+        json_schema_extra={"additionalProperties": False}
+    )
 
 
 class BaseToolResultContent(StrictBaseModel):
