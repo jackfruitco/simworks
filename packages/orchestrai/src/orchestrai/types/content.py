@@ -82,11 +82,25 @@ class BaseToolResultContent(StrictBaseModel):
     call_id: str
     # The result can be text, JSON, or binary (e.g., base64 image bytes)
     result_text: str | None = None
-    result_json: dict[str, Any] | None = None
+    # OpenAI strict mode requires all objects to be closed (additionalProperties: false).
+    # For arbitrary JSON results, use result_json_str (JSON-encoded string) instead of dict.
+    # Deprecated: result_json: dict[str, Any] (violates OpenAI strict mode)
+    result_json_str: str | None = Field(
+        default=None,
+        description="Tool result as JSON-encoded string (for arbitrary structures)"
+    )
     mime_type: str | None = None
     data_b64: str | None = None
 
 
 class BaseJsonContent(StrictBaseModel):
-    """Base structured JSON content."""
-    value: dict[str, Any]
+    """
+    Base structured JSON content.
+
+    OpenAI strict mode requires all objects to be closed (additionalProperties: false).
+    For arbitrary JSON values, use value_json (JSON-encoded string) instead of dict.
+    """
+    value_json: str = Field(
+        ...,
+        description="JSON content as encoded string (for arbitrary structures)"
+    )
