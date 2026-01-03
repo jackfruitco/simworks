@@ -4,12 +4,14 @@ Mixins provide common field structures that can be shared across multiple
 schemas, reducing duplication and ensuring consistency.
 """
 
-from pydantic import Field, BaseModel
+from pydantic import Field
+
+from orchestrai.components.schemas.base import StrictBaseModel
 from orchestrai_django.types import DjangoOutputItem
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
 
-class PatientResponseBaseMixin(BaseModel):
+class PatientResponseBaseMixin(StrictBaseModel):
     """
     Common fields for all patient response schemas.
 
