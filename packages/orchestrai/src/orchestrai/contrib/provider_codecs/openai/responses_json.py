@@ -1,0 +1,202 @@
+# orchestrai/contrib/provider_codecs/openai/responses_json.py
+"""
+OpenAI Responses JSON codec.
+
+This codec is responsible for:
+  - Taking a backend-agnostic response schema (Pydantic model class or JSON Schema dict)
+    from the Request and adapting it for the OpenAI Responses API.
+  - Producing the backend-specific JSON payload that will be sent via the `text` parameter.
+  - Optionally validating structured output from a Response back into the declared schema.
+
+It is intentionally OpenAI-specific but still registered in the global codecs registry,
+keyed by identity (namespace='openai', kind='responses', name='json').
+"""
+
+import logging
+from typing import Any, ClassVar, Sequence
+
+from pydantic import ValidationError
+
+logger = logging.getLogger(__name__)
+
+from ...provider_backends.openai.constants import PROVIDER_NAME
+from ...provider_backends.openai.schema.adapt import OpenaiFormatAdapter
+from ....components.codecs import BaseCodec
+from ....components.codecs.exceptions import CodecDecodeError, CodecSchemaError
+from ....components.schemas import BaseSchemaAdapter
+from ....decorators import codec
+from ....tracing import service_span_sync
+from ....types import Request, Response
+
+
+class OpenAiNamespaceMixin:
+    """Mixin for OpenAI codecs. Sets the codec namespace and backend name."""
+    namespace: ClassVar[str] = PROVIDER_NAME
+    provider_name: ClassVar[str] = PROVIDER_NAME
+
+
+class OpenAIResponsesBaseCodec(OpenAiNamespaceMixin, BaseCodec):
+    """Base class for OpenAI Responses codecs."""
+    kind: ClassVar[str] = "responses"
+
+
+@codec(name="json")
+class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
+    """Codec for OpenAI Responses JSON structured output.
+
+    Encode:
+      - Reads `Request.response_schema` (Pydantic model class) or `Request.response_schema_json` (dict).
+      - Applies OpenAI-specific schema adapters (e.g., flattening oneOf unions).
+      - Writes:
+          * `Request.response_schema_json` for diagnostics.
+          * `Request.provider_response_format` as the backend-specific payload that
+            the OpenAI backend passes to the Responses API via the `text` parameter.
+
+    Decode:
+      - Extracts a structured candidate dict from the `Response` (provider_meta/JSON/tool result).
+      - If the original `Request.response_schema` is present on `Response.request`, validates
+        into that Pydantic model; otherwise returns the raw dict.
+    """
+
+    abstract: ClassVar[bool] = False
+
+    # This codec is schema-agnostic at the class level; it relies on the Request
+    # to provide the concrete Pydantic schema (Request.response_schema).
+    output_schema_cls: ClassVar[type | None] = None
+
+    # Ordered list of schema adapters to apply for OpenAI JSON.
+    # NOTE: As of schema modernization, FlattenUnions is removed because:
+    #   1. OpenAI supports nested unions (anyOf/oneOf in properties)
+    #   2. Validation is now done at decoration time via @schema decorator
+    #   3. Only the format envelope adapter is needed at encode time
+    schema_adapters: ClassVar[Sequence[BaseSchemaAdapter]] = (
+        OpenaiFormatAdapter(),
+    )
+
+    async def aencode(self, req: Request) -> None:
+        """Attach backend-specific response format for OpenAI Responses.
+
+        Flow:
+          - Check if schema class has cached validated schema (_validated_schema)
+          - If cached, use it directly (already validated at decoration time)
+          - Otherwise, generate from model_json_schema() (fallback for dynamic schemas)
+          - Apply only the format envelope adapter (OpenaiFormatAdapter)
+          - Store the adapted schema on `req.response_schema_json` for diagnostics
+          - Build the OpenAI JSON wrapper and assign it to `req.provider_response_format`
+        """
+        with service_span_sync(
+                "orchestrai.codec.encode",
+                attributes={
+                    "orchestrai.codec": self.__class__.__name__,
+                    "orchestrai.provider_name": "openai",
+                    "orchestrai.codec.kind": "responses.json",
+                },
+        ):
+            base_schema: dict[str, Any] | None = None
+
+            # Prefer the Pydantic model class if present.
+            source = getattr(req, "response_schema", None)
+            if source is not None:
+                # Check for cached validated schema from @schema decorator
+                cached_schema = getattr(source, "_validated_schema", None)
+                if cached_schema is not None:
+                    logger.debug(
+                        f"{self.__class__.__name__}: Using cached validated schema "
+                        f"for {source.__name__}"
+                    )
+                    base_schema = cached_schema
+                else:
+                    # No cached schema - generate it (fallback for dynamic/undecorated schemas)
+                    logger.debug(
+                        f"{self.__class__.__name__}: No cached schema for {source.__name__}, "
+                        f"generating from model_json_schema()"
+                    )
+                    try:
+                        base_schema = source.model_json_schema()
+                    except Exception as exc:
+                        raise CodecSchemaError(
+                            f"{self.__class__.__name__}: failed to build JSON schema "
+                            f"from response_schema={source!r}"
+                        ) from exc
+
+            # Fallback: an explicit JSON Schema dict attached by the service.
+            if base_schema is None:
+                candidate = getattr(req, "response_schema_json", None)
+                if candidate is None:
+                    # No structured output requested; nothing to encode.
+                    return
+                if not isinstance(candidate, dict):
+                    raise CodecSchemaError(
+                        f"{self.__class__.__name__}: response_schema_json must be a dict, "
+                        f"got {type(candidate).__name__}"
+                    )
+                base_schema = candidate
+            req.response_schema_json = base_schema
+
+            # Apply schema adapters (now only the format envelope adapter).
+            # Validation was already done at decoration time via @schema decorator.
+            compiled = base_schema
+            for adapter in self.schema_adapters:
+                try:
+                    compiled = adapter.adapt(compiled)
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise CodecSchemaError(
+                        f"{self.__class__.__name__}: schema adapter {type(adapter).__name__} failed"
+                    ) from exc
+
+            req.response_schema_json = compiled
+            setattr(req, "provider_response_format", compiled)
+
+    async def adecode(self, resp: Response) -> Any | None:
+        """Decode structured output from a Response into the declared schema, if available.
+
+        - Extracts the best candidate dict via BaseCodec.extract_structured_candidate.
+        - If `Response.request.response_schema` is present and looks like a Pydantic model
+          class, validates the dict into that model.
+        - If no schema is available, returns the raw dict.
+        """
+        with service_span_sync(
+                "orchestrai.codec.decode",
+                attributes={
+                    "orchestrai.codec": self.__class__.__name__,
+                    "orchestrai.provider_name": "openai",
+                    "orchestrai.codec.kind": "responses.json",
+                },
+        ):
+            candidate = self.extract_structured_candidate(resp)
+            if candidate is None:
+                return None
+
+            # Locate the original schema class, if any.
+            schema_cls = None
+            req = getattr(resp, "request", None)
+            if req is not None:
+                schema_cls = getattr(req, "response_schema", None)
+
+            # Fallback to service's schema if request schema not available
+            if schema_cls is None:
+                schema_cls = self._get_schema_from_service()
+
+            # Fallback to codec's class-level schema
+            if schema_cls is None:
+                schema_cls = self.response_schema
+
+            # No schema: return the raw dict (already normalized).
+            if schema_cls is None:
+                return candidate
+
+            try:
+                # Prefer Pydantic v2-style model_validate if available.
+                mv = getattr(schema_cls, "model_validate", None)
+                if callable(mv):
+                    return mv(candidate)
+                # Fallback: try constructing directly (best-effort).
+                return schema_cls(**candidate)  # type: ignore[call-arg]
+            except ValidationError as exc:
+                raise CodecDecodeError(
+                    f"{self.__class__.__name__}: validation failed for structured output"
+                ) from exc
+            except Exception as exc:  # pragma: no cover - defensive
+                raise CodecDecodeError(
+                    f"{self.__class__.__name__}: unexpected error during decode"
+                ) from exc

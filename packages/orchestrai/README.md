@@ -1,0 +1,100 @@
+# OrchestrAI
+***or-kis-stray-eye***
+
+A lightweight, provider-agnostic orchestration layer for building structured AI workflows in pure Python. The refactored core favors explicit lifecycles, import safety, and predictable registries.
+
+Import the application class directly from the top-level package:
+
+```python
+from orchestrai import OrchestrAI
+
+app = OrchestrAI()
+```
+
+## Quick start
+
+Create an app, apply configuration, and run the lifecycle explicitly:
+
+```python
+from orchestrai import OrchestrAI
+
+app = (
+    OrchestrAI()
+    .configure(
+        {
+            "CLIENT": "demo-client",
+            "CLIENTS": {"demo-client": {"name": "demo-client", "api_key": "..."}},
+            "PROVIDERS": {"demo-provider": {"backend": "openai", "model": "gpt-4o-mini"}},
+        }
+    )
+    .setup()      # prepare loader and registries
+    .discover()   # optionally import discovery modules
+    .finalize()   # attach shared callbacks and freeze registries
+)
+
+with app.as_current():
+    # resolve the default client from the registry
+    client = app.client
+```
+
+`start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, prints the jumping-orca welcome banner once, and summarizes registered components.
+
+## Settings flow
+
+`Settings` is the authoritative configuration mapping. The `OrchestrAI` constructor loads defaults from `orchestrai.settings` and applies overrides from `ORCHESTRAI_CONFIG_MODULE` automatically:
+
+```python
+from orchestrai.conf.settings import Settings
+
+settings = Settings()
+settings.update_from_envvar()  # optional when you want to mirror the app's boot logic
+```
+
+Client-facing helpers accept the typed `ClientSettings` model from `orchestrai.client.settings_loader`. Use `load_client_settings` to convert an already-built `Settings` instance; the legacy `load_orca_settings` shim remains for compatibility but emits a deprecation warning:
+
+```python
+from orchestrai.client.settings_loader import ClientSettings, load_client_settings
+
+client_settings: ClientSettings = load_client_settings(settings)
+```
+
+## Lifecycle overview
+
+1. **configure** – apply settings from mappings, objects, or environment variables.
+2. **setup** – prepare the loader and populate registries for clients, providers, codecs, and services.
+3. **discover** – import configured discovery modules via the loader.
+4. **finalize** – run shared decorators/finalizers and freeze registries.
+5. **start** / **run** – convenience method that prints the banner, runs discovery, and finalizes the app.
+
+The app never performs network or discovery work during import; all actions are explicit.
+
+### Environment variables for the OpenAI backend
+
+The bundled OpenAI backend expects an API key and model to be provided explicitly. Set the following environment variables (or
+configure equivalent settings) before starting your app:
+
+- `ORCA_PROVIDER_API_KEY` – your OpenAI API key (falls back to `OPENAI_API_KEY` if not set)
+- `ORCA_PROVIDER_MODEL` – the default model name (for example, `gpt-4o-mini`)
+
+In single mode, set `CLIENT["api_key_envvar"]` to the name of your API key
+environment variable (for example, `ORCA_PROVIDER_API_KEY`). In multi-orca pod
+mode, the same `api_key_envvar` field on a `PROVIDERS` entry is passed through to
+the backend factory, which resolves the key from the environment before
+instantiating the provider.
+
+## Documentation
+
+Comprehensive guides live in the [`docs/`](docs/) directory:
+
+- [Quick Start](docs/quick_start.md) – create an app, configure it, and make your first request.
+- [Full Guide](docs/full_documentation.md) – deep dive into configuration, lifecycle hooks, registries, and discovery.
+
+## Contributing
+
+1. Create a virtual environment and install the package in editable mode: `pip install -e .[dev]`.
+2. Run the test suite before submitting changes: `pytest`.
+3. Follow conventional commit messages and open a pull request with a clear summary of your changes.
+
+## License
+
+MIT License © 2024 OrchestrAI contributors

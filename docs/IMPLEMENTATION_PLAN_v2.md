@@ -19,6 +19,13 @@ This plan modernizes the structured-output schema workflow to:
 
 **Key Architecture Decision:** Use decorator-based validation with provider compatibility tagging (no SchemaBuilder class needed).
 
+**Key Decisions Made:**
+1. ✅ **No validation opt-out** - Providers can have empty validators (`validator: None`)
+2. ✅ **Multi-provider ready** - OpenAI only for this PR, Anthropic next PR
+3. ✅ **Schema size warning** - WARN if >10KB (non-failing)
+4. ✅ **Class attribute caching** - Schema cached on class
+5. ✅ **Core decorator location** - `orchestrai/decorators/schema.py` (not Django-specific)
+
 ---
 
 ## Updated Architecture
@@ -67,15 +74,19 @@ packages/orchestrai/src/orchestrai/contrib/provider_backends/openai/schema/
 ### Modified Files
 
 ```
-packages/orchestrai_django/src/orchestrai_django/decorators/schema.py
-  - Add validation during decoration
+packages/orchestrai/src/orchestrai/decorators/schema.py
+  - Add validation during decoration (CORE decorator, not Django)
   - Tag schemas with compatibility metadata
   - Cache validated schemas
+  - Support multi-provider validation
 
 packages/orchestrai/src/orchestrai/contrib/provider_codecs/openai/responses_json.py
   - Check schema compatibility
   - Use cached validated schema
   - Call _apply_adapters helper
+
+packages/orchestrai_django/src/orchestrai_django/decorators/schema.py
+  - Re-export core @schema decorator (or extend if needed)
 ```
 
 ### Deleted Files
