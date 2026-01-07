@@ -133,7 +133,7 @@ class TestOutputItemMigration:
         """OutputItem.item_meta is list[Metafield]."""
         output = OutputItem(
             role=ContentRole.ASSISTANT,
-            content=[OutputTextContent(text="Hello")],
+            content=[OutputTextContent(type="output_text", text="Hello")],
             item_meta=[]
         )
         assert output.item_meta == []
@@ -142,7 +142,7 @@ class TestOutputItemMigration:
         """OutputItem accepts metadata as Metafield list."""
         output = OutputItem(
             role=ContentRole.ASSISTANT,
-            content=[OutputTextContent(text="Hello")],
+            content=[OutputTextContent(type="output_text", text="Hello")],
             item_meta=[
                 Metafield(key="source", value="llm"),
                 Metafield(key="tokens", value=100),

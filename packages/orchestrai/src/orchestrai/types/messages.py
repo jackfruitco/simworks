@@ -38,7 +38,7 @@ class OutputItem(StrictBaseModel):
     role: ContentRole
     content: list[OutputContent]
     item_meta: list[Metafield] = Field(
-        default_factory=list,
+        ...,
         description="Metadata entries as key-value pairs (OpenAI strict mode compliant)"
     )
 

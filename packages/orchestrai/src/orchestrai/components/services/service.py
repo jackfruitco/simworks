@@ -1056,24 +1056,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
             # them even when no codec is selected.
             self._attach_response_schema_to_request(req, codec)
 
-            # Attach codec identity to the request when available; schema hints are handled by the codec.
-            if codec_label:
-                try:
-                    req.codec_identity = codec_label  # type: ignore[attr-defined]
-                    logger.debug(self._build_stdout(
-                        "llm.request",
-                        f"attached codec identity: {req.codec_identity}",
-                        indent_level=3,
-                        success=True
-                    ))
-                except Exception as err:
-                    logger.debug(self._build_stdout(
-                        "llm.request",
-                        f"could not attach codec identity: {type(err).__name__}: {str(err)}",
-                        indent_level=3,
-                        success=False
-                    ), exc_info=True)
-
         return req, codec, attrs
 
     # ----------------------------------------------------------------------

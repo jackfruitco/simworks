@@ -304,16 +304,18 @@ class BaseProvider(IdentityMixin, ABC):
                     "orchestrai.backend.api_family": getattr(self, "api_family", None),
                 },
         ) as span:
-            messages: list[OutputItem] = []
+            from orchestrai.types import BuildMessageItem, BuildTextContent, BuildToolResultContent
+            messages: list[BuildMessageItem] = []
             tool_calls: list[LLMToolCall] = []
 
             # 1) Primary assistant text
             text_out = self._extract_text(resp)
             if text_out:
                 messages.append(
-                    OutputItem(
+                    BuildMessageItem(
                         role=ContentRole.ASSISTANT,
-                        content=[OutputTextContent(text=text_out)],
+                        content=[BuildTextContent(text=text_out)],
+                        # item_meta defaults to []
                     )
                 )
 
@@ -327,9 +329,10 @@ class BaseProvider(IdentityMixin, ABC):
                         call, part = pair
                         tool_calls.append(call)
                         messages.append(
-                            OutputItem(
+                            BuildMessageItem(
                                 role=ContentRole.ASSISTANT,
                                 content=[part],
+                                # item_meta defaults to []
                             )
                         )
                         continue
@@ -342,15 +345,17 @@ class BaseProvider(IdentityMixin, ABC):
                         mime = getattr(obj, "mime_type", None) or "image/png"
                         if b64:
                             messages.append(
-                                OutputItem(
+                                BuildMessageItem(
                                     role=ContentRole.ASSISTANT,
                                     content=[
-                                        OutputToolResultContent(
+                                        BuildToolResultContent(
                                             call_id=call_id,
                                             mime_type=mime,
                                             data_b64=b64,
+                                            # result_text, result_json_str default to None
                                         )
                                     ],
+                                    # item_meta defaults to []
                                 )
                             )
                         continue

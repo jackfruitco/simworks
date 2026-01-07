@@ -7,7 +7,7 @@ schemas, reducing duplication and ensuring consistency.
 from pydantic import Field
 
 from orchestrai.components.schemas.base import StrictBaseModel
-from orchestrai_django.types import DjangoOutputItem
+from orchestrai.types import ResultMessageItem
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
 
@@ -42,13 +42,13 @@ class PatientResponseBaseMixin(StrictBaseModel):
     no user-facing messages (only metadata/scoring).
     """
 
-    messages: list[DjangoOutputItem] = Field(
+    messages: list[ResultMessageItem] = Field(
         ...,
         min_length=1,
         description="Response messages from the simulated patient"
     )
 
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
-        default_factory=list,
+        ...,
         description="Internal workflow conditions (not persisted to database)"
     )

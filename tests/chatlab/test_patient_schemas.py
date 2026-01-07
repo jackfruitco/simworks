@@ -15,7 +15,7 @@ from chatlab.orca.schemas import (
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from orchestrai_django.types import DjangoOutputItem
+from orchestrai.types import OutputItem
 from orchestrai.types.content import OutputTextContent
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
@@ -112,6 +112,7 @@ class TestPatientInitialSchema:
                 {
                     "role": "assistant",
                     "content": [{"type": "output_text", "text": "Test"}],
+                    "item_meta": [],
                 }
             ],
             "metadata": [],
@@ -165,6 +166,7 @@ class TestPatientReplySchema:
                 {
                     "role": "assistant",
                     "content": [{"type": "output_text", "text": "Here's an X-ray..."}],
+                    "item_meta": [],
                 }
             ],
             "llm_conditions_check": [],

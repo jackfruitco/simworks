@@ -29,6 +29,7 @@ __all__ = (
     "InputScreenshotContent",
 )
 
+
 class InputTextContent(BaseTextContent):
     """Request-side text content (e.g., OpenAI 'input_text')."""
     type: Literal["input_text"] = "input_text"

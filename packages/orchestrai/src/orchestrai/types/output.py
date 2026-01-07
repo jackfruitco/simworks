@@ -41,41 +41,41 @@ __all__ = (
 
 class OutputTextContent(BaseTextContent):
     """Assistant text output (OpenAI: `output_text`)."""
-    type: Literal["output_text"] = "output_text"
+    type: Literal["output_text"]
 
 
 class OutputImageContent(BaseImageContent):
     """Image returned from a backend."""
-    type: Literal["output_image"] = "output_image"
+    type: Literal["output_image"]
 
 
 class OutputAudioContent(BaseAudioContent):
     """Audio returned from a backend."""
-    type: Literal["output_audio"] = "output_audio"
+    type: Literal["output_audio"]
 
 
 class OutputFileContent(BaseFileContent):
     """Generic file returned from a backend (rare)."""
-    type: Literal["output_file"] = "output_file"
+    type: Literal["output_file"]
 
 
 class OutputScreenshotContent(BaseScreenshotContent):
     """A screenshot produced by a tool or backend."""
-    type: Literal["output_screenshot"] = "output_screenshot"
+    type: Literal["output_screenshot"]
 
 
 class OutputToolCallContent(BaseToolCallContent):
     """Tool request emitted by a backend."""
-    type: Literal["tool_call"] = "tool_call"
+    type: Literal["tool_call"]
 
 
 class OutputToolResultContent(BaseToolResultContent):
     """Tool result emitted by a backend."""
-    type: Literal["tool_result"] = "tool_result"
+    type: Literal["tool_result"]
 
 
 class OutputJsonContent(BaseJsonContent):
-    type: Literal["output_json"] = "output_json"
+    type: Literal["output_json"]
 
 
 #

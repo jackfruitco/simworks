@@ -5,7 +5,7 @@ from pydantic import Field
 
 from orchestrai_django.components.schemas import DjangoBaseOutputSchema
 from orchestrai_django.decorators import schema
-from orchestrai_django.types import DjangoOutputItem
+from orchestrai.types import ResultMessageItem, ResultMetafield
 from simulation.orca.mixins import StandardizedPatientMixin
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 from ..mixins import ChatlabMixin
@@ -45,7 +45,7 @@ class PatientInitialOutputSchema(
 
     **Identity**: schemas.chatlab.standardized_patient.PatientInitialOutputSchema
     """
-    metadata: list[DjangoOutputItem] = Field(
+    metadata: list[ResultMetafield] = Field(
         ...,
         description="Patient demographics and initial metadata"
     )
@@ -125,11 +125,11 @@ class PatientResultsOutputSchema(
 
     **Identity**: schemas.chatlab.standardized_patient.PatientResultsOutputSchema
     """
-    metadata: list[DjangoOutputItem] = Field(
+    metadata: list[ResultMessageItem] = Field(
         ...,
         description="Scored observations and final assessment"
     )
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
-        default_factory=list,
+        ...,
         description="Completion and workflow flags"
     )

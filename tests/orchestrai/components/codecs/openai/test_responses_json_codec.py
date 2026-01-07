@@ -140,7 +140,8 @@ def test_decode_prefers_provider_structured_over_text_json():
 
     text_msg = OutputItem(
         role=ContentRole.ASSISTANT,
-        content=[OutputTextContent(text='{"foo": "from_text"}')],
+        content=[OutputTextContent(type="output_text", text='{"foo": "from_text"}')],
+        item_meta=[],
     )
     resp = Response(
         request=req,
