@@ -71,14 +71,21 @@ class HasItemMeta(StrictBaseModel):
     Use this mixin for models that need metadata bags compatible with
     OpenAI Structured Outputs.
 
+    Note: item_meta is REQUIRED (no default) for OpenAI strict mode compliance.
+          All fields must be in the 'required' list, even if they can be empty.
+          Use empty list [] when no metadata is present.
+
     Example:
         class MyOutputItem(HasItemMeta, StrictBaseModel):
             role: str
             content: list[OutputContent]
             # item_meta inherited from mixin
+
+        # Construction:
+        item = MyOutputItem(role="user", content=[], item_meta=[])
     """
 
     item_meta: list[Metafield] = Field(
-        default_factory=list,
+        ...,  # Required - no default
         description="Metadata entries as key-value pairs"
     )

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, field_serializer
 from .base import StrictBaseModel
 from .messages import InputItem, OutputItem, UsageContent
 from .tools import BaseLLMTool, LLMToolChoice, LLMToolCall, LLMToolCallDelta
+from .build import BuildMessageItem
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,8 @@ class Response(StrictBaseModel):
     client_name: str | None = None
     received_at: datetime | None = None
 
-    output: list[OutputItem] = Field(default_factory=list)
+    # Use BuildMessageItem for construction (ergonomic, with defaults)
+    output: list[BuildMessageItem] = Field(default_factory=list)
     usage: UsageContent | None = None
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
     provider_meta: dict[str, Any] = Field(default_factory=dict)

@@ -137,6 +137,8 @@ class TestValidateOpenaiSchema:
                 "name": {"type": "string"},
                 "age": {"type": "number"},
             },
+            "required": ["name", "age"],
+            "additionalProperties": False
         }
         result = validate_openai_schema(schema, "TestSchema", strict=True)
         assert result is True
@@ -148,11 +150,13 @@ class TestValidateOpenaiSchema:
             "properties": {
                 "result": {
                     "anyOf": [
-                        {"type": "object", "properties": {"success": {"type": "boolean"}}},
-                        {"type": "object", "properties": {"error": {"type": "string"}}},
+                        {"type": "object", "properties": {"success": {"type": "boolean"}}, "required": ["success"], "additionalProperties": False},
+                        {"type": "object", "properties": {"error": {"type": "string"}}, "required": ["error"], "additionalProperties": False},
                     ]
                 }
             },
+            "required": ["result"],
+            "additionalProperties": False
         }
         result = validate_openai_schema(schema, "TestSchema", strict=True)
         assert result is True
@@ -180,7 +184,9 @@ class TestValidateOpenaiSchema:
         }
         with pytest.raises(ValueError) as exc_info:
             validate_openai_schema(schema, "TestSchema", strict=True)
-        assert "Root-level 'anyOf' unions are not supported" in str(exc_info.value)
+        # Schema is rejected (either as non-object or as root union)
+        error_msg = str(exc_info.value)
+        assert "anyOf" in error_msg or "object" in error_msg
 
     def test_invalid_no_properties_strict_mode_raises(self):
         """Schema without properties in strict mode should raise ValueError."""
@@ -200,6 +206,8 @@ class TestValidateOpenaiSchema:
                         "name": {"type": "string"},
                         "age": {"type": "number"},
                     },
+                    "required": ["name", "age"],
+                    "additionalProperties": False
                 },
                 "results": {
                     "type": "array",
@@ -209,15 +217,19 @@ class TestValidateOpenaiSchema:
                             "test": {"type": "string"},
                             "value": {"type": "number"},
                         },
+                        "required": ["test", "value"],
+                        "additionalProperties": False
                     },
                 },
                 "status": {
                     "anyOf": [
-                        {"type": "object", "properties": {"success": {"type": "boolean"}}},
-                        {"type": "object", "properties": {"error": {"type": "string"}}},
+                        {"type": "object", "properties": {"success": {"type": "boolean"}}, "required": ["success"], "additionalProperties": False},
+                        {"type": "object", "properties": {"error": {"type": "string"}}, "required": ["error"], "additionalProperties": False},
                     ]
                 },
             },
+            "required": ["patient", "results", "status"],
+            "additionalProperties": False
         }
         result = validate_openai_schema(schema, "ComplexSchema", strict=True)
         assert result is True

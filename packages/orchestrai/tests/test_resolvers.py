@@ -149,13 +149,14 @@ def test_schema_resolution_branches(store):
 
 
 def test_schema_adapter_application():
+    """Test that resolve_schema does NOT apply adapters (BUG-002/BUG-003 fix)."""
     ident = Identity(domain=SERVICE_DOMAIN, namespace="demo", group="service", name="svc")
     res = resolve_schema(identity=ident, override=DemoSchema, adapters=AdapterCodec.schema_adapters)
     schema_json = res.selected.meta.get("schema_json")
     assert res.branch == "override"
-    assert schema_json is not None
-    assert schema_json.get("type") == "json_schema"
-    assert "json_schema" in schema_json
+    # Adapters are NOT applied during resolution - schema_json should be None
+    # Adapters are applied only in codec.aencode() to prevent double adaptation (BUG-002/BUG-003)
+    assert schema_json is None
 
 
 def test_codec_resolution_branches(store):
@@ -184,6 +185,7 @@ def test_codec_resolution_branches(store):
 
 
 def test_service_prepare_end_to_end(store):
+    """Test service preparation resolves components but doesn't adapt schemas (BUG-002/BUG-003)."""
     register(store, DemoPrompt)
     register(store, DemoSchema)
     register(store, AdapterCodec)
@@ -201,9 +203,12 @@ def test_service_prepare_end_to_end(store):
         loop.close()
 
     assert codec is not None
-    assert req.response_schema_json is not None
-    assert req.provider_response_format == req.response_schema_json
-    assert req.response_schema_json.get("type") == "json_schema"
+    # Schema JSON is NOT populated during prepare - only during codec.aencode()
+    # This prevents double adaptation (BUG-002/BUG-003)
+    # response_schema_json might not exist or should be None
+    assert not hasattr(req, "response_schema_json") or req.response_schema_json is None
+    # Schema class should be attached
+    assert req.response_schema is not None
 
     # Context should record branches/identities
     assert svc.context.get("schema.branch") == "registry"

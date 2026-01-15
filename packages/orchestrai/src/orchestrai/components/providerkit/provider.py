@@ -304,92 +304,105 @@ class BaseProvider(IdentityMixin, ABC):
                     "orchestrai.backend.api_family": getattr(self, "api_family", None),
                 },
         ) as span:
-            from orchestrai.types import BuildMessageItem, BuildTextContent, BuildToolResultContent
-            messages: list[BuildMessageItem] = []
-            tool_calls: list[LLMToolCall] = []
+            try:
+                from orchestrai.types import BuildMessageItem, BuildTextContent, BuildToolResultContent
+                messages: list[BuildMessageItem] = []
+                tool_calls: list[LLMToolCall] = []
 
-            # 1) Primary assistant text
-            text_out = self._extract_text(resp)
-            if text_out:
-                messages.append(
-                    BuildMessageItem(
-                        role=ContentRole.ASSISTANT,
-                        content=[BuildTextContent(text=text_out)],
-                        # item_meta defaults to []
-                    )
-                )
-
-            # 2) Provider output -> tool results / attachments
-            from uuid import uuid4
-            for obj in self._extract_outputs(resp) or []:
-                try:
-                    # 3a) Let the backend fully normalize arbitrary tool output (preferred path)
-                    pair = self._normalize_tool_output(obj)
-                    if pair is not None:
-                        call, part = pair
-                        tool_calls.append(call)
-                        messages.append(
-                            BuildMessageItem(
-                                role=ContentRole.ASSISTANT,
-                                content=[part],
-                                # item_meta defaults to []
-                            )
+                # 1) Primary assistant text
+                text_out = self._extract_text(resp)
+                if text_out:
+                    messages.append(
+                        BuildMessageItem(
+                            role=ContentRole.ASSISTANT,
+                            content=[BuildTextContent(text=text_out)],
+                            # item_meta defaults to []
                         )
-                        continue
+                    )
 
-                    # 3b) Generic fallback: image-like results
-                    if self._is_image_output(obj):
-                        call_id = getattr(obj, "id", None) or str(uuid4())
-                        tool_calls.append(LLMToolCall(call_id=call_id, name="image_generation", arguments={}))
-                        b64 = getattr(obj, "result", None) or getattr(obj, "b64", None)
-                        mime = getattr(obj, "mime_type", None) or "image/png"
-                        if b64:
+                # 2) Provider output -> tool results / attachments
+                from uuid import uuid4
+                for obj in self._extract_outputs(resp) or []:
+                    try:
+                        # 3a) Let the backend fully normalize arbitrary tool output (preferred path)
+                        pair = self._normalize_tool_output(obj)
+                        if pair is not None:
+                            call, part = pair
+                            tool_calls.append(call)
                             messages.append(
                                 BuildMessageItem(
                                     role=ContentRole.ASSISTANT,
-                                    content=[
-                                        BuildToolResultContent(
-                                            call_id=call_id,
-                                            mime_type=mime,
-                                            data_b64=b64,
-                                            # result_text, result_json_str default to None
-                                        )
-                                    ],
+                                    content=[part],
                                     # item_meta defaults to []
                                 )
                             )
+                            continue
+
+                        # 3b) Generic fallback: image-like results
+                        if self._is_image_output(obj):
+                            call_id = getattr(obj, "id", None) or str(uuid4())
+                            tool_calls.append(LLMToolCall(call_id=call_id, name="image_generation", arguments={}))
+                            b64 = getattr(obj, "result", None) or getattr(obj, "b64", None)
+                            mime = getattr(obj, "mime_type", None) or "image/png"
+                            if b64:
+                                messages.append(
+                                    BuildMessageItem(
+                                        role=ContentRole.ASSISTANT,
+                                        content=[
+                                            BuildToolResultContent(
+                                                call_id=call_id,
+                                                mime_type=mime,
+                                                data_b64=b64,
+                                                # result_text, result_json_str default to None
+                                            )
+                                        ],
+                                        # item_meta defaults to []
+                                    )
+                                )
+                            continue
+
+                        # 3c) Unrecognized output item: ignore silently but keep diagnostics enabled
+                        logger.debug("backend '%s':: unhandled output item type: %s", getattr(self, "name", self),
+                                     type(obj).__name__)
+                    except Exception:
+                        logger.debug("backend '%s':: failed to adapt an output item; skipping",
+                                     getattr(self, "name", self), exc_info=True)
                         continue
 
-                    # 3c) Unrecognized output item: ignore silently but keep diagnostics enabled
-                    logger.debug("backend '%s':: unhandled output item type: %s", getattr(self, "name", self),
-                                 type(obj).__name__)
-                except Exception:
-                    logger.debug("backend '%s':: failed to adapt an output item; skipping",
-                                 getattr(self, "name", self), exc_info=True)
-                    continue
-
-            # Attach summary attributes for observability
-            try:
-                span.set_attribute("orchestrai.parts.count", len(messages))
-                span.set_attribute("orchestrai.tool_calls.count", len(tool_calls))
-                span.set_attribute("orchestrai.text.present", bool(text_out))
-            except Exception:
-                pass
-
-            usage_data = self._extract_usage(resp)
-            usage = None
-            if usage_data:
+                # Attach summary attributes for observability
                 try:
-                    usage = UsageContent.model_validate(usage_data)
+                    span.set_attribute("orchestrai.parts.count", len(messages))
+                    span.set_attribute("orchestrai.tool_calls.count", len(tool_calls))
+                    span.set_attribute("orchestrai.text.present", bool(text_out))
                 except Exception:
-                    usage = UsageContent(**usage_data) if isinstance(usage_data, dict) else None
+                    pass
 
-            return Response(
-                output=messages,
-                usage=usage,
-                tool_calls=tool_calls,
-                provider_meta=self._extract_provider_meta(resp),
-            )
+                usage_data = self._extract_usage(resp)
+                usage = None
+                if usage_data:
+                    try:
+                        usage = UsageContent.model_validate(usage_data)
+                    except Exception:
+                        usage = UsageContent(**usage_data) if isinstance(usage_data, dict) else None
+
+                return Response(
+                    output=messages,
+                    usage=usage,
+                    tool_calls=tool_calls,
+                    provider_meta=self._extract_provider_meta(resp),
+                )
+            except Exception as e:
+                logger.exception(
+                    "provider.adapt_response_failed",
+                    extra={
+                        "provider": getattr(self, "provider", "unknown"),
+                        "response_id": getattr(resp, "id", None),
+                        "response_status": getattr(resp, "status", None),
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                    },
+                )
+                raise
 
     # ---------------------------------------------------------------------
     # Provider-specific Response HOOKS (override in concrete providers)

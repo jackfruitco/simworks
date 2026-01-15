@@ -119,6 +119,37 @@ class SchemaDecorator(BaseDecorator):
             logger.warning(f"Failed to generate JSON schema for {candidate.__name__}: {e}")
             return
 
+        # CRITICAL: Rebuild model to clear mock validators/serializers left by model_json_schema()
+        # Without this, Pydantic v2 may have MockValSer objects that break model_validate()
+        try:
+            candidate.model_rebuild(force=True)
+            logger.debug(f"Successfully rebuilt model {candidate.__name__} after schema generation")
+        except Exception as e:
+            logger.error(
+                f"CRITICAL: Failed to rebuild model {candidate.__name__} after schema generation. "
+                f"This will cause MockValSer errors at runtime. Error: {e}"
+            )
+            # Re-raise to fail at import time (fail-fast)
+            raise ValueError(
+                f"Schema {candidate.__name__} failed model_rebuild() after validation. "
+                f"This is required to clear Pydantic mock serializers. Error: {e}"
+            ) from e
+
+        # Verify rebuild cleared MockValSer (diagnostic logging)
+        if hasattr(candidate, '__pydantic_serializer__'):
+            serializer = getattr(candidate, '__pydantic_serializer__', None)
+            if serializer is not None:
+                # Check if serializer is valid (not mock)
+                serializer_type = type(serializer).__name__
+                if 'Mock' in serializer_type:
+                    logger.error(
+                        f"Schema {candidate.__name__} still has mock serializer after rebuild: {serializer_type}"
+                    )
+                else:
+                    logger.debug(
+                        f"Schema {candidate.__name__} has valid serializer after rebuild: {serializer_type}"
+                    )
+
         # Run provider validations
         compatibility = {}
 

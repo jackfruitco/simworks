@@ -201,6 +201,8 @@ def validate_pydantic_schema(schema_cls, strict: bool = True) -> list[SchemaViol
         ValueError: If strict=True and violations found
     """
     schema_json = schema_cls.model_json_schema()
+    # Clear MockValSer pollution immediately
+    schema_cls.model_rebuild(force=True)
     violations = lint_schema(schema_json)
 
     if strict and violations:

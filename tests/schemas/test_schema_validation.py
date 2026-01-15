@@ -16,6 +16,7 @@ from orchestrai.types import (
     ResultTextContent,
     ResultImageContent,
     ResultToolCallContent,
+    ResultToolResultContent,
     ResultMetafield,
     ContentRole,
 )

@@ -1,5 +1,10 @@
-# OrchestrAI
-***or-kis-stray-eye***
+# Orchestrate Intelligence
+
+<p align="center">
+  <img src="docs/assets/orchestrai-logo.png" alt="OrchestrAI logo" width="420" />
+  <br>
+  <em>or-kis-stray-eye</em>
+</p>
 
 A lightweight, provider-agnostic orchestration layer for building structured AI workflows in pure Python. The refactored core favors explicit lifecycles, import safety, and predictable registries.
 

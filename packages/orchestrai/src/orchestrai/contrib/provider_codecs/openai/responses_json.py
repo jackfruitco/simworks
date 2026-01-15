@@ -105,6 +105,8 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
             if schema is None:
                 try:
                     schema = schema_cls.model_json_schema()
+                    # Clear MockValSer pollution immediately
+                    schema_cls.model_rebuild(force=True)
                     logger.warning(
                         f"Schema {schema_cls.__name__} not cached, generating at request time. "
                         f"This should not happen with @schema decorator."
@@ -175,13 +177,102 @@ class OpenAIResponsesJsonCodec(OpenAIResponsesBaseCodec):
                 return candidate
 
             try:
+                # Defensive: Ensure model is rebuilt to clear any MockValSer pollution
+                # This is a safety net in case decorator's rebuild failed
+                try:
+                    # Recursively rebuild all nested Pydantic models
+                    def rebuild_recursive(model_cls, visited=None):
+                        """Recursively rebuild a Pydantic model and all its nested models."""
+                        if visited is None:
+                            visited = set()
+
+                        # Avoid infinite loops
+                        model_id = id(model_cls)
+                        if model_id in visited:
+                            return
+                        visited.add(model_id)
+
+                        # Check if this is a Pydantic model
+                        if not hasattr(model_cls, 'model_rebuild'):
+                            return
+
+                        # Get all field types and rebuild nested models first
+                        if hasattr(model_cls, 'model_fields'):
+                            for field_name, field_info in model_cls.model_fields.items():
+                                annotation = field_info.annotation
+
+                                # Handle list[SomeModel]
+                                if hasattr(annotation, '__origin__'):
+                                    # Get the inner type from list/dict/etc
+                                    args = getattr(annotation, '__args__', ())
+                                    for arg in args:
+                                        if hasattr(arg, 'model_rebuild'):
+                                            rebuild_recursive(arg, visited)
+                                # Handle direct model references
+                                elif hasattr(annotation, 'model_rebuild'):
+                                    rebuild_recursive(annotation, visited)
+
+                        # Now rebuild this model
+                        try:
+                            # Delete serializer first (aggressive cleanup)
+                            if hasattr(model_cls, '__pydantic_serializer__'):
+                                delattr(model_cls, '__pydantic_serializer__')
+
+                            model_cls.model_rebuild(force=True)
+                            logger.debug(f"Rebuilt {model_cls.__name__}")
+                        except Exception as e:
+                            logger.warning(f"Failed to rebuild {model_cls.__name__}: {e}")
+
+                    # Start recursive rebuild from the main schema
+                    rebuild_recursive(schema_cls)
+
+                    logger.debug(f"Defensively rebuilt schema {schema_cls.__name__} and all nested models before validation")
+                except Exception as e:
+                    logger.warning(f"Defensive rebuild failed for {schema_cls.__name__}: {e}")
+
                 # Prefer Pydantic v2-style model_validate if available.
                 mv = getattr(schema_cls, "model_validate", None)
                 if callable(mv):
                     return mv(candidate)
                 # Fallback: try constructing directly (best-effort).
                 return schema_cls(**candidate)  # type: ignore[call-arg]
+            except TypeError as exc:
+                # Catch MockValSer errors specifically
+                error_msg = str(exc)
+                if 'MockValSer' in error_msg:
+                    logger.error(
+                        "codec.mockvalser_error",
+                        extra={
+                            "schema_class": schema_cls.__name__,
+                            "schema_identity": str(getattr(schema_cls, "identity", None)) if hasattr(schema_cls, "identity") else None,
+                            "error_message": error_msg,
+                            "serializer_type": type(getattr(schema_cls, '__pydantic_serializer__', None)).__name__ if hasattr(schema_cls, '__pydantic_serializer__') else "None",
+                        },
+                        exc_info=True,
+                    )
+                # Re-raise as CodecDecodeError with retriable flag
+                raise CodecDecodeError(
+                    f"{self.__class__.__name__}: MockValSer error during validation - schema class corrupted"
+                ) from exc
             except ValidationError as exc:
+                # Log detailed validation errors
+                logger.error(
+                    "codec.validation_failed",
+                    extra={
+                        "schema_class": schema_cls.__name__,
+                        "schema_identity": str(getattr(schema_cls, "identity", None)) if hasattr(schema_cls, "identity") else None,
+                        "validation_errors": [
+                            {
+                                "loc": ".".join(str(x) for x in err["loc"]),
+                                "msg": err["msg"],
+                                "type": err["type"],
+                            }
+                            for err in exc.errors()
+                        ],
+                        "input_data_keys": list(candidate.keys()) if isinstance(candidate, dict) else None,
+                    },
+                    exc_info=True,
+                )
                 raise CodecDecodeError(
                     f"{self.__class__.__name__}: validation failed for structured output"
                 ) from exc

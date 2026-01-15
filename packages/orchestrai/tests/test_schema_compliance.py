@@ -109,7 +109,7 @@ class TestHasItemMeta:
         class TestModel(HasItemMeta, BaseModel):
             name: str
 
-        obj = TestModel(name="test")
+        obj = TestModel(name="test", item_meta=[])
         assert hasattr(obj, "item_meta")
         assert obj.item_meta == []
 
@@ -384,12 +384,14 @@ class TestSchemaComplianceIntegration:
 
     def test_complex_nested_schema_compliance(self):
         """Complex nested schemas are validated recursively."""
-        class InnerSchema(BaseModel):
+        from orchestrai.types import StrictBaseModel
+
+        class InnerSchema(StrictBaseModel):
             value: str
 
-        class OuterSchema(BaseModel):
+        class OuterSchema(StrictBaseModel):
             inner: InnerSchema
-            meta: list[Metafield] = Field(default_factory=list)
+            meta: list[Metafield] = Field(...)  # Required for strict mode
 
         violations = validate_pydantic_schema(OuterSchema, strict=False)
         # Should be compliant with StrictBaseModel
