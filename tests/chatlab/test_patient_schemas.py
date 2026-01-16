@@ -15,8 +15,6 @@ from chatlab.orca.schemas import (
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from orchestrai.types import OutputItem
-from orchestrai.types.content import OutputTextContent
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
 
@@ -70,19 +68,14 @@ class TestPatientInitialSchema:
             "messages": [
                 {
                     "role": "assistant",
-                    "content": [{"type": "output_text", "text": "Hello, I'm the patient."}],
+                    "content": [{"type": "text", "text": "Hello, I'm the patient."}],
                     "item_meta": [],
                 }
             ],
+            # PatientInitialOutputSchema.metadata is list[ResultMetafield] (simple key-value)
             "metadata": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": "Patient age: 45"}],
-                    "item_meta": [
-                        {"key": "key", "value": "age"},
-                        {"key": "type", "value": "demographic"}
-                    ],
-                }
+                {"key": "patient_name", "value": "John Smith"},
+                {"key": "age", "value": "45"},
             ],
             "llm_conditions_check": [
                 {"key": "ready_for_questions", "value": "true"}
@@ -92,15 +85,16 @@ class TestPatientInitialSchema:
         # Parse
         parsed = PatientInitialOutputSchema.model_validate(sample_output)
 
-        # Verify structure
+        # Verify messages structure
         assert len(parsed.messages) == 1
         assert parsed.messages[0].content[0].text == "Hello, I'm the patient."
 
-        assert len(parsed.metadata) == 1
-        # Verify item_meta as list[Metafield]
-        meta_keys = {mf.key: mf.value for mf in parsed.metadata[0].item_meta}
-        assert meta_keys["key"] == "age"
-        assert meta_keys["type"] == "demographic"
+        # Verify metadata as list[ResultMetafield]
+        assert len(parsed.metadata) == 2
+        assert parsed.metadata[0].key == "patient_name"
+        assert parsed.metadata[0].value == "John Smith"
+        assert parsed.metadata[1].key == "age"
+        assert parsed.metadata[1].value == "45"
 
         assert len(parsed.llm_conditions_check) == 1
         assert parsed.llm_conditions_check[0].key == "ready_for_questions"
@@ -111,7 +105,7 @@ class TestPatientInitialSchema:
             "messages": [
                 {
                     "role": "assistant",
-                    "content": [{"type": "output_text", "text": "Test"}],
+                    "content": [{"type": "text", "text": "Test"}],
                     "item_meta": [],
                 }
             ],
@@ -165,7 +159,7 @@ class TestPatientReplySchema:
             "messages": [
                 {
                     "role": "assistant",
-                    "content": [{"type": "output_text", "text": "Here's an X-ray..."}],
+                    "content": [{"type": "text", "text": "Here's an X-ray..."}],
                     "item_meta": [],
                 }
             ],
@@ -190,11 +184,13 @@ class TestPatientResultsSchema:
 
     def test_round_trip_with_metadata(self):
         """Verify parsing with metadata items."""
+        # PatientResultsOutputSchema.metadata is list[ResultMessageItem]
+        # (complex items with content and item_meta)
         sample_output = {
             "metadata": [
                 {
                     "role": "assistant",
-                    "content": [{"type": "output_text", "text": "Final diagnosis: ..."}],
+                    "content": [{"type": "text", "text": "Final diagnosis: ..."}],
                     "item_meta": [
                         {"key": "key", "value": "final_diagnosis"}
                     ],
@@ -205,6 +201,6 @@ class TestPatientResultsSchema:
 
         parsed = PatientResultsOutputSchema.model_validate(sample_output)
         assert len(parsed.metadata) == 1
-        # Verify item_meta as list[Metafield]
+        # Verify item_meta as list[ResultMetafield]
         meta_keys = {mf.key: mf.value for mf in parsed.metadata[0].item_meta}
         assert meta_keys["key"] == "final_diagnosis"

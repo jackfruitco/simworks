@@ -1,5 +1,31 @@
 # chatlab/ai/services/patient.py
+"""
+Patient AI Services for ChatLab.
 
+WORKFLOW DIAGRAM
+================
+
+    GenerateInitialResponse / GenerateReplyResponse
+      -> build request (prompt_plan, response_schema)
+      -> provider backend call (openai.py)
+      -> post_process (metadata population, codec decode)
+      -> coerce via codec.adecode() -> model_validate()
+      -> store Response to ServiceCallRecord.result (JSON)
+      -> [async] drain worker calls persistence handler
+      -> persistence handler: ensure_idempotent() -> model_validate() -> ORM creates
+      -> return Response (contains structured_data as Pydantic model)
+
+COERCION BOUNDARY
+=================
+Provider response -> Codec.adecode() -> schema.model_validate() -> strict Pydantic model
+
+PERSISTENCE CONTRACT
+====================
+- Persistence handlers receive: Response with structured_data (dict from JSON)
+- Must re-validate: schema.model_validate(response.structured_data)
+- Creates: Message rows, SimulationMetadata rows
+- Idempotency: PersistedChunk with (call_id, schema_identity) unique constraint
+"""
 
 import logging
 from typing import Type, Optional, Tuple, List, ClassVar
@@ -56,7 +82,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
     model: Optional[str] = None
 
     from chatlab.orca.schemas import PatientReplyOutputSchema as _Schema
-    response_format_cls = _Schema
+    response_schema = _Schema
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
 
@@ -82,7 +108,7 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
                 role=ContentRole.USER,
                 content=[InputTextContent(text=user_msg.content)])
             )
-        return msgs, self.response_format_cls
+        return msgs, self.response_schema
 
 
 @service
