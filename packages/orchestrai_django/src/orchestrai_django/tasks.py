@@ -254,13 +254,50 @@ def run_service_call(call_id: str):
             ])
 
         logger.info(
-            "Service call %s succeeded on attempt %d (domain persistence pending)",
+            "Service call %s succeeded on attempt %d, attempting inline persistence",
             call_id,
             current_attempt
         )
 
-        # Phase 2: Domain persistence happens in separate worker
-        # (see process_pending_persistence task)
+        # Attempt inline persistence instead of deferring to drain worker
+        try:
+            from orchestrai.types import Response
+            from orchestrai.identity.domains import PERSIST_DOMAIN
+
+            response = Response.model_validate(record.result)
+            store = get_component_store(app)
+            persistence_registry = store.registry(PERSIST_DOMAIN) if store else None
+
+            if persistence_registry:
+                domain_obj = async_to_sync(persistence_registry.persist)(response)
+
+                if domain_obj is not None:
+                    record.domain_persisted = True
+                    record.save(update_fields=["domain_persisted"])
+                    logger.info(
+                        "Service call %s: domain persistence complete (created %s)",
+                        call_id,
+                        type(domain_obj).__name__
+                    )
+                else:
+                    # No handler found - mark as done to prevent retry loops
+                    record.domain_persisted = True
+                    record.save(update_fields=["domain_persisted"])
+                    logger.debug(
+                        "Service call %s: no persistence handler found for namespace=%s schema=%s",
+                        call_id,
+                        response.namespace,
+                        response.execution_metadata.get("schema_identity") if response.execution_metadata else None
+                    )
+            else:
+                logger.warning("Service call %s: no persistence registry available", call_id)
+        except Exception as persist_err:
+            logger.warning(
+                "Service call %s: inline persistence failed: %s (will retry via drain worker)",
+                call_id,
+                persist_err
+            )
+            # Leave domain_persisted=False for drain worker retry
 
         return to_jsonable(record.as_call())
 

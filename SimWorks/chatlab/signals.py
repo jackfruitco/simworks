@@ -12,7 +12,8 @@ from django.dispatch import receiver
 from asgiref.sync import async_to_sync
 
 from .models import Message
-from .utils import broadcast_message
+from .utils import broadcast_message, broadcast_patient_results
+from simulation.models import SimulationMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -35,5 +36,28 @@ def broadcast_new_message(sender, instance, created, **kwargs):
         except Exception as exc:
             logger.warning(
                 f"WebSocket broadcast failed for Message {instance.id}: {exc}"
+            )
+            # Don't raise - this is a non-critical side effect
+
+
+@receiver(post_save, sender=SimulationMetadata)
+def broadcast_metadata_update(sender, instance, created, **kwargs):
+    """
+    Broadcast newly created SimulationMetadata via WebSocket.
+
+    This notifies connected clients when patient results (labs, rads, metadata)
+    are created, allowing the frontend to refresh tool panels via HTMX-get.
+
+    This is a non-critical side effect that can fail safely.
+    """
+    if created:
+        try:
+            async_to_sync(broadcast_patient_results)(instance)
+            logger.debug(
+                f"Broadcasted SimulationMetadata {instance.id} to WebSocket clients"
+            )
+        except Exception as exc:
+            logger.warning(
+                f"WebSocket broadcast failed for SimulationMetadata {instance.id}: {exc}"
             )
             # Don't raise - this is a non-critical side effect

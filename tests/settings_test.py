@@ -9,8 +9,16 @@ INSTALLED_APPS = [
     "core",
     "simulation",
     "chatlab",
+    "channels",  # For WebSocket support
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 USE_TZ = True
 AUTH_USER_MODEL = "accounts.CustomUser"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Channels configuration for WebSocket tests
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}

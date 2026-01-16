@@ -253,6 +253,134 @@ class TestPatientReplyPersistenceHandler:
         assert message.sender.username == "System"
 
 
+class TestPatientInitialPersistenceLlmConditionsCheck:
+    """Tests verifying llm_conditions_check is NOT persisted."""
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_llm_conditions_check_not_persisted_to_message(self):
+        """Verify llm_conditions_check field is NOT persisted to Message or any related model.
+
+        The llm_conditions_check field is an internal LLM workflow field that should:
+        - Be present in the schema for structured output validation
+        - NOT be stored in the database
+        - Be silently ignored during persistence
+        """
+        from simulation.models import Simulation, SimulationMetadata
+        from accounts.models import CustomUser as User, UserRole
+
+        # Create test fixtures
+        role, _ = await UserRole.objects.aget_or_create(title="Test")
+        user = await User.objects.acreate(
+            username=f"test_user_{uuid4().hex[:8]}",
+            email=f"test_{uuid4().hex[:8]}@test.com",
+            role=role,
+        )
+        sim = await Simulation.objects.acreate(user=user)
+
+        # Create response with explicit llm_conditions_check data
+        response_data = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Test message"}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {"key": "patient_name", "value": "Test Patient"},
+            ],
+            "llm_conditions_check": [
+                {"key": "condition_a", "value": "met"},
+                {"key": "condition_b", "value": "not_met"},
+                {"key": "ready_for_next_phase", "value": "true"},
+            ],
+        }
+
+        response = Response(
+            namespace="chatlab",
+            correlation_id=uuid4(),
+            structured_data=response_data,
+            execution_metadata={
+                "schema_identity": PatientInitialOutputSchema.identity.as_str
+            },
+            context={"simulation_id": sim.id, "call_id": str(uuid4())},
+        )
+
+        # Persist
+        handler = PatientInitialPersistence()
+        message = await handler.persist(response)
+
+        # Verify Message was created
+        assert message is not None
+        assert message.id is not None
+
+        # Verify Message does NOT have any llm_conditions_check related fields
+        # Check all message fields for any conditions-related data
+        message_fields = [f.name for f in message._meta.get_fields()]
+        assert "llm_conditions_check" not in message_fields
+        assert "llm_conditions" not in message_fields
+        assert "conditions_check" not in message_fields
+
+        # Verify Message content does not contain conditions data
+        assert "condition_a" not in (message.content or "")
+        assert "condition_b" not in (message.content or "")
+
+        # Verify no SimulationMetadata with conditions data was created
+        metadata_count = await SimulationMetadata.objects.filter(simulation=sim).acount()
+        if metadata_count > 0:
+            async for metadata in SimulationMetadata.objects.filter(simulation=sim):
+                # Check that metadata key is not related to llm_conditions_check
+                if hasattr(metadata, 'key'):
+                    assert "condition_a" not in (metadata.key or "")
+                    assert "llm_conditions_check" not in (metadata.key or "")
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_llm_conditions_check_with_empty_list_still_works(self):
+        """Verify persistence works when llm_conditions_check is empty list."""
+        from simulation.models import Simulation
+        from accounts.models import CustomUser as User, UserRole
+
+        role, _ = await UserRole.objects.aget_or_create(title="Test")
+        user = await User.objects.acreate(
+            username=f"test_user_{uuid4().hex[:8]}",
+            email=f"test_{uuid4().hex[:8]}@test.com",
+            role=role,
+        )
+        sim = await Simulation.objects.acreate(user=user)
+
+        # Response with empty llm_conditions_check
+        response_data = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Empty conditions test"}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [],
+            "llm_conditions_check": [],  # Empty list
+        }
+
+        response = Response(
+            namespace="chatlab",
+            correlation_id=uuid4(),
+            structured_data=response_data,
+            execution_metadata={
+                "schema_identity": PatientInitialOutputSchema.identity.as_str
+            },
+            context={"simulation_id": sim.id, "call_id": str(uuid4())},
+        )
+
+        handler = PatientInitialPersistence()
+        message = await handler.persist(response)
+
+        # Should still work normally
+        assert message is not None
+        assert message.content == "Empty conditions test"
+
+
 class TestPatientResultsPersistenceHandler:
     """Tests for PatientResultsPersistence handler."""
 
