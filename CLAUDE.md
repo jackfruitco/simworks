@@ -232,6 +232,109 @@ class PatientNameSection(SimcoreMixin, PromptSection):
         return f"You are {simulation.sim_patient_full_name}"
 ```
 
+### Creating Schemas
+
+**Schemas** define the expected structure of LLM responses. They use Pydantic models decorated with `@schema` for automatic validation and provider compatibility checking.
+
+**Key Features** (OrchestrAI v0.4.0+):
+- **Decorator-based validation**: Schemas are validated at decoration time (fail-fast on import)
+- **Provider compatibility tagging**: Automatic OpenAI Responses API validation
+- **Schema caching**: JSON schema generated once and cached for performance
+- **Type safety**: Full Pydantic v2 validation with `extra="forbid"` (strict mode)
+
+**Basic Example**:
+```python
+from pydantic import Field
+from orchestrai_django.components.schemas import DjangoBaseOutputSchema
+from orchestrai_django.decorators import schema
+from orchestrai_django.types import DjangoOutputItem
+
+@schema
+class PatientInitialOutputSchema(
+    ChatlabMixin,
+    StandardizedPatientMixin,
+    DjangoBaseOutputSchema
+):
+    """Initial patient response schema."""
+
+    messages: list[DjangoOutputItem] = Field(
+        ...,
+        min_length=1,
+        description="Response messages from the simulated patient"
+    )
+    metadata: list[DjangoOutputItem] = Field(
+        ...,
+        description="Patient demographics and initial metadata"
+    )
+```
+
+**What the @schema decorator does**:
+1. Validates schema against OpenAI Responses API constraints:
+   - Root must be `type: "object"`
+   - Must have `properties` field
+   - No root-level unions (`anyOf`, `oneOf`)
+2. Tags schema with provider compatibility metadata:
+   - `_provider_compatibility = {"openai": True}`
+   - `_validated_schema` (cached JSON schema)
+   - `_validated_at = "decoration"`
+3. Fails immediately on import if schema is incompatible (fail-fast)
+
+**Schema Mixins** (for DRY principles):
+```python
+# chatlab/orca/schemas/mixins.py
+from pydantic import Field, BaseModel
+from orchestrai_django.types import DjangoOutputItem
+from simulation.orca.schemas.output_items import LLMConditionsCheckItem
+
+class PatientResponseBaseMixin(BaseModel):
+    """Common fields for patient response schemas."""
+
+    messages: list[DjangoOutputItem] = Field(
+        ...,
+        min_length=1,
+        description="Response messages from the simulated patient"
+    )
+    llm_conditions_check: list[LLMConditionsCheckItem] = Field(
+        default_factory=list,
+        description="Internal workflow conditions (not persisted)"
+    )
+```
+
+**Identity derivation**:
+- Schemas use mixins to declare namespace/group
+- Full identity: `schemas.{namespace}.{group}.{ClassName}`
+- Example: `schemas.chatlab.standardized_patient.PatientInitialOutputSchema`
+
+**OpenAI Constraints Checklist**:
+- ✓ Root is `type: "object"` (not array, string, or union)
+- ✓ Has `properties` field
+- ✓ No `anyOf`, `oneOf`, `allOf` at root level
+- ✓ All fields are JSON-serializable
+- ✓ No circular references
+
+**Documentation Pattern**:
+```python
+@schema
+class MySchema(DjangoBaseOutputSchema):
+    """
+    Brief description.
+
+    **Usage**: When this schema is used
+
+    **Schema Structure**:
+    - `field1`: type - Description
+    - `field2`: type - Description
+
+    **OpenAI Compatibility**: ✓ Validated at decoration time
+
+    **Persistence**: Handled by `MyPersistence` handler
+    - field1 → domain.Model
+    - field2 → NOT PERSISTED
+
+    **Identity**: schemas.namespace.group.MySchema
+    """
+```
+
 ### Creating Codecs
 
 Codecs validate and persist AI responses:

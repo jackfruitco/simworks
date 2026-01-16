@@ -13,13 +13,23 @@ def test_text_content_round_trip():
 
 
 def test_output_tool_result_content_defaults():
-    result = BaseToolResultContent(call_id="abc", mime_type="text/plain", data_b64="ZGF0YQ==")
+    result = BaseToolResultContent(
+        call_id="abc",
+        result_text=None,
+        result_json_str=None,
+        mime_type="text/plain",
+        data_b64="ZGF0YQ=="
+    )
     assert result.call_id == "abc"
     assert result.mime_type == "text/plain"
 
 
 def test_message_wrappers_accept_content():
     inp = InputItem(role=ContentRole.USER, content=[InputTextContent(text="hi")])
-    out = OutputItem(role=ContentRole.ASSISTANT, content=[OutputTextContent(text="ok")])
+    out = OutputItem(
+        role=ContentRole.ASSISTANT,
+        content=[OutputTextContent(type="output_text", text="ok")],
+        item_meta=[]
+    )
     assert inp.role == ContentRole.USER
     assert out.role == ContentRole.ASSISTANT

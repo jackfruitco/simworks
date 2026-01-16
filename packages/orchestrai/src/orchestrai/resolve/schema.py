@@ -24,7 +24,12 @@ def apply_schema_adapters(
         return None
 
     try:
-        schema_json = schema_cls.model_json_schema()
+        # Use cached schema from decorator to avoid MockValSer pollution
+        schema_json = getattr(schema_cls, '_validated_schema', None)
+        if schema_json is None:
+            # Fallback: generate and rebuild to clear MockValSer
+            schema_json = schema_cls.model_json_schema()
+            schema_cls.model_rebuild(force=True)
     except Exception:
         logger.debug("schema resolution: model_json_schema failed", exc_info=True)
         return None

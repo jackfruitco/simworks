@@ -1056,24 +1056,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
             # them even when no codec is selected.
             self._attach_response_schema_to_request(req, codec)
 
-            # Attach codec identity to the request when available; schema hints are handled by the codec.
-            if codec_label:
-                try:
-                    req.codec_identity = codec_label  # type: ignore[attr-defined]
-                    logger.debug(self._build_stdout(
-                        "llm.request",
-                        f"attached codec identity: {req.codec_identity}",
-                        indent_level=3,
-                        success=True
-                    ))
-                except Exception as err:
-                    logger.debug(self._build_stdout(
-                        "llm.request",
-                        f"could not attach codec identity: {type(err).__name__}: {str(err)}",
-                        indent_level=3,
-                        success=False
-                    ), exc_info=True)
-
         return req, codec, attrs
 
     # ----------------------------------------------------------------------
@@ -1600,45 +1582,45 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
                             self.emitter.emit_response(self.context, ident.as_str, resp)
                             await self.on_success(self.context, resp)
-                        except Exception:
-                            logger.exception("llm.service.postprocess_error", extra=postprocess_extra)
 
-                            logger.info(
-                                "llm.service.success",
-                                extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
-                            )
-                            return resp
                         except CodecDecodeError as e:
+                            # MOST SPECIFIC: Handle decode validation errors
                             # Check if error is retriable (BUG-009 fix)
                             is_retriable = getattr(e, "retriable", False)
 
                             if not is_retriable:
-                                # Non-retriable validation failures - fail immediately
+                                # Non-retriable validation failures (schema mismatch) - fail immediately
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
                                 await self.on_failure(self.context, e)
                                 logger.error(
-                                    "llm.service.validation_failed",
+                                    "llm.service.validation_failed_non_retriable",
                                     extra={
                                         **attrs,
                                         "correlation_id": str(req.correlation_id),
                                         "attempt": attempt,
                                         "retriable": False,
+                                        "error_type": type(e).__name__,
+                                        "error_message": str(e),
                                     },
+                                    exc_info=True,
                                 )
                                 raise
 
-                            # Retriable decode error - treat like other transient failures
+                            # Retriable decode error (truncated JSON, transient parse error) - retry with backoff
                             if attempt >= max_attempts:
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
                                 await self.on_failure(self.context, e)
                                 logger.error(
-                                    "llm.service.validation_failed_after_retries",
+                                    "llm.service.validation_failed_exhausted",
                                     extra={
                                         **attrs,
                                         "correlation_id": str(req.correlation_id),
                                         "attempt": attempt,
                                         "retriable": True,
+                                        "error_type": type(e).__name__,
+                                        "error_message": str(e),
                                     },
+                                    exc_info=True,
                                 )
                                 raise
 
@@ -1646,30 +1628,61 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                                 "llm.service.validation_failed_retrying",
                                 extra={
                                     **attrs,
+                                    "correlation_id": str(req.correlation_id),
                                     "attempt": attempt,
                                     "max_attempts": max_attempts,
                                     "retriable": True,
-                                    "error": str(e),
+                                    "error_type": type(e).__name__,
+                                    "error_message": str(e),
                                 },
                             )
                             await self._backoff_sleep(attempt)
                             attempt += 1
                             continue
                         except Exception as e:
+                            # MOST GENERAL: Catch-all for unexpected postprocessing errors
+                            # Log error details explicitly for debugging
+                            error_type = type(e).__name__
+                            error_message = str(e)
+                            logger.error(
+                                f"Postprocess exception caught: {error_type}: {error_message}",
+                                exc_info=True,
+                                extra={
+                                    "error_type": error_type,
+                                    "error_message": error_message,
+                                    "attempt": attempt,
+                                    "max_attempts": max_attempts,
+                                }
+                            )
+
                             if attempt >= max_attempts:
                                 self.emitter.emit_failure(self.context, ident.as_str, req.correlation_id, str(e))
                                 await self.on_failure(self.context, e)
                                 logger.exception(
-                                    "llm.service.error",
-                                    extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},
+                                    "llm.service.postprocess_failed_exhausted",
+                                    extra={
+                                        **attrs,
+                                        "correlation_id": str(req.correlation_id),
+                                        "attempt": attempt,
+                                        "error_type": type(e).__name__,
+                                        "error_message": str(e),
+                                    },
                                 )
                                 raise
                             logger.warning(
-                                "llm.service.retrying",
-                                extra={**attrs, "attempt": attempt, "max_attempts": max_attempts},
+                                "llm.service.postprocess_retrying",
+                                extra={
+                                    **attrs,
+                                    "correlation_id": str(req.correlation_id),
+                                    "attempt": attempt,
+                                    "max_attempts": max_attempts,
+                                    "error_type": type(e).__name__,
+                                    "error_message": str(e),
+                                },
                             )
                             await self._backoff_sleep(attempt)
                             attempt += 1
+                            continue
                         logger.info(
                             "llm.service.success",
                             extra={**attrs, "correlation_id": str(req.correlation_id), "attempt": attempt},

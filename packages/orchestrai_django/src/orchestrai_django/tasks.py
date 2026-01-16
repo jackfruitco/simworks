@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from uuid import uuid4
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -20,6 +21,43 @@ from orchestrai_django.models import ServiceCallRecord
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
+
+
+def _manual_extract_fields(obj):
+    """Manually extract fields from a Pydantic model when model_dump() fails with MockValSer."""
+    from orchestrai.utils.json import make_json_safe
+
+    result = {}
+    if hasattr(obj, 'model_fields'):
+        for field_name in obj.model_fields.keys():
+            try:
+                value = getattr(obj, field_name, None)
+                # Handle nested Pydantic models
+                if hasattr(value, 'model_dump'):
+                    try:
+                        # Use mode="json" to ensure UUID/datetime are converted
+                        result[field_name] = value.model_dump(mode="json")
+                    except TypeError:
+                        # Nested model also has MockValSer - recurse
+                        result[field_name] = _manual_extract_fields(value)
+                elif isinstance(value, list):
+                    result[field_name] = [
+                        _manual_extract_fields(item) if hasattr(item, 'model_fields')
+                        else make_json_safe(item)
+                        for item in value
+                    ]
+                elif isinstance(value, dict):
+                    result[field_name] = {
+                        k: _manual_extract_fields(v) if hasattr(v, 'model_fields')
+                        else make_json_safe(v)
+                        for k, v in value.items()
+                    }
+                else:
+                    result[field_name] = make_json_safe(value)
+            except Exception as field_err:
+                logger.warning(f"Failed to extract field {field_name}: {field_err}")
+                result[field_name] = None
+    return result
 
 
 def _debug_app_context(where: str) -> None:
@@ -178,7 +216,15 @@ def run_service_call(call_id: str):
         with transaction.atomic():
             # Serialize Response to JSON if it's a Response object
             if hasattr(result, "model_dump"):
-                result_json = result.model_dump()
+                try:
+                    result_json = result.model_dump(mode="json")
+                except TypeError as e:
+                    # MockValSer error - manually extract fields as workaround
+                    if 'MockValSer' in str(e):
+                        logger.warning("MockValSer error during result serialization, manually extracting fields")
+                        result_json = _manual_extract_fields(result)
+                    else:
+                        raise
             else:
                 result_json = result
 
@@ -209,13 +255,177 @@ def run_service_call(call_id: str):
             ])
 
         logger.info(
-            "Service call %s succeeded on attempt %d (domain persistence pending)",
+            "Service call %s succeeded on attempt %d, attempting inline persistence",
             call_id,
             current_attempt
         )
 
-        # Phase 2: Domain persistence happens in separate worker
-        # (see process_pending_persistence task)
+        # Create audit records for request/response tracking
+        ai_response_audit_id = None
+        try:
+            from orchestrai_django.models import AIRequestAudit, AIResponseAudit
+
+            # Get request from response (if attached)
+            request_obj = getattr(result, 'request', None)
+            ai_request = None
+
+            if request_obj:
+                # Serialize request to JSON
+                try:
+                    request_json = request_obj.model_dump(mode="json")
+                except TypeError:
+                    request_json = _manual_extract_fields(request_obj)
+
+                # Extract messages for easier querying
+                messages_json = []
+                if hasattr(request_obj, 'input') and request_obj.input:
+                    for item in request_obj.input:
+                        try:
+                            messages_json.append(item.model_dump(mode="json"))
+                        except (TypeError, AttributeError):
+                            messages_json.append(str(item))
+
+                # Extract tools for easier querying
+                tools_json = None
+                if hasattr(request_obj, 'tools') and request_obj.tools:
+                    try:
+                        tools_json = [t.model_dump(mode="json") for t in request_obj.tools]
+                    except (TypeError, AttributeError):
+                        tools_json = [str(t) for t in request_obj.tools]
+
+                # Get response schema identity if available
+                response_schema_identity = None
+                if hasattr(request_obj, 'response_schema') and request_obj.response_schema:
+                    identity = getattr(getattr(request_obj.response_schema, 'identity', None), 'as_str', None)
+                    response_schema_identity = identity
+
+                ai_request = AIRequestAudit(
+                    correlation_id=request_obj.correlation_id,
+                    service_identity=record.service_identity,
+                    namespace=getattr(request_obj, 'namespace', None),
+                    kind=getattr(request_obj, 'kind', None),
+                    name=getattr(request_obj, 'name', None),
+                    provider_name=getattr(result, 'provider_name', None),
+                    client_name=getattr(result, 'client_name', None),
+                    model=getattr(request_obj, 'model', None),
+                    raw=request_json,
+                    messages=messages_json,
+                    tools=tools_json,
+                    response_schema_identity=response_schema_identity,
+                    object_db_pk=(record.context or {}).get("simulation_id"),
+                    service_call=record,
+                    dispatched_at=timezone.now(),
+                )
+                ai_request.save()
+                logger.debug(f"Created AIRequestAudit {ai_request.id} for call {call_id}")
+            else:
+                # Create minimal request audit without full request data
+                ai_request = AIRequestAudit(
+                    correlation_id=getattr(result, 'request_correlation_id', None) or uuid4(),
+                    service_identity=record.service_identity,
+                    namespace=getattr(result, 'namespace', None),
+                    provider_name=getattr(result, 'provider_name', None),
+                    client_name=getattr(result, 'client_name', None),
+                    raw={},  # No request data available
+                    messages=[],
+                    object_db_pk=(record.context or {}).get("simulation_id"),
+                    service_call=record,
+                    dispatched_at=timezone.now(),
+                )
+                ai_request.save()
+                logger.debug(f"Created minimal AIRequestAudit {ai_request.id} for call {call_id}")
+
+            # Create response audit
+            provider_meta = getattr(result, 'provider_meta', None) or {}
+            usage = getattr(result, 'usage', None)
+
+            # Serialize structured_data if it's a Pydantic model
+            structured_data_json = None
+            structured_data = getattr(result, 'structured_data', None)
+            if structured_data is not None:
+                if hasattr(structured_data, 'model_dump'):
+                    try:
+                        structured_data_json = structured_data.model_dump(mode="json")
+                    except TypeError:
+                        structured_data_json = _manual_extract_fields(structured_data)
+                elif isinstance(structured_data, dict):
+                    structured_data_json = structured_data
+                else:
+                    # Fallback: convert to string if nothing else works
+                    structured_data_json = {"raw_value": str(structured_data)}
+
+            ai_response = AIResponseAudit(
+                ai_request=ai_request,
+                service_call=record,
+                correlation_id=result.correlation_id,
+                request_correlation_id=getattr(result, 'request_correlation_id', None),
+                raw=result_json,
+                provider_raw=provider_meta.get("raw"),
+                provider_name=getattr(result, 'provider_name', None),
+                client_name=getattr(result, 'client_name', None),
+                model=provider_meta.get("model"),
+                finish_reason=provider_meta.get("finish_reason"),
+                provider_response_id=provider_meta.get("id"),
+                input_tokens=getattr(usage, 'input_tokens', 0) if usage else 0,
+                output_tokens=getattr(usage, 'output_tokens', 0) if usage else 0,
+                total_tokens=getattr(usage, 'total_tokens', 0) if usage else 0,
+                reasoning_tokens=getattr(usage, 'reasoning_tokens', 0) if usage else 0,
+                structured_data=structured_data_json,
+                execution_metadata=getattr(result, 'execution_metadata', None) or {},
+                received_at=getattr(result, 'received_at', None) or timezone.now(),
+            )
+            ai_response.save()
+            ai_response_audit_id = ai_response.id
+            logger.debug(f"Created AIResponseAudit {ai_response.id} for call {call_id}")
+
+            # Store ID in context for persistence handlers
+            if record.context is None:
+                record.context = {}
+            record.context["_ai_response_audit_id"] = ai_response_audit_id
+            record.save(update_fields=["context"])
+
+        except Exception as audit_err:
+            logger.warning(f"Failed to create audit records for call {call_id}: {audit_err}")
+
+        # Attempt inline persistence instead of deferring to drain worker
+        try:
+            from orchestrai.types import Response
+            from orchestrai.identity.domains import PERSIST_DOMAIN
+
+            response = Response.model_validate(record.result)
+            store = get_component_store(app)
+            persistence_registry = store.registry(PERSIST_DOMAIN) if store else None
+
+            if persistence_registry:
+                domain_obj = async_to_sync(persistence_registry.persist)(response)
+
+                if domain_obj is not None:
+                    record.domain_persisted = True
+                    record.save(update_fields=["domain_persisted"])
+                    logger.info(
+                        "Service call %s: domain persistence complete (created %s)",
+                        call_id,
+                        type(domain_obj).__name__
+                    )
+                else:
+                    # No handler found - mark as done to prevent retry loops
+                    record.domain_persisted = True
+                    record.save(update_fields=["domain_persisted"])
+                    logger.debug(
+                        "Service call %s: no persistence handler found for namespace=%s schema=%s",
+                        call_id,
+                        response.namespace,
+                        response.execution_metadata.get("schema_identity") if response.execution_metadata else None
+                    )
+            else:
+                logger.warning("Service call %s: no persistence registry available", call_id)
+        except Exception as persist_err:
+            logger.warning(
+                "Service call %s: inline persistence failed: %s (will retry via drain worker)",
+                call_id,
+                persist_err
+            )
+            # Leave domain_persisted=False for drain worker retry
 
         return to_jsonable(record.as_call())
 

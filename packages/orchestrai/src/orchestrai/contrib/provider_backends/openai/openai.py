@@ -189,6 +189,33 @@ class OpenAIResponsesProvider(BaseProvider):
             base["raw"] = resp.model_dump() if hasattr(resp, "model_dump") else None
         except Exception:  # pragma: no cover - defensive
             base["raw"] = None
+
+        # Extract structured output if present (OpenAI Responses API with JSON schema)
+        try:
+            import json
+            output = getattr(resp, "output", []) or []
+            for item in output:
+                item_type = getattr(item, "type", None)
+                # Look for message items with JSON content
+                if item_type in {"message", "output_message", "ResponseOutputMessage"}:
+                    for content in getattr(item, "content", []) or []:
+                        content_type = getattr(content, "type", None)
+                        if content_type in {"output_text", "text"}:
+                            text = getattr(content, "text", None)
+                            if text:
+                                # Try to parse as JSON - if it's structured output, this will succeed
+                                try:
+                                    structured_data = json.loads(text)
+                                    if isinstance(structured_data, dict):
+                                        base["structured"] = structured_data
+                                        logger.debug(f"Extracted structured output from OpenAI Responses API")
+                                        return base
+                                except json.JSONDecodeError:
+                                    # Not JSON - just regular text output
+                                    pass
+        except Exception as e:
+            logger.debug(f"Failed to extract structured output from OpenAI response: {e}")
+
         return base
 
     def _normalize_tool_output(self, item: Any):

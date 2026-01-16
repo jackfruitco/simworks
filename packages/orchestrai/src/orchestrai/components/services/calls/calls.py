@@ -4,18 +4,20 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from orchestrai.utils.json import make_json_safe
 
 JsonPrimitive = str | int | float | bool | None
 
 
 def assert_jsonable(value: Any, *, path: str = "root") -> None:
-    """Raise ``TypeError`` if *value* cannot be represented in JSON."""
+    """Raise ``TypeError`` if *value* cannot be represented in JSON.
+
+    Note: datetime values should be pre-coerced to strings via _coerce()
+    before calling this function. Raw datetime objects will fail validation.
+    """
 
     def _check(val: Any, prefix: str) -> None:
         if isinstance(val, (str, int, float, bool)) or val is None:
-            return
-        if isinstance(val, datetime):
             return
         if isinstance(val, dict):
             for key, inner in val.items():
@@ -31,15 +33,8 @@ def assert_jsonable(value: Any, *, path: str = "root") -> None:
 
 
 def _coerce(value: Any) -> JsonPrimitive | dict[str, Any] | list[Any]:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, BaseModel):
-        return _coerce(value.model_dump(mode="json"))
-    if isinstance(value, dict):
-        return {str(k): _coerce(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_coerce(v) for v in value]
-    return value  # primitives and None pass through
+    """Coerce a value to JSON-serializable form using the shared utility."""
+    return make_json_safe(value)
 
 
 @dataclass

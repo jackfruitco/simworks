@@ -17,54 +17,72 @@ class TimestampedModel(models.Model):
         abstract = True
 
 
-# Audit models (AIRequestAudit and AIResponseAudit) have been removed.
-# ServiceCallRecord provides sufficient tracking for service execution.
+class AIRequestAudit(TimestampedModel):
+    """Audit record for outbound AI/LLM requests.
 
+    Stores the full OrchestrAI Request JSON along with extracted fields
+    for querying. Replaces AIOutbox for request tracking.
 
-class AIOutbox(TimestampedModel):
-    """Transactional outbox for AI-related domain events.
-
-    Inline emit is the fast path; this table provides durability and retry.
-    A periodic task can scan for undelivered rows and dispatch as fallback.
+    Lifecycle:
+        1. Created in tasks.run_service_call() after request is built
+        2. AIResponseAudit linked after response received
+        3. Domain objects link back via ai_response_audit FK
     """
 
-    EVENT_CHOICES = [
-        ("orchestrai.request.sent", "AI request sent"),
-        ("orchestrai.response.received", "AI response received"),
-        ("orchestrai.response.ready", "AI response ready"),
-    ]
-
-    event_type = models.CharField(max_length=64, choices=EVENT_CHOICES, db_index=True)
-    correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    # Identity fields
+    correlation_id = models.UUIDField(db_index=True)
+    service_identity = models.CharField(max_length=255, db_index=True)
     namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    kind = models.CharField(max_length=128, null=True, blank=True, db_index=True)
-    name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    kind = models.CharField(max_length=128, null=True, blank=True)
+    name = models.CharField(max_length=128, null=True, blank=True)
+
+    # Provider info
     provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-    client_name = models.CharField(max_length=128, null=True, blank=True, db_index=True)
+    client_name = models.CharField(max_length=128, null=True, blank=True)
+    model = models.CharField(max_length=128, null=True, blank=True)
 
-    # Arbitrary payload (e.g., serialized DjangoRequest/Response)
-    payload = models.JSONField(default=dict)
+    # Full OrchestrAI Request JSON
+    raw = models.JSONField(help_text="Request.model_dump(mode='json')")
 
-    # Delivery bookkeeping
+    # Extracted fields for querying
+    messages = models.JSONField(default=list, help_text="Extracted input messages")
+    tools = models.JSONField(null=True, blank=True)
+    response_schema_identity = models.CharField(max_length=255, null=True, blank=True)
+
+    # Object linkage
+    object_db_pk = models.IntegerField(null=True, blank=True, db_index=True)
+    service_call = models.ForeignKey(
+        "ServiceCallRecord",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ai_requests",
+    )
+
+    # Event tracking (migrated from AIOutbox)
     dispatched_at = models.DateTimeField(null=True, blank=True, db_index=True)
     attempts = models.PositiveIntegerField(default=0)
-    next_attempt_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(null=True, blank=True)
 
     class Meta:
-        db_table = "ai_outbox"
+        db_table = "ai_request_audit"
         indexes = [
-            models.Index(fields=["event_type", "dispatched_at"]),
+            models.Index(fields=["correlation_id"]),
+            models.Index(fields=["service_identity"]),
             models.Index(fields=["namespace", "kind", "name"]),
-            models.Index(fields=["namespace", "correlation_id"]),
+            models.Index(fields=["provider_name", "model"]),
+            models.Index(fields=["dispatched_at"]),
         ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"AIRequestAudit(id={self.pk}, service={self.service_identity}, correlation={self.correlation_id})"
 
     # ---- identity conveniences (read-side) ---------------------------------
     @property
     def identity(self) -> Identity:
-        domain = getattr(self, "domain", None) or "default"
         return Identity(
-            domain=domain,
+            domain="requests",
             namespace=self.namespace or "default",
             group=self.kind or "default",
             name=self.name or "default",
@@ -77,6 +95,83 @@ class AIOutbox(TimestampedModel):
     @property
     def identity_str(self) -> str:
         return self.identity.as_str
+
+
+class AIResponseAudit(TimestampedModel):
+    """Audit record for inbound AI/LLM responses.
+
+    Stores both the full OrchestrAI Response JSON and the raw provider response
+    (before normalization) for complete audit trail.
+
+    Lifecycle:
+        1. Created in tasks.run_service_call() after response received
+        2. Links to corresponding AIRequestAudit
+        3. Domain objects (Message, SimulationMetadata) link via ai_response_audit FK
+
+    Key Fields:
+        - raw: Full OrchestrAI Response JSON (normalized)
+        - provider_raw: Raw provider response before OrchestrAI normalization
+    """
+
+    # Links
+    ai_request = models.ForeignKey(
+        "AIRequestAudit",
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+    service_call = models.ForeignKey(
+        "ServiceCallRecord",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ai_responses",
+    )
+
+    # Correlation
+    correlation_id = models.UUIDField(db_index=True)
+    request_correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+
+    # Full Response JSON
+    raw = models.JSONField(help_text="Response.model_dump(mode='json')")
+
+    # Raw provider response (before OrchestrAI normalization)
+    provider_raw = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="provider_meta['raw'] - untouched provider response",
+    )
+
+    # Extracted fields for querying
+    provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    client_name = models.CharField(max_length=128, null=True, blank=True)
+    model = models.CharField(max_length=128, null=True, blank=True)
+    finish_reason = models.CharField(max_length=64, null=True, blank=True)
+    provider_response_id = models.CharField(max_length=255, null=True, blank=True)
+
+    # Usage tracking
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    total_tokens = models.PositiveIntegerField(default=0)
+    reasoning_tokens = models.PositiveIntegerField(default=0)
+
+    # Structured output
+    structured_data = models.JSONField(null=True, blank=True)
+    execution_metadata = models.JSONField(default=dict)
+
+    # Timing
+    received_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        db_table = "ai_response_audit"
+        indexes = [
+            models.Index(fields=["correlation_id"]),
+            models.Index(fields=["request_correlation_id"]),
+            models.Index(fields=["provider_name", "model"]),
+            models.Index(fields=["received_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"AIResponseAudit(id={self.pk}, correlation={self.correlation_id}, tokens={self.total_tokens})"
 
 
 class ServiceCallRecord(TimestampedModel):

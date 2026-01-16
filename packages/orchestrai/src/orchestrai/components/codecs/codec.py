@@ -195,7 +195,12 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                     req.response_schema = schema_cls_
 
                 # Canonical JSON Schema from the Pydantic model.
-                schema_json = schema_cls_.model_json_schema()
+                # Use cached schema from decorator to avoid MockValSer pollution
+                schema_json = getattr(schema_cls_, '_validated_schema', None)
+                if schema_json is None:
+                    # Fallback: generate and rebuild to clear MockValSer
+                    schema_json = schema_cls_.model_json_schema()
+                    schema_cls_.model_rebuild(force=True)
                 req.response_schema_json = schema_json
 
                 # Provider-specific adaptation and envelope.
@@ -295,7 +300,13 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                 f"Codec '{self.__class__.__name__}' has no 'response_schema' defined via service"
             )
         try:
-            return schema_cls.model_json_schema()
+            # Use cached schema from decorator to avoid MockValSer pollution
+            schema_json = getattr(schema_cls, '_validated_schema', None)
+            if schema_json is None:
+                # Fallback: generate and rebuild to clear MockValSer
+                schema_json = schema_cls.model_json_schema()
+                schema_cls.model_rebuild(force=True)
+            return schema_json
         except Exception as e:
             raise CodecSchemaError(
                 f"Failed to build JSON schema for codec '{self.__class__.__name__}'"

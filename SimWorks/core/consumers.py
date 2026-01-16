@@ -1,9 +1,10 @@
 import json
 import logging
 
-logger = logging.getLogger("notifications")
-
 from channels.generic.websocket import AsyncWebsocketConsumer
+from orchestrai.utils.json import json_default
+
+logger = logging.getLogger("notifications")
 
 
 class NotificationsConsumer(AsyncWebsocketConsumer):
@@ -45,6 +46,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
                 {
                     "notification": notification,
                     "type": notification_type,
-                }
+                },
+                default=json_default,
             )
         )

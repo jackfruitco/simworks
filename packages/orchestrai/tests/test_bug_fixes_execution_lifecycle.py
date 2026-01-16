@@ -10,9 +10,11 @@ Tests cover:
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
+from typing import ClassVar
 
 from orchestrai.components.services.service import BaseService
 from orchestrai.components.codecs.codec import BaseCodec
+from orchestrai.components.codecs.exceptions import CodecDecodeError
 from orchestrai.components.schemas import BaseOutputSchema
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import SERVICES_DOMAIN
@@ -29,7 +31,7 @@ class TestSchema(BaseOutputSchema):
 class TestCodec(BaseCodec):
     """Test codec with schema adapters."""
     abstract = False
-    identity = Identity(domain="codecs", namespace="test", group="codec", name="test")
+    identity: ClassVar[Identity] = Identity(domain="codecs", namespace="test", group="codec", name="test")
 
     schema_adapters = []
 
@@ -48,7 +50,7 @@ class TestCodec(BaseCodec):
 class TestService(BaseService):
     """Test service for validation."""
     abstract = False
-    identity = Identity(domain=SERVICES_DOMAIN, namespace="test", group="svc", name="test")
+    identity: ClassVar[Identity] = Identity(domain=SERVICES_DOMAIN, namespace="test", group="svc", name="test")
     response_schema = TestSchema
 
     async def arun(self, **ctx):
@@ -140,6 +142,10 @@ async def test_response_includes_execution_metadata():
     # Create mock client and emitter
     mock_client = AsyncMock()
     mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
 
     mock_emitter = Mock()
     mock_emitter.emit_request = Mock()
@@ -171,14 +177,16 @@ async def test_response_includes_execution_metadata():
 @pytest.mark.asyncio
 async def test_response_execution_metadata_includes_schema_identity():
     """Test that execution metadata includes schema identity when available."""
+    from typing import ClassVar
+
     # Create schema with identity
     class IdentifiedSchema(BaseOutputSchema):
-        identity = Identity(domain="schemas", namespace="test", group="schema", name="identified")
+        identity: ClassVar[Identity] = Identity(domain="schemas", namespace="test", group="schema", name="identified")
         value: str
 
     class IdentifiedService(BaseService):
         abstract = False
-        identity = Identity(domain=SERVICES_DOMAIN, namespace="test", group="svc", name="identified")
+        identity: ClassVar[Identity] = Identity(domain=SERVICES_DOMAIN, namespace="test", group="svc", name="identified")
         response_schema = IdentifiedSchema
 
         async def arun(self, **ctx):
@@ -186,6 +194,11 @@ async def test_response_execution_metadata_includes_schema_identity():
 
     mock_client = AsyncMock()
     mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
     mock_emitter = Mock()
     mock_emitter.emit_request = Mock()
     mock_emitter.emit_response = Mock()
@@ -231,6 +244,11 @@ async def test_codec_identity_propagates_from_request_to_response():
     """Test that codec_identity is copied from request to response."""
     mock_client = AsyncMock()
     mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
     mock_emitter = Mock()
     mock_emitter.emit_request = Mock()
     mock_emitter.emit_response = Mock()
@@ -256,6 +274,11 @@ async def test_full_service_execution_with_metadata():
     """Integration test: full service execution populates all metadata correctly."""
     mock_client = AsyncMock()
     mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
     mock_emitter = Mock()
     mock_emitter.emit_request = Mock()
     mock_emitter.emit_response = Mock()
@@ -315,11 +338,8 @@ def test_schema_codec_compatibility_validation():
     class InvalidSchema:
         pass
 
-    with pytest.warns(None) as warnings:
-        service._validate_schema_codec_compatibility(TestCodec, InvalidSchema)
-
-    # Should have logged a warning
-    # (can't easily test logger.warning without mocking, so we just ensure it doesn't raise)
+    # Should not raise, even for non-Pydantic schema (just logs warning)
+    service._validate_schema_codec_compatibility(TestCodec, InvalidSchema)
 
 
 # =============================================================================
@@ -358,6 +378,11 @@ async def test_retriable_decode_errors_are_retried():
 
     mock_client = AsyncMock()
     mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
     mock_emitter = Mock()
     mock_emitter.emit_request = Mock()
     mock_emitter.emit_response = Mock()
@@ -395,6 +420,11 @@ async def test_non_retriable_decode_errors_fail_immediately():
 
     mock_client = AsyncMock()
     mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
     mock_emitter = Mock()
     mock_emitter.emit_request = Mock()
     mock_emitter.emit_response = Mock()
@@ -413,6 +443,100 @@ async def test_non_retriable_decode_errors_fail_immediately():
         # Should have been called only once (no retry)
         assert call_count == 1
         assert not exc_info.value.retriable
+
+
+# =============================================================================
+# Exception Handler Ordering Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_exception_handler_ordering_codec_before_generic():
+    """Test that CodecDecodeError is caught before generic Exception handler.
+
+    This test validates the fix for the critical bug where the generic
+    Exception handler was catching CodecDecodeError before the specific
+    handler could process it.
+    """
+    call_count = 0
+
+    class FailingCodec(BaseCodec):
+        async def adecode(self, resp):
+            nonlocal call_count
+            call_count += 1
+            # Raise non-retriable CodecDecodeError
+            raise CodecDecodeError("Schema mismatch - field missing", retriable=False)
+
+    mock_client = AsyncMock()
+    mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    # Configure provider attribute to return a regular Mock, not a coroutine
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
+    mock_emitter = Mock()
+    mock_emitter.emit_request = Mock()
+    mock_emitter.emit_response = Mock()
+    mock_emitter.emit_failure = Mock()
+
+    service = TestService(emitter=mock_emitter, client=mock_client)
+
+    with patch.object(service, '_select_codec_class', return_value=(FailingCodec, "test")):
+        req, codec, attrs = await service.aprepare(stream=False)
+
+        # Replace with our test codec
+        codec = FailingCodec(service=service)
+
+        # Should raise CodecDecodeError immediately (non-retriable)
+        with pytest.raises(CodecDecodeError) as exc_info:
+            await service._asend(mock_client, req, codec, attrs, service.identity)
+
+        # Should only be called once (no retry for non-retriable)
+        assert call_count == 1
+        assert not exc_info.value.retriable
+
+        # Verify failure was emitted
+        assert mock_emitter.emit_failure.called
+
+
+@pytest.mark.asyncio
+async def test_exception_handler_ordering_retriable_codec_error():
+    """Test that retriable CodecDecodeError triggers retry logic correctly."""
+    call_count = 0
+
+    class RetriableCodec(BaseCodec):
+        async def adecode(self, resp):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                # First attempt: retriable error
+                raise CodecDecodeError("Incomplete JSON - retry", retriable=True)
+            # Second attempt: success
+            return {"test": "data"}
+
+    mock_client = AsyncMock()
+    mock_client.send_request = AsyncMock(return_value=Response(output=[]))
+    mock_provider = Mock()
+    mock_provider.provider = "test_provider"
+    mock_client.provider = mock_provider
+
+    mock_emitter = Mock()
+    mock_emitter.emit_request = Mock()
+    mock_emitter.emit_response = Mock()
+    mock_emitter.emit_failure = Mock()
+
+    service = TestService(emitter=mock_emitter, client=mock_client)
+    service.max_attempts = 3  # Allow retries
+
+    with patch.object(service, '_select_codec_class', return_value=(RetriableCodec, "test")):
+        req, codec, attrs = await service.aprepare(stream=False)
+        codec = RetriableCodec(service=service)
+
+        # Should retry and eventually succeed
+        resp = await service._asend(mock_client, req, codec, attrs, service.identity)
+
+        # Codec should have been called twice (1 retry)
+        assert call_count == 2
+        assert resp is not None
 
 
 if __name__ == "__main__":

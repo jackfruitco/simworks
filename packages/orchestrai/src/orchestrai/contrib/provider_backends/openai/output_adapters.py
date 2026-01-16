@@ -36,5 +36,11 @@ class ImageGenerationOutputAdapter:
             return None
 
         call = LLMToolCall(call_id=call_id, name="image_generation", arguments={})
-        result = BaseToolResultContent(call_id=call_id, mime_type=mime, data_b64=b64)
+        result = BaseToolResultContent(
+            call_id=call_id,
+            result_text=None,
+            result_json_str=None,
+            mime_type=mime,
+            data_b64=b64
+        )
         return call, result

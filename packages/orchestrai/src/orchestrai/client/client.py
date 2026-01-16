@@ -32,6 +32,19 @@ class OrcaClient:
         self.provider = provider
         self.config = config or OrcaClientConfig()
 
+    def _format_exception_chain(self, exc: Exception) -> list[dict]:
+        """Format exception chain for logging."""
+        chain = []
+        current = exc
+        while current is not None:
+            chain.append({
+                "type": type(current).__name__,
+                "message": str(current),
+                "module": current.__class__.__module__,
+            })
+            current = current.__cause__ or current.__context__
+        return chain
+
     async def send_request(
             self,
             req: Request,
@@ -145,6 +158,20 @@ class OrcaClient:
                             pass
 
                     if attempt >= attempts:
+                        # Log full exception chain before raising
+                        logger.error(
+                            "client.provider_call_failed",
+                            extra={
+                                "attempts": attempts,
+                                "correlation_id": str(req.correlation_id),
+                                "provider": getattr(self.provider, "provider", "unknown"),
+                                "original_error_type": type(e).__name__,
+                                "original_error_message": str(e),
+                                "original_error_module": e.__class__.__module__,
+                                "exception_chain": self._format_exception_chain(e),
+                            },
+                            exc_info=True,  # Include full stack trace
+                        )
                         raise ProviderCallError(f"Provider call failed after {attempts} attempt(s)") from e
 
                     # Retry with backoff
@@ -163,6 +190,19 @@ class OrcaClient:
 
             if last_exc is not None:
                 if getattr(self.config, "raise_on_error", True):
+                    # Log full exception chain before raising
+                    logger.error(
+                        "client.provider_call_failed_after_retries",
+                        extra={
+                            "correlation_id": str(req.correlation_id),
+                            "provider": getattr(self.provider, "provider", "unknown"),
+                            "original_error_type": type(last_exc).__name__,
+                            "original_error_message": str(last_exc),
+                            "original_error_module": last_exc.__class__.__module__,
+                            "exception_chain": self._format_exception_chain(last_exc),
+                        },
+                        exc_info=True,
+                    )
                     raise ProviderCallError("Provider call failed after retries") from last_exc
                 # Best-effort soft failure: return an empty response with error metadata
                 logger.warning("OrcaClient returning soft-failure response due to raise_on_error=False: %s", last_exc)

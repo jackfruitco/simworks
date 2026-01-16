@@ -405,6 +405,14 @@ class SimulationMetadata(PersistModel, PolymorphicModel):
     key = models.CharField(max_length=255)
     value = models.TextField()
 
+    ai_response_audit = models.ForeignKey(
+        "orchestrai_django.AIResponseAudit",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="simulation_metadata",
+    )
+
     class Meta:
         constraints = [
             models.UniqueConstraint(

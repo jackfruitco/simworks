@@ -10,12 +10,16 @@ including:
 - **Request Builder**: Build API-compliant request payloads
 - **Constants**: Shared configuration values
 """
-from . import output_adapters, schema_adapters
+from . import output_adapters, schema
 from .constants import API_SURFACE, API_VERSION, DEFAULT_MODEL, DEFAULT_TIMEOUT_S, PROVIDER_NAME
 from .openai import OpenAIResponsesProvider
 from .output_adapters import ImageGenerationOutputAdapter
 from .request_builder import build_responses_request
-from .schema_adapters import FlattenUnions, OpenaiWrapper
+from .schema.adapt import OpenaiFormatAdapter
+from .schema.validate import validate_openai_schema
+
+# Backward compatibility aliases
+OpenaiWrapper = OpenaiFormatAdapter
 
 __all__ = [
     # Provider
@@ -28,10 +32,11 @@ __all__ = [
     "DEFAULT_TIMEOUT_S",
     # Request building
     "build_responses_request",
-    # Schema adapters
-    "schema_adapters",
-    "OpenaiWrapper",
-    "FlattenUnions",
+    # Schema module
+    "schema",
+    "OpenaiFormatAdapter",
+    "OpenaiWrapper",  # Backward compatibility
+    "validate_openai_schema",
     # Output adapters
     "output_adapters",
     "ImageGenerationOutputAdapter",
