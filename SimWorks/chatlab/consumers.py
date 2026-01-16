@@ -8,6 +8,7 @@ from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
+from orchestrai.utils.json import json_default
 from chatlab.utils import await_if_needed
 
 from simulation.models import Simulation
@@ -67,7 +68,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                         "type": "error",
                         "message": error_message,
                         "redirect": reverse("chatlab:index"),
-                    }
+                    },
+                    default=json_default,
                 )
             )
             # Socket must be accepted before sending.
@@ -105,7 +107,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "sim_display_name": self.simulation.sim_patient_display_name,
                     "sim_display_initials": self.simulation.sim_patient_initials,
                     "new_simulation": is_new_simulation,
-                }
+                },
+                default=json_default,
             )
         )
 
@@ -449,7 +452,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "username": event.get("username", "unknown"),
                     "display_name": event.get("display_name", "Unknown"),
                     "display_initials": event.get("display_initials", "Unk"),
-                }
+                },
+                default=json_default,
             )
         )
 
@@ -467,7 +471,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "stopped_typing",
                     "username": event.get("username", "unknown"),
-                }
+                },
+                default=json_default,
             )
         )
 
@@ -475,7 +480,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        await self.send(text_data=json.dumps(event))
+        await self.send(text_data=json.dumps(event, default=json_default))
 
     async def chat_message_created(self, event: dict) -> None:
         """
@@ -507,7 +512,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Proceed to send the message if 'content' exists
-        await self.send(text_data=json.dumps(event))
+        await self.send(text_data=json.dumps(event, default=json_default))
 
     async def message_status_update(self, event: dict) -> None:
         """
@@ -524,10 +529,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "type": "message_status_update",
                     "id": event["id"],
                     "status": event["status"],
-                }
+                },
+                default=json_default,
             )
         )
 
     async def simulation_metadata_results_created(self, event: dict) -> None:
         """Receive simulation metadata results created event and send to client."""
-        await self.send(text_data=json.dumps(event))
+        await self.send(text_data=json.dumps(event, default=json_default))

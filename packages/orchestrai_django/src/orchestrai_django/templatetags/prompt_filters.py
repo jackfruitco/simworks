@@ -7,6 +7,8 @@ from django import template
 import textwrap
 import json
 
+from orchestrai.utils.json import json_default
+
 register = template.Library()
 
 @register.filter
@@ -16,5 +18,8 @@ def dedent(value: str) -> str:
 
 @register.filter
 def tojson(value) -> str:
-  """Serialize Python objects to JSON for prompt rendering."""
-  return json.dumps(value, ensure_ascii=False)
+  """Serialize Python objects to JSON for prompt rendering.
+
+  Handles non-JSON types like UUID, datetime, Decimal via json_default.
+  """
+  return json.dumps(value, ensure_ascii=False, default=json_default)

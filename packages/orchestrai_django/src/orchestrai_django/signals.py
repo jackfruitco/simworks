@@ -4,6 +4,7 @@ from typing import TypedDict, Optional, Union, Dict, Any
 from uuid import UUID
 
 from django.dispatch import Signal
+from orchestrai.utils.json import make_json_safe
 
 # NEW: light helpers to introspect request/response + identity
 def _as_dict(obj: Any) -> dict:
@@ -11,27 +12,6 @@ def _as_dict(obj: Any) -> dict:
     Best-effort conversion of Pydantic/dataclass objects to dict
     for signal payloads. Falls back to repr(...) if needed.
     """
-    from uuid import UUID
-    from datetime import datetime, date, time, timedelta
-    from decimal import Decimal
-
-    def make_json_safe(value):
-        """Convert non-JSON-serializable types to JSON-safe equivalents."""
-        if isinstance(value, UUID):
-            return str(value)
-        elif isinstance(value, (datetime, date, time)):
-            return value.isoformat()
-        elif isinstance(value, timedelta):
-            return value.total_seconds()
-        elif isinstance(value, Decimal):
-            return float(value)
-        elif isinstance(value, bytes):
-            return value.decode('utf-8', errors='replace')
-        elif hasattr(value, '__dict__') and not hasattr(value, 'model_fields'):
-            # Generic object with __dict__ - convert to dict
-            return {k: make_json_safe(v) for k, v in value.__dict__.items()}
-        return value
-
     if obj is None:
         return {}
     dump = getattr(obj, "model_dump", None)

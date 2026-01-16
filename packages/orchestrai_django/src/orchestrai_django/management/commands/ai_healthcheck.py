@@ -23,6 +23,7 @@ import logging
 import sys
 from django.core.management.base import BaseCommand
 from orchestrai import get_current_app
+from orchestrai.utils.json import json_default
 from orchestrai_django.health import healthcheck_all_registered
 from orchestrai.client.registry import list_clients
 
@@ -120,7 +121,7 @@ class Command(BaseCommand):
             if as_json:
                 http_status = 200 if all_ok else 503
                 payload = {"ok": all_ok, "http_status": http_status, "results": report}
-                self.stdout.write(json.dumps(payload))
+                self.stdout.write(json.dumps(payload, default=json_default))
                 sys.exit(0 if all_ok else 1)
 
             if all_ok:
@@ -134,7 +135,7 @@ class Command(BaseCommand):
             logger.exception("AI healthcheck failed unexpectedly: %s", exc)
             if as_json:
                 payload = {"ok": False, "http_status": 500, "results": {}, "error": repr(exc)}
-                self.stdout.write(json.dumps(payload))
+                self.stdout.write(json.dumps(payload, default=json_default))
                 sys.exit(2)
             self.stdout.write(self.style.ERROR(f"❌ Healthcheck crashed: {exc!r}"))
             sys.exit(2)

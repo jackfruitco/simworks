@@ -24,26 +24,7 @@ logger = logging.getLogger(__name__)
 
 def _manual_extract_fields(obj):
     """Manually extract fields from a Pydantic model when model_dump() fails with MockValSer."""
-    from uuid import UUID
-    from datetime import datetime, date, time, timedelta
-    from decimal import Decimal
-
-    def make_json_safe(value):
-        """Convert non-JSON-serializable types to JSON-safe equivalents."""
-        if isinstance(value, UUID):
-            return str(value)
-        elif isinstance(value, (datetime, date, time)):
-            return value.isoformat()
-        elif isinstance(value, timedelta):
-            return value.total_seconds()
-        elif isinstance(value, Decimal):
-            return float(value)
-        elif isinstance(value, bytes):
-            return value.decode('utf-8', errors='replace')
-        elif hasattr(value, '__dict__') and not hasattr(value, 'model_fields'):
-            # Generic object with __dict__ - convert to dict
-            return {k: make_json_safe(v) for k, v in value.__dict__.items()}
-        return value
+    from orchestrai.utils.json import make_json_safe
 
     result = {}
     if hasattr(obj, 'model_fields'):
@@ -53,7 +34,8 @@ def _manual_extract_fields(obj):
                 # Handle nested Pydantic models
                 if hasattr(value, 'model_dump'):
                     try:
-                        result[field_name] = value.model_dump()
+                        # Use mode="json" to ensure UUID/datetime are converted
+                        result[field_name] = value.model_dump(mode="json")
                     except TypeError:
                         # Nested model also has MockValSer - recurse
                         result[field_name] = _manual_extract_fields(value)
@@ -234,38 +216,12 @@ def run_service_call(call_id: str):
             # Serialize Response to JSON if it's a Response object
             if hasattr(result, "model_dump"):
                 try:
-                    result_json = result.model_dump()
+                    result_json = result.model_dump(mode="json")
                 except TypeError as e:
                     # MockValSer error - manually extract fields as workaround
                     if 'MockValSer' in str(e):
-                        logger.warning(f"MockValSer error during result serialization, manually extracting fields")
-                        result_json = {}
-                        if hasattr(result, 'model_fields'):
-                            for field_name in result.model_fields.keys():
-                                try:
-                                    value = getattr(result, field_name, None)
-                                    # Handle nested Pydantic models
-                                    if hasattr(value, 'model_dump'):
-                                        try:
-                                            result_json[field_name] = value.model_dump()
-                                        except TypeError:
-                                            # Nested model also has MockValSer - manual extract
-                                            result_json[field_name] = _manual_extract_fields(value)
-                                    elif isinstance(value, list):
-                                        result_json[field_name] = [
-                                            item.model_dump() if hasattr(item, 'model_dump') else item
-                                            for item in value
-                                        ]
-                                    elif isinstance(value, dict):
-                                        result_json[field_name] = {
-                                            k: v.model_dump() if hasattr(v, 'model_dump') else v
-                                            for k, v in value.items()
-                                        }
-                                    else:
-                                        result_json[field_name] = value
-                                except Exception as field_err:
-                                    logger.warning(f"Failed to extract field {field_name}: {field_err}")
-                                    result_json[field_name] = None
+                        logger.warning("MockValSer error during result serialization, manually extracting fields")
+                        result_json = _manual_extract_fields(result)
                     else:
                         raise
             else:
