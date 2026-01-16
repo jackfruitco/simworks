@@ -68,32 +68,30 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         if not simulation_id:
             raise ValueError("Response context missing 'simulation_id'")
 
+        # Get ai_response_audit_id for linking
+        ai_response_audit_id = (response.context or {}).get("_ai_response_audit_id")
+
         # Type-safe deserialization (already validated by codec)
         data = self.schema.model_validate(response.structured_data)
 
-        # 1. Extract text from messages
-        text_content = await self._extract_text_from_messages(data.messages)
-
-        # 2. Get system user for AI-generated messages
-        system_user = await aget_or_create_system_user()
-
-        # 3. Create Message
-        message = await Message.objects.acreate(
-            simulation_id=simulation_id,
-            content=text_content,
-            role=RoleChoices.ASSISTANT,
-            is_from_ai=True,
-            message_type="text",
-            sender=system_user,
+        # 1. Persist ALL messages (not just the first one)
+        messages = await self._persist_all_messages(
+            data.messages, simulation_id, ai_response_audit_id
         )
 
+        if not messages:
+            raise ValueError("No messages with text content to persist")
+
+        # Return first message for backwards compatibility
+        message = messages[0]
+
         logger.info(
-            f"Created Message {message.id} for simulation {simulation_id} "
+            f"Created {len(messages)} Message(s) for simulation {simulation_id} "
             f"(schema: PatientInitialOutputSchema)"
         )
 
-        # 4. Persist metadata (polymorphic routing)
-        await self._persist_metadata_items(data.metadata, simulation_id)
+        # 2. Persist metadata (polymorphic routing)
+        await self._persist_metadata_items(data.metadata, simulation_id, ai_response_audit_id)
 
         # 5. llm_conditions_check - SKIP (not persisted per user decision)
 
@@ -104,30 +102,60 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
 
         return message
 
-    async def _extract_text_from_messages(self, messages: list) -> str:
+    async def _persist_all_messages(
+        self,
+        messages: list,
+        simulation_id: int,
+        ai_response_audit_id: int | None = None,
+    ) -> list[Message]:
         """
-        Extract text content from DjangoOutputItem list.
+        Persist ALL message items as separate Message objects.
 
-        Navigates message structure to find text content.
-        Supports both ResultTextContent (type="text") and OutputTextContent (type="output_text").
+        Args:
+            messages: List of DjangoOutputItem with message content
+            simulation_id: Simulation to attach messages to
+            ai_response_audit_id: Optional AI audit record ID to link
+
+        Returns:
+            List of created Message instances
         """
-        text_content = ""
+        system_user = await aget_or_create_system_user()
+        created_messages = []
 
         for msg in messages:
+            # Extract text from this message
+            text_content = ""
             for content in msg.content:
                 if hasattr(content, "type") and content.type in ("text", "output_text"):
                     text_content = content.text
                     break
-            if text_content:
-                break
 
-        if not text_content:
-            logger.warning("No text content found in messages, using placeholder")
-            text_content = "(No content)"
+            if not text_content:
+                logger.debug("Skipping message without text content")
+                continue  # Skip messages without text content
 
-        return text_content
+            message = await Message.objects.acreate(
+                simulation_id=simulation_id,
+                content=text_content,
+                role=RoleChoices.ASSISTANT,
+                is_from_ai=True,
+                message_type="text",
+                sender=system_user,
+            )
 
-    async def _persist_metadata_items(self, metadata: list, simulation_id: int):
+            # Link ai_response_audit if available
+            if ai_response_audit_id:
+                message.ai_response_audit_id = ai_response_audit_id
+                await message.asave(update_fields=["ai_response_audit"])
+
+            created_messages.append(message)
+            logger.debug(f"Created Message {message.id}: {text_content[:50]}...")
+
+        return created_messages
+
+    async def _persist_metadata_items(
+        self, metadata: list, simulation_id: int, ai_response_audit_id: int | None = None
+    ):
         """
         Persist metadata items to SimulationMetadata.
 
@@ -137,6 +165,7 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         Args:
             metadata: List of ResultMetafield (key-value pairs)
             simulation_id: Simulation to attach metadata to
+            ai_response_audit_id: Optional AI audit record ID to link
         """
         for meta_item in metadata:
             try:
@@ -144,11 +173,16 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
                 key = meta_item.key
                 value = str(meta_item.value) if meta_item.value is not None else ""
 
-                await SimulationMetadata.objects.acreate(
+                metadata_obj = await SimulationMetadata.objects.acreate(
                     simulation_id=simulation_id,
                     key=key,
                     value=value,
                 )
+
+                # Link ai_response_audit if available
+                if ai_response_audit_id:
+                    metadata_obj.ai_response_audit_id = ai_response_audit_id
+                    await metadata_obj.asave(update_fields=["ai_response_audit"])
 
                 logger.debug(f"Created metadata: {key} = {value[:50] if value else '(empty)'}...")
 
@@ -196,39 +230,25 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
         if not simulation_id:
             raise ValueError("Response context missing 'simulation_id'")
 
+        # Get ai_response_audit_id for linking
+        ai_response_audit_id = (response.context or {}).get("_ai_response_audit_id")
+
         # Type-safe deserialization
         data = self.schema.model_validate(response.structured_data)
 
-        # Extract text from messages
-        # Supports both ResultTextContent (type="text") and OutputTextContent (type="output_text")
-        text_content = ""
-        for msg in data.messages:
-            for content in msg.content:
-                if hasattr(content, "type") and content.type in ("text", "output_text"):
-                    text_content = content.text
-                    break
-            if text_content:
-                break
-
-        if not text_content:
-            logger.warning("No text content found in reply, using placeholder")
-            text_content = "(No content)"
-
-        # Get system user for AI-generated messages
-        system_user = await aget_or_create_system_user()
-
-        # Create Message
-        message = await Message.objects.acreate(
-            simulation_id=simulation_id,
-            content=text_content,
-            role=RoleChoices.ASSISTANT,
-            is_from_ai=True,
-            message_type="text",
-            sender=system_user,
+        # Persist ALL messages (not just the first one)
+        messages = await self._persist_all_messages(
+            data.messages, simulation_id, ai_response_audit_id
         )
 
+        if not messages:
+            raise ValueError("No messages with text content to persist")
+
+        # Return first message for backwards compatibility
+        message = messages[0]
+
         logger.info(
-            f"Created reply Message {message.id} for simulation {simulation_id} "
+            f"Created {len(messages)} reply Message(s) for simulation {simulation_id} "
             f"(schema: PatientReplyOutputSchema)"
         )
 
@@ -246,6 +266,57 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
         await chunk.asave()
 
         return message
+
+    async def _persist_all_messages(
+        self,
+        messages: list,
+        simulation_id: int,
+        ai_response_audit_id: int | None = None,
+    ) -> list[Message]:
+        """
+        Persist ALL message items as separate Message objects.
+
+        Args:
+            messages: List of DjangoOutputItem with message content
+            simulation_id: Simulation to attach messages to
+            ai_response_audit_id: Optional AI audit record ID to link
+
+        Returns:
+            List of created Message instances
+        """
+        system_user = await aget_or_create_system_user()
+        created_messages = []
+
+        for msg in messages:
+            # Extract text from this message
+            text_content = ""
+            for content in msg.content:
+                if hasattr(content, "type") and content.type in ("text", "output_text"):
+                    text_content = content.text
+                    break
+
+            if not text_content:
+                logger.debug("Skipping message without text content")
+                continue  # Skip messages without text content
+
+            message = await Message.objects.acreate(
+                simulation_id=simulation_id,
+                content=text_content,
+                role=RoleChoices.ASSISTANT,
+                is_from_ai=True,
+                message_type="text",
+                sender=system_user,
+            )
+
+            # Link ai_response_audit if available
+            if ai_response_audit_id:
+                message.ai_response_audit_id = ai_response_audit_id
+                await message.asave(update_fields=["ai_response_audit"])
+
+            created_messages.append(message)
+            logger.debug(f"Created reply Message {message.id}: {text_content[:50]}...")
+
+        return created_messages
 
 
 @persistence_handler
@@ -307,11 +378,16 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         if not simulation_id:
             raise ValueError("Response context missing 'simulation_id'")
 
+        # Get ai_response_audit_id for linking
+        ai_response_audit_id = (response.context or {}).get("_ai_response_audit_id")
+
         # Type-safe deserialization
         data = self.schema.model_validate(response.structured_data)
 
         # Persist metadata items (scored observations, final assessments)
-        metadata_items = await self._persist_results_metadata(data.metadata, simulation_id)
+        metadata_items = await self._persist_results_metadata(
+            data.metadata, simulation_id, ai_response_audit_id
+        )
 
         logger.info(
             f"Persisted {len(metadata_items)} results metadata items for simulation {simulation_id} "
@@ -335,7 +411,7 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         return metadata_items
 
     async def _persist_results_metadata(
-        self, metadata: list, simulation_id: int
+        self, metadata: list, simulation_id: int, ai_response_audit_id: int | None = None
     ) -> list:
         """
         Persist results metadata items to SimulationMetadata.
@@ -346,6 +422,7 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         Args:
             metadata: List of DjangoOutputItem with results metadata
             simulation_id: Simulation to attach metadata to
+            ai_response_audit_id: Optional AI audit record ID to link
 
         Returns:
             List of created SimulationMetadata instances
@@ -377,6 +454,11 @@ class PatientResultsPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
                     key=key,
                     value=text,
                 )
+
+                # Link ai_response_audit if available
+                if ai_response_audit_id:
+                    metadata_obj.ai_response_audit_id = ai_response_audit_id
+                    await metadata_obj.asave(update_fields=["ai_response_audit"])
 
                 created_items.append(metadata_obj)
                 logger.debug(f"Created results metadata: {key} = {text[:50] if text else '(empty)'}...")
