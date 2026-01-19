@@ -3,8 +3,6 @@
 Provides JWT token obtain and refresh endpoints for mobile clients.
 """
 
-import logging
-
 from django.contrib.auth import authenticate
 from django.http import HttpRequest
 from ninja import Router
@@ -12,9 +10,10 @@ from ninja.errors import HttpError
 from pydantic import BaseModel, Field
 
 from api.v1.auth import InvalidTokenError, create_tokens, refresh_access_token
+from config.logging import get_logger
 from core.ratelimit import auth_rate_limit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = Router(tags=["auth"])
 
@@ -108,15 +107,15 @@ def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
     user = authenticate(request, username=body.username, password=body.password)
 
     if user is None:
-        logger.info("Failed login attempt for username: %s", body.username)
+        logger.warning("auth.login_failed", username=body.username, reason="invalid_credentials")
         raise HttpError(401, "Invalid credentials")
 
     if not user.is_active:
-        logger.info("Login attempt for inactive user: %s", body.username)
+        logger.warning("auth.login_failed", username=body.username, reason="user_inactive")
         raise HttpError(401, "User account is disabled")
 
     tokens = create_tokens(user)
-    logger.info("JWT tokens issued for user: %s", user.username)
+    logger.info("auth.tokens_issued", user_id=user.pk, username=user.username)
 
     return TokenResponse(**tokens)
 
@@ -141,5 +140,5 @@ def refresh_token(request: HttpRequest, body: RefreshRequest) -> RefreshResponse
         return RefreshResponse(**result)
 
     except InvalidTokenError as e:
-        logger.debug("Token refresh failed: %s", e)
+        logger.warning("auth.token_refresh_failed", error=str(e))
         raise HttpError(401, str(e))

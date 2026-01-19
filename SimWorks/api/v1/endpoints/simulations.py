@@ -3,7 +3,6 @@
 Provides CRUD operations for simulations.
 """
 
-import logging
 from datetime import timedelta
 
 from django.http import HttpRequest
@@ -19,9 +18,10 @@ from api.v1.schemas.simulations import (
     SimulationOut,
     simulation_to_out,
 )
+from config.logging import get_logger
 from core.ratelimit import api_rate_limit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = Router(tags=["simulations"], auth=JWTAuth())
 
@@ -120,7 +120,12 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
         time_limit=time_limit,
     )
 
-    logger.info("Created simulation %d for user %s", sim.pk, user.username)
+    logger.info(
+        "simulation.created",
+        simulation_id=sim.pk,
+        diagnosis=body.diagnosis,
+        patient_name=body.patient_full_name,
+    )
     return simulation_to_out(sim)
 
 
@@ -148,7 +153,7 @@ def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndRes
     # End the simulation (this also triggers feedback generation)
     sim.end()
 
-    logger.info("Ended simulation %d for user %s", sim.pk, user.username)
+    logger.info("simulation.ended", simulation_id=sim.pk)
 
     return SimulationEndResponse(
         id=sim.pk,

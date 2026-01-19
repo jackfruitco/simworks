@@ -4,8 +4,6 @@ Provides CRUD operations for messages within simulations.
 Uses cursor-based pagination for listing messages.
 """
 
-import logging
-
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.errors import HttpError
@@ -17,9 +15,10 @@ from api.v1.schemas.messages import (
     MessageOut,
     message_to_out,
 )
+from config.logging import get_logger
 from core.ratelimit import api_rate_limit, message_rate_limit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = Router(tags=["messages"], auth=JWTAuth())
 
@@ -135,10 +134,10 @@ def create_message(
     )
 
     logger.info(
-        "Created message %d in simulation %d for user %s",
-        message.pk,
-        simulation_id,
-        user.username,
+        "message.created",
+        message_id=message.pk,
+        simulation_id=simulation_id,
+        message_type=body.message_type,
     )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
