@@ -11,6 +11,31 @@ This is a **uv-managed monorepo workspace** with three main components:
 - `orchestrai` package at `/packages/orchestrai` (core AI orchestration framework)
 - `orchestrai_django` package at `/packages/orchestrai_django` (Django integration layer)
 
+## API + Client Architecture
+
+### Non-Negotiable Architecture Decisions
+
+**API Style:**
+- **REST-ish JSON API** at `/api/v1/` with **OpenAPI** as the contract (generated from code via Django Ninja)
+- **No GraphQL** — Strawberry GraphQL is being removed from the codebase
+- Web UI uses **HTMX** for HTML fragments and form submissions, **Alpine.js** for lightweight client behavior
+- Mobile clients (future iOS/Android) consume the JSON API with OpenAPI-generated clients
+
+**Route Separation:**
+- HTML endpoints: `/chatlab/...`, `/accounts/...`, `/simulation/...` (HTMX + server-rendered templates)
+- JSON API endpoints: `/api/v1/...` (pure JSON, no HTML)
+
+**WebSockets:**
+- **One WS connection per simulation** at `/ws/simulation/{simulation_id}/`
+- WS messages are **hints only**, not source of truth
+- Clients must implement **catch-up** via API endpoints after reconnect or missed events
+- Notifications WebSocket at `/ws/notifications/` for user-level events
+
+**Authentication:**
+- Web: Session cookies (existing Django auth)
+- Mobile: JWT tokens with refresh token flow
+- WebSocket: Token passed in query param (logs sanitized) or subprotocol header
+
 ## Common Commands
 
 ### Development Server
@@ -592,3 +617,160 @@ async def test_async_service():
 4. **Migration dependencies**: Watch for ordering constraints on AI response models when creating migrations
 5. **Redis connectivity**: Both Django cache and Celery require Redis. Verify connectivity for background tasks
 6. **Service Call Records**: Background service calls persist their state. Clean up old records periodically to avoid database bloat
+
+## API Contracts
+
+### REST API (`/api/v1/`)
+
+**Framework**: Django Ninja with Pydantic schemas
+- OpenAPI schema auto-generated from code
+- Export static OpenAPI JSON via `python manage.py export_openapi > openapi.json`
+- CI validates OpenAPI schema stability
+
+**Versioning**: URL path versioning (`/api/v1/`, future `/api/v2/`)
+
+**Authentication**:
+- Web clients: Session cookies (use existing `@login_required` or Ninja auth)
+- Mobile clients: JWT Bearer tokens in `Authorization` header
+- Endpoint: `POST /api/v1/auth/token/` returns `{access_token, refresh_token}`
+- Refresh: `POST /api/v1/auth/token/refresh/`
+
+**Error Format** (RFC 7807-inspired):
+```json
+{
+  "type": "validation_error",
+  "title": "Invalid input",
+  "status": 422,
+  "detail": "Field 'content' is required",
+  "instance": "/api/v1/messages/",
+  "correlation_id": "abc123"
+}
+```
+
+### WebSocket Event Envelope (v1)
+
+All WebSocket events must use this envelope format:
+
+```json
+{
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "created_at": "2026-01-19T12:34:56.789Z",
+  "simulation_id": "123",
+  "type": "message.created",
+  "correlation_id": "abc123-or-null",
+  "payload": {
+    "message_id": "456",
+    "content": "..."
+  }
+}
+```
+
+**Required Fields**:
+- `event_id` (UUID): Unique event identifier for deduplication
+- `created_at` (ISO 8601): Event timestamp
+- `simulation_id` (string): Simulation context
+- `type` (string): Event type (e.g., `message.created`, `typing.started`, `simulation.ended`)
+- `correlation_id` (string|null): Request correlation ID if available
+- `payload` (object): Event-specific data
+
+**Event Types**:
+- `message.created`: New message — payload includes `message_id`
+- `typing.started` / `typing.stopped`: Typing indicators
+- `simulation.ended`: Simulation completed
+- `metadata.created`: Patient results ready (labs, radiology)
+- `feedback.created`: AI feedback generated
+
+**Client Deduplication**:
+- Track seen `event_id` values to handle duplicate delivery
+- Track seen `message_id` values to prevent duplicate rendering
+
+**WS events are hints**: Clients must fetch full data via API endpoints for catch-up after reconnect.
+
+### Correlation ID (`X-Correlation-ID`)
+
+**Purpose**: Trace requests across services, logs, and async tasks
+
+**Propagation Rules**:
+1. **HTTP requests**: Middleware reads `X-Correlation-ID` header, generates UUID if missing
+2. **Attach to context**: Available via `request.correlation_id` (set by middleware)
+3. **Logs**: All structured logs include `correlation_id` field
+4. **Tasks**: Pass `correlation_id` in service call context
+5. **WS events**: Include in event envelope
+6. **OpenTelemetry**: Set as span attribute for Logfire visibility
+
+**Middleware** (add to `MIDDLEWARE`):
+```python
+class CorrelationIDMiddleware:
+    def __call__(self, request):
+        correlation_id = request.headers.get('X-Correlation-ID') or str(uuid.uuid4())
+        request.correlation_id = correlation_id
+        response = self.get_response(request)
+        response['X-Correlation-ID'] = correlation_id
+        return response
+```
+
+**Logging Integration**:
+```python
+import structlog
+logger = structlog.get_logger()
+logger.info("message_created", correlation_id=request.correlation_id, message_id=msg.id)
+```
+
+### Outbox Pattern
+
+**Purpose**: Durable, replayable delivery of side-effects (WebSocket broadcasts, webhooks, etc.)
+
+**Architecture**:
+1. **Domain persistence**: OrchestrAI service persists result + creates `OutboxEvent` row atomically
+2. **Drain worker**: Separate task reads outbox, delivers to WS/webhooks, marks delivered
+3. **Idempotency**: Each event has deterministic `idempotency_key` (e.g., `{call_id}:{event_type}`)
+4. **Retry**: Failed deliveries retry with exponential backoff
+
+**OutboxEvent Model**:
+```python
+class OutboxEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    event_type = models.CharField(max_length=100)  # e.g., "ws.message.created"
+    payload = models.JSONField()
+    simulation_id = models.CharField(max_length=100, db_index=True)
+    correlation_id = models.CharField(max_length=100, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    delivered_at = models.DateTimeField(null=True, db_index=True)
+    delivery_attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(null=True)
+```
+
+**Drainer** (hybrid mode):
+1. **Periodic task**: Celery Beat runs every 10-30s, processes pending events
+2. **Immediate poke**: After persistence, `sync_to_async` triggers drain for low latency
+3. **Concurrent safety**: `select_for_update(skip_locked=True)` prevents races
+
+**Delivery Sinks**:
+- WebSocket: `channel_layer.group_send()`
+- Future: Webhooks, push notifications
+
+### Catch-up API Endpoints
+
+Clients use these to recover missed events after reconnect:
+
+**Messages**:
+```
+GET /api/v1/simulations/{id}/messages/?after={event_id}&limit=50
+```
+
+**Events**:
+```
+GET /api/v1/simulations/{id}/events/?after={event_id}&limit=50
+```
+
+**Cursor Format**: UUID-based `event_id` — opaque cursor, no ordering guarantees beyond "after this ID"
+
+**Response**:
+```json
+{
+  "items": [...],
+  "next_cursor": "uuid-or-null",
+  "has_more": true
+}
+```

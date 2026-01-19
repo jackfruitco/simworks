@@ -11,6 +11,7 @@ dependencies = [
     "django-autoslug>=1.9.9",
     # "django-celery-beat>=2.8.1",
     "django-htmx>=1.27.0",
+    "django-ninja>=1.4.0",
     "django-imagekit>=5.0.0",
     "django-polymorphic>=4.4.0",
     "django-redis>=6.0.0",
