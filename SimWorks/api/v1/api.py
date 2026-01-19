@@ -10,6 +10,8 @@ from ninja import NinjaAPI
 from ninja.errors import HttpError, ValidationError
 from ninja.security import django_auth
 
+from api.v1.auth import JWTAuth
+from api.v1.endpoints.auth import router as auth_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
 
 
@@ -126,18 +128,39 @@ def health_check(request: HttpRequest) -> HealthResponse:
     )
 
 
-# Authenticated health check (to test auth)
+# Authenticated health check (session auth - for web clients)
 @api.get(
     "/health/auth",
     response=HealthResponse,
     auth=django_auth,
     tags=["system"],
-    summary="Authenticated health check",
-    description="Health check that requires authentication.",
+    summary="Authenticated health check (session)",
+    description="Health check that requires session authentication (web clients).",
 )
 def health_check_auth(request: HttpRequest) -> HealthResponse:
-    """Health check requiring authentication."""
+    """Health check requiring session authentication."""
     return HealthResponse(
         status="ok",
         timestamp=datetime.now(timezone.utc),
     )
+
+
+# JWT-authenticated health check (for mobile clients)
+@api.get(
+    "/health/jwt",
+    response=HealthResponse,
+    auth=JWTAuth(),
+    tags=["system"],
+    summary="Authenticated health check (JWT)",
+    description="Health check that requires JWT authentication (mobile clients).",
+)
+def health_check_jwt(request: HttpRequest) -> HealthResponse:
+    """Health check requiring JWT authentication."""
+    return HealthResponse(
+        status="ok",
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# Register routers
+api.add_router("/auth", auth_router)

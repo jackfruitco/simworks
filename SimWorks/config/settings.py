@@ -203,6 +203,11 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25  # seconds
 # Celery Beat config
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
+# JWT Configuration (for mobile API clients)
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)  # Use separate key in production
+JWT_ACCESS_TOKEN_LIFETIME = int(os.getenv("JWT_ACCESS_TOKEN_LIFETIME", 3600))  # 1 hour
+JWT_REFRESH_TOKEN_LIFETIME = int(os.getenv("JWT_REFRESH_TOKEN_LIFETIME", 604800))  # 7 days
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 AUTH_PASSWORD_VALIDATORS = [

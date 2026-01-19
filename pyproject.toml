@@ -24,6 +24,7 @@ dependencies = [
     "pre-commit>=4.5.0",
     "psycopg>=3.2.12",
     "psycopg-binary>=3.3.2",
+    "pyjwt>=2.9.0",
     "pydantic==2.12.5",
     "pydantic-django>=0.1.1",
     "pytest>=9.0.2",
