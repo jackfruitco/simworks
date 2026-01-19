@@ -17,6 +17,7 @@ from api.v1.endpoints.messages import router as messages_router
 from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
+from core.ratelimit import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,24 @@ def validation_error_handler(request: HttpRequest, exc: ValidationError):
         ).model_dump(),
         status=422,
     )
+
+
+@api.exception_handler(RateLimitExceeded)
+def rate_limit_error_handler(request: HttpRequest, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors."""
+    response = api.create_response(
+        request,
+        create_error_response(
+            request,
+            error_type="rate_limit_exceeded",
+            title="Too many requests",
+            status=429,
+            detail=str(exc.message),
+        ).model_dump(),
+        status=429,
+    )
+    response["Retry-After"] = str(exc.retry_after)
+    return response
 
 
 @api.exception_handler(HttpError)

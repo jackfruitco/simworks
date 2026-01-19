@@ -17,6 +17,7 @@ from api.v1.schemas.messages import (
     MessageOut,
     message_to_out,
 )
+from core.ratelimit import api_rate_limit, message_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ def get_simulation_for_user(simulation_id: int, user):
     summary="List messages in a simulation",
     description="Returns messages for a simulation with cursor-based pagination.",
 )
+@api_rate_limit
 def list_messages(
     request: HttpRequest,
     simulation_id: int,
@@ -100,6 +102,7 @@ def list_messages(
     summary="Create a message",
     description="Creates a new message in a simulation. Returns 201 for immediate response, 202 if AI response is pending.",
 )
+@message_rate_limit
 def create_message(
     request: HttpRequest,
     simulation_id: int,
@@ -149,6 +152,7 @@ def create_message(
     summary="Get a specific message",
     description="Returns a specific message by ID.",
 )
+@api_rate_limit
 def get_message(
     request: HttpRequest,
     simulation_id: int,

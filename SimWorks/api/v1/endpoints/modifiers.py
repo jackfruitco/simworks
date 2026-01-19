@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from ninja import Query, Router
 
 from api.v1.schemas.modifiers import ModifierGroupOut
+from core.ratelimit import rate_limit
 
 router = Router(tags=["modifiers"])
 
@@ -17,6 +18,7 @@ router = Router(tags=["modifiers"])
     summary="List modifier groups",
     description="Returns available simulation modifier groups. Optionally filter by group names.",
 )
+@rate_limit(key="ip", limit=100, period=60, prefix="modifiers")
 def list_modifier_groups(
     request: HttpRequest,
     groups: list[str] = Query(default=None, description="Filter by group names"),

@@ -12,6 +12,7 @@ from ninja.errors import HttpError
 from pydantic import BaseModel, Field
 
 from api.v1.auth import InvalidTokenError, create_tokens, refresh_access_token
+from core.ratelimit import auth_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ class RefreshResponse(BaseModel):
     summary="Obtain JWT tokens",
     description="Authenticate with username/password and receive JWT tokens.",
 )
+@auth_rate_limit
 def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
     """Obtain JWT access and refresh tokens.
 
@@ -125,6 +127,7 @@ def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
     summary="Refresh access token",
     description="Use a refresh token to obtain a new access token.",
 )
+@auth_rate_limit
 def refresh_token(request: HttpRequest, body: RefreshRequest) -> RefreshResponse:
     """Refresh an access token using a refresh token.
 

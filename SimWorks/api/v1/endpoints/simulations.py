@@ -19,6 +19,7 @@ from api.v1.schemas.simulations import (
     SimulationOut,
     simulation_to_out,
 )
+from core.ratelimit import api_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ router = Router(tags=["simulations"], auth=JWTAuth())
     summary="List user's simulations",
     description="Returns all simulations for the authenticated user, ordered by most recent first.",
 )
+@api_rate_limit
 def list_simulations(
     request: HttpRequest,
     limit: int = Query(default=20, ge=1, le=100, description="Max items to return"),
@@ -78,6 +80,7 @@ def list_simulations(
     summary="Get simulation details",
     description="Returns details for a specific simulation.",
 )
+@api_rate_limit
 def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     """Get a specific simulation by ID."""
     from simulation.models import Simulation
@@ -98,6 +101,7 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     summary="Create a new simulation",
     description="Creates a new simulation for the authenticated user.",
 )
+@api_rate_limit
 def create_simulation(request: HttpRequest, body: SimulationCreate) -> SimulationOut:
     """Create a new simulation."""
     from simulation.models import Simulation
@@ -126,6 +130,7 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
     summary="End a simulation",
     description="Ends an in-progress simulation and triggers feedback generation.",
 )
+@api_rate_limit
 def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndResponse:
     """End a simulation."""
     from simulation.models import Simulation
