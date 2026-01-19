@@ -254,6 +254,8 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
 
             // Append message
+            // Use message_id from envelope payload, fallback to id for legacy format
+            const messageId = data.message_id ?? data.id;
             const isFeedbackConversation = !!data.feedbackConversation;
             this.appendMessage(
                 content,
@@ -261,7 +263,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 isFeedbackConversation,
                 status,
                 displayName,
-                data.id,
+                messageId,
                 data.mediaList ?? []
             );
 
