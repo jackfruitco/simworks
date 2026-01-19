@@ -1,9 +1,8 @@
 /**
  * ToolManager - Declarative tool refresh coordination.
  *
- * Replaces scattered `window.simulationManager.checkTools()` calls with
- * declarative configuration. Tools automatically refresh when subscribed
- * events are triggered via the SimulationEventBus.
+ * Tools automatically refresh when subscribed events are triggered
+ * via the SimulationEventBus.
  *
  * Features:
  * - Declarative tool registration with event subscriptions
@@ -237,23 +236,6 @@ class ToolManager {
             console.info(`[ToolManager] Refreshed '${toolName}' via HTML inject`);
         } else {
             console.warn(`[ToolManager] Could not find element for tool: ${toolName}`);
-        }
-    }
-
-    /**
-     * Check multiple tools (compatibility method for SimulationManager).
-     * @param {string[]} toolNames - Array of tool names
-     * @param {boolean} forceRefresh - Force refresh without checksum check
-     */
-    checkTools(toolNames, forceRefresh = false) {
-        console.debug(`[ToolManager] Checking tools: ${toolNames.join(', ')}`);
-
-        for (const toolName of toolNames) {
-            if (forceRefresh) {
-                this.refresh(toolName);
-            } else {
-                this.checkAndRefresh(toolName);
-            }
         }
     }
 

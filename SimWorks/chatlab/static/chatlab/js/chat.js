@@ -196,9 +196,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
             // Auto-discover any additional tools not explicitly configured
             this.toolManager.autoDiscover();
-
-            // Expose toolManager on window for backward compatibility
-            window.toolManager = this.toolManager;
         },
 
         handleInitMessage(data) {

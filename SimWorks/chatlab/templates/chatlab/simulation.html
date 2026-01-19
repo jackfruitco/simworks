@@ -72,14 +72,6 @@
 
 {% block scripts %}
     {{ block.super }}
-    <script src="{% static 'js/simulation.js' %}"></script>
-    <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            window.simulationManager = SimulationManager({{ simulation.id }});
-            simulationManager.init();
-        });
-    </script>
-
     <script>
     function simTimer(startTimestamp, endTimestamp = null, timeLimitMs = null) {
         return {
