@@ -85,7 +85,6 @@ INSTALLED_APPS = [
     "simulation",
     "chatlab",
     "trainerlab",
-    "strawberry_django",
     "imagekit",
 ]
 

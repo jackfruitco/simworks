@@ -30,14 +30,12 @@ dependencies = [
     "pytest>=9.0.2",
     "pytest-django>=4.11.1",
     "redis>=7.1.0",
-    "strawberry-graphql-django==0.70.1",
     "typing-extensions>=4.15.0",
     "zope-interface==8.1.1",
     "python-slugify>=8.0.4",
     "orchestrai",
     "orchestrai-django",
     "django>=6.0",
-    "strawberry-graphql>=0.287.3",
     "twisted[http2,tls]>=25.5.0",
 ]
 
