@@ -14,7 +14,6 @@ INSTALLED_APPS = [
     "chatlab",
     "trainerlab",
     "channels",  # For WebSocket support
-    "strawberry_django",  # Required until GraphQL is removed
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 USE_TZ = True

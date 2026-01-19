@@ -14,7 +14,7 @@ from ninja.security import django_auth
 from api.v1.auth import JWTAuth
 from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.messages import router as messages_router
-Cfrom api.v1.endpoints.modifiers import router as modifiers_router
+from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
 
