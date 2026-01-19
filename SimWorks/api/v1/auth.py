@@ -62,8 +62,26 @@ class JWTAuth(HttpBearer):
 
 
 def get_jwt_secret() -> str:
-    """Get the JWT signing secret."""
-    return getattr(settings, "JWT_SECRET_KEY", settings.SECRET_KEY)
+    """Get the JWT signing secret.
+
+    Requires JWT_SECRET_KEY to be set in Django settings.
+    Falls back to SECRET_KEY only in DEBUG mode with a warning.
+    """
+    jwt_secret = getattr(settings, "JWT_SECRET_KEY", None)
+    if jwt_secret:
+        return jwt_secret
+
+    if settings.DEBUG:
+        logger.warning(
+            "JWT_SECRET_KEY not set, falling back to SECRET_KEY. "
+            "Set JWT_SECRET_KEY in production."
+        )
+        return settings.SECRET_KEY
+
+    raise ValueError(
+        "JWT_SECRET_KEY must be set in Django settings for production. "
+        "Generate a secure secret with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+    )
 
 
 def get_access_token_lifetime() -> int:

@@ -18,7 +18,7 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
             this.notifyTyping();
         },
         notifyTyping() {
-            this.$root?.notifyTyping();
+            this.$dispatch('form:typing');
         },
         autoResize() {
             if (this.$refs.messageInput) {
@@ -29,12 +29,10 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
         send() {
             if (this.isLocked) return;
 
-            if (this.$root) {
-                this.$root.messageText = this.messageText;
-                this.$root.sendMessage();
-                this.messageText = this.$root.messageText;
-            }
+            // Dispatch event with message content to parent ChatManager
+            this.$dispatch('form:send', { messageText: this.messageText });
 
+            this.messageText = '';  // Clear locally after dispatch
             this.showEmojiPicker = false;
             this.autoResize();
         },
@@ -42,9 +40,7 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
             this.send();
         },
         syncFromRoot() {
-            if (this.$root && typeof this.$root.messageText === 'string') {
-                this.messageText = this.$root.messageText;
-            }
+            // Form now manages its own state via $dispatch events
         },
         placeholderText() {
             if (this.isLocked) return 'Simulation locked — chat is read-only';
@@ -69,7 +65,7 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
  * Uses SimulationSocket internally and listens for sim:* events via EventBus.
  * Tool refresh is handled declaratively by ToolManager.
  */
-function ChatManager(simulation_id, currentUser, initialChecksum) {
+function ChatManager(simulation_id, currentUser) {
     return {
         currentUser,
         simulation_id,
@@ -83,7 +79,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         hasMoreMessages: true,
         systemDisplayInitials: '',
         systemDisplayName: '',
-        checksum: null,
         feedbackContinueConversation: false,
         isChatLocked: false,
 
@@ -114,8 +109,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             // Setup event listeners
             this.setupEventListeners();
             this.loadOlderMessages();
-
-            this.checksum = initialChecksum;
 
             this.newMessageBtn.addEventListener('click', () => {
                 this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
@@ -376,6 +369,14 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             } else {
                 alert('WebSocket is not connected. Please wait and try again.');
             }
+        },
+
+        /**
+         * Handle form:send event dispatched from chatFormState
+         */
+        handleFormSend(detail) {
+            this.messageText = detail.messageText;
+            this.sendMessage();
         },
 
         appendMessage(content, isFromSelf, isFeedbackConversation, status = "", displayName = "", messageId = null, mediaList = []) {

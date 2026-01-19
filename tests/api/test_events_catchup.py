@@ -217,18 +217,17 @@ class TestListEventsPagination:
         assert data["has_more"] is False
         assert data["next_cursor"] is None
 
-    def test_invalid_cursor_returns_from_beginning(
+    def test_invalid_cursor_returns_400(
         self, auth_client, simulation, outbox_events
     ):
-        """Invalid cursor returns events from beginning."""
+        """Invalid cursor returns 400 Bad Request."""
         response = auth_client.get(
             f"/api/v1/simulations/{simulation.pk}/events/?cursor=invalid-uuid"
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 400
         data = response.json()
-        # Should return all events since invalid cursor is ignored
-        assert len(data["items"]) == 5
+        assert "Invalid cursor format" in data["detail"]
 
     def test_limit_validation_min(self, auth_client, simulation):
         """Limit must be at least 1."""

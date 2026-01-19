@@ -45,41 +45,140 @@ document.addEventListener("alpine:init", () => {
   }));
 });
 
+/**
+ * NotificationSocket - WebSocket connection manager for user notifications
+ *
+ * Features:
+ * - Automatic reconnection with exponential backoff
+ * - Deduplication of notifications
+ * - Persistence across page navigation (within 5s window)
+ */
+class NotificationSocket {
+  constructor() {
+    this.socket = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10;
+    this.baseDelay = 1000;
+    this.maxDelay = 30000;
+    this.reconnectTimeoutId = null;
+    this.isIntentionallyClosed = false;
+  }
+
+  connect() {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/`;
+
+    try {
+      this.socket = new WebSocket(wsUrl);
+      this.socket.onopen = () => this.handleOpen();
+      this.socket.onmessage = (event) => this.handleMessage(event);
+      this.socket.onclose = (event) => this.handleClose(event);
+      this.socket.onerror = (error) => this.handleError(error);
+    } catch (error) {
+      console.error('[NotificationSocket] Failed to create WebSocket:', error);
+      this.scheduleReconnect();
+    }
+  }
+
+  handleOpen() {
+    console.debug('[NotificationSocket] Connected');
+    this.reconnectAttempts = 0;
+  }
+
+  handleMessage(event) {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.notification) {
+        const toastData = {
+          message: data.notification,
+          timestamp: Date.now(),
+          type: data.type || "info"
+        };
+
+        const stored = getPersistedToasts();
+        if (!stored.find(n => n.message === data.notification)) {
+          stored.push(toastData);
+          savePersistedToasts(stored);
+          showToast(toastData);
+        }
+      }
+    } catch (error) {
+      console.error('[NotificationSocket] Failed to parse message:', error);
+    }
+  }
+
+  handleClose(event) {
+    if (this.isIntentionallyClosed) {
+      console.debug('[NotificationSocket] Connection closed intentionally');
+      return;
+    }
+
+    console.warn('[NotificationSocket] Connection closed:', event.code, event.reason);
+    this.scheduleReconnect();
+  }
+
+  handleError(error) {
+    console.error('[NotificationSocket] WebSocket error:', error);
+  }
+
+  scheduleReconnect() {
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('[NotificationSocket] Max reconnection attempts reached');
+      return;
+    }
+
+    const delay = Math.min(
+      this.baseDelay * Math.pow(2, this.reconnectAttempts),
+      this.maxDelay
+    );
+
+    console.debug(`[NotificationSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
+
+    this.reconnectTimeoutId = setTimeout(() => {
+      this.reconnectAttempts++;
+      this.connect();
+    }, delay);
+  }
+
+  close() {
+    this.isIntentionallyClosed = true;
+    if (this.reconnectTimeoutId) {
+      clearTimeout(this.reconnectTimeoutId);
+    }
+    if (this.socket) {
+      this.socket.close();
+    }
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
-  const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
-  const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/`;
-
-  const notificationSocket = new WebSocket(wsUrl);
-
+  // Restore persisted toasts from previous page
   const persisted = getPersistedToasts();
   const now = Date.now();
   const valid = [];
 
   persisted.forEach(({ message, timestamp }) => {
     if (now - timestamp < 5000) {
-      showToast({ message, type: "info" }); // Default type for persisted toasts
+      showToast({ message, type: "info" });
       valid.push({ message, timestamp });
     }
   });
   savePersistedToasts(valid);
 
-  notificationSocket.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    if (data.notification) {
-      const toastData = {
-        message: data.notification,
-        timestamp: Date.now(),
-        type: data.type || "info"
-      };
+  // Initialize WebSocket with reconnection support
+  const notificationSocket = new NotificationSocket();
+  notificationSocket.connect();
 
-      const stored = getPersistedToasts();
-      if (!stored.find(n => n.message === data.notification)) {
-          stored.push(toastData);
-          savePersistedToasts(stored);
-          showToast(toastData);
-      }
-    }
-  };
+  // Expose for debugging
+  window._notificationSocket = notificationSocket;
 });
 
 function showToast({ message, type }) {

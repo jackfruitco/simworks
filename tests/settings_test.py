@@ -1,4 +1,5 @@
 SECRET_KEY = "test"
+JWT_SECRET_KEY = "test-jwt-secret-key-for-tests"
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",

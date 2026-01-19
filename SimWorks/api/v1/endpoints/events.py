@@ -10,22 +10,13 @@ from ninja.errors import HttpError
 from api.v1.auth import JWTAuth
 from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
+from api.v1.utils import get_simulation_for_user
 from config.logging import get_logger
 from core.ratelimit import api_rate_limit
 
 logger = get_logger(__name__)
 
 router = Router(tags=["events"], auth=JWTAuth())
-
-
-def get_simulation_for_user(simulation_id: int, user):
-    """Get a simulation, ensuring the user has access."""
-    from simulation.models import Simulation
-
-    try:
-        return Simulation.objects.get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
 
 
 @router.get(
@@ -71,14 +62,15 @@ def list_events(
     if cursor:
         try:
             cursor_uuid = uuid_module.UUID(cursor)
-            # Get the created_at of the cursor event
-            try:
-                cursor_event = OutboxEvent.objects.get(id=cursor_uuid)
-                queryset = queryset.filter(created_at__gt=cursor_event.created_at)
-            except OutboxEvent.DoesNotExist:
-                pass  # Invalid cursor, return from beginning
         except ValueError:
-            pass  # Invalid UUID, return from beginning
+            raise HttpError(400, "Invalid cursor format: must be a valid UUID")
+
+        # Get the created_at of the cursor event
+        try:
+            cursor_event = OutboxEvent.objects.get(id=cursor_uuid)
+            queryset = queryset.filter(created_at__gt=cursor_event.created_at)
+        except OutboxEvent.DoesNotExist:
+            raise HttpError(400, "Invalid cursor: event not found")
 
     # Fetch one extra to check for more
     events = list(queryset[: limit + 1])

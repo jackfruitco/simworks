@@ -135,6 +135,14 @@ def generic_error_handler(request: HttpRequest, exc: Exception):
     )
 
 
+def _build_health_response() -> HealthResponse:
+    """Build a standard health check response."""
+    return HealthResponse(
+        status="ok",
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
 # Health check endpoint (unauthenticated)
 @api.get(
     "/health",
@@ -145,10 +153,7 @@ def generic_error_handler(request: HttpRequest, exc: Exception):
 )
 def health_check(request: HttpRequest) -> HealthResponse:
     """Simple health check endpoint."""
-    return HealthResponse(
-        status="ok",
-        timestamp=datetime.now(timezone.utc),
-    )
+    return _build_health_response()
 
 
 # Authenticated health check (session auth - for web clients)
@@ -162,10 +167,7 @@ def health_check(request: HttpRequest) -> HealthResponse:
 )
 def health_check_auth(request: HttpRequest) -> HealthResponse:
     """Health check requiring session authentication."""
-    return HealthResponse(
-        status="ok",
-        timestamp=datetime.now(timezone.utc),
-    )
+    return _build_health_response()
 
 
 # JWT-authenticated health check (for mobile clients)
@@ -179,10 +181,7 @@ def health_check_auth(request: HttpRequest) -> HealthResponse:
 )
 def health_check_jwt(request: HttpRequest) -> HealthResponse:
     """Health check requiring JWT authentication."""
-    return HealthResponse(
-        status="ok",
-        timestamp=datetime.now(timezone.utc),
-    )
+    return _build_health_response()
 
 
 # Register routers

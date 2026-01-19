@@ -705,6 +705,7 @@
             "examples": [
               "john.doe"
             ],
+            "maxLength": 255,
             "minLength": 1,
             "title": "Username",
             "type": "string"
@@ -714,6 +715,7 @@
             "examples": [
               "secret123"
             ],
+            "maxLength": 1024,
             "minLength": 1,
             "title": "Password",
             "type": "string"

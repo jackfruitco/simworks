@@ -15,22 +15,13 @@ from api.v1.schemas.messages import (
     MessageOut,
     message_to_out,
 )
+from api.v1.utils import get_simulation_for_user
 from config.logging import get_logger
 from core.ratelimit import api_rate_limit, message_rate_limit
 
 logger = get_logger(__name__)
 
 router = Router(tags=["messages"], auth=JWTAuth())
-
-
-def get_simulation_for_user(simulation_id: int, user):
-    """Get a simulation, ensuring the user has access."""
-    from simulation.models import Simulation
-
-    try:
-        return Simulation.objects.get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
 
 
 @router.get(

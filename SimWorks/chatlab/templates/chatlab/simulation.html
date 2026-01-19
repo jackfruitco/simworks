@@ -10,6 +10,7 @@
     <script src="{% static 'core/js/simulation-socket.js' %}"></script>
     <script src="{% static 'core/js/simulation-event-bus.js' %}"></script>
     <script src="{% static 'core/js/tool-manager.js' %}"></script>
+    <script src="{% static 'chatlab/js/simulation-ui.js' %}"></script>
     <script src="{% static 'chatlab/js/chat.js' %}"></script>
     {{ block.super }}
 {% endblock head-scripts %}
@@ -19,6 +20,7 @@
     data-feedback-continuation="{{ feedback_continuation|yesno:'true,false' }}"
     data-is-chat-locked="{{ simulation.simulation_locked|yesno:'true,false' }}"
     data-sim-id="{{ simulation.id }}"
+    data-end-simulation-url="{% url 'chatlab:end_simulation' simulation.id %}"
 {% endblock context_attrs %}
 
 {% block content %}
@@ -72,116 +74,4 @@
 
 {% block scripts %}
     {{ block.super }}
-    <script>
-    function simTimer(startTimestamp, endTimestamp = null, timeLimitMs = null) {
-        return {
-            startTimestamp,
-            endTimestamp,
-            timeLimitMs,
-
-            formatted: '00:00',
-            countdown: timeLimitMs !== null,
-            ended: endTimestamp !== null,
-            intervalId: null,
-            csrfToken: document.querySelector('[name=csrfmiddlewaretoken]')?.value ?? "",
-
-            start() {
-                if (this.ended) {
-                    this.updateStatic();
-                } else {
-                    this.updateLive();
-                    this.intervalId = setInterval(() => this.updateLive(), 1000);
-                }
-            },
-
-            updateStatic() {
-                if (this.startTimestamp && this.endTimestamp) {
-                    const elapsedMs = this.endTimestamp - this.startTimestamp;
-                    this.formatted = this.formatDuration(elapsedMs);
-                } else {
-                    this.formatted = "00:00";
-                }
-            },
-
-            updateLive() {
-                const now = Date.now();
-                const elapsedMs = now - this.startTimestamp;
-
-                if (this.countdown) {
-                    const remainingMs = this.timeLimitMs - elapsedMs;
-                    if (remainingMs <= 0) {
-                        this.autoEnd();
-                        this.formatted = '00:00';
-                    } else {
-                        this.formatted = this.formatDuration(remainingMs);
-                    }
-                } else {
-                    this.formatted = this.formatDuration(elapsedMs);
-                }
-            },
-
-            autoEnd() {
-                if (this.intervalId) {
-                    clearInterval(this.intervalId);
-                }
-                if (!this.ended) {
-                    fetch("{% url 'chatlab:end_simulation' simulation.id %}", {
-                        method: "POST",
-                        headers: {
-                            "X-CSRFToken": this.csrfToken,
-                        },
-                    });
-                    this.ended = true;
-                }
-            },
-
-            formatDuration(ms) {
-                const totalSeconds = Math.floor(ms / 1000);
-                const hours = Math.floor(totalSeconds / 3600);
-                const minutes = Math.floor((totalSeconds % 3600) / 60);
-                const seconds = totalSeconds % 60;
-
-                if (hours > 0) {
-                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-                } else {
-                    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-                }
-            }
-        };
-    }
-    </script>
-
-    <script>
-    function sidebarState(simulationId) {
-        return {
-            sections: {
-                simMetadata: JSON.parse(localStorage.getItem(`simMetadataOpen_${simulationId}`) ?? 'true'),
-                patientMetadata: JSON.parse(localStorage.getItem(`patientMetadataOpen_${simulationId}`) ?? 'true'),
-                feedback: JSON.parse(localStorage.getItem(`simFeedbackOpen_${simulationId}`) ?? 'true'),
-            },
-            toggle(section) {
-                this.sections[section] = !this.sections[section];
-                localStorage.setItem(`${section}Open_${simulationId}`, JSON.stringify(this.sections[section]));
-            },
-            isOpen(section) {
-                return this.sections[section];
-            }
-        }
-    }
-
-    function toolPanelState(toolName, simulationId) {
-        const storageKey = `toolOpen_${toolName}_${simulationId}`;
-        const storedValue = localStorage.getItem(storageKey);
-        return {
-            toolName,
-            panelId: `${toolName}_tool`,
-            storageKey,
-            isOpen: storedValue === null ? true : JSON.parse(storedValue),
-            toggle() {
-                this.isOpen = !this.isOpen;
-                localStorage.setItem(this.storageKey, JSON.stringify(this.isOpen));
-            },
-        }
-    }
-    </script>
 {% endblock scripts %}

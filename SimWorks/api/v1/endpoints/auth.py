@@ -24,12 +24,14 @@ class LoginRequest(BaseModel):
     username: str = Field(
         ...,
         min_length=1,
+        max_length=255,
         description="Username or email",
         examples=["john.doe"],
     )
     password: str = Field(
         ...,
         min_length=1,
+        max_length=1024,
         description="User password",
         examples=["secret123"],
     )
@@ -111,8 +113,9 @@ def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
         raise HttpError(401, "Invalid credentials")
 
     if not user.is_active:
+        # Use same error message to prevent user enumeration
         logger.warning("auth.login_failed", username=body.username, reason="user_inactive")
-        raise HttpError(401, "User account is disabled")
+        raise HttpError(401, "Invalid credentials")
 
     tokens = create_tokens(user)
     logger.info("auth.tokens_issued", user_id=user.pk, username=user.username)
@@ -140,5 +143,6 @@ def refresh_token(request: HttpRequest, body: RefreshRequest) -> RefreshResponse
         return RefreshResponse(**result)
 
     except InvalidTokenError as e:
+        # Log full error but return generic message to prevent information leakage
         logger.warning("auth.token_refresh_failed", error=str(e))
-        raise HttpError(401, str(e))
+        raise HttpError(401, "Invalid or expired refresh token")
