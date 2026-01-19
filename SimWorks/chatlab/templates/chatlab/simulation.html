@@ -7,6 +7,7 @@
 {% endblock style %}
 
 {% block head-scripts %}
+    <script src="{% static 'core/js/simulation-socket.js' %}"></script>
     <script src="{% static 'chatlab/js/chat.js' %}"></script>
     {{ block.super }}
 {% endblock head-scripts %}
@@ -76,7 +77,6 @@
             simulationManager.init();
         });
     </script>
-    <script src="{% static 'chatlab/js/chat.js' %}"></script>
 
     <script>
     function simTimer(startTimestamp, endTimestamp = null, timeLimitMs = null) {

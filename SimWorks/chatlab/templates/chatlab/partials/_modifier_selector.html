@@ -1,0 +1,19 @@
+{# HTMX partial: Modifier selector checkboxes #}
+{# Loaded via hx-get="{% url 'chatlab:modifier_selector' %}" #}
+
+{% for group in modifier_groups %}
+<fieldset class="modifier-group" style="margin-bottom: 1em;">
+    <legend style="font-weight: bold;">{{ group.group }}</legend>
+    {% for mod in group.modifiers %}
+    <label style="display: block;">
+        <input type="checkbox"
+               name="modifier"
+               value="{{ mod.key }}"
+               class="modifier-checkbox">
+        <span>{{ mod.description }}</span>
+    </label>
+    {% endfor %}
+</fieldset>
+{% empty %}
+<p class="text-muted">No modifiers available</p>
+{% endfor %}

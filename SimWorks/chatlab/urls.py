@@ -8,6 +8,7 @@ app_name = "chatlab"
 urlpatterns = [
     path("", views.index, name="index"),
     path("simulation/create/", views.create_simulation, name="create_simulation"),
+    path("api/modifier-selector/", views.modifier_selector, name="modifier_selector"),
     path(
         "simulation/<int:simulation_id>/run/",
         views.run_simulation,

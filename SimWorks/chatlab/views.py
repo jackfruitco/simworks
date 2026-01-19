@@ -178,6 +178,26 @@ def load_older_messages(request, simulation_id):
 from django.views.decorators.http import require_POST
 
 
+@require_GET
+@login_required
+def modifier_selector(request):
+    """Return modifier selector as HTMX partial.
+
+    Returns server-rendered modifier checkboxes for the simulation
+    creation form, replacing the previous GraphQL-based approach.
+    """
+    from simulation.modifiers import get_modifier_groups
+
+    # Get groups for chatlab (exclude Feedback group for now)
+    groups = get_modifier_groups(["ClinicalScenario", "ClinicalDuration"])
+
+    return render(
+        request,
+        "chatlab/partials/_modifier_selector.html",
+        {"modifier_groups": groups},
+    )
+
+
 @require_POST
 @login_required
 def end_simulation(request, simulation_id):

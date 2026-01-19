@@ -128,7 +128,7 @@ services:
         max-file: "3"
 
   celerybeat:
-    profiles: ["workers"]
+    profiles: ["beat"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev

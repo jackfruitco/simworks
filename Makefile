@@ -1,11 +1,17 @@
 DEV_COMPOSE=docker/compose.dev.yaml
 PROD_COMPOSE=docker/compose.prod.yaml
-DEV_PROFILES ?= core,workers
+# Space-separated list; Compose expects repeated --profile flags.
+DEV_PROFILES ?= core workers
+
+# Expands to: --profile core --profile workers
+DEV_PROFILE_FLAGS := $(foreach p,$(DEV_PROFILES),--profile $(p))
+
 DEV_UP_FLAGS ?=
 PROD_UP_FLAGS ?=
 
 .PHONY: help \
-	dev-up dev-up-d dev-up-core dev-up-core-d dev-up-full dev-up-full-d \
+	dev-up dev-up-d dev-up-core dev-up-core-d dev-up-beat dev-up-beat-d \
+	dev-up-core-beat dev-up-core-beat-d dev-up-full dev-up-full-d \
 	dev-down dev-logs dev-shell dev-chown-vols dev-collectstatic \
 	dev-rerun dev-rerun-core dev-rerun-full \
 	prod-build prod-up prod-up-d prod-down prod-logs prod-rerun
@@ -16,8 +22,12 @@ help:
 	@echo "  dev-up-d           Start dev stack detached (build)"
 	@echo "  dev-up-core        Start dev core only (no workers)"
 	@echo "  dev-up-core-d      Start dev core only detached"
-	@echo "  dev-up-full        Start dev core + workers"
-	@echo "  dev-up-full-d      Start dev core + workers detached"
+	@echo "  dev-up-workers     Start dev core + celery only"
+	@echo "  dev-up-workers-d   Start dev core + celery detached"
+	@echo "  dev-up-core-beat   Start dev core + beat (no workers)"
+	@echo "  dev-up-core-beat-d Start dev core + beat detached"
+	@echo "  dev-up-full        Start dev core + workers + beat"
+	@echo "  dev-up-full-d      Start dev core + workers + beat detached"
 	@echo "  dev-rerun          Recreate dev stack (build + force recreate)"
 	@echo "  dev-down           Stop dev stack"
 	@echo "  dev-logs           Tail dev server logs"
@@ -32,7 +42,7 @@ help:
 	@echo "  prod-logs          Tail prod web logs"
 
 dev-up:
-	docker compose -f $(DEV_COMPOSE) --profile $(DEV_PROFILES) up --build $(DEV_UP_FLAGS)
+	docker compose -f $(DEV_COMPOSE) $(DEV_PROFILE_FLAGS) up --build $(DEV_UP_FLAGS)
 
 dev-up-d:
 	$(MAKE) dev-up DEV_UP_FLAGS="-d"
@@ -43,21 +53,36 @@ dev-up-core:
 dev-up-core-d:
 	$(MAKE) dev-up DEV_PROFILES=core DEV_UP_FLAGS="-d"
 
+# beat only
+dev-up-beat:
+	$(MAKE) dev-up DEV_PROFILES=beat
+
+dev-up-beat-d:
+	$(MAKE) dev-up DEV_PROFILES=beat DEV_UP_FLAGS="-d"
+
+# core + workers
+dev-up-workers:
+	$(MAKE) dev-up DEV_PROFILES="core workers"
+
+dev-up-workers-d:
+	$(MAKE) dev-up DEV_PROFILES="core workers" DEV_UP_FLAGS="-d"
+
+# full == core + workers + beat
 dev-up-full:
-	$(MAKE) dev-up DEV_PROFILES=core,workers
+	$(MAKE) dev-up DEV_PROFILES="core workers beat"
 
 dev-up-full-d:
-	$(MAKE) dev-up DEV_PROFILES=core,workers DEV_UP_FLAGS="-d"
+	$(MAKE) dev-up DEV_PROFILES="core workers beat" DEV_UP_FLAGS="-d"
 
 # "rerun" == rebuild + recreate containers (no detach by default)
 dev-rerun:
-	docker compose -f $(DEV_COMPOSE) --profile $(DEV_PROFILES) up --build --force-recreate
+	docker compose -f $(DEV_COMPOSE) $(DEV_PROFILE_FLAGS) up --build --force-recreate
 
 dev-rerun-core:
 	$(MAKE) dev-rerun DEV_PROFILES=core
 
 dev-rerun-full:
-	$(MAKE) dev-rerun DEV_PROFILES=core,workers
+	$(MAKE) dev-rerun DEV_PROFILES="core workers beat"
 
 dev-down:
 	docker compose -f $(DEV_COMPOSE) down

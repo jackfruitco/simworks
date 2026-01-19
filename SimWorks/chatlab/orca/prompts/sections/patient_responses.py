@@ -45,6 +45,7 @@ class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, Promp
         "“Return metadata as a list. Each element must include a type field with one of: patient_demographics, "
         "lab_result, rad_result, patient_history, simulation_metadata, scenario, simulation_feedback. Include all "
         "required fields for that type; omit fields that don’t apply.\n"
+        "Each response MUST include at least one message item.\n"
     )
     message: str = ""
 
