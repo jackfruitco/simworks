@@ -1,4 +1,28 @@
+/**
+ * SimulationManager - DEPRECATED
+ *
+ * This class is deprecated and will be removed in a future release.
+ * Use ToolManager instead, which provides declarative tool configuration
+ * and automatic event-based refresh via SimulationEventBus.
+ *
+ * Migration:
+ *   // Old (SimulationManager):
+ *   window.simulationManager = SimulationManager(123);
+ *   simulationManager.init();
+ *   simulationManager.checkTools(['patient_history'], false);
+ *
+ *   // New (ToolManager):
+ *   const eventBus = new SimulationEventBus();
+ *   const toolManager = new ToolManager(123, eventBus);
+ *   toolManager.configure({
+ *       'patient_history': {
+ *           refreshOn: ['chat.message_created'],
+ *           refreshMode: 'checksum',
+ *       },
+ *   });
+ */
 window.SimulationManager = function(simulation_id) {
+    console.warn("[SimulationManager] DEPRECATED: Use ToolManager instead. See simulation.js for migration guide.");
     console.debug("[SimulationManager] Script loaded");
     return {
         simulation_id,

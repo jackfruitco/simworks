@@ -66,14 +66,16 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
 /**
  * ChatManager - Alpine component using SimulationSocket for WebSocket communication
  *
- * Uses SimulationSocket internally and listens for sim:* events.
- * This enables a clean separation between WebSocket handling and UI logic.
+ * Uses SimulationSocket internally and listens for sim:* events via EventBus.
+ * Tool refresh is handled declaratively by ToolManager.
  */
 function ChatManager(simulation_id, currentUser, initialChecksum) {
     return {
         currentUser,
         simulation_id,
         socket: null,
+        eventBus: null,
+        toolManager: null,
         messageText: '',
         typingTimeout: null,
         lastTypedTime: 0,
@@ -105,6 +107,10 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             // Initialize WebSocket via SimulationSocket
             this.initializeSocket();
 
+            // Initialize EventBus and ToolManager
+            this.initializeEventBus();
+            this.initializeToolManager();
+
             // Setup event listeners
             this.setupEventListeners();
             this.loadOlderMessages();
@@ -129,74 +135,70 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         },
 
         /**
-         * Initialize SimulationSocket and listen for events
+         * Initialize SimulationSocket
          */
         initializeSocket() {
             // Create socket instance (from simulation-socket.js)
             this.socket = new SimulationSocket(this.simulation_id, {
                 contentMode: this.contentMode
             });
-
-            // Listen for sim:* events on window
-            this.setupSocketEventListeners();
         },
 
         /**
-         * Setup listeners for sim:* CustomEvents dispatched by SimulationSocket
+         * Initialize EventBus and subscribe to chat-related events
          */
-        setupSocketEventListeners() {
-            // Init message - patient display name
-            window.addEventListener('sim:init_message', (e) => {
-                this.handleInitMessage(e.detail);
-            });
+        initializeEventBus() {
+            this.eventBus = new SimulationEventBus();
+            this.eventBus.attachSocket(this.socket);
 
-            // Chat message created
-            window.addEventListener('sim:chat.message_created', (e) => {
-                this.handleChatMessage(e.detail);
-            });
+            // Subscribe to chat UI events only
+            this.eventBus.on('init_message', (data) => this.handleInitMessage(data));
+            this.eventBus.on('chat.message_created', (data) => this.handleChatMessage(data));
+            this.eventBus.on('typing', (data) => this.handleTyping(data, true));
+            this.eventBus.on('stopped_typing', (data) => this.handleTyping(data, false));
+            this.eventBus.on('message_status_update', (data) => this.handleMessageStatusUpdate(data));
+            this.eventBus.on('error', (data) => this.handleError(data));
 
-            // Typing events
-            window.addEventListener('sim:typing', (e) => {
-                this.handleTyping(e.detail, true);
-            });
-
-            window.addEventListener('sim:stopped_typing', (e) => {
-                this.handleTyping(e.detail, false);
-            });
-
-            // Feedback events
-            window.addEventListener('sim:simulation.feedback_created', (e) => {
-                this.handleFeedbackCreated(e.detail);
-            });
-
-            window.addEventListener('sim:simulation.hotwash.created', (e) => {
-                this.handleFeedbackCreated(e.detail);
-            });
-
-            // Feedback continuation
-            window.addEventListener('sim:simulation.feedback.continue_conversation', () => {
+            // Feedback continuation events (UI state only)
+            this.eventBus.on('simulation.feedback.continue_conversation', () => {
                 this.feedbackContinueConversation = true;
             });
-
-            window.addEventListener('sim:simulation.hotwash.continue_conversation', () => {
+            this.eventBus.on('simulation.hotwash.continue_conversation', () => {
                 this.feedbackContinueConversation = true;
             });
+        },
 
-            // Message status update
-            window.addEventListener('sim:message_status_update', (e) => {
-                this.handleMessageStatusUpdate(e.detail);
+        /**
+         * Initialize ToolManager with declarative tool configuration
+         */
+        initializeToolManager() {
+            this.toolManager = new ToolManager(this.simulation_id, this.eventBus);
+
+            // Declarative tool configuration - tools auto-refresh on events
+            this.toolManager.configure({
+                'patient_history': {
+                    refreshOn: ['chat.message_created'],
+                    refreshMode: 'checksum',
+                },
+                'simulation_metadata': {
+                    refreshOn: ['chat.message_created'],
+                    refreshMode: 'checksum',
+                },
+                'simulation_feedback': {
+                    refreshOn: ['simulation.feedback_created', 'simulation.hotwash.created'],
+                    refreshMode: 'html_inject',
+                },
+                'patient_results': {
+                    refreshOn: ['simulation.metadata.results_created'],
+                    refreshMode: 'html_inject',
+                },
             });
 
-            // Metadata results
-            window.addEventListener('sim:simulation.metadata.results_created', (e) => {
-                this.handleMetadataResults(e.detail);
-            });
+            // Auto-discover any additional tools not explicitly configured
+            this.toolManager.autoDiscover();
 
-            // Error handling
-            window.addEventListener('sim:error', (e) => {
-                alert(e.detail.message);
-                window.location.href = e.detail.redirect || "/";
-            });
+            // Expose toolManager on window for backward compatibility
+            window.toolManager = this.toolManager;
         },
 
         handleInitMessage(data) {
@@ -213,20 +215,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? false;
             const messageId = data.message_id ?? data.id;
 
-            // If from simulated user (AI), stop typing indicator and refresh tools
+            // If from simulated user (AI), stop typing indicator
             if (isFromSimulatedUser) {
                 this.simulateSystemTyping(false);
-
-                if (window.simulationManager) {
-                    try {
-                        window.simulationManager.checkTools([
-                            'simulation_metadata',
-                            'patient_history'
-                        ]);
-                    } catch (e) {
-                        console.warn("[ChatManager] checkTools failed:", e);
-                    }
-                }
 
                 // Sidebar pulse for new messages
                 if (localStorage.getItem('seenSidebarTray') === 'true') {
@@ -314,23 +305,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
 
-        handleFeedbackCreated(data) {
-            const html = data?.html;
-            const tool = data?.tool || 'simulation_feedback';
-            const simulationManager = window.simulationManager;
-            try {
-                if (simulationManager) {
-                    if (html) {
-                        simulationManager.refreshToolFromHTML(tool, html);
-                    } else {
-                        simulationManager.checkTools([tool], true);
-                    }
-                }
-            } catch (e) {
-                console.warn("[ChatManager] Tool refresh/check failed:", e);
-            }
-        },
-
         handleMessageStatusUpdate(data) {
             const existing = this.messagesDiv.querySelector(`[data-message-id="${data.id}"]`);
             if (existing) {
@@ -347,16 +321,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
 
-        handleMetadataResults(data) {
-            const html = data?.html || null;
-            const tool = data?.tool || 'patient_results';
-            const simulationManager = window.simulationManager;
-
-            if (html) {
-                simulationManager.refreshToolFromHTML(tool, html);
-            } else {
-                simulationManager.checkTools([tool], true);
-            }
+        handleError(data) {
+            alert(data.message);
+            window.location.href = data.redirect || "/";
         },
 
         notifyTyping() {

@@ -527,6 +527,76 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/events/": {
+      "get": {
+        "operationId": "api_v1_endpoints_events_list_events",
+        "summary": "List events for catch-up",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor (event ID) to start after",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor (event ID) to start after"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Max events to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max events to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_EventEnvelope_"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns events for a simulation, enabling clients to catch up on missed WebSocket events after reconnection. Uses cursor-based pagination with UUID event IDs as cursors.",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/config/modifier-groups/": {
       "get": {
         "operationId": "api_v1_endpoints_modifiers_list_modifier_groups",
@@ -1078,6 +1148,100 @@
           "content"
         ],
         "title": "MessageCreate",
+        "type": "object"
+      },
+      "EventEnvelope": {
+        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.",
+        "properties": {
+          "event_id": {
+            "description": "Unique event identifier (UUID) for deduplication",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "Event type (e.g., 'message.created', 'typing.started')",
+            "examples": [
+              "message.created"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Event timestamp (ISO 8601)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request correlation ID for tracing",
+            "examples": [
+              "abc123-def456"
+            ],
+            "title": "Correlation Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "Event-specific payload data",
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at",
+          "payload"
+        ],
+        "title": "EventEnvelope",
+        "type": "object"
+      },
+      "PaginatedResponse_EventEnvelope_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/EventEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[EventEnvelope]",
         "type": "object"
       },
       "ModifierGroupOut": {
