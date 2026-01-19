@@ -4,6 +4,8 @@
   id="chat-panel"
   x-data="ChatManager('{{ simulation.id }}', '{{ user.username }}')"
   class="chat-container"
+  @form:typing="notifyTyping()"
+  @form:send="handleFormSend($event.detail)"
 >
   <!-- Load Older Button (fallback for scroll) -->
   <button
