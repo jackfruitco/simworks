@@ -1,10 +1,9 @@
 # orchestrai_django/models/mixins.py
-from typing import Any, Iterable, Mapping, Sequence, Self
+import uuid
+from typing import Any, Iterable, Mapping, Self
 
-from asgiref.sync import iscoroutinefunction
 from channels.db import database_sync_to_async
-from django.core.exceptions import FieldDoesNotExist, ValidationError as DjangoValidationError
-from django.db import models, transaction
+from django.db import models
 from django.utils import timezone
 
 
@@ -144,3 +143,138 @@ class ApiAccessControl(models.Model):
             ("read_api", "Can read API"),
             ("write_api", "Can write API"),
         ]
+
+
+class OutboxEvent(models.Model):
+    """Outbox pattern for durable event delivery.
+
+    Events are created atomically with domain changes, then delivered
+    asynchronously by a drain worker. This ensures at-least-once delivery
+    even if the WebSocket connection drops or the server restarts.
+
+    Flow:
+    1. Domain operation creates OutboxEvent in same transaction
+    2. Drain worker (periodic + immediate poke) picks up pending events
+    3. Events are delivered to WebSocket channel layer
+    4. delivered_at is set on successful delivery
+
+    Idempotency:
+    - idempotency_key ensures duplicate events are not created
+    - Clients should deduplicate by event_id
+    """
+
+    class EventStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        DELIVERED = "delivered", "Delivered"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        help_text="Unique event ID, also used as cursor for pagination",
+    )
+
+    idempotency_key = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Unique key to prevent duplicate events (e.g., 'message.created:{message_id}')",
+    )
+
+    event_type = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Event type (e.g., 'message.created', 'simulation.ended')",
+    )
+
+    payload = models.JSONField(
+        help_text="Event payload as JSON",
+    )
+
+    simulation_id = models.PositiveBigIntegerField(
+        db_index=True,
+        help_text="Simulation ID for routing to correct WebSocket group",
+    )
+
+    correlation_id = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="Request correlation ID for tracing",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=EventStatus.choices,
+        default=EventStatus.PENDING,
+        db_index=True,
+        help_text="Current delivery status",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        help_text="When the event was created",
+    )
+
+    delivered_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When the event was successfully delivered",
+    )
+
+    delivery_attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of delivery attempts",
+    )
+
+    last_error = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Last delivery error message",
+    )
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            # For drain worker: find pending events efficiently
+            models.Index(
+                fields=["status", "created_at"],
+                name="outbox_status_created_idx",
+            ),
+            # For catch-up queries: events for a simulation after a cursor
+            models.Index(
+                fields=["simulation_id", "created_at"],
+                name="outbox_sim_created_idx",
+            ),
+            # For cleanup: find old delivered events
+            models.Index(
+                fields=["delivered_at"],
+                name="outbox_delivered_idx",
+                condition=models.Q(delivered_at__isnull=False),
+            ),
+        ]
+        verbose_name = "Outbox Event"
+        verbose_name_plural = "Outbox Events"
+
+    def __str__(self) -> str:
+        return f"OutboxEvent {self.id} ({self.event_type}) - {self.status}"
+
+    def mark_delivered(self) -> None:
+        """Mark event as successfully delivered."""
+        self.status = self.EventStatus.DELIVERED
+        self.delivered_at = timezone.now()
+        self.save(update_fields=["status", "delivered_at"])
+
+    def mark_failed(self, error: str) -> None:
+        """Mark event as failed with error message."""
+        self.status = self.EventStatus.FAILED
+        self.delivery_attempts += 1
+        self.last_error = error
+        self.save(update_fields=["status", "delivery_attempts", "last_error"])
+
+    def increment_attempts(self) -> None:
+        """Increment delivery attempts without changing status."""
+        self.delivery_attempts += 1
+        self.save(update_fields=["delivery_attempts"])

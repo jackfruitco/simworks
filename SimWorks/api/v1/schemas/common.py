@@ -3,7 +3,7 @@
 Includes error responses (RFC 7807) and pagination schemas.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, Field
@@ -75,6 +75,6 @@ class HealthResponse(BaseModel):
 
     status: str = Field(default="ok", description="Service status")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Current server timestamp",
     )

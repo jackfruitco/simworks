@@ -1,7 +1,9 @@
 import inspect
 import json
 import logging
+import uuid
 import warnings
+from datetime import datetime, timezone as dt_timezone
 from enum import Enum
 
 from asgiref.sync import sync_to_async
@@ -218,17 +220,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
 
     async def _generate_stitch_response(self, user_msg: Message) -> None:
-        """Generate a response from Stitch for feedback conversations."""
-        raise NotImplementedError
-        from .orca.services import GenerateStitchResponse
-        GenerateStitchResponse.execute(simulation=self.simulation.pk, user_msg=user_msg)
+        """Generate a response from Stitch for feedback conversations.
 
-        return await acall_connector(
-            generate_hotwash_response,
-            simulation_id=self.simulation.pk,
-            user_msg=user_msg,
-            enqueue=False
-        )
+        TODO: Implement feedback conversation flow with Stitch service.
+        """
+        raise NotImplementedError("Stitch feedback conversation not yet implemented")
 
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
@@ -537,3 +533,63 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def simulation_metadata_results_created(self, event: dict) -> None:
         """Receive simulation metadata results created event and send to client."""
         await self.send(text_data=json.dumps(event, default=json_default))
+
+    async def outbox_event(self, event: dict) -> None:
+        """Handle outbox events delivered by the drain worker.
+
+        This handler receives events from the outbox drain worker and forwards
+        them to connected WebSocket clients with the standardized envelope format.
+
+        The event dict contains:
+            - event: The WebSocket envelope with event_id, event_type, created_at,
+                    correlation_id, and payload
+
+        :param event: Dict containing the WebSocket envelope
+        """
+        func_name = inspect.currentframe().f_code.co_name
+        ChatConsumer.log(func_name)
+
+        envelope = event.get("event", {})
+
+        # Validate envelope has required fields
+        if not envelope.get("event_type"):
+            ChatConsumer.log(
+                func_name,
+                msg="outbox event missing event_type",
+                level=logging.WARNING,
+            )
+            return
+
+        # Forward the envelope to the client
+        await self.send(text_data=json.dumps(envelope, default=json_default))
+
+    @staticmethod
+    def build_envelope(
+        event_type: str,
+        payload: dict,
+        event_id: str | None = None,
+        correlation_id: str | None = None,
+        created_at: str | None = None,
+    ) -> dict:
+        """Build a standardized WebSocket event envelope.
+
+        All WebSocket events should use this format for consistency and
+        client-side deduplication.
+
+        Args:
+            event_type: Event type (e.g., 'message.created', 'typing')
+            payload: Event payload data
+            event_id: Unique event ID (generated if not provided)
+            correlation_id: Request correlation ID for tracing
+            created_at: ISO timestamp (generated if not provided)
+
+        Returns:
+            Standardized envelope dict
+        """
+        return {
+            "event_id": event_id or str(uuid.uuid4()),
+            "event_type": event_type,
+            "created_at": created_at or datetime.now(dt_timezone.utc).isoformat(),
+            "correlation_id": correlation_id,
+            "payload": payload,
+        }

@@ -3,6 +3,7 @@
 This module creates and configures the NinjaAPI instance for v1.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from django.http import HttpRequest
@@ -15,6 +16,8 @@ from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.messages import router as messages_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
+
+logger = logging.getLogger(__name__)
 
 
 def get_correlation_id(request: HttpRequest) -> str | None:
@@ -96,9 +99,6 @@ def http_error_handler(request: HttpRequest, exc: HttpError):
 def generic_error_handler(request: HttpRequest, exc: Exception):
     """Handle unexpected errors."""
     # Log the actual error for debugging
-    import logging
-
-    logger = logging.getLogger(__name__)
     logger.exception("Unexpected API error", extra={"correlation_id": get_correlation_id(request)})
 
     return api.create_response(

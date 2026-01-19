@@ -12,6 +12,7 @@ from ninja import Query, Router
 from ninja.errors import HttpError
 
 from api.v1.auth import JWTAuth
+from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.simulations import (
     SimulationCreate,
     SimulationEndResponse,
@@ -26,7 +27,7 @@ router = Router(tags=["simulations"], auth=JWTAuth())
 
 @router.get(
     "/",
-    response=list[SimulationOut],
+    response=PaginatedResponse[SimulationOut],
     summary="List user's simulations",
     description="Returns all simulations for the authenticated user, ordered by most recent first.",
 )
@@ -35,7 +36,7 @@ def list_simulations(
     limit: int = Query(default=20, ge=1, le=100, description="Max items to return"),
     cursor: str | None = Query(default=None, description="Cursor for pagination (simulation ID)"),
     status: str | None = Query(default=None, description="Filter by status: in_progress, completed"),
-) -> list[SimulationOut]:
+) -> PaginatedResponse[SimulationOut]:
     """List all simulations for the authenticated user."""
     from simulation.models import Simulation
 
@@ -61,7 +62,14 @@ def list_simulations(
     if has_more:
         simulations = simulations[:limit]
 
-    return [simulation_to_out(sim) for sim in simulations]
+    # Calculate next cursor (ID of the last item)
+    next_cursor = str(simulations[-1].pk) if has_more and simulations else None
+
+    return PaginatedResponse(
+        items=[simulation_to_out(sim) for sim in simulations],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
 
 
 @router.get(

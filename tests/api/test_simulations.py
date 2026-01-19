@@ -86,8 +86,11 @@ class TestListSimulations:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["id"] == simulation.pk
+        assert "items" in data
+        assert "has_more" in data
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == simulation.pk
+        assert data["has_more"] is False
 
     def test_list_simulations_excludes_other_users(
         self, auth_client, test_user, other_user
@@ -107,7 +110,7 @@ class TestListSimulations:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 0  # No simulations for test_user
+        assert len(data["items"]) == 0  # No simulations for test_user
 
     def test_list_simulations_with_status_filter(self, auth_client, test_user):
         """Can filter by status."""
@@ -128,14 +131,14 @@ class TestListSimulations:
         # Filter for in_progress
         response = auth_client.get("/api/v1/simulations/?status=in_progress")
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["status"] == "in_progress"
+        assert len(data["items"]) == 1
+        assert data["items"][0]["status"] == "in_progress"
 
         # Filter for completed
         response = auth_client.get("/api/v1/simulations/?status=completed")
         data = response.json()
-        assert len(data) == 1
-        assert data[0]["status"] == "completed"
+        assert len(data["items"]) == 1
+        assert data["items"][0]["status"] == "completed"
 
     def test_list_simulations_pagination(self, auth_client, test_user):
         """Pagination with limit and cursor works."""
@@ -153,13 +156,24 @@ class TestListSimulations:
         # Get first page with limit=2
         response = auth_client.get("/api/v1/simulations/?limit=2")
         data = response.json()
-        assert len(data) == 2
+        assert len(data["items"]) == 2
+        assert data["has_more"] is True
+        assert data["next_cursor"] is not None
 
-        # Use the last ID as cursor for next page
-        cursor = data[-1]["id"]
+        # Use the provided next_cursor for next page
+        cursor = data["next_cursor"]
         response = auth_client.get(f"/api/v1/simulations/?limit=2&cursor={cursor}")
         data = response.json()
-        assert len(data) == 2
+        assert len(data["items"]) == 2
+        assert data["has_more"] is True
+
+        # Get final page
+        cursor = data["next_cursor"]
+        response = auth_client.get(f"/api/v1/simulations/?limit=2&cursor={cursor}")
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["has_more"] is False
+        assert data["next_cursor"] is None
 
 
 @pytest.mark.django_db

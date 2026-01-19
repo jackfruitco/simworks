@@ -5,6 +5,10 @@
  * or any other event listener. This provides a clean separation between
  * WebSocket communication and UI rendering.
  *
+ * Supports both legacy format and new standardized envelope format:
+ * - Legacy: { type: "chat.message_created", content: "..." }
+ * - Envelope: { event_id: "uuid", event_type: "message.created", payload: {...} }
+ *
  * Usage:
  *   const socket = new SimulationSocket(simulationId, options);
  *
@@ -35,6 +39,10 @@ class SimulationSocket {
         this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
         this.reconnectDelay = options.reconnectDelay || 1000;
         this.contentMode = options.contentMode || 'fullHtml';
+
+        // Track seen event IDs for deduplication (limited to prevent memory leaks)
+        this.seenEventIds = new Set();
+        this.maxSeenEventIds = options.maxSeenEventIds || 1000;
 
         this.connect();
     }
@@ -89,13 +97,68 @@ class SimulationSocket {
     }
 
     handleMessage(data) {
-        const type = data.type || 'unknown';
+        // Check if this is the new envelope format (has event_type and event_id)
+        const isEnvelope = data.event_type && data.event_id;
 
-        // Dispatch with sim: prefix for all event types
-        this.dispatch(type, data);
+        if (isEnvelope) {
+            // New envelope format - check for duplicate
+            if (this.isDuplicate(data.event_id)) {
+                console.debug('[SimulationSocket] Skipping duplicate event:', data.event_id);
+                return;
+            }
 
-        // Debug logging
-        console.debug('[SimulationSocket] Event:', type, data);
+            // Track this event ID
+            this.trackEventId(data.event_id);
+
+            // Extract event type and merge payload with envelope metadata
+            const type = data.event_type;
+            const detail = {
+                ...data.payload,
+                event_id: data.event_id,
+                event_type: data.event_type,
+                correlation_id: data.correlation_id,
+                created_at: data.created_at,
+            };
+
+            // Dispatch with sim: prefix
+            this.dispatch(type, detail);
+
+            // Debug logging
+            console.debug('[SimulationSocket] Envelope event:', type, detail);
+        } else {
+            // Legacy format - use type field directly
+            const type = data.type || 'unknown';
+
+            // Dispatch with sim: prefix for all event types
+            this.dispatch(type, data);
+
+            // Debug logging
+            console.debug('[SimulationSocket] Legacy event:', type, data);
+        }
+    }
+
+    /**
+     * Check if an event ID has already been seen (duplicate detection).
+     * @param {string} eventId - The event ID to check
+     * @returns {boolean} True if this event was already processed
+     */
+    isDuplicate(eventId) {
+        return this.seenEventIds.has(eventId);
+    }
+
+    /**
+     * Track an event ID for deduplication.
+     * Automatically prunes old entries when limit is reached.
+     * @param {string} eventId - The event ID to track
+     */
+    trackEventId(eventId) {
+        // Prune oldest entries if we're at the limit
+        if (this.seenEventIds.size >= this.maxSeenEventIds) {
+            // Convert to array, remove first half, convert back to Set
+            const entries = Array.from(this.seenEventIds);
+            this.seenEventIds = new Set(entries.slice(entries.length / 2));
+        }
+        this.seenEventIds.add(eventId);
     }
 
     dispatch(type, detail) {
