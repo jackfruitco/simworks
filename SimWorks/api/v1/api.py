@@ -1,0 +1,143 @@
+"""API v1 main entry point.
+
+This module creates and configures the NinjaAPI instance for v1.
+"""
+
+from datetime import datetime, timezone
+
+from django.http import HttpRequest
+from ninja import NinjaAPI
+from ninja.errors import HttpError, ValidationError
+from ninja.security import django_auth
+
+from api.v1.schemas.common import ErrorResponse, HealthResponse
+
+
+def get_correlation_id(request: HttpRequest) -> str | None:
+    """Extract correlation ID from request if available."""
+    return getattr(request, "correlation_id", None)
+
+
+def create_error_response(
+    request: HttpRequest,
+    error_type: str,
+    title: str,
+    status: int,
+    detail: str,
+) -> ErrorResponse:
+    """Create a standardized error response."""
+    return ErrorResponse(
+        type=error_type,
+        title=title,
+        status=status,
+        detail=detail,
+        instance=request.path,
+        correlation_id=get_correlation_id(request),
+    )
+
+
+# Create the API instance
+api = NinjaAPI(
+    title="SimWorks API",
+    version="1.0.0",
+    description="REST API for SimWorks medical training platform",
+    urls_namespace="api-v1",
+)
+
+
+# Custom exception handlers
+@api.exception_handler(ValidationError)
+def validation_error_handler(request: HttpRequest, exc: ValidationError):
+    """Handle Pydantic validation errors."""
+    # Extract first error message for detail
+    errors = exc.errors
+    if errors:
+        first_error = errors[0]
+        loc = ".".join(str(x) for x in first_error.get("loc", []))
+        msg = first_error.get("msg", "Validation error")
+        detail = f"{loc}: {msg}" if loc else msg
+    else:
+        detail = "Validation error"
+
+    return api.create_response(
+        request,
+        create_error_response(
+            request,
+            error_type="validation_error",
+            title="Invalid input",
+            status=422,
+            detail=detail,
+        ).model_dump(),
+        status=422,
+    )
+
+
+@api.exception_handler(HttpError)
+def http_error_handler(request: HttpRequest, exc: HttpError):
+    """Handle explicit HTTP errors."""
+    return api.create_response(
+        request,
+        create_error_response(
+            request,
+            error_type="http_error",
+            title="Request error",
+            status=exc.status_code,
+            detail=str(exc.message),
+        ).model_dump(),
+        status=exc.status_code,
+    )
+
+
+@api.exception_handler(Exception)
+def generic_error_handler(request: HttpRequest, exc: Exception):
+    """Handle unexpected errors."""
+    # Log the actual error for debugging
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.exception("Unexpected API error", extra={"correlation_id": get_correlation_id(request)})
+
+    return api.create_response(
+        request,
+        create_error_response(
+            request,
+            error_type="internal_error",
+            title="Internal server error",
+            status=500,
+            detail="An unexpected error occurred",
+        ).model_dump(),
+        status=500,
+    )
+
+
+# Health check endpoint (unauthenticated)
+@api.get(
+    "/health",
+    response=HealthResponse,
+    tags=["system"],
+    summary="Health check",
+    description="Returns the API health status and current timestamp.",
+)
+def health_check(request: HttpRequest) -> HealthResponse:
+    """Simple health check endpoint."""
+    return HealthResponse(
+        status="ok",
+        timestamp=datetime.now(timezone.utc),
+    )
+
+
+# Authenticated health check (to test auth)
+@api.get(
+    "/health/auth",
+    response=HealthResponse,
+    auth=django_auth,
+    tags=["system"],
+    summary="Authenticated health check",
+    description="Health check that requires authentication.",
+)
+def health_check_auth(request: HttpRequest) -> HealthResponse:
+    """Health check requiring authentication."""
+    return HealthResponse(
+        status="ok",
+        timestamp=datetime.now(timezone.utc),
+    )
