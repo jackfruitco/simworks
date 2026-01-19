@@ -211,12 +211,26 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Generate patient response."""
         from .orca.services import GenerateReplyResponse
 
-        await GenerateReplyResponse.using(
+        # await GenerateReplyResponse.using(
+        #     ctx={
+        #         "simulation_id": self.simulation.pk,
+        #         "user_msg_id": user_msg.pk,
+        #     },
+        # ).enqueue()
+
+        spec = GenerateReplyResponse.using(
             ctx={
                 "simulation_id": self.simulation.pk,
-                "user_msg_id": user_msg.pk,
-            },
-        ).enqueue()
+                "user_id": user_msg.pk,
+            }
+        )
+        call_id = await spec.task.aenqueue()
+
+        logger.info(
+            "[S#%s] Reply Response Generation enqueued as call %s",
+            simulation.id,
+            call_id
+        )
 
 
     async def _generate_stitch_response(self, user_msg: Message) -> None:

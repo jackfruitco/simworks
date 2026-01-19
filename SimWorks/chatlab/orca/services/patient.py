@@ -61,10 +61,6 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBase
     from chatlab.orca.schemas import PatientInitialOutputSchema as _Schema
     response_schema = _Schema
 
-    # prompt_plan = (
-    #     ChatlabPatientInitialSection,
-    #     PatientNameSection,
-    # )
     prompt_plan = (
         "prompt-sections.chatlab.default.base",
         "prompt-sections.chatlab.standardized_patient.initial",
@@ -89,26 +85,9 @@ class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
     # service ctor may receive this
     user_msg_pk: Optional[int] = None
 
-    async def build_messages_and_schema(
-            self, *, sim: Simulation, user_msg: Message | None = None
-    ) -> Tuple[List[DjangoInputItem], Optional[Type[_Schema]]]:
-        # Resolve user message if only pk provided
-        if user_msg is None and self.user_msg_pk is not None:
-            try:
-                user_msg = await Message.objects.aget(id=self.user_msg_pk)
-            except Message.DoesNotExist:
-                logger.warning(
-                    "No Message found with pk=%s -- continuing without it", self.user_msg_pk
-                )
-                user_msg = None
-
-        msgs: List[DjangoInputItem] = []
-        if user_msg and user_msg.content:
-            msgs.append(DjangoInputItem(
-                role=ContentRole.USER,
-                content=[InputTextContent(text=user_msg.content)])
-            )
-        return msgs, self.response_schema
+    prompt_plan = (
+        "prompt-sections.chatlab.standardized_patient.reply",
+    )
 
 
 @service
@@ -126,19 +105,9 @@ class GenerateImageResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseSe
     # Tool options
     output_format: Optional[str] = None  # e.g., "png" | "jpeg"
 
-    async def build_messages_and_schema(
-            self, *, sim: Simulation, user_msg: Message | None = None
-    ) -> Tuple[List[DjangoInputItem], Optional[Type[None]]]:
-        # Use a PromptKit section to generate the instruction for image generation
-        from ..prompts import ChatlabImageSection  # local import to avoid cycles
-        prompt = await PromptEngine.abuild_from(ChatlabImageSection)
-        msgs: List[DjangoInputItem] = [
-            DjangoInputItem(
-                role=ContentRole.DEVELOPER,
-                content=[InputTextContent(text=prompt.instruction or "")]
-            )
-        ]
-        return msgs, None
+    prompt_plan = (
+        "prompt-sections.chatlab.standardized_patient.image",
+    )
 
     def build_tools(self) -> list[DjangoLLMBaseTool]:
         args = remove_null_keys({

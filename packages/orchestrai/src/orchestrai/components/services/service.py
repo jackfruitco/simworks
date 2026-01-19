@@ -758,8 +758,14 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         elif self.context["prompt.message.override"]:
             msg += " (with message override)"
 
+        preview = (
+            prompt_.instruction[:250] if prompt_.instruction else "''",
+            prompt_.message[:250] if prompt_.message else "''"
+        )
+
+
         if logger.isEnabledFor(logging.DEBUG):
-            msg += f": instruction={prompt_.instruction[:250]}..., message={prompt_.message[:250]}..."
+            msg += f": instruction={preview[0]}..., message={preview[1]}..."
 
         logger.debug(self._build_stdout(LOG_CAT, msg, indent_level=2, success=True))
 
