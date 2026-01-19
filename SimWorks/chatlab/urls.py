@@ -35,4 +35,9 @@ urlpatterns = [
         views.end_simulation,
         name="end_simulation",
     ),
+    path(
+        "simulation/<int:simulation_id>/message/<int:message_id>/",
+        views.get_single_message,
+        name="get_single_message",
+    ),
 ]

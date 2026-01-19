@@ -211,10 +211,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         handleChatMessage(data) {
             const isFromSelf = data.senderId === this.currentUser;
             const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? false;
-            const status = isFromSelf ? data.status || 'delivered' : null;
-            const displayName = data.display_name || data.displayName || data.username || 'Unknown';
+            const messageId = data.message_id ?? data.id;
 
-            // If from simulated user, stop typing indicator and refresh tools
+            // If from simulated user (AI), stop typing indicator and refresh tools
             if (isFromSimulatedUser) {
                 this.simulateSystemTyping(false);
 
@@ -236,6 +235,30 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 }
             }
 
+            // Play receive sound for incoming messages
+            const receiveSound = document.getElementById("receive-sound");
+            if (!isFromSelf && receiveSound) {
+                receiveSound.currentTime = 0;
+                receiveSound.play().catch(() => {});
+            }
+
+            // Deduplication check
+            if (messageId && this._messageExists(messageId)) {
+                console.debug("[ChatManager] Skipping duplicate message", messageId);
+                return;
+            }
+
+            // For AI messages, fetch server-rendered HTML via HTMX
+            // This ensures HTML structure matches server templates
+            if (isFromSimulatedUser && messageId) {
+                this._fetchAndAppendMessage(messageId);
+                return;
+            }
+
+            // For user's own messages (echoed back), use JS rendering for immediate feedback
+            const status = isFromSelf ? data.status || 'delivered' : null;
+            const displayName = data.display_name || data.displayName || data.username || 'Unknown';
+
             // Parse content
             let content = data.content;
             if (typeof content === 'string' && content.startsWith('"') && content.endsWith('"')) {
@@ -246,16 +269,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 }
             }
 
-            // Play sound
-            const receiveSound = document.getElementById("receive-sound");
-            if (!isFromSelf && receiveSound) {
-                receiveSound.currentTime = 0;
-                receiveSound.play().catch(() => {});
-            }
-
-            // Append message
-            // Use message_id from envelope payload, fallback to id for legacy format
-            const messageId = data.message_id ?? data.id;
             const isFeedbackConversation = !!data.feedbackConversation;
             this.appendMessage(
                 content,
@@ -270,6 +283,29 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
                 this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
             }
+        },
+
+        /**
+         * Check if a message with the given ID already exists in the DOM
+         */
+        _messageExists(messageId) {
+            return !!this.messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+        },
+
+        /**
+         * Fetch server-rendered message HTML via HTMX and append to chat
+         */
+        _fetchAndAppendMessage(messageId) {
+            const url = `/chatlab/simulation/${this.simulation_id}/message/${messageId}/`;
+
+            htmx.ajax('GET', url, {
+                target: '#chat-messages',
+                swap: 'beforeend',
+            }).then(() => {
+                this._handleScrollBehavior(false);
+            }).catch((err) => {
+                console.error("[ChatManager] Failed to fetch message:", err);
+            });
         },
 
         handleTyping(data, started) {
@@ -521,7 +557,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
                 const previousHeight = container.scrollHeight;
 
-                anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`);
+                anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`);
                 anchor.setAttribute('hx-swap', 'beforebegin');
                 anchor.setAttribute('hx-trigger', 'load');
                 htmx.process(anchor);
@@ -531,7 +567,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     container.scrollTop += addedHeight;
                 });
 
-                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`)
+                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`)
                     .then(response => response.text())
                     .then(html => {
                         if (!html.includes('data-message-id')) {
