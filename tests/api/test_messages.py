@@ -290,22 +290,28 @@ class TestCreateMessage:
 
         assert response.status_code == 401
 
-    def test_create_message_success(self, auth_client, simulation, test_user):
-        """Creates message successfully."""
+    @patch("api.v1.endpoints.messages._enqueue_patient_reply")
+    def test_create_message_success(self, mock_enqueue, auth_client, simulation, test_user):
+        """Creates message and enqueues AI response."""
+        mock_enqueue.return_value = "test-call-id"
+
         response = auth_client.post(
             f"/api/v1/simulations/{simulation.pk}/messages/",
             data={"content": "Hello, patient!"},
             content_type="application/json",
         )
 
-        # Should return 202 (AI response pending) or 201
-        assert response.status_code in (201, 202)
+        # Should return 202 (AI response pending)
+        assert response.status_code == 202
         data = response.json()
         assert data["content"] == "Hello, patient!"
         assert data["simulation_id"] == simulation.pk
         assert data["sender_id"] == test_user.pk
         assert data["role"] == "user"
         assert data["is_from_ai"] is False
+
+        # Verify service was enqueued
+        mock_enqueue.assert_called_once_with(simulation.pk, data["id"])
 
     def test_create_message_simulation_not_found_returns_404(self, auth_client):
         """Non-existent simulation returns 404."""
@@ -371,6 +377,27 @@ class TestCreateMessage:
         )
 
         assert response.status_code == 404
+
+    @patch("api.v1.endpoints.messages._enqueue_patient_reply")
+    def test_create_message_enqueue_failure_still_returns_202(
+        self, mock_enqueue, auth_client, simulation
+    ):
+        """Message is created even if service enqueue fails."""
+        mock_enqueue.return_value = None  # Simulates enqueue failure
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/messages/",
+            data={"content": "Test message"},
+            content_type="application/json",
+        )
+
+        # Message should still be created and 202 returned
+        assert response.status_code == 202
+        data = response.json()
+        assert data["content"] == "Test message"
+
+        # Enqueue was attempted
+        mock_enqueue.assert_called_once()
 
 
 @pytest.mark.django_db

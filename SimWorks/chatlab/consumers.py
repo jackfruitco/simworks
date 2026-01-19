@@ -207,32 +207,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Set preferred content mode (support both content_mode and contentMode)
         await self.handle_content_mode(data.get("content_mode") or data.get("contentMode"))
 
-    async def _generate_patient_response(self, user_msg: Message) -> None:
-        """Generate patient response."""
-        from .orca.services import GenerateReplyResponse
-
-        # await GenerateReplyResponse.using(
-        #     ctx={
-        #         "simulation_id": self.simulation.pk,
-        #         "user_msg_id": user_msg.pk,
-        #     },
-        # ).enqueue()
-
-        spec = GenerateReplyResponse.using(
-            ctx={
-                "simulation_id": self.simulation.pk,
-                "user_id": user_msg.pk,
-            }
-        )
-        call_id = await spec.task.aenqueue()
-
-        logger.info(
-            "[S#%s] Reply Response Generation enqueued as call %s",
-            simulation.id,
-            call_id
-        )
-
-
     async def _generate_stitch_response(self, user_msg: Message) -> None:
         """Generate a response from Stitch for feedback conversations.
 
@@ -275,50 +249,54 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def handle_message(self, data: dict) -> None:
         """
-        Handle incoming user input, save them to DB, and trigger AI response.
+        Handle incoming user messages via WebSocket.
+
+        DEPRECATED: Message creation via WebSocket is deprecated. Clients should
+        POST to /api/v1/simulations/{id}/messages/ instead. The REST endpoint
+        handles both message persistence and AI response generation.
+
+        This handler now only broadcasts typing indicators. It no longer saves
+        messages or triggers AI responses.
 
         :param data: A dict containing at least 'content' and 'role'
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        # TODO deprecation warning
-        if data.get("event_type") in {"message", "chat.message"}:
-            warnings.warn(
-                "'message' event_type is deprecated. Use 'chat.message' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        warnings.warn(
+            "Creating messages via WebSocket is deprecated. "
+            "Use POST /api/v1/simulations/{id}/messages/ instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-        is_from_user = data.get("role", "").upper() == "USER"
-
-        content = data["content"]
-        sender = self.scope["user"]
-
-        if is_from_user:
-            # Save user message to the database
-            simulation = await sync_to_async(Simulation.objects.get)(
-                id=self.simulation_id
-            )
-            user_msg = await self.save_message(
-                simulation=simulation,
-                sender=sender,
-                content=content,
-                role=RoleChoices.USER,
-            )
-
-            # Simulate the user message as delivered once saved to the database
-            # TODO [FEAT]: consider v0.8.1
-            # await self.broadcast_message_status(user_msg.id, "delivered")
-
-            feedback_conversation = data.get("feedbackConversation")
-            logger.debug(f"Consumer received message with conversation type: {feedback_conversation}")
-
-            if feedback_conversation:
+        # Feedback conversations still use WebSocket for now
+        feedback_conversation = data.get("feedbackConversation")
+        if feedback_conversation:
+            is_from_user = data.get("role", "").upper() == "USER"
+            if is_from_user:
+                content = data["content"]
+                sender = self.scope["user"]
+                simulation = await sync_to_async(Simulation.objects.get)(
+                    id=self.simulation_id
+                )
+                user_msg = await self.save_message(
+                    simulation=simulation,
+                    sender=sender,
+                    content=content,
+                    role=RoleChoices.USER,
+                )
+                logger.debug(f"Consumer received feedback message: {user_msg.pk}")
                 await self._generate_stitch_response(user_msg)
-                return
+            return
 
-            await self._generate_patient_response(user_msg)
+        # For regular messages, log deprecation and do nothing
+        # Clients should POST to REST API instead
+        logger.info(
+            "handle_message: ignoring WS message creation (deprecated). "
+            "Client should POST to /api/v1/simulations/%s/messages/",
+            self.simulation_id,
+        )
 
     async def handle_typing(self, data: dict) -> None:
         """

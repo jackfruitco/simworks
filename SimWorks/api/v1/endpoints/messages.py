@@ -4,6 +4,7 @@ Provides CRUD operations for messages within simulations.
 Uses cursor-based pagination for listing messages.
 """
 
+from asgiref.sync import async_to_sync
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.errors import HttpError
@@ -20,6 +21,43 @@ from config.logging import get_logger
 from core.ratelimit import api_rate_limit, message_rate_limit
 
 logger = get_logger(__name__)
+
+
+def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
+    """Enqueue the GenerateReplyResponse service for a user message.
+
+    Returns the call_id if successfully enqueued, None otherwise.
+    """
+    from chatlab.orca.services import GenerateReplyResponse
+
+    async def _enqueue():
+        spec = GenerateReplyResponse.using(
+            ctx={
+                "simulation_id": simulation_id,
+                "user_msg": user_msg_pk,
+            }
+        )
+        return await spec.task.aenqueue()
+
+    try:
+        call_id = async_to_sync(_enqueue)()
+        logger.info(
+            "service.enqueued",
+            service="GenerateReplyResponse",
+            simulation_id=simulation_id,
+            user_msg_pk=user_msg_pk,
+            call_id=call_id,
+        )
+        return call_id
+    except Exception as e:
+        logger.exception(
+            "service.enqueue_failed",
+            service="GenerateReplyResponse",
+            simulation_id=simulation_id,
+            user_msg_pk=user_msg_pk,
+            error=str(e),
+        )
+        return None
 
 router = Router(tags=["messages"], auth=JWTAuth())
 
@@ -131,8 +169,10 @@ def create_message(
         message_type=body.message_type,
     )
 
+    # Enqueue the AI response generation
+    _enqueue_patient_reply(simulation_id, message.pk)
+
     # Return 202 Accepted since an AI response will be generated asynchronously
-    # The actual AI response triggering would be handled by the service layer
     return 202, message_to_out(message)
 
 
