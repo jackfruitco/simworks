@@ -419,7 +419,7 @@
         ],
         "security": [
           {
-            "JWTAuth": []
+            "DualAuth": []
           }
         ]
       },
@@ -475,7 +475,7 @@
         },
         "security": [
           {
-            "JWTAuth": []
+            "DualAuth": []
           }
         ]
       }
@@ -522,7 +522,7 @@
         ],
         "security": [
           {
-            "JWTAuth": []
+            "DualAuth": []
           }
         ]
       }
@@ -1305,6 +1305,10 @@
         "name": "sessionid"
       },
       "JWTAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "DualAuth": {
         "type": "http",
         "scheme": "bearer"
       }

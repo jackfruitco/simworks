@@ -338,45 +338,76 @@ function ChatManager(simulation_id, currentUser) {
             // No additional event listeners currently
         },
 
-        sendMessage() {
+        /**
+         * Send a message via REST API instead of WebSocket.
+         *
+         * Flow:
+         * 1. POST to /api/v1/simulations/{id}/messages/
+         * 2. Server creates user message, enqueues AI response
+         * 3. Returns 202 Accepted
+         * 4. AI response arrives via WebSocket broadcast
+         */
+        async sendMessage() {
             const message = this.messageText.trim();
-            if (!message) return;
+            if (!message || this.isChatLocked) return;
 
-            if (this.socket.isConnected) {
-                this.socket.send('chat.message_created', {
-                    content: message,
-                    role: 'user',
-                    status: 'sent',
-                    feedbackConversation: this.feedbackContinueConversation,
-                });
+            // Optimistic UI: show message immediately
+            this.appendMessage(
+                message,
+                true,
+                this.feedbackContinueConversation,
+                'sent',
+                this.currentUser,
+            );
 
-                this.appendMessage(
-                    message,
-                    true,
-                    this.feedbackContinueConversation,
-                    '',
-                    this.currentUser,
+            this.messageText = '';
+
+            // Play send sound
+            const sendSound = document.getElementById("send-sound");
+            if (sendSound) {
+                sendSound.currentTime = 0;
+                sendSound.play().catch(() => {});
+            }
+
+            // Show typing indicator for AI response
+            this.simulateSystemTyping(true);
+
+            try {
+                const response = await fetch(
+                    `/api/v1/simulations/${this.simulation_id}/messages/`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.csrfToken,
+                        },
+                        body: JSON.stringify({
+                            content: message,
+                            message_type: 'text',
+                        }),
+                    }
                 );
 
-                this.messageText = '';
-
-                const sendSound = document.getElementById("send-sound");
-                if (sendSound) {
-                    sendSound.currentTime = 0;
-                    sendSound.play().catch(() => {});
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}`);
                 }
-                this.simulateSystemTyping(true);
-            } else {
-                alert('WebSocket is not connected. Please wait and try again.');
+
+                // 202 Accepted - AI response will arrive via WebSocket
+                console.debug('[ChatManager] Message sent via API, awaiting AI response via WebSocket');
+            } catch (error) {
+                console.error('[ChatManager] Failed to send message:', error);
+                this.simulateSystemTyping(false);
+                alert(`Failed to send message: ${error.message}`);
             }
         },
 
         /**
          * Handle form:send event dispatched from chatFormState
          */
-        handleFormSend(detail) {
+        async handleFormSend(detail) {
             this.messageText = detail.messageText;
-            this.sendMessage();
+            await this.sendMessage();
         },
 
         appendMessage(content, isFromSelf, isFeedbackConversation, status = "", displayName = "", messageId = null, mediaList = []) {

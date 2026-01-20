@@ -24,6 +24,47 @@ class InvalidTokenError(Exception):
     pass
 
 
+class DualAuth(HttpBearer):
+    """Combined session + JWT authentication for Django Ninja.
+
+    Tries session auth first (for web clients), then JWT (for mobile clients).
+    This allows the same endpoint to serve both web and mobile clients.
+
+    Usage:
+        @router.post("/messages/", auth=DualAuth())
+        def create_message(request):
+            # request.auth contains the authenticated user
+            return {"user": request.auth.username}
+    """
+
+    def __call__(self, request) -> User | None:
+        """Check session auth first, then fall back to JWT."""
+        # Try session auth (web clients)
+        if request.user and request.user.is_authenticated:
+            return request.user
+
+        # Fall back to JWT auth (mobile clients)
+        return super().__call__(request)
+
+    def authenticate(self, request, token: str) -> User | None:
+        """Validate JWT token and return the associated user."""
+        try:
+            payload = decode_access_token(token)
+            user_id = payload.get("sub")
+            if not user_id:
+                return None
+
+            user = User.objects.filter(pk=user_id, is_active=True).first()
+            return user
+
+        except InvalidTokenError as e:
+            logger.debug("JWT authentication failed: %s", e)
+            return None
+        except Exception as e:
+            logger.warning("Unexpected JWT authentication error: %s", e)
+            return None
+
+
 class JWTAuth(HttpBearer):
     """JWT Bearer token authentication for Django Ninja.
 

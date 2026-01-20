@@ -9,7 +9,7 @@ from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.errors import HttpError
 
-from api.v1.auth import JWTAuth
+from api.v1.auth import DualAuth
 from api.v1.schemas.messages import (
     MessageCreate,
     MessageListResponse,
@@ -59,7 +59,7 @@ def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
         )
         return None
 
-router = Router(tags=["messages"], auth=JWTAuth())
+router = Router(tags=["messages"], auth=DualAuth())
 
 
 @router.get(

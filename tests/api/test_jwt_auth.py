@@ -393,3 +393,93 @@ class TestFullAuthFlow:
             HTTP_AUTHORIZATION=f"Bearer {new_tokens['access_token']}",
         )
         assert final_response.status_code == 200
+
+
+@pytest.mark.django_db
+class TestDualAuth:
+    """Tests for DualAuth class that supports both session and JWT authentication."""
+
+    def test_dual_auth_with_session(self, test_user):
+        """DualAuth accepts session-authenticated requests (web clients)."""
+        client = Client()
+        client.force_login(test_user)
+
+        # Access messages endpoint (uses DualAuth) with session auth
+        from simulation.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Test Patient",
+        )
+
+        response = client.get(f"/api/v1/simulations/{sim.pk}/messages/")
+        assert response.status_code == 200
+
+    def test_dual_auth_with_jwt(self, test_user):
+        """DualAuth accepts JWT-authenticated requests (mobile clients)."""
+        token = create_access_token(test_user)
+        client = Client()
+
+        # Access messages endpoint with JWT auth
+        from simulation.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Test Patient",
+        )
+
+        response = client.get(
+            f"/api/v1/simulations/{sim.pk}/messages/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        assert response.status_code == 200
+
+    def test_dual_auth_prefers_session_over_jwt(self, test_user, django_user_model):
+        """When both session and JWT are present, session takes precedence."""
+        from accounts.models import UserRole
+        from simulation.models import Simulation
+
+        # Create a second user for JWT
+        role = UserRole.objects.create(title="Test Role JWT2")
+        other_user = django_user_model.objects.create_user(
+            username="otheruser",
+            password="pass123",
+            email="other@example.com",
+            role=role,
+        )
+
+        # Session user owns the simulation
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Test Patient",
+        )
+
+        # JWT is for other_user who doesn't own the simulation
+        token = create_access_token(other_user)
+
+        client = Client()
+        client.force_login(test_user)  # Session auth as sim owner
+
+        # Should succeed because session auth (test_user) takes precedence
+        response = client.get(
+            f"/api/v1/simulations/{sim.pk}/messages/",
+            HTTP_AUTHORIZATION=f"Bearer {token}",  # JWT for non-owner
+        )
+        assert response.status_code == 200
+
+    def test_dual_auth_rejects_unauthenticated(self):
+        """DualAuth rejects requests with no authentication."""
+        client = Client()
+
+        response = client.get("/api/v1/simulations/1/messages/")
+        assert response.status_code == 401
+
+    def test_dual_auth_rejects_invalid_jwt(self):
+        """DualAuth rejects requests with invalid JWT and no session."""
+        client = Client()
+
+        response = client.get(
+            "/api/v1/simulations/1/messages/",
+            HTTP_AUTHORIZATION="Bearer invalid-token",
+        )
+        assert response.status_code == 401
