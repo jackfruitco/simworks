@@ -19,6 +19,7 @@ from api.v1.schemas.messages import (
 from api.v1.utils import get_simulation_for_user
 from config.logging import get_logger
 from core.ratelimit import api_rate_limit, message_rate_limit
+from simulation.models import Simulation
 
 logger = get_logger(__name__)
 
@@ -35,6 +36,7 @@ def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
             ctx={
                 "simulation_id": simulation_id,
                 "user_msg": user_msg_pk,
+                # previous_response_id will be auto-fetched by the service mixin
             }
         )
         return await spec.task.aenqueue()

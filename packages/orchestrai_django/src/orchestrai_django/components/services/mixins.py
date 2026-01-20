@@ -1,18 +1,68 @@
 # orchestrai_django/components/services/mixins.py
+"""Service mixins for Django-specific context augmentation."""
+
+import logging
+
+from asgiref.sync import sync_to_async
+
+__all__ = ["PreviousResponseMixin"]
+
+from orchestrai.components.services import ServiceError
+
+logger = logging.getLogger(__name__)
 
 
-"""
-Legacy execution mixins for Django services have been removed.
+class PreviousResponseMixin:
+    """
+    Mixin that auto-fetches `previous_response_id` from the simulation.
 
-The old `ServiceExecutionMixin` and its dependency on
-`orchestrai_django.execution.entrypoint` are no longer supported in AIv3.
+    When a service includes this mixin and has `simulation_id` in its context,
+    this mixin will automatically look up the most recent AI response's
+    provider ID and inject it into the context as `previous_response_id`.
 
-Execution should go through the core OrchestrAI app:
+    This enables OpenAI's Responses API multi-turn conversation feature
+    without requiring callers to explicitly fetch and pass the ID.
 
-    from orchestrai import get_current_app
-    get_current_app().services.schedule(MyService, **context)
+    Usage:
+        @service
+        class MyReplyService(PreviousResponseMixin, ChatlabMixin, DjangoBaseService):
+            ...
 
-Async workflows can call ``aschedule``/``astart`` instead of Django Tasks.
-"""
+    Requirements:
+        - `simulation_id` must be present in `self.context`
+        - The Simulation model must have `aget_previous_response_id()` method
+    """
 
-__all__: list[str] = []
+    async def _aprepare_context(self) -> None:
+        """Fetch and inject previous_response_id if simulation_id is in context."""
+        # Call parent hook if it exists (for mixin chaining)
+        if hasattr(super(), "_aprepare_context"):
+            await super()._aprepare_context()
+
+        # Skip if already set (allows explicit override)
+        if self.context.get("previous_response_id") is not None:
+            return
+
+        simulation_id = self.context.get("simulation_id")
+        if simulation_id is None:
+            return
+
+        try:
+            from simulation.models import Simulation
+
+            # Resolve simulation, then, try to
+            # fetch previous response ID from it.
+            # Otherwise, raise ValueError.
+            simulation = await sync_to_async(Simulation.resolve, thread_sensitive=False)(simulation_id)
+
+            prev_id = await simulation.aget_previous_response_id()
+            if not prev_id: raise ValueError("No previous response found")
+
+            self.context["previous_response_id"] = prev_id
+            logger.debug("-- ✅ [context] set `previous_response_id=%s`", prev_id)
+            return
+
+        except Exception as exc:
+            raise ServiceError(
+                "-- ❌ [context] unable to set `previous_response_id`"
+            ) from exc

@@ -690,7 +690,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         )
         self.context["prompt.engine"] = repr(engine)
 
-        ctx = {"context": self.context, "service": self}
+        ctx = {**self.context, "_service": self}
 
         async with service_span(
                 self._span("run", "prepare", "prompt", "build"),
@@ -1011,6 +1011,17 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
             return codec, codec_label
 
+    async def _aprepare_context(self) -> None:
+        """Hook for subclasses/mixins to augment context before request building.
+
+        Override this in mixins to auto-populate context values like
+        `previous_response_id` from external sources (database, cache, etc.).
+
+        Called at the start of `aprepare()` before codec resolution and
+        request building.
+        """
+        pass
+
     async def aprepare(
             self, *, stream: bool, **kwargs: Any
     ) -> tuple[Request, BaseCodec | None, dict[str, Any]]:
@@ -1029,6 +1040,9 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         """
         LOG_CAT = "prep"
         ident: Identity = self.identity
+
+        # Allow mixins to augment context before request building
+        await self._aprepare_context()
 
         async with service_span(
                 self._span("run", "prepare"),
@@ -1128,7 +1142,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         req.kind = ident.kind
         req.name = ident.name
 
-        # 4) Final customization hook (codec/schema are handled later in `arun` via the codec)
+        # 4) Attach `previous_response_id` if set
+        req.previous_response_id = self.context.get("previous_response_id", None)
+
+        # 5) Final customization hook (codec/schema are handled later in `arun` via the codec)
         req = await self._afinalize_request(req)
         return req
 
@@ -1334,7 +1351,8 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 service=dispatch_meta["service"],
             )
             call.status = "running"
-            call.started_at = datetime.utcnow()
+            from datetime import UTC
+            call.started_at = datetime.now(UTC)
             logger.debug(
                 self._build_stdout(
                     "call",

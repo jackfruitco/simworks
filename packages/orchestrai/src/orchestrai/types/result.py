@@ -61,5 +61,5 @@ class ResultMessageItem(StrictBaseModel):
     content: list[ResultContent] = Field(..., min_length=1)
     item_meta: list[ResultMetafield] = Field(
         ...,
-        description="Metadata entries as key-value pairs (OpenAI strict mode compliant)"
+        description="Metadata entries as key-value pairs"
     )

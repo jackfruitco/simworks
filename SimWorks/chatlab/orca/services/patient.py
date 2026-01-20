@@ -32,7 +32,7 @@ from typing import Type, Optional, Tuple, List, ClassVar
 
 from core.utils import remove_null_keys
 from orchestrai_django.components.promptkit import PromptEngine
-from orchestrai_django.components.services import DjangoBaseService
+from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import service
 from orchestrai.types.input import InputTextContent
 from orchestrai.types import ContentRole
@@ -68,11 +68,15 @@ class GenerateInitialResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBase
     )
 
 @service
-class GenerateReplyResponse(ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
+class GenerateReplyResponse(PreviousResponseMixin, ChatlabMixin, StandardizedPatientMixin, DjangoBaseService):
     """Generate a reply to a user message.
 
     Expects a user message pk (or a resolved Message) and validates against the
     reply structured output schema.
+
+    Note: PreviousResponseMixin automatically fetches the most recent AI response's
+    provider ID and injects it as `previous_response_id` for multi-turn conversation
+    support via OpenAI's Responses API.
     """
 
     model: Optional[str] = None
