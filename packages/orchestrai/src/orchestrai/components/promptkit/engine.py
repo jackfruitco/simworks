@@ -275,7 +275,7 @@ class PromptEngine:
             section_labels = [_get_section_label(s) for s in self._sections]
         except Exception:
             section_labels = []
-        logger.info(
+        logger.debug(
             "PromptEngine.abuild: starting with %d sections",
             len(self._sections),
         )
@@ -309,7 +309,7 @@ class PromptEngine:
                 ctx.setdefault("prompt_plan.added", plan_added)
                 ctx.setdefault("prompt_plan.skipped", plan_skipped)
 
-                logger.info(
+                logger.debug(
                     "PromptEngine: merged PromptPlan(identity=%r, items=%s, added=%s, skipped=%s)",
                     plan_identity_str,
                     item_count,
@@ -418,7 +418,7 @@ class PromptEngine:
                     if (instr and instr.strip()) or (msg and msg.strip()):
                         outputs.append((instr, msg))
                         used_labels.append(label)
-                        logger.info("PromptEngine: section %s contributed to prompt", label)
+                        logger.debug("PromptEngine: section %s contributed to prompt", label)
 
             # Merge sections (sync span ok inside async)
             with service_span_sync(

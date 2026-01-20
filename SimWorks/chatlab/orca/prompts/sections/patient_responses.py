@@ -18,6 +18,8 @@ class ChatlabPatientInitialSection(ChatlabMixin, StandardizedPatientMixin, Promp
         "### Instructions\n"
         "- Begin each scenario by outputting a concise checklist (3–10 conceptual bullets) of intended actions for the "
         "session, formatted as a key:value pairs under the key 'llm_conditions_check', before any SMS message content.\n"
+        "- This conditions check should ensure the output content meets the intent of the instructions, is in character, "
+        ", does not over-share, and is medically accurate within the original scenario."
         "- Include a brief description of the patient's symptoms and background information that may be relevant to "
         "the scenario. Include any relevant clinical details that would be relevant to the scenario.\n"
         "- Select a plausible, low-to-moderate urgency everyday diagnosis. Do not choose clear emergencies or dramatic "

@@ -50,5 +50,5 @@ class PatientResponseBaseMixin(StrictBaseModel):
 
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
         ...,
-        description="Internal workflow conditions (not persisted to database)"
+        description="Internal workflow conditions"
     )

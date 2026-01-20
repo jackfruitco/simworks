@@ -1,5 +1,7 @@
 import json
 import logging
+import uuid
+from datetime import datetime, timezone as dt_timezone
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 from orchestrai.utils.json import json_default
@@ -50,3 +52,55 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
                 default=json_default,
             )
         )
+
+    async def outbox_event(self, event: dict) -> None:
+        """Handle outbox events delivered by the drain worker.
+
+        This handler receives events from the outbox drain worker and forwards
+        them to connected WebSocket clients with the standardized envelope format.
+
+        :param event: Dict containing the WebSocket envelope
+        """
+        envelope = event.get("event", {})
+
+        # Validate envelope has required fields
+        if not envelope.get("event_type"):
+            logger.warning("outbox event missing event_type")
+            return
+
+        logger.info(
+            "[Notification] Outbox event for user %s | Type: %s",
+            self.user.username,
+            envelope.get("event_type"),
+        )
+
+        # Forward the envelope to the client
+        await self.send(text_data=json.dumps(envelope, default=json_default))
+
+    @staticmethod
+    def build_envelope(
+        event_type: str,
+        payload: dict,
+        event_id: str | None = None,
+        correlation_id: str | None = None,
+        created_at: str | None = None,
+    ) -> dict:
+        """Build a standardized WebSocket event envelope.
+
+        Args:
+            event_type: Event type (e.g., 'notification.created')
+            payload: Event payload data
+            event_id: Unique event ID (generated if not provided)
+            correlation_id: Request correlation ID for tracing
+            created_at: ISO timestamp (generated if not provided)
+
+        Returns:
+            Standardized envelope dict
+        """
+        return {
+            "event_id": event_id or str(uuid.uuid4()),
+            "event_type": event_type,
+            "created_at": created_at or datetime.now(dt_timezone.utc).isoformat(),
+            "correlation_id": correlation_id,
+            "payload": payload,
+        }

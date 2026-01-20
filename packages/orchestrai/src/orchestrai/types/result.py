@@ -58,8 +58,8 @@ class ResultMessageItem(StrictBaseModel):
     All fields are required. Use empty list [] for item_meta if no metadata needed.
     """
     role: ContentRole
-    content: list[ResultContent]
+    content: list[ResultContent] = Field(..., min_length=1)
     item_meta: list[ResultMetafield] = Field(
         ...,
-        description="Metadata entries as key-value pairs (OpenAI strict mode compliant)"
+        description="Metadata entries as key-value pairs"
     )

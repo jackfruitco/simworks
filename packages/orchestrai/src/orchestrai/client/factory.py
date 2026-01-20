@@ -242,7 +242,7 @@ def build_orca_client(
             make_default=make_default,
             replace=replace,
         )
-        logger.info(
+        logger.debug(
             "Configured Orca client '%s' in single mode (backend=%s)",
             client_alias,
             getattr(getattr(client, "provider", None), "identity", None) or "<unspecified>",

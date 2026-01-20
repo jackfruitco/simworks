@@ -119,8 +119,14 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
         Returns:
             List of created Message instances
         """
+        from simulation.models import Simulation
+
         system_user = await aget_or_create_system_user()
         created_messages = []
+
+        # Get display_name from simulation for AI messages
+        simulation = await Simulation.objects.aget(id=simulation_id)
+        display_name = simulation.sim_patient_display_name or "AI"
 
         for msg in messages:
             # Extract text from this message
@@ -141,6 +147,7 @@ class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePers
                 is_from_ai=True,
                 message_type="text",
                 sender=system_user,
+                display_name=display_name,
             )
 
             # Link ai_response_audit if available
@@ -284,8 +291,14 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
         Returns:
             List of created Message instances
         """
+        from simulation.models import Simulation
+
         system_user = await aget_or_create_system_user()
         created_messages = []
+
+        # Get display_name from simulation for AI messages
+        simulation = await Simulation.objects.aget(id=simulation_id)
+        display_name = simulation.sim_patient_display_name or "AI"
 
         for msg in messages:
             # Extract text from this message
@@ -306,6 +319,7 @@ class PatientReplyPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersis
                 is_from_ai=True,
                 message_type="text",
                 sender=system_user,
+                display_name=display_name,
             )
 
             # Link ai_response_audit if available

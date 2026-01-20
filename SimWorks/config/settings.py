@@ -85,12 +85,12 @@ INSTALLED_APPS = [
     "simulation",
     "chatlab",
     "trainerlab",
-    "strawberry_django",
     "imagekit",
 ]
 
 MIDDLEWARE = [
     "core.middleware.HealthCheckMiddleware",
+    "core.middleware.CorrelationIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -201,6 +201,17 @@ CELERY_TASK_SOFT_TIME_LIMIT = 25  # seconds
 
 # Celery Beat config
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+# JWT Configuration (for mobile API clients)
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)  # Use separate key in production
+JWT_ACCESS_TOKEN_LIFETIME = int(os.getenv("JWT_ACCESS_TOKEN_LIFETIME", 3600))  # 1 hour
+JWT_REFRESH_TOKEN_LIFETIME = int(os.getenv("JWT_REFRESH_TOKEN_LIFETIME", 604800))  # 7 days
+
+# Rate Limiting Configuration
+# Uses Redis database 3 for rate limit counters
+RATE_LIMIT_AUTH_REQUESTS = int(os.getenv("RATE_LIMIT_AUTH_REQUESTS", 5))  # per minute per IP
+RATE_LIMIT_MESSAGE_REQUESTS = int(os.getenv("RATE_LIMIT_MESSAGE_REQUESTS", 30))  # per minute per user
+RATE_LIMIT_API_REQUESTS = int(os.getenv("RATE_LIMIT_API_REQUESTS", 100))  # per minute per user
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

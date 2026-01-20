@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import Http404, HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET
 from simulation.models import Simulation
@@ -205,3 +205,21 @@ def end_simulation(request, simulation_id):
     if not simulation.end_timestamp:
         simulation.end()
     return redirect("chatlab:run_simulation", simulation_id=simulation.id)
+
+
+@require_GET
+@login_required
+def get_single_message(request, simulation_id, message_id):
+    """Return HTML for a single message (for HTMX append after WebSocket notification)."""
+    try:
+        message = Message.objects.select_related("sender").prefetch_related("media").get(
+            id=message_id,
+            simulation_id=simulation_id,
+        )
+    except Message.DoesNotExist:
+        return HttpResponse("", status=404)
+
+    return render(request, "chatlab/partials/_message.html", {
+        "message": message,
+        "user": request.user,
+    })

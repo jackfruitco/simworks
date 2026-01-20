@@ -41,29 +41,16 @@ function modifierSelector() {
         modifierGroups: [],
         async fetchModifierGroups() {
             try {
-                const response = await fetch("{% url 'graphql' %}", {
-                    method: "POST",
+                const response = await fetch("/api/v1/config/modifier-groups/?groups=ClinicalScenario&groups=ClinicalDuration", {
+                    method: "GET",
                     headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content
-                    },
-                    body: JSON.stringify({
-                        query: `
-                            query {
-                                modifierGroups(groups: ["ClinicalScenario", "ClinicalDuration"]) {
-                                    group
-                                    description
-                                    modifiers {
-                                        key
-                                        description
-                                    }
-                                }
-                            }
-                        `
-                    })
+                        "Accept": "application/json"
+                    }
                 });
-                const result = await response.json();
-                this.modifierGroups = result?.data?.modifierGroups || [];
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                this.modifierGroups = await response.json();
                 console.log("Fetched modifierGroups:", this.modifierGroups)
             } catch (error) {
                 console.error("Failed to load modifier groups", error);

@@ -21,7 +21,7 @@
     {% if user.is_staff %}
     <a href="{% url 'accounts:new-invite' %}" class="btn sm">New Invitation</a>
     <a href="{% url 'accounts:list-invites' %}" class="btn sm">View Invitations</a>
-    <a href="{% url 'graphql' %}" class="btn sm">GraphiQL</a>
+    <a href="/api/v1/docs" class="btn sm">API Docs</a>
     {% endif %}
 </section>
 {% endblock content %}

@@ -18,7 +18,7 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
             this.notifyTyping();
         },
         notifyTyping() {
-            this.$root?.notifyTyping();
+            this.$dispatch('form:typing');
         },
         autoResize() {
             if (this.$refs.messageInput) {
@@ -29,12 +29,10 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
         send() {
             if (this.isLocked) return;
 
-            if (this.$root) {
-                this.$root.messageText = this.messageText;
-                this.$root.sendMessage();
-                this.messageText = this.$root.messageText;
-            }
+            // Dispatch event with message content to parent ChatManager
+            this.$dispatch('form:send', { messageText: this.messageText });
 
+            this.messageText = '';  // Clear locally after dispatch
             this.showEmojiPicker = false;
             this.autoResize();
         },
@@ -42,9 +40,7 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
             this.send();
         },
         syncFromRoot() {
-            if (this.$root && typeof this.$root.messageText === 'string') {
-                this.messageText = this.$root.messageText;
-            }
+            // Form now manages its own state via $dispatch events
         },
         placeholderText() {
             if (this.isLocked) return 'Simulation locked — chat is read-only';
@@ -66,14 +62,16 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
 /**
  * ChatManager - Alpine component using SimulationSocket for WebSocket communication
  *
- * Uses SimulationSocket internally and listens for sim:* events.
- * This enables a clean separation between WebSocket handling and UI logic.
+ * Uses SimulationSocket internally and listens for sim:* events via EventBus.
+ * Tool refresh is handled declaratively by ToolManager.
  */
-function ChatManager(simulation_id, currentUser, initialChecksum) {
+function ChatManager(simulation_id, currentUser) {
     return {
         currentUser,
         simulation_id,
         socket: null,
+        eventBus: null,
+        toolManager: null,
         messageText: '',
         typingTimeout: null,
         lastTypedTime: 0,
@@ -81,7 +79,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         hasMoreMessages: true,
         systemDisplayInitials: '',
         systemDisplayName: '',
-        checksum: null,
         feedbackContinueConversation: false,
         isChatLocked: false,
 
@@ -105,11 +102,13 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             // Initialize WebSocket via SimulationSocket
             this.initializeSocket();
 
+            // Initialize EventBus and ToolManager
+            this.initializeEventBus();
+            this.initializeToolManager();
+
             // Setup event listeners
             this.setupEventListeners();
             this.loadOlderMessages();
-
-            this.checksum = initialChecksum;
 
             this.newMessageBtn.addEventListener('click', () => {
                 this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
@@ -129,74 +128,67 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         },
 
         /**
-         * Initialize SimulationSocket and listen for events
+         * Initialize SimulationSocket
          */
         initializeSocket() {
             // Create socket instance (from simulation-socket.js)
             this.socket = new SimulationSocket(this.simulation_id, {
                 contentMode: this.contentMode
             });
-
-            // Listen for sim:* events on window
-            this.setupSocketEventListeners();
         },
 
         /**
-         * Setup listeners for sim:* CustomEvents dispatched by SimulationSocket
+         * Initialize EventBus and subscribe to chat-related events
          */
-        setupSocketEventListeners() {
-            // Init message - patient display name
-            window.addEventListener('sim:init_message', (e) => {
-                this.handleInitMessage(e.detail);
-            });
+        initializeEventBus() {
+            this.eventBus = new SimulationEventBus();
+            this.eventBus.attachSocket(this.socket);
 
-            // Chat message created
-            window.addEventListener('sim:chat.message_created', (e) => {
-                this.handleChatMessage(e.detail);
-            });
+            // Subscribe to chat UI events only
+            this.eventBus.on('init_message', (data) => this.handleInitMessage(data));
+            this.eventBus.on('chat.message_created', (data) => this.handleChatMessage(data));
+            this.eventBus.on('typing', (data) => this.handleTyping(data, true));
+            this.eventBus.on('stopped_typing', (data) => this.handleTyping(data, false));
+            this.eventBus.on('message_status_update', (data) => this.handleMessageStatusUpdate(data));
+            this.eventBus.on('error', (data) => this.handleError(data));
 
-            // Typing events
-            window.addEventListener('sim:typing', (e) => {
-                this.handleTyping(e.detail, true);
-            });
-
-            window.addEventListener('sim:stopped_typing', (e) => {
-                this.handleTyping(e.detail, false);
-            });
-
-            // Feedback events
-            window.addEventListener('sim:simulation.feedback_created', (e) => {
-                this.handleFeedbackCreated(e.detail);
-            });
-
-            window.addEventListener('sim:simulation.hotwash.created', (e) => {
-                this.handleFeedbackCreated(e.detail);
-            });
-
-            // Feedback continuation
-            window.addEventListener('sim:simulation.feedback.continue_conversation', () => {
+            // Feedback continuation events (UI state only)
+            this.eventBus.on('simulation.feedback.continue_conversation', () => {
                 this.feedbackContinueConversation = true;
             });
-
-            window.addEventListener('sim:simulation.hotwash.continue_conversation', () => {
+            this.eventBus.on('simulation.hotwash.continue_conversation', () => {
                 this.feedbackContinueConversation = true;
             });
+        },
 
-            // Message status update
-            window.addEventListener('sim:message_status_update', (e) => {
-                this.handleMessageStatusUpdate(e.detail);
+        /**
+         * Initialize ToolManager with declarative tool configuration
+         */
+        initializeToolManager() {
+            this.toolManager = new ToolManager(this.simulation_id, this.eventBus);
+
+            // Declarative tool configuration - tools auto-refresh on events
+            this.toolManager.configure({
+                'patient_history': {
+                    refreshOn: ['chat.message_created'],
+                    refreshMode: 'checksum',
+                },
+                'simulation_metadata': {
+                    refreshOn: ['chat.message_created'],
+                    refreshMode: 'checksum',
+                },
+                'simulation_feedback': {
+                    refreshOn: ['simulation.feedback_created', 'simulation.hotwash.created'],
+                    refreshMode: 'html_inject',
+                },
+                'patient_results': {
+                    refreshOn: ['simulation.metadata.results_created'],
+                    refreshMode: 'html_inject',
+                },
             });
 
-            // Metadata results
-            window.addEventListener('sim:simulation.metadata.results_created', (e) => {
-                this.handleMetadataResults(e.detail);
-            });
-
-            // Error handling
-            window.addEventListener('sim:error', (e) => {
-                alert(e.detail.message);
-                window.location.href = e.detail.redirect || "/";
-            });
+            // Auto-discover any additional tools not explicitly configured
+            this.toolManager.autoDiscover();
         },
 
         handleInitMessage(data) {
@@ -211,23 +203,11 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
         handleChatMessage(data) {
             const isFromSelf = data.senderId === this.currentUser;
             const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? false;
-            const status = isFromSelf ? data.status || 'delivered' : null;
-            const displayName = data.display_name || data.displayName || data.username || 'Unknown';
+            const messageId = data.message_id ?? data.id;
 
-            // If from simulated user, stop typing indicator and refresh tools
+            // If from simulated user (AI), stop typing indicator
             if (isFromSimulatedUser) {
                 this.simulateSystemTyping(false);
-
-                if (window.simulationManager) {
-                    try {
-                        window.simulationManager.checkTools([
-                            'simulation_metadata',
-                            'patient_history'
-                        ]);
-                    } catch (e) {
-                        console.warn("[ChatManager] checkTools failed:", e);
-                    }
-                }
 
                 // Sidebar pulse for new messages
                 if (localStorage.getItem('seenSidebarTray') === 'true') {
@@ -235,6 +215,30 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
                 }
             }
+
+            // Play receive sound for incoming messages
+            const receiveSound = document.getElementById("receive-sound");
+            if (!isFromSelf && receiveSound) {
+                receiveSound.currentTime = 0;
+                receiveSound.play().catch(() => {});
+            }
+
+            // Deduplication check
+            if (messageId && this._messageExists(messageId)) {
+                console.debug("[ChatManager] Skipping duplicate message", messageId);
+                return;
+            }
+
+            // For AI messages, fetch server-rendered HTML via HTMX
+            // This ensures HTML structure matches server templates
+            if (isFromSimulatedUser && messageId) {
+                this._fetchAndAppendMessage(messageId);
+                return;
+            }
+
+            // For user's own messages (echoed back), use JS rendering for immediate feedback
+            const status = isFromSelf ? data.status || 'delivered' : null;
+            const displayName = data.display_name || data.displayName || data.username || 'Unknown';
 
             // Parse content
             let content = data.content;
@@ -246,14 +250,6 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 }
             }
 
-            // Play sound
-            const receiveSound = document.getElementById("receive-sound");
-            if (!isFromSelf && receiveSound) {
-                receiveSound.currentTime = 0;
-                receiveSound.play().catch(() => {});
-            }
-
-            // Append message
             const isFeedbackConversation = !!data.feedbackConversation;
             this.appendMessage(
                 content,
@@ -261,7 +257,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                 isFeedbackConversation,
                 status,
                 displayName,
-                data.id,
+                messageId,
                 data.mediaList ?? []
             );
 
@@ -270,26 +266,32 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
 
+        /**
+         * Check if a message with the given ID already exists in the DOM
+         */
+        _messageExists(messageId) {
+            return !!this.messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
+        },
+
+        /**
+         * Fetch server-rendered message HTML via HTMX and append to chat
+         */
+        _fetchAndAppendMessage(messageId) {
+            const url = `/chatlab/simulation/${this.simulation_id}/message/${messageId}/`;
+
+            htmx.ajax('GET', url, {
+                target: '#chat-messages',
+                swap: 'beforeend',
+            }).then(() => {
+                this._handleScrollBehavior(false);
+            }).catch((err) => {
+                console.error("[ChatManager] Failed to fetch message:", err);
+            });
+        },
+
         handleTyping(data, started) {
             if (data.username !== this.currentUser) {
                 this.updateTypingUsers(data, started);
-            }
-        },
-
-        handleFeedbackCreated(data) {
-            const html = data?.html;
-            const tool = data?.tool || 'simulation_feedback';
-            const simulationManager = window.simulationManager;
-            try {
-                if (simulationManager) {
-                    if (html) {
-                        simulationManager.refreshToolFromHTML(tool, html);
-                    } else {
-                        simulationManager.checkTools([tool], true);
-                    }
-                }
-            } catch (e) {
-                console.warn("[ChatManager] Tool refresh/check failed:", e);
             }
         },
 
@@ -309,16 +311,9 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             }
         },
 
-        handleMetadataResults(data) {
-            const html = data?.html || null;
-            const tool = data?.tool || 'patient_results';
-            const simulationManager = window.simulationManager;
-
-            if (html) {
-                simulationManager.refreshToolFromHTML(tool, html);
-            } else {
-                simulationManager.checkTools([tool], true);
-            }
+        handleError(data) {
+            alert(data.message);
+            window.location.href = data.redirect || "/";
         },
 
         notifyTyping() {
@@ -343,37 +338,76 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
             // No additional event listeners currently
         },
 
-        sendMessage() {
+        /**
+         * Send a message via REST API instead of WebSocket.
+         *
+         * Flow:
+         * 1. POST to /api/v1/simulations/{id}/messages/
+         * 2. Server creates user message, enqueues AI response
+         * 3. Returns 202 Accepted
+         * 4. AI response arrives via WebSocket broadcast
+         */
+        async sendMessage() {
             const message = this.messageText.trim();
-            if (!message) return;
+            if (!message || this.isChatLocked) return;
 
-            if (this.socket.isConnected) {
-                this.socket.send('chat.message_created', {
-                    content: message,
-                    role: 'user',
-                    status: 'sent',
-                    feedbackConversation: this.feedbackContinueConversation,
-                });
+            // Optimistic UI: show message immediately
+            this.appendMessage(
+                message,
+                true,
+                this.feedbackContinueConversation,
+                'sent',
+                this.currentUser,
+            );
 
-                this.appendMessage(
-                    message,
-                    true,
-                    this.feedbackContinueConversation,
-                    '',
-                    this.currentUser,
+            this.messageText = '';
+
+            // Play send sound
+            const sendSound = document.getElementById("send-sound");
+            if (sendSound) {
+                sendSound.currentTime = 0;
+                sendSound.play().catch(() => {});
+            }
+
+            // Show typing indicator for AI response
+            this.simulateSystemTyping(true);
+
+            try {
+                const response = await fetch(
+                    `/api/v1/simulations/${this.simulation_id}/messages/`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.csrfToken,
+                        },
+                        body: JSON.stringify({
+                            content: message,
+                            message_type: 'text',
+                        }),
+                    }
                 );
 
-                this.messageText = '';
-
-                const sendSound = document.getElementById("send-sound");
-                if (sendSound) {
-                    sendSound.currentTime = 0;
-                    sendSound.play().catch(() => {});
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}`);
                 }
-                this.simulateSystemTyping(true);
-            } else {
-                alert('WebSocket is not connected. Please wait and try again.');
+
+                // 202 Accepted - AI response will arrive via WebSocket
+                console.debug('[ChatManager] Message sent via API, awaiting AI response via WebSocket');
+            } catch (error) {
+                console.error('[ChatManager] Failed to send message:', error);
+                this.simulateSystemTyping(false);
+                alert(`Failed to send message: ${error.message}`);
             }
+        },
+
+        /**
+         * Handle form:send event dispatched from chatFormState
+         */
+        async handleFormSend(detail) {
+            this.messageText = detail.messageText;
+            await this.sendMessage();
         },
 
         appendMessage(content, isFromSelf, isFeedbackConversation, status = "", displayName = "", messageId = null, mediaList = []) {
@@ -519,7 +553,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
 
                 const previousHeight = container.scrollHeight;
 
-                anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`);
+                anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`);
                 anchor.setAttribute('hx-swap', 'beforebegin');
                 anchor.setAttribute('hx-trigger', 'load');
                 htmx.process(anchor);
@@ -529,7 +563,7 @@ function ChatManager(simulation_id, currentUser, initialChecksum) {
                     container.scrollTop += addedHeight;
                 });
 
-                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-messages/?before=${messageId}`)
+                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`)
                     .then(response => response.text())
                     .then(html => {
                         if (!html.includes('data-message-id')) {
