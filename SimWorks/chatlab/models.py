@@ -65,21 +65,21 @@ class Message(PersistModel):
 
     order = models.PositiveIntegerField(editable=False, null=True, blank=True)
 
-    response = models.ForeignKey(
-        "simulation.AIResponse",
-        on_delete=models.CASCADE,
-        verbose_name="AI Response",
-        related_name="input",
-        null=True,
-        blank=True,
-    )
     ai_response_audit = models.ForeignKey(
         "orchestrai_django.AIResponseAudit",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="messages",
-        help_text="Link to AI audit record that produced this message",
+        help_text="Link to AI audit record that produced this message (deprecated)",
+    )
+    service_call_attempt = models.ForeignKey(
+        "orchestrai_django.ServiceCallAttempt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="messages",
+        help_text="Link to service call attempt that produced this message",
     )
     provider_response_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
