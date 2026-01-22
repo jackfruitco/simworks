@@ -272,7 +272,16 @@ class AIResponseAuditAdmin(admin.ModelAdmin):
 
 @admin.register(ServiceCallRecord)
 class ServiceCallRecordAdmin(admin.ModelAdmin):
-    """Admin for service call records."""
+    """Admin for service call records.
+
+    Future Enhancements (Phase 3):
+        - Display related user(s) from the simulation context
+        - Show PersistedChunk records linked to this call (domain objects created)
+        - Link to related Simulation object via related_object_id
+        - Display Message/SimulationMetadata objects created by this call
+        - Add filters for related_object_id to find all calls for a simulation
+        - Show attempt success/failure timeline visualization
+    """
 
     list_display = (
         "id",
