@@ -208,22 +208,6 @@ class Simulation(models.Model):
             return self.end_timestamp - self.start_timestamp
         return None
 
-    async def aget_previous_response(self) -> AIResponse | None:
-        """Return most recent AIResponse for this simulation, or None."""
-        return await self.responses.order_by("-created_at").afirst()
-
-    def get_previous_response(self) -> AIResponse | None:
-        """Return most recent AIResponse for this simulation, or None."""
-        return self.responses.order_by("-created_at").first()
-
-    def get_previous_response_id(self) -> str | None:
-        r = self.get_previous_response()
-        return r.provider_id or None if r else None
-
-    async def aget_previous_response_id(self) -> str | None:
-        r = await self.aget_previous_response()
-        return r.provider_id or None if r else None
-
     @property
     def start_timestamp_ms(self):
         if self.start_timestamp:
@@ -405,12 +389,13 @@ class SimulationMetadata(PersistModel, PolymorphicModel):
     key = models.CharField(max_length=255)
     value = models.TextField()
 
-    ai_response_audit = models.ForeignKey(
-        "orchestrai_django.AIResponseAudit",
+    service_call_attempt = models.ForeignKey(
+        "orchestrai_django.ServiceCallAttempt",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="simulation_metadata",
+        help_text="Link to service call attempt that produced this metadata",
     )
 
     class Meta:
@@ -688,38 +673,3 @@ class SimulationImage(models.Model):
             self.mime_type = "application/octet-stream"
 
         super().save(*args, **kwargs)
-
-
-class AIResponse(models.Model):
-    """Store AI response for the specified simulation."""
-
-    created_at = models.DateTimeField(auto_now_add=True, editable=False, db_index=True)
-    modified_at = models.DateTimeField(auto_now=True, editable=False)
-
-    simulation = models.ForeignKey(
-        Simulation, on_delete=models.CASCADE, related_name="responses"
-    )
-
-    provider_id = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-    )
-
-    provider = models.CharField(default="openai", max_length=255)
-    raw = models.JSONField(verbose_name="raw AI response", blank=True, null=True)
-    normalized = models.JSONField(verbose_name="normalized AI response")
-
-    input_tokens = models.PositiveIntegerField(default=0)
-    output_tokens = models.PositiveIntegerField(default=0)
-    reasoning_tokens = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        ordering = ["simulation", "created_at"]
-        indexes = [
-            models.Index(fields=["simulation", "-created_at"], name="airesp_sim_createdat_desc"),
-            models.Index(fields=["simulation", "provider_id"], name="airesp_sim_providerid_idx"),
-        ]
-
-    def __str__(self):
-        return f"AI Response id {self.pk} (Simulation id {self.simulation.pk}; created_at={self.created_at})"
