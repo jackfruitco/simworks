@@ -3,8 +3,6 @@
 
 import logging
 
-from asgiref.sync import sync_to_async
-
 __all__ = ["PreviousResponseMixin"]
 
 from orchestrai.components.services import ServiceError
@@ -14,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 class PreviousResponseMixin:
     """
-    Mixin that auto-fetches `previous_response_id` from the simulation.
+    Mixin that auto-fetches `previous_response_id` from ServiceCallRecord.
 
     When a service includes this mixin and has `simulation_id` in its context,
-    this mixin will automatically look up the most recent AI response's
-    provider ID and inject it into the context as `previous_response_id`.
+    this mixin will automatically look up the most recent completed service call's
+    provider response ID and inject it into the context as `previous_response_id`.
 
     This enables OpenAI's Responses API multi-turn conversation feature
     without requiring callers to explicitly fetch and pass the ID.
@@ -30,7 +28,13 @@ class PreviousResponseMixin:
 
     Requirements:
         - `simulation_id` must be present in `self.context`
-        - The Simulation model must have `aget_previous_response_id()` method
+
+    Data Source:
+        Queries ServiceCallRecord where:
+        - related_object_id matches the simulation_id
+        - status is COMPLETED
+        - provider_response_id is not null
+        Orders by -finished_at to get the most recent.
     """
 
     async def _aprepare_context(self) -> None:
@@ -48,15 +52,22 @@ class PreviousResponseMixin:
             return
 
         try:
-            from simulation.models import Simulation
+            from orchestrai_django.models import ServiceCallRecord, CallStatus
 
-            # Resolve simulation, then, try to
-            # fetch previous response ID from it.
-            # Otherwise, raise ValueError.
-            simulation = await sync_to_async(Simulation.resolve, thread_sensitive=False)(simulation_id)
+            # Query ServiceCallRecord for the most recent completed call
+            # with a provider_response_id for this simulation
+            prev_record = await ServiceCallRecord.objects.filter(
+                related_object_id=str(simulation_id),
+                status=CallStatus.COMPLETED,
+                provider_response_id__isnull=False,
+            ).order_by("-finished_at").afirst()
 
-            prev_id = await simulation.aget_previous_response_id()
-            if not prev_id: raise ValueError("No previous response found")
+            if not prev_record:
+                raise ValueError("No previous response found")
+
+            prev_id = prev_record.provider_response_id
+            if not prev_id:
+                raise ValueError("No previous response ID found")
 
             self.context["previous_response_id"] = prev_id
             logger.debug("-- ✅ [context] set `previous_response_id=%s`", prev_id)

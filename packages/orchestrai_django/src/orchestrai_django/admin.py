@@ -2,10 +2,9 @@ import json
 from typing import Any
 
 from django.contrib import admin
-from django.utils import timezone as tz_
 from django.utils.html import format_html
 
-from .models import AIRequestAudit, AIResponseAudit, ServiceCallRecord, PersistedChunk
+from .models import ServiceCallRecord, ServiceCallAttempt, PersistedChunk
 
 
 # ----------------------------- helpers ---------------------------------
@@ -35,239 +34,26 @@ def _pretty_json(value: Any) -> str:
 # ----------------------------- ModelAdmins ------------------------------
 
 
-@admin.register(AIRequestAudit)
-class AIRequestAuditAdmin(admin.ModelAdmin):
-    """Admin for AI request audit records."""
+class ServiceCallAttemptInline(admin.TabularInline):
+    """Inline display of attempts for a service call."""
 
-    list_display = (
-        "id",
-        "created_at",
-        "service_identity",
-        "namespace",
-        "provider_name",
-        "model",
-        "correlation_id_short",
-        "dispatched_at",
-        "attempts",
-    )
-    list_filter = (
-        "provider_name",
-        "namespace",
-        ("dispatched_at", admin.EmptyFieldListFilter),
-        ("created_at", admin.DateFieldListFilter),
-    )
-    search_fields = (
-        "id",
-        "correlation_id",
-        "service_identity",
-        "namespace",
-        "provider_name",
-        "model",
-    )
-    date_hierarchy = "created_at"
-    ordering = ("-created_at", "-id")
-    raw_id_fields = ("service_call",)
+    model = ServiceCallAttempt
+    extra = 0
+    can_delete = False
+    show_change_link = True
     readonly_fields = (
-        "created_at",
-        "updated_at",
-        "correlation_id",
-        "service_identity",
-        "namespace",
-        "kind",
-        "name",
-        "provider_name",
-        "client_name",
-        "model",
-        "raw_pretty",
-        "messages_pretty",
-        "tools_pretty",
-        "response_schema_identity",
-        "object_db_pk",
+        "attempt",
+        "status",
         "dispatched_at",
-        "attempts",
-        "next_attempt_at",
-        "last_error",
-    )
-    fieldsets = (
-        (
-            "Identity",
-            {
-                "fields": (
-                    ("created_at", "updated_at"),
-                    "correlation_id",
-                    ("service_identity", "service_call"),
-                    ("namespace", "kind", "name"),
-                )
-            },
-        ),
-        (
-            "Provider",
-            {
-                "fields": (
-                    ("provider_name", "client_name"),
-                    "model",
-                )
-            },
-        ),
-        (
-            "Request Data",
-            {
-                "fields": (
-                    "response_schema_identity",
-                    "messages_pretty",
-                    "tools_pretty",
-                    "raw_pretty",
-                )
-            },
-        ),
-        (
-            "Linkage",
-            {
-                "fields": ("object_db_pk",)
-            },
-        ),
-        (
-            "Dispatch Tracking",
-            {
-                "fields": (
-                    ("dispatched_at", "attempts"),
-                    "next_attempt_at",
-                    "last_error",
-                )
-            },
-        ),
-    )
-
-    @admin.display(description="Correlation ID")
-    def correlation_id_short(self, obj: AIRequestAudit) -> str:
-        return str(obj.correlation_id)[:8] + "..."
-
-    @admin.display(description="Raw Request")
-    def raw_pretty(self, obj: AIRequestAudit) -> str:
-        return _pretty_json(obj.raw)
-
-    @admin.display(description="Messages")
-    def messages_pretty(self, obj: AIRequestAudit) -> str:
-        return _pretty_json(obj.messages)
-
-    @admin.display(description="Tools")
-    def tools_pretty(self, obj: AIRequestAudit) -> str:
-        return _pretty_json(obj.tools) if obj.tools else "-"
-
-
-@admin.register(AIResponseAudit)
-class AIResponseAuditAdmin(admin.ModelAdmin):
-    """Admin for AI response audit records."""
-
-    list_display = (
-        "id",
-        "created_at",
-        "provider_name",
-        "model",
-        "finish_reason",
-        "total_tokens",
-        "correlation_id_short",
         "received_at",
-    )
-    list_filter = (
-        "provider_name",
-        "finish_reason",
-        ("received_at", admin.DateFieldListFilter),
-    )
-    search_fields = (
-        "id",
-        "correlation_id",
-        "request_correlation_id",
-        "provider_name",
-        "model",
-        "provider_response_id",
-    )
-    date_hierarchy = "received_at"
-    ordering = ("-received_at", "-id")
-    raw_id_fields = ("ai_request", "service_call")
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "correlation_id",
-        "request_correlation_id",
-        "provider_name",
-        "client_name",
-        "model",
-        "finish_reason",
-        "provider_response_id",
-        "input_tokens",
-        "output_tokens",
         "total_tokens",
-        "reasoning_tokens",
-        "received_at",
-        "raw_pretty",
-        "provider_raw_pretty",
-        "structured_data_pretty",
-        "execution_metadata_pretty",
+        "error",
+        "is_retryable",
     )
-    fieldsets = (
-        (
-            "Links",
-            {
-                "fields": (
-                    ("created_at", "updated_at"),
-                    ("ai_request", "service_call"),
-                    ("correlation_id", "request_correlation_id"),
-                )
-            },
-        ),
-        (
-            "Provider",
-            {
-                "fields": (
-                    ("provider_name", "client_name"),
-                    ("model", "finish_reason"),
-                    "provider_response_id",
-                )
-            },
-        ),
-        (
-            "Usage",
-            {
-                "fields": (
-                    ("input_tokens", "output_tokens"),
-                    ("total_tokens", "reasoning_tokens"),
-                )
-            },
-        ),
-        (
-            "Response Data",
-            {
-                "fields": (
-                    "received_at",
-                    "structured_data_pretty",
-                    "execution_metadata_pretty",
-                    "raw_pretty",
-                    "provider_raw_pretty",
-                )
-            },
-        ),
-    )
+    fields = readonly_fields
 
-    @admin.display(description="Correlation ID")
-    def correlation_id_short(self, obj: AIResponseAudit) -> str:
-        return str(obj.correlation_id)[:8] + "..."
-
-    @admin.display(description="Raw Response")
-    def raw_pretty(self, obj: AIResponseAudit) -> str:
-        return _pretty_json(obj.raw)
-
-    @admin.display(description="Provider Raw")
-    def provider_raw_pretty(self, obj: AIResponseAudit) -> str:
-        return _pretty_json(obj.provider_raw) if obj.provider_raw else "-"
-
-    @admin.display(description="Structured Data")
-    def structured_data_pretty(self, obj: AIResponseAudit) -> str:
-        return _pretty_json(obj.structured_data) if obj.structured_data else "-"
-
-    @admin.display(description="Execution Metadata")
-    def execution_metadata_pretty(self, obj: AIResponseAudit) -> str:
-        return _pretty_json(obj.execution_metadata) if obj.execution_metadata else "-"
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ServiceCallRecord)
@@ -288,8 +74,10 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "created_at",
         "service_identity",
         "status",
+        "successful_attempt",
         "backend",
         "domain_persisted",
+        "related_object_id",
         "finished_at",
     )
     list_filter = (
@@ -302,9 +90,13 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "id",
         "service_identity",
         "task_id",
+        "correlation_id",
+        "related_object_id",
+        "provider_response_id",
     )
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
+    inlines = [ServiceCallAttemptInline]
     readonly_fields = (
         "id",
         "created_at",
@@ -319,6 +111,11 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "domain_persisted",
         "domain_persist_error",
         "domain_persist_attempts",
+        "successful_attempt",
+        "provider_response_id",
+        "provider_previous_response_id",
+        "related_object_id",
+        "correlation_id",
         "input_pretty",
         "context_pretty",
         "result_pretty",
@@ -332,6 +129,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
                     "id",
                     ("created_at", "updated_at"),
                     "service_identity",
+                    "correlation_id",
                 )
             },
         ),
@@ -347,9 +145,20 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Domain Persistence",
+            "Attempt Tracking",
             {
                 "fields": (
+                    "successful_attempt",
+                    "provider_response_id",
+                    "provider_previous_response_id",
+                )
+            },
+        ),
+        (
+            "Domain Linkage",
+            {
+                "fields": (
+                    "related_object_id",
                     "domain_persisted",
                     "domain_persist_attempts",
                     "domain_persist_error",
@@ -380,6 +189,157 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
     @admin.display(description="Result")
     def result_pretty(self, obj: ServiceCallRecord) -> str:
         return _pretty_json(obj.result) if obj.result else "-"
+
+
+@admin.register(ServiceCallAttempt)
+class ServiceCallAttemptAdmin(admin.ModelAdmin):
+    """Admin for individual service call attempts."""
+
+    list_display = (
+        "id",
+        "created_at",
+        "service_call_link",
+        "attempt",
+        "status",
+        "total_tokens",
+        "dispatched_at",
+        "received_at",
+    )
+    list_filter = (
+        "status",
+        "is_retryable",
+        ("created_at", admin.DateFieldListFilter),
+    )
+    search_fields = (
+        "id",
+        "service_call__id",
+        "service_call__service_identity",
+        "attempt_correlation_id",
+        "provider_response_id",
+    )
+    date_hierarchy = "created_at"
+    ordering = ("-created_at", "-attempt")
+    raw_id_fields = ("service_call",)
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "service_call",
+        "attempt",
+        "attempt_correlation_id",
+        "status",
+        "request_raw_pretty",
+        "request_messages_pretty",
+        "request_tools_pretty",
+        "request_schema_identity",
+        "request_model",
+        "response_raw_pretty",
+        "response_provider_raw_pretty",
+        "provider_response_id",
+        "structured_data_pretty",
+        "finish_reason",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "reasoning_tokens",
+        "dispatched_at",
+        "received_at",
+        "error",
+        "is_retryable",
+        "is_streaming",
+    )
+    fieldsets = (
+        (
+            "Identity",
+            {
+                "fields": (
+                    ("created_at", "updated_at"),
+                    "service_call",
+                    ("attempt", "attempt_correlation_id"),
+                    "status",
+                )
+            },
+        ),
+        (
+            "Request",
+            {
+                "fields": (
+                    "request_model",
+                    "request_schema_identity",
+                    "request_messages_pretty",
+                    "request_tools_pretty",
+                    "request_raw_pretty",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Response",
+            {
+                "fields": (
+                    ("dispatched_at", "received_at"),
+                    ("finish_reason", "provider_response_id"),
+                    "is_streaming",
+                    "structured_data_pretty",
+                    "response_raw_pretty",
+                    "response_provider_raw_pretty",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Token Usage",
+            {
+                "fields": (
+                    ("input_tokens", "output_tokens"),
+                    ("total_tokens", "reasoning_tokens"),
+                )
+            },
+        ),
+        (
+            "Error",
+            {
+                "fields": (
+                    "error",
+                    "is_retryable",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    @admin.display(description="Service Call")
+    def service_call_link(self, obj: ServiceCallAttempt) -> str:
+        if obj.service_call:
+            return format_html(
+                '<a href="/admin/orchestrai_django/servicecallrecord/{}/change/">{}</a>',
+                obj.service_call_id,
+                obj.service_call_id[:16] + "..." if len(obj.service_call_id) > 16 else obj.service_call_id,
+            )
+        return "-"
+
+    @admin.display(description="Request Raw")
+    def request_raw_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_raw) if obj.request_raw else "-"
+
+    @admin.display(description="Request Messages")
+    def request_messages_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_messages) if obj.request_messages else "-"
+
+    @admin.display(description="Request Tools")
+    def request_tools_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_tools) if obj.request_tools else "-"
+
+    @admin.display(description="Response Raw")
+    def response_raw_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.response_raw) if obj.response_raw else "-"
+
+    @admin.display(description="Provider Raw")
+    def response_provider_raw_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.response_provider_raw) if obj.response_provider_raw else "-"
+
+    @admin.display(description="Structured Data")
+    def structured_data_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.structured_data) if obj.structured_data else "-"
 
 
 @admin.register(PersistedChunk)

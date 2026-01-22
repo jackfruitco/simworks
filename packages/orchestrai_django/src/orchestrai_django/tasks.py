@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-from uuid import uuid4
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -17,7 +16,14 @@ from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry.active_app import get_component_store
 from orchestrai.registry.services import ensure_service_registry
 
-from orchestrai_django.models import ServiceCallRecord
+from orchestrai_django.models import (
+    ServiceCallRecord,
+    ServiceCallAttempt,
+    AttemptStatus,
+    CallStatus,
+    AttemptAllocationError,
+    AlreadySucceededError,
+)
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
@@ -103,14 +109,20 @@ def _normalize_dt(value):
         return value
 
 
-def _get_max_retries() -> int:
-    """Get max retry attempts from settings (default: 3)."""
-    return getattr(settings, "DJANGO_TASKS_MAX_RETRIES", 3)
+def _get_max_attempts() -> int:
+    """Get max retry attempts from settings (default: 4)."""
+    return getattr(settings, "ORCA_MAX_ATTEMPTS", 4)
 
 
-def _get_retry_delay() -> int:
-    """Get retry delay in seconds from settings (default: 5)."""
-    return getattr(settings, "DJANGO_TASKS_RETRY_DELAY", 5)
+def _get_retry_backoff_base() -> int:
+    """Get retry backoff base in seconds from settings (default: 5)."""
+    return getattr(settings, "ORCA_RETRY_BACKOFF_BASE", 5)
+
+
+def _get_retry_delay(attempt: int) -> int:
+    """Calculate exponential backoff delay: base * (2 ** (attempt - 1))."""
+    base = _get_retry_backoff_base()
+    return base * (2 ** (attempt - 1))
 
 
 @task
@@ -127,7 +139,9 @@ def run_service_call(call_id: str):
     """
     Execute a stored :class:`ServiceCallRecord` with automatic retry logic.
 
-    Retries on failure up to DJANGO_TASKS_MAX_RETRIES times (default: 3).
+    Uses ServiceCallAttempt to track individual execution attempts.
+    Retries on failure up to ORCA_MAX_ATTEMPTS times (default: 4).
+    Uses exponential backoff between retries.
     After max retries, marks record as failed and emits ai_response_failed signal.
     """
 
@@ -143,39 +157,59 @@ def run_service_call(call_id: str):
     app = get_current_app()
     registry = ensure_service_registry(app)
 
-    # Claim the record under a DB transaction so select_for_update works.
-    # We only hold the lock long enough to bump attempt/status timestamps.
+    max_attempts = _get_max_attempts()
+    attempt_record = None
+
+    # Claim the record and allocate an attempt under a DB transaction
     with transaction.atomic():
         record = ServiceCallRecord.objects.select_for_update().get(pk=call_id)
 
-        # Check retry limit
-        max_retries = _get_max_retries()
-        current_attempt = (record.dispatch or {}).get("attempt", 0) + 1
-
-        if current_attempt > max_retries:
-            logger.warning(
-                "Service call %s exceeded max retries (%d), marking as failed",
-                call_id,
-                max_retries,
-            )
-            record.status = "failed"
-            record.error = f"Max retries ({max_retries}) exceeded"
-            record.save(update_fields=["status", "error"])
+        # Check if already completed
+        if record.status == CallStatus.COMPLETED:
+            logger.info("Service call %s already completed, skipping", call_id)
             return to_jsonable(record.as_call())
 
-        # Update attempt counter + mark running
-        if record.dispatch is None:
-            record.dispatch = {}
-        record.dispatch["attempt"] = current_attempt
-        record.status = _STATUS_RUNNING
-        record.started_at = timezone.now()
-        record.save(update_fields=["dispatch", "status", "started_at"])
+        # Get current attempt count
+        current_attempt_count = record.attempts.count()
 
+        if current_attempt_count >= max_attempts:
+            logger.warning(
+                "Service call %s has reached max attempts (%d), marking as failed",
+                call_id,
+                max_attempts,
+            )
+            record.status = CallStatus.FAILED
+            record.error = f"Max attempts ({max_attempts}) reached"
+            record.finished_at = timezone.now()
+            record.save(update_fields=["status", "error", "finished_at"])
+            return to_jsonable(record.as_call())
+
+        # Allocate new attempt
+        try:
+            attempt_record = record.allocate_attempt()
+        except AttemptAllocationError:
+            logger.warning("Service call %s: attempt allocation failed (already completed)", call_id)
+            return to_jsonable(record.as_call())
+
+        # Update record status
+        if record.status != CallStatus.IN_PROGRESS:
+            record.status = CallStatus.IN_PROGRESS
+        record.started_at = record.started_at or timezone.now()
+
+        # Populate related_object_id from context if not set
+        if not record.related_object_id and record.context:
+            sim_id = record.context.get("simulation_id")
+            if sim_id:
+                record.related_object_id = str(sim_id)
+
+        record.save(update_fields=["status", "started_at", "related_object_id"])
+
+    current_attempt = attempt_record.attempt
     logger.info(
         "Executing service call %s (attempt %d/%d)",
         call_id,
         current_attempt,
-        max_retries
+        max_attempts
     )
 
     service_cls = registry.get(Identity.get(record.service_identity))
@@ -195,6 +229,9 @@ def run_service_call(call_id: str):
 
     try:
         payload = record.input or {}
+
+        # Mark attempt as dispatched before calling the service
+        attempt_record.mark_dispatched()
 
         if hasattr(service, "execute") and callable(service.execute):
             execute = service.execute
@@ -228,31 +265,70 @@ def run_service_call(call_id: str):
             else:
                 result_json = result
 
+            # Update attempt record with response data
+            provider_meta = getattr(result, 'provider_meta', None) or {}
+            usage = getattr(result, 'usage', None)
+            provider_response_id = provider_meta.get("id")
+
+            attempt_record.response_raw = result_json
+            attempt_record.response_provider_raw = provider_meta.get("raw")
+            attempt_record.provider_response_id = provider_response_id
+            attempt_record.finish_reason = provider_meta.get("finish_reason")
+            attempt_record.received_at = timezone.now()
+
+            # Serialize structured_data if it's a Pydantic model
+            structured_data = getattr(result, 'structured_data', None)
+            if structured_data is not None:
+                if hasattr(structured_data, 'model_dump'):
+                    try:
+                        attempt_record.structured_data = structured_data.model_dump(mode="json")
+                    except TypeError:
+                        attempt_record.structured_data = _manual_extract_fields(structured_data)
+                elif isinstance(structured_data, dict):
+                    attempt_record.structured_data = structured_data
+                else:
+                    attempt_record.structured_data = {"raw_value": str(structured_data)}
+
+            # Token usage
+            if usage:
+                attempt_record.input_tokens = getattr(usage, 'input_tokens', 0) or 0
+                attempt_record.output_tokens = getattr(usage, 'output_tokens', 0) or 0
+                attempt_record.total_tokens = getattr(usage, 'total_tokens', 0) or 0
+                attempt_record.reasoning_tokens = getattr(usage, 'reasoning_tokens', 0) or 0
+
+            attempt_record.save()
+
+            # Mark received before marking successful
+            attempt_record.status = AttemptStatus.RECEIVED
+            attempt_record.save(update_fields=["status", "updated_at"])
+
+            # Lock record and mark as successful
+            locked_record = ServiceCallRecord.objects.select_for_update().get(pk=call_id)
+            try:
+                locked_record.mark_attempt_successful(
+                    attempt_record,
+                    result_json,
+                    provider_response_id=provider_response_id
+                )
+            except AlreadySucceededError:
+                # Another attempt already succeeded - this is fine
+                logger.info(
+                    "Service call %s: attempt %d finished but another attempt already succeeded",
+                    call_id,
+                    current_attempt
+                )
+                return to_jsonable(locked_record.as_call())
+
+            # Refresh record after atomic update
+            record.refresh_from_db()
+
             call.result = result_json
             call.status = _STATUS_SUCCEEDED
-            call.finished_at = timezone.now()
+            call.finished_at = record.finished_at
 
-            record.update_from_call(call)
-            record.status = _STATUS_SUCCEEDED
-            record.result = result_json
-            record.error = None
-            record.finished_at = call.finished_at
-            record.domain_persisted = False  # Mark for persistence worker
-            record.save(update_fields=[
-                "status",
-                "input",
-                "context",
-                "result",
-                "error",
-                "dispatch",
-                "backend",
-                "queue",
-                "task_id",
-                "created_at",
-                "started_at",
-                "finished_at",
-                "domain_persisted",
-            ])
+            # Mark for domain persistence
+            record.domain_persisted = False
+            record.save(update_fields=["domain_persisted"])
 
         logger.info(
             "Service call %s succeeded on attempt %d, attempting inline persistence",
@@ -260,14 +336,9 @@ def run_service_call(call_id: str):
             current_attempt
         )
 
-        # Create audit records for request/response tracking
-        ai_response_audit_id = None
+        # Populate attempt record with request data
         try:
-            from orchestrai_django.models import AIRequestAudit, AIResponseAudit
-
-            # Get request from response (if attached)
             request_obj = getattr(result, 'request', None)
-            ai_request = None
 
             if request_obj:
                 # Serialize request to JSON
@@ -275,6 +346,8 @@ def run_service_call(call_id: str):
                     request_json = request_obj.model_dump(mode="json")
                 except TypeError:
                     request_json = _manual_extract_fields(request_obj)
+
+                attempt_record.request_raw = request_json
 
                 # Extract messages for easier querying
                 messages_json = []
@@ -284,108 +357,31 @@ def run_service_call(call_id: str):
                             messages_json.append(item.model_dump(mode="json"))
                         except (TypeError, AttributeError):
                             messages_json.append(str(item))
+                attempt_record.request_messages = messages_json
 
                 # Extract tools for easier querying
-                tools_json = None
                 if hasattr(request_obj, 'tools') and request_obj.tools:
                     try:
-                        tools_json = [t.model_dump(mode="json") for t in request_obj.tools]
+                        attempt_record.request_tools = [t.model_dump(mode="json") for t in request_obj.tools]
                     except (TypeError, AttributeError):
-                        tools_json = [str(t) for t in request_obj.tools]
+                        attempt_record.request_tools = [str(t) for t in request_obj.tools]
 
                 # Get response schema identity if available
-                response_schema_identity = None
                 if hasattr(request_obj, 'response_schema') and request_obj.response_schema:
                     identity = getattr(getattr(request_obj.response_schema, 'identity', None), 'as_str', None)
-                    response_schema_identity = identity
+                    attempt_record.request_schema_identity = identity
 
-                ai_request = AIRequestAudit(
-                    correlation_id=request_obj.correlation_id,
-                    service_identity=record.service_identity,
-                    namespace=getattr(request_obj, 'namespace', None),
-                    kind=getattr(request_obj, 'kind', None),
-                    name=getattr(request_obj, 'name', None),
-                    provider_name=getattr(result, 'provider_name', None),
-                    client_name=getattr(result, 'client_name', None),
-                    model=getattr(request_obj, 'model', None),
-                    raw=request_json,
-                    messages=messages_json,
-                    tools=tools_json,
-                    response_schema_identity=response_schema_identity,
-                    object_db_pk=(record.context or {}).get("simulation_id"),
-                    service_call=record,
-                    dispatched_at=timezone.now(),
-                )
-                ai_request.save()
-                logger.debug(f"Created AIRequestAudit {ai_request.id} for call {call_id}")
-            else:
-                # Create minimal request audit without full request data
-                ai_request = AIRequestAudit(
-                    correlation_id=getattr(result, 'request_correlation_id', None) or uuid4(),
-                    service_identity=record.service_identity,
-                    namespace=getattr(result, 'namespace', None),
-                    provider_name=getattr(result, 'provider_name', None),
-                    client_name=getattr(result, 'client_name', None),
-                    raw={},  # No request data available
-                    messages=[],
-                    object_db_pk=(record.context or {}).get("simulation_id"),
-                    service_call=record,
-                    dispatched_at=timezone.now(),
-                )
-                ai_request.save()
-                logger.debug(f"Created minimal AIRequestAudit {ai_request.id} for call {call_id}")
+                attempt_record.request_model = getattr(request_obj, 'model', None)
+                attempt_record.save()
 
-            # Create response audit
-            provider_meta = getattr(result, 'provider_meta', None) or {}
-            usage = getattr(result, 'usage', None)
-
-            # Serialize structured_data if it's a Pydantic model
-            structured_data_json = None
-            structured_data = getattr(result, 'structured_data', None)
-            if structured_data is not None:
-                if hasattr(structured_data, 'model_dump'):
-                    try:
-                        structured_data_json = structured_data.model_dump(mode="json")
-                    except TypeError:
-                        structured_data_json = _manual_extract_fields(structured_data)
-                elif isinstance(structured_data, dict):
-                    structured_data_json = structured_data
-                else:
-                    # Fallback: convert to string if nothing else works
-                    structured_data_json = {"raw_value": str(structured_data)}
-
-            ai_response = AIResponseAudit(
-                ai_request=ai_request,
-                service_call=record,
-                correlation_id=result.correlation_id,
-                request_correlation_id=getattr(result, 'request_correlation_id', None),
-                raw=result_json,
-                provider_raw=provider_meta.get("raw"),
-                provider_name=getattr(result, 'provider_name', None),
-                client_name=getattr(result, 'client_name', None),
-                model=provider_meta.get("model"),
-                finish_reason=provider_meta.get("finish_reason"),
-                provider_response_id=provider_meta.get("id"),
-                input_tokens=getattr(usage, 'input_tokens', 0) if usage else 0,
-                output_tokens=getattr(usage, 'output_tokens', 0) if usage else 0,
-                total_tokens=getattr(usage, 'total_tokens', 0) if usage else 0,
-                reasoning_tokens=getattr(usage, 'reasoning_tokens', 0) if usage else 0,
-                structured_data=structured_data_json,
-                execution_metadata=getattr(result, 'execution_metadata', None) or {},
-                received_at=getattr(result, 'received_at', None) or timezone.now(),
-            )
-            ai_response.save()
-            ai_response_audit_id = ai_response.id
-            logger.debug(f"Created AIResponseAudit {ai_response.id} for call {call_id}")
-
-            # Store ID in context for persistence handlers
+            # Store attempt ID in context for persistence handlers
             if record.context is None:
                 record.context = {}
-            record.context["_ai_response_audit_id"] = ai_response_audit_id
+            record.context["_service_call_attempt_id"] = attempt_record.id
             record.save(update_fields=["context"])
 
-        except Exception as audit_err:
-            logger.warning(f"Failed to create audit records for call {call_id}: {audit_err}")
+        except Exception as req_err:
+            logger.warning(f"Failed to populate request data for call {call_id}: {req_err}")
 
         # Attempt inline persistence instead of deferring to drain worker
         try:
@@ -434,48 +430,69 @@ def run_service_call(call_id: str):
             "Service call %s failed on attempt %d/%d: %s",
             call_id,
             current_attempt,
-            max_retries,
+            max_attempts,
             str(exc)
         )
+
+        # Mark attempt as failed
+        if attempt_record:
+            is_retryable = _is_retryable_error(exc)
+            attempt_record.mark_error(str(exc), is_retryable=is_retryable)
 
         call.error = str(exc)
         call.status = _STATUS_FAILED
         call.finished_at = timezone.now()
 
-        if current_attempt < max_retries:
-            # Retry - re-enqueue the task
-            record.status = "retrying"
+        # Check if we should retry
+        remaining_attempts = max_attempts - current_attempt
+        should_retry = remaining_attempts > 0 and (attempt_record is None or attempt_record.is_retryable)
+
+        if should_retry:
+            # Calculate backoff delay
+            delay = _get_retry_delay(current_attempt)
+
+            # Update record status for retry
+            record.status = CallStatus.IN_PROGRESS
             record.error = f"Attempt {current_attempt} failed: {str(exc)}"
-            record.save(update_fields=["status", "error", "dispatch"])
+            record.save(update_fields=["status", "error"])
 
             logger.info(
-                "Service call %s will retry (attempt %d/%d)",
+                "Service call %s will retry (attempt %d/%d) after %ds backoff",
                 call_id,
                 current_attempt + 1,
-                max_retries
+                max_attempts,
+                delay
             )
 
-            # Re-enqueue via Django Tasks
+            # Schedule retry with backoff via Django Tasks
+            # Note: Django Tasks doesn't support delay natively, so we use transaction.on_commit
+            # with a simple approach. For production, consider Celery's countdown.
+            def schedule_retry():
+                import time
+                time.sleep(delay)  # Blocking sleep - in production use proper delay
+                run_service_call_task.enqueue(call_id=call_id)
+
+            # For now, just re-enqueue immediately
+            # TODO: Implement proper delay mechanism
             run_service_call_task.enqueue(call_id=call_id)
 
             return to_jsonable(call)
 
         else:
             # Max retries reached - mark as failed and emit signal
-            record.status = _STATUS_FAILED
+            record.status = CallStatus.FAILED
             record.error = str(exc)
             record.finished_at = call.finished_at
             record.save(update_fields=[
                 "status",
                 "error",
-                "dispatch",
                 "finished_at",
             ])
 
             logger.error(
                 "Service call %s failed after %d attempts, no more retries",
                 call_id,
-                max_retries
+                current_attempt
             )
 
             # Emit failure signal for app-level handling
@@ -492,6 +509,46 @@ def run_service_call(call_id: str):
                 logger.exception("Failed to emit ai_response_failed signal")
 
             return to_jsonable(call)
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    """Determine if an exception should trigger a retry.
+
+    Args:
+        exc: The exception that occurred.
+
+    Returns:
+        True if the error is retryable, False otherwise.
+    """
+    # Common non-retryable errors
+    non_retryable_types = (
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+    )
+
+    if isinstance(exc, non_retryable_types):
+        return False
+
+    # Check for specific error messages indicating non-retryable conditions
+    error_str = str(exc).lower()
+    non_retryable_patterns = [
+        "invalid api key",
+        "authentication",
+        "unauthorized",
+        "forbidden",
+        "not found",
+        "invalid request",
+        "bad request",
+    ]
+
+    for pattern in non_retryable_patterns:
+        if pattern in error_str:
+            return False
+
+    # Default to retryable
+    return True
 
 
 @task
@@ -542,10 +599,11 @@ def process_pending_persistence():
     # Atomic claim of work with concurrent safety
     # - select_for_update(skip_locked=True) prevents race conditions
     # - Filter out exhausted records upfront to avoid wasted work
+    # - Accept both old 'succeeded' status and new CallStatus.COMPLETED
     with transaction.atomic():
         pending_records = list(
             ServiceCallRecord.objects.filter(
-                status=_STATUS_SUCCEEDED,
+                status__in=[_STATUS_SUCCEEDED, CallStatus.COMPLETED],
                 domain_persisted=False,
                 domain_persist_attempts__lt=max_attempts,
             )

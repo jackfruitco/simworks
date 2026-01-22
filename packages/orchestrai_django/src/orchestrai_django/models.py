@@ -1,10 +1,32 @@
 # orchestrai_django/models.py
+from uuid import uuid4
+
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.db.models import Max
 from django.utils import timezone
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
-from orchestrai.identity import Identity
+
+
+class AttemptStatus(models.TextChoices):
+    """Status lifecycle for individual service call attempts."""
+
+    BUILT = "built", "Built"  # Request constructed
+    DISPATCHED = "dispatched", "Dispatched"  # Sent to provider
+    RECEIVED = "received", "Received"  # Response received (pre-validation)
+    SCHEMA_OK = "schema_ok", "Schema OK"  # Schema validation passed (winner)
+    ERROR = "error", "Error"  # Execution failed
+    TIMEOUT = "timeout", "Timeout"  # Provider timeout
+
+
+class CallStatus(models.TextChoices):
+    """Overall status for service call records."""
+
+    PENDING = "pending", "Pending"  # Call created, no attempt started
+    IN_PROGRESS = "in_progress", "In Progress"  # At least one attempt running
+    COMPLETED = "completed", "Completed"  # Successful attempt
+    FAILED = "failed", "Failed"  # All attempts exhausted
 
 
 class TimestampedModel(models.Model):
@@ -15,163 +37,6 @@ class TimestampedModel(models.Model):
 
     class Meta:
         abstract = True
-
-
-class AIRequestAudit(TimestampedModel):
-    """Audit record for outbound AI/LLM requests.
-
-    Stores the full OrchestrAI Request JSON along with extracted fields
-    for querying. Replaces AIOutbox for request tracking.
-
-    Lifecycle:
-        1. Created in tasks.run_service_call() after request is built
-        2. AIResponseAudit linked after response received
-        3. Domain objects link back via ai_response_audit FK
-    """
-
-    # Identity fields
-    correlation_id = models.UUIDField(db_index=True)
-    service_identity = models.CharField(max_length=255, db_index=True)
-    namespace = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    kind = models.CharField(max_length=128, null=True, blank=True)
-    name = models.CharField(max_length=128, null=True, blank=True)
-
-    # Provider info
-    provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-    client_name = models.CharField(max_length=128, null=True, blank=True)
-    model = models.CharField(max_length=128, null=True, blank=True)
-
-    # Full OrchestrAI Request JSON
-    raw = models.JSONField(help_text="Request.model_dump(mode='json')")
-
-    # Extracted fields for querying
-    messages = models.JSONField(default=list, help_text="Extracted input messages")
-    tools = models.JSONField(null=True, blank=True)
-    response_schema_identity = models.CharField(max_length=255, null=True, blank=True)
-
-    # Object linkage
-    object_db_pk = models.IntegerField(null=True, blank=True, db_index=True)
-    service_call = models.ForeignKey(
-        "ServiceCallRecord",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="ai_requests",
-    )
-
-    # Event tracking (migrated from AIOutbox)
-    dispatched_at = models.DateTimeField(null=True, blank=True, db_index=True)
-    attempts = models.PositiveIntegerField(default=0)
-    next_attempt_at = models.DateTimeField(null=True, blank=True)
-    last_error = models.TextField(null=True, blank=True)
-
-    class Meta:
-        db_table = "ai_request_audit"
-        indexes = [
-            models.Index(fields=["correlation_id"]),
-            models.Index(fields=["service_identity"]),
-            models.Index(fields=["namespace", "kind", "name"]),
-            models.Index(fields=["provider_name", "model"]),
-            models.Index(fields=["dispatched_at"]),
-        ]
-
-    def __str__(self) -> str:  # pragma: no cover
-        return f"AIRequestAudit(id={self.pk}, service={self.service_identity}, correlation={self.correlation_id})"
-
-    # ---- identity conveniences (read-side) ---------------------------------
-    @property
-    def identity(self) -> Identity:
-        return Identity(
-            domain="requests",
-            namespace=self.namespace or "default",
-            group=self.kind or "default",
-            name=self.name or "default",
-        )
-
-    @property
-    def identity_tuple(self) -> tuple[str, str, str, str]:
-        return self.identity.as_tuple
-
-    @property
-    def identity_str(self) -> str:
-        return self.identity.as_str
-
-
-class AIResponseAudit(TimestampedModel):
-    """Audit record for inbound AI/LLM responses.
-
-    Stores both the full OrchestrAI Response JSON and the raw provider response
-    (before normalization) for complete audit trail.
-
-    Lifecycle:
-        1. Created in tasks.run_service_call() after response received
-        2. Links to corresponding AIRequestAudit
-        3. Domain objects (Message, SimulationMetadata) link via ai_response_audit FK
-
-    Key Fields:
-        - raw: Full OrchestrAI Response JSON (normalized)
-        - provider_raw: Raw provider response before OrchestrAI normalization
-    """
-
-    # Links
-    ai_request = models.ForeignKey(
-        "AIRequestAudit",
-        on_delete=models.CASCADE,
-        related_name="responses",
-    )
-    service_call = models.ForeignKey(
-        "ServiceCallRecord",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="ai_responses",
-    )
-
-    # Correlation
-    correlation_id = models.UUIDField(db_index=True)
-    request_correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
-
-    # Full Response JSON
-    raw = models.JSONField(help_text="Response.model_dump(mode='json')")
-
-    # Raw provider response (before OrchestrAI normalization)
-    provider_raw = models.JSONField(
-        null=True,
-        blank=True,
-        help_text="provider_meta['raw'] - untouched provider response",
-    )
-
-    # Extracted fields for querying
-    provider_name = models.CharField(max_length=64, null=True, blank=True, db_index=True)
-    client_name = models.CharField(max_length=128, null=True, blank=True)
-    model = models.CharField(max_length=128, null=True, blank=True)
-    finish_reason = models.CharField(max_length=64, null=True, blank=True)
-    provider_response_id = models.CharField(max_length=255, null=True, blank=True)
-
-    # Usage tracking
-    input_tokens = models.PositiveIntegerField(default=0)
-    output_tokens = models.PositiveIntegerField(default=0)
-    total_tokens = models.PositiveIntegerField(default=0)
-    reasoning_tokens = models.PositiveIntegerField(default=0)
-
-    # Structured output
-    structured_data = models.JSONField(null=True, blank=True)
-    execution_metadata = models.JSONField(default=dict)
-
-    # Timing
-    received_at = models.DateTimeField(db_index=True)
-
-    class Meta:
-        db_table = "ai_response_audit"
-        indexes = [
-            models.Index(fields=["correlation_id"]),
-            models.Index(fields=["request_correlation_id"]),
-            models.Index(fields=["provider_name", "model"]),
-            models.Index(fields=["received_at"]),
-        ]
-
-    def __str__(self) -> str:  # pragma: no cover
-        return f"AIResponseAudit(id={self.pk}, correlation={self.correlation_id}, tokens={self.total_tokens})"
 
 
 class ServiceCallRecord(TimestampedModel):
@@ -198,12 +63,51 @@ class ServiceCallRecord(TimestampedModel):
     domain_persist_error = models.TextField(null=True, blank=True)
     domain_persist_attempts = models.IntegerField(default=0)
 
+    # Winner tracking
+    successful_attempt = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Attempt number that succeeded",
+    )
+    provider_response_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Provider response ID from winning attempt",
+    )
+
+    # Continuation for multi-turn conversations
+    provider_previous_response_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Previous response ID passed to provider",
+    )
+
+    # Domain linkage
+    related_object_id = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="ID of related domain object (e.g., simulation_id)",
+    )
+
+    # Umbrella correlation
+    correlation_id = models.UUIDField(
+        default=uuid4,
+        db_index=True,
+        help_text="Correlation ID for tracing across requests",
+    )
+
     class Meta:
         db_table = "service_call_record"
         indexes = [
             models.Index(fields=["service_identity", "backend"]),
             models.Index(fields=["queue"]),
             models.Index(fields=["status", "domain_persisted", "finished_at"]),
+            models.Index(fields=["related_object_id", "status", "-finished_at"]),
         ]
 
     def _coerce_datetime(self, value):
@@ -269,8 +173,256 @@ class ServiceCallRecord(TimestampedModel):
         assert_jsonable(payload)
         return payload
 
+    def allocate_attempt(self) -> "ServiceCallAttempt":
+        """Atomically allocate next attempt number.
+
+        Must be called within a transaction with select_for_update() on the record.
+
+        Raises:
+            AttemptAllocationError: If call is already completed.
+
+        Returns:
+            ServiceCallAttempt: The newly created attempt record.
+        """
+        from django.db import transaction
+
+        if self.status == CallStatus.COMPLETED:
+            raise AttemptAllocationError("Call already completed")
+
+        # Compute next attempt number
+        max_attempt = self.attempts.aggregate(Max("attempt"))["attempt__max"] or 0
+        next_attempt = max_attempt + 1
+
+        # Create attempt record
+        attempt = ServiceCallAttempt.objects.create(
+            service_call=self,
+            attempt=next_attempt,
+            status=AttemptStatus.BUILT,
+        )
+
+        return attempt
+
+    def mark_attempt_successful(self, attempt: "ServiceCallAttempt", result: dict, provider_response_id: str | None = None) -> None:
+        """Atomically mark attempt as winner.
+
+        Must be called within a transaction with select_for_update() on the record.
+
+        Args:
+            attempt: The attempt that succeeded.
+            result: The result dict to store.
+            provider_response_id: Optional provider response ID from the attempt.
+
+        Raises:
+            AlreadySucceededError: If call already has a successful attempt.
+        """
+        if self.successful_attempt is not None:
+            raise AlreadySucceededError(f"Call already succeeded with attempt {self.successful_attempt}")
+
+        # Mark attempt
+        attempt.status = AttemptStatus.SCHEMA_OK
+        attempt.save(update_fields=["status", "updated_at"])
+
+        # Mark call as succeeded
+        self.successful_attempt = attempt.attempt
+        self.provider_response_id = provider_response_id or attempt.provider_response_id
+        self.result = result
+        self.status = CallStatus.COMPLETED
+        self.finished_at = timezone.now()
+        self.save(update_fields=[
+            "successful_attempt", "provider_response_id", "result",
+            "status", "finished_at", "updated_at"
+        ])
+
     def __str__(self) -> str:  # pragma: no cover
         return f"ServiceCallRecord(id={self.pk}, service={self.service_identity}, status={self.status})"
+
+
+class AttemptAllocationError(Exception):
+    """Raised when attempt allocation fails."""
+    pass
+
+
+class AlreadySucceededError(Exception):
+    """Raised when trying to mark success on an already-succeeded call."""
+    pass
+
+
+class ServiceCallAttempt(TimestampedModel):
+    """Single execution attempt of a service call.
+
+    Represents one attempt to execute a service call, including the request
+    sent to the provider and the response received. Multiple attempts may
+    exist for a single ServiceCallRecord due to retries.
+
+    Lifecycle:
+        1. Created with status=BUILT when request is constructed
+        2. Updated to DISPATCHED when sent to provider
+        3. Updated to RECEIVED when response comes back
+        4. Updated to SCHEMA_OK if validation passes (winner)
+        5. Updated to ERROR/TIMEOUT if something fails
+
+    Key Concept:
+        Only ONE attempt per ServiceCallRecord should reach SCHEMA_OK status.
+        This is the "winning" attempt whose result is stored in the parent record.
+    """
+
+    # Identity
+    service_call = models.ForeignKey(
+        ServiceCallRecord,
+        on_delete=models.CASCADE,
+        related_name="attempts",
+    )
+    attempt = models.PositiveIntegerField(help_text="1-indexed attempt number")
+    attempt_correlation_id = models.UUIDField(
+        default=uuid4,
+        db_index=True,
+        help_text="Unique correlation ID for this attempt",
+    )
+
+    # Status lifecycle
+    status = models.CharField(
+        max_length=32,
+        choices=AttemptStatus.choices,
+        default=AttemptStatus.BUILT,
+    )
+
+    # Request fields (nullable until request built)
+    request_raw = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full Request JSON",
+    )
+    request_messages = models.JSONField(
+        default=list,
+        help_text="Extracted input messages for querying",
+    )
+    request_tools = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Tools passed to provider",
+    )
+    request_schema_identity = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Identity of the response schema requested",
+    )
+    request_model = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="Model requested for this attempt",
+    )
+
+    # Response fields (nullable until response received)
+    response_raw = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full OrchestrAI Response JSON",
+    )
+    response_provider_raw = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Untouched provider response before normalization",
+    )
+    provider_response_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Provider's response ID (e.g., OpenAI response ID)",
+    )
+    structured_data = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Validated structured output from response",
+    )
+    finish_reason = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        help_text="Provider's finish reason",
+    )
+
+    # Token usage
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    total_tokens = models.PositiveIntegerField(default=0)
+    reasoning_tokens = models.PositiveIntegerField(default=0)
+
+    # Timestamps
+    dispatched_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When request was sent to provider",
+    )
+    received_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When response was received from provider",
+    )
+
+    # Error tracking
+    error = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Error message if attempt failed",
+    )
+    is_retryable = models.BooleanField(
+        default=True,
+        help_text="Whether this error should trigger a retry",
+    )
+
+    # Streaming support
+    is_streaming = models.BooleanField(
+        default=False,
+        help_text="Whether this attempt used streaming",
+    )
+
+    class Meta:
+        db_table = "service_call_attempt"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["service_call", "attempt"],
+                name="unique_call_attempt",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["service_call", "attempt"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=["attempt_correlation_id"]),
+            models.Index(fields=["dispatched_at"]),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"ServiceCallAttempt(call={self.service_call_id}, attempt={self.attempt}, status={self.status})"
+
+    def mark_dispatched(self) -> None:
+        """Mark this attempt as dispatched to the provider."""
+        self.status = AttemptStatus.DISPATCHED
+        self.dispatched_at = timezone.now()
+        self.save(update_fields=["status", "dispatched_at", "updated_at"])
+
+    def mark_received(self, response_raw: dict | None = None) -> None:
+        """Mark this attempt as having received a response."""
+        self.status = AttemptStatus.RECEIVED
+        self.received_at = timezone.now()
+        if response_raw is not None:
+            self.response_raw = response_raw
+        self.save(update_fields=["status", "received_at", "response_raw", "updated_at"])
+
+    def mark_error(self, error: str, is_retryable: bool = True) -> None:
+        """Mark this attempt as failed."""
+        self.status = AttemptStatus.ERROR
+        self.error = error
+        self.is_retryable = is_retryable
+        self.save(update_fields=["status", "error", "is_retryable", "updated_at"])
+
+    def mark_timeout(self) -> None:
+        """Mark this attempt as timed out."""
+        self.status = AttemptStatus.TIMEOUT
+        self.error = "Request timed out"
+        self.is_retryable = True
+        self.save(update_fields=["status", "error", "is_retryable", "updated_at"])
 
 
 class PersistedChunk(TimestampedModel):
