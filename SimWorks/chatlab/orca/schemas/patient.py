@@ -1,24 +1,19 @@
 # chatlab/orca/schemas/patient.py
+"""
+Patient output schemas for Pydantic AI.
 
+These are plain Pydantic models used as result_type for Pydantic AI agents.
+Pydantic AI handles validation natively - no @schema decorator needed.
+"""
 
-from pydantic import Field
+from pydantic import BaseModel, Field, ConfigDict
 
-from orchestrai_django.components.schemas import DjangoBaseOutputSchema
-from orchestrai_django.decorators import schema
 from orchestrai.types import ResultMessageItem, ResultMetafield
-from simulation.orca.mixins import StandardizedPatientMixin
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
-from ..mixins import ChatlabMixin
 from .mixins import PatientResponseBaseMixin
 
 
-@schema
-class PatientInitialOutputSchema(
-    PatientResponseBaseMixin,
-    ChatlabMixin,
-    StandardizedPatientMixin,
-    DjangoBaseOutputSchema
-):
+class PatientInitialOutputSchema(PatientResponseBaseMixin):
     """
     Output for the initial patient response turn.
 
@@ -51,13 +46,7 @@ class PatientInitialOutputSchema(
     )
 
 
-@schema
-class PatientReplyOutputSchema(
-    PatientResponseBaseMixin,
-    ChatlabMixin,
-    StandardizedPatientMixin,
-    DjangoBaseOutputSchema
-):
+class PatientReplyOutputSchema(PatientResponseBaseMixin):
     """
     Output for subsequent patient reply turns.
 
@@ -91,12 +80,9 @@ class PatientReplyOutputSchema(
     )
 
 
-@schema
-class PatientResultsOutputSchema(
-    ChatlabMixin,
-    StandardizedPatientMixin,
-    DjangoBaseOutputSchema
-):
+class PatientResultsOutputSchema(BaseModel):
+    """Plain Pydantic model for Pydantic AI result_type."""
+    model_config = ConfigDict(extra="forbid")
     """
     Final "results" payload for the interaction.
 

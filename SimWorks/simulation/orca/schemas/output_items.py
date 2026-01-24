@@ -1,24 +1,25 @@
 """Reusable output item types for simulation schemas.
 
 This module contains base output items that can be used across multiple schemas.
+These are plain Pydantic models for use with Pydantic AI.
 """
 
-from pydantic import Field
-
-from orchestrai_django.components.schemas import DjangoBaseOutputItem, DjangoBaseOutputBlock
+from pydantic import BaseModel, Field, ConfigDict
 
 
-class LLMConditionsCheckItem(DjangoBaseOutputItem):
+class LLMConditionsCheckItem(BaseModel):
     """Generic LLM workflow condition check.
 
     Used for internal flags that control workflow logic but are not persisted
     to the database. Examples: 'ready_for_questions', 'session_complete', etc.
     """
+    model_config = ConfigDict(extra="forbid")
+
     key: str = Field(..., description="Condition key/name")
     value: str = Field(..., description="Condition value (often 'true'/'false')")
 
 
-class HotwashInitialBlock(DjangoBaseOutputBlock):
+class HotwashInitialBlock(BaseModel):
     """
     Initial hotwash (post-session) feedback block.
 
@@ -33,9 +34,8 @@ class HotwashInitialBlock(DjangoBaseOutputBlock):
     - `correct_treatment_plan`: bool - Treatment plan appropriateness
     - `patient_experience`: int (0-5) - Patient experience rating (5=excellent)
     - `overall_feedback`: str (min 1 char) - Narrative feedback
-
-    **Note**: Uses `DjangoBaseOutputBlock` (no identity required at block level).
     """
+    model_config = ConfigDict(extra="forbid")
 
     correct_diagnosis: bool = Field(
         ...,

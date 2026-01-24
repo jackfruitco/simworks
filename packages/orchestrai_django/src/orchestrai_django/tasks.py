@@ -19,6 +19,7 @@ from orchestrai.registry.services import ensure_service_registry
 from orchestrai_django.models import (
     ServiceCallRecord,
     ServiceCallAttempt,
+    ServiceCall as ServiceCallModel,
     AttemptStatus,
     CallStatus,
     AttemptAllocationError,
@@ -702,4 +703,233 @@ def process_pending_persistence():
     return stats
 
 
-__all__ = ["run_service_call", "run_service_call_task", "process_pending_persistence"]
+@task
+def run_pydantic_ai_service_task(call_id: str):
+    """
+    Execute a Pydantic AI service call from the new ServiceCall model.
+
+    This is the entry point for background execution of services using
+    DjangoPydanticAIService and the new simplified ServiceCall model.
+    """
+    return run_pydantic_ai_service_call(call_id)
+
+
+def run_pydantic_ai_service_call(call_id: str):
+    """
+    Execute a stored :class:`ServiceCall` using Pydantic AI.
+
+    This function works with the new unified ServiceCall model and
+    Pydantic AI services. It provides a simpler execution path compared
+    to the legacy run_service_call function.
+
+    Key differences from legacy:
+    - Single ServiceCall model (no separate attempts)
+    - Pydantic AI handles validation retry internally
+    - RunResult data stored directly on the model
+    - Simpler error handling
+
+    Args:
+        call_id: The ServiceCall ID to execute.
+
+    Returns:
+        dict: JSON-serializable representation of the completed call.
+    """
+
+    try:
+        from orchestrai_django.apps import ensure_autostarted
+        ensure_autostarted()
+    except Exception:
+        logger.debug("ensure_autostarted failed inside run_pydantic_ai_service_call", exc_info=True)
+
+    _debug_app_context("run_pydantic_ai_service_call")
+
+    app = get_current_app()
+    registry = ensure_service_registry(app)
+
+    # Claim the record under a DB transaction
+    with transaction.atomic():
+        call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
+
+        # Check if already completed
+        if call.status == CallStatus.COMPLETED:
+            logger.info("Service call %s already completed, skipping", call_id)
+            return call.to_jsonable()
+
+        # Mark as running
+        call.mark_running()
+
+        # Populate related_object_id from context if not set
+        if not call.related_object_id and call.context:
+            sim_id = call.context.get("simulation_id")
+            if sim_id:
+                call.related_object_id = str(sim_id)
+                call.save(update_fields=["related_object_id"])
+
+    logger.info("Executing Pydantic AI service call %s", call_id)
+
+    # Resolve and instantiate service
+    service_cls = registry.get(Identity.get(call.service_identity))
+    service = service_cls(**call.service_kwargs)
+
+    try:
+        payload = call.input or {}
+
+        # Execute the service
+        if hasattr(service, "arun") and callable(service.arun):
+            result = async_to_sync(service.arun)(**payload)
+        else:
+            raise RuntimeError("Service does not implement arun method")
+
+        # Success! Extract data from Pydantic AI RunResult
+        with transaction.atomic():
+            locked_call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
+
+            # Check if already completed (concurrent execution)
+            if locked_call.status == CallStatus.COMPLETED:
+                logger.info("Service call %s completed by another worker", call_id)
+                return locked_call.to_jsonable()
+
+            # Extract data from RunResult
+            output_data = None
+            if hasattr(result, 'output') and result.output is not None:
+                if hasattr(result.output, 'model_dump'):
+                    try:
+                        output_data = result.output.model_dump(mode="json")
+                    except TypeError:
+                        output_data = _manual_extract_fields(result.output)
+                else:
+                    output_data = result.output
+
+            # Extract messages for conversation continuation
+            messages_json = []
+            if hasattr(result, 'new_messages') and callable(result.new_messages):
+                try:
+                    for msg in result.new_messages():
+                        if hasattr(msg, 'model_dump'):
+                            messages_json.append(msg.model_dump(mode="json"))
+                        else:
+                            messages_json.append(str(msg))
+                except Exception as msg_err:
+                    logger.warning(f"Failed to extract messages: {msg_err}")
+
+            # Extract usage data
+            usage_json = None
+            if hasattr(result, 'usage') and callable(result.usage):
+                usage = result.usage()
+                if usage is not None:
+                    if hasattr(usage, 'model_dump'):
+                        try:
+                            usage_json = usage.model_dump(mode="json")
+                        except TypeError:
+                            usage_json = {
+                                "input_tokens": getattr(usage, 'input_tokens', 0),
+                                "output_tokens": getattr(usage, 'output_tokens', 0),
+                                "total_tokens": getattr(usage, 'total_tokens', 0),
+                            }
+                    else:
+                        usage_json = usage
+
+            # Extract model name
+            model_name = None
+            if hasattr(result, 'model_name'):
+                model_name = result.model_name
+
+            # Mark as completed
+            locked_call.mark_completed(
+                output_data=output_data,
+                messages_json=messages_json,
+                usage_json=usage_json,
+                model_name=model_name,
+            )
+
+            # Mark for domain persistence
+            locked_call.domain_persisted = False
+            locked_call.save(update_fields=["domain_persisted"])
+
+        logger.info("Pydantic AI service call %s completed successfully", call_id)
+
+        # Attempt inline domain persistence
+        try:
+            # Refresh from DB
+            call.refresh_from_db()
+
+            store = get_component_store(app)
+            if store:
+                from orchestrai.identity.domains import PERSIST_DOMAIN
+                persistence_registry = store.registry(PERSIST_DOMAIN)
+
+                if persistence_registry and call.output_data:
+                    # Create a minimal Response-like object for the persistence handler
+                    # The handler expects structured_data and execution_metadata
+                    class PydanticAIResponse:
+                        def __init__(self, call):
+                            self.structured_data = call.output_data
+                            self.namespace = call.service_identity.split('.')[1] if '.' in call.service_identity else ''
+                            self.context = call.context or {}
+                            self.execution_metadata = {
+                                "service_identity": call.service_identity,
+                                "schema_identity": None,  # Will be set by handler
+                            }
+
+                    response = PydanticAIResponse(call)
+                    domain_obj = async_to_sync(persistence_registry.persist)(response)
+
+                    if domain_obj is not None:
+                        call.domain_persisted = True
+                        call.save(update_fields=["domain_persisted"])
+                        logger.info(
+                            "Service call %s: domain persistence complete (created %s)",
+                            call_id,
+                            type(domain_obj).__name__
+                        )
+                    else:
+                        call.domain_persisted = True
+                        call.save(update_fields=["domain_persisted"])
+                        logger.debug(
+                            "Service call %s: no persistence handler found",
+                            call_id,
+                        )
+        except Exception as persist_err:
+            logger.warning(
+                "Service call %s: inline persistence failed: %s (will retry via drain worker)",
+                call_id,
+                persist_err
+            )
+
+        return call.to_jsonable()
+
+    except Exception as exc:
+        logger.exception(
+            "Pydantic AI service call %s failed: %s",
+            call_id,
+            str(exc)
+        )
+
+        # Mark as failed
+        with transaction.atomic():
+            locked_call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
+            locked_call.mark_failed(str(exc))
+
+        # Emit failure signal
+        try:
+            from orchestrai_django.signals import ai_response_failed
+
+            ai_response_failed.send(
+                sender=service.__class__,
+                call_id=call_id,
+                error=str(exc),
+                context=call.context or {}
+            )
+        except Exception:
+            logger.exception("Failed to emit ai_response_failed signal")
+
+        raise
+
+
+__all__ = [
+    "run_service_call",
+    "run_service_call_task",
+    "run_pydantic_ai_service_call",
+    "run_pydantic_ai_service_task",
+    "process_pending_persistence",
+]

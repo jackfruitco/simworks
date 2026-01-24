@@ -2,16 +2,19 @@
 
 Mixins provide common field structures that can be shared across multiple
 schemas, reducing duplication and ensuring consistency.
+
+These are plain Pydantic models for use with Pydantic AI.
 """
 
-from pydantic import Field
+from pydantic import BaseModel, Field, ConfigDict
 
-from orchestrai.components.schemas.base import StrictBaseModel
 from orchestrai.types import ResultMessageItem
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
 
-class PatientResponseBaseMixin(StrictBaseModel):
+class PatientResponseBaseMixin(BaseModel):
+    """Base mixin with strict mode for Pydantic AI schemas."""
+    model_config = ConfigDict(extra="forbid")
     """
     Common fields for all patient response schemas.
 

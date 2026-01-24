@@ -425,6 +425,182 @@ class ServiceCallAttempt(TimestampedModel):
         self.save(update_fields=["status", "error", "is_retryable", "updated_at"])
 
 
+class ServiceCall(TimestampedModel):
+    """
+    Unified service call model for Pydantic AI migration.
+
+    Replaces ServiceCallRecord + ServiceCallAttempt with a single model
+    that stores Pydantic AI RunResult data directly.
+
+    This model supports:
+    - Single-attempt execution (most common case)
+    - Pydantic AI RunResult storage
+    - Token usage tracking
+    - Domain persistence (two-phase commit)
+    - Multi-turn conversation via OpenAI response IDs
+
+    Migration Note:
+        This model coexists with ServiceCallRecord and ServiceCallAttempt
+        during the migration period. New services using DjangoPydanticAIService
+        should use this model. Legacy services continue using ServiceCallRecord.
+    """
+
+    id = models.CharField(primary_key=True, max_length=64)
+
+    # Service identity
+    service_identity = models.CharField(max_length=255, db_index=True)
+    service_kwargs = models.JSONField(default=dict)
+
+    # Status lifecycle: pending -> running -> completed/failed
+    status = models.CharField(
+        max_length=32,
+        choices=CallStatus.choices,
+        default=CallStatus.PENDING,
+    )
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    # Input
+    input = models.JSONField(default=dict)
+    context = models.JSONField(null=True, blank=True)
+
+    # Output (from Pydantic AI RunResult)
+    output_data = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="result.output serialized - the validated schema data",
+    )
+    messages_json = models.JSONField(
+        default=list,
+        help_text="result.new_messages() for conversation continuation",
+    )
+    usage_json = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full RunUsage data",
+    )
+    model_name = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        help_text="Model used for this call",
+    )
+
+    # Token usage (denormalized for efficient querying)
+    input_tokens = models.PositiveIntegerField(default=0)
+    output_tokens = models.PositiveIntegerField(default=0)
+    total_tokens = models.PositiveIntegerField(default=0)
+
+    # Error tracking
+    error = models.TextField(null=True, blank=True)
+
+    # Domain persistence (two-phase commit)
+    domain_persisted = models.BooleanField(default=False)
+    domain_persist_error = models.TextField(null=True, blank=True)
+
+    # OpenAI continuation (for multi-turn conversations)
+    openai_response_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="OpenAI response ID for conversation continuation",
+    )
+
+    # Correlation
+    correlation_id = models.UUIDField(
+        default=uuid4,
+        db_index=True,
+        help_text="Correlation ID for tracing",
+    )
+    related_object_id = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="ID of related domain object (e.g., simulation_id)",
+    )
+
+    # Task tracking (if using Celery/Django Tasks)
+    backend = models.CharField(max_length=64, default="immediate")
+    task_id = models.CharField(max_length=128, null=True, blank=True)
+
+    class Meta:
+        db_table = "service_call"
+        indexes = [
+            models.Index(fields=["service_identity", "status"]),
+            models.Index(fields=["status", "domain_persisted"]),
+            models.Index(fields=["related_object_id", "-finished_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"ServiceCall(id={self.pk}, service={self.service_identity}, status={self.status})"
+
+    def to_jsonable(self) -> dict:
+        """Export the service call as a JSON-serializable dict."""
+        from orchestrai.utils.json import make_json_safe
+        return make_json_safe({
+            "id": self.id,
+            "service_identity": self.service_identity,
+            "status": self.status,
+            "input": self.input,
+            "context": self.context,
+            "output_data": self.output_data,
+            "messages_json": self.messages_json,
+            "usage_json": self.usage_json,
+            "model_name": self.model_name,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "error": self.error,
+            "domain_persisted": self.domain_persisted,
+            "correlation_id": str(self.correlation_id),
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        })
+
+    def mark_running(self) -> None:
+        """Mark the call as running."""
+        self.status = CallStatus.IN_PROGRESS
+        self.started_at = timezone.now()
+        self.save(update_fields=["status", "started_at", "updated_at"])
+
+    def mark_completed(
+        self,
+        *,
+        output_data: dict | None = None,
+        messages_json: list | None = None,
+        usage_json: dict | None = None,
+        model_name: str | None = None,
+        openai_response_id: str | None = None,
+    ) -> None:
+        """Mark the call as completed with result data."""
+        self.status = CallStatus.COMPLETED
+        self.finished_at = timezone.now()
+        if output_data is not None:
+            self.output_data = output_data
+        if messages_json is not None:
+            self.messages_json = messages_json
+        if usage_json is not None:
+            self.usage_json = usage_json
+            # Extract token counts
+            self.input_tokens = usage_json.get("input_tokens", 0) or 0
+            self.output_tokens = usage_json.get("output_tokens", 0) or 0
+            self.total_tokens = usage_json.get("total_tokens", 0) or 0
+        if model_name is not None:
+            self.model_name = model_name
+        if openai_response_id is not None:
+            self.openai_response_id = openai_response_id
+        self.save()
+
+    def mark_failed(self, error: str) -> None:
+        """Mark the call as failed with an error message."""
+        self.status = CallStatus.FAILED
+        self.finished_at = timezone.now()
+        self.error = error
+        self.save(update_fields=["status", "finished_at", "error", "updated_at"])
+
+
 class PersistedChunk(TimestampedModel):
     """Tracks which structured outputs have been persisted to domain models.
 

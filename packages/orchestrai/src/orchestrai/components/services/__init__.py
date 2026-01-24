@@ -15,10 +15,12 @@ from .exceptions import (
 )
 from .registry import ServiceRegistry, ensure_service_registry, service_registry
 from .service import BaseService
+from .pydantic_ai_service import PydanticAIService
 from .task_proxy import CoreTaskProxy, ServiceSpec
 
 __all__ = (
     "BaseService",
+    "PydanticAIService",
     "CoreTaskProxy",
     "ServiceSpec",
     "ServiceCall",
