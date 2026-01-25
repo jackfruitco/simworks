@@ -1,7 +1,7 @@
 """
-Tests for Pydantic AI Service integration.
+Tests for BaseService (Pydantic AI-based service).
 
-These tests verify the new PydanticAIService base class and related components.
+These tests verify the BaseService class and related components.
 """
 
 import pytest
@@ -150,17 +150,17 @@ class TestRenderPromptMethods:
         assert result.strip() == "Has value"
 
 
-class TestPydanticAIServiceIntegration:
-    """Integration tests for PydanticAIService."""
+class TestBaseServiceIntegration:
+    """Integration tests for BaseService (Pydantic AI-based)."""
 
     def test_service_creation_with_context(self):
         """Test that service can be created with context."""
-        from orchestrai.components.services.pydantic_ai_service import PydanticAIService
+        from orchestrai.components.services import BaseService
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(PydanticAIService):
+        class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
             model = "openai:gpt-4o"
@@ -177,12 +177,12 @@ class TestPydanticAIServiceIntegration:
 
     def test_service_model_override(self):
         """Test that model can be overridden at instance level."""
-        from orchestrai.components.services.pydantic_ai_service import PydanticAIService
+        from orchestrai.components.services import BaseService
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(PydanticAIService):
+        class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
             model = "openai:gpt-4o"
@@ -193,12 +193,12 @@ class TestPydanticAIServiceIntegration:
 
     def test_required_context_validation(self):
         """Test that missing required context keys raise error."""
-        from orchestrai.components.services.pydantic_ai_service import PydanticAIService
+        from orchestrai.components.services import BaseService
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(PydanticAIService):
+        class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
             required_context_keys = ("simulation_id", "user_id")
@@ -210,12 +210,12 @@ class TestPydanticAIServiceIntegration:
 
     def test_setup_merges_context(self):
         """Test that setup merges incoming context."""
-        from orchestrai.components.services.pydantic_ai_service import PydanticAIService
+        from orchestrai.components.services import BaseService
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(PydanticAIService):
+        class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
 
@@ -224,3 +224,9 @@ class TestPydanticAIServiceIntegration:
 
         assert service.context["initial"] == "value"
         assert service.context["added"] == "context"
+
+    def test_pydantic_ai_service_alias(self):
+        """Test that PydanticAIService is an alias for BaseService."""
+        from orchestrai.components.services import BaseService, PydanticAIService
+
+        assert PydanticAIService is BaseService

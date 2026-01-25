@@ -18,7 +18,7 @@ Usage:
         CharacterConsistencyMixin,
         MedicalAccuracyMixin,
         SMSStyleMixin,
-        DjangoPydanticAIService,
+        DjangoBaseService,
     ):
         @system_prompt(weight=100)
         def service_specific_prompt(self) -> str:

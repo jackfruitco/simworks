@@ -6,7 +6,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Max
 from django.utils import timezone
-from orchestrai.components.services.calls import ServiceCall, assert_jsonable
+from orchestrai.components.services.calls import ServiceCall as ServiceCallDataclass, assert_jsonable
 
 
 class AttemptStatus(models.TextChoices):
@@ -120,8 +120,8 @@ class ServiceCallRecord(TimestampedModel):
         except Exception:
             return value
 
-    def update_from_call(self, call: ServiceCall) -> None:
-        """Synchronize stored fields from a :class:`ServiceCall`."""
+    def update_from_call(self, call: ServiceCallDataclass) -> None:
+        """Synchronize stored fields from a :class:`ServiceCallDataclass`."""
 
         dispatch = dict(call.dispatch or {})
         backend = dispatch.get("backend") or self.backend
@@ -142,8 +142,8 @@ class ServiceCallRecord(TimestampedModel):
         self.started_at = self._coerce_datetime(call.started_at)
         self.finished_at = self._coerce_datetime(call.finished_at)
 
-    def as_call(self) -> ServiceCall:
-        """Rehydrate a :class:`ServiceCall` from the persisted payload."""
+    def as_call(self) -> ServiceCallDataclass:
+        """Rehydrate a :class:`ServiceCallDataclass` from the persisted payload."""
 
         dispatch = dict(self.dispatch or {})
         dispatch.setdefault("backend", self.backend)
@@ -152,7 +152,7 @@ class ServiceCallRecord(TimestampedModel):
         if self.task_id:
             dispatch.setdefault("task_id", self.task_id)
 
-        call = ServiceCall(
+        call = ServiceCallDataclass(
             id=self.id,
             status=self.status,
             input=self.input,
@@ -441,7 +441,7 @@ class ServiceCall(TimestampedModel):
 
     Migration Note:
         This model coexists with ServiceCallRecord and ServiceCallAttempt
-        during the migration period. New services using DjangoPydanticAIService
+        during the migration period. New services using DjangoBaseService
         should use this model. Legacy services continue using ServiceCallRecord.
     """
 

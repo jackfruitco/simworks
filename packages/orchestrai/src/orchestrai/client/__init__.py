@@ -3,8 +3,8 @@ OrchestrAI Client Module (DEPRECATED).
 
 .. deprecated:: 0.5.0
     This module is deprecated and will be removed in OrchestrAI 1.0.
-    Use Pydantic AI directly via :class:`orchestrai.components.services.PydanticAIService`
-    or :class:`orchestrai_django.components.services.DjangoPydanticAIService` instead.
+    Use Pydantic AI directly via :class:`orchestrai.components.services.BaseService`
+    or :class:`orchestrai_django.components.services.DjangoBaseService` instead.
 
 Migration Guide:
     Before (using OrcaClient):
@@ -13,10 +13,10 @@ Migration Guide:
         response = await client.send_request(request)
 
     After (using Pydantic AI):
-        from orchestrai.components.services import PydanticAIService
+        from orchestrai.components.services import BaseService
         from orchestrai.prompts import system_prompt
 
-        class MyService(PydanticAIService):
+        class MyService(BaseService):
             model = "openai:gpt-4o"
             response_schema = MySchema
 
@@ -31,7 +31,7 @@ import warnings
 
 warnings.warn(
     "orchestrai.client is deprecated and will be removed in OrchestrAI 1.0. "
-    "Use PydanticAIService or DjangoPydanticAIService instead.",
+    "Use BaseService or DjangoBaseService instead.",
     DeprecationWarning,
     stacklevel=2,
 )

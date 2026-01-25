@@ -36,7 +36,7 @@ from core.orca.prompts import (
     SMSStyleMixin,
 )
 from orchestrai.prompts import system_prompt
-from orchestrai_django.components.services import DjangoPydanticAIService
+from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import service
 from simulation.models import Simulation
 
@@ -48,7 +48,7 @@ class GenerateInitialResponse(
     CharacterConsistencyMixin,
     MedicalAccuracyMixin,
     SMSStyleMixin,
-    DjangoPydanticAIService,
+    DjangoBaseService,
 ):
     """Generate the initial patient response.
 
@@ -139,7 +139,7 @@ class GenerateInitialResponse(
 class GenerateReplyResponse(
     CharacterConsistencyMixin,
     SMSStyleMixin,
-    DjangoPydanticAIService,
+    DjangoBaseService,
 ):
     """Generate a reply to a user message.
 
@@ -187,7 +187,7 @@ class GenerateReplyResponse(
 
 
 @service
-class GenerateImageResponse(DjangoPydanticAIService):
+class GenerateImageResponse(DjangoBaseService):
     """Generate a patient image via Pydantic AI.
 
     This service handles image generation requests.

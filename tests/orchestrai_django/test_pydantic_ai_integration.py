@@ -1,7 +1,7 @@
 """
 Tests for Django Pydantic AI integration.
 
-These tests verify the DjangoPydanticAIService and related Django components.
+These tests verify the DjangoBaseService and related Django components.
 """
 
 import pytest
@@ -117,18 +117,18 @@ class TestServiceCallModel:
         assert data["output_data"] == {"result": "success"}
 
 
-class TestDjangoPydanticAIService:
-    """Tests for DjangoPydanticAIService."""
+class TestDjangoBaseService:
+    """Tests for DjangoBaseService."""
 
     def test_service_initialization(self):
         """Test that service initializes correctly."""
-        from orchestrai_django.components.services import DjangoPydanticAIService
+        from orchestrai_django.components.services import DjangoBaseService
         from orchestrai.prompts import system_prompt
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(DjangoPydanticAIService):
+        class TestService(DjangoBaseService):
             abstract = False
             response_schema = TestSchema
             model = "openai:gpt-4o"
@@ -144,12 +144,12 @@ class TestDjangoPydanticAIService:
 
     def test_service_with_custom_emitter(self):
         """Test that custom emitter is used."""
-        from orchestrai_django.components.services import DjangoPydanticAIService
+        from orchestrai_django.components.services import DjangoBaseService
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(DjangoPydanticAIService):
+        class TestService(DjangoBaseService):
             abstract = False
             response_schema = TestSchema
 
@@ -158,47 +158,48 @@ class TestDjangoPydanticAIService:
 
         assert service.emitter is mock_emitter
 
+    def test_backward_compatibility_alias(self):
+        """Test that DjangoPydanticAIService is an alias for DjangoBaseService."""
+        from orchestrai_django.components.services import (
+            DjangoBaseService,
+            DjangoPydanticAIService,
+        )
 
-class TestMigrationCompatibility:
-    """Tests for backward compatibility during migration."""
+        assert DjangoPydanticAIService is DjangoBaseService
 
-    def test_old_and_new_services_coexist(self):
-        """Test that old BaseService and new PydanticAIService can coexist."""
-        import os
-        from orchestrai.components.services import BaseService, PydanticAIService
 
-        class OldService(BaseService):
+class TestBaseService:
+    """Tests for BaseService (consolidated Pydantic AI-based service)."""
+
+    def test_service_has_task_descriptor(self):
+        """Test that BaseService has a task descriptor."""
+        from orchestrai.components.services import BaseService
+
+        # task should be a descriptor that returns a proxy
+        assert hasattr(BaseService, 'task')
+
+        class TestSchema(BaseModel):
+            message: str
+
+        class TestService(BaseService):
             abstract = False
-
-            async def arun(self, **ctx):
-                return {"type": "old"}
-
-        class NewSchema(BaseModel):
-            type: str
-
-        class NewService(PydanticAIService):
-            abstract = False
-            response_schema = NewSchema
-            # Use test model to avoid needing OpenAI API key
+            response_schema = TestSchema
             model = "test"
 
-        old = OldService()
-        new = NewService()
+        # Accessing task on the class should return a proxy
+        proxy = TestService.task
+        assert proxy is not None
+        assert hasattr(proxy, 'using')
 
-        assert old is not None
-        assert new is not None
-        assert hasattr(old, "arun")
-        assert hasattr(new, "arun")
-
-    def test_new_service_prompt_methods(self):
+    def test_prompt_methods_are_collected(self):
         """Test that @system_prompt methods are collected."""
-        from orchestrai.components.services import PydanticAIService
+        from orchestrai.components.services import BaseService
         from orchestrai.prompts import system_prompt
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(PydanticAIService):
+        class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
             model = "test"
@@ -215,3 +216,9 @@ class TestMigrationCompatibility:
         assert len(service._prompt_methods) == 2
         assert service._prompt_methods[0].name == "first"
         assert service._prompt_methods[1].name == "second"
+
+    def test_backward_compatibility_alias(self):
+        """Test that PydanticAIService is an alias for BaseService."""
+        from orchestrai.components.services import BaseService, PydanticAIService
+
+        assert PydanticAIService is BaseService

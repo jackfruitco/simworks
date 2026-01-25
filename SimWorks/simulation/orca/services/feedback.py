@@ -30,7 +30,7 @@ from typing import ClassVar
 
 from core.orca.prompts import FeedbackEducatorMixin, MedicalAccuracyMixin
 from orchestrai.prompts import system_prompt
-from orchestrai_django.components.services import DjangoPydanticAIService
+from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import service
 from ..mixins import FeedbackMixin  # Identity mixin for component discovery
 
@@ -42,7 +42,7 @@ class GenerateHotwashInitialResponse(
     FeedbackEducatorMixin,
     MedicalAccuracyMixin,
     FeedbackMixin,  # Identity mixin
-    DjangoPydanticAIService,
+    DjangoBaseService,
 ):
     """
     Generate the initial patient feedback using Pydantic AI.
@@ -82,7 +82,7 @@ class GenerateHotwashInitialResponse(
 class GenerateHotwashContinuationResponse(
     FeedbackEducatorMixin,
     FeedbackMixin,  # Identity mixin
-    DjangoPydanticAIService,
+    DjangoBaseService,
 ):
     """
     Generate continuation feedback using Pydantic AI.

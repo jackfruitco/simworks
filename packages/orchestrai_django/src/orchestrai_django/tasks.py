@@ -709,7 +709,7 @@ def run_pydantic_ai_service_task(call_id: str):
     Execute a Pydantic AI service call from the new ServiceCall model.
 
     This is the entry point for background execution of services using
-    DjangoPydanticAIService and the new simplified ServiceCall model.
+    DjangoBaseService and the new simplified ServiceCall model.
     """
     return run_pydantic_ai_service_call(call_id)
 

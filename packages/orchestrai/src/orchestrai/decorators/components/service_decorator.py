@@ -11,7 +11,6 @@ import logging
 from typing import Any, Type
 
 from orchestrai.components.services.service import BaseService
-from orchestrai.components.services.pydantic_ai_service import PydanticAIService
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry import ComponentRegistry
@@ -22,13 +21,16 @@ logger = logging.getLogger(__name__)
 
 __all__ = ("ServiceDecorator",)
 
-# Valid base classes for services
-_VALID_SERVICE_BASES = (BaseService, PydanticAIService)
+# Valid base classes for services (BaseService is now the unified Pydantic AI-based class)
+_VALID_SERVICE_BASES = (BaseService,)
 
 
 class ServiceDecorator(BaseDecorator):
     """
-    Service decorator specialized for BaseService and PydanticAIService subclasses.
+    Service decorator specialized for BaseService subclasses.
+
+    BaseService now uses Pydantic AI for LLM execution, replacing the legacy
+    client/codec/provider stack.
 
     Usage
     -----
@@ -36,11 +38,12 @@ class ServiceDecorator(BaseDecorator):
 
         @service
         class MyService(BaseService):
-            ...
+            model = "openai:gpt-4o"
+            response_schema = MySchema
 
-        @service
-        class MyPydanticAIService(PydanticAIService):
-            ...
+            @system_prompt(weight=100)
+            def instructions(self) -> str:
+                return "Instructions..."
 
         # or with explicit hints
         @service(namespace="orchestrai", name="json")
@@ -61,6 +64,6 @@ class ServiceDecorator(BaseDecorator):
         # Guard: ensure we only register service classes
         if not issubclass(candidate, _VALID_SERVICE_BASES):
             raise TypeError(
-                f"{candidate.__module__}.{candidate.__name__} must subclass BaseService or PydanticAIService to use @service"
+                f"{candidate.__module__}.{candidate.__name__} must subclass BaseService to use @service"
             )
         super().register(candidate)
