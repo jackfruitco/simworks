@@ -32,14 +32,13 @@ def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
     from chatlab.orca.services import GenerateReplyResponse
 
     async def _enqueue():
-        spec = GenerateReplyResponse.using(
-            ctx={
+        return await GenerateReplyResponse.task.using(
+            context={
                 "simulation_id": simulation_id,
                 "user_msg": user_msg_pk,
                 # previous_response_id will be auto-fetched by the service mixin
             }
-        )
-        return await spec.task.aenqueue()
+        ).aenqueue()
 
     try:
         call_id = async_to_sync(_enqueue)()

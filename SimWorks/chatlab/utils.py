@@ -58,13 +58,12 @@ async def create_new_simulation(
     # Failures will be handled via ai_response_failed signal receiver
     from .orca.services import GenerateInitialResponse
 
-    spec = GenerateInitialResponse.using(
-        ctx={
+    call_id = await GenerateInitialResponse.task.using(
+        context={
             "simulation_id": simulation.id,
             "user_id": user.id,
         }
-    )
-    call_id = await spec.task.aenqueue()
+    ).aenqueue()
 
     logger.info(
         "Simulation %s created, initial response enqueued as call %s",

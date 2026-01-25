@@ -1,63 +1,62 @@
-"""Registry for persistence handler components."""
+"""Registry for persistence handler components.
+
+Simplified architecture for Pydantic AI:
+- Handlers are registered by schema class (module.classname)
+- No identity needed for handlers or schemas
+- Lookup by schema class at persist time
+"""
 
 import logging
 from typing import Any
-from orchestrai.types import Response
-from orchestrai_django.components.persistence import BasePersistenceHandler
-from orchestrai.registry import ComponentRegistry
 
 logger = logging.getLogger(__name__)
 
 
-class PersistenceHandlerRegistry(ComponentRegistry):
+class PersistenceHandlerRegistry:
     """
     Registry for persistence handler components.
 
-    Routes responses to appropriate handlers based on (namespace, schema_identity)
-    with fallback to ("core", schema_identity) for shared handlers.
+    Routes responses to handlers based on schema class.
+    No identity system required - uses schema module.classname as key.
 
     Example:
         registry = PersistenceHandlerRegistry()
         registry.register(PatientInitialPersistence)
 
-        # Routes to appropriate handler
-        result = await registry.persist(response)
+        # Routes by schema class
+        handler = registry.get_for_schema(PatientInitialOutputSchema)
+        result = await handler.persist(response)
     """
 
     def __init__(self):
-        # Initialize parent registry (provides _lock, _frozen, _store, _coerce)
-        super().__init__()
-
-        # Key: (namespace, schema_identity_str)
+        # Key: schema class qualified name (module.classname)
         # Value: Handler class
-        self._handlers: dict[tuple[str, str], type[BasePersistenceHandler]] = {}
+        self._handlers: dict[str, type] = {}
 
-    def register(self, handler_cls: type[BasePersistenceHandler]) -> None:
+        # Also keep direct class reference for isinstance checks
+        self._schema_to_handler: dict[type, type] = {}
+
+    def _schema_key(self, schema_cls: type) -> str:
+        """Get registry key for a schema class."""
+        return f"{schema_cls.__module__}.{schema_cls.__name__}"
+
+    def register(self, handler_cls: type) -> None:
         """
         Register a persistence handler.
 
-        Extracts namespace from handler.identity.namespace and
-        schema_identity from handler.schema.identity.as_str.
-
         Args:
-            handler_cls: Persistence handler class to register
+            handler_cls: Persistence handler class with 'schema' attribute
 
         Raises:
-            ValueError: If handler is missing identity or schema
+            ValueError: If handler is missing schema attribute
         """
-        if not hasattr(handler_cls, "identity"):
+        schema_cls = getattr(handler_cls, "schema", None)
+        if schema_cls is None:
             raise ValueError(
-                f"{handler_cls.__name__} missing identity attribute"
+                f"{handler_cls.__name__} missing 'schema' class attribute"
             )
 
-        if not hasattr(handler_cls, "schema") or handler_cls.schema is None:
-            raise ValueError(
-                f"{handler_cls.__name__} missing schema attribute"
-            )
-
-        namespace = handler_cls.identity.namespace
-        schema_identity = handler_cls.schema.identity.as_str
-        key = (namespace, schema_identity)
+        key = self._schema_key(schema_cls)
 
         if key in self._handlers:
             logger.warning(
@@ -66,85 +65,92 @@ class PersistenceHandlerRegistry(ComponentRegistry):
             )
 
         self._handlers[key] = handler_cls
+        self._schema_to_handler[schema_cls] = handler_cls
+
         logger.info(
-            f"Registered persistence handler: ({namespace}, {schema_identity}) "
-            f"→ {handler_cls.__name__}"
+            f"Registered persistence handler: {key} → {handler_cls.__name__}"
         )
 
-    def get(
-        self, namespace: str, schema_identity: str
-    ) -> type[BasePersistenceHandler] | None:
+    def get_for_schema(self, schema_cls: type) -> type | None:
         """
-        Get handler class for (namespace, schema_identity).
+        Get handler class for a schema class.
 
         Args:
-            namespace: App namespace (e.g., "chatlab")
-            schema_identity: Full schema identity string
+            schema_cls: The Pydantic model class
 
         Returns:
             Handler class or None if not found
         """
-        return self._handlers.get((namespace, schema_identity))
+        # Try direct lookup first
+        if schema_cls in self._schema_to_handler:
+            return self._schema_to_handler[schema_cls]
 
-    async def persist(self, response: Response) -> Any:
+        # Fall back to string key (for deserialized lookups)
+        key = self._schema_key(schema_cls)
+        return self._handlers.get(key)
+
+    def get_by_name(self, schema_name: str) -> type | None:
         """
-        Route response to appropriate handler and execute persistence.
-
-        Fallback chain:
-            1. (response.namespace, schema_identity) - App-specific handler
-            2. ("core", schema_identity) - Core fallback handler
-            3. None - Log debug and skip
+        Get handler class by schema qualified name.
 
         Args:
-            response: Full Response object with structured_data populated
+            schema_name: Schema module.classname string
+
+        Returns:
+            Handler class or None if not found
+        """
+        return self._handlers.get(schema_name)
+
+    async def persist(
+        self,
+        *,
+        schema_cls: type | None = None,
+        schema_name: str | None = None,
+        data: Any,
+        context: dict[str, Any],
+    ) -> Any:
+        """
+        Route to appropriate handler and execute persistence.
+
+        Args:
+            schema_cls: Schema class (preferred)
+            schema_name: Schema module.classname (fallback)
+            data: Validated response data (Pydantic model instance or dict)
+            context: Execution context (simulation_id, etc.)
 
         Returns:
             Domain object created by handler, or None if no handler found
-
-        Raises:
-            Any exception raised by the handler's persist() method
         """
-        namespace = response.namespace
-        schema_id = response.execution_metadata.get("schema_identity")
+        # Find handler
+        handler_cls = None
+        lookup_key = None
 
-        if not namespace or not schema_id:
-            logger.warning(
-                "Response missing namespace or schema_identity, skipping persistence"
-            )
+        if schema_cls is not None:
+            handler_cls = self.get_for_schema(schema_cls)
+            lookup_key = self._schema_key(schema_cls)
+        elif schema_name is not None:
+            handler_cls = self.get_by_name(schema_name)
+            lookup_key = schema_name
+
+        if handler_cls is None:
+            logger.debug(f"No persistence handler for {lookup_key}, skipping")
             return None
 
-        # Try app-specific handler
-        handler_cls = self.get(namespace, schema_id)
-        if handler_cls:
-            logger.debug(
-                f"Using app-specific handler: ({namespace}, {schema_id})"
-            )
-            handler = handler_cls()
-            return await handler.persist(response)
+        logger.debug(f"Using handler {handler_cls.__name__} for {lookup_key}")
 
-        # Fallback to core handler
-        handler_cls = self.get("core", schema_id)
-        if handler_cls:
-            logger.debug(
-                f"Using core fallback handler: (core, {schema_id})"
-            )
-            handler = handler_cls()
-            return await handler.persist(response)
-
-        # No handler found - skip with debug log
-        logger.debug(
-            f"No persistence handler for ({namespace}, {schema_id}), skipping"
-        )
-        return None
+        # Instantiate and execute
+        handler = handler_cls()
+        return await handler.persist(data=data, context=context)
 
     def count(self) -> int:
         """Return number of registered handlers."""
         return len(self._handlers)
 
     def items(self):
-        """Return all registered handlers as (key, handler_cls) tuples."""
+        """Return all registered handlers as (schema_name, handler_cls) tuples."""
         return self._handlers.items()
 
     def clear(self):
         """Clear all registered handlers (useful for testing)."""
         self._handlers.clear()
+        self._schema_to_handler.clear()

@@ -26,8 +26,7 @@ from orchestrai.decorators.components.provider_decorators import (
 )
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
-from orchestrai.identity.domains import DEFAULT_DOMAIN, PERSIST_DOMAIN
-from orchestrai.decorators.base import BaseDecorator
+from orchestrai.identity.domains import DEFAULT_DOMAIN
 from orchestrai_django.identity.resolvers import DjangoIdentityResolver
 
 __all__ = [
@@ -38,7 +37,8 @@ __all__ = [
     "provider",
     "provider_backend",
     "persistence_handler",
-    "DjangoPersistenceHandlerDecorator",
+    "flush_pending_handlers",
+    "PersistenceHandlerDecorator",
     "DjangoCodecDecorator",
     "DjangoServiceDecorator",
     "DjangoSchemaDecorator",
@@ -108,38 +108,69 @@ class DjangoProviderBackendDecorator(DjangoBaseDecoratorMixin, ProviderBackendDe
     """Django-aware provider backend decorator (core behavior + Django identity)."""
 
 
-class DjangoPersistenceHandlerDecorator(DjangoBaseDecoratorMixin, BaseDecorator):
-    """Decorator for persistence handlers registered into the component store."""
+class PersistenceHandlerDecorator:
+    """
+    Simple decorator for persistence handlers.
 
-    default_domain = PERSIST_DOMAIN
-    log_category = "persistence-handlers"
+    No identity system - just validates and registers by schema class.
 
-    def get_registry(self):
-        from orchestrai.registry.active_app import get_component_store
+    Usage:
+        @persistence_handler
+        class PatientInitialPersistence(BasePersistenceHandler):
+            schema = PatientInitialOutputSchema
 
-        store = get_component_store()
-        return store.registry(PERSIST_DOMAIN) if store is not None else None
+            async def persist(self, *, data, context):
+                ...
+    """
 
-    def register(self, candidate):  # type: ignore[override]
+    def __call__(self, cls):
         from orchestrai_django.components.persistence import BasePersistenceHandler
 
-        if not issubclass(candidate, BasePersistenceHandler):
+        # Validate handler
+        if not issubclass(cls, BasePersistenceHandler):
             raise TypeError(
-                f"{candidate.__module__}.{candidate.__name__} must inherit from BasePersistenceHandler"
+                f"{cls.__module__}.{cls.__name__} must inherit from BasePersistenceHandler"
             )
 
-        if not callable(getattr(candidate, "persist", None)):
+        if not callable(getattr(cls, "persist", None)):
             raise TypeError(
-                f"{candidate.__module__}.{candidate.__name__} must implement async persist(response)"
+                f"{cls.__module__}.{cls.__name__} must implement async persist()"
             )
 
-        if not getattr(candidate, "schema", None):
+        schema_cls = getattr(cls, "schema", None)
+        if schema_cls is None:
             raise TypeError(
-                f"{candidate.__module__}.{candidate.__name__} must declare 'schema' class attribute"
+                f"{cls.__module__}.{cls.__name__} must declare 'schema' class attribute"
             )
 
-        candidate.__component_type__ = "persistence_handler"
-        super().register(candidate)
+        # Register with persistence registry
+        from orchestrai_django.registry import get_persistence_registry
+
+        registry = get_persistence_registry()
+        if registry is not None:
+            registry.register(cls)
+        else:
+            # Queue for later registration
+            _pending_handlers.append(cls)
+
+        return cls
+
+
+# Pending handlers for when registry isn't ready yet
+_pending_handlers: list[type] = []
+
+
+def flush_pending_handlers():
+    """Register any pending handlers once registry is available."""
+    from orchestrai_django.registry import get_persistence_registry
+
+    registry = get_persistence_registry()
+    if registry is None:
+        return
+
+    while _pending_handlers:
+        handler_cls = _pending_handlers.pop(0)
+        registry.register(handler_cls)
 
 
 codec = DjangoCodecDecorator()
@@ -148,4 +179,4 @@ schema = DjangoSchemaDecorator()
 prompt_section = DjangoPromptSectionDecorator()
 provider = DjangoProviderDecorator()
 provider_backend = DjangoProviderBackendDecorator()
-persistence_handler = DjangoPersistenceHandlerDecorator()
+persistence_handler = PersistenceHandlerDecorator()

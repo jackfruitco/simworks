@@ -1,80 +1,63 @@
-"""Base class for persistence handler components."""
+"""Base class for persistence handler components.
 
+Simplified for Pydantic AI - no identity system required.
+"""
+
+from abc import ABC, abstractmethod
 from typing import Any
-from orchestrai_django.identity.mixins import DjangoIdentityMixin
-from orchestrai.components import BaseComponent
-from abc import ABC
-from orchestrai.components.schemas import BaseOutputSchema
-from orchestrai.types import Response
 
 
-class BasePersistenceHandler(DjangoIdentityMixin, BaseComponent, ABC):
+class BasePersistenceHandler(ABC):
     """
-    Base class for persistence handler components.
+    Base class for persistence handlers.
 
-    Persistence handlers map structured response schemas to Django domain models.
-    They are discovered from app/orca/persist/ directories and registered by
-    (namespace, schema_identity) for routing.
-
-    Identity:
-        Domain: "persist"
-        Namespace: From mixin (e.g., "chatlab", "trainerlab")
-        Group: From mixin (e.g., "standardized_patient", "feedback")
-        Name: Class name
+    Persistence handlers map Pydantic AI response data to Django domain models.
+    No identity system - handlers are registered by their schema class.
 
     Example:
         @persistence_handler
-        class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersistenceHandler):
+        class PatientInitialPersistence(BasePersistenceHandler):
             schema = PatientInitialOutputSchema
 
-            async def persist(self, response: Response) -> Message:
-                # Extract structured_data
-                data = self.schema.model_validate(response.structured_data)
-
-                # Create domain objects
+            async def persist(self, *, data, context) -> Message:
+                # data is the validated Pydantic model instance
                 message = await Message.objects.acreate(
-                    simulation_id=response.context["simulation_id"],
-                    content=...,
+                    simulation_id=context["simulation_id"],
+                    content=data.messages[0].text,
                 )
-
                 return message
     """
 
-    domain = "persist"
+    # Schema class this handler processes (required)
+    schema: type | None = None
 
-    # Schema this handler processes (must be set by subclass)
-    schema: type[BaseOutputSchema] | None = None
-
-    async def persist(self, response: Response) -> Any:
+    @abstractmethod
+    async def persist(self, *, data: Any, context: dict[str, Any]) -> Any:
         """
-        Persist response structured data to domain models.
-
-        This method must be implemented by subclasses to map the specific
-        schema structure to the appropriate Django models.
+        Persist response data to domain models.
 
         Args:
-            response: Full Response object with:
-                - structured_data: Validated schema instance
-                - context: Service context (simulation_id, user_id, etc.)
-                - execution_metadata: Service identity, schema identity, etc.
+            data: Validated Pydantic model instance (or dict)
+            context: Execution context with simulation_id, user_id, etc.
 
         Returns:
             Primary domain object created (e.g., Message instance)
-
-        Raises:
-            ValueError: If required context fields are missing
-            ValidationError: If data doesn't match expected structure
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement persist() method"
-        )
+        ...
 
-    async def ensure_idempotent(self, response: Response):
+    def _schema_key(self) -> str:
+        """Get the schema key for idempotency tracking."""
+        if self.schema is None:
+            return ""
+        return f"{self.schema.__module__}.{self.schema.__name__}"
+
+    async def ensure_idempotent(self, *, call_id: str, context: dict[str, Any]):
         """
         Ensure idempotent persistence using PersistedChunk tracking.
 
-        This method provides a reusable pattern for handlers to check if
-        a chunk has already been persisted and retrieve the existing object.
+        Args:
+            call_id: Unique identifier for this service call
+            context: Execution context
 
         Returns:
             tuple: (chunk: PersistedChunk, created: bool)
@@ -82,19 +65,22 @@ class BasePersistenceHandler(DjangoIdentityMixin, BaseComponent, ABC):
                 - created: True if this is first persistence, False if already done
 
         Example:
-            async def persist(self, response: Response) -> Message:
-                chunk, created = await self.ensure_idempotent(response)
+            async def persist(self, *, data, context) -> Message:
+                call_id = context.get("call_id", "")
+                chunk, created = await self.ensure_idempotent(
+                    call_id=call_id, context=context
+                )
 
-                if not created and chunk.domain_object:
+                if not created and chunk.object_id:
                     # Already persisted - return existing
-                    return chunk.domain_object
+                    return await Message.objects.aget(id=chunk.object_id)
 
                 # First persistence - create domain objects
                 message = await Message.objects.acreate(...)
 
                 # Link to tracking record
                 from django.contrib.contenttypes.models import ContentType
-                chunk.content_type = ContentType.objects.get_for_model(Message)
+                chunk.content_type = await ContentType.objects.aget_for_model(Message)
                 chunk.object_id = message.id
                 await chunk.asave()
 
@@ -102,22 +88,14 @@ class BasePersistenceHandler(DjangoIdentityMixin, BaseComponent, ABC):
         """
         from orchestrai_django.models import PersistedChunk
 
-        # Extract identifiers from response
-        call_id = str(response.context.get("call_id") or response.correlation_id)
-        schema_id = response.execution_metadata.get("schema_identity", "")
+        schema_key = self._schema_key()
 
-        if not schema_id:
-            # Fallback to schema class if metadata missing
-            if self.schema and hasattr(self.schema, "identity"):
-                schema_id = self.schema.identity.as_str
-
-        # Get or create tracking record
         chunk, created = await PersistedChunk.objects.aget_or_create(
             call_id=call_id,
-            schema_identity=schema_id,
+            schema_identity=schema_key,
             defaults={
-                "namespace": response.namespace or "",
-                "handler_identity": self.identity.as_str,
+                "namespace": context.get("namespace", ""),
+                "handler_identity": f"{self.__class__.__module__}.{self.__class__.__name__}",
             },
         )
 

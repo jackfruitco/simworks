@@ -236,6 +236,10 @@ class OrchestrAIDjangoConfig(AppConfig):
     name = "orchestrai_django"
 
     def ready(self) -> None:
+        # Initialize persistence handler registry early (before autodiscovery)
+        from orchestrai_django.registry import init_persistence_registry
+        init_persistence_registry()
+
         # Allow opt-out for special cases (tests, one-off management commands, etc.)
         if not _autostart_enabled():
             return
@@ -251,3 +255,7 @@ class OrchestrAIDjangoConfig(AppConfig):
             return
 
         ensure_autostarted(entrypoint=entrypoint, check_skip_commands=False)
+
+        # Flush any pending persistence handlers registered during autodiscovery
+        from orchestrai_django.decorators import flush_pending_handlers
+        flush_pending_handlers()
