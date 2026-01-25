@@ -29,21 +29,6 @@ def _coerce_mapping(value: Any) -> Mapping[str, Any]:
     raise TypeError("Django settings for OrchestrAI must be a mapping or None")
 
 
-def _validate_single_mode(mapping: Mapping[str, Any]) -> None:
-    mode = (mapping.get("MODE") or "single").lower()
-    if mode != "single":
-        return
-
-    if "CLIENTS" in mapping or "PROVIDERS" in mapping:
-        raise ValueError("SINGLE mode configuration must not include CLIENTS or PROVIDERS")
-
-    client_conf = mapping.get("CLIENT")
-    from collections.abc import Mapping as AbcMapping
-
-    if not isinstance(client_conf, AbcMapping) or not client_conf:
-        raise ValueError("SINGLE mode requires ORCA_CONFIG['CLIENT'] to be a non-empty mapping")
-
-
 def _existing_modules_for_root(root: str) -> list[str]:
     discovered: list[str] = []
     try:
@@ -119,7 +104,6 @@ def configure_from_django_settings(
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
     mapping = _collect_mapping_from_settings(dj_settings, namespace)
-    _validate_single_mode(mapping)
 
     conf = Settings()
     conf.update_from_mapping(mapping)

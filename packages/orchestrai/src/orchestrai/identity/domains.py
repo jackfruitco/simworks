@@ -10,8 +10,6 @@ __all__ = [
     "CODECS_DOMAIN",
     "PROMPT_SECTIONS_DOMAIN",
     "SCHEMAS_DOMAIN",
-    "PROVIDER_BACKENDS_DOMAIN",
-    "PROVIDERS_DOMAIN",
     "PERSIST_DOMAIN",
     "SUPPORTED_DOMAINS",
     "DEFAULT_DOMAIN",
@@ -22,8 +20,6 @@ SERVICES_DOMAIN = "services"
 CODECS_DOMAIN = "codecs"
 PROMPT_SECTIONS_DOMAIN = "prompt-sections"
 SCHEMAS_DOMAIN = "schemas"
-PROVIDER_BACKENDS_DOMAIN = "provider-backends"
-PROVIDERS_DOMAIN = "providers"
 PERSIST_DOMAIN = "persist"
 
 # Canonical defaults & supported set
@@ -33,8 +29,6 @@ SUPPORTED_DOMAINS: tuple[str, ...] = (
     CODECS_DOMAIN,
     PROMPT_SECTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
-    PROVIDER_BACKENDS_DOMAIN,
-    PROVIDERS_DOMAIN,
     PERSIST_DOMAIN,
 )
 

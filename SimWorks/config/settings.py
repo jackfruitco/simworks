@@ -150,18 +150,16 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 # ---------------------------------------------------------------------------
-# Orca configugration
+# OrchestrAI configuration
 # ---------------------------------------------------------------------------
+# Services use Pydantic AI's Agent abstraction for LLM execution.
+# API keys are resolved via ORCA_{PROVIDER}_API_KEY environment variables
+# (e.g., ORCA_OPENAI_API_KEY, ORCA_ANTHROPIC_API_KEY).
 ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
 ORCA_CONFIG = {
     "MODE": "single",
-    "CLIENT": {
-        "provider": "openai",
-        "surface": "responses",
-        "api_key_envvar": "ORCA_PROVIDER_API_KEY",
-        "model": os.getenv("ORCA_DEFAULT_MODEL", None),
-    },
+    "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai:gpt-4o-mini"),
 }
 
 TASKS = {

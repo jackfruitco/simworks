@@ -234,20 +234,26 @@ def run_service_call(call_id: str):
         # Mark attempt as dispatched before calling the service
         attempt_record.mark_dispatched()
 
-        if hasattr(service, "execute") and callable(service.execute):
-            execute = service.execute
-            if inspect.iscoroutinefunction(execute):
-                result = async_to_sync(execute)(**payload)
-            else:
-                result = execute(**payload)
+        # Prefer arun (Pydantic AI services), then aexecute, then execute
+        if hasattr(service, "arun") and callable(service.arun):
+            # New Pydantic AI-based services use arun
+            result = async_to_sync(service.arun)(**payload)
         elif hasattr(service, "aexecute") and callable(service.aexecute):
+            # Legacy services with aexecute
             aexecute = service.aexecute
             if inspect.iscoroutinefunction(aexecute):
                 result = async_to_sync(aexecute)(**payload)
             else:  # pragma: no cover - defensive fallback
                 result = aexecute(**payload)
+        elif hasattr(service, "execute") and callable(service.execute):
+            # Legacy services with sync execute
+            execute = service.execute
+            if inspect.iscoroutinefunction(execute):
+                result = async_to_sync(execute)(**payload)
+            else:
+                result = async_to_sync(service.aexecute)(**payload) if hasattr(service, "aexecute") else execute(**payload)
         else:  # pragma: no cover - defensive
-            raise RuntimeError("Service does not implement execute/aexecute")
+            raise RuntimeError("Service does not implement arun/aexecute/execute")
 
         # Success! Store Response and mark for domain persistence
         # Phase 1: Store full Response object (atomic)

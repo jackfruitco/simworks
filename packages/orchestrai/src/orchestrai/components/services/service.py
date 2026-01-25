@@ -59,7 +59,7 @@ from orchestrai.components.services.calls import ServiceCall
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
 from orchestrai.identity import IdentityMixin
 from orchestrai.identity.domains import SERVICES_DOMAIN
-from orchestrai.prompts.decorators import collect_prompts, render_prompt_methods
+from orchestrai.prompts.decorators import collect_prompts
 from orchestrai.tracing import get_tracer, service_span, flatten_context as flatten_context_
 
 if TYPE_CHECKING:
@@ -235,6 +235,115 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         """Get the effective model identifier (instance override or class default)."""
         return self._model_override or type(self).model
 
+    # Default environment variable names for each provider
+    _DEFAULT_API_KEY_ENVVARS: ClassVar[dict[str, str]] = {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "gemini": "GOOGLE_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+        "cohere": "COHERE_API_KEY",
+    }
+
+    def _get_api_key_for_provider(self, provider: str) -> str | None:
+        """
+        Get the API key for a provider using convention-based lookup.
+
+        Lookup order:
+        1. ORCA_{PROVIDER}_API_KEY (e.g., ORCA_OPENAI_API_KEY)
+        2. Config override via API_KEY_ENVVARS mapping
+        3. Provider's default env var (e.g., OPENAI_API_KEY)
+
+        Args:
+            provider: Provider name (e.g., "openai", "anthropic")
+
+        Returns:
+            API key string or None if not found
+        """
+        import os
+        from orchestrai import get_current_app
+
+        # 1. Try ORCA_{PROVIDER}_API_KEY convention
+        orca_envvar = f"ORCA_{provider.upper()}_API_KEY"
+        api_key = os.environ.get(orca_envvar)
+        if api_key:
+            return api_key
+
+        # 2. Check for config override in API_KEY_ENVVARS
+        app = get_current_app()
+        if app and app.conf:
+            api_key_envvars = app.conf.get("API_KEY_ENVVARS", {})
+            if provider in api_key_envvars:
+                api_key = os.environ.get(api_key_envvars[provider])
+                if api_key:
+                    return api_key
+
+        # 3. Fall back to provider's default env var
+        default_envvar = self._DEFAULT_API_KEY_ENVVARS.get(provider)
+        if default_envvar:
+            return os.environ.get(default_envvar)
+
+        return None
+
+    def _build_model_with_api_key(self, model_str: str) -> Any:
+        """
+        Build a Pydantic AI model with API key from environment.
+
+        Uses convention-based env var lookup:
+        - ORCA_{PROVIDER}_API_KEY (preferred)
+        - Provider's default (e.g., OPENAI_API_KEY)
+
+        Supports: openai, anthropic, google/gemini, groq, mistral, cohere
+
+        Args:
+            model_str: Model identifier string (e.g., "openai:gpt-4o")
+
+        Returns:
+            A Pydantic AI model instance configured with the API key,
+            or the original string if no API key is needed/found
+        """
+        # Parse provider:model format
+        if ":" not in model_str:
+            return model_str
+
+        provider, model_name = model_str.split(":", 1)
+        api_key = self._get_api_key_for_provider(provider)
+
+        # OpenAI
+        if provider == "openai" and api_key:
+            from pydantic_ai.models.openai import OpenAIModel
+            from pydantic_ai.providers.openai import OpenAIProvider
+            return OpenAIModel(model_name, provider=OpenAIProvider(api_key=api_key))
+
+        # Anthropic
+        if provider == "anthropic" and api_key:
+            from pydantic_ai.models.anthropic import AnthropicModel
+            from pydantic_ai.providers.anthropic import AnthropicProvider
+            return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
+
+        # Google/Gemini
+        if provider in ("google", "gemini") and api_key:
+            from pydantic_ai.models.gemini import GeminiModel
+            from pydantic_ai.providers.google import GoogleProvider
+            return GeminiModel(model_name, provider=GoogleProvider(api_key=api_key))
+
+        # Groq
+        if provider == "groq" and api_key:
+            from pydantic_ai.models.groq import GroqModel
+            from pydantic_ai.providers.groq import GroqProvider
+            return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
+
+        # Mistral
+        if provider == "mistral" and api_key:
+            from pydantic_ai.models.mistral import MistralModel
+            from pydantic_ai.providers.mistral import MistralProvider
+            return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
+
+        # For other providers or if no API key configured, return string
+        # (Pydantic AI will use its default env var lookup)
+        return model_str
+
     @cached_property
     def agent(self) -> Agent:
         """
@@ -247,19 +356,24 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         """
         from pydantic_ai import Agent
 
-        # Build model with fallbacks
-        model = self.effective_model
+        # Build model with API key from OrchestrAI config
+        model = self._build_model_with_api_key(self.effective_model)
+
+        # Handle fallbacks
         if self.fallback_models:
             try:
                 from pydantic_ai.models.fallback import FallbackModel
-                model = FallbackModel(model, *self.fallback_models)
+                fallback_models = [
+                    self._build_model_with_api_key(m) for m in self.fallback_models
+                ]
+                model = FallbackModel(model, *fallback_models)
             except ImportError:
                 logger.warning("FallbackModel not available, using primary model only")
 
         # Create agent
         agent = Agent(
             model=model,
-            result_type=self.response_schema,
+            output_type=self.response_schema,
         )
 
         # Register system prompt methods
@@ -324,10 +438,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         Returns:
             RunResult containing the validated response and metadata
         """
-        from pydantic_ai import RunContext
-
-        LOG_CAT = "pydantic_ai.run"
-
         # Merge context
         if ctx:
             self.context.update(ctx)
@@ -351,17 +461,11 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 user_message = self.context.get("user_message", "")
                 message_history = self.context.get("message_history")
 
-                # Build system prompt from decorated methods
-                system_prompt = await render_prompt_methods(
-                    self,
-                    self._prompt_methods,
-                    ctx=RunContext(deps=self.context, retry=0, tool_name=None),
-                )
-
-                # Execute agent
+                # Execute agent - system prompts are registered on the agent via @system_prompt
+                # decorated methods (registered in the agent property). The prompts access
+                # self.context through closures, so they get the current context state.
                 result = await self.agent.run(
                     user_message,
-                    system_prompt=system_prompt if system_prompt else None,
                     deps=self.context,
                     message_history=message_history,
                 )

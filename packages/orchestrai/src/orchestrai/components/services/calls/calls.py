@@ -52,12 +52,14 @@ class ServiceCall:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     service: str | None = None
-    client: Any | None = field(default=None, repr=False, compare=False)
     request: Any | None = field(default=None, repr=False, compare=False)
+    # Token tracking
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
 
     def to_jsonable(self) -> dict[str, Any]:
         payload = asdict(self)
-        payload.pop("client", None)
         payload.pop("request", None)
         payload = {key: _coerce(val) for key, val in payload.items()}
         assert_jsonable(payload)

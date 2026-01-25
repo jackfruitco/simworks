@@ -4,7 +4,7 @@
 Django-aware public decorators for OrchestrAI.
 
 This module mirrors the core OrchestrAI decorator surface (codec, service, schema,
-prompt_section, provider, provider_backend) but derives identities using Django context.
+prompt_section) but derives identities using Django context.
 
 Identity behavior
 -----------------
@@ -20,10 +20,6 @@ This module is intentionally side-effect free (no autodiscovery/autostart).
 
 from orchestrai.decorators.components.codec_decorator import CodecDecorator
 from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
-from orchestrai.decorators.components.provider_decorators import (
-    ProviderBackendDecorator,
-    ProviderDecorator,
-)
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
 from orchestrai.identity.domains import DEFAULT_DOMAIN
@@ -34,8 +30,6 @@ __all__ = [
     "service",
     "schema",
     "prompt_section",
-    "provider",
-    "provider_backend",
     "persistence_handler",
     "flush_pending_handlers",
     "PersistenceHandlerDecorator",
@@ -43,8 +37,6 @@ __all__ = [
     "DjangoServiceDecorator",
     "DjangoSchemaDecorator",
     "DjangoPromptSectionDecorator",
-    "DjangoProviderDecorator",
-    "DjangoProviderBackendDecorator",
 ]
 
 
@@ -98,14 +90,6 @@ class DjangoSchemaDecorator(DjangoBaseDecoratorMixin, SchemaDecorator):
 
 class DjangoServiceDecorator(DjangoBaseDecoratorMixin, ServiceDecorator):
     """Django-aware service decorator (core behavior + Django identity)."""
-
-
-class DjangoProviderDecorator(DjangoBaseDecoratorMixin, ProviderDecorator):
-    """Django-aware provider decorator (core behavior + Django identity)."""
-
-
-class DjangoProviderBackendDecorator(DjangoBaseDecoratorMixin, ProviderBackendDecorator):
-    """Django-aware provider backend decorator (core behavior + Django identity)."""
 
 
 class PersistenceHandlerDecorator:
@@ -177,6 +161,4 @@ codec = DjangoCodecDecorator()
 service = DjangoServiceDecorator()
 schema = DjangoSchemaDecorator()
 prompt_section = DjangoPromptSectionDecorator()
-provider = DjangoProviderDecorator()
-provider_backend = DjangoProviderBackendDecorator()
 persistence_handler = PersistenceHandlerDecorator()

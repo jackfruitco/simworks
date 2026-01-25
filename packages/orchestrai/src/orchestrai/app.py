@@ -1,23 +1,21 @@
 # orchestrai/app.py
 """A compact, explicit OrchestrAI application object.
 
-The refactored app focuses on a predictable lifecycle:
+The app focuses on a predictable lifecycle:
 
 1. ``configure``   -> apply settings from mappings/env/object
-2. ``setup``       -> prepare loader and registries based on config (NO client/provider construction)
+2. ``setup``       -> prepare loader and registries based on config
 3. ``discover``    -> import configured discovery modules
 4. ``finalize``    -> attach shared callbacks and freeze registries
 5. ``start``/``run`` -> convenience wrapper performing the full flow
 
-Client/provider construction is intentionally LAZY and happens on first access
-(e.g. app.client / app.get_client()) so registered backends are available.
+Services use Pydantic AI's Agent abstraction directly for LLM execution.
 """
 from __future__ import annotations
 
 import importlib
 import sys
 from collections.abc import Iterable
-from collections.abc import Mapping as AbcMapping
 from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any, Callable
@@ -37,8 +35,6 @@ ORCA_BANNER = r"""
 """
 
 from ._state import push_current_app, set_current_app
-from .client.factory import build_orca_client
-from .client.settings_loader import load_client_settings
 from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import Fixup, FixupStage
@@ -72,7 +68,6 @@ class OrchestrAI:
     conf: Settings = field(default_factory=Settings)
     fixups: list[Fixup] = field(default_factory=list)
 
-    _default_client: str | None = None
     _configured: bool = False
     _finalized: bool = False
     _setup_done: bool = False
@@ -86,12 +81,6 @@ class OrchestrAI:
     _booting: bool = False
 
     component_store: ComponentStore = field(default_factory=ComponentStore)
-
-    # NOTE: these dicts hold either:
-    #  - a concrete built instance (Any), OR
-    #  - a definition mapping (dict) that will be built lazily later
-    clients: dict[str, Any] = field(default_factory=dict)
-    providers: dict[str, Any] = field(default_factory=dict)
 
     _service_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(
         default_factory=list, repr=False
@@ -156,20 +145,11 @@ class OrchestrAI:
         if self._setup_done:
             return self
 
-        if self.mode == "single":
-            if self.conf.get("CLIENTS"):
-                raise ValueError("CLIENTS is not allowed in single mode; use a single CLIENT mapping")
-            if self.conf.get("PROVIDERS"):
-                raise ValueError("PROVIDERS is not allowed in single mode; embed provider config in CLIENT")
-
         if self.loader is None:
             loader_path = self.conf.get("LOADER")
             loader_cls = _import_string(loader_path)
             self.loader = loader_cls()
 
-        # IMPORTANT: normalize config only (NO backend resolution/build here)
-        self._configure_clients()
-        self._configure_providers()
         self._refresh_identity_strip_tokens()
 
         flush_pending(self.component_store)
@@ -257,100 +237,14 @@ class OrchestrAI:
         raise RuntimeError("Service runners are no longer supported; use inline tasks instead.")
 
     # ------------------------------------------------------------------
-    # Client/provider configuration (lazy)
+    # Configuration helpers (internal)
     # ------------------------------------------------------------------
-    @property
-    def mode(self) -> str:
-        return str(self.conf.get("MODE", "single"))
-
-    def _configure_clients(self) -> None:
-        # SINGLE MODE: store definition only; build lazily on access.
-        if self.mode == "single":
-            client_conf = self.conf.get("CLIENT")
-            if client_conf is None:
-                self._default_client = None
-                return
-            if not isinstance(client_conf, AbcMapping):
-                raise TypeError("In single mode, CLIENT must be a mapping of client configuration")
-
-            name = client_conf.get("name") or "default"
-            definition = dict(client_conf)
-            definition.setdefault("name", name)
-
-            # LAZY: do NOT call build_orca_client here.
-            self.clients[name] = definition
-            self._default_client = name
-            return
-
-        # POD MODE: already definition-driven; keep as-is.
-        clients_conf = dict(self.conf.get("CLIENTS", {}))
-        default_client = self.conf.get("CLIENT")
-        if default_client and default_client not in clients_conf:
-            clients_conf[default_client] = {"name": default_client}
-
-        for name, definition in clients_conf.items():
-            self.clients[name] = definition
-
-        if default_client is None and clients_conf:
-            default_client = next(iter(clients_conf))
-        self._default_client = default_client
-
-    def _configure_providers(self) -> None:
-        # Providers are also definitions (construction happens when used by client build)
-        if self.mode == "single":
-            return
-        for name, definition in dict(self.conf.get("PROVIDERS", {})).items():
-            self.providers[name] = definition
-
     def _refresh_identity_strip_tokens(self) -> None:
         """Compile and persist identity strip tokens onto app settings."""
         from .identity.utils import get_effective_strip_tokens
 
         with self.as_current():
             self.conf["IDENTITY_STRIP_TOKENS"] = get_effective_strip_tokens()
-
-    # ------------------------------------------------------------------
-    # Lazy client resolution
-    # ------------------------------------------------------------------
-    def get_client(self, name: str | None = None) -> Any | None:
-        """
-        Return a built client.
-
-        If the stored value is a mapping definition, build the client on demand
-        (after autodiscovery has run so provider backends are registered), then cache it.
-        """
-        if name is None:
-            name = self._default_client
-        if not name:
-            return None
-
-        existing = self.clients.get(name)
-        if existing is None:
-            return None
-
-        # Already built (non-mapping)
-        if not isinstance(existing, AbcMapping):
-            return existing
-
-        # Ensure discovery has happened before building clients that rely on registries.
-        # This keeps Django/non-Django behavior consistent.
-        if not self._autodiscovered and not self._finalized:
-            self.autodiscover_components()
-
-        settings = load_client_settings(self.conf)
-        client = build_orca_client(settings, name)
-        self.clients[name] = client
-        return client
-
-    def set_client(self, name: str, client: Any) -> None:
-        self.clients[name] = client
-
-    def set_default_client(self, name: str) -> None:
-        self._default_client = name
-
-    @property
-    def client(self) -> Any | None:
-        return self.get_client()
 
     # ------------------------------------------------------------------
     # Presentation helpers
@@ -386,10 +280,6 @@ class OrchestrAI:
             items = ", ".join(names) if names else "<none>"
             sections.append(f"- {kind}: {items}")
 
-        client_names = sorted(self.clients.keys())
-        provider_names = sorted(self.providers.keys())
-        sections.append(f"- clients: {', '.join(client_names) if client_names else '<none>'}")
-        sections.append(f"- providers: {', '.join(provider_names) if provider_names else '<none>'}")
         lines = ["Registered components:"]
         lines.extend(sections)
         return "\n".join(lines) + "\n"

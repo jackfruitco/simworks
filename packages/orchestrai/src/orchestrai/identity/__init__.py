@@ -21,8 +21,7 @@ from .domains import (
     CODECS_DOMAIN,
     PROMPT_SECTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
-    PROVIDER_BACKENDS_DOMAIN,
-    PROVIDERS_DOMAIN,
+    PERSIST_DOMAIN,
     normalize_domain,
 )
 
@@ -40,8 +39,7 @@ __all__ = [
     "CODECS_DOMAIN",
     "PROMPT_SECTIONS_DOMAIN",
     "SCHEMAS_DOMAIN",
-    "PROVIDER_BACKENDS_DOMAIN",
-    "PROVIDERS_DOMAIN",
+    "PERSIST_DOMAIN",
     "normalize_domain",
     # Helpers
     "coerce_identity_key",
