@@ -31,7 +31,8 @@ Usage:
 
     class GenerateResponse(BaseService):
         response_schema = PatientResponse
-        model = "openai:gpt-4o"
+        # model is optional - uses ORCA_DEFAULT_MODEL env var if not set
+        model = "openai-responses:gpt-4o"
 
         @system_prompt(weight=100)
         def base_instructions(self) -> str:
@@ -52,6 +53,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
 from pydantic import BaseModel
+from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from orchestrai.components.base import BaseComponent
 from orchestrai.components.mixins import LifecycleMixin
@@ -166,14 +168,21 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
     - Simplified prompt composition via @system_prompt decorators
 
     Class Attributes:
-        model: Pydantic AI model identifier (e.g., "openai:gpt-4o", "anthropic:claude-3-5-sonnet")
+        model: Pydantic AI model identifier (e.g., "openai-responses:gpt-5-nano"). Optional -
+            if not set, uses DEFAULT_MODEL from OrchestrAI config.
         fallback_models: Optional list of fallback model identifiers
         response_schema: Pydantic model class for structured output
         required_context_keys: Keys that must be present in context
 
+    Model Resolution:
+        1. Instance override (passed to __init__)
+        2. Class-level model attribute (if defined by subclass)
+        3. DEFAULT_MODEL from OrchestrAI config (ORCA_DEFAULT_MODEL env var)
+        4. Hardcoded fallback: "openai-responses:gpt-4o-mini"
+
     Example:
         class PatientService(BaseService):
-            model = "openai:gpt-4o"
+            model = "openai-responses:gpt-4o"  # Optional - uses config default if omitted
             response_schema = PatientResponse
 
             @system_prompt(weight=100)
@@ -189,8 +198,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
     task: ClassVar[CoreTaskProxy] = TaskDescriptor()
 
     # Pydantic AI model configuration
-    model: ClassVar[str] = "openai:gpt-4o"
+    # Empty string = use DEFAULT_MODEL from config (or hardcoded fallback)
+    model: ClassVar[str] = ""
     fallback_models: ClassVar[list[str]] = []
+    _FALLBACK_MODEL: ClassVar[str] = "openai-responses:gpt-5-nano"
 
     # Response schema (Pydantic model)
     response_schema: ClassVar[type[BaseModel] | None] = None
@@ -232,116 +243,200 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
     @property
     def effective_model(self) -> str:
-        """Get the effective model identifier (instance override or class default)."""
-        return self._model_override or type(self).model
-
-    # Default environment variable names for each provider
-    _DEFAULT_API_KEY_ENVVARS: ClassVar[dict[str, str]] = {
-        "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "google": "GOOGLE_API_KEY",
-        "gemini": "GOOGLE_API_KEY",
-        "groq": "GROQ_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-        "cohere": "COHERE_API_KEY",
-    }
-
-    def _get_api_key_for_provider(self, provider: str) -> str | None:
         """
-        Get the API key for a provider using convention-based lookup.
+        Get the effective model identifier.
 
-        Lookup order:
-        1. ORCA_{PROVIDER}_API_KEY (e.g., ORCA_OPENAI_API_KEY)
-        2. Config override via API_KEY_ENVVARS mapping
-        3. Provider's default env var (e.g., OPENAI_API_KEY)
+        Resolution order:
+        1. Instance override (passed to __init__)
+        2. Class-level model attribute (if defined by subclass)
+        3. DEFAULT_MODEL from OrchestrAI config
+        4. Hardcoded fallback (_FALLBACK_MODEL)
+        """
+        # 1. Instance override
+        if self._model_override:
+            return self._model_override
+
+        # 2. Class-level model (if subclass defined it)
+        class_model = type(self).model
+        if class_model:
+            return class_model
+
+        # 3. Config default
+        from orchestrai import get_current_app
+        app = get_current_app()
+        if app and app.conf:
+            config_default = app.conf.get("DEFAULT_MODEL")
+            if config_default:
+                return config_default
+
+        # 4. Hardcoded fallback
+        return self._FALLBACK_MODEL
+
+    def _get_api_key_for_provider(self, provider: str) -> tuple[str | None, str | None]:
+        """
+        Get the API key for a provider using configured environment variable.
+
+        Uses ``orchestrai.utils.env.get_api_key()`` which reads from
+        ``app.conf["API_KEY_ENVVARS"][provider]`` to determine the env var name.
+
+        Configuration layering:
+        - Standalone OrchestrAI: Uses standard env vars (OPENAI_API_KEY, etc.)
+        - Django integration: Uses namespaced env vars (ORCA_OPENAI_API_KEY, etc.)
+        - User override: Via ORCA_CONFIG["API_KEY_ENVVARS"]
 
         Args:
             provider: Provider name (e.g., "openai", "anthropic")
 
         Returns:
-            API key string or None if not found
+            Tuple of (api_key, source_envvar) or (None, None) if not found
         """
         import os
-        from orchestrai import get_current_app
 
-        # 1. Try ORCA_{PROVIDER}_API_KEY convention
-        orca_envvar = f"ORCA_{provider.upper()}_API_KEY"
-        api_key = os.environ.get(orca_envvar)
+        from orchestrai.utils.env import get_api_key, get_api_key_envvar
+
+        envvar = get_api_key_envvar(provider)
+        api_key = get_api_key(provider)
+
         if api_key:
-            return api_key
+            logger.debug(
+                "API key for %s found via %s",
+                provider,
+                envvar,
+            )
+            return api_key, envvar
 
-        # 2. Check for config override in API_KEY_ENVVARS
-        app = get_current_app()
-        if app and app.conf:
-            api_key_envvars = app.conf.get("API_KEY_ENVVARS", {})
-            if provider in api_key_envvars:
-                api_key = os.environ.get(api_key_envvars[provider])
-                if api_key:
-                    return api_key
+        # Fallback for backward compatibility: ORCA_PROVIDER_API_KEY
+        generic_envvar = "ORCA_PROVIDER_API_KEY"
+        generic_key = os.environ.get(generic_envvar)
+        if generic_key:
+            logger.debug(
+                "API key for %s found via generic fallback %s",
+                provider,
+                generic_envvar,
+            )
+            return generic_key, generic_envvar
 
-        # 3. Fall back to provider's default env var
-        default_envvar = self._DEFAULT_API_KEY_ENVVARS.get(provider)
-        if default_envvar:
-            return os.environ.get(default_envvar)
-
-        return None
+        return None, None
 
     def _build_model_with_api_key(self, model_str: str) -> Any:
         """
         Build a Pydantic AI model with API key from environment.
 
-        Uses convention-based env var lookup:
-        - ORCA_{PROVIDER}_API_KEY (preferred)
-        - Provider's default (e.g., OPENAI_API_KEY)
+        Uses settings-based env var lookup via ``orchestrai.utils.env``.
+        The env var name is configured in ``app.conf["API_KEY_ENVVARS"]``.
 
         Supports: openai, anthropic, google/gemini, groq, mistral, cohere
 
         Args:
-            model_str: Model identifier string (e.g., "openai:gpt-4o")
+            model_str: Model identifier string (e.g., "openai-responses:gpt-5-nano")
 
         Returns:
-            A Pydantic AI model instance configured with the API key,
-            or the original string if no API key is needed/found
+            A Pydantic AI model instance configured with the API key
+
+        Raises:
+            ValueError: If no API key is found for a supported provider
         """
+        from orchestrai import get_current_app
+        from orchestrai.utils.env import get_api_key_envvar
+
         # Parse provider:model format
         if ":" not in model_str:
-            return model_str
+            raise ValueError(
+                f"Invalid model format '{model_str}'. Expected 'provider:model' "
+                f"(e.g., 'openai-responses:gpt-5-nano', 'anthropic:claude-3-5-sonnet')"
+            )
 
         provider, model_name = model_str.split(":", 1)
-        api_key = self._get_api_key_for_provider(provider)
+
+        # Clean `openai-{API}` provider format
+        if "-" in provider: provider = provider.split("-")[0]
+
+        api_key, source_envvar = self._get_api_key_for_provider(provider)
+
+        # Check if API key is required but missing
+        # Supported providers are those configured in API_KEY_ENVVARS
+        app = get_current_app()
+        supported_providers = set(app.conf.get("API_KEY_ENVVARS", {}).keys()) if app and app.conf else set()
+
+        if not api_key and provider in supported_providers:
+            configured_envvar = get_api_key_envvar(provider) or f"{provider.upper()}_API_KEY"
+            raise ValueError(
+                f"No API key found for provider '{provider}'. "
+                f"Set {configured_envvar} or ORCA_PROVIDER_API_KEY environment variable."
+            )
 
         # OpenAI
-        if provider == "openai" and api_key:
+        if provider == "openai":
             from pydantic_ai.models.openai import OpenAIModel
             from pydantic_ai.providers.openai import OpenAIProvider
-            return OpenAIModel(model_name, provider=OpenAIProvider(api_key=api_key))
+            logger.info(
+                "Creating OpenAI model '%s' with API key from %s",
+                model_name,
+                source_envvar,
+            )
+            return OpenAIResponsesModel(model_name, provider=OpenAIProvider(api_key=api_key))
 
         # Anthropic
-        if provider == "anthropic" and api_key:
+        if provider == "anthropic":
             from pydantic_ai.models.anthropic import AnthropicModel
             from pydantic_ai.providers.anthropic import AnthropicProvider
+            logger.info(
+                "Creating Anthropic model '%s' with API key from %s",
+                model_name,
+                source_envvar,
+            )
             return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
 
         # Google/Gemini
-        if provider in ("google", "gemini") and api_key:
+        if provider in ("google", "gemini"):
             from pydantic_ai.models.gemini import GeminiModel
             from pydantic_ai.providers.google import GoogleProvider
+            logger.info(
+                "Creating Gemini model '%s' with API key from %s",
+                model_name,
+                source_envvar,
+            )
             return GeminiModel(model_name, provider=GoogleProvider(api_key=api_key))
 
         # Groq
-        if provider == "groq" and api_key:
+        if provider == "groq":
             from pydantic_ai.models.groq import GroqModel
             from pydantic_ai.providers.groq import GroqProvider
+            logger.info(
+                "Creating Groq model '%s' with API key from %s",
+                model_name,
+                source_envvar,
+            )
             return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
 
         # Mistral
-        if provider == "mistral" and api_key:
+        if provider == "mistral":
             from pydantic_ai.models.mistral import MistralModel
             from pydantic_ai.providers.mistral import MistralProvider
+            logger.info(
+                "Creating Mistral model '%s' with API key from %s",
+                model_name,
+                source_envvar,
+            )
             return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
 
-        # For other providers or if no API key configured, return string
-        # (Pydantic AI will use its default env var lookup)
+        # Cohere
+        if provider == "cohere":
+            from pydantic_ai.models.cohere import CohereModel
+            from pydantic_ai.providers.cohere import CohereProvider
+            logger.info(
+                "Creating Cohere model '%s' with API key from %s",
+                model_name,
+                source_envvar,
+            )
+            return CohereModel(model_name, provider=CohereProvider(api_key=api_key))
+
+        # Unknown provider - let Pydantic AI handle it
+        logger.warning(
+            "Unknown provider '%s' - passing model string '%s' to Pydantic AI",
+            provider,
+            model_str,
+        )
         return model_str
 
     @cached_property
@@ -369,6 +464,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 model = FallbackModel(model, *fallback_models)
             except ImportError:
                 logger.warning("FallbackModel not available, using primary model only")
+
 
         # Create agent
         agent = Agent(

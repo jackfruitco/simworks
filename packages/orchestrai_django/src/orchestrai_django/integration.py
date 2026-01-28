@@ -97,16 +97,28 @@ def configure_from_django_settings(
 ) -> Settings:
     """Load OrchestrAI configuration from ``django.conf.settings`` using the current API.
 
-    Django's responsibility here is ONLY to compute DISCOVERY_PATHS from INSTALLED_APPS
-    and inject it into the core Settings. Core OrchestrAI discovery imports everything
-    uniformly via app.autodiscover_components().
+    Configuration layering:
+    1. Core OrchestrAI defaults (e.g., API_KEY_ENVVARS with standard env vars)
+    2. Django-specific defaults (e.g., API_KEY_ENVVARS with ORCA_ prefixed env vars)
+    3. User settings via ORCA_CONFIG or ORCHESTRAI Django setting
+
+    Django's responsibility here is to:
+    - Apply Django-specific defaults (namespaced env vars, etc.)
+    - Compute DISCOVERY_PATHS from INSTALLED_APPS
+    - Inject configuration into core Settings
+
+    Core OrchestrAI discovery imports modules uniformly via app.autodiscover_components().
     """
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
-    mapping = _collect_mapping_from_settings(dj_settings, namespace)
+    from orchestrai_django.conf.defaults import DJANGO_DEFAULTS
 
+    user_mapping = _collect_mapping_from_settings(dj_settings, namespace)
+
+    # Layer: core defaults → Django defaults → user settings
     conf = Settings()
-    conf.update_from_mapping(mapping)
+    conf.update_from_mapping(DJANGO_DEFAULTS)
+    conf.update_from_mapping(user_mapping)
 
     try:
         from orchestrai.components.services.django import use_django_task_proxy
