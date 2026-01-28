@@ -131,7 +131,7 @@ class TestDjangoBaseService:
         class TestService(DjangoBaseService):
             abstract = False
             response_schema = TestSchema
-            model = "openai:gpt-4o"
+            model = "openai-responses:gpt-5-nano"
 
             @system_prompt(weight=100)
             def instructions(self) -> str:

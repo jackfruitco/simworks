@@ -194,7 +194,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
             messages.append(
                 checks.Error(
                     "orchestrai['CLIENTS'] must be a dict-like mapping.",
-                    hint="Example: orchestrai['CLIENTS'] = {'openai:prod-gpt-4o-mini': {'backend': 'openai', 'default': True}}",
+                    hint="Example: orchestrai['CLIENTS'] = {'openai-responses:prod-gpt-5-nano': {'backend': 'openai', 'default': True}}",
                     obj="settings.orchestrai['CLIENTS']",
                     id=f"{TAG}.E005",
                 )

@@ -15,6 +15,6 @@ DEFAULTS: dict[str, object] = {
     "IDENTITY_STRIP_TOKENS": tuple(),
     # Service defaults (Pydantic AI)
     "DEFAULT_TIMEOUT": 60,
-    "DEFAULT_MODEL": "openai:gpt-4o-mini",
+    "DEFAULT_MODEL": "openai-responses:gpt-5-nano",
     "DEFAULT_MAX_RETRIES": 3,
 }

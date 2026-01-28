@@ -159,7 +159,7 @@ ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
 ORCA_CONFIG = {
     "MODE": "single",
-    "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai:gpt-4o-mini"),
+    "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai-responses:gpt-5o-mini"),
 }
 
 TASKS = {

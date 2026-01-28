@@ -15,7 +15,7 @@ Usage:
 
     class GenerateResponse(DjangoBaseService):
         response_schema = PatientResponse
-        model = "openai:gpt-4o"
+        model = "openai-responses:gpt-5-nano"
 
         @system_prompt(weight=100)
         def base_instructions(self) -> str:
@@ -53,7 +53,7 @@ class DjangoBaseService(BaseService, ABC):
 
     Example:
         class PatientService(DjangoBaseService):
-            model = "openai:gpt-4o"
+            model = "openai-responses:gpt-5-nano"
             response_schema = PatientResponse
 
             @system_prompt(weight=100)

@@ -163,7 +163,7 @@ class TestBaseServiceIntegration:
         class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
-            model = "openai:gpt-4o"
+            model = "openai-responses:gpt-5-nano"
 
             @system_prompt(weight=100)
             def instructions(self) -> str:
@@ -172,7 +172,7 @@ class TestBaseServiceIntegration:
         service = TestService(context={"simulation_id": 123})
 
         assert service.context["simulation_id"] == 123
-        assert service.effective_model == "openai:gpt-4o"
+        assert service.effective_model == "openai-responses:gpt-5-nano"
         assert len(service._prompt_methods) == 1
 
     def test_service_model_override(self):
@@ -185,7 +185,7 @@ class TestBaseServiceIntegration:
         class TestService(BaseService):
             abstract = False
             response_schema = TestSchema
-            model = "openai:gpt-4o"
+            model = "openai-responses:gpt-5-nano"
 
         service = TestService(model="anthropic:claude-3-5-sonnet")
 

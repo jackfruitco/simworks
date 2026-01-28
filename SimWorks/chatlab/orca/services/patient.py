@@ -62,7 +62,7 @@ class GenerateInitialResponse(
     """
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
-    model: ClassVar[str] = "openai:gpt-4o"
+    # model: ClassVar[str] = "openai-responses:gpt-5-nano"
 
     from chatlab.orca.schemas import PatientInitialOutputSchema as _Schema
     response_schema = _Schema
@@ -152,7 +152,6 @@ class GenerateReplyResponse(
     """
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
-    model: ClassVar[str] = "openai:gpt-4o"
 
     from chatlab.orca.schemas import PatientReplyOutputSchema as _Schema
     response_schema = _Schema
@@ -194,7 +193,6 @@ class GenerateImageResponse(DjangoBaseService):
     """
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
-    model: ClassVar[str] = "openai:gpt-4o"
 
     # No structured schema - image generation uses tool calling
     response_schema = None

@@ -57,7 +57,6 @@ class GenerateHotwashInitialResponse(
     """
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
-    model: ClassVar[str] = "openai:gpt-4o"
 
     from simulation.orca.schemas import HotwashInitialSchema as _Schema
     response_schema = _Schema
@@ -95,7 +94,6 @@ class GenerateHotwashContinuationResponse(
     """
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
-    model: ClassVar[str] = "openai:gpt-4o"
 
     @system_prompt(weight=100)
     def continuation_instructions(self) -> str:

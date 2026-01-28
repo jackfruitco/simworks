@@ -38,7 +38,7 @@ class ServiceDecorator(BaseDecorator):
 
         @service
         class MyService(BaseService):
-            model = "openai:gpt-4o"
+            model = "openai-responses:gpt-5-nano"
             response_schema = MySchema
 
             @system_prompt(weight=100)
