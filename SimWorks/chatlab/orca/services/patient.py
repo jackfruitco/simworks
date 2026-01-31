@@ -132,6 +132,12 @@ class GenerateInitialResponse(
             "lab_result, rad_result, patient_history, simulation_metadata, scenario, simulation_feedback. Include all "
             "required fields for that type; omit fields that don't apply.\n"
             "Each response MUST include at least one message item.\n"
+            "\n"
+            "### Schema Requirements\n"
+            "Each message item MUST include all required fields: role, content, and item_meta.\n"
+            "- role: 'patient' for patient messages\n"
+            "- content: array of content blocks (at least one text block)\n"
+            "- item_meta: array of metadata key-value pairs (use empty array [] if none)\n"
         )
 
 
@@ -181,7 +187,12 @@ class GenerateReplyResponse(
             "Respond naturally to what the user says. "
             "Maintain the informal SMS style from the initial message. "
             "Mark 'image_requested': true if an image is requested, otherwise false. "
-            "Include llm_conditions_check with workflow flags as needed."
+            "Include llm_conditions_check with workflow flags as needed.\n\n"
+            "### Schema Requirements\n"
+            "Each message item MUST include all required fields: role, content, and item_meta.\n"
+            "- role: 'patient' for patient messages\n"
+            "- content: array of content blocks (at least one text block)\n"
+            "- item_meta: array of metadata key-value pairs (use empty array [] if none)"
         )
 
 

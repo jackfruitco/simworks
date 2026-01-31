@@ -61,5 +61,5 @@ class ResultMessageItem(StrictBaseModel):
     content: list[ResultContent] = Field(..., min_length=1)
     item_meta: list[ResultMetafield] = Field(
         ...,
-        description="Metadata entries as key-value pairs"
+        description="Metadata entries as key-value pairs (use empty list [] if none)"
     )

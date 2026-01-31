@@ -13,6 +13,7 @@ Usage:
     json_str = json.dumps(data, default=json_default)
 """
 
+import base64
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 from enum import Enum
@@ -32,7 +33,7 @@ def make_json_safe(value: Any) -> Any:
     - timedelta -> total_seconds (float)
     - Decimal -> str (preserves precision)
     - Enum -> value
-    - bytes -> UTF-8 string (with replacement for invalid chars)
+    - bytes -> base64-encoded string (for binary data like images)
     - BaseModel -> model_dump(mode="json")
     - dict -> recursive conversion with string keys
     - list/tuple/set -> recursive conversion to list
@@ -71,9 +72,9 @@ def make_json_safe(value: Any) -> Any:
     if isinstance(value, Enum):
         return value.value
 
-    # bytes -> UTF-8 string
+    # bytes -> base64-encoded string (for binary data like images)
     if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
+        return base64.b64encode(value).decode("ascii")
 
     # Pydantic models -> use mode="json" for proper serialization
     if isinstance(value, BaseModel):

@@ -258,8 +258,13 @@ def run_service_call(call_id: str):
         # Success! Store Response and mark for domain persistence
         # Phase 1: Store full Response object (atomic)
         with transaction.atomic():
-            # Serialize Response to JSON if it's a Response object
+            # Serialize result to JSON
+            # Handle different result types:
+            # - Pydantic models: use model_dump(mode="json")
+            # - AgentRunResult (dataclass): serialize manually
+            # - dict: use directly
             if hasattr(result, "model_dump"):
+                # Pydantic model (e.g., Response)
                 try:
                     result_json = result.model_dump(mode="json")
                 except TypeError as e:
@@ -269,22 +274,60 @@ def run_service_call(call_id: str):
                         result_json = _manual_extract_fields(result)
                     else:
                         raise
-            else:
+            elif hasattr(result, "output") and hasattr(result, "all_messages_json"):
+                # Pydantic AI AgentRunResult (dataclass)
+                # Serialize to a dict with the key components
+                # Note: some attributes are methods, some are properties
+                output = result.output
+                if hasattr(output, "model_dump"):
+                    output_json = output.model_dump(mode="json")
+                elif isinstance(output, dict):
+                    output_json = output
+                else:
+                    output_json = {"raw_value": str(output)}
+
+                # Get timestamp - it's a method, not a property
+                timestamp_val = result.timestamp() if callable(result.timestamp) else result.timestamp
+
+                # Import make_json_safe for handling bytes in messages (e.g., images)
+                from orchestrai.utils.json import make_json_safe
+
+                result_json = {
+                    "output": output_json,
+                    "messages": make_json_safe(result.all_messages_json()),
+                    "run_id": str(result.run_id) if result.run_id else None,
+                    "timestamp": timestamp_val.isoformat() if timestamp_val else None,
+                }
+            elif isinstance(result, dict):
                 result_json = result
+            else:
+                # Fallback: try to convert to string representation
+                logger.warning(
+                    "Unknown result type %s, converting to string",
+                    type(result).__name__
+                )
+                result_json = {"raw_value": str(result)}
 
             # Update attempt record with response data
+            # Handle both old Response objects and new AgentRunResult
             provider_meta = getattr(result, 'provider_meta', None) or {}
             usage = getattr(result, 'usage', None)
-            provider_response_id = provider_meta.get("id")
+
+            # For AgentRunResult, usage is a method that returns RunUsage
+            if callable(usage):
+                usage = usage()
+
+            provider_response_id = provider_meta.get("id") if isinstance(provider_meta, dict) else None
 
             attempt_record.response_raw = result_json
-            attempt_record.response_provider_raw = provider_meta.get("raw")
+            attempt_record.response_provider_raw = provider_meta.get("raw") if isinstance(provider_meta, dict) else None
             attempt_record.provider_response_id = provider_response_id
-            attempt_record.finish_reason = provider_meta.get("finish_reason")
+            attempt_record.finish_reason = provider_meta.get("finish_reason") if isinstance(provider_meta, dict) else None
             attempt_record.received_at = timezone.now()
 
-            # Serialize structured_data if it's a Pydantic model
-            structured_data = getattr(result, 'structured_data', None)
+            # Serialize structured_data/output if it's a Pydantic model
+            # AgentRunResult uses 'output', older Response uses 'structured_data'
+            structured_data = getattr(result, 'output', None) or getattr(result, 'structured_data', None)
             if structured_data is not None:
                 if hasattr(structured_data, 'model_dump'):
                     try:
@@ -395,12 +438,41 @@ def run_service_call(call_id: str):
             from orchestrai.types import Response
             from orchestrai.identity.domains import PERSIST_DOMAIN
 
-            response = Response.model_validate(record.result)
+            # Detect result format: AgentRunResult (has run_id) vs old Response
+            result_data = record.result or {}
+            if "run_id" in result_data:
+                # AgentRunResult format - construct Response from its fields
+                # Extract service identity from record for namespace
+                service_identity = record.service_identity or ""
+                namespace = service_identity.split(".")[0] if service_identity else None
+
+                # Get schema identity from attempt record or service
+                schema_identity = None
+                if attempt_record and attempt_record.request_schema_identity:
+                    schema_identity = attempt_record.request_schema_identity
+
+                response = Response(
+                    namespace=namespace,
+                    structured_data=result_data.get("output"),
+                    context=record.context,
+                    execution_metadata={
+                        "schema_identity": schema_identity,
+                        "run_id": result_data.get("run_id"),
+                    }
+                )
+            else:
+                # Old Response format - validate directly
+                response = Response.model_validate(result_data)
+
             store = get_component_store(app)
             persistence_registry = store.registry(PERSIST_DOMAIN) if store else None
 
             if persistence_registry:
-                domain_obj = async_to_sync(persistence_registry.persist)(response)
+                domain_obj = async_to_sync(persistence_registry.persist)(
+                    schema_name=response.execution_metadata.get("schema_identity") if response.execution_metadata else None,
+                    data=response.structured_data,
+                    context=response.context or {},
+                )
 
                 if domain_obj is not None:
                     record.domain_persisted = True
@@ -638,15 +710,44 @@ def process_pending_persistence():
     # Process claimed records (outside lock, can take time)
     for record in pending_records:
         try:
-            # Deserialize Response from JSON
-            response = Response.model_validate(record.result)
+            # Detect result format: AgentRunResult (has run_id) vs old Response
+            result_data = record.result or {}
+            if "run_id" in result_data:
+                # AgentRunResult format - construct Response from its fields
+                service_identity = record.service_identity or ""
+                namespace = service_identity.split(".")[0] if service_identity else None
+
+                # Try to get schema identity from successful attempt
+                schema_identity = None
+                successful_attempt = record.attempts.filter(
+                    status=AttemptStatus.SUCCEEDED
+                ).first()
+                if successful_attempt and successful_attempt.request_schema_identity:
+                    schema_identity = successful_attempt.request_schema_identity
+
+                response = Response(
+                    namespace=namespace,
+                    structured_data=result_data.get("output"),
+                    context=record.context,
+                    execution_metadata={
+                        "schema_identity": schema_identity,
+                        "run_id": result_data.get("run_id"),
+                    }
+                )
+            else:
+                # Old Response format - validate directly
+                response = Response.model_validate(result_data)
 
             # Persist domain objects (schema-aware routing with idempotency)
             # The registry.persist() method will:
             # 1. Route to appropriate handler by (namespace, schema_identity)
             # 2. Handler uses ensure_idempotent() for exactly-once semantics
             # 3. Returns None if no handler found (skip gracefully)
-            domain_obj = async_to_sync(persistence_registry.persist)(response)
+            domain_obj = async_to_sync(persistence_registry.persist)(
+                schema_name=response.execution_metadata.get("schema_identity") if response.execution_metadata else None,
+                data=response.structured_data,
+                context=response.context or {},
+            )
 
             if domain_obj is None:
                 # No handler found - not an error, just skip
@@ -878,7 +979,11 @@ def run_pydantic_ai_service_call(call_id: str):
                             }
 
                     response = PydanticAIResponse(call)
-                    domain_obj = async_to_sync(persistence_registry.persist)(response)
+                    domain_obj = async_to_sync(persistence_registry.persist)(
+                        schema_name=response.execution_metadata.get("schema_identity") if response.execution_metadata else None,
+                        data=response.structured_data,
+                        context=response.context or {},
+                    )
 
                     if domain_obj is not None:
                         call.domain_persisted = True
