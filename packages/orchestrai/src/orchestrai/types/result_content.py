@@ -40,7 +40,7 @@ __all__ = (
 class ResultTextContent(StrictBaseModel):
     """Text content for structured outputs - strict, no defaults."""
     type: Literal["text"]
-    text: str = Field(..., min_length=5)
+    text: str = Field(..., min_length=1)
 
 
 class ResultImageContent(StrictBaseModel):
