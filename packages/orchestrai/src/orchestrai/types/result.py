@@ -43,6 +43,8 @@ class ResultMetafield(StrictBaseModel):
         description="Metadata value - JSON primitive types only"
     )
 
+    __orm_model__ = "simulation.SimulationMetadata"
+
 
 # ---- Result-side message item ----
 
