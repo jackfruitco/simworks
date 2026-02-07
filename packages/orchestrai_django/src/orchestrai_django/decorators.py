@@ -30,9 +30,6 @@ __all__ = [
     "service",
     "schema",
     "prompt_section",
-    "persistence_handler",
-    "flush_pending_handlers",
-    "PersistenceHandlerDecorator",
     "DjangoCodecDecorator",
     "DjangoServiceDecorator",
     "DjangoSchemaDecorator",
@@ -92,73 +89,7 @@ class DjangoServiceDecorator(DjangoBaseDecoratorMixin, ServiceDecorator):
     """Django-aware service decorator (core behavior + Django identity)."""
 
 
-class PersistenceHandlerDecorator:
-    """
-    Simple decorator for persistence handlers.
-
-    No identity system - just validates and registers by schema class.
-
-    Usage:
-        @persistence_handler
-        class PatientInitialPersistence(BasePersistenceHandler):
-            schema = PatientInitialOutputSchema
-
-            async def persist(self, *, data, context):
-                ...
-    """
-
-    def __call__(self, cls):
-        from orchestrai_django.components.persistence import BasePersistenceHandler
-
-        # Validate handler
-        if not issubclass(cls, BasePersistenceHandler):
-            raise TypeError(
-                f"{cls.__module__}.{cls.__name__} must inherit from BasePersistenceHandler"
-            )
-
-        if not callable(getattr(cls, "persist", None)):
-            raise TypeError(
-                f"{cls.__module__}.{cls.__name__} must implement async persist()"
-            )
-
-        schema_cls = getattr(cls, "schema", None)
-        if schema_cls is None:
-            raise TypeError(
-                f"{cls.__module__}.{cls.__name__} must declare 'schema' class attribute"
-            )
-
-        # Register with persistence registry
-        from orchestrai_django.registry import get_persistence_registry
-
-        registry = get_persistence_registry()
-        if registry is not None:
-            registry.register(cls)
-        else:
-            # Queue for later registration
-            _pending_handlers.append(cls)
-
-        return cls
-
-
-# Pending handlers for when registry isn't ready yet
-_pending_handlers: list[type] = []
-
-
-def flush_pending_handlers():
-    """Register any pending handlers once registry is available."""
-    from orchestrai_django.registry import get_persistence_registry
-
-    registry = get_persistence_registry()
-    if registry is None:
-        return
-
-    while _pending_handlers:
-        handler_cls = _pending_handlers.pop(0)
-        registry.register(handler_cls)
-
-
 codec = DjangoCodecDecorator()
 service = DjangoServiceDecorator()
 schema = DjangoSchemaDecorator()
 prompt_section = DjangoPromptSectionDecorator()
-persistence_handler = PersistenceHandlerDecorator()
