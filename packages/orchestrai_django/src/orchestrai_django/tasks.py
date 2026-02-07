@@ -417,8 +417,14 @@ def run_service_call(call_id: str):
                         attempt_record.request_tools = [str(t) for t in request_obj.tools]
 
                 # Get response schema identity if available
+                # Use module.classname format to match persistence handler registration
                 if hasattr(request_obj, 'response_schema') and request_obj.response_schema:
-                    identity = getattr(getattr(request_obj.response_schema, 'identity', None), 'as_str', None)
+                    schema_cls = request_obj.response_schema
+                    # Try identity.as_str first (OrchestrAI schemas)
+                    identity = getattr(getattr(schema_cls, 'identity', None), 'as_str', None)
+                    if identity is None:
+                        # Fall back to module.classname (Pydantic AI schemas)
+                        identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
                     attempt_record.request_schema_identity = identity
 
                 attempt_record.request_model = getattr(request_obj, 'model', None)
@@ -433,67 +439,9 @@ def run_service_call(call_id: str):
         except Exception as req_err:
             logger.warning(f"Failed to populate request data for call {call_id}: {req_err}")
 
-        # Attempt inline persistence instead of deferring to drain worker
+        # Attempt inline persistence via declarative persist_schema()
         try:
-            from orchestrai.types import Response
-            from orchestrai.identity.domains import PERSIST_DOMAIN
-
-            # Detect result format: AgentRunResult (has run_id) vs old Response
-            result_data = record.result or {}
-            if "run_id" in result_data:
-                # AgentRunResult format - construct Response from its fields
-                # Extract service identity from record for namespace
-                service_identity = record.service_identity or ""
-                namespace = service_identity.split(".")[0] if service_identity else None
-
-                # Get schema identity from attempt record or service
-                schema_identity = None
-                if attempt_record and attempt_record.request_schema_identity:
-                    schema_identity = attempt_record.request_schema_identity
-
-                response = Response(
-                    namespace=namespace,
-                    structured_data=result_data.get("output"),
-                    context=record.context,
-                    execution_metadata={
-                        "schema_identity": schema_identity,
-                        "run_id": result_data.get("run_id"),
-                    }
-                )
-            else:
-                # Old Response format - validate directly
-                response = Response.model_validate(result_data)
-
-            store = get_component_store(app)
-            persistence_registry = store.registry(PERSIST_DOMAIN) if store else None
-
-            if persistence_registry:
-                domain_obj = async_to_sync(persistence_registry.persist)(
-                    schema_name=response.execution_metadata.get("schema_identity") if response.execution_metadata else None,
-                    data=response.structured_data,
-                    context=response.context or {},
-                )
-
-                if domain_obj is not None:
-                    record.domain_persisted = True
-                    record.save(update_fields=["domain_persisted"])
-                    logger.info(
-                        "Service call %s: domain persistence complete (created %s)",
-                        call_id,
-                        type(domain_obj).__name__
-                    )
-                else:
-                    # No handler found - mark as done to prevent retry loops
-                    record.domain_persisted = True
-                    record.save(update_fields=["domain_persisted"])
-                    logger.debug(
-                        "Service call %s: no persistence handler found for namespace=%s schema=%s",
-                        call_id,
-                        response.namespace,
-                        response.execution_metadata.get("schema_identity") if response.execution_metadata else None
-                    )
-            else:
-                logger.warning("Service call %s: no persistence registry available", call_id)
+            _inline_persist_record(record, attempt_record)
         except Exception as persist_err:
             logger.warning(
                 "Service call %s: inline persistence failed: %s (will retry via drain worker)",
@@ -632,53 +580,37 @@ def _is_retryable_error(exc: Exception) -> bool:
 
 @task
 def process_pending_persistence():
-    """
-    Process ServiceCallRecords that need domain persistence.
+    """Process ServiceCallRecords and ServiceCalls that need domain persistence.
 
-    This task runs periodically (e.g., every 10-30 seconds) and processes
-    records where service execution succeeded but domain persistence hasn't
-    happened yet.
+    Runs periodically and processes records where service execution succeeded
+    but domain persistence hasn't happened yet. Uses the declarative
+    ``persist_schema()`` engine instead of the old registry-based approach.
 
     Design:
-        - Idempotent: Uses PersistedChunk tracking for exactly-once semantics
         - Concurrent-safe: Uses select_for_update(skip_locked=True)
         - Retriable: LLM not re-called, only persistence retried
         - Two-phase: Response stored first (atomic), domain persistence separate
 
     Returns:
-        dict with processing stats (processed, failed, pending, skipped)
+        dict with processing stats
     """
-    from orchestrai.types import Response
-
     try:
         from orchestrai_django.apps import ensure_autostarted
         ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
 
-    app = get_current_app()
-    store = get_component_store(app)
-
-    if not store:
-        logger.error("No component store available, skipping persistence")
-        return {"error": "No component store"}
-
-    # Get persistence registry from component store
-    try:
-        from orchestrai.identity.domains import PERSIST_DOMAIN
-        persistence_registry = store.registry(PERSIST_DOMAIN)
-    except Exception as exc:
-        logger.error(f"Failed to get persistence registry: {exc}", exc_info=True)
-        return {"error": f"No persistence registry: {exc}"}
-
-    # Configuration
     max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
     batch_size = getattr(settings, "DOMAIN_PERSIST_BATCH_SIZE", 100)
 
-    # Atomic claim of work with concurrent safety
-    # - select_for_update(skip_locked=True) prevents race conditions
-    # - Filter out exhausted records upfront to avoid wasted work
-    # - Accept both old 'succeeded' status and new CallStatus.COMPLETED
+    stats = {
+        "processed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "claimed": 0,
+    }
+
+    # --- Process legacy ServiceCallRecord ---
     with transaction.atomic():
         pending_records = list(
             ServiceCallRecord.objects.filter(
@@ -690,121 +622,69 @@ def process_pending_persistence():
             .order_by("finished_at")[:batch_size]
         )
 
-        # Increment attempt counter for claimed records (inside lock)
         for record in pending_records:
             record.domain_persist_attempts += 1
 
-        # Bulk update attempts (fast, within transaction)
         if pending_records:
             ServiceCallRecord.objects.bulk_update(
                 pending_records, ["domain_persist_attempts"]
             )
 
-    stats = {
-        "processed": 0,
-        "failed": 0,
-        "skipped": 0,
-        "claimed": len(pending_records),
-    }
+    stats["claimed"] += len(pending_records)
 
-    # Process claimed records (outside lock, can take time)
     for record in pending_records:
         try:
-            # Detect result format: AgentRunResult (has run_id) vs old Response
-            result_data = record.result or {}
-            if "run_id" in result_data:
-                # AgentRunResult format - construct Response from its fields
-                service_identity = record.service_identity or ""
-                namespace = service_identity.split(".")[0] if service_identity else None
-
-                # Try to get schema identity from successful attempt
-                schema_identity = None
-                successful_attempt = record.attempts.filter(
-                    status=AttemptStatus.SUCCEEDED
-                ).first()
-                if successful_attempt and successful_attempt.request_schema_identity:
-                    schema_identity = successful_attempt.request_schema_identity
-
-                response = Response(
-                    namespace=namespace,
-                    structured_data=result_data.get("output"),
-                    context=record.context,
-                    execution_metadata={
-                        "schema_identity": schema_identity,
-                        "run_id": result_data.get("run_id"),
-                    }
-                )
-            else:
-                # Old Response format - validate directly
-                response = Response.model_validate(result_data)
-
-            # Persist domain objects (schema-aware routing with idempotency)
-            # The registry.persist() method will:
-            # 1. Route to appropriate handler by (namespace, schema_identity)
-            # 2. Handler uses ensure_idempotent() for exactly-once semantics
-            # 3. Returns None if no handler found (skip gracefully)
-            domain_obj = async_to_sync(persistence_registry.persist)(
-                schema_name=response.execution_metadata.get("schema_identity") if response.execution_metadata else None,
-                data=response.structured_data,
-                context=response.context or {},
-            )
-
-            if domain_obj is None:
-                # No handler found - not an error, just skip
-                stats["skipped"] += 1
-                logger.debug(
-                    f"No persistence handler for call {record.id} "
-                    f"(namespace={response.namespace}, "
-                    f"schema={response.execution_metadata.get('schema_identity')})"
-                )
-
-                # Mark as persisted to avoid reprocessing
-                with transaction.atomic():
-                    record.domain_persisted = True
-                    record.domain_persist_error = None
-                    record.save(update_fields=["domain_persisted", "domain_persist_error"])
-                continue
-
-            # Success - mark as persisted
-            with transaction.atomic():
-                record.domain_persisted = True
-                record.domain_persist_error = None
-                record.save(update_fields=["domain_persisted", "domain_persist_error"])
-
+            _drain_persist_record(record)
             stats["processed"] += 1
-            logger.info(
-                f"Persisted domain objects for service call {record.id} "
-                f"(attempt {record.domain_persist_attempts}/{max_attempts})"
-            )
-
         except Exception as exc:
-            # Persistence failed - log and track error
             stats["failed"] += 1
             logger.exception(
-                f"Domain persistence failed for service call {record.id} "
-                f"(attempt {record.domain_persist_attempts}/{max_attempts}): {exc}"
+                "Domain persistence failed for legacy call %s (attempt %d/%d): %s",
+                record.id, record.domain_persist_attempts, max_attempts, exc,
             )
-
-            # Track error
             with transaction.atomic():
-                record.domain_persist_error = str(exc)[:1000]  # Truncate long errors
+                record.domain_persist_error = str(exc)[:1000]
                 record.save(update_fields=["domain_persist_error"])
 
-            # Check if exhausted
             if record.domain_persist_attempts >= max_attempts:
-                logger.error(
-                    f"Giving up on domain persistence for {record.id} "
-                    f"after {max_attempts} attempts. Last error: {exc}"
-                )
-                # Mark as persisted to stop retrying (error tracked in domain_persist_error)
+                logger.error("Giving up on persistence for %s after %d attempts", record.id, max_attempts)
                 with transaction.atomic():
-                    record.domain_persisted = True  # Prevents infinite retries
+                    record.domain_persisted = True
                     record.save(update_fields=["domain_persisted"])
 
+    # --- Process new ServiceCall ---
+    with transaction.atomic():
+        pending_calls = list(
+            ServiceCallModel.objects.filter(
+                status=CallStatus.COMPLETED,
+                domain_persisted=False,
+            )
+            .exclude(schema_fqn__isnull=True)
+            .exclude(schema_fqn="")
+            .select_for_update(skip_locked=True)
+            .order_by("finished_at")[:batch_size]
+        )
+
+    stats["claimed"] += len(pending_calls)
+
+    for call in pending_calls:
+        try:
+            _inline_persist_service_call(call)
+            stats["processed"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.exception(
+                "Domain persistence failed for call %s: %s",
+                call.id, exc,
+            )
+            with transaction.atomic():
+                call.domain_persist_error = str(exc)[:1000]
+                call.save(update_fields=["domain_persist_error"])
+
     logger.info(
-        f"Domain persistence batch complete: "
-        f"claimed={stats['claimed']}, processed={stats['processed']}, "
-        f"failed={stats['failed']}, skipped={stats['skipped']}"
+        "Domain persistence batch complete: "
+        "claimed=%d, processed=%d, failed=%d, skipped=%d",
+        stats["claimed"], stats["processed"], stats["failed"], stats["skipped"],
     )
 
     return stats
@@ -955,51 +835,10 @@ def run_pydantic_ai_service_call(call_id: str):
 
         logger.info("Pydantic AI service call %s completed successfully", call_id)
 
-        # Attempt inline domain persistence
+        # Attempt inline domain persistence via declarative persist_schema()
         try:
-            # Refresh from DB
             call.refresh_from_db()
-
-            store = get_component_store(app)
-            if store:
-                from orchestrai.identity.domains import PERSIST_DOMAIN
-                persistence_registry = store.registry(PERSIST_DOMAIN)
-
-                if persistence_registry and call.output_data:
-                    # Create a minimal Response-like object for the persistence handler
-                    # The handler expects structured_data and execution_metadata
-                    class PydanticAIResponse:
-                        def __init__(self, call):
-                            self.structured_data = call.output_data
-                            self.namespace = call.service_identity.split('.')[1] if '.' in call.service_identity else ''
-                            self.context = call.context or {}
-                            self.execution_metadata = {
-                                "service_identity": call.service_identity,
-                                "schema_identity": None,  # Will be set by handler
-                            }
-
-                    response = PydanticAIResponse(call)
-                    domain_obj = async_to_sync(persistence_registry.persist)(
-                        schema_name=response.execution_metadata.get("schema_identity") if response.execution_metadata else None,
-                        data=response.structured_data,
-                        context=response.context or {},
-                    )
-
-                    if domain_obj is not None:
-                        call.domain_persisted = True
-                        call.save(update_fields=["domain_persisted"])
-                        logger.info(
-                            "Service call %s: domain persistence complete (created %s)",
-                            call_id,
-                            type(domain_obj).__name__
-                        )
-                    else:
-                        call.domain_persisted = True
-                        call.save(update_fields=["domain_persisted"])
-                        logger.debug(
-                            "Service call %s: no persistence handler found",
-                            call_id,
-                        )
+            _inline_persist_service_call(call)
         except Exception as persist_err:
             logger.warning(
                 "Service call %s: inline persistence failed: %s (will retry via drain worker)",
@@ -1035,6 +874,127 @@ def run_pydantic_ai_service_call(call_id: str):
             logger.exception("Failed to emit ai_response_failed signal")
 
         raise
+
+
+def _resolve_schema_fqn_from_record(record: ServiceCallRecord) -> str | None:
+    """Try to resolve a schema FQN from a legacy ServiceCallRecord."""
+    # Try from the successful attempt's request_schema_identity
+    if record.successful_attempt is not None:
+        attempt = record.attempts.filter(attempt=record.successful_attempt).first()
+        if attempt and attempt.request_schema_identity:
+            return attempt.request_schema_identity
+
+    # Try from all schema_ok attempts
+    for attempt in record.attempts.filter(status=AttemptStatus.SCHEMA_OK):
+        if attempt.request_schema_identity:
+            return attempt.request_schema_identity
+
+    return None
+
+
+def _inline_persist_record(record: ServiceCallRecord, attempt_record=None):
+    """Run declarative persist_schema() for a legacy ServiceCallRecord.
+
+    Falls back to old registry-based persistence if no schema_fqn is
+    available (for backwards compatibility during migration).
+    """
+    from orchestrai_django.persistence import PersistContext, persist_schema, resolve_schema_class
+
+    # Determine schema FQN
+    schema_fqn = _resolve_schema_fqn_from_record(record)
+    if attempt_record and attempt_record.request_schema_identity:
+        schema_fqn = attempt_record.request_schema_identity
+
+    if not schema_fqn:
+        # No schema info — mark as persisted to avoid infinite retries
+        record.domain_persisted = True
+        record.save(update_fields=["domain_persisted"])
+        logger.debug("Service call %s: no schema_fqn, skipping persistence", record.id)
+        return
+
+    # Resolve schema class and validate data
+    result_data = record.result or {}
+    output_data = result_data.get("output", result_data)
+
+    try:
+        schema_cls = resolve_schema_class(schema_fqn)
+    except (ImportError, AttributeError):
+        logger.warning("Service call %s: could not resolve schema %s", record.id, schema_fqn)
+        record.domain_persisted = True
+        record.save(update_fields=["domain_persisted"])
+        return
+
+    schema_instance = schema_cls.model_validate(output_data)
+
+    ctx = record.context or {}
+    context = PersistContext(
+        simulation_id=ctx.get("simulation_id", 0),
+        call_id=record.id,
+        audit_id=ctx.get("_ai_response_audit_id"),
+        correlation_id=str(record.correlation_id) if record.correlation_id else None,
+    )
+
+    domain_obj = async_to_sync(persist_schema)(schema_instance, context)
+
+    record.domain_persisted = True
+    record.save(update_fields=["domain_persisted"])
+
+    if domain_obj is not None:
+        logger.info(
+            "Service call %s: domain persistence complete (created %s)",
+            record.id,
+            type(domain_obj).__name__,
+        )
+    else:
+        logger.debug("Service call %s: schema has no __persist__, skipped", record.id)
+
+
+def _inline_persist_service_call(call: ServiceCallModel):
+    """Run declarative persist_schema() for a ServiceCall."""
+    from orchestrai_django.persistence import PersistContext, persist_schema, resolve_schema_class
+
+    if not call.schema_fqn or not call.output_data:
+        call.domain_persisted = True
+        call.save(update_fields=["domain_persisted"])
+        logger.debug("Service call %s: no schema_fqn or output_data, skipping", call.id)
+        return
+
+    try:
+        schema_cls = resolve_schema_class(call.schema_fqn)
+    except (ImportError, AttributeError):
+        logger.warning("Service call %s: could not resolve schema %s", call.id, call.schema_fqn)
+        call.domain_persisted = True
+        call.save(update_fields=["domain_persisted"])
+        return
+
+    schema_instance = schema_cls.model_validate(call.output_data)
+
+    ctx = call.context or {}
+    context = PersistContext(
+        simulation_id=ctx.get("simulation_id", 0),
+        call_id=call.id,
+        audit_id=ctx.get("_ai_response_audit_id"),
+        correlation_id=str(call.correlation_id) if call.correlation_id else None,
+    )
+
+    domain_obj = async_to_sync(persist_schema)(schema_instance, context)
+
+    call.domain_persisted = True
+    call.save(update_fields=["domain_persisted"])
+
+    if domain_obj is not None:
+        logger.info(
+            "Service call %s: domain persistence complete (created %s)",
+            call.id,
+            type(domain_obj).__name__,
+        )
+    else:
+        logger.debug("Service call %s: schema has no __persist__, skipped", call.id)
+
+
+def _drain_persist_record(record: ServiceCallRecord):
+    """Drain worker helper: persist a legacy ServiceCallRecord."""
+    _inline_persist_record(record)
 
 
 __all__ = [

@@ -519,6 +519,15 @@ class ServiceCall(TimestampedModel):
         help_text="ID of related domain object (e.g., simulation_id)",
     )
 
+    # Schema class for declarative persistence
+    schema_fqn = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Fully-qualified name of the Pydantic schema (e.g. chatlab.orca.schemas.patient.PatientInitialOutputSchema)",
+    )
+
     # Task tracking (if using Celery/Django Tasks)
     backend = models.CharField(max_length=64, default="immediate")
     task_id = models.CharField(max_length=128, null=True, blank=True)
