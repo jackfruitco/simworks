@@ -4,7 +4,7 @@ from typing import Any
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import ServiceCallRecord, ServiceCallAttempt, PersistedChunk
+from .models import ServiceCallRecord, ServiceCallAttempt
 
 
 # ----------------------------- helpers ---------------------------------
@@ -342,52 +342,5 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
         return _pretty_json(obj.structured_data) if obj.structured_data else "-"
 
 
-@admin.register(PersistedChunk)
-class PersistedChunkAdmin(admin.ModelAdmin):
-    """Admin for persisted chunk records."""
 
-    list_display = (
-        "id",
-        "created_at",
-        "call_id",
-        "namespace",
-        "schema_identity_short",
-        "handler_identity_short",
-        "content_type",
-        "object_id",
-    )
-    list_filter = (
-        "namespace",
-        ("created_at", admin.DateFieldListFilter),
-    )
-    search_fields = (
-        "call_id",
-        "schema_identity",
-        "handler_identity",
-        "namespace",
-    )
-    date_hierarchy = "created_at"
-    ordering = ("-created_at",)
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "call_id",
-        "schema_identity",
-        "namespace",
-        "handler_identity",
-        "content_type",
-        "object_id",
-        "persisted_at",
-    )
-
-    @admin.display(description="Schema Identity")
-    def schema_identity_short(self, obj: PersistedChunk) -> str:
-        if len(obj.schema_identity) > 40:
-            return obj.schema_identity[:37] + "..."
-        return obj.schema_identity
-
-    @admin.display(description="Handler Identity")
-    def handler_identity_short(self, obj: PersistedChunk) -> str:
-        if len(obj.handler_identity) > 40:
-            return obj.handler_identity[:37] + "..."
-        return obj.handler_identity
+# PersistedChunkAdmin removed — PersistedChunk model deleted.
