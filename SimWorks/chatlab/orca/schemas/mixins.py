@@ -10,48 +10,36 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from orchestrai.types import ResultMessageItem
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
+from chatlab.orca.persisters import persist_messages
 
 
 class PatientResponseBaseMixin(BaseModel):
-    """Base mixin with strict mode for Pydantic AI schemas."""
-    model_config = ConfigDict(extra="forbid")
-    """
+    """Base mixin with strict mode for Pydantic AI schemas.
+
     Common fields for all patient response schemas.
 
-    **Purpose**: Extracts repeated field patterns across patient interaction schemas
-    to reduce duplication and ensure consistency.
-
     **Provides**:
-    - `messages`: list[DjangoOutputItem] (min 1) - The actual response content from
-      the simulated patient. Always persisted to chatlab.Message.
-    - `llm_conditions_check`: list[LLMConditionsCheckItem] (optional) - Internal
-      flags for workflow logic. NOT persisted to database.
-
-    **Usage Pattern**:
-        @schema
-        class MyPatientSchema(
-            PatientResponseBaseMixin,  # Inherit common fields
-            ChatlabMixin,
-            DjangoBaseOutputSchema
-        ):
-            # Add schema-specific fields here
-            metadata: list[DjangoOutputItem] = Field(...)
+    - ``messages``: Persisted to chatlab.Message via ``persist_messages``.
+    - ``llm_conditions_check``: NOT persisted (omitted from ``__persist__``).
 
     **Schemas Using This Mixin**:
     - PatientInitialOutputSchema (initial patient turn)
     - PatientReplyOutputSchema (follow-up patient turns)
 
-    **Note**: PatientResultsOutputSchema does NOT use this mixin because it contains
-    no user-facing messages (only metadata/scoring).
+    **Note**: PatientResultsOutputSchema does NOT use this mixin because it
+    contains no user-facing messages (only metadata/scoring).
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     messages: list[ResultMessageItem] = Field(
         ...,
         min_length=1,
         description="Response messages from the simulated patient"
     )
-
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
         ...,
         description="Internal workflow conditions"
     )
+
+    __persist__ = {"messages": persist_messages}
