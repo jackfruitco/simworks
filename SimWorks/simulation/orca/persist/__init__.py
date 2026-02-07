@@ -1,7 +1,1 @@
-"""Persistence handlers for simulation schemas."""
-
-from .feedback import HotwashInitialPersistence
-
-__all__ = [
-    "HotwashInitialPersistence",
-]
+# Persistence handlers removed — see simulation/orca/persisters.py and __persist__ on schemas.
