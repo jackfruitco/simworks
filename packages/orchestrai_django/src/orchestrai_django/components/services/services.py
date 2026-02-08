@@ -45,7 +45,7 @@ class DjangoBaseService(BaseService, ABC):
     Extends BaseService with:
     - Django signal emission for request/response events
     - Integration with Django task execution (Django Tasks framework)
-    - Support for ServiceCallRecord persistence
+    - Support for ServiceCall persistence
     - Context-first result hooks (on_success_ctx, on_failure_ctx)
 
     This is the recommended base class for SimWorks services using

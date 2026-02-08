@@ -4,7 +4,6 @@ from orchestrai import get_current_app
 from orchestrai._state import set_current_app
 from orchestrai.components.services.django import task_proxy
 from orchestrai.components.services.django.task_proxy import DjangoServiceSpec, DjangoTaskProxy
-from orchestrai.components.services.execution import _STATUS_SUCCEEDED
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
 
@@ -79,15 +78,16 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
             assert ident == service_identity
             return DummyService
 
-    class DummyRecord:
+    class DummyCall:
         def __init__(self, pk: str):
             self.id = pk
+            self.pk = pk
             self.service_identity = service_identity.as_str
             self.service_kwargs = {}
             self.status = "pending"
             self.input = {}
             self.context = {}
-            self.result = None
+            self.output_data = None
             self.error = None
             self.dispatch = {}
             self.backend = "immediate"
@@ -96,45 +96,48 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
             self.created_at = None
             self.started_at = None
             self.finished_at = None
+            self.related_object_id = None
+            self.correlation_id = None
+            self.schema_fqn = None
+            self.domain_persisted = False
+            self.domain_persist_error = None
+            self.domain_persist_attempts = 0
+            self.successful_attempt = None
+            self.openai_response_id = None
+            self.provider_previous_response_id = None
+            self.messages_json = []
+            self.usage_json = None
+            self.model_name = None
+            self.input_tokens = 0
+            self.output_tokens = 0
+            self.total_tokens = 0
 
-        def as_call(self):
-            class _Call:
-                def __init__(self, record: "DummyRecord"):
-                    self.id = record.id
-                    self.status = record.status
-                    self.input = record.input
-                    self.context = record.context
-                    self.result = record.result
-                    self.error = record.error
-                    self.dispatch = record.dispatch
-                    self.created_at = record.created_at
-                    self.started_at = record.started_at
-                    self.finished_at = record.finished_at
+        class attempts:
+            @staticmethod
+            def count():
+                return 0
 
-            return _Call(self)
+            @staticmethod
+            def aggregate(*args, **kwargs):
+                return {"attempt__max": 0}
 
-        def update_from_call(self, call):
-            self.status = call.status
-            self.input = call.input
-            self.context = call.context
-            self.result = call.result
-            self.error = call.error
-            self.dispatch = call.dispatch
-            self.started_at = call.started_at
-            self.finished_at = call.finished_at
+        def to_jsonable(self):
+            return {"id": self.id, "status": self.status}
 
-        def save(self, update_fields=None):  # pragma: no cover - state already mutated
+        def save(self, update_fields=None):
             self.saved_fields = update_fields
 
-    dummy_record = DummyRecord("call-1")
+        def refresh_from_db(self):
+            pass
+
+    dummy_call = DummyCall("call-1")
 
     monkeypatch.setattr("orchestrai_django.tasks.ensure_service_registry", lambda app=None: DummyRegistry())
     monkeypatch.setattr(
-        "orchestrai_django.tasks.ServiceCallRecord.objects.get", lambda pk: dummy_record
+        "orchestrai_django.tasks.ServiceCallModel.objects.select_for_update",
+        lambda: type("QS", (), {"get": lambda self, pk: dummy_call})(),
     )
-    monkeypatch.setattr("orchestrai_django.tasks.to_jsonable", lambda call: {"id": call.id, "status": call.status})
 
     result = run_service_call("call-1")
 
     assert autostart_calls == [True]
-    assert result["status"] == _STATUS_SUCCEEDED

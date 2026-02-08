@@ -4,7 +4,7 @@ from typing import Any
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import ServiceCallRecord, ServiceCallAttempt
+from .models import ServiceCall, ServiceCallAttempt
 
 
 # ----------------------------- helpers ---------------------------------
@@ -16,7 +16,7 @@ def _short_json(value: Any, max_chars: int = 160) -> str:
     except Exception:
         text = str(value)
     if len(text) > max_chars:
-        text = text[: max_chars - 1] + "…"
+        text = text[: max_chars - 1] + "\u2026"
     return text
 
 
@@ -56,18 +56,9 @@ class ServiceCallAttemptInline(admin.TabularInline):
         return False
 
 
-@admin.register(ServiceCallRecord)
-class ServiceCallRecordAdmin(admin.ModelAdmin):
-    """Admin for service call records.
-
-    Future Enhancements (Phase 3):
-        - Display related user(s) from the simulation context
-        - Show PersistedChunk records linked to this call (domain objects created)
-        - Link to related Simulation object via related_object_id
-        - Display Message/SimulationMetadata objects created by this call
-        - Add filters for related_object_id to find all calls for a simulation
-        - Show attempt success/failure timeline visualization
-    """
+@admin.register(ServiceCall)
+class ServiceCallAdmin(admin.ModelAdmin):
+    """Admin for service calls."""
 
     list_display = (
         "id",
@@ -92,7 +83,8 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "task_id",
         "correlation_id",
         "related_object_id",
-        "provider_response_id",
+        "openai_response_id",
+        "schema_fqn",
     )
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
@@ -112,13 +104,14 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "domain_persist_error",
         "domain_persist_attempts",
         "successful_attempt",
-        "provider_response_id",
+        "openai_response_id",
         "provider_previous_response_id",
         "related_object_id",
         "correlation_id",
+        "schema_fqn",
         "input_pretty",
         "context_pretty",
-        "result_pretty",
+        "output_data_pretty",
         "error",
     )
     fieldsets = (
@@ -130,6 +123,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
                     ("created_at", "updated_at"),
                     "service_identity",
                     "correlation_id",
+                    "schema_fqn",
                 )
             },
         ),
@@ -149,7 +143,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "successful_attempt",
-                    "provider_response_id",
+                    "openai_response_id",
                     "provider_previous_response_id",
                 )
             },
@@ -171,7 +165,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
                 "fields": (
                     "input_pretty",
                     "context_pretty",
-                    "result_pretty",
+                    "output_data_pretty",
                     "error",
                 )
             },
@@ -179,16 +173,16 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
     )
 
     @admin.display(description="Input")
-    def input_pretty(self, obj: ServiceCallRecord) -> str:
+    def input_pretty(self, obj: ServiceCall) -> str:
         return _pretty_json(obj.input)
 
     @admin.display(description="Context")
-    def context_pretty(self, obj: ServiceCallRecord) -> str:
+    def context_pretty(self, obj: ServiceCall) -> str:
         return _pretty_json(obj.context) if obj.context else "-"
 
-    @admin.display(description="Result")
-    def result_pretty(self, obj: ServiceCallRecord) -> str:
-        return _pretty_json(obj.result) if obj.result else "-"
+    @admin.display(description="Output Data")
+    def output_data_pretty(self, obj: ServiceCall) -> str:
+        return _pretty_json(obj.output_data) if obj.output_data else "-"
 
 
 @admin.register(ServiceCallAttempt)
@@ -230,7 +224,7 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
         "request_raw_pretty",
         "request_messages_pretty",
         "request_tools_pretty",
-        "request_schema_identity",
+        "schema_fqn",
         "request_model",
         "response_raw_pretty",
         "response_provider_raw_pretty",
@@ -264,7 +258,7 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "request_model",
-                    "request_schema_identity",
+                    "schema_fqn",
                     "request_messages_pretty",
                     "request_tools_pretty",
                     "request_raw_pretty",
@@ -311,7 +305,7 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
     def service_call_link(self, obj: ServiceCallAttempt) -> str:
         if obj.service_call:
             return format_html(
-                '<a href="/admin/orchestrai_django/servicecallrecord/{}/change/">{}</a>',
+                '<a href="/admin/orchestrai_django/servicecall/{}/change/">{}</a>',
                 obj.service_call_id,
                 obj.service_call_id[:16] + "..." if len(obj.service_call_id) > 16 else obj.service_call_id,
             )
@@ -340,7 +334,3 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
     @admin.display(description="Structured Data")
     def structured_data_pretty(self, obj: ServiceCallAttempt) -> str:
         return _pretty_json(obj.structured_data) if obj.structured_data else "-"
-
-
-
-# PersistedChunkAdmin removed — PersistedChunk model deleted.

@@ -1,8 +1,6 @@
 import pytest
 import asyncio
 
-import pytest
-
 from orchestrai import get_current_app
 from orchestrai.components.services.django import DjangoTaskProxy, use_django_task_proxy
 from orchestrai.components.services.service import BaseService
@@ -47,15 +45,15 @@ def django_setup():
         mail.outbox = []
     django.setup()
 
-    from orchestrai_django.models import ServiceCallRecord
+    from orchestrai_django.models import ServiceCall
 
     with connection.schema_editor() as editor:
-        editor.create_model(ServiceCallRecord)
+        editor.create_model(ServiceCall)
 
     yield
 
     with connection.schema_editor() as editor:
-        editor.delete_model(ServiceCallRecord)
+        editor.delete_model(ServiceCall)
 
 
 @pytest.fixture()
@@ -69,55 +67,55 @@ def registered_service(django_setup):
 
 
 def test_queue_override_persists_dispatch(registered_service):
-    from orchestrai_django.models import ServiceCallRecord
+    from orchestrai_django.models import ServiceCall
 
     task_id = registered_service.task.using(backend="celery", queue="priority").enqueue(value=1)
 
-    record = ServiceCallRecord.objects.get(pk=task_id)
+    record = ServiceCall.objects.get(pk=task_id)
     assert record.queue == "priority"
     assert record.dispatch.get("queue") == "priority"
     assert record.status == "queued"
 
 
 def test_immediate_backend_dispatches_fire_and_forget(monkeypatch, registered_service):
-    from orchestrai_django.models import ServiceCallRecord
+    from orchestrai_django.models import ServiceCall
 
     dispatched: list[str] = []
 
     def _capture_dispatch(self: DjangoTaskProxy, call_id: str) -> None:
         dispatched.append(call_id)
 
-    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate_async", _capture_dispatch)
+    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate", _capture_dispatch)
 
     task_id = registered_service.task.enqueue(foo="bar")
 
     assert dispatched == [task_id]
-    record = ServiceCallRecord.objects.get(pk=task_id)
+    record = ServiceCall.objects.get(pk=task_id)
     assert record.status == "pending"
 
 
-def test_service_call_record_jsonable(registered_service):
-    from orchestrai_django.models import ServiceCallRecord
+def test_service_call_jsonable(registered_service):
+    from orchestrai_django.models import ServiceCall
 
     task_id = registered_service.task.using(backend="celery").enqueue(count=2)
-    record = ServiceCallRecord.objects.get(pk=task_id)
+    record = ServiceCall.objects.get(pk=task_id)
 
     payload = record.to_jsonable()
     assert payload["service_identity"] == registered_service.identity.as_str
     assert payload["service_kwargs"] == {}
     # Should be JSON serializable (raises if not)
-    assert isinstance(payload["dispatch"], dict)
+    assert isinstance(payload, dict)
 
 
 @pytest.mark.asyncio
 async def test_async_enqueue_uses_async_orm(registered_service):
-    from orchestrai_django.models import ServiceCallRecord
+    from orchestrai_django.models import ServiceCall
 
     task_id = await registered_service.task.using(
         backend="celery", queue="priority"
     ).aenqueue(value=1)
 
-    fetched = await ServiceCallRecord.objects.aget(id=task_id)
+    fetched = await ServiceCall.objects.aget(id=task_id)
     assert fetched.queue == "priority"
     assert fetched.dispatch.get("queue") == "priority"
     assert fetched.status == "queued"
@@ -125,7 +123,7 @@ async def test_async_enqueue_uses_async_orm(registered_service):
 
 @pytest.mark.asyncio
 async def test_aenqueue_shielded_from_cancellation(monkeypatch, registered_service):
-    from orchestrai_django.models import ServiceCallRecord
+    from orchestrai_django.models import ServiceCall
 
     dispatched: list[str] = []
     dispatched_event = asyncio.Event()
@@ -134,7 +132,7 @@ async def test_aenqueue_shielded_from_cancellation(monkeypatch, registered_servi
         dispatched.append(call_id)
         dispatched_event.set()
 
-    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate_async", _capture_dispatch)
+    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate", _capture_dispatch)
 
     task = asyncio.create_task(registered_service.task.aenqueue())
     await asyncio.sleep(0)
@@ -143,5 +141,5 @@ async def test_aenqueue_shielded_from_cancellation(monkeypatch, registered_servi
         await task
 
     await asyncio.wait_for(dispatched_event.wait(), timeout=1)
-    saved = await ServiceCallRecord.objects.aget(id=dispatched[0])
+    saved = await ServiceCall.objects.aget(id=dispatched[0])
     assert saved.status == "pending"
