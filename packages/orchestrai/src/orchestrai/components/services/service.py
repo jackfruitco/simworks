@@ -292,7 +292,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         """
         import os
 
-        from orchestrai.utils.env import get_api_key, get_api_key_envvar
+        from orchestrai.utils.env_utils import get_api_key, get_api_key_envvar
 
         envvar = get_api_key_envvar(provider)
         api_key = get_api_key(provider)
@@ -337,7 +337,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
             ValueError: If no API key is found for a supported provider
         """
         from orchestrai import get_current_app
-        from orchestrai.utils.env import get_api_key_envvar
+        from orchestrai.utils.env_utils import get_api_key_envvar
 
         # Parse provider:model format
         if ":" not in model_str:
