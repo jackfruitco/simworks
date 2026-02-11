@@ -23,6 +23,19 @@ def _short_json(value: Any, max_chars: int = 160) -> str:
 def _pretty_json(value: Any) -> str:
     """Format JSON for display in admin detail view."""
     try:
+        def _normalize_newlines(text: str) -> str:
+            return text.replace("\\n", "\n").replace("/n", "\n")
+
+        def _walk(val: Any) -> Any:
+            if isinstance(val, str):
+                return _normalize_newlines(val)
+            if isinstance(val, list):
+                return [_walk(item) for item in val]
+            if isinstance(val, dict):
+                return {key: _walk(inner) for key, inner in val.items()}
+            return val
+
+        value = _walk(value)
         return format_html(
             "<pre style='white-space: pre-wrap; max-height: 400px; overflow-y: auto;'>{}</pre>",
             json.dumps(value, indent=2, ensure_ascii=False),
@@ -111,6 +124,7 @@ class ServiceCallAdmin(admin.ModelAdmin):
         "schema_fqn",
         "input_pretty",
         "context_pretty",
+        "request_pretty",
         "output_data_pretty",
         "error",
     )
@@ -165,6 +179,7 @@ class ServiceCallAdmin(admin.ModelAdmin):
                 "fields": (
                     "input_pretty",
                     "context_pretty",
+                    "request_pretty",
                     "output_data_pretty",
                     "error",
                 )
@@ -183,6 +198,17 @@ class ServiceCallAdmin(admin.ModelAdmin):
     @admin.display(description="Output Data")
     def output_data_pretty(self, obj: ServiceCall) -> str:
         return _pretty_json(obj.output_data) if obj.output_data else "-"
+
+    @admin.display(description="Request JSON")
+    def request_pretty(self, obj: ServiceCall) -> str:
+        if obj.request:
+            return _pretty_json(obj.request)
+        latest = obj.attempts.order_by("-attempt").first()
+        if latest and latest.request:
+            return _pretty_json(latest.request)
+        if latest and latest.request_raw:
+            return _pretty_json(latest.request_raw)
+        return "-"
 
 
 @admin.register(ServiceCallAttempt)
@@ -221,7 +247,7 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
         "attempt",
         "attempt_correlation_id",
         "status",
-        "request_raw_pretty",
+        "request_pretty",
         "request_messages_pretty",
         "request_tools_pretty",
         "schema_fqn",
@@ -261,7 +287,7 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
                     "schema_fqn",
                     "request_messages_pretty",
                     "request_tools_pretty",
-                    "request_raw_pretty",
+                    "request_pretty",
                 ),
                 "classes": ("collapse",),
             },
@@ -311,9 +337,13 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
             )
         return "-"
 
-    @admin.display(description="Request Raw")
-    def request_raw_pretty(self, obj: ServiceCallAttempt) -> str:
-        return _pretty_json(obj.request_raw) if obj.request_raw else "-"
+    @admin.display(description="Request JSON")
+    def request_pretty(self, obj: ServiceCallAttempt) -> str:
+        if obj.request:
+            return _pretty_json(obj.request)
+        if obj.request_raw:
+            return _pretty_json(obj.request_raw)
+        return "-"
 
     @admin.display(description="Request Messages")
     def request_messages_pretty(self, obj: ServiceCallAttempt) -> str:

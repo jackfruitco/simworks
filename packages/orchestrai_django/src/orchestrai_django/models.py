@@ -77,6 +77,11 @@ class ServiceCall(TimestampedModel):
     # Input
     input = models.JSONField(default=dict)
     context = models.JSONField(null=True, blank=True)
+    request = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full request JSON (debugging)",
+    )
 
     # Output (from Pydantic AI RunResult)
     output_data = models.JSONField(
@@ -190,6 +195,7 @@ class ServiceCall(TimestampedModel):
             "status": self.status,
             "input": self.input,
             "context": self.context,
+            "request": self.request,
             "output_data": self.output_data,
             "messages_json": self.messages_json,
             "usage_json": self.usage_json,
@@ -349,6 +355,11 @@ class ServiceCallAttempt(TimestampedModel):
     )
 
     # Request fields (nullable until request built)
+    request = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full request JSON (debugging)",
+    )
     request_raw = models.JSONField(
         null=True,
         blank=True,

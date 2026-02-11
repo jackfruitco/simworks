@@ -90,6 +90,91 @@ def _resolve_response_schema(schema):
     return None
 
 
+def _build_request_json(service, payload, context, request_obj):
+    """Construct a request JSON payload for debugging."""
+    from orchestrai.prompts.decorators import collect_prompts, render_prompt_methods
+
+    prompt_text = ""
+    try:
+        prompts = getattr(service, "_prompt_methods", None) or collect_prompts(type(service))
+
+        class _Ctx:
+            def __init__(self, deps):
+                self.deps = deps
+
+        ctx = _Ctx(getattr(service, "context", None) or context)
+        prompt_text = async_to_sync(render_prompt_methods)(service, prompts, ctx)
+    except Exception:
+        prompt_text = ""
+
+    if request_obj is not None:
+        try:
+            request_json = request_obj.model_dump(mode="json")
+        except TypeError:
+            request_json = _manual_extract_fields(request_obj)
+
+        if prompt_text:
+            input_items = request_json.get("input")
+            if isinstance(input_items, list):
+                has_system = any(
+                    isinstance(item, dict) and item.get("role") in ("system", "developer")
+                    for item in input_items
+                )
+                if not has_system:
+                    input_items.insert(0, {"role": "system", "content": prompt_text})
+        return request_json
+
+    schema_cls = getattr(service, "response_schema", None)
+    schema_ident = None
+    if schema_cls is not None:
+        schema_ident = getattr(getattr(schema_cls, "identity", None), "as_str", None)
+        if schema_ident is None:
+            schema_ident = f"{schema_cls.__module__}.{schema_cls.__name__}"
+
+    model = getattr(service, "effective_model", None)
+    if callable(model):
+        try:
+            model = model()
+        except Exception:
+            model = getattr(service, "model", None)
+    if model is None:
+        model = getattr(service, "model", None)
+
+    from orchestrai.utils.json import make_json_safe
+
+    payload = payload or {}
+    context = context or {}
+
+    input_items = []
+    if prompt_text:
+        input_items.append({"role": "system", "content": prompt_text})
+
+    message_history = payload.get("message_history") or context.get("message_history")
+    if message_history:
+        if isinstance(message_history, list):
+            input_items.extend(message_history)
+        else:
+            input_items.append({"history": message_history})
+
+    user_message = payload.get("user_message") or context.get("user_message")
+    if user_message:
+        input_items.append({"role": "user", "content": user_message})
+
+    if not input_items:
+        input_items = [payload]
+
+    return make_json_safe(
+        {
+            "model": model,
+            "input": input_items,
+            "context": context,
+            "response_schema": schema_ident,
+            "use_native_output": bool(getattr(service, "use_native_output", False)),
+            "tools": [],
+        }
+    )
+
+
 def _debug_app_context(where: str) -> None:
     """Emit lightweight diagnostics about the current app and registry context."""
 
@@ -322,7 +407,19 @@ def run_service_call(call_id: str):
             if callable(usage):
                 usage = usage()
 
-            provider_response_id = provider_meta.get("id") if isinstance(provider_meta, dict) else None
+            provider_response_id = None
+            if isinstance(provider_meta, dict):
+                provider_response_id = (
+                    provider_meta.get("id")
+                    or provider_meta.get("response_id")
+                    or provider_meta.get("request_id")
+                )
+            if not provider_response_id:
+                for attr in ("provider_response_id", "response_id", "id"):
+                    value = getattr(result, attr, None)
+                    if value:
+                        provider_response_id = value
+                        break
 
             attempt_record.response_raw = result_json
             attempt_record.response_provider_raw = provider_meta.get("raw") if isinstance(provider_meta, dict) else None
@@ -390,34 +487,39 @@ def run_service_call(call_id: str):
         # Populate attempt record with request data
         try:
             request_obj = getattr(result, 'request', None)
+            request_json = _build_request_json(service, payload, call.context, request_obj)
 
-            if request_obj:
-                try:
-                    request_json = request_obj.model_dump(mode="json")
-                except TypeError:
-                    request_json = _manual_extract_fields(request_obj)
-
+            if request_json:
+                attempt_record.request = request_json
                 attempt_record.request_raw = request_json
 
                 # Extract messages for easier querying
                 messages_json = []
-                if hasattr(request_obj, 'input') and request_obj.input:
+                if request_obj is not None and hasattr(request_obj, 'input') and request_obj.input:
                     for item in request_obj.input:
                         try:
                             messages_json.append(item.model_dump(mode="json"))
                         except (TypeError, AttributeError):
                             messages_json.append(str(item))
+                else:
+                    req_input = request_json.get("input")
+                    if isinstance(req_input, list):
+                        messages_json = req_input
                 attempt_record.request_messages = messages_json
 
                 # Extract tools for easier querying
-                if hasattr(request_obj, 'tools') and request_obj.tools:
+                if request_obj is not None and hasattr(request_obj, 'tools') and request_obj.tools:
                     try:
                         attempt_record.request_tools = [t.model_dump(mode="json") for t in request_obj.tools]
                     except (TypeError, AttributeError):
                         attempt_record.request_tools = [str(t) for t in request_obj.tools]
+                else:
+                    req_tools = request_json.get("tools")
+                    if isinstance(req_tools, list):
+                        attempt_record.request_tools = req_tools
 
                 # Get response schema identity if available
-                if hasattr(request_obj, 'response_schema') and request_obj.response_schema:
+                if request_obj is not None and hasattr(request_obj, 'response_schema') and request_obj.response_schema:
                     schema_cls = _resolve_response_schema(request_obj.response_schema)
                     if schema_cls is not None:
                         identity = getattr(getattr(schema_cls, 'identity', None), 'as_str', None)
@@ -426,7 +528,7 @@ def run_service_call(call_id: str):
                         attempt_record.schema_fqn = identity
                         call.schema_fqn = identity
 
-                attempt_record.request_model = getattr(request_obj, 'model', None)
+                attempt_record.request_model = getattr(request_obj, 'model', None) or request_json.get("model")
                 attempt_record.save()
 
             # Store attempt ID in context for persistence handlers
@@ -436,6 +538,13 @@ def run_service_call(call_id: str):
             update_fields = ["context"]
             if call.schema_fqn:
                 update_fields.append("schema_fqn")
+            if request_json is not None:
+                if call.request is None:
+                    call.request = request_json
+                elif call.request == request_json:
+                    call.request = request_json
+            if call.request is not None:
+                update_fields.append("request")
             call.save(update_fields=update_fields)
 
         except Exception as req_err:
