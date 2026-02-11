@@ -65,6 +65,31 @@ def _manual_extract_fields(obj):
     return result
 
 
+def _resolve_response_schema(schema):
+    """Best-effort unwrap of response schema (handles NativeOutput wrappers)."""
+    from typing import get_args, get_origin
+
+    if schema is None:
+        return None
+
+    if isinstance(schema, type):
+        return schema
+
+    for attr in ("inner_type", "type_", "schema", "output_type", "result_type", "type"):
+        inner = getattr(schema, attr, None)
+        if isinstance(inner, type):
+            return inner
+
+    origin = get_origin(schema)
+    args = get_args(schema)
+    if origin and args:
+        for arg in args:
+            if isinstance(arg, type):
+                return arg
+
+    return None
+
+
 def _debug_app_context(where: str) -> None:
     """Emit lightweight diagnostics about the current app and registry context."""
 
@@ -247,6 +272,7 @@ def run_service_call(call_id: str):
         # Success! Store result and mark for domain persistence
         with transaction.atomic():
             # Serialize result to JSON
+            call_output_data = None
             if hasattr(result, "model_dump"):
                 try:
                     result_json = result.model_dump(mode="json")
@@ -256,6 +282,7 @@ def run_service_call(call_id: str):
                         result_json = _manual_extract_fields(result)
                     else:
                         raise
+                call_output_data = result_json
             elif hasattr(result, "output") and hasattr(result, "all_messages_json"):
                 # Pydantic AI AgentRunResult (dataclass)
                 output = result.output
@@ -276,8 +303,10 @@ def run_service_call(call_id: str):
                     "run_id": str(result.run_id) if result.run_id else None,
                     "timestamp": timestamp_val.isoformat() if timestamp_val else None,
                 }
+                call_output_data = output_json
             elif isinstance(result, dict):
                 result_json = result
+                call_output_data = result
             else:
                 logger.warning(
                     "Unknown result type %s, converting to string",
@@ -313,6 +342,8 @@ def run_service_call(call_id: str):
                     attempt_record.structured_data = structured_data
                 else:
                     attempt_record.structured_data = {"raw_value": str(structured_data)}
+                if call_output_data is None:
+                    call_output_data = attempt_record.structured_data
 
             # Token usage
             if usage:
@@ -332,7 +363,7 @@ def run_service_call(call_id: str):
             try:
                 locked_call.mark_attempt_successful(
                     attempt_record,
-                    result_json,
+                    call_output_data,
                     provider_response_id=provider_response_id
                 )
             except AlreadySucceededError:
@@ -387,11 +418,13 @@ def run_service_call(call_id: str):
 
                 # Get response schema identity if available
                 if hasattr(request_obj, 'response_schema') and request_obj.response_schema:
-                    schema_cls = request_obj.response_schema
-                    identity = getattr(getattr(schema_cls, 'identity', None), 'as_str', None)
-                    if identity is None:
-                        identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
-                    attempt_record.schema_fqn = identity
+                    schema_cls = _resolve_response_schema(request_obj.response_schema)
+                    if schema_cls is not None:
+                        identity = getattr(getattr(schema_cls, 'identity', None), 'as_str', None)
+                        if identity is None:
+                            identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
+                        attempt_record.schema_fqn = identity
+                        call.schema_fqn = identity
 
                 attempt_record.request_model = getattr(request_obj, 'model', None)
                 attempt_record.save()
@@ -400,7 +433,10 @@ def run_service_call(call_id: str):
             if call.context is None:
                 call.context = {}
             call.context["_service_call_attempt_id"] = attempt_record.id
-            call.save(update_fields=["context"])
+            update_fields = ["context"]
+            if call.schema_fqn:
+                update_fields.append("schema_fqn")
+            call.save(update_fields=update_fields)
 
         except Exception as req_err:
             logger.warning(f"Failed to populate request data for call {call_id}: {req_err}")
@@ -606,7 +642,7 @@ def _inline_persist_service_call(call: ServiceCallModel):
     """Run declarative persist_schema() for a ServiceCall."""
     from orchestrai_django.persistence import PersistContext, persist_schema, resolve_schema_class
 
-    if not call.schema_fqn or not call.output_data:
+    if not call.schema_fqn or call.output_data is None:
         call.domain_persisted = True
         call.save(update_fields=["domain_persisted"])
         logger.debug("Service call %s: no schema_fqn or output_data, skipping", call.id)

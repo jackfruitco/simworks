@@ -33,6 +33,7 @@ Usage:
         response_schema = PatientResponse
         # model is optional - uses ORCA_DEFAULT_MODEL env var if not set
         model = "openai-responses:gpt-4o"
+        use_native_output = True
 
         @system_prompt(weight=100)
         def base_instructions(self) -> str:
@@ -184,6 +185,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         class PatientService(BaseService):
             model = "openai-responses:gpt-4o"  # Optional - uses config default if omitted
             response_schema = PatientResponse
+            use_native_output = True
 
             @system_prompt(weight=100)
             def instructions(self) -> str:
@@ -205,6 +207,9 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
     # Response schema (Pydantic model)
     response_schema: ClassVar[type[BaseModel] | None] = None
+
+    # Use native structured output (e.g. OpenAI Response Format) instead of tool calls
+    use_native_output: ClassVar[bool] = False
 
     # Required context keys
     required_context_keys: ClassVar[tuple[str, ...]] = ()
@@ -446,10 +451,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
         The agent is configured with:
         - Model (with optional fallbacks)
-        - Result type (response_schema)
+        - Result type (response_schema, potentially wrapped in NativeOutput)
         - System prompts (collected from @system_prompt decorated methods)
         """
-        from pydantic_ai import Agent
+        from pydantic_ai import Agent, NativeOutput
 
         # Build model with API key from OrchestrAI config
         model = self._build_model_with_api_key(self.effective_model)
@@ -465,11 +470,15 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
             except ImportError:
                 logger.warning("FallbackModel not available, using primary model only")
 
+        # Configure output type
+        output_type = self.response_schema
+        if self.use_native_output and output_type is not None:
+            output_type = NativeOutput(output_type)
 
         # Create agent
         agent = Agent(
             model=model,
-            output_type=self.response_schema,
+            output_type=output_type,
         )
 
         # Register system prompt methods

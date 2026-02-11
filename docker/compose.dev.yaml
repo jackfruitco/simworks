@@ -1,5 +1,5 @@
 services:
-  medsim-dev-server:
+  server:
     profiles: ["core"]
     build:
       context: ..
@@ -15,8 +15,8 @@ services:
     hostname: 'server'
     volumes:
       # - ..:/app
-      - medsim-dev-static-vol:/app/static
-      - medsim-dev-media-vol:/app/media
+      - static-vol:/app/static
+      - media-vol:/app/media
     command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
     restart: unless-stopped
     logging:
@@ -27,16 +27,16 @@ services:
     networks:
       - MedSimNet-dev
     depends_on:
-      medsim-dev-db:
+      db:
         condition: service_healthy
 
-  medsim-dev-db:
+  db:
     profiles: ["core"]
     image: postgres:${DB_IMAGE_TAG:-17.2-alpine}
     restart: always
     user: postgres
     volumes:
-      - medsim-dev-db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     env_file:
       - .env
     environment:
@@ -56,7 +56,7 @@ services:
       timeout: 5s
       retries: 5
 
-  medsim-dev-nginx:
+  nginx:
     profiles: ["core"]
     image: nginx:${PROXY_IMAGE_TAG:-latest}
     # user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
@@ -68,15 +68,15 @@ services:
       - ../nginx/nginx.template.conf:/etc/nginx/nginx.template.conf:ro
       - ../nginx/default.dev.conf:/etc/nginx/conf.d/default.conf:ro
       - ../nginx/nginx-entrypoint.sh:/docker-entrypoint.d/nginx-entrypoint.sh:ro
-      - medsim-dev-static-vol:/app/static
-      - medsim-dev-media-vol:/app/media
+      - static-vol:/app/static
+      - media-vol:/app/media
     depends_on:
-      - medsim-dev-server
+      - server
     networks:
       - MedSimNet-dev
     entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
-  medsim-dev-redis:
+  redis:
     profiles: ["core"]
     image: redis:${REDIS_IMAGE_TAG:-7.4.2-alpine}
     command: redis-server --requirepass ${REDIS_PASSWORD:?password not set!}
@@ -88,7 +88,7 @@ services:
     expose:
       - '${REDIS_PORT:-6379}'
 
-  medsim-dev-celery:
+  celery:
     profiles: ["workers"]
     build:
       context: ..
@@ -102,19 +102,19 @@ services:
     user: root
     # command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
     depends_on:
-      medsim-dev-redis:
+      redis:
         condition: service_started
-      medsim-dev-db:
+      db:
         condition: service_healthy
-      medsim-dev-server:
+      server:
         condition: service_started
     volumes:
-      - medsim-dev-static-vol:/app/static
-      - medsim-dev-media-vol:/app/media
+      - static-vol:/app/static
+      - media-vol:/app/media
     restart: unless-stopped
     networks:
       - MedSimNet-dev
-    hostname: 'medsim-dev-celery-worker'
+    hostname: 'celery-worker'
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
       interval: 10s
@@ -127,7 +127,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  medsim-dev-celerybeat:
+  celerybeat:
     profiles: ["beat"]
     build:
       context: ..
@@ -140,14 +140,14 @@ services:
       - PYTHONPATH=/app/SimWorks
     # command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
     volumes:
-      - medsim-dev-static-vol:/app/static
-      - medsim-dev-media-vol:/app/media
+      - static-vol:/app/static
+      - media-vol:/app/media
     depends_on:
-      medsim-dev-redis:
+      redis:
         condition: service_started
-      medsim-dev-db:
+      db:
         condition: service_healthy
-      medsim-dev-server:
+      server:
         condition: service_started
     networks:
       - MedSimNet-dev
@@ -165,9 +165,9 @@ services:
         max-file: "3"
 
 volumes:
-  medsim-dev-db-data:
-  medsim-dev-static-vol:
-  medsim-dev-media-vol:
+  db-data:
+  static-vol:
+  media-vol:
 networks:
   MedSimNet-dev:
     driver: bridge

@@ -272,14 +272,19 @@ class ServiceCall(TimestampedModel):
 
         return attempt
 
-    def mark_attempt_successful(self, attempt: "ServiceCallAttempt", result: dict, provider_response_id: str | None = None) -> None:
+    def mark_attempt_successful(
+        self,
+        attempt: "ServiceCallAttempt",
+        output_data: dict | None,
+        provider_response_id: str | None = None,
+    ) -> None:
         """Atomically mark attempt as winner.
 
         Must be called within a transaction with select_for_update() on the record.
 
         Args:
             attempt: The attempt that succeeded.
-            result: The result dict to store.
+            output_data: The validated output data to store.
             provider_response_id: Optional provider response ID from the attempt.
 
         Raises:
@@ -295,7 +300,7 @@ class ServiceCall(TimestampedModel):
         # Mark call as succeeded
         self.successful_attempt = attempt.attempt
         self.openai_response_id = provider_response_id or attempt.provider_response_id
-        self.output_data = result
+        self.output_data = output_data
         self.status = CallStatus.COMPLETED
         self.finished_at = timezone.now()
         self.save(update_fields=[

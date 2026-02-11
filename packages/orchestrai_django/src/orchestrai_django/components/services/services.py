@@ -16,6 +16,7 @@ Usage:
     class GenerateResponse(DjangoBaseService):
         response_schema = PatientResponse
         model = "openai-responses:gpt-5-nano"
+        use_native_output = True
 
         @system_prompt(weight=100)
         def base_instructions(self) -> str:
@@ -55,6 +56,7 @@ class DjangoBaseService(BaseService, ABC):
         class PatientService(DjangoBaseService):
             model = "openai-responses:gpt-5-nano"
             response_schema = PatientResponse
+            use_native_output = True
 
             @system_prompt(weight=100)
             def instructions(self) -> str:
