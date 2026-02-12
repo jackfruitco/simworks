@@ -36,7 +36,7 @@ from core.orca.prompts import (
     SMSStyleMixin,
 )
 from orchestrai.prompts import system_prompt
-from orchestrai_django.components.services import DjangoBaseService
+from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import service
 from simulation.models import Simulation
 
@@ -144,6 +144,7 @@ class GenerateInitialResponse(
 
 @service
 class GenerateReplyResponse(
+    PreviousResponseMixin,
     CharacterConsistencyMixin,
     SMSStyleMixin,
     DjangoBaseService,
@@ -163,6 +164,27 @@ class GenerateReplyResponse(
 
     from chatlab.orca.schemas import PatientReplyOutputSchema as _Schema
     response_schema = _Schema
+
+    async def _aprepare_context(self) -> None:
+        """Populate user_message for reply runs using stored user message ID."""
+        if hasattr(super(), "_aprepare_context"):
+            await super()._aprepare_context()
+
+        if self.context.get("user_message") is not None:
+            return
+
+        user_msg_id = self.context.get("user_msg") or self.context.get("user_msg_id")
+        if not user_msg_id:
+            return
+
+        try:
+            from chatlab.models import Message
+            msg = await Message.objects.aget(pk=user_msg_id)
+        except Exception as exc:
+            logger.warning("Unable to load user message %s: %s", user_msg_id, exc)
+            return
+
+        self.context["user_message"] = msg.content
 
     @system_prompt(weight=100)
     async def patient_context(self) -> str:

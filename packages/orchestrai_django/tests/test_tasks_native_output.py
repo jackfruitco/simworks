@@ -57,7 +57,7 @@ class DummyCall:
         self.domain_persist_error = None
         self.domain_persist_attempts = 0
         self.successful_attempt = None
-        self.openai_response_id = None
+        self.provider_response_id = None
         self.provider_previous_response_id = None
         self.messages_json = []
         self.usage_json = None
@@ -114,12 +114,17 @@ class FakeRequest:
     model = "fake-model"
 
 
+class FakeResponse:
+    provider_response_id = "resp-123"
+
+
 class FakeRunResult:
     def __init__(self):
         self.output = FakeOutput()
         self.run_id = None
         self.provider_meta = {}
         self.request = FakeRequest()
+        self.response = FakeResponse()
 
     def all_messages_json(self):
         return []
@@ -156,6 +161,7 @@ def test_run_service_call_stores_output_and_schema(monkeypatch):
 
     assert result["status"] == "completed"
     assert call.mark_attempt_args[1] == {"answer": "ok"}
+    assert call.mark_attempt_args[2] == "resp-123"
     assert call.schema_fqn == "tests.schema.FakeSchema"
     assert any("schema_fqn" in fields for fields in call.saved_fields if fields)
 

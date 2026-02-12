@@ -96,7 +96,7 @@ class ServiceCallAdmin(admin.ModelAdmin):
         "task_id",
         "correlation_id",
         "related_object_id",
-        "openai_response_id",
+        "provider_response_id",
         "schema_fqn",
     )
     date_hierarchy = "created_at"
@@ -117,8 +117,8 @@ class ServiceCallAdmin(admin.ModelAdmin):
         "domain_persist_error",
         "domain_persist_attempts",
         "successful_attempt",
-        "openai_response_id",
-        "provider_previous_response_id",
+        "provider_response_id",
+        "previous_provider_response_id",
         "related_object_id",
         "correlation_id",
         "schema_fqn",
@@ -157,8 +157,8 @@ class ServiceCallAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "successful_attempt",
-                    "openai_response_id",
-                    "provider_previous_response_id",
+                    "provider_response_id",
+                    "previous_provider_response_id",
                 )
             },
         ),

@@ -547,6 +547,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if ctx:
             self.context.update(ctx)
 
+        prepare_ctx = getattr(self, "_aprepare_context", None)
+        if callable(prepare_ctx):
+            await prepare_ctx()
+
         # Create service call for tracking
         call = self._create_call(
             payload=ctx,
@@ -566,6 +570,16 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 user_message = self.context.get("user_message", "")
                 message_history = self.context.get("message_history")
 
+                model_settings = None
+                previous_response_id = (
+                    self.context.get("previous_provider_response_id")
+                    or self.context.get("previous_response_id")
+                )
+                if previous_response_id:
+                    model_settings = {
+                        "openai_previous_response_id": previous_response_id,
+                    }
+
                 # Execute agent - system prompts are registered on the agent via @system_prompt
                 # decorated methods (registered in the agent property). The prompts access
                 # self.context through closures, so they get the current context state.
@@ -573,6 +587,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                     user_message,
                     deps=self.context,
                     message_history=message_history,
+                    model_settings=model_settings,
                 )
 
                 # Update call with result

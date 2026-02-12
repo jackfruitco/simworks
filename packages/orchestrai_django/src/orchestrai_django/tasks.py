@@ -122,6 +122,10 @@ def _build_request_json(service, payload, context, request_obj):
                 )
                 if not has_system:
                     input_items.insert(0, {"role": "system", "content": prompt_text})
+        if context:
+            prev_id = context.get("previous_provider_response_id") or context.get("previous_response_id")
+            if prev_id:
+                request_json["previous_provider_response_id"] = prev_id
         return request_json
 
     schema_cls = getattr(service, "response_schema", None)
@@ -163,16 +167,19 @@ def _build_request_json(service, payload, context, request_obj):
     if not input_items:
         input_items = [payload]
 
-    return make_json_safe(
-        {
-            "model": model,
-            "input": input_items,
-            "context": context,
-            "response_schema": schema_ident,
-            "use_native_output": bool(getattr(service, "use_native_output", False)),
-            "tools": [],
-        }
-    )
+    request_json = {
+        "model": model,
+        "input": input_items,
+        "context": context,
+        "response_schema": schema_ident,
+        "use_native_output": bool(getattr(service, "use_native_output", False)),
+        "tools": [],
+    }
+    if context:
+        prev_id = context.get("previous_provider_response_id") or context.get("previous_response_id")
+        if prev_id:
+            request_json["previous_provider_response_id"] = prev_id
+    return make_json_safe(request_json)
 
 
 def _debug_app_context(where: str) -> None:
@@ -415,6 +422,11 @@ def run_service_call(call_id: str):
                     or provider_meta.get("request_id")
                 )
             if not provider_response_id:
+                response_obj = getattr(result, "response", None)
+                response_id = getattr(response_obj, "provider_response_id", None)
+                if response_id:
+                    provider_response_id = response_id
+            if not provider_response_id:
                 for attr in ("provider_response_id", "response_id", "id"):
                     value = getattr(result, attr, None)
                     if value:
@@ -423,6 +435,13 @@ def run_service_call(call_id: str):
 
             attempt_record.response_raw = result_json
             attempt_record.response_provider_raw = provider_meta.get("raw") if isinstance(provider_meta, dict) else None
+            prev_provider_response_id = None
+            if call.context:
+                prev_provider_response_id = (
+                    call.context.get("previous_provider_response_id")
+                    or call.context.get("previous_response_id")
+                )
+            attempt_record.previous_provider_response_id = prev_provider_response_id
             attempt_record.provider_response_id = provider_response_id
             attempt_record.finish_reason = provider_meta.get("finish_reason") if isinstance(provider_meta, dict) else None
             attempt_record.received_at = timezone.now()
@@ -545,6 +564,12 @@ def run_service_call(call_id: str):
                     call.request = request_json
             if call.request is not None:
                 update_fields.append("request")
+            if call.context.get("previous_provider_response_id") or call.context.get("previous_response_id"):
+                call.previous_provider_response_id = (
+                    call.context.get("previous_provider_response_id")
+                    or call.context.get("previous_response_id")
+                )
+                update_fields.append("previous_provider_response_id")
             call.save(update_fields=update_fields)
 
         except Exception as req_err:
@@ -773,6 +798,11 @@ def _inline_persist_service_call(call: ServiceCallModel):
         call_id=call.id,
         audit_id=ctx.get("_ai_response_audit_id"),
         correlation_id=str(call.correlation_id) if call.correlation_id else None,
+        extra={
+            "service_call_attempt_id": ctx.get("_service_call_attempt_id"),
+            "provider_response_id": call.provider_response_id,
+            "previous_provider_response_id": call.previous_provider_response_id,
+        },
     )
 
     domain_obj = async_to_sync(persist_schema)(schema_instance, context)

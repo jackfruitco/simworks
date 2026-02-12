@@ -103,7 +103,7 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
             self.domain_persist_error = None
             self.domain_persist_attempts = 0
             self.successful_attempt = None
-            self.openai_response_id = None
+            self.provider_response_id = None
             self.provider_previous_response_id = None
             self.messages_json = []
             self.usage_json = None

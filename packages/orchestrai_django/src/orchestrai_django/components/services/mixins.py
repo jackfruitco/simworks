@@ -5,8 +5,6 @@ import logging
 
 __all__ = ["PreviousResponseMixin"]
 
-from orchestrai.components.services import ServiceError
-
 logger = logging.getLogger(__name__)
 
 
@@ -32,8 +30,9 @@ class PreviousResponseMixin:
     Data Source:
         Queries ServiceCall where:
         - related_object_id matches the simulation_id
+        - service_identity matches the current service (when available)
         - status is COMPLETED
-        - openai_response_id is not null
+        - provider_response_id is not null
         Orders by -finished_at to get the most recent.
     """
 
@@ -54,24 +53,37 @@ class PreviousResponseMixin:
         try:
             from orchestrai_django.models import ServiceCall as ServiceCallModel, CallStatus
 
+            service_identity = getattr(getattr(self, "identity", None), "as_str", None)
+            filters = {
+                "related_object_id": str(simulation_id),
+                "status": CallStatus.COMPLETED,
+                "provider_response_id__isnull": False,
+            }
+            if service_identity:
+                filters["service_identity"] = service_identity
+
             prev_call = await ServiceCallModel.objects.filter(
-                related_object_id=str(simulation_id),
-                status=CallStatus.COMPLETED,
-                openai_response_id__isnull=False,
+                **filters,
             ).order_by("-finished_at").afirst()
 
             if not prev_call:
-                raise ValueError("No previous response found")
+                logger.debug("-- [context] no previous response for simulation_id=%s", simulation_id)
+                return
 
-            prev_id = prev_call.openai_response_id
+            prev_id = prev_call.provider_response_id
             if not prev_id:
-                raise ValueError("No previous response ID found")
+                logger.debug("-- [context] previous response ID missing for simulation_id=%s", simulation_id)
+                return
 
             self.context["previous_response_id"] = prev_id
+            self.context["previous_provider_response_id"] = prev_id
             logger.debug("-- [context] set `previous_response_id=%s`", prev_id)
             return
 
         except Exception as exc:
-            raise ServiceError(
-                "-- [context] unable to set `previous_response_id`"
-            ) from exc
+            logger.warning(
+                "-- [context] unable to set `previous_response_id`: %s",
+                exc,
+                exc_info=True,
+            )
+            return

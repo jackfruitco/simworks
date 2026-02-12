@@ -126,7 +126,7 @@ class ServiceCall(TimestampedModel):
     )
 
     # OpenAI continuation (for multi-turn conversations)
-    openai_response_id = models.CharField(
+    provider_response_id = models.CharField(
         max_length=255,
         null=True,
         blank=True,
@@ -135,7 +135,7 @@ class ServiceCall(TimestampedModel):
     )
 
     # Continuation for multi-turn conversations (inbound)
-    provider_previous_response_id = models.CharField(
+    previous_provider_response_id = models.CharField(
         max_length=255,
         null=True,
         blank=True,
@@ -223,7 +223,7 @@ class ServiceCall(TimestampedModel):
         messages_json: list | None = None,
         usage_json: dict | None = None,
         model_name: str | None = None,
-        openai_response_id: str | None = None,
+        provider_response_id: str | None = None,
     ) -> None:
         """Mark the call as completed with result data."""
         self.status = CallStatus.COMPLETED
@@ -240,8 +240,8 @@ class ServiceCall(TimestampedModel):
             self.total_tokens = usage_json.get("total_tokens", 0) or 0
         if model_name is not None:
             self.model_name = model_name
-        if openai_response_id is not None:
-            self.openai_response_id = openai_response_id
+        if provider_response_id is not None:
+            self.provider_response_id = provider_response_id
         self.save()
 
     def mark_failed(self, error: str) -> None:
@@ -305,12 +305,12 @@ class ServiceCall(TimestampedModel):
 
         # Mark call as succeeded
         self.successful_attempt = attempt.attempt
-        self.openai_response_id = provider_response_id or attempt.provider_response_id
+        self.provider_response_id = provider_response_id or attempt.provider_response_id
         self.output_data = output_data
         self.status = CallStatus.COMPLETED
         self.finished_at = timezone.now()
         self.save(update_fields=[
-            "successful_attempt", "openai_response_id", "output_data",
+            "successful_attempt", "provider_response_id", "output_data",
             "status", "finished_at", "updated_at"
         ])
 
@@ -397,6 +397,12 @@ class ServiceCallAttempt(TimestampedModel):
         null=True,
         blank=True,
         help_text="Untouched provider response before normalization",
+    )
+    previous_provider_response_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Previous provider response ID attached to this request",
     )
     provider_response_id = models.CharField(
         max_length=255,
