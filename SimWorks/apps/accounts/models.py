@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, UserManager
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import QuerySet
@@ -11,9 +11,38 @@ from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
 
+class CustomUserManager(UserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError("Email must be set")
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
-class CustomUser(AbstractUser):
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        extra_fields.setdefault("is_active", True)
+
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
+    objects = CustomUserManager()
+
+    username = None
+    email = models.EmailField(unique=True)
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['first_name', 'last_name']
 
     def get_scenario_log(
             self,
@@ -149,7 +178,9 @@ class Invitation(models.Model):
 
     @property
     def get_absolute_url(self):
-        return reverse("accounts:register-with-token", kwargs={"token": self.token})
+        """Return allauth signup URL with invitation token as query parameter."""
+        from django.urls import reverse as url_reverse
+        return f"{url_reverse('account_signup')}?invitation={self.token}"
 
     @property
     def is_expired(self):
@@ -159,7 +190,7 @@ class Invitation(models.Model):
         if self.is_claimed and not self.claimed_at:
             raise ValidationError("Used invitation must have a claimed_at timestamp.")
 
-    def mark_as_claimed(self, user: CustomUser = None):
+    def mark_as_claimed(self, user: "User" = None):
         self.is_claimed = True
         self.claimed_at = timezone.now()
         self.claimed_by = user

@@ -12,8 +12,8 @@
         </div>
       {% endif %}
       <form method="post"
-            action="{% url 'accounts:new-invite' %}"
-            hx-post="{% url 'accounts:new-invite' %}"
+            action="{% url 'invitations:new-invite' %}"
+            hx-post="{% url 'invitations:new-invite' %}"
             hx-target="#invite-content"
             hx-swap="innerHTML transition:true"
             hx-indicator="#invite-loading"

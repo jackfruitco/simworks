@@ -23,11 +23,10 @@ from chatlab.consumers import ChatConsumer
 async def create_simulation_and_user():
     """Create a simulation and user for testing (async helper)."""
     from simulation.models import Simulation
-    from accounts.models import CustomUser as User, UserRole
+    from apps.accounts.models import User, UserRole
 
     role, _ = await UserRole.objects.aget_or_create(title="Test")
     user = await User.objects.acreate(
-        username=f"test_user_{uuid4().hex[:8]}",
         email=f"test_{uuid4().hex[:8]}@test.com",
         role=role,
     )
