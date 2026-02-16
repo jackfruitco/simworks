@@ -1,40 +1,16 @@
-from accounts.decorators import is_inviter
-from django.contrib.auth import login
+from apps.accounts.decorators import is_inviter
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
 from django.http import HttpResponse
-from django.shortcuts import redirect
 from django.shortcuts import render
+from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 
-from .forms import CustomUserCreationForm
 from .forms import InvitationForm
 from .models import Invitation
-
-
-def register(request, token=None):
-    token = token or request.GET.get("token") or request.POST.get("token")
-    if request.method == "POST":
-        form = CustomUserCreationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect("accounts:profile")
-    else:
-        # Pre-populate the invitation_token field if a token exists
-        form = CustomUserCreationForm(
-            initial={"invitation_token": token} if token else None
-        )
-
-    return render(request, "accounts/signup.html", {"form": form, "token": token})
-
-
-@login_required
-def profile(request):
-    return render(request, "accounts/profile.html")
 
 
 @login_required
@@ -52,7 +28,7 @@ def new_invite(request):
                     request, "accounts/invite_success.html", {"invite": invitation}
                 )
             return redirect(
-                reverse("accounts:invite_success", kwargs={"token": invitation.token})
+                reverse("invitations:invite-success", kwargs={"token": invitation.token})
             )
     else:
         form = InvitationForm()
@@ -99,9 +75,9 @@ def list_invites(request):
         "view_mode": view_mode,
         "next_page": int(page_number) + 1 if page.has_next() else None,
         "inviter_choices": Invitation.objects.exclude(invited_by__isnull=True)
-        .values_list("invited_by__username", flat=True)
+        .values_list("invited_by__email", flat=True)
         .distinct()
-        .order_by("invited_by__username"),
+        .order_by("invited_by__email"),
     }
 
     if request.headers.get("HX-Request"):

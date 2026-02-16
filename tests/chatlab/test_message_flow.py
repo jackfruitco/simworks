@@ -16,7 +16,7 @@ from django.utils import timezone
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     return UserRole.objects.create(title="Test Role MessageFlow")
 
@@ -24,10 +24,9 @@ def user_role(db):
 @pytest.fixture
 def user(db, user_role):
     """Create a test user."""
-    from accounts.models import CustomUser
+    from apps.accounts.models import User
 
-    return CustomUser.objects.create_user(
-        username="testuser",
+    return User.objects.create_user(
         email="test@example.com",
         password="testpass123",
         role=user_role,

@@ -24,17 +24,16 @@ from chatlab.models import Message, RoleChoices
 
 @pytest.fixture
 def user_role(db):
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     return UserRole.objects.create(title="Test Persist")
 
 
 @pytest.fixture
 def user(db, user_role):
-    from accounts.models import CustomUser
+    from apps.accounts.models import User
 
-    return CustomUser.objects.create_user(
-        username=f"test_user_{uuid4().hex[:8]}",
+    return User.objects.create_user(
         email=f"test_{uuid4().hex[:8]}@test.com",
         password="testpass123",
         role=user_role,

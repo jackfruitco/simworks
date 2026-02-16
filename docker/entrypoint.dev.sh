@@ -36,7 +36,7 @@ python manage.py migrate
 echo
 echo "Creating default user roles if not already exists..."
 python manage.py shell -c "\
-from accounts.models import UserRole; \
+from apps.accounts.models import UserRole; \
 UserRole.objects.exists() or UserRole.objects.bulk_create([ \
     UserRole(title='EMT (NREMT-B)'), \
     UserRole(title='Paramedic (NRP)'), \
@@ -56,8 +56,8 @@ if [ "${DJANGO_DEBUG:-}" = "True" ]; then
 from django.contrib.auth import get_user_model; \
 User = get_user_model(); \
 role, created = UserRole.objects.get_or_create(title='SOF Medic')
-User.objects.filter(username='appDev').exists() or \
-User.objects.create_superuser(username='appDev', password='appDev', role=role)"
+User.objects.filter(email='dev@jkfrt.com').exists() or \
+User.objects.create_superuser(email='dev@jkfrt.com', password='dev', role=role)"
 else
   echo "Skipping dev superuser setup — DJANGO_DEBUG is not set to 'True'."
 fi

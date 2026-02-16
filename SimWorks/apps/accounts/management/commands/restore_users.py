@@ -1,7 +1,7 @@
 import json
 
-from accounts.models import CustomUser
-from accounts.models import UserRole
+from apps.accounts.models import User
+from apps.accounts.models import UserRole
 from django.core.management.base import BaseCommand
 
 
@@ -21,11 +21,11 @@ class Command(BaseCommand):
 
         for obj in data:
             fields = obj["fields"]
-            username = fields["username"]
+            email = fields["email"]
 
-            if CustomUser.objects.filter(username=username).exists():
+            if User.objects.filter(email=email).exists():
                 self.stdout.write(
-                    self.style.WARNING(f"User '{username}' already exists. Skipping.")
+                    self.style.WARNING(f"User '{email}' already exists. Skipping.")
                 )
                 continue
 
@@ -33,7 +33,7 @@ class Command(BaseCommand):
             if not role_id:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"User '{username}' missing role. Assigning default role ID 1."
+                        f"User '{email}' missing role. Assigning default role ID 1."
                     )
                 )
                 role_id = 1  # fallback; replace with a sensible default ID or logic
@@ -43,14 +43,15 @@ class Command(BaseCommand):
             except UserRole.DoesNotExist:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"Role ID {role_id} not found for '{username}', skipping user."
+                        f"Role ID {role_id} not found for '{email}', skipping user."
                     )
                 )
                 continue
 
-            user = CustomUser(
-                username=username,
-                email=fields.get("email", ""),
+            user = User(
+                email=email,
+                first_name=fields.get("first_name", ""),
+                last_name=fields.get("last_name", ""),
                 is_active=fields.get("is_active", True),
                 is_staff=fields.get("is_staff", False),
                 is_superuser=fields.get("is_superuser", False),
@@ -61,5 +62,5 @@ class Command(BaseCommand):
             )
             user.save()
             self.stdout.write(
-                self.style.SUCCESS(f"Created user: {username} with role '{role}'")
+                self.style.SUCCESS(f"Created user: {email} with role '{role}'")
             )
