@@ -17,7 +17,7 @@ services:
       # - ..:/app
       - static-vol:/app/static
       - media-vol:/app/media
-    command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
+    # command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -25,7 +25,7 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - MedSimNet-dev
+      - MedSimNet
     depends_on:
       db:
         condition: service_healthy
@@ -46,7 +46,7 @@ services:
       POSTGRES_HOST: ${DB_HOST:-db}
       POSTGRES_PORT: ${DB_PORT:-5432}
     networks:
-      - MedSimNet-dev
+      - MedSimNet
     expose:
       - '${DB_PORT:-5432}'
     hostname: 'db'
@@ -73,7 +73,7 @@ services:
     depends_on:
       - server
     networks:
-      - MedSimNet-dev
+      - MedSimNet
     entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
   redis:
@@ -84,7 +84,7 @@ services:
     container_name: ${REDIS_HOSTNAME:-redis}
     hostname: ${REDIS_HOSTNAME:-redis}
     networks:
-      - MedSimNet-dev
+      - MedSimNet
     expose:
       - '${REDIS_PORT:-6379}'
 
@@ -113,7 +113,7 @@ services:
       - media-vol:/app/media
     restart: unless-stopped
     networks:
-      - MedSimNet-dev
+      - MedSimNet
     hostname: 'celery-worker'
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
@@ -150,7 +150,7 @@ services:
       server:
         condition: service_started
     networks:
-      - MedSimNet-dev
+      - MedSimNet
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
@@ -169,5 +169,5 @@ volumes:
   static-vol:
   media-vol:
 networks:
-  MedSimNet-dev:
+  MedSimNet:
     driver: bridge

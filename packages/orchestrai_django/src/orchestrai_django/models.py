@@ -434,7 +434,7 @@ class ServiceCall(TimestampedModel):
 
     def to_jsonable(self) -> dict:
         """Export the service call as a JSON-serializable dict."""
-        from orchestrai.utils.json import make_json_safe
+        from orchestrai.utils import make_json_safe
         data = self.to_dict()
         # Convert datetime objects to ISO strings
         for key in ('created_at', 'started_at', 'finished_at'):

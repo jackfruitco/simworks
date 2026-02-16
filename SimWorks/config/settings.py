@@ -70,7 +70,7 @@ AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = [
     "daphne",
     "channels",
-    "apps.accounts",
+    "apps.accounts.apps.AccountsConfig",
     # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -86,11 +86,11 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.apple",
     "allauth.socialaccount.providers.google",
     "django_htmx",
-    "orchestrai_django",
     "core",
     "simulation",
     "chatlab",
     "trainerlab",
+    "orchestrai_django",
     "imagekit",
 ]
 
@@ -104,7 +104,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    "apps.accounts.middleware.InvitationMiddleware",  # Capture invitation tokens from URL
+    "apps.accounts.middleware.InvitationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
