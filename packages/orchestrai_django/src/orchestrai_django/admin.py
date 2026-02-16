@@ -203,11 +203,11 @@ class ServiceCallAdmin(admin.ModelAdmin):
     def request_pretty(self, obj: ServiceCall) -> str:
         if obj.request:
             return _pretty_json(obj.request)
-        latest = obj.attempts.order_by("-attempt").first()
-        if latest and latest.request:
-            return _pretty_json(latest.request)
-        if latest and latest.request_raw:
-            return _pretty_json(latest.request_raw)
+        latest = obj.latest_attempt
+        if latest and latest.request_input:
+            return _pretty_json(latest.request_input)
+        if latest and latest.request_provider:
+            return _pretty_json(latest.request_provider)
         return "-"
 
 
@@ -247,11 +247,14 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
         "attempt",
         "attempt_correlation_id",
         "status",
-        "request_pretty",
+        "request_input_pretty",
+        "request_pydantic_pretty",
+        "request_provider_pretty",
         "request_messages_pretty",
         "request_tools_pretty",
         "schema_fqn",
         "request_model",
+        "agent_config_pretty",
         "response_raw_pretty",
         "response_provider_raw_pretty",
         "provider_response_id",
@@ -280,14 +283,25 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Request",
+            "Request Pipeline (3 Layers)",
             {
                 "fields": (
                     "request_model",
                     "schema_fqn",
+                    "request_input_pretty",
+                    "request_pydantic_pretty",
+                    "request_provider_pretty",
                     "request_messages_pretty",
                     "request_tools_pretty",
-                    "request_pretty",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Agent Configuration",
+            {
+                "fields": (
+                    "agent_config_pretty",
                 ),
                 "classes": ("collapse",),
             },
@@ -337,13 +351,17 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
             )
         return "-"
 
-    @admin.display(description="Request JSON")
-    def request_pretty(self, obj: ServiceCallAttempt) -> str:
-        if obj.request:
-            return _pretty_json(obj.request)
-        if obj.request_raw:
-            return _pretty_json(obj.request_raw)
-        return "-"
+    @admin.display(description="Request Input (SimWorks)")
+    def request_input_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_input) if obj.request_input else "-"
+
+    @admin.display(description="Request Pydantic (Pydantic AI)")
+    def request_pydantic_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_pydantic) if obj.request_pydantic else "-"
+
+    @admin.display(description="Request Provider (Wire Format)")
+    def request_provider_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_provider) if obj.request_provider else "-"
 
     @admin.display(description="Request Messages")
     def request_messages_pretty(self, obj: ServiceCallAttempt) -> str:
@@ -352,6 +370,10 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
     @admin.display(description="Request Tools")
     def request_tools_pretty(self, obj: ServiceCallAttempt) -> str:
         return _pretty_json(obj.request_tools) if obj.request_tools else "-"
+
+    @admin.display(description="Agent Configuration")
+    def agent_config_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.agent_config) if obj.agent_config else "-"
 
     @admin.display(description="Response Raw")
     def response_raw_pretty(self, obj: ServiceCallAttempt) -> str:

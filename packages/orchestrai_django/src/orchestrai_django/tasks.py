@@ -90,6 +90,64 @@ def _resolve_response_schema(schema):
     return None
 
 
+def _extract_agent_config(service) -> dict | None:
+    """Extract Pydantic AI Agent configuration from service for debugging.
+
+    Captures model settings, system prompts, tools, and other Agent configuration.
+    """
+    from orchestrai.utils.json import make_json_safe
+
+    config = {}
+
+    try:
+        # Get the Agent instance if it exists
+        agent = getattr(service, '_agent', None) or getattr(service, 'agent', None)
+
+        if agent is None:
+            return None
+
+        # Model information
+        config["model"] = str(getattr(agent, 'model', None))
+        config["model_settings"] = make_json_safe(getattr(agent, 'model_settings', {}))
+
+        # System prompts
+        system_prompts = []
+        if hasattr(agent, 'system_prompts'):
+            for prompt in agent.system_prompts:
+                if callable(prompt):
+                    system_prompts.append({"type": "callable", "name": getattr(prompt, '__name__', str(prompt))})
+                else:
+                    system_prompts.append({"type": "string", "content": str(prompt)[:500]})
+        config["system_prompts"] = system_prompts
+
+        # Tools
+        tools_list = []
+        if hasattr(agent, 'tools'):
+            for tool in agent.tools:
+                tool_info = {
+                    "name": getattr(tool, '__name__', str(tool)),
+                    "type": type(tool).__name__,
+                }
+                if hasattr(tool, '__doc__') and tool.__doc__:
+                    tool_info["description"] = tool.__doc__[:200]
+                tools_list.append(tool_info)
+        config["tools"] = tools_list
+
+        # Result type / schema
+        config["result_type"] = str(getattr(agent, 'result_type', None))
+
+        # Other settings
+        config["retries"] = getattr(agent, 'retries', None)
+        config["result_tool_name"] = getattr(agent, 'result_tool_name', None)
+        config["result_tool_description"] = getattr(agent, 'result_tool_description', None)
+
+        return make_json_safe(config)
+
+    except Exception as e:
+        logger.debug(f"Failed to extract agent config: {e}")
+        return {"error": str(e)}
+
+
 def _build_request_json(service, payload, context, request_obj):
     """Construct a request JSON payload for debugging."""
     from orchestrai.prompts.decorators import collect_prompts, render_prompt_methods
@@ -508,9 +566,24 @@ def run_service_call(call_id: str):
             request_obj = getattr(result, 'request', None)
             request_json = _build_request_json(service, payload, call.context, request_obj)
 
+            # Capture Agent configuration for debugging
+            agent_config = _extract_agent_config(service)
+            if agent_config:
+                attempt_record.agent_config = agent_config
+
+            # Capture Pydantic AI Request object (raw)
+            if request_obj is not None:
+                try:
+                    pydantic_request_json = request_obj.model_dump(mode="json")
+                    attempt_record.request_pydantic = pydantic_request_json
+                except TypeError:
+                    # Handle MockValSer or other serialization issues
+                    pydantic_request_json = _manual_extract_fields(request_obj)
+                    attempt_record.request_pydantic = pydantic_request_json
+
             if request_json:
-                attempt_record.request = request_json
-                attempt_record.request_raw = request_json
+                attempt_record.request_input = request_json
+                attempt_record.request_provider = request_json
 
                 # Extract messages for easier querying
                 messages_json = []
