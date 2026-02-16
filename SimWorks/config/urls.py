@@ -18,7 +18,10 @@ urlpatterns = [
     path("api/v1/", api_v1.urls),
     # App routes
     path("", include("simulation.urls")),
-    path("accounts/", include("accounts.urls")),
+    # Django-allauth URLs (login, signup, password reset, etc.)
+    path("accounts/", include("allauth.urls")),
+    # Custom invitation URLs
+    path("invitations/", include("apps.accounts.urls")),
     path("chatlab/", include("chatlab.urls")),
     path(
         "robots.txt",

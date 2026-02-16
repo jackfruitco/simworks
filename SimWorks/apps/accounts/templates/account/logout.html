@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Logout - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="max-w-md mx-auto mt-8 bg-surface-alt border border-border rounded-lg shadow-lg p-8"
+         x-data="{ open: true }">
+        <h1 class="text-3xl font-bold text-content mb-6">Logout</h1>
+
+        <p class="text-content-secondary mb-6">Are you sure you want to logout?</p>
+
+        <form method="post" action="{% url 'account_logout' %}">
+            {% csrf_token %}
+            <div class="flex gap-3">
+                <button type="submit"
+                        class="flex-1 bg-jckfrt-olive hover:bg-jckfrt-olive-hover text-content-light font-medium py-2 px-4 rounded transition-colors">
+                    Yes, Logout
+                </button>
+                <a href="{% url 'home' %}"
+                   class="flex-1 text-center bg-surface border border-border hover:bg-surface-alt text-content font-medium py-2 px-4 rounded transition-colors">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Alpine UI Dialog Alternative (for modal-style logout) -->
+    <template x-if="false">
+        <div x-show="open"
+             x-dialog
+             x-model="open"
+             class="fixed inset-0 z-50 overflow-y-auto"
+             style="display: none;">
+            <!-- Backdrop -->
+            <div x-dialog:overlay
+                 x-transition.opacity
+                 class="fixed inset-0 bg-black bg-opacity-50"></div>
+
+            <!-- Dialog -->
+            <div class="flex min-h-screen items-center justify-center p-4">
+                <div x-dialog:panel
+                     x-transition
+                     class="relative bg-surface-alt border border-border rounded-lg shadow-xl max-w-md w-full p-6">
+                    <h2 x-dialog:title class="text-2xl font-bold text-content mb-4">Confirm Logout</h2>
+                    <p x-dialog:description class="text-content-secondary mb-6">
+                        Are you sure you want to logout?
+                    </p>
+
+                    <form method="post" action="{% url 'account_logout' %}">
+                        {% csrf_token %}
+                        <div class="flex gap-3">
+                            <button type="submit"
+                                    class="flex-1 bg-jckfrt-olive hover:bg-jckfrt-olive-hover text-content-light font-medium py-2 px-4 rounded transition-colors">
+                                Yes, Logout
+                            </button>
+                            <button type="button"
+                                    @click="open = false"
+                                    class="flex-1 bg-surface border border-border hover:bg-surface-alt text-content font-medium py-2 px-4 rounded transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </template>
+{% endblock %}

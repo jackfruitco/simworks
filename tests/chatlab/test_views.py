@@ -11,7 +11,7 @@ from unittest.mock import patch
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     return UserRole.objects.create(title="Test Role Views")
 
@@ -19,10 +19,9 @@ def user_role(db):
 @pytest.fixture
 def user(db, user_role):
     """Create a test user."""
-    from accounts.models import CustomUser
+    from apps.accounts.models import User
 
-    return CustomUser.objects.create_user(
-        username="viewtestuser",
+    return User.objects.create_user(
         email="viewtest@example.com",
         password="testpass123",
         role=user_role,
@@ -32,10 +31,9 @@ def user(db, user_role):
 @pytest.fixture
 def system_user(db, user_role):
     """Create a system/AI user for AI messages."""
-    from accounts.models import CustomUser
+    from apps.accounts.models import User
 
-    return CustomUser.objects.create_user(
-        username="system",
+    return User.objects.create_user(
         email="system@example.com",
         password="systempass123",
         role=user_role,
