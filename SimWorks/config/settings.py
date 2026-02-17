@@ -80,6 +80,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.sites",
     "django.contrib.sitemaps",
+    "corsheaders",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
@@ -95,6 +96,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "core.middleware.HealthCheckMiddleware",
     "core.middleware.CorrelationIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -158,6 +160,12 @@ else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+# CORS
+CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)
+CORS_ALLOWED_ORIGINS_REGEX = check_env("DJANGO_CORS_ALLOWED_ORIGINS_REGEX", default=None)
+CORS_ALLOW_ALL_ORIGINS = check_env("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=False)
 
 # ---------------------------------------------------------------------------
 # OrchestrAI configuration

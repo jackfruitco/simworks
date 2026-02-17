@@ -39,6 +39,7 @@ dependencies = [
     "django==6.0.2",
     "twisted[http2,tls]>=25.5.0",
     "structlog>=25.5.0",
+    "django-cors-headers>=4.9.0",
 ]
 
 [tool.uv.workspace]

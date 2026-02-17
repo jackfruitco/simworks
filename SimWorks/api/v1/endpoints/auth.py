@@ -21,12 +21,12 @@ router = Router(tags=["auth"])
 class LoginRequest(BaseModel):
     """Request body for token obtain endpoint."""
 
-    username: str = Field(
+    email: str = Field(
         ...,
         min_length=1,
         max_length=255,
-        description="Username or email",
-        examples=["john.doe"],
+        description="User email address",
+        examples=["user@example.com"],
     )
     password: str = Field(
         ...,
@@ -91,13 +91,13 @@ class RefreshResponse(BaseModel):
     "/token/",
     response=TokenResponse,
     summary="Obtain JWT tokens",
-    description="Authenticate with username/password and receive JWT tokens.",
+    description="Authenticate with email/password and receive JWT tokens.",
 )
 @auth_rate_limit
 def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
     """Obtain JWT access and refresh tokens.
 
-    Authenticates the user with username/password and returns:
+    Authenticates the user with email/password and returns:
     - access_token: Short-lived token for API authentication
     - refresh_token: Long-lived token for obtaining new access tokens
     - expires_in: Access token lifetime in seconds
@@ -106,19 +106,20 @@ def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
     Use the access_token in the Authorization header:
         Authorization: Bearer <access_token>
     """
-    user = authenticate(request, username=body.username, password=body.password)
+    # Django authenticate expects 'username' kwarg, but our User model uses email as USERNAME_FIELD
+    user = authenticate(request, username=body.email, password=body.password)
 
     if user is None:
-        logger.warning("auth.login_failed", username=body.username, reason="invalid_credentials")
+        logger.warning("auth.login_failed", email=body.email, reason="invalid_credentials")
         raise HttpError(401, "Invalid credentials")
 
     if not user.is_active:
         # Use same error message to prevent user enumeration
-        logger.warning("auth.login_failed", username=body.username, reason="user_inactive")
+        logger.warning("auth.login_failed", email=body.email, reason="user_inactive")
         raise HttpError(401, "Invalid credentials")
 
     tokens = create_tokens(user)
-    logger.info("auth.tokens_issued", user_id=user.pk, username=user.username)
+    logger.info("auth.tokens_issued", user_id=user.pk, email=user.email)
 
     return TokenResponse(**tokens)
 
