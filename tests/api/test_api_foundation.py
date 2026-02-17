@@ -143,7 +143,7 @@ class TestAuthentication:
 
     def test_authenticated_access_to_protected_endpoint(self, django_user_model):
         """Protected endpoints allow authenticated requests."""
-        from accounts.models import UserRole
+        from apps.accounts.models import UserRole
 
         # Create required role first (UserRole only has 'title' field)
         role = UserRole.objects.create(title="Test Role")

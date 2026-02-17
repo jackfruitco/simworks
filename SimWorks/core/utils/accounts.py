@@ -12,7 +12,7 @@ def get_or_create_system_user():
     Returns the singleton System user for AI or system-generated actions.
     Creates the user and the 'System' UserRole if they do not exist.
     """
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     User = get_user_model()
     role, _ = UserRole.objects.get_or_create(title="System")

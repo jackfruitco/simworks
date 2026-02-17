@@ -31,7 +31,7 @@ from api.v1.auth import (
 @pytest.fixture
 def test_user(django_user_model):
     """Create a test user with a role."""
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     role = UserRole.objects.create(title="Test Role JWT")
     return django_user_model.objects.create_user(
@@ -436,7 +436,7 @@ class TestDualAuth:
 
     def test_dual_auth_prefers_session_over_jwt(self, test_user, django_user_model):
         """When both session and JWT are present, session takes precedence."""
-        from accounts.models import UserRole
+        from apps.accounts.models import UserRole
         from simulation.models import Simulation
 
         # Create a second user for JWT

@@ -19,7 +19,7 @@ from api.v1.auth import create_access_token
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     return UserRole.objects.create(title="Test Role Messages")
 

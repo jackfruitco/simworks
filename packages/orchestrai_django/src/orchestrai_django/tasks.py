@@ -652,10 +652,10 @@ def run_service_call(call_id: str):
         try:
             _inline_persist_service_call(call)
         except Exception as persist_err:
-            logger.warning(
+            logger.exception(
                 "Service call %s: inline persistence failed: %s (will retry via drain worker)",
                 call_id,
-                persist_err
+                exc_info=persist_err,
             )
 
         return call.to_jsonable()
