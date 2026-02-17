@@ -69,8 +69,8 @@ class TestPatientInitialPersistence:
                 }
             ],
             "metadata": [
-                {"key": "patient_name", "value": "John Smith"},
-                {"key": "age", "value": "45"},
+                {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
+                {"kind": "patient_demographics", "key": "age", "value": "45"},
             ],
             "llm_conditions_check": [
                 {"key": "ready", "value": "true"}
@@ -85,14 +85,21 @@ class TestPatientInitialPersistence:
         assert result.role == RoleChoices.ASSISTANT
         assert result.is_from_ai is True
         assert result.sender is not None
-        assert result.sender.username == "System"
+        # User model doesn't have 'username' - check email instead
+        assert result.sender.email == "system@simworks.local"
 
-        # Check metadata was created
-        from simulation.models import SimulationMetadata
-        metadata = await SimulationMetadata.objects.filter(
+        # Check metadata was created as PatientDemographics (polymorphic subclass)
+        from simulation.models import SimulationMetadata, PatientDemographics
+        metadata_count = await SimulationMetadata.objects.filter(
             simulation_id=context.simulation_id
         ).acount()
-        assert metadata == 2
+        assert metadata_count == 2
+
+        # Verify polymorphic type is PatientDemographics
+        demographics_count = await PatientDemographics.objects.filter(
+            simulation_id=context.simulation_id
+        ).acount()
+        assert demographics_count == 2
 
     async def test_llm_conditions_check_not_persisted(self, context):
         """llm_conditions_check should NOT be persisted."""

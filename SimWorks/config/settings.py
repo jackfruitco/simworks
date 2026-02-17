@@ -165,7 +165,9 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # CORS
 CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)
 CORS_ALLOWED_ORIGINS_REGEX = check_env("DJANGO_CORS_ALLOWED_ORIGINS_REGEX", default=None)
-CORS_ALLOW_ALL_ORIGINS = check_env("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=False)
+CORS_ALLOW_ALL_ORIGINS = True if (
+        os.getenv("DJANGO_CORS_ALLOW_ALL_ORIGINS", False) in ("true", "True", True, 1)
+) else False
 
 # ---------------------------------------------------------------------------
 # OrchestrAI configuration

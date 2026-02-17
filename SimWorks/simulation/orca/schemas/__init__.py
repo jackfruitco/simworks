@@ -8,9 +8,23 @@ Pydantic AI handles validation natively - no @schema decorator needed.
 
 from .feedback import HotwashInitialSchema
 from .output_items import LLMConditionsCheckItem, HotwashInitialBlock
+from .metadata_items import (
+    MetadataItem,
+    LabResultItem,
+    RadResultItem,
+    PatientHistoryItem,
+    PatientDemographicsItem,
+    SimulationMetadataItem,
+)
 
 __all__ = [
     "HotwashInitialSchema",
     "LLMConditionsCheckItem",
     "HotwashInitialBlock",
+    "MetadataItem",
+    "LabResultItem",
+    "RadResultItem",
+    "PatientHistoryItem",
+    "PatientDemographicsItem",
+    "SimulationMetadataItem",
 ]

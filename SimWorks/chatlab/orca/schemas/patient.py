@@ -10,8 +10,9 @@ import logging
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from orchestrai.types import ResultMessageItem, ResultMetafield
+from orchestrai.types import ResultMessageItem
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
+from simulation.orca.schemas.metadata_items import MetadataItem
 from chatlab.orca.persisters import persist_results_metadata
 from .mixins import PatientResponseBaseMixin
 
@@ -23,16 +24,26 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
 
     **Persistence** (declarative):
     - messages → chatlab.Message via ``persist_messages`` (inherited from mixin)
-    - metadata → simulation.SimulationMetadata via auto-mapper (``__orm_model__``)
+    - metadata → simulation.SimulationMetadata polymorphic models via auto-mapper
     - llm_conditions_check → NOT PERSISTED
+
+    **Metadata Structure**:
+    The LLM must generate metadata items with the correct polymorphic structure:
+    - ``kind="lab_result"`` → simulation.LabResult
+    - ``kind="rad_result"`` → simulation.RadResult
+    - ``kind="patient_history"`` → simulation.PatientHistory
+    - ``kind="patient_demographics"`` → simulation.PatientDemographics
+    - ``kind="generic"`` → simulation.SimulationMetadata (fallback)
+
+    Each item type includes required fields matching the Django model structure.
     """
 
-    metadata: list[ResultMetafield] = Field(
+    metadata: list[MetadataItem] = Field(
         ...,
-        description="Patient demographics and initial metadata"
+        description="Patient demographics and initial metadata (polymorphic structure with 'kind' discriminator)"
     )
 
-    __persist__ = {"metadata": None}  # None = auto-map via ResultMetafield.__orm_model__
+    __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
     __persist_primary__ = "messages"
 
 
