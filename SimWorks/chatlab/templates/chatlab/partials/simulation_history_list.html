@@ -2,21 +2,19 @@
 
 <div id="simulation-history-list"
      x-data="{ scroll: 0 }"
-     x-init="
-         setInterval(() => {
-             scroll = $el.scrollTop;
-             $el.dispatchEvent(new CustomEvent('refresh'));
-         }, 10000);
-     "
-     @htmx:after-swap.window="
+     @htmx:before-request="scroll = $el.scrollTop"
+     @htmx:after-settle="
          $nextTick(() => {
-             $el.scrollTop = scroll;
+             if ($event.detail.target.id === 'simulation-history-list') {
+                 $el.scrollTop = scroll;
+             }
          })
      ">
     <ul hx-get="{% url 'chatlab:index' %}"
-        hx-trigger="refresh from:closest div"
-        hx-target="#simulation-history-list"
+        hx-trigger="every 10s"
+        hx-target="closest #simulation-history-list"
         hx-swap="outerHTML"
+        hx-sync="closest #simulation-history-list:abort"
         class="simulation-history-list">
         {% for sim in simulations %}
             <li class="simulation-history-list__item">
@@ -39,17 +37,24 @@
     <div class="pagination">
         {% if simulations.has_previous %}
             <a hx-get="?page={{ simulations.previous_page_number }}"
-               hx-target="#simulation-history"
-               hx-swap="innerHTML"
+               hx-target="closest #simulation-history-list"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               hx-indicator="#history-loading"
                href="?page={{ simulations.previous_page_number }}">« Previous</a>
         {% endif %}
 
         <span>Page {{ simulations.number }} of {{ simulations.paginator.num_pages }}</span>
+        <span id="history-loading" class="htmx-indicator" style="display: none;">
+            <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
+        </span>
 
         {% if simulations.has_next %}
             <a hx-get="?page={{ simulations.next_page_number }}"
-               hx-target="#simulation-history"
-               hx-swap="innerHTML"
+               hx-target="closest #simulation-history-list"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               hx-indicator="#history-loading"
                href="?page={{ simulations.next_page_number }}">Next »</a>
         {% endif %}
     </div>

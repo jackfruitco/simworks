@@ -16,9 +16,6 @@
 
   <form
     id="sign-orders-form"
-    hx-post="{% url 'simulation:sign_orders' simulation.id %}"
-    hx-trigger="submit"
-    hx-headers='{"Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token }}"}'
     aria-label="Sign staged orders"
   >
     {% csrf_token %}

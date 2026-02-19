@@ -120,6 +120,11 @@
 
       orderList.appendChild(li);
     });
+
+    // Update submit button disabled state
+    if (signOrderBtn) {
+      signOrderBtn.disabled = pendingOrders.length === 0;
+    }
   }
 
   function stageOrderForSignature() {
@@ -152,8 +157,12 @@
       showToast("No orders staged for signature.", false);
       return;
     }
+
+    // Disable button and show spinner
+    if (signOrderBtn) signOrderBtn.disabled = true;
     spinner?.classList.add("active");
     spinner?.setAttribute("aria-hidden", "false");
+
     try {
       const simulationId = overlay.dataset.simulationId;
       const res = await fetch(`/simulation/${simulationId}/orders/sign-orders/`, {
@@ -180,6 +189,7 @@
     } finally {
       spinner?.classList.remove("active");
       spinner?.setAttribute("aria-hidden", "true");
+      if (signOrderBtn) signOrderBtn.disabled = pendingOrders.length === 0;
     }
   }
 

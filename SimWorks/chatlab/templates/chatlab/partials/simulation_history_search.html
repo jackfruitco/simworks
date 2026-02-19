@@ -5,12 +5,32 @@
       hx-target="#simulation-history-list"
       hx-push-url="true"
       hx-trigger="submit"
+      hx-indicator="#search-loading"
       class="search-form flex flex-col gap-2 bg-white dark:bg-zinc-900 p-4 rounded-md shadow">
-    {% with search_input="<input id='simulation-search-input' type='text' name='q' placeholder='Search for simulations...' value='"|add:search_query|add:"' autocomplete='off'>" %}
-        {% include "partials/forms/_field.html" with label="Search for simulations" id="simulation-search-input" widget=search_input %}
-    {% endwith %}
-    {% with checkbox_input="<input id='search-messages-checkbox' type='checkbox' name='search_messages' value='1' "|add:("checked" if search_messages else "")|add:" >" %}
-        {% include "partials/forms/_field.html" with label="Look in simulation messages also" widget=checkbox_input label_after_widget=True %}
-    {% endwith %}
-    <button class="btn ghost" type="submit">Search</button>
+    <div class="form-field">
+        <label class="form-label" for="simulation-search-input">Search for simulations</label>
+        <div class="form-widget">
+            <input id="simulation-search-input"
+                   type="text"
+                   name="q"
+                   placeholder="Search for simulations..."
+                   value="{{ search_query }}"
+                   autocomplete="off">
+        </div>
+    </div>
+    <div class="form-field">
+        <label class="form-label inline" for="search-messages-checkbox">
+            <input id="search-messages-checkbox"
+                   type="checkbox"
+                   name="search_messages"
+                   value="1"{% if search_messages %} checked{% endif %}>
+            <span>Look in simulation messages also</span>
+        </label>
+    </div>
+    <button class="btn ghost" type="submit">
+        <span id="search-loading" class="htmx-indicator" style="display: none;">
+            <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
+        </span>
+        <span>Search</span>
+    </button>
 </form>

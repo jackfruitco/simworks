@@ -10,10 +10,14 @@
              x-show="modifierTrayOpen"
              x-cloak
              hx-get="{% url 'chatlab:modifier_selector' %}"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-            {# Content loaded via HTMX #}
-            <span class="loading">Loading...</span>
+             hx-trigger="revealed"
+             hx-swap="innerHTML"
+             hx-indicator="#modifier-loading">
+            {# Content loaded via HTMX when tray opens #}
+            <div id="modifier-loading" class="htmx-indicator" style="text-align: center; padding: 1rem;">
+                <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
+                <span>Loading modifiers...</span>
+            </div>
         </div>
     </div>
 </form>

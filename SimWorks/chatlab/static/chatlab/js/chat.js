@@ -286,6 +286,16 @@ function ChatManager(simulation_id, currentUser) {
                 this._handleScrollBehavior(false);
             }).catch((err) => {
                 console.error("[ChatManager] Failed to fetch message:", err);
+                // Show error to user
+                if (window.Alpine?.store('toasts')) {
+                    window.Alpine.store('toasts').add('Failed to load message', 'error');
+                } else {
+                    // Fallback: append error message to chat
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'chat-error';
+                    errorDiv.textContent = 'Failed to load message. Please refresh the page.';
+                    this.messagesDiv.appendChild(errorDiv);
+                }
             });
         },
 
@@ -552,30 +562,39 @@ function ChatManager(simulation_id, currentUser) {
                 }
 
                 const previousHeight = container.scrollHeight;
+                const url = `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`;
 
-                anchor.setAttribute('hx-get', `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`);
-                anchor.setAttribute('hx-swap', 'beforebegin');
-                anchor.setAttribute('hx-trigger', 'load');
-                htmx.process(anchor);
-
-                htmx.on(anchor, 'htmx:afterSwap', () => {
+                // Use single HTMX request with afterSwap handler
+                htmx.ajax('GET', url, {
+                    target: anchor,
+                    swap: 'beforebegin',
+                }).then(() => {
+                    // Maintain scroll position after prepending messages
                     const addedHeight = container.scrollHeight - previousHeight;
                     container.scrollTop += addedHeight;
-                });
 
-                fetch(`/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`)
-                    .then(response => response.text())
-                    .then(html => {
-                        if (!html.includes('data-message-id')) {
-                            this.hasMoreMessages = false;
-                            if (loadButton) loadButton.style.display = "none";
-                        } else {
-                            if (loadButton) {
-                                loadButton.disabled = false;
-                                loadButton.textContent = "Load Older Messages";
-                            }
+                    // Check if more messages exist by inspecting the response
+                    const newFirstMessage = container.firstElementChild;
+                    if (!newFirstMessage?.dataset?.messageId || newFirstMessage === firstMessage) {
+                        this.hasMoreMessages = false;
+                        if (loadButton) loadButton.style.display = "none";
+                    } else {
+                        if (loadButton) {
+                            loadButton.disabled = false;
+                            loadButton.textContent = "Load Older Messages";
                         }
-                    });
+                    }
+                }).catch(err => {
+                    console.error("[ChatManager] Failed to load older messages:", err);
+                    if (loadButton) {
+                        loadButton.disabled = false;
+                        loadButton.textContent = "Load Older Messages";
+                    }
+                    // Show error to user
+                    if (window.Alpine?.store('toasts')) {
+                        window.Alpine.store('toasts').add('Failed to load older messages', 'error');
+                    }
+                });
             }
         },
 

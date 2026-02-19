@@ -17,6 +17,11 @@
     Load Older Messages
   </button>
 
+  <!-- Loading indicator for messages -->
+  <div id="messages-loading" class="htmx-indicator" style="text-align: center; padding: 1rem; display: none;">
+    <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span> Loading messages...
+  </div>
+
   <!-- Message area (HTMX loaded & scroll monitored) -->
   <div
     id="chat-messages"
@@ -25,6 +30,7 @@
     hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
     hx-trigger="load"
     hx-swap="innerHTML"
+    hx-indicator="#messages-loading"
     role="list"
     aria-live="polite"
   >
