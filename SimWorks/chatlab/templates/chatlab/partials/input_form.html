@@ -24,7 +24,7 @@
     id="chat-message-input"
     x-ref="messageInput"
     @input="handleInput"
-    @keydown.enter.exact.prevent="send"
+    @keydown="handleKeyDown($event)"
     :disabled="isLocked"
     :placeholder="placeholderText()"
     :aria-label="messageAriaLabel()"

@@ -26,6 +26,20 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
                 this.$refs.messageInput.style.height = `${this.$refs.messageInput.scrollHeight}px`;
             }
         },
+        handleKeyDown(event) {
+            // On mobile/tablet, Enter should create a new line, not send
+            // On desktop, Enter sends, Shift+Enter creates new line
+            if (event.key === 'Enter' && !event.shiftKey) {
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                                 ('ontouchstart' in window && window.innerWidth < 1024);
+
+                if (!isMobile) {
+                    event.preventDefault();
+                    this.send();
+                }
+                // On mobile, allow default behavior (new line)
+            }
+        },
         send() {
             if (this.isLocked) return;
 
@@ -201,8 +215,13 @@ function ChatManager(simulation_id, currentUser) {
         },
 
         handleChatMessage(data) {
-            const isFromSelf = data.senderId === this.currentUser;
-            const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? false;
+            // Determine if message is from AI (incoming) or from current user (outgoing)
+            const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? data.isFromAI ?? false;
+            const senderId = data.senderId ?? data.sender_id;
+            const isFromSelf = !isFromSimulatedUser && (
+                senderId === parseInt(this.currentUser) ||
+                data.username === this.currentUser
+            );
             const messageId = data.message_id ?? data.id;
 
             // If from simulated user (AI), stop typing indicator
@@ -229,7 +248,7 @@ function ChatManager(simulation_id, currentUser) {
                 return;
             }
 
-            // For AI messages, fetch server-rendered HTML via HTMX
+            // For AI messages, fetch server-rendered HTML via WebSocket-first pattern
             // This ensures HTML structure matches server templates
             if (isFromSimulatedUser && messageId) {
                 this._fetchAndAppendMessage(messageId);

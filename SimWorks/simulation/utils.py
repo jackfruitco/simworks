@@ -53,9 +53,9 @@ def get_user_initials(user) -> str:
     User = get_user_model()
     if type(user) == str:
         try:
-            user = User.objects.get(username=user)
+            user = User.objects.get(email=user)
         except User.DoesNotExist:
-            raise Exception(f"Error! get_user_initials: Username {user} not found")
+            raise Exception(f"Error! get_user_initials: User {user} not found")
 
     if (
         hasattr(user, "first_name")
@@ -64,6 +64,6 @@ def get_user_initials(user) -> str:
         and user.last_name
     ):
         return f"{user.first_name[0]}{user.last_name[0]}".upper()
-    elif hasattr(user, "username") and user.username and not user.username.isnumeric():
-        return user.username[0].upper()
+    elif hasattr(user, "email") and user.email:
+        return user.email[0].upper()
     return "Unk"

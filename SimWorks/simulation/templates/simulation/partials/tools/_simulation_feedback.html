@@ -4,17 +4,26 @@
 {% load chatlab_filters %}
 
 {% if tool.data %}
-  <ul class="sim-metadata">
+  <ul class="space-y-3">
     {% for metafield in tool.data %}
         {% if metafield.key|lower == "overall_feedback" %}
-            <li><i style="color: var(--color-muted)">{{ metafield.value }}</i></li>
+            <li class="px-3 py-2 italic text-gray-600 bg-blue-50 rounded-md border border-blue-200">
+                {{ metafield.value }}
+            </li>
         {% elif metafield.key|lower == "topics" %}
-          <strong>Topics to consider researching:</strong>
-          {% for topic in metafield.value|as_list %}
-            <li>{{ topic }}</li>
-          {% endfor %}
+          <li class="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
+            <strong class="block mb-2 text-gray-700">Topics to consider researching:</strong>
+            <ul class="ml-4 space-y-1 list-disc list-inside">
+              {% for topic in metafield.value|as_list %}
+                <li class="text-gray-900">{{ topic }}</li>
+              {% endfor %}
+            </ul>
+          </li>
         {% else %}
-            <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|feedback }}</li>
+            <li class="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
+                <strong class="text-gray-700">{{ metafield.key|title }}:</strong>
+                <span class="text-gray-900">{{ metafield.value|feedback }}</span>
+            </li>
         {% endif %}
     {% endfor %}
   </ul>

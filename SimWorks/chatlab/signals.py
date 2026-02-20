@@ -49,7 +49,10 @@ def broadcast_new_message(sender, instance, created, **kwargs):
                 "status": "completed",
                 "messageType": instance.message_type,
                 "isFromAi": instance.is_from_ai,
+                "isFromAI": instance.is_from_ai,  # Alias for compatibility
                 "displayName": instance.display_name or "",
+                "senderId": instance.sender_id,
+                "sender_id": instance.sender_id,  # Snake_case alias
             }
 
             # Create outbox event with idempotency key based on message ID

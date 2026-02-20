@@ -1,8 +1,10 @@
 {# templates/simulation/partials/_patient_history.html #}
 {% if tool.data %}
-  <ul class="sim-metadata">
+  <ul class="space-y-2">
     {% for metafield in tool.data %}
-      <li>{{ metafield.value }}</li>
+      <li class="px-3 py-2 text-gray-900 bg-gray-50 rounded-md border border-gray-200">
+        {{ metafield.value }}
+      </li>
     {% endfor %}
   </ul>
 {% else %}

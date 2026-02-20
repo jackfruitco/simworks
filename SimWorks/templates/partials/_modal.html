@@ -1,5 +1,5 @@
 {% comment %}
-  Generic modal partial for accessible dialogs.
+  Generic modal partial for accessible dialogs using Alpine.js
   Expected context variables:
     - modal_id: unique id for the modal container
     - modal_label_id: id for the modal title
@@ -11,32 +11,46 @@
 {% endcomment %}
 <div
   id="{{ modal_id }}"
-  class="overlay hidden"
+  x-data="{ open: false }"
+  x-init="
+    const toggleBtn = document.getElementById('toggle-{{ modal_id }}');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => { open = true; $nextTick(() => $refs.firstInput?.focus()); });
+    }
+  "
+  x-show="open"
+  @keydown.escape.window="open = false"
+  @click.self="open = false"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 px-4"
   role="dialog"
   aria-modal="true"
   aria-labelledby="{{ modal_label_id }}"
   aria-describedby="{{ modal_body_id }}"
-  aria-hidden="true"
+  :aria-hidden="!open"
+  x-cloak
+  style="display: none"
   {% if modal_extra_attrs %}{{ modal_extra_attrs|safe }}{% endif %}
 >
-  <div class="modal-backdrop" data-modal-backdrop></div>
-  <div class="overlay-content" role="document">
-    <div tabindex="0" class="sr-only focus-guard" data-focus-guard="start"></div>
-    <header class="modal-header">
-      <h2 id="{{ modal_label_id }}" class="modal-title">{{ modal_title }}</h2>
+  <div
+    @click.stop
+    class="relative w-full max-w-lg bg-white rounded-lg shadow-xl transform transition-all"
+    role="document"
+  >
+    <header class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <h2 id="{{ modal_label_id }}" class="text-lg font-semibold text-gray-900">{{ modal_title }}</h2>
       <button
         type="button"
-        class="close-button"
+        @click="open = false"
+        class="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
         aria-label="Close dialog"
         data-modal-close
         {% if modal_close_id %}id="{{ modal_close_id }}"{% endif %}
       >
-        ✕
+        <span class="text-2xl">&times;</span>
       </button>
     </header>
-    <div id="{{ modal_body_id }}" class="modal-body">
+    <div id="{{ modal_body_id }}" class="px-6 py-4">
       {% include modal_body_template %}
     </div>
-    <div tabindex="0" class="sr-only focus-guard" data-focus-guard="end"></div>
   </div>
 </div>

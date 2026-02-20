@@ -8,8 +8,16 @@ from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from api.v1.auth import InvalidTokenError, create_tokens, refresh_access_token
+
+try:
+    # Optional; depends on whether refresh sessions are persisted server-side.
+    from api.v1.auth import revoke_refresh_token  # type: ignore
+except Exception:  # pragma: no cover
+    revoke_refresh_token = None
+
 from config.logging import get_logger
 from core.ratelimit import auth_rate_limit
 
@@ -75,6 +83,10 @@ class RefreshResponse(BaseModel):
     access_token: str = Field(
         ...,
         description="New JWT access token",
+    )
+    refresh_token: Optional[str] = Field(
+        default=None,
+        description="(Optional) Rotated refresh token, if rotation is enabled.",
     )
     expires_in: int = Field(
         ...,
@@ -147,3 +159,39 @@ def refresh_token(request: HttpRequest, body: RefreshRequest) -> RefreshResponse
         # Log full error but return generic message to prevent information leakage
         logger.warning("auth.token_refresh_failed", error=str(e))
         raise HttpError(401, "Invalid or expired refresh token")
+
+
+class LogoutRequest(BaseModel):
+    """Request body for logout endpoint."""
+
+    refresh_token: str = Field(
+        ...,
+        min_length=1,
+        description="Refresh token to revoke",
+    )
+
+
+@router.post(
+    "/logout/",
+    summary="Logout",
+    description="Revoke a refresh token/session (server-side), then the client should delete tokens locally.",
+)
+@auth_rate_limit
+def logout(request: HttpRequest, body: LogoutRequest):
+    """Logout by revoking the refresh token/session.
+
+    Best practice for token-based auth is to revoke the refresh token (or its backing session) server-side.
+    If server-side revocation is not implemented, this endpoint returns 501.
+    """
+    if revoke_refresh_token is None:
+        logger.error("auth.logout_not_supported")
+        raise HttpError(501, "Logout not supported")
+
+    try:
+        revoke_refresh_token(body.refresh_token)
+        logger.info("auth.logout", result="revoked")
+        return {"detail": "ok"}
+    except InvalidTokenError as e:
+        # For idempotency, treat invalid/expired as already-logged-out.
+        logger.info("auth.logout", result="already_invalid", error=str(e))
+        return {"detail": "ok"}

@@ -160,7 +160,7 @@ def create_message(
         role=RoleChoices.USER,
         message_type=body.message_type,
         is_from_ai=False,
-        display_name=user.get_full_name() or user.username,
+        display_name=user.get_full_name() or user.email,
     )
 
     logger.info(

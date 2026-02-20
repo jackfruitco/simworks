@@ -7,36 +7,39 @@
     <button id="toggle-order-request-form"
             type="button"
             :disabled="shouldDisable"
-            class="btn sm accent">
+            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+            aria-label="Request lab orders">
         Request Labs
     </button>
 
     {% if tool.data %}
-        <div class="sim-metadata-table-wrapper">
-            <table class="sim-metadata small">
-                <thead>
+        <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
                     <tr>
-                        <th>Panel Name</th>
-                        <th>Order Name</th>
-                        <th>Value</th>
-                        <th>Unit</th>
-                        <th>Reference Range</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-700">Panel Name</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-700">Order Name</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-700">Value</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-700">Unit</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-700">Reference Range</th>
                     </tr>
                 </thead>
 
-                <tbody>
+                <tbody class="bg-white divide-y divide-gray-200">
                     {% for result in tool.data %}
-                        <tr>
-                            <td data-label="Panel Name">{{ result.panel_name }}</td>
-                            <td data-label="Order Name">{{ result.result_name }}</td>
-                            <td data-label="Value">
-                                {{ result.value }}
-                                {% if result.flag|upper != "NORMAL" %}
-                                    <span style="color: red">!! </span>
-                                {% endif %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-4 py-3 text-gray-900" data-label="Panel Name">{{ result.panel_name }}</td>
+                            <td class="px-4 py-3 text-gray-900" data-label="Order Name">{{ result.result_name }}</td>
+                            <td class="px-4 py-3" data-label="Value">
+                                <span class="{% if result.flag|upper != 'NORMAL' %}text-red-600 font-semibold{% else %}text-gray-900{% endif %}">
+                                    {{ result.value }}
+                                    {% if result.flag|upper != "NORMAL" %}
+                                        <span class="ml-1">!!</span>
+                                    {% endif %}
+                                </span>
                             </td>
-                            <td data-label="Unit">{{ result.unit }}</td>
-                            <td data-label="Reference Range">({{ result.reference_range_low }} - {{ result.reference_range_high }})</td>
+                            <td class="px-4 py-3 text-gray-600" data-label="Unit">{{ result.unit }}</td>
+                            <td class="px-4 py-3 text-gray-600" data-label="Reference Range">({{ result.reference_range_low }} - {{ result.reference_range_high }})</td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -53,4 +56,3 @@
     <!-- Order Request Form -->
     {% include "simulation/partials/order-request-form.html" %}
 </div>
-<script src="{% static 'js/patient_orders.js' %}"></script>

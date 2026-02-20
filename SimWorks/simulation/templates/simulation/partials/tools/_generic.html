@@ -1,8 +1,11 @@
 {# templates/simulation/partials/_generic.html #}
 {% if tool.data %}
-  <ul class="sim-metadata">
+  <ul class="space-y-2">
     {% for metafield in tool.data %}
-      <li><strong>{{ metafield.key|title }}:</strong> {{ metafield.value|title }}</li>
+      <li class="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
+        <span class="font-semibold text-gray-700">{{ metafield.key|title }}:</span>
+        <span class="text-gray-900">{{ metafield.value|title }}</span>
+      </li>
     {% endfor %}
   </ul>
 {% else %}

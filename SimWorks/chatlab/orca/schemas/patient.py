@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field, ConfigDict
 from orchestrai.types import ResultMessageItem
 from simulation.orca.schemas.output_items import LLMConditionsCheckItem
 from simulation.orca.schemas.metadata_items import MetadataItem
-from chatlab.orca.persisters import persist_results_metadata
 from .mixins import PatientResponseBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -52,7 +51,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
     **Persistence** (declarative):
     - messages → chatlab.Message via ``persist_messages`` (inherited from mixin)
-    - image_requested → NOT PERSISTED (handled via ``post_persist`` hook)
+    - image_requested → Persisted to Message.image_requested field via context
     - llm_conditions_check → NOT PERSISTED
     """
 
@@ -64,8 +63,17 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
+        """Update Message records with image_requested flag."""
         if self.image_requested:
-            logger.info("Image requested for simulation %s", context.simulation_id)
+            logger.info("Image requested for simulation %s - flag set on Message records", context.simulation_id)
+            # Update all messages created in this persist cycle
+            from chatlab.models import Message
+            messages = results.get("messages", [])
+            if messages:
+                for msg in messages:
+                    if isinstance(msg, Message):
+                        msg.image_requested = True
+                        await msg.asave(update_fields=["image_requested"])
 
 
 class PatientResultsOutputSchema(BaseModel):
@@ -74,20 +82,28 @@ class PatientResultsOutputSchema(BaseModel):
     Does NOT inherit PatientResponseBaseMixin (no user-facing messages).
 
     **Persistence** (declarative):
-    - metadata → simulation.SimulationMetadata via ``persist_results_metadata``
+    - metadata → simulation.SimulationMetadata polymorphic models via auto-mapper
     - llm_conditions_check → NOT PERSISTED
+
+    **Metadata Structure**:
+    Same polymorphic structure as PatientInitialOutputSchema:
+    - ``kind="lab_result"`` → simulation.LabResult
+    - ``kind="rad_result"`` → simulation.RadResult
+    - ``kind="patient_history"`` → simulation.PatientHistory
+    - ``kind="patient_demographics"`` → simulation.PatientDemographics
+    - ``kind="generic"`` → simulation.SimulationMetadata (fallback)
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    metadata: list[ResultMessageItem] = Field(
+    metadata: list[MetadataItem] = Field(
         ...,
-        description="Scored observations and final assessment"
+        description="Scored observations and final assessment (polymorphic structure with 'kind' discriminator)"
     )
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
         ...,
         description="Completion and workflow flags"
     )
 
-    __persist__ = {"metadata": persist_results_metadata}
+    __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
     __persist_primary__ = "metadata"

@@ -62,8 +62,10 @@ class Message(PersistModel):
     is_from_ai = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)
-
-    order = models.PositiveIntegerField(editable=False, null=True, blank=True)
+    image_requested = models.BooleanField(
+        default=False,
+        help_text="Whether this message references images/scans that should be generated"
+    )
 
     service_call_attempt = models.ForeignKey(
         "orchestrai_django.ServiceCallAttempt",
@@ -93,11 +95,11 @@ class Message(PersistModel):
         previous_message = (
             Message.objects.filter(
                 simulation=self.simulation,
-                order__lt=self.order,
+                timestamp__lt=self.timestamp,
                 role=RoleChoices.ASSISTANT,  # Only consider ASSISTANT input
-                openai_id__isnull=False,  # That have an provider_response_id set
+                provider_response_id__isnull=False,  # That have an provider_response_id set
             )
-            .order_by("-order")
+            .order_by("-timestamp")
             .first()
         )
         return previous_message.provider_response_id if previous_message else None
@@ -121,23 +123,7 @@ class Message(PersistModel):
     def has_media(self):
         return self.media.exists()
 
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        if self.order is None:
-            last_message = (
-                Message.objects.filter(simulation=self.simulation)
-                .order_by("-order")
-                .first()
-            )
-            self.order = (
-                last_message.order + 1
-                if last_message and last_message.order is not None
-                else 1
-            )
-        super().save(*args, **kwargs)
-
     class Meta:
-        unique_together = ("simulation", "order")
         ordering = ["timestamp"]
 
     def __str__(self):

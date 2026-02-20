@@ -73,35 +73,3 @@ async def persist_messages(
     return created
 
 
-async def persist_results_metadata(
-    metadata: list[ResultMessageItem], ctx: PersistContext
-) -> list:
-    """Persist ResultMessageItem list → SimulationMetadata instances.
-
-    Used by PatientResultsOutputSchema where metadata items are
-    ResultMessageItem (not ResultMetafield) — they carry key/value
-    in item_meta and text in content blocks.
-    """
-    from simulation.models import SimulationMetadata
-
-    created = []
-    for meta_item in metadata:
-        try:
-            text = _extract_text(meta_item)
-
-            key = "result"
-            for metafield in meta_item.item_meta:
-                if metafield.key == "key":
-                    key = str(metafield.value) if metafield.value else "result"
-                    break
-
-            obj = await SimulationMetadata.objects.acreate(
-                simulation_id=ctx.simulation_id,
-                key=key,
-                value=text,
-            )
-            created.append(obj)
-        except Exception as exc:
-            logger.warning("Failed to persist results metadata item: %s", exc, exc_info=True)
-
-    return created
