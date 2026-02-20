@@ -1,0 +1,13 @@
+{% load static %}
+
+<div id="avatar-display" class="avatar-wrapper">
+    {% if profile_user.avatar %}
+        <img src="{{ profile_user.avatar_medium.url }}"
+             alt="{{ profile_user.first_name }} {{ profile_user.last_name }}"
+             class="avatar-image">
+    {% else %}
+        <div class="avatar-placeholder">
+            <span class="avatar-initials">{{ profile_user.first_name|slice:":1"|upper }}{{ profile_user.last_name|slice:":1"|upper }}</span>
+        </div>
+    {% endif %}
+</div>

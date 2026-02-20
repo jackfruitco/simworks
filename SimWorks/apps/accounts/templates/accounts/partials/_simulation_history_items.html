@@ -1,0 +1,67 @@
+{% load static %}
+
+{% for sim in simulations %}
+<div class="simulation-card">
+    <div class="simulation-card-header">
+        <div class="simulation-title">
+            <a href="{% url 'chatlab:run_simulation' sim.id %}" class="simulation-link">
+                <h4>{{ sim.diagnosis|default:"Untitled Simulation" }}</h4>
+            </a>
+            <span class="simulation-id text-gray-500 text-sm">#{{ sim.id }}</span>
+        </div>
+        <span class="simulation-status {{ sim.is_complete|yesno:'status-complete,status-progress' }}">
+            {{ sim.is_complete|yesno:"Complete,In Progress" }}
+        </span>
+    </div>
+
+    <div class="simulation-card-body">
+        <div class="simulation-detail">
+            <span class="iconify" data-icon="mdi:stethoscope"></span>
+            <span>{{ sim.chief_complaint|default:"No chief complaint" }}</span>
+        </div>
+
+        <div class="simulation-detail">
+            <span class="iconify" data-icon="mdi:calendar"></span>
+            <span>Started: {{ sim.start_timestamp|date:"M d, Y g:i A" }}</span>
+        </div>
+
+        {% if sim.end_timestamp %}
+        <div class="simulation-detail">
+            <span class="iconify" data-icon="mdi:clock-check"></span>
+            <span>Ended: {{ sim.end_timestamp|date:"M d, Y g:i A" }}</span>
+        </div>
+        {% endif %}
+
+        <div class="simulation-detail">
+            <span class="iconify" data-icon="mdi:flask"></span>
+            <span>Lab: ChatLab</span>
+        </div>
+    </div>
+
+    <div class="simulation-card-footer">
+        <a href="{% url 'chatlab:run_simulation' sim.id %}" class="btn-view">
+            {% if sim.is_complete %}
+                Review Simulation
+            {% else %}
+                Continue Simulation
+            {% endif %}
+            <span class="iconify" data-icon="mdi:arrow-right"></span>
+        </a>
+    </div>
+</div>
+{% empty %}
+    <div class="empty-message">
+        <p>No simulations found matching your filters.</p>
+    </div>
+{% endfor %}
+
+{% if simulations.has_next %}
+<div class="load-more-container"
+     hx-get="?page={{ simulations.next_page_number }}"
+     hx-trigger="intersect once"
+     hx-swap="outerHTML">
+    <div class="loading-spinner">
+        <span class="iconify spin" data-icon="mdi:loading"></span>
+    </div>
+</div>
+{% endif %}

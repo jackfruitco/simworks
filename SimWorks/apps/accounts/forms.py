@@ -5,6 +5,8 @@ from allauth.account.forms import SignupForm
 
 from .models import Invitation, UserRole
 
+User = get_user_model()
+
 
 class InvitationForm(forms.ModelForm):
     """Form for creating new invitations."""
@@ -103,3 +105,57 @@ class InvitationSignupForm(SignupForm):
         # Note: Invitation claiming is handled by the adapter's save_user() method
 
         return user
+
+
+class ProfileEditForm(forms.ModelForm):
+    """Form for editing user profile information."""
+
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email', 'bio']
+        widgets = {
+            'first_name': forms.TextInput(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'placeholder': 'First Name'
+            }),
+            'last_name': forms.TextInput(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'placeholder': 'Last Name'
+            }),
+            'email': forms.EmailInput(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'placeholder': 'Email'
+            }),
+            'bio': forms.Textarea(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'placeholder': 'Tell us about yourself...',
+                'rows': 4
+            }),
+        }
+
+
+class AvatarUploadForm(forms.ModelForm):
+    """Form for uploading user avatar/profile photo."""
+
+    class Meta:
+        model = User
+        fields = ['avatar']
+        widgets = {
+            'avatar': forms.FileInput(attrs={
+                'accept': 'image/*',
+                'class': 'hidden'
+            })
+        }
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data.get('avatar')
+        if avatar:
+            # Validate file size (max 5MB)
+            if avatar.size > 5 * 1024 * 1024:
+                raise ValidationError('Image file too large ( > 5MB )')
+
+            # Validate file type
+            if not avatar.content_type.startswith('image/'):
+                raise ValidationError('File must be an image')
+
+        return avatar

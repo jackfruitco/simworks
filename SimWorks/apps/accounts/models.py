@@ -10,6 +10,8 @@ from django.db.models import QuerySet
 from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
+from imagekit.models import ImageSpecField
+from imagekit.processors import ResizeToFill
 
 class CustomUserManager(UserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -40,6 +42,22 @@ class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
+
+    # Profile fields
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, help_text="User profile photo")
+    avatar_thumbnail = ImageSpecField(
+        source='avatar',
+        processors=[ResizeToFill(150, 150)],
+        format='JPEG',
+        options={'quality': 90}
+    )
+    avatar_medium = ImageSpecField(
+        source='avatar',
+        processors=[ResizeToFill(300, 300)],
+        format='JPEG',
+        options={'quality': 90}
+    )
+    bio = models.TextField(blank=True, null=True, help_text="Short bio or description")
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name']

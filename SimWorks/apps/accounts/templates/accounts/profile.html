@@ -19,8 +19,8 @@
 <section id="profile-links" class="profile-link-grid profile-container center">
     <a href="{% url 'admin:index' %}" class="btn sm">Admin Login</a>
     {% if user.is_staff %}
-    <a href="{% url 'invitations:new-invite' %}" class="btn sm">New Invitation</a>
-    <a href="{% url 'invitations:list-invites' %}" class="btn sm">View Invitations</a>
+    <a href="{% url 'accounts:new-invite' %}" class="btn sm">New Invitation</a>
+    <a href="{% url 'accounts:list-invites' %}" class="btn sm">View Invitations</a>
     <a href="/api/v1/docs" class="btn sm">API Docs</a>
     {% endif %}
 </section>

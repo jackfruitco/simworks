@@ -1,0 +1,104 @@
+{% load static socialaccount %}
+
+<div class="social-accounts-section">
+    <div class="section-header">
+        <h3 class="section-title">Connected Accounts</h3>
+        <p class="section-description">Manage your social login connections</p>
+    </div>
+
+    <!-- Connected Accounts List -->
+    <div class="social-accounts-list">
+        {% if social_accounts %}
+            {% for account in social_accounts %}
+            <div class="social-account-card">
+                <div class="social-account-info">
+                    <div class="social-icon">
+                        {% if account.provider == 'google' %}
+                            <span class="iconify text-4xl" data-icon="logos:google-icon"></span>
+                        {% elif account.provider == 'apple' %}
+                            <span class="iconify text-4xl" data-icon="ic:baseline-apple"></span>
+                        {% else %}
+                            <span class="iconify text-4xl" data-icon="mdi:link-variant"></span>
+                        {% endif %}
+                    </div>
+                    <div class="social-details">
+                        <h4 class="social-provider">{{ account.provider|title }}</h4>
+                        <p class="social-email">{{ account.extra_data.email|default:account.uid }}</p>
+                        <p class="social-meta text-sm text-gray-500">
+                            Connected on {{ account.date_joined|date:"F d, Y" }}
+                        </p>
+                    </div>
+                </div>
+                <div class="social-actions">
+                    <form method="post" action="{% url 'socialaccount_connections' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="account" value="{{ account.id }}">
+                        <button type="submit"
+                                name="disconnect"
+                                class="btn-disconnect"
+                                onclick="return confirm('Are you sure you want to disconnect this account?')">
+                            <span class="iconify" data-icon="mdi:link-variant-off"></span>
+                            Disconnect
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state-small">
+                <span class="iconify text-4xl text-gray-400" data-icon="mdi:link-variant-off"></span>
+                <p class="mt-2">No connected accounts</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Available Providers -->
+    <div class="section-divider"></div>
+
+    <div class="section-header mt-8">
+        <h3 class="section-title">Connect New Account</h3>
+        <p class="section-description">Link additional social accounts for easier login</p>
+    </div>
+
+    <div class="social-providers-list">
+        {% get_providers as socialaccount_providers %}
+        {% for provider in socialaccount_providers %}
+            {% if provider.id not in connected_provider_ids %}
+            <div class="social-provider-card">
+                <div class="provider-info">
+                    <div class="provider-icon">
+                        {% if provider.id == 'google' %}
+                            <span class="iconify text-3xl" data-icon="logos:google-icon"></span>
+                        {% elif provider.id == 'apple' %}
+                            <span class="iconify text-3xl" data-icon="ic:baseline-apple"></span>
+                        {% endif %}
+                    </div>
+                    <div class="provider-details">
+                        <h4>{{ provider.name }}</h4>
+                        <p class="text-sm text-gray-600">Sign in with your {{ provider.name }} account</p>
+                    </div>
+                </div>
+                <a href="{% provider_login_url provider.id process='connect' %}"
+                   class="btn-connect">
+                    <span class="iconify" data-icon="mdi:link-variant-plus"></span>
+                    Connect
+                </a>
+            </div>
+            {% endif %}
+        {% empty %}
+            <p class="text-gray-600">No social login providers are currently configured.</p>
+        {% endfor %}
+    </div>
+
+    <!-- Security Note -->
+    <div class="security-note mt-8">
+        <span class="iconify text-blue-600" data-icon="mdi:information"></span>
+        <div class="ml-3">
+            <p class="font-semibold">Security Note</p>
+            <p class="text-sm text-gray-600 mt-1">
+                Connecting social accounts allows you to sign in using those services.
+                You can disconnect them at any time.
+            </p>
+        </div>
+    </div>
+</div>
