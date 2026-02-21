@@ -101,7 +101,7 @@ export interface ChatMessageCreatedEvent extends BaseEvent {
     content: string;
     role: 'user' | 'assistant';
     senderId: string;
-    username: string;
+    user: string;
     display_name?: string;
     displayName?: string;
     isFromLLM?: boolean;
@@ -125,7 +125,7 @@ export interface MediaItem {
  */
 export interface TypingEvent extends BaseEvent {
     type: 'typing';
-    username: string;
+    user: string;
     display_name?: string;
     display_initials?: string;
 }
@@ -135,7 +135,7 @@ export interface TypingEvent extends BaseEvent {
  */
 export interface StoppedTypingEvent extends BaseEvent {
     type: 'stopped_typing';
-    username: string;
+    user: string;
 }
 
 /**
@@ -274,7 +274,7 @@ export interface SendMessageCommand {
  */
 export interface TypingCommand {
     type: 'typing';
-    username: string;
+    user: string;
 }
 
 /**
@@ -282,7 +282,7 @@ export interface TypingCommand {
  */
 export interface StoppedTypingCommand {
     type: 'stopped_typing';
-    username: string;
+    user: string;
 }
 
 /**

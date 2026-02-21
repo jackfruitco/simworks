@@ -2,7 +2,7 @@
 
 <section
   id="chat-panel"
-  x-data="ChatManager('{{ simulation.id }}', '{{ user.username }}')"
+  x-data="ChatManager('{{ simulation.id }}', '{{ user.email }}')"
   class="chat-container"
   @form:typing="notifyTyping()"
   @form:send="handleFormSend($event.detail)"

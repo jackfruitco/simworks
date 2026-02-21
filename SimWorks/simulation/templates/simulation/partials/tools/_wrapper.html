@@ -1,30 +1,32 @@
-{# templates/simulation/partials/tools/sidebar_wrapper.html #}
+{# templates/simulation/partials/tools/_wrapper.html #}
 {% load core_tags %}
-<!-- Simulation Tool: {{ tool.name }} -->
-{% include 'simulation/partials/tools/_panel.html' with
-    tool=tool
-    simulation=simulation
-    simulation_locked=simulation_locked
-    feedback_continuation=feedback_continuation %}
 
-<div id="{{ tool.name|lower }}_tool"
-     data-checksum="{{ tool.checksum }}"
-     x-show="isOpen"
-     x-transition:enter="transition ease-out duration-300"
-     x-transition:enter-start="opacity-0 -translate-y-2"
-     x-transition:enter-end="opacity-100 translate-y-0"
-     x-transition:leave="transition ease-in duration-200"
-     x-transition:leave-start="opacity-100 translate-y-0"
-     x-transition:leave-end="opacity-0 -translate-y-2">
-    {% with custom_partial='simulation/partials/tools/_'|add:tool.name|add:'.html' %}
-        {% if custom_partial == 'simulation/partials/tools/_wrapper.html' %}
-            {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
-        {% elif custom_partial|template_exists %}
-            {% include custom_partial with tool=tool %}
-        {% elif tool.is_generic %}
-            {% include 'simulation/partials/tools/_generic.html' with tool=tool %}
-        {% else %}
-            {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
-        {% endif %}
-    {% endwith %}
+<div class="tool-card" data-tool-name="{{ tool.name|lower }}">
+    <!-- Tool Header -->
+    {% include 'simulation/partials/tools/_panel.html' with
+        tool=tool
+        simulation=simulation
+        simulation_locked=simulation_locked
+        feedback_continuation=feedback_continuation %}
+
+    <!-- Tool Body -->
+    <div id="{{ tool.name|lower }}_tool"
+         data-checksum="{{ tool.checksum }}"
+         class="tool-body"
+         x-show="isOpen('{{ tool.name|lower }}')"
+         x-collapse>
+        <div class="tool-body-inner">
+            {% with custom_partial='simulation/partials/tools/_'|add:tool.name|add:'.html' %}
+                {% if custom_partial == 'simulation/partials/tools/_wrapper.html' %}
+                    {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
+                {% elif custom_partial|template_exists %}
+                    {% include custom_partial with tool=tool %}
+                {% elif tool.is_generic %}
+                    {% include 'simulation/partials/tools/_generic.html' with tool=tool %}
+                {% else %}
+                    {% include 'simulation/partials/tools/_fallback.html' with tool=tool %}
+                {% endif %}
+            {% endwith %}
+        </div>
+    </div>
 </div>

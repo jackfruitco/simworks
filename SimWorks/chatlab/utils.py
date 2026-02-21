@@ -35,7 +35,7 @@ async def create_new_simulation(
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
     must_be_async()
     logger.debug(
-        f"received request to create new simulation for {user.username!r} "
+        f"received request to create new simulation for {user.email!r} "
         f"with modifiers {modifiers!r} (force {force!r})"
     )
 

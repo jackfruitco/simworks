@@ -3,54 +3,82 @@
 {% load core_tags %}
 {% load chatlab_filters %}
 
-<div x-data="{ shouldDisable: {{ simulation.is_complete|yesno:'true,false' }} }">
-    <button id="toggle-order-request-form"
-            type="button"
-            :disabled="shouldDisable"
-            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
-            aria-label="Request lab orders">
-        Request Labs
-    </button>
+<div x-data="resultsFilter()">
+    <!-- Actions Bar -->
+    <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
+        <button id="toggle-order-request-form"
+                type="button"
+                :disabled="{{ simulation.is_complete|yesno:'true,false' }}"
+                class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                aria-label="Request lab orders">
+            <span class="iconify mr-1" data-icon="mdi:flask-plus" data-inline="true"></span>
+            Request Labs
+        </button>
+
+        {% if tool.data %}
+        <div class="flex items-center gap-2">
+            <button @click="activeTab = 'all'"
+                    :class="activeTab === 'all' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-white text-gray-700 border-gray-300'"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors duration-200">
+                All
+            </button>
+            <button @click="activeTab = 'labs'"
+                    :class="activeTab === 'labs' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-white text-gray-700 border-gray-300'"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors duration-200">
+                Labs
+            </button>
+            <button @click="activeTab = 'imaging'"
+                    :class="activeTab === 'imaging' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-white text-gray-700 border-gray-300'"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors duration-200">
+                Imaging
+            </button>
+        </div>
+        {% endif %}
+    </div>
 
     {% if tool.data %}
-        <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
-            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-4 py-3 text-left font-medium text-gray-700">Panel Name</th>
-                        <th class="px-4 py-3 text-left font-medium text-gray-700">Order Name</th>
-                        <th class="px-4 py-3 text-left font-medium text-gray-700">Value</th>
-                        <th class="px-4 py-3 text-left font-medium text-gray-700">Unit</th>
-                        <th class="px-4 py-3 text-left font-medium text-gray-700">Reference Range</th>
-                    </tr>
-                </thead>
-
-                <tbody class="bg-white divide-y divide-gray-200">
-                    {% for result in tool.data %}
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3 text-gray-900" data-label="Panel Name">{{ result.panel_name }}</td>
-                            <td class="px-4 py-3 text-gray-900" data-label="Order Name">{{ result.result_name }}</td>
-                            <td class="px-4 py-3" data-label="Value">
-                                <span class="{% if result.flag|upper != 'NORMAL' %}text-red-600 font-semibold{% else %}text-gray-900{% endif %}">
-                                    {{ result.value }}
-                                    {% if result.flag|upper != "NORMAL" %}
-                                        <span class="ml-1">!!</span>
-                                    {% endif %}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-gray-600" data-label="Unit">{{ result.unit }}</td>
-                            <td class="px-4 py-3 text-gray-600" data-label="Reference Range">({{ result.reference_range_low }} - {{ result.reference_range_high }})</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-
-            </table>
+        <div class="results-grid">
+            {% for result in tool.data %}
+                <div class="result-card"
+                     x-show="activeTab === 'all' || activeTab === '{{ result.result_type|default:'labs' }}'">
+                    <div class="result-card-header">
+                        <div>
+                            <div class="result-name">{{ result.result_name }}</div>
+                            <div class="text-xs text-gray-500 mt-0.5">{{ result.panel_name }}</div>
+                        </div>
+                        {% if result.flag|upper != 'NORMAL' %}
+                            <span class="px-2 py-0.5 text-xs font-semibold text-red-700 bg-red-100 rounded-full">
+                                Abnormal
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="result-value {% if result.flag|upper != 'NORMAL' %}abnormal{% else %}normal{% endif %}">
+                        {{ result.value }}
+                        <span class="text-sm font-normal text-gray-600">{{ result.unit }}</span>
+                    </div>
+                    <div class="result-reference">
+                        Reference: {{ result.reference_range_low }} - {{ result.reference_range_high }} {{ result.unit }}
+                    </div>
+                </div>
+            {% endfor %}
         </div>
     {% else %}
-      {% include 'partials/_empty_state.html' with
-          title="No results yet"
-          body="Order labs or imaging to see results populate here."
-          extra_classes="sim-metadata-empty" %}
+        <div class="tool-empty-state">
+            <div class="tool-empty-icon">
+                <span class="iconify" data-icon="mdi:flask-empty-outline" style="font-size: 4rem;"></span>
+            </div>
+            <h4 class="tool-empty-title">No results yet</h4>
+            <p class="tool-empty-description">
+                Order labs or imaging to see results populate here.
+            </p>
+            <button id="toggle-order-request-form-empty"
+                    type="button"
+                    :disabled="{{ simulation.is_complete|yesno:'true,false' }}"
+                    class="tool-empty-cta">
+                <span class="iconify mr-1" data-icon="mdi:flask-plus" data-inline="true"></span>
+                Request Labs Now
+            </button>
+        </div>
     {% endif %}
 
     <!-- Order Request Form -->

@@ -35,7 +35,6 @@ def test_user(django_user_model):
 
     role = UserRole.objects.create(title="Test Role JWT")
     return django_user_model.objects.create_user(
-        username="jwtuser",
         password="testpass123",
         email="jwt@example.com",
         role=role,
@@ -57,7 +56,7 @@ class TestTokenGeneration:
         payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
 
         assert payload["sub"] == str(test_user.pk)
-        assert payload["username"] == test_user.username
+        assert payload["email"] == test_user.email
         assert payload["type"] == "access"
         assert "exp" in payload
         assert "iat" in payload
@@ -209,7 +208,7 @@ class TestAuthEndpoints:
         client = Client()
         response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "testpass123"},
+            data={"email": "jwt@example.com", "password": "testpass123"},
             content_type="application/json",
         )
 
@@ -225,7 +224,7 @@ class TestAuthEndpoints:
         client = Client()
         response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "wrongpassword"},
+            data={"email": "jwt@example.com", "password": "wrongpassword"},
             content_type="application/json",
         )
 
@@ -250,7 +249,7 @@ class TestAuthEndpoints:
         client = Client()
         response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "testpass123"},
+            data={"email": "jwt@example.com", "password": "testpass123"},
             content_type="application/json",
         )
 
@@ -325,7 +324,6 @@ class TestJWTProtectedEndpoints:
         now = datetime.now(timezone.utc)
         payload = {
             "sub": str(test_user.pk),
-            "username": test_user.username,
             "email": test_user.email,
             "type": "access",
             "iat": now - timedelta(hours=2),
@@ -365,7 +363,7 @@ class TestFullAuthFlow:
         # Step 1: Login
         login_response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "testpass123"},
+            data={"email": "jwt@example.com", "password": "testpass123"},
             content_type="application/json",
         )
         assert login_response.status_code == 200
@@ -442,7 +440,6 @@ class TestDualAuth:
         # Create a second user for JWT
         role = UserRole.objects.create(title="Test Role JWT2")
         other_user = django_user_model.objects.create_user(
-            username="otheruser",
             password="pass123",
             email="other@example.com",
             role=role,

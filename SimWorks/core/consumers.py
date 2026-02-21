@@ -38,7 +38,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
 
         logger.info(
             "[Notification] Sent to user %s | Type: %s | Message: %s",
-            self.user.username,
+            self.user.email,
             notification_type,
             notification,
         )
@@ -70,7 +70,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
 
         logger.info(
             "[Notification] Outbox event for user %s | Type: %s",
-            self.user.username,
+            self.user.email,
             envelope.get("event_type"),
         )
 

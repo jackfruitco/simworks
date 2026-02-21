@@ -20,6 +20,7 @@ from .models import RoleChoices
 
 logger = logging.getLogger(__name__)
 
+SYSTEM_USER = "system@simworks.local"
 
 class ContentMode(str, Enum):
     HTML = "fullHtml"
@@ -120,7 +121,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 self.room_group_name,
                 {
                     "type": "user_typing",
-                    "username": "System",
+                    "user": SYSTEM_USER,
                     "display_initials": self.simulation.sim_patient_initials,
                 },
             )
@@ -193,7 +194,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         This function is responsible for processing the associated data, including
         handling the preferred content mode and sending the first message in the
         simulation to the WebSocket group, along with relevant metadata like sender's
-        username, display name, and patient initials.
+        user (email), display name, and patient initials.
 
         :param data: The data associated with the "client_ready" event. It contains the
             configuration and state details needed to process the event.
@@ -302,25 +303,38 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Broadcast to the group that a user has started typing.
 
-        :param data: Should include 'username' and/or 'display_initials'
+        :param data: Should include 'user' and/or 'display_initials'
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
         # Notify others in the room that a user is typing
-        username = data.get("username") or self.scope.get("user") or "System"
-        if username == "System":
+        # Get user from data, or fall back to scope user (convert to string if it's a User object)
+        user_ = data.get("user")
+        if not user_:
+            scope_user = self.scope.get("user")
+            if scope_user and hasattr(scope_user, 'email'):
+                user_ = scope_user.email
+            else:
+                user_ = SYSTEM_USER
+
+        if data.get("username"):
+            logger.warning(
+                "data contains `username`: `username` is pending deprecation and should be removed"
+            )
+
+        if user_ == SYSTEM_USER:
             display_initials = self.simulation.sim_patient_initials
         else:
             display_initials = data.get("display_initials") or await sync_to_async(
                 get_user_initials
-            )(username)
+            )(user_)
 
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 "type": "user_typing",
-                "username": username,
+                "user": user_,
                 "display_initials": display_initials,
             },
         )
@@ -344,19 +358,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Broadcast to the group that a user has stopped typing.
 
-        :param data: Should include 'username'
+        :param data: Should include 'user'
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
         # Notify others in the room that a user has stopped typing
-        username = data.get("username") or self.scope.get("user") or "System"
+        # Get user from data, or fall back to scope user (convert to string if it's a User object)
+        user_ = data.get("user")
+        if not user_:
+            scope_user = self.scope.get("user")
+            if scope_user and hasattr(scope_user, 'email'):
+                user_ = scope_user.email
+            else:
+                user_ = SYSTEM_USER
+
+        if data.get("username"):
+            logger.warning(
+                "data contains `username`: `username` is pending deprecation and should be removed"
+            )
 
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 "type": "user_stopped_typing",
-                "username": username,
+                "user": user_,
             },
         )
 
@@ -396,7 +422,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.room_group_name,
             {
                 "type": "user_typing" if started else "user_stopped_typing",
-                "username": "System",
+                "user": SYSTEM_USER,
                 "display_initials": display_initials,
             },
         )
@@ -428,7 +454,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Handle 'user_typing' event by sending data to the client.
 
-        :param event: Dict with 'username', 'display_initials', etc.
+        :param event: Dict with 'user', 'display_initials', etc.
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
@@ -437,7 +463,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps(
                 {
                     "type": "typing",
-                    "username": event.get("username", "unknown"),
+                    "user": event.get("user", "unknown"),
                     "display_name": event.get("display_name", "Unknown"),
                     "display_initials": event.get("display_initials", "Unk"),
                 },
@@ -449,7 +475,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Handle 'user_stopped_typing' event and notify client.
 
-        :param event: Dict with 'username'
+        :param event: Dict with 'usern'
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
@@ -458,7 +484,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps(
                 {
                     "type": "stopped_typing",
-                    "username": event.get("username", "unknown"),
+                    "user": event.get("user", "unknown"),
                 },
                 default=json_default,
             )

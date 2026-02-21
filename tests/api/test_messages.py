@@ -28,7 +28,6 @@ def user_role(db):
 def test_user(django_user_model, user_role):
     """Create a test user with a role."""
     return django_user_model.objects.create_user(
-        username="msguser",
         password="testpass123",
         email="msguser@example.com",
         role=user_role,
@@ -39,7 +38,6 @@ def test_user(django_user_model, user_role):
 def other_user(django_user_model, user_role):
     """Create another test user."""
     return django_user_model.objects.create_user(
-        username="othermsguser",
         password="testpass123",
         email="othermsg@example.com",
         role=user_role,

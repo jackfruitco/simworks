@@ -1,35 +1,90 @@
-{# templates/simulation/partials/_simulation_feedback.html #}
+{# templates/simulation/partials/tools/_simulation_feedback.html #}
 {% load core_filters %}
 {% load core_tags %}
 {% load chatlab_filters %}
 
 {% if tool.data %}
-  <ul class="space-y-3">
-    {% for metafield in tool.data %}
-        {% if metafield.key|lower == "overall_feedback" %}
-            <li class="px-3 py-2 italic text-gray-600 bg-blue-50 rounded-md border border-blue-200">
-                {{ metafield.value }}
-            </li>
-        {% elif metafield.key|lower == "topics" %}
-          <li class="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
-            <strong class="block mb-2 text-gray-700">Topics to consider researching:</strong>
-            <ul class="ml-4 space-y-1 list-disc list-inside">
-              {% for topic in metafield.value|as_list %}
-                <li class="text-gray-900">{{ topic }}</li>
-              {% endfor %}
-            </ul>
-          </li>
-        {% else %}
-            <li class="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
-                <strong class="text-gray-700">{{ metafield.key|title }}:</strong>
-                <span class="text-gray-900">{{ metafield.value|feedback }}</span>
-            </li>
-        {% endif %}
-    {% endfor %}
-  </ul>
+    <div class="space-y-3" x-data="feedbackExpander()">
+        {% for metafield in tool.data %}
+            {% if metafield.key|lower == "overall_feedback" %}
+                <div class="feedback-card success">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:comment-check" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Overall Feedback</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value }}
+                    </div>
+                </div>
+
+            {% elif metafield.key|lower == "topics" %}
+                <div class="feedback-card warning">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:lightbulb-on" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Topics to Research</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        <ul class="ml-4 space-y-2 list-disc list-inside">
+                            {% for topic in metafield.value|as_list %}
+                                <li class="text-gray-900">{{ topic }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+            {% elif metafield.key|lower == "strengths" %}
+                <div class="feedback-card success">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:check-circle" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Strengths</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value|feedback }}
+                    </div>
+                </div>
+
+            {% elif metafield.key|lower == "areas_for_improvement" or metafield.key|lower == "improvements" %}
+                <div class="feedback-card warning">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:alert-circle" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Areas for Improvement</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value|feedback }}
+                    </div>
+                </div>
+
+            {% else %}
+                <div class="feedback-card">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:information" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">{{ metafield.key|title }}</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value|feedback }}
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
 {% else %}
-  {% include 'partials/_empty_state.html' with
-      title="No feedback yet"
-      body="Feedback will appear here after your conversation progresses."
-      extra_classes="sim-metadata-empty" %}
+    <div class="tool-empty-state">
+        <div class="tool-empty-icon">
+            <span class="iconify" data-icon="mdi:comment-outline" style="font-size: 4rem;"></span>
+        </div>
+        <h4 class="tool-empty-title">No feedback yet</h4>
+        <p class="tool-empty-description">
+            Feedback will appear here after your conversation progresses and the simulation is complete.
+        </p>
+    </div>
 {% endif %}

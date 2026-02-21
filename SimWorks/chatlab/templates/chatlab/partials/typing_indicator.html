@@ -4,7 +4,7 @@
          x-show="typingUsers.length > 0"
         x-transition
         x-cloak>
-        <template x-for="user in typingUsers" :key="user.username">
+        <template x-for="user in typingUsers" :key="user.email">
             <div class="typing-user-bubble">
                 <span class="initials" x-text="user.displayInitials"></span>
             </div>

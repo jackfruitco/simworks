@@ -46,8 +46,8 @@ def get_user_initials(user) -> str:
     """
     Returns initials for a User object.
     - If first_name and last_name are set: returns first letters of each
-    - If only username is set: returns first letter
-    - If username is numeric: returns 'Unk'
+    - If only email is set: returns first letter of email
+    - Otherwise: returns 'Unk'
     """
 
     User = get_user_model()

@@ -150,8 +150,8 @@ class TestAuthentication:
 
         # Create a test user with the role
         user = django_user_model.objects.create_user(
-            username="testuser",
             password="testpass123",
+            email="testuser@example.com",
             role=role,
         )
 

@@ -1,5 +1,10 @@
-{# templates/simulation/partials/_fallback.html #}
-{% include 'partials/_empty_state.html' with
-    title="Tool not available"
-    body="This tool is still loading. Please check back soon."
-    extra_classes="sim-metadata-empty" %}
+{# templates/simulation/partials/tools/_fallback.html #}
+<div class="tool-empty-state">
+    <div class="tool-empty-icon">
+        <span class="iconify" data-icon="mdi:wrench-outline" style="font-size: 4rem;"></span>
+    </div>
+    <h4 class="tool-empty-title">Tool not available</h4>
+    <p class="tool-empty-description">
+        This tool is still loading. Please check back soon.
+    </p>
+</div>

@@ -220,7 +220,7 @@ function ChatManager(simulation_id, currentUser) {
             const senderId = data.senderId ?? data.sender_id;
             const isFromSelf = !isFromSimulatedUser && (
                 senderId === parseInt(this.currentUser) ||
-                data.username === this.currentUser
+                data.user === this.currentUser
             );
             const messageId = data.message_id ?? data.id;
 
@@ -257,7 +257,7 @@ function ChatManager(simulation_id, currentUser) {
 
             // For user's own messages (echoed back), use JS rendering for immediate feedback
             const status = isFromSelf ? data.status || 'delivered' : null;
-            const displayName = data.display_name || data.displayName || data.username || 'Unknown';
+            const displayName = data.display_name || data.displayName || data.user || 'Unknown';
 
             // Parse content
             let content = data.content;
@@ -319,7 +319,7 @@ function ChatManager(simulation_id, currentUser) {
         },
 
         handleTyping(data, started) {
-            if (data.username !== this.currentUser) {
+            if (data.user !== this.currentUser) {
                 this.updateTypingUsers(data, started);
             }
         },
@@ -348,13 +348,13 @@ function ChatManager(simulation_id, currentUser) {
         notifyTyping() {
             const now = Date.now();
             if (!this.typingTimeout && now - this.lastTypedTime > 2000) {
-                this.socket.send('typing', { username: this.currentUser });
+                this.socket.send('typing', { user: this.currentUser });
                 this.lastTypedTime = now;
             }
 
             clearTimeout(this.typingTimeout);
             this.typingTimeout = setTimeout(() => {
-                this.socket.send('stopped_typing', { username: this.currentUser });
+                this.socket.send('stopped_typing', { user: this.currentUser });
                 this.typingTimeout = null;
             }, 1000);
         },
@@ -618,19 +618,19 @@ function ChatManager(simulation_id, currentUser) {
         },
 
         updateTypingUsers(data, started = true) {
-            const displayName = data.display_name || data.username || 'Someone';
+            const displayName = data.display_name || data.user || 'Someone';
             const displayInitials = data.display_initials || 'Unk';
             if (!started) {
-                this.typingUsers = this.typingUsers.filter(u => u.username !== data.username);
+                this.typingUsers = this.typingUsers.filter(u => u.user !== data.user);
             } else {
-                const alreadyTyping = this.typingUsers.some(u => u.username === data.username);
+                const alreadyTyping = this.typingUsers.some(u => u.user === data.user);
                 if (!alreadyTyping) {
-                    this.typingUsers.push({ username: data.username, displayInitials });
+                    this.typingUsers.push({ user: data.user, displayInitials });
                 }
             }
             console.debug(
                 '[ChatManager]',
-                data.username,
+                data.user,
                 (started ? 'started' : 'stopped'), 'typing.',
                 this.typingUsers.length, 'users typing:',
                 JSON.stringify(this.typingUsers)
@@ -639,7 +639,7 @@ function ChatManager(simulation_id, currentUser) {
 
         simulateSystemTyping(started = true) {
             const dataSim = {
-                username: 'System',
+                user: 'System',
                 display_initials: this.systemDisplayInitials || 'Unk',
                 display_name: this.systemDisplayName || 'Someone'
             };

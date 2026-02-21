@@ -1,16 +1,21 @@
-{# templates/simulation/partials/_generic.html #}
+{# templates/simulation/partials/tools/_generic.html #}
 {% if tool.data %}
-  <ul class="space-y-2">
-    {% for metafield in tool.data %}
-      <li class="px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
-        <span class="font-semibold text-gray-700">{{ metafield.key|title }}:</span>
-        <span class="text-gray-900">{{ metafield.value|title }}</span>
-      </li>
-    {% endfor %}
-  </ul>
+    <div class="tool-item-list">
+        {% for metafield in tool.data %}
+            <div class="tool-item">
+                <span class="tool-item-key">{{ metafield.key|title }}</span>
+                <span class="tool-item-value">{{ metafield.value|title }}</span>
+            </div>
+        {% endfor %}
+    </div>
 {% else %}
-  {% include 'partials/_empty_state.html' with
-      title="No data available"
-      body="We will display details here once they're ready."
-      extra_classes="sim-metadata-empty" %}
+    <div class="tool-empty-state">
+        <div class="tool-empty-icon">
+            <span class="iconify" data-icon="mdi:information-outline" style="font-size: 4rem;"></span>
+        </div>
+        <h4 class="tool-empty-title">No data available</h4>
+        <p class="tool-empty-description">
+            We'll display details here once they're ready.
+        </p>
+    </div>
 {% endif %}

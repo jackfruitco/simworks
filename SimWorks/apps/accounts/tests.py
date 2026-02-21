@@ -17,7 +17,7 @@ class InvitationTests(TestCase):
         self.client = Client()
         # Create a user with invitation privileges
         self.inviter = User.objects.create_user(
-            username="inviter", password="password", email="inviter@example.com"
+            password="password", email="inviter@example.com"
         )
         inviters_group, _ = Group.objects.get_or_create(name="Inviters")
         self.inviter.groups.add(inviters_group)
@@ -25,11 +25,11 @@ class InvitationTests(TestCase):
 
         # Create a non-inviter user
         self.non_inviter = User.objects.create_user(
-            username="noninviter", password="password", email="noninviter@example.com"
+            password="password", email="noninviter@example.com"
         )
 
-        # Login as inviter by default
-        self.client.login(username="inviter", password="password")
+        # Login as inviter by default (using email as username)
+        self.client.login(username="inviter@example.com", password="password")
 
     def test_invite_view_accessible_for_inviter(self):
         response = self.client.get(reverse("invite"))
@@ -38,7 +38,7 @@ class InvitationTests(TestCase):
 
     def test_invite_view_forbidden_for_non_inviter(self):
         self.client.logout()
-        self.client.login(username="noninviter", password="password")
+        self.client.login(username="noninviter@example.com", password="password")
         response = self.client.get(reverse("invite"))
         # Depending on your user_passes_test configuration,
         # you might receive a 403 Forbidden if the test fails.
@@ -67,21 +67,21 @@ class SignupTests(TestCase):
         response = self.client.get(signup_url)
         self.assertEqual(response.status_code, 200)
         signup_data = {
-            "username": "newuser",
+            "email": "newuser@example.com",
             "password1": "complexpassword123",
             "password2": "complexpassword123",
             "token": self.invitation.token,
         }
         response = self.client.post(reverse("signup"), signup_data)
         self.assertEqual(response.status_code, 302)  # Redirect on success
-        user = User.objects.filter(username="newuser").first()
+        user = User.objects.filter(email="newuser@example.com").first()
         self.assertIsNotNone(user)
         self.invitation.refresh_from_db()
         self.assertTrue(self.invitation.used)
 
     def test_signup_with_invalid_invitation(self):
         signup_data = {
-            "username": "anotheruser",
+            "email": "anotheruser@example.com",
             "password1": "complexpassword123",
             "password2": "complexpassword123",
             "token": "invalidtoken",

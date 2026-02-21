@@ -117,7 +117,7 @@ def chatlab_modules(monkeypatch):
 async def test_create_new_simulation_uses_service_call(chatlab_modules, monkeypatch):
     utils = chatlab_modules.utils
 
-    user = SimpleNamespace(id=7, username="demo")
+    user = SimpleNamespace(id=7)
     simulation = SimpleNamespace(id=11, adelete=AsyncMock())
     session = SimpleNamespace(id=3)
 
@@ -152,7 +152,7 @@ async def test_create_new_simulation_uses_service_call(chatlab_modules, monkeypa
 async def test_create_new_simulation_cleans_up_on_failure(chatlab_modules, monkeypatch):
     utils = chatlab_modules.utils
 
-    user = SimpleNamespace(id=8, username="failer")
+    user = SimpleNamespace(id=8)
     simulation = SimpleNamespace(id=13, adelete=AsyncMock())
     session = SimpleNamespace(id=4)
 
