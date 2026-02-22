@@ -10,11 +10,11 @@ from orchestrai_django.persistence import PersistContext
 logger = logging.getLogger(__name__)
 
 
-async def persist_feedback_block(block, ctx: PersistContext) -> list:
-    """Persist HotwashInitialBlock → multiple SimulationFeedback records.
+async def persist_initial_feedback_block(block, ctx: PersistContext) -> list:
+    """Persist InitialFeedbackBlock → multiple SimulationFeedback records.
 
     This is an explicit persist function because one Pydantic model
-    (HotwashInitialBlock) maps to multiple Django instances (one
+    (InitialFeedbackBlock) maps to multiple Django instances (one
     SimulationFeedback per field).
     """
     from simulation.models import SimulationFeedback

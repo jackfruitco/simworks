@@ -235,9 +235,9 @@ class Simulation(models.Model):
 
     def generate_feedback(self) -> None:
         """Generate feedback for this simulation."""
-        from .orca.services import GenerateHotwashInitialResponse
+        from .orca.services import GenerateInitialFeedbackResponse
 
-        GenerateHotwashInitialResponse.task.using(
+        GenerateInitialFeedbackResponse.task.using(
             context={"simulation_id": self.pk}
         ).enqueue()
 

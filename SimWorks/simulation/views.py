@@ -74,9 +74,9 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from simulation.orca.services import GenerateHotwashInitialResponse
+            from simulation.orca.services import GenerateInitialFeedbackResponse
 
-            await GenerateHotwashInitialResponse.task.using(
+            await GenerateInitialFeedbackResponse.task.using(
                 context={
                     "simulation_id": simulation_id,
                     "lab_orders": submitted_orders,

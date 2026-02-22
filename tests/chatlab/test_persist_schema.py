@@ -4,7 +4,7 @@ Tests:
 - persist_schema() with PatientInitialOutputSchema (messages + metadata auto-mapping)
 - persist_schema() with PatientReplyOutputSchema (messages + post_persist hook)
 - persist_schema() with PatientResultsOutputSchema (custom persist function)
-- persist_schema() with HotwashInitialSchema (feedback block)
+- persist_schema() with GenerateInitialSimulationFeedback (feedback block)
 - MRO merging (mixin __persist__ + schema __persist__)
 - Schema without __persist__ returns None
 """
@@ -18,7 +18,7 @@ from chatlab.orca.schemas import (
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from simulation.orca.schemas.feedback import HotwashInitialSchema
+from simulation.orca.schemas.feedback import GenerateInitialSimulationFeedback
 from chatlab.models import Message, RoleChoices
 
 
@@ -200,8 +200,8 @@ class TestPatientResultsPersistence:
 @pytest.mark.asyncio
 class TestHotwashPersistence:
     async def test_creates_feedback_records(self, context):
-        """HotwashInitialSchema should create multiple SimulationFeedback records."""
-        schema = HotwashInitialSchema.model_validate({
+        """GenerateInitialSimulationFeedback should create multiple SimulationFeedback records."""
+        schema = GenerateInitialSimulationFeedback.model_validate({
             "llm_conditions_check": [],
             "metadata": {
                 "correct_diagnosis": True,

@@ -1,7 +1,7 @@
 """Tests for simulation feedback schemas.
 
 Validates:
-- HotwashInitialSchema structure
+- GenerateInitialSimulationFeedback structure
 - Feedback block composition
 - OpenAI compatibility
 """
@@ -9,16 +9,16 @@ Validates:
 import pytest
 from pydantic import ValidationError
 
-from simulation.orca.schemas.feedback import HotwashInitialSchema
-from simulation.orca.schemas.output_items import HotwashInitialBlock
+from simulation.orca.schemas.feedback import GenerateInitialSimulationFeedback
+from simulation.orca.schemas.output_items import InitialFeedbackBlock
 
 
 class TestHotwashInitialSchema:
-    """Tests for HotwashInitialSchema."""
+    """Tests for GenerateInitialSimulationFeedback."""
 
     def test_schema_generates_valid_json_schema(self):
         """Verify schema can generate OpenAI-compatible JSON Schema."""
-        schema_json = HotwashInitialSchema.model_json_schema()
+        schema_json = GenerateInitialSimulationFeedback.model_json_schema()
 
         # Validate structure
         assert schema_json["type"] == "object"
@@ -30,7 +30,7 @@ class TestHotwashInitialSchema:
 
     def test_schema_openai_compatible(self):
         """Verify schema passes OpenAI validation."""
-        schema_json = HotwashInitialSchema.model_json_schema()
+        schema_json = GenerateInitialSimulationFeedback.model_json_schema()
 
         # No root-level unions
         assert "anyOf" not in schema_json
@@ -53,7 +53,7 @@ class TestHotwashInitialSchema:
             },
         }
 
-        parsed = HotwashInitialSchema.model_validate(sample_output)
+        parsed = GenerateInitialSimulationFeedback.model_validate(sample_output)
 
         # Verify structure
         assert len(parsed.llm_conditions_check) == 1
@@ -64,11 +64,11 @@ class TestHotwashInitialSchema:
 
 
 class TestHotwashInitialBlock:
-    """Tests for HotwashInitialBlock structure."""
+    """Tests for InitialFeedbackBlock structure."""
 
     def test_block_structure(self):
         """Verify block has all required feedback fields."""
-        schema_json = HotwashInitialBlock.model_json_schema()
+        schema_json = InitialFeedbackBlock.model_json_schema()
 
         required_fields = {
             "correct_diagnosis",
@@ -84,7 +84,7 @@ class TestHotwashInitialBlock:
         """Verify patient_experience has 0-5 constraint."""
         # Valid: 0-5
         for value in range(6):
-            block = HotwashInitialBlock(
+            block = InitialFeedbackBlock(
                 correct_diagnosis=True,
                 correct_treatment_plan=True,
                 patient_experience=value,
@@ -94,7 +94,7 @@ class TestHotwashInitialBlock:
 
         # Invalid: negative
         with pytest.raises(ValidationError):
-            HotwashInitialBlock(
+            InitialFeedbackBlock(
                 correct_diagnosis=True,
                 correct_treatment_plan=True,
                 patient_experience=-1,
@@ -103,7 +103,7 @@ class TestHotwashInitialBlock:
 
         # Invalid: > 5
         with pytest.raises(ValidationError):
-            HotwashInitialBlock(
+            InitialFeedbackBlock(
                 correct_diagnosis=True,
                 correct_treatment_plan=True,
                 patient_experience=6,
@@ -113,7 +113,7 @@ class TestHotwashInitialBlock:
     def test_field_types(self):
         """Verify correct field types for direct fields."""
         # Valid block
-        block = HotwashInitialBlock(
+        block = InitialFeedbackBlock(
             correct_diagnosis=True,
             correct_treatment_plan=False,
             patient_experience=4,
@@ -129,7 +129,7 @@ class TestHotwashInitialBlock:
         """Verify all fields are required."""
         # Missing overall_feedback
         with pytest.raises(ValidationError):
-            HotwashInitialBlock(
+            InitialFeedbackBlock(
                 correct_diagnosis=True,
                 correct_treatment_plan=True,
                 patient_experience=4,
@@ -139,7 +139,7 @@ class TestHotwashInitialBlock:
         """Verify overall_feedback requires at least 1 character."""
         # Empty string should fail
         with pytest.raises(ValidationError):
-            HotwashInitialBlock(
+            InitialFeedbackBlock(
                 correct_diagnosis=True,
                 correct_treatment_plan=True,
                 patient_experience=4,

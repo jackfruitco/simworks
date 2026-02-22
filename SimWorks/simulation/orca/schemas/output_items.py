@@ -19,14 +19,11 @@ class LLMConditionsCheckItem(BaseModel):
     value: str = Field(..., description="Condition value (often 'true'/'false')")
 
 
-class HotwashInitialBlock(BaseModel):
+class InitialFeedbackBlock(BaseModel):
     """
-    Initial hotwash (post-session) feedback block.
+    Initial (post-session) feedback block.
 
-    **Design**: Simplified structure with direct field definitions rather than
-    wrapper item classes. All fields are required.
-
-    **Usage**: Embedded in HotwashInitialSchema as the `metadata` field.
+    **Usage**: Embedded in GenerateInitialSimulationFeedback as the `metadata` field.
     Contains structured feedback data that gets persisted to SimulationFeedback.
 
     **Fields**:
@@ -39,12 +36,12 @@ class HotwashInitialBlock(BaseModel):
 
     correct_diagnosis: bool = Field(
         ...,
-        description="Whether the learner reached the correct diagnosis"
+        description="Whether the user identified the correct diagnosis during the simulation."
     )
 
     correct_treatment_plan: bool = Field(
         ...,
-        description="Whether the learner developed an appropriate treatment plan"
+        description="Whether the user proposed an appropriate treatment plan"
     )
 
     patient_experience: int = Field(

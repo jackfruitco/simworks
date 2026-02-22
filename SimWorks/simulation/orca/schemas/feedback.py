@@ -8,12 +8,12 @@ Pydantic AI handles validation natively - no @schema decorator needed.
 
 from pydantic import BaseModel, Field, ConfigDict
 
-from simulation.orca.persist.feedback_block import persist_feedback_block
-from .output_items import HotwashInitialBlock, LLMConditionsCheckItem
+from simulation.orca.persist.feedback_block import persist_initial_feedback_block
+from .output_items import InitialFeedbackBlock, LLMConditionsCheckItem
 
 
-class HotwashInitialSchema(BaseModel):
-    """Initial patient feedback (hotwash) schema.
+class GenerateInitialSimulationFeedback(BaseModel):
+    """Initial user feedback (hotwash) schema.
 
     **Persistence** (declarative):
     - metadata → multiple SimulationFeedback records via ``persist_feedback_block``
@@ -26,10 +26,10 @@ class HotwashInitialSchema(BaseModel):
         ...,
         description="Internal workflow conditions"
     )
-    metadata: HotwashInitialBlock = Field(
+    metadata: InitialFeedbackBlock = Field(
         ...,
         description="Feedback data block"
     )
 
-    __persist__ = {"metadata": persist_feedback_block}
+    __persist__ = {"metadata": persist_initial_feedback_block}
     __persist_primary__ = "metadata"
