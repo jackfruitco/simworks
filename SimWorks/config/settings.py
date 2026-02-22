@@ -90,7 +90,7 @@ INSTALLED_APPS = [
     "core",
     "simulation",
     "chatlab",
-    "trainerlab",
+    "apps.trainerlab",
     "orchestrai_django",
     "imagekit",
 ]

@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 
 from simulation.models import Simulation
 from simulation.utils import generate_fake_name
-from trainerlab.models import TrainerSession
+from apps.trainerlab.models import TrainerSession
 
 User = get_user_model()
 logger = logging.getLogger(__name__)

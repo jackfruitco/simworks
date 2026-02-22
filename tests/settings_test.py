@@ -17,7 +17,7 @@ INSTALLED_APPS = [
     "core",
     "simulation",
     "chatlab",
-    "trainerlab",
+    "apps.trainerlab",
     "channels",  # For WebSocket support
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
