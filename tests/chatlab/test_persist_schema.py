@@ -86,7 +86,7 @@ class TestPatientInitialPersistence:
         assert result.is_from_ai is True
         assert result.sender is not None
         # User model doesn't have 'username' - check email instead
-        assert result.sender.email == "system@simworks.local"
+        assert result.sender.email == "system@medsim.local"
 
         # Check metadata was created as PatientDemographics (polymorphic subclass)
         from simulation.models import SimulationMetadata, PatientDemographics
@@ -124,6 +124,55 @@ class TestPatientInitialPersistence:
         async for meta in SimulationMetadata.objects.filter(simulation_id=context.simulation_id):
             assert "condition_a" not in meta.key
             assert "condition_b" not in meta.key
+
+    async def test_creates_outbox_events_for_messages_and_metadata(self, context):
+        """PatientInitialOutputSchema should create outbox events for both messages and metadata."""
+        schema = PatientInitialOutputSchema.model_validate({
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello, I have chest pain."}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
+                {"kind": "patient_demographics", "key": "age", "value": "45"},
+            ],
+            "llm_conditions_check": [],
+        })
+
+        result = await persist_schema(schema, context)
+
+        # Check message outbox events
+        from core.models import OutboxEvent
+        message_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="chat.message_created",
+        )
+        message_event_count = await message_events.acount()
+        assert message_event_count == 1  # One message
+
+        msg_event = await message_events.afirst()
+        assert msg_event.event_type == "chat.message_created"
+        assert msg_event.correlation_id == context.correlation_id
+        assert "message_id" in msg_event.payload
+        assert "content" in msg_event.payload
+        assert msg_event.payload["content"] == "Hello, I have chest pain."
+
+        # Check metadata outbox events
+        metadata_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="metadata.created",
+        )
+        metadata_event_count = await metadata_events.acount()
+        assert metadata_event_count == 2  # Two metadata items
+
+        meta_event = await metadata_events.afirst()
+        assert meta_event.event_type == "metadata.created"
+        assert "metadata_id" in meta_event.payload
+        assert "kind" in meta_event.payload
+        assert "key" in meta_event.payload
 
 
 @pytest.mark.django_db(transaction=True)
@@ -168,6 +217,39 @@ class TestPatientReplyPersistence:
 
         assert any("Image requested" in r.message for r in caplog.records)
 
+    async def test_creates_outbox_events_for_messages(self, context):
+        """PatientReplyOutputSchema should create outbox events for messages."""
+        schema = PatientReplyOutputSchema.model_validate({
+            "image_requested": True,
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "The pain is sharp and sudden."}],
+                    "item_meta": [],
+                }
+            ],
+            "llm_conditions_check": [],
+        })
+
+        result = await persist_schema(schema, context)
+
+        # Check message outbox events
+        from core.models import OutboxEvent
+        message_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="chat.message_created",
+        )
+        message_event_count = await message_events.acount()
+        assert message_event_count == 1
+
+        msg_event = await message_events.afirst()
+        assert msg_event.event_type == "chat.message_created"
+        assert msg_event.correlation_id == context.correlation_id
+        assert "message_id" in msg_event.payload
+        assert "content" in msg_event.payload
+        assert "image_requested" in msg_event.payload
+        assert msg_event.payload["image_requested"] is True
+
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
@@ -177,9 +259,9 @@ class TestPatientResultsPersistence:
         schema = PatientResultsOutputSchema.model_validate({
             "metadata": [
                 {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Good communication skills"}],
-                    "item_meta": [{"key": "key", "value": "communication_score"}],
+                    "kind": "generic",
+                    "key": "communication_score",
+                    "value": "Good communication skills"
                 }
             ],
             "llm_conditions_check": [],
@@ -194,6 +276,43 @@ class TestPatientResultsPersistence:
         assert meta is not None
         assert meta.key == "communication_score"
         assert meta.value == "Good communication skills"
+
+    async def test_creates_outbox_events_for_metadata(self, context):
+        """PatientResultsOutputSchema should create outbox events for metadata."""
+        schema = PatientResultsOutputSchema.model_validate({
+            "metadata": [
+                {
+                    "kind": "generic",
+                    "key": "bedside_manner_score",
+                    "value": "Excellent bedside manner"
+                },
+                {
+                    "kind": "generic",
+                    "key": "history_taking_score",
+                    "value": "Thorough history taking"
+                }
+            ],
+            "llm_conditions_check": [],
+        })
+
+        result = await persist_schema(schema, context)
+
+        # Check metadata outbox events
+        from core.models import OutboxEvent
+        metadata_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="metadata.created",
+        )
+        metadata_event_count = await metadata_events.acount()
+        assert metadata_event_count == 2  # Two metadata items
+
+        meta_event = await metadata_events.afirst()
+        assert meta_event.event_type == "metadata.created"
+        assert meta_event.correlation_id == context.correlation_id
+        assert "metadata_id" in meta_event.payload
+        assert "kind" in meta_event.payload
+        assert "key" in meta_event.payload
+        assert "value" in meta_event.payload
 
 
 @pytest.mark.django_db(transaction=True)
@@ -231,6 +350,47 @@ class TestHotwashPersistence:
             key="hotwash_overall_feedback",
         )
         assert overall.value == "Good job overall!"
+
+    async def test_creates_outbox_events_for_websocket_broadcast(self, context):
+        """GenerateInitialSimulationFeedback should create outbox events for WebSocket delivery."""
+        schema = GenerateInitialSimulationFeedback.model_validate({
+            "llm_conditions_check": [],
+            "metadata": {
+                "correct_diagnosis": True,
+                "correct_treatment_plan": False,
+                "patient_experience": 4,
+                "overall_feedback": "Good job overall!",
+            },
+        })
+
+        result = await persist_schema(schema, context)
+
+        # Check that outbox events were created
+        from core.models import OutboxEvent
+        events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="feedback.created",
+        )
+        event_count = await events.acount()
+
+        # Should have 4 events (one per feedback item)
+        assert event_count == 4
+
+        # Check event structure
+        event = await events.afirst()
+        assert event.event_type == "feedback.created"
+        assert event.correlation_id == context.correlation_id
+        assert "feedback_id" in event.payload
+        assert "key" in event.payload
+        assert "value" in event.payload
+
+        # Check idempotency keys are unique
+        idempotency_keys = [e.idempotency_key async for e in events]
+        assert len(idempotency_keys) == len(set(idempotency_keys)), "Idempotency keys should be unique"
+
+        # Check all idempotency keys start with event type
+        for key in idempotency_keys:
+            assert key.startswith("feedback.created:"), f"Idempotency key should start with event type: {key}"
 
 
 class TestMROMerging:

@@ -378,6 +378,48 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
         pass
 ```
 
+### Broadcasting AI Responses via WebSocket
+
+**All AI response schemas** can broadcast events to WebSocket clients using the `post_persist()` hook. This enables real-time UI updates when AI responses are persisted.
+
+**Pattern**: Schema `post_persist()` Hook + Outbox Pattern
+
+```python
+# simulation/orca/schemas/feedback.py
+from core.outbox import broadcast_domain_objects
+
+class GenerateInitialSimulationFeedback(BaseModel):
+    __persist__ = {"metadata": persist_initial_feedback_block}
+    __persist_primary__ = "metadata"
+
+    async def post_persist(self, results, context):
+        """Broadcast feedback creation to WebSocket clients."""
+        await broadcast_domain_objects(
+            event_type="feedback.created",
+            objects=results.get("metadata", []),
+            context=context,
+            payload_builder=lambda fb: {
+                "feedback_id": fb.id,
+                "key": fb.key,
+                "value": fb.value,
+            },
+        )
+```
+
+**Why This Pattern?**:
+- ✅ **Locality of Behavior**: Broadcast logic lives with persistence logic
+- ✅ **Context-rich**: Access to correlation_id, simulation_id, persisted objects
+- ✅ **DRY**: Shared `broadcast_domain_objects()` helper
+- ✅ **Testable**: Test persistence + broadcast together
+- ✅ **Reliable**: Outbox pattern ensures at-least-once delivery
+
+**Event Types**:
+- `chat.message_created` - New patient/AI messages
+- `metadata.created` - Labs, radiology, demographics, assessments
+- `feedback.created` - Simulation feedback (hotwash)
+
+**Documentation**: See `docs/WEBSOCKET_EVENTS.md` for complete event reference
+
 ### Creating Persistence Handlers
 
 **Persistence handlers** are Django-specific components that persist structured LLM outputs (validated schemas) to domain models. They operate out-of-band via a drain worker for reliability and scalability.

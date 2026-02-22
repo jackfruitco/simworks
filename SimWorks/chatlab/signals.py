@@ -29,15 +29,32 @@ def broadcast_new_message(sender, instance, created, **kwargs):
     """
     Broadcast newly created messages via WebSocket using the outbox pattern.
 
+    **Hybrid Approach**: This signal handler now only broadcasts messages that
+    are NOT created via AI schemas (e.g., admin edits, bulk imports, manual creates).
+
+    AI-generated messages are broadcast via schema post_persist() hooks for:
+    - Better cohesion (broadcast logic lives with persistence logic)
+    - Context awareness (correlation_id, audit_id available)
+    - Testability (test persistence + broadcast together)
+
     Uses the outbox pattern for:
     1. Durability - event is persisted before broadcast
     2. Deduplication - event_id in envelope enables client-side dedup
     3. Exactly-once delivery - idempotency_key prevents duplicates
 
-    Note: This replaces the old ai_response_ready signal handler.
-    Domain persistence now happens in chatlab/orca/persist/patient.py.
+    Note: This handler serves as a safety net for non-AI message creates.
+    AI responses are handled in chatlab/orca/schemas/patient.py post_persist().
     """
+    # Skip AI messages - they're broadcast via schema post_persist() hooks
+    # This signal only handles non-AI messages (admin edits, manual creates, etc.)
     if created and instance.is_from_ai:
+        logger.debug(
+            "Skipping signal broadcast for AI message %d (handled by schema post_persist)",
+            instance.id,
+        )
+        return
+
+    if created and not instance.is_from_ai:
         try:
             # Build payload matching the existing broadcast_message format
             payload = {
@@ -67,7 +84,7 @@ def broadcast_new_message(sender, instance, created, **kwargs):
                 # Trigger immediate delivery
                 poke_drain_sync()
                 logger.debug(
-                    "Message %d enqueued to outbox (event %s)",
+                    "Non-AI message %d enqueued to outbox (event %s)",
                     instance.id,
                     event.id,
                 )

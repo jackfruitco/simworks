@@ -35,6 +35,11 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
     - ``kind="generic"`` → simulation.SimulationMetadata (fallback)
 
     Each item type includes required fields matching the Django model structure.
+
+    **WebSocket Broadcasting**:
+    - Broadcasts ``chat.message_created`` events for patient messages
+    - Broadcasts ``metadata.created`` events for demographics/history/results
+    - Enables real-time UI updates when initial response is generated
     """
 
     metadata: list[MetadataItem] = Field(
@@ -45,6 +50,52 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
     __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
     __persist_primary__ = "messages"
 
+    async def post_persist(self, results, context):
+        """Broadcast message and metadata creation to WebSocket clients.
+
+        Creates outbox events for:
+        1. Message objects (chat.message_created) - patient initial response
+        2. Metadata objects (metadata.created) - demographics, history, etc.
+
+        Args:
+            results: Dict of persisted objects from __persist__ declarations
+            context: PersistContext with simulation_id, correlation_id, etc.
+        """
+        from core.outbox import broadcast_domain_objects
+        from chatlab.models import Message
+
+        # Broadcast messages
+        messages = results.get("messages", [])
+        if messages:
+            await broadcast_domain_objects(
+                event_type="chat.message_created",
+                objects=messages,
+                context=context,
+                payload_builder=lambda msg: {
+                    "message_id": msg.id,
+                    "content": msg.content or "",
+                    "role": msg.role,
+                    "is_from_ai": msg.is_from_ai,
+                    "display_name": msg.display_name or "",
+                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+                },
+            )
+
+        # Broadcast metadata
+        metadata = results.get("metadata", [])
+        if metadata:
+            await broadcast_domain_objects(
+                event_type="metadata.created",
+                objects=metadata,
+                context=context,
+                payload_builder=lambda meta: {
+                    "metadata_id": meta.id,
+                    "kind": meta.polymorphic_ctype.model if hasattr(meta, 'polymorphic_ctype') else "generic",
+                    "key": meta.key,
+                    "value": meta.value,
+                },
+            )
+
 
 class PatientReplyOutputSchema(PatientResponseBaseMixin):
     """Output for subsequent patient reply turns.
@@ -53,6 +104,10 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     - messages → chatlab.Message via ``persist_messages`` (inherited from mixin)
     - image_requested → Persisted to Message.image_requested field via context
     - llm_conditions_check → NOT PERSISTED
+
+    **WebSocket Broadcasting**:
+    - Broadcasts ``chat.message_created`` events for patient reply messages
+    - Enables real-time UI updates when patient responds
     """
 
     image_requested: bool = Field(
@@ -63,17 +118,45 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
-        """Update Message records with image_requested flag."""
-        if self.image_requested:
+        """Update Message records and broadcast to WebSocket clients.
+
+        Handles:
+        1. Update Message.image_requested flag if images referenced
+        2. Broadcast chat.message_created events for real-time delivery
+
+        Args:
+            results: Dict of persisted objects from __persist__ declarations
+            context: PersistContext with simulation_id, correlation_id, etc.
+        """
+        from chatlab.models import Message
+        from core.outbox import broadcast_domain_objects
+
+        messages = results.get("messages", [])
+
+        # Update image_requested flag if needed
+        if self.image_requested and messages:
             logger.info("Image requested for simulation %s - flag set on Message records", context.simulation_id)
-            # Update all messages created in this persist cycle
-            from chatlab.models import Message
-            messages = results.get("messages", [])
-            if messages:
-                for msg in messages:
-                    if isinstance(msg, Message):
-                        msg.image_requested = True
-                        await msg.asave(update_fields=["image_requested"])
+            for msg in messages:
+                if isinstance(msg, Message):
+                    msg.image_requested = True
+                    await msg.asave(update_fields=["image_requested"])
+
+        # Broadcast messages
+        if messages:
+            await broadcast_domain_objects(
+                event_type="chat.message_created",
+                objects=messages,
+                context=context,
+                payload_builder=lambda msg: {
+                    "message_id": msg.id,
+                    "content": msg.content or "",
+                    "role": msg.role,
+                    "is_from_ai": msg.is_from_ai,
+                    "display_name": msg.display_name or "",
+                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+                    "image_requested": msg.image_requested,
+                },
+            )
 
 
 class PatientResultsOutputSchema(BaseModel):
@@ -92,6 +175,10 @@ class PatientResultsOutputSchema(BaseModel):
     - ``kind="patient_history"`` → simulation.PatientHistory
     - ``kind="patient_demographics"`` → simulation.PatientDemographics
     - ``kind="generic"`` → simulation.SimulationMetadata (fallback)
+
+    **WebSocket Broadcasting**:
+    - Broadcasts ``metadata.created`` events for results/assessments
+    - Enables real-time UI updates when scores/observations are ready
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -107,3 +194,29 @@ class PatientResultsOutputSchema(BaseModel):
 
     __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
     __persist_primary__ = "metadata"
+
+    async def post_persist(self, results, context):
+        """Broadcast metadata creation to WebSocket clients.
+
+        Creates outbox events for metadata objects (labs, radiology results,
+        scored observations, assessments) to enable real-time UI updates.
+
+        Args:
+            results: Dict of persisted objects from __persist__ declarations
+            context: PersistContext with simulation_id, correlation_id, etc.
+        """
+        from core.outbox import broadcast_domain_objects
+
+        metadata = results.get("metadata", [])
+        if metadata:
+            await broadcast_domain_objects(
+                event_type="metadata.created",
+                objects=metadata,
+                context=context,
+                payload_builder=lambda meta: {
+                    "metadata_id": meta.id,
+                    "kind": meta.polymorphic_ctype.model if hasattr(meta, 'polymorphic_ctype') else "generic",
+                    "key": meta.key,
+                    "value": meta.value,
+                },
+            )

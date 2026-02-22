@@ -20,7 +20,7 @@ from .models import RoleChoices
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_USER = "system@simworks.local"
+SYSTEM_USER = "system@medsim.local"
 
 class ContentMode(str, Enum):
     HTML = "fullHtml"
