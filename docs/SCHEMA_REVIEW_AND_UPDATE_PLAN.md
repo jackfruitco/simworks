@@ -13,7 +13,7 @@ This document provides a complete inventory of schemas in the SimWorks codebase,
 
 **Key Findings:**
 - **3 active output schemas** currently in use (PatientInitialOutputSchema, PatientReplyOutputSchema, PatientResultsOutputSchema)
-- **1 feedback schema** (HotwashInitialSchema)
+- **1 feedback schema** (GenerateInitialSimulationFeedback)
 - **6 reusable output item types** defined but limited reuse
 - **0 critical OpenAI compatibility issues** found (all schemas are object-based with properties)
 - **Moderate refactoring opportunity** to reduce duplication and improve type safety
@@ -35,7 +35,7 @@ This document provides a complete inventory of schemas in the SimWorks codebase,
 | **PatientInitialOutputSchema** | `chatlab/orca/schemas/patient.py` | chatlab | Pydantic + @schema | GenerateInitialResponse service | ✅ Message + Metadata | messages, metadata, llm_conditions_check |
 | **PatientReplyOutputSchema** | `chatlab/orca/schemas/patient.py` | chatlab | Pydantic + @schema | GenerateReplyResponse service | ✅ Message only | image_requested, messages, llm_conditions_check |
 | **PatientResultsOutputSchema** | `chatlab/orca/schemas/patient.py` | chatlab | Pydantic + @schema | Not yet wired | ✅ Metadata only | metadata, llm_conditions_check |
-| **HotwashInitialSchema** | `simulation/orca/schemas/feedback.py` | simulation | Pydantic + @schema | GenerateHotwashInitialResponse | ❌ Not yet wired | llm_conditions_check, metadata (HotwashInitialBlock) |
+| **GenerateInitialSimulationFeedback** | `simulation/orca/schemas/feedback.py` | simulation | Pydantic + @schema | GenerateHotwashInitialResponse | ❌ Not yet wired | llm_conditions_check, metadata (InitialFeedbackBlock) |
 
 ### 1.2 Output Item Types (Reusable Components)
 
@@ -43,11 +43,11 @@ This document provides a complete inventory of schemas in the SimWorks codebase,
 |------|----------|-------|------|---------|-------|
 | **DjangoOutputItem** | `orchestrai_django/types/django_dtos.py` | orchestrai_django | Pydantic DTO | All schemas via lists | Rich output with correlation, persistence metadata |
 | **LLMConditionsCheckItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | All 4 schemas | Generic key-value pair |
-| **CorrectDiagnosisItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | HotwashInitialBlock | Literal key, bool value |
-| **CorrectTreatmentPlanItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | HotwashInitialBlock | Literal key, bool value |
-| **PatientExperienceItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | HotwashInitialBlock | Literal key, int 0-5 |
-| **OverallFeedbackItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | HotwashInitialBlock | Literal key, string value |
-| **HotwashInitialBlock** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputBlock | HotwashInitialSchema | Composite block with 4 typed items |
+| **CorrectDiagnosisItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | InitialFeedbackBlock | Literal key, bool value |
+| **CorrectTreatmentPlanItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | InitialFeedbackBlock | Literal key, bool value |
+| **PatientExperienceItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | InitialFeedbackBlock | Literal key, int 0-5 |
+| **OverallFeedbackItem** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputItem | InitialFeedbackBlock | Literal key, string value |
+| **InitialFeedbackBlock** | `simulation/orca/schemas/output_items.py` | simulation | BaseOutputBlock | GenerateInitialSimulationFeedback | Composite block with 4 typed items |
 
 ### 1.3 Dead/Unused Schemas
 
@@ -151,7 +151,7 @@ All 4 active schemas validated against OpenAI constraints:
 | PatientInitialOutputSchema | ✅ object | ✅ none | ✅ yes | **PASS** |
 | PatientReplyOutputSchema | ✅ object | ✅ none | ✅ yes | **PASS** |
 | PatientResultsOutputSchema | ✅ object | ✅ none | ✅ yes | **PASS** |
-| HotwashInitialSchema | ✅ object | ✅ none | ✅ yes | **PASS** |
+| GenerateInitialSimulationFeedback | ✅ object | ✅ none | ✅ yes | **PASS** |
 
 **No compatibility issues found.**
 
@@ -181,9 +181,9 @@ llm_conditions_check: list[LLMConditionsCheckItem] = Field(...)
 
 **Pattern 2: Feedback item types are single-use**
 
-The 4 feedback item types (CorrectDiagnosisItem, etc.) are only used in HotwashInitialBlock:
+The 4 feedback item types (CorrectDiagnosisItem, etc.) are only used in InitialFeedbackBlock:
 ```python
-class HotwashInitialBlock(DjangoBaseOutputBlock):
+class InitialFeedbackBlock(DjangoBaseOutputBlock):
     correct_diagnosis: CorrectDiagnosisItem
     correct_treatment_plan: CorrectTreatmentPlanItem
     patient_experience: PatientExperienceItem
@@ -258,7 +258,7 @@ class FeedbackBlock(DjangoBaseOutputBlock):
 | PatientInitialOutputSchema | Message + SimulationMetadata | ✅ Yes (PersistedChunk) | ❌ No | metadata items route to polymorphic models |
 | PatientReplyOutputSchema | Message | ✅ Yes (PersistedChunk) | ❌ No | image_requested triggers workflow |
 | PatientResultsOutputSchema | SimulationMetadata | ❌ Not yet | ❌ No | Not yet wired to persistence |
-| HotwashInitialSchema | Not persisted | ❌ No | ❌ No | No persistence handler exists |
+| GenerateInitialSimulationFeedback | Not persisted | ❌ No | ❌ No | No persistence handler exists |
 
 ### 5.2 SimWorks Schema Ownership
 
@@ -363,12 +363,12 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin, ChatlabMixin, Standar
 
 **Approach:**
 1. Remove 4 single-use item classes (CorrectDiagnosisItem, etc.)
-2. Inline fields directly in HotwashInitialBlock
+2. Inline fields directly in InitialFeedbackBlock
 3. Keep semantic field names
 
 **Before:**
 ```python
-class HotwashInitialBlock(DjangoBaseOutputBlock):
+class InitialFeedbackBlock(DjangoBaseOutputBlock):
     correct_diagnosis: CorrectDiagnosisItem
     correct_treatment_plan: CorrectTreatmentPlanItem
     patient_experience: PatientExperienceItem
@@ -377,7 +377,7 @@ class HotwashInitialBlock(DjangoBaseOutputBlock):
 
 **After:**
 ```python
-class HotwashInitialBlock(DjangoBaseOutputBlock):
+class InitialFeedbackBlock(DjangoBaseOutputBlock):
     """Initial hotwash feedback block with direct field definitions."""
     correct_diagnosis: bool = Field(..., description="Whether the diagnosis was correct")
     correct_treatment_plan: bool = Field(..., description="Whether the treatment plan was correct")
@@ -385,7 +385,7 @@ class HotwashInitialBlock(DjangoBaseOutputBlock):
     overall_feedback: str = Field(..., description="Overall feedback text")
 ```
 
-**Migration Strategy:** None (HotwashInitialSchema not yet persisted)
+**Migration Strategy:** None (GenerateInitialSimulationFeedback not yet persisted)
 
 **Validation:**
 - Schema validation tests confirm structure
@@ -418,7 +418,7 @@ class HotwashInitialBlock(DjangoBaseOutputBlock):
 
 ---
 
-### Patch Set 5: Wire HotwashInitialSchema Persistence (Optional, 2 days)
+### Patch Set 5: Wire GenerateInitialSimulationFeedback Persistence (Optional, 2 days)
 **Risk:** Medium (new persistence path)
 **Files:**
 - `simulation/orca/persist/feedback.py` (new)
@@ -587,7 +587,7 @@ def test_openai_format_adapter_valid():
 
 **Nice to Have (Low Priority):**
 5. **Patch Set 4:** Wire PatientResultsOutputSchema persistence
-6. **Patch Set 5:** Wire HotwashInitialSchema persistence
+6. **Patch Set 5:** Wire GenerateInitialSimulationFeedback persistence
 
 ### 8.3 Risk Assessment
 
@@ -644,12 +644,12 @@ DjangoBaseOutputSchema (abstract, with identity)
   │     metadata: list[DjangoOutputItem]
   │     llm_conditions_check: list[LLMConditionsCheckItem]
   │
-  └─> HotwashInitialSchema
+  └─> GenerateInitialSimulationFeedback
         llm_conditions_check: list[LLMConditionsCheckItem]
-        metadata: HotwashInitialBlock
+        metadata: InitialFeedbackBlock
 
 DjangoBaseOutputBlock (no identity)
-  └─> HotwashInitialBlock
+  └─> InitialFeedbackBlock
         correct_diagnosis: CorrectDiagnosisItem
         correct_treatment_plan: CorrectTreatmentPlanItem
         patient_experience: PatientExperienceItem
@@ -679,12 +679,12 @@ DjangoBaseOutputSchema (abstract, with identity)
   │     metadata: list[DjangoOutputItem]
   │     # llm_conditions_check inherited
   │
-  └─> HotwashInitialSchema
+  └─> GenerateInitialSimulationFeedback
         llm_conditions_check: list[LLMConditionsCheckItem]
-        metadata: HotwashInitialBlock
+        metadata: InitialFeedbackBlock
 
 DjangoBaseOutputBlock (no identity)
-  └─> HotwashInitialBlock (simplified)
+  └─> InitialFeedbackBlock (simplified)
         correct_diagnosis: bool
         correct_treatment_plan: bool
         patient_experience: int (0-5)
@@ -694,7 +694,7 @@ DjangoBaseOutputItem (no identity)
   └─> LLMConditionsCheckItem (only)
 ```
 
-**Items removed:** CorrectDiagnosisItem, CorrectTreatmentPlanItem, PatientExperienceItem, OverallFeedbackItem (inlined into HotwashInitialBlock)
+**Items removed:** CorrectDiagnosisItem, CorrectTreatmentPlanItem, PatientExperienceItem, OverallFeedbackItem (inlined into InitialFeedbackBlock)
 
 ---
 

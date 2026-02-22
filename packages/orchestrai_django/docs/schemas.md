@@ -96,7 +96,7 @@ Blocks do **not** require an identity.
 ### Full Schema
 
 ```python
-class HotwashInitialSchema(DjangoBaseOutputSchema):
+class GenerateInitialSimulationFeedback(DjangoBaseOutputSchema):
     metadata: FeedbackBlock
 ```
 

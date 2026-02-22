@@ -2,19 +2,26 @@
 <form method="get" action="{% url 'chatlab:create_simulation' %}" class="start-form">
     <div class="dropdown-wrapper" x-data="{ modifierTrayOpen: false }" @click.away="modifierTrayOpen = false">
         <div class="button-group">
-            <button type="submit" class="btn pri sm">Begin New Simulation</button>
-            <button type="button" class="btn sm" @click="modifierTrayOpen = !modifierTrayOpen">&#x25BC;</button>
+            <button type="submit" class="btn gradient-pri">
+                <span class="iconify" data-icon="mdi:plus-circle"></span>
+                Begin New Simulation
+            </button>
+            <button type="button" class="btn gradient-pri" @click="modifierTrayOpen = !modifierTrayOpen" style="padding-left: 0.75rem; padding-right: 0.75rem;">
+                <span class="iconify" data-icon="mdi:chevron-down" x-bind:data-icon="modifierTrayOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'"></span>
+            </button>
         </div>
 
-        <div class="modifier-tray"
+        <div class="modifier-tray card-modern"
              x-show="modifierTrayOpen"
              x-cloak
+             x-transition
              hx-get="{% url 'chatlab:modifier_selector' %}"
              hx-trigger="revealed"
              hx-swap="innerHTML"
-             hx-indicator="#modifier-loading">
+             hx-indicator="#modifier-loading"
+             style="position: absolute; right: 0; margin-top: 0.5rem; z-index: 1000; min-width: 300px;">
             {# Content loaded via HTMX when tray opens #}
-            <div id="modifier-loading" class="htmx-indicator" style="text-align: center; padding: 1rem;">
+            <div id="modifier-loading" class="htmx-indicator card-body" style="text-align: center;">
                 <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
                 <span>Loading modifiers...</span>
             </div>

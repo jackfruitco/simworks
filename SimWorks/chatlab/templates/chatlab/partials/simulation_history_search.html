@@ -6,31 +6,52 @@
       hx-push-url="true"
       hx-trigger="submit"
       hx-indicator="#search-loading"
-      class="search-form flex flex-col gap-2 bg-white dark:bg-zinc-900 p-4 rounded-md shadow">
-    <div class="form-field">
-        <label class="form-label" for="simulation-search-input">Search for simulations</label>
-        <div class="form-widget">
-            <input id="simulation-search-input"
-                   type="text"
-                   name="q"
-                   placeholder="Search for simulations..."
-                   value="{{ search_query }}"
-                   autocomplete="off">
+      class="card-modern mb-6"
+      x-data="{ searchQuery: '{{ search_query }}' }">
+    <div class="card-body">
+        <div class="form-group mb-4">
+            <label class="form-label" for="simulation-search-input">
+                <span class="iconify mr-2" data-icon="mdi:magnify"></span>
+                Search Simulations
+            </label>
+            <div class="form-widget" style="position: relative;">
+                <input id="simulation-search-input"
+                       type="text"
+                       name="q"
+                       placeholder="Search by name, complaint, or patient..."
+                       value="{{ search_query }}"
+                       autocomplete="off"
+                       x-model="searchQuery"
+                       style="padding-right: 2.5rem;"
+                       class="form-group input">
+                <button type="button"
+                        x-show="searchQuery.length > 0"
+                        @click="searchQuery = ''; $el.closest('form').querySelector('input[name=q]').value = ''"
+                        style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--color-muted);">
+                    <span class="iconify" data-icon="mdi:close-circle"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="form-group mb-4">
+            <label class="form-label inline" for="search-messages-checkbox" style="display: flex; align-items: center; cursor: pointer;">
+                <input id="search-messages-checkbox"
+                       type="checkbox"
+                       name="search_messages"
+                       value="1"{% if search_messages %} checked{% endif %}
+                       style="margin-right: 0.5rem;">
+                <span>Include message content in search</span>
+            </label>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+            <button class="btn outline-pri" type="submit">
+                <span id="search-loading" class="htmx-indicator" style="display: none; margin-right: 0.5rem;">
+                    <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
+                </span>
+                <span class="iconify" data-icon="mdi:magnify"></span>
+                <span>Search</span>
+            </button>
         </div>
     </div>
-    <div class="form-field">
-        <label class="form-label inline" for="search-messages-checkbox">
-            <input id="search-messages-checkbox"
-                   type="checkbox"
-                   name="search_messages"
-                   value="1"{% if search_messages %} checked{% endif %}>
-            <span>Look in simulation messages also</span>
-        </label>
-    </div>
-    <button class="btn ghost" type="submit">
-        <span id="search-loading" class="htmx-indicator" style="display: none;">
-            <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
-        </span>
-        <span>Search</span>
-    </button>
 </form>

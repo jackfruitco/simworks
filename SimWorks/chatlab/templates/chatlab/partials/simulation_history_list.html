@@ -34,17 +34,24 @@
             </li>
         {% endfor %}
     </ul>
-    <div class="pagination">
+    <div class="pagination" style="display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 2rem;">
         {% if simulations.has_previous %}
             <a hx-get="?page={{ simulations.previous_page_number }}"
                hx-target="closest #simulation-history-list"
                hx-swap="outerHTML"
                hx-push-url="true"
                hx-indicator="#history-loading"
-               href="?page={{ simulations.previous_page_number }}">« Previous</a>
+               href="?page={{ simulations.previous_page_number }}"
+               class="btn outline-pri">
+                <span class="iconify" data-icon="mdi:chevron-left"></span>
+                Previous
+            </a>
         {% endif %}
 
-        <span>Page {{ simulations.number }} of {{ simulations.paginator.num_pages }}</span>
+        <span style="color: var(--color-text-dark); font-weight: 500;">
+            Page {{ simulations.number }} of {{ simulations.paginator.num_pages }}
+        </span>
+
         <span id="history-loading" class="htmx-indicator" style="display: none;">
             <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
         </span>
@@ -55,7 +62,11 @@
                hx-swap="outerHTML"
                hx-push-url="true"
                hx-indicator="#history-loading"
-               href="?page={{ simulations.next_page_number }}">Next »</a>
+               href="?page={{ simulations.next_page_number }}"
+               class="btn outline-pri">
+                Next
+                <span class="iconify" data-icon="mdi:chevron-right"></span>
+            </a>
         {% endif %}
     </div>
 </div>

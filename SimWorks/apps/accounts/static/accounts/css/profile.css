@@ -433,15 +433,7 @@
 }
 
 .simulation-card {
-    background: var(--color-bg);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 1.5rem;
-    transition: box-shadow 0.2s;
-}
-
-.simulation-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    /* Base styles now inherited from .card-modern */
 }
 
 .simulation-card-header {

@@ -39,13 +39,15 @@ def refresh_tool(request, tool_name, simulation_id):
     partial_name = f"tool_{tool_name}"
     try:
         # Django 6.0 partial syntax: template.html#partial_name
-        template = get_template(f"simulation/tools.html#{partial_name}")
+        template_name = f"simulation/tools.html#{partial_name}"
+        template = get_template(template_name)
     except TemplateDoesNotExist:
         # Fallback to generic partial
-        template = get_template("simulation/tools.html#tool_generic")
+        template_name = "simulation/tools.html#tool_generic"
+        template = get_template(template_name)
 
     context = {"tool": tool, "simulation": simulation}
-    return render(request, template.template, context)
+    return render(request, template_name, context)
 
 
 def tool_checksum(request, tool_name, simulation_id):

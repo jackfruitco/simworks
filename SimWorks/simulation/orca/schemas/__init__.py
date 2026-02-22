@@ -6,8 +6,8 @@ These are plain Pydantic models used as result_type for Pydantic AI agents.
 Pydantic AI handles validation natively - no @schema decorator needed.
 """
 
-from .feedback import HotwashInitialSchema
-from .output_items import LLMConditionsCheckItem, HotwashInitialBlock
+from .feedback import GenerateInitialSimulationFeedback
+from .output_items import LLMConditionsCheckItem, InitialFeedbackBlock
 from .metadata_items import (
     MetadataItem,
     LabResultItem,
@@ -18,9 +18,9 @@ from .metadata_items import (
 )
 
 __all__ = [
-    "HotwashInitialSchema",
+    "GenerateInitialSimulationFeedback",
     "LLMConditionsCheckItem",
-    "HotwashInitialBlock",
+    "InitialFeedbackBlock",
     "MetadataItem",
     "LabResultItem",
     "RadResultItem",
