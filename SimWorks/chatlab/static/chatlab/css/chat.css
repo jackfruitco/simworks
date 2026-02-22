@@ -11,23 +11,22 @@
   flex-direction: column;
   gap: clamp(0.75rem, 1.5vw, 1rem);
   padding: clamp(0.75rem, 2vw, 1.25rem) clamp(0.5rem, 2.5vw, 1.5rem) clamp(5.5rem, 12vw, 7rem);
-  min-height: calc(100vh - 6rem);
-  height: auto;
-  overflow-y: auto;
+  height: 100%;
+  overflow-y: hidden;
   font-size: clamp(0.95rem, 1.5vw, 1.05rem);
 }
 
-/* Make sure input scroll and fill container */
+/* Make sure messages scroll and fill container */
 #chat-messages,
 .message-list {
-  flex: 1 1 auto;
+  flex: 1;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: clamp(0.5rem, 1vw, 0.75rem);
   padding: clamp(0.75rem, 2vw, 1.25rem);
   font-size: clamp(0.95rem, 1.4vw, 1.05rem);
-  min-height: clamp(55vh, 70vh, 80vh);
+  min-height: 0;
   scroll-padding-bottom: 5rem;
 }
 

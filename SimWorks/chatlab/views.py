@@ -130,10 +130,10 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
     #   This will override the simulation lock to allow user's to type in the chat window.
     val = request.GET.get("feedback_continue_conversation", "").lower()
     feedback_continuation = val in ("true", "1", "yes", "on")
+    context["feedback_continuation"] = feedback_continuation
 
     if feedback_continuation:
         context["simulation_locked"] = False
-        context["feedback_continuation"] = True
 
         logger.debug(
             "Simulation pk=%s: user requesting feedback continuation. "

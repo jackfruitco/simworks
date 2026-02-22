@@ -35,18 +35,17 @@ def refresh_tool(request, tool_name, simulation_id):
     tool_instance = tool_class(simulation)
     tool = tool_instance.to_dict()
 
-    # Built partial template path:
-    custom_partial = f"simulation/partials/tools/_{tool_name}.html"
-
+    # Try to load tool-specific partial from consolidated tools.html
+    partial_name = f"tool_{tool_name}"
     try:
-        # Try to load the custom partial
-        get_template(custom_partial)
-        template = custom_partial
+        # Django 6.0 partial syntax: template.html#partial_name
+        template = get_template(f"simulation/tools.html#{partial_name}")
     except TemplateDoesNotExist:
-        # Fallback to generic
-        template = "simulation/partials/tools/_generic.html"
+        # Fallback to generic partial
+        template = get_template("simulation/tools.html#tool_generic")
 
-    return render(request, template, {"tool": tool, "simulation": simulation})
+    context = {"tool": tool, "simulation": simulation}
+    return render(request, template.template, context)
 
 
 def tool_checksum(request, tool_name, simulation_id):

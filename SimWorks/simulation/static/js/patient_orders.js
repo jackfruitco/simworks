@@ -3,6 +3,7 @@
 (function () {
   const overlay = document.getElementById("order-request-form");
   const toggleButton = document.getElementById("toggle-order-request-form");
+  const toggleButtonEmpty = document.getElementById("toggle-order-request-form-empty");
   const orderInput = document.getElementById("lab-order-input");
   const stageOrderBtn = document.getElementById("stage-order-btn");
   const orderList = document.getElementById("staged-orders-list");
@@ -195,6 +196,7 @@
 
   // Setup event listeners
   toggleButton?.addEventListener("click", showOverlay);
+  toggleButtonEmpty?.addEventListener("click", showOverlay);
   closeButtons?.forEach((btn) => btn.addEventListener("click", hideOverlay));
   overlay?.addEventListener("click", (e) => {
     const isBackdrop = e.target === overlay || e.target === modalBackdrop;
