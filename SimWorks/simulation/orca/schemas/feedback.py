@@ -69,7 +69,7 @@ class GenerateInitialSimulationFeedback(BaseModel):
                 }
             }
         """
-        from core.outbox import broadcast_domain_objects
+        from core.outbox.helpers import broadcast_domain_objects
 
         await broadcast_domain_objects(
             event_type="feedback.created",

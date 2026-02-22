@@ -386,7 +386,7 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
 
 ```python
 # simulation/orca/schemas/feedback.py
-from core.outbox import broadcast_domain_objects
+from core.outbox.helpers import broadcast_domain_objects
 
 class GenerateInitialSimulationFeedback(BaseModel):
     __persist__ = {"metadata": persist_initial_feedback_block}

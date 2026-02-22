@@ -10,20 +10,8 @@ Public API:
     poke_drain_sync()      - Trigger immediate delivery (sync)
     build_ws_envelope()    - Build WebSocket envelope from outbox event
     get_events_for_simulation() - Fetch events for catch-up API
-    broadcast_domain_objects()  - DRY helper for schema post_persist hooks
 
 Usage:
-    # In schema post_persist hook
-    from core.outbox import broadcast_domain_objects
-
-    async def post_persist(self, results, context):
-        await broadcast_domain_objects(
-            event_type="feedback.created",
-            objects=results.get("metadata", []),
-            context=context,
-            payload_builder=lambda obj: {"id": obj.id},
-        )
-
     # In Django signal handlers
     from core.outbox import enqueue_event_sync, poke_drain_sync
 
@@ -36,6 +24,17 @@ Usage:
                 payload={"message_id": instance.id},
             )
             poke_drain_sync()
+
+    # In schema post_persist hooks
+    from core.outbox.helpers import broadcast_domain_objects
+
+    async def post_persist(self, results, context):
+        await broadcast_domain_objects(
+            event_type="feedback.created",
+            objects=results.get("metadata", []),
+            context=context,
+            payload_builder=lambda obj: {"id": obj.id},
+        )
 """
 
 from .outbox import (
@@ -46,7 +45,11 @@ from .outbox import (
     build_ws_envelope,
     get_events_for_simulation,
 )
-from .helpers import broadcast_domain_objects
+
+# Note: broadcast_domain_objects is NOT exported here to avoid import issues
+# during Django startup. It requires orchestrai_django.persistence.PersistContext
+# which may not be ready when signals are registered.
+# Import directly from core.outbox.helpers where needed (in schema post_persist hooks).
 
 __all__ = [
     # Core outbox functions
@@ -56,6 +59,4 @@ __all__ = [
     "poke_drain_sync",
     "build_ws_envelope",
     "get_events_for_simulation",
-    # DRY helpers
-    "broadcast_domain_objects",
 ]

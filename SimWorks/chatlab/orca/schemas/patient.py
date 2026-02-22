@@ -61,7 +61,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
-        from core.outbox import broadcast_domain_objects
+        from core.outbox.helpers import broadcast_domain_objects
         from chatlab.models import Message
 
         # Broadcast messages
@@ -129,7 +129,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
             context: PersistContext with simulation_id, correlation_id, etc.
         """
         from chatlab.models import Message
-        from core.outbox import broadcast_domain_objects
+        from core.outbox.helpers import broadcast_domain_objects
 
         messages = results.get("messages", [])
 
@@ -205,7 +205,7 @@ class PatientResultsOutputSchema(BaseModel):
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
-        from core.outbox import broadcast_domain_objects
+        from core.outbox.helpers import broadcast_domain_objects
 
         metadata = results.get("metadata", [])
         if metadata:
