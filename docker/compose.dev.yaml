@@ -32,11 +32,11 @@ services:
 
   db:
     profiles: ["core"]
-    image: postgres:${DB_IMAGE_TAG:-17.2-alpine}
+    image: postgres:${DB_IMAGE_TAG:-18.2-alpine}
     restart: always
     user: postgres
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     env_file:
       - .env
     environment:
