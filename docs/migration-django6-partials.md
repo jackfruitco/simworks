@@ -78,7 +78,7 @@ return render(request, template.template, context)
 ```django
 {% load core_tags %}
 {% for tool in tools %}
-    {% include "simulation/tools.html#tool_wrapper" %}
+    {% include "simcore/tools.html#tool_wrapper" %}
 {% endfor %}
 ```
 

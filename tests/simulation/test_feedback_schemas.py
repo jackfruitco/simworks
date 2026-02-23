@@ -9,8 +9,8 @@ Validates:
 import pytest
 from pydantic import ValidationError
 
-from simulation.orca.schemas.feedback import GenerateInitialSimulationFeedback
-from simulation.orca.schemas.output_items import InitialFeedbackBlock
+from apps.simcore.orca.schemas.feedback import GenerateInitialSimulationFeedback
+from apps.simcore.orca.schemas.output_items import InitialFeedbackBlock
 
 
 class TestHotwashInitialSchema:

@@ -403,7 +403,7 @@ class TestDualAuth:
         client.force_login(test_user)
 
         # Access messages endpoint (uses DualAuth) with session auth
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         sim = Simulation.objects.create(
             user=test_user,
@@ -419,7 +419,7 @@ class TestDualAuth:
         client = Client()
 
         # Access messages endpoint with JWT auth
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         sim = Simulation.objects.create(
             user=test_user,
@@ -435,7 +435,7 @@ class TestDualAuth:
     def test_dual_auth_prefers_session_over_jwt(self, test_user, django_user_model):
         """When both session and JWT are present, session takes precedence."""
         from apps.accounts.models import UserRole
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         # Create a second user for JWT
         role = UserRole.objects.create(title="Test Role JWT2")

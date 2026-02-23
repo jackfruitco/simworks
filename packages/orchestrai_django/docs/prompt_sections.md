@@ -80,7 +80,7 @@ You may also implement synchronous `render_message`/`render_instruction`; the en
 ## Identity and Mixins
 
 ```python
-from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
+from apps.chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 @prompt_section
 class PatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):

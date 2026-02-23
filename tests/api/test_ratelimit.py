@@ -7,7 +7,7 @@ import pytest
 from django.http import HttpRequest
 from django.test import RequestFactory
 
-from core.ratelimit import (
+from apps.common.ratelimit import (
     RateLimitExceeded,
     check_rate_limit,
     get_client_ip,

@@ -53,7 +53,7 @@ prompt_plan = [
 You can also provide classes directly:
 
 ```python
-from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
+from apps.chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
 
 prompt_plan = [PatientInitialSection, PatientFollowupSection]
 ```

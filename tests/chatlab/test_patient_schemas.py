@@ -10,13 +10,13 @@ Validates:
 import pytest
 from pydantic import ValidationError
 
-from chatlab.orca.schemas import (
+from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from simulation.orca.schemas.output_items import LLMConditionsCheckItem
-from simulation.orca.schemas.metadata_items import (
+from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+from apps.simcore.orca.schemas.metadata_items import (
     LabResultItem,
     RadResultItem,
     PatientHistoryItem,
@@ -310,7 +310,7 @@ class TestPatientInitialSchema:
         assert parsed.metadata[0].__orm_model__ == "simulation.PatientDemographics"
         assert parsed.metadata[1].__orm_model__ == "simulation.PatientHistory"
         assert parsed.metadata[2].__orm_model__ == "simulation.LabResult"
-        assert parsed.metadata[3].__orm_model__ == "simulation.SimulationMetadata"
+        assert parsed.metadata[3].__orm_model__ == "simcore.SimulationMetadata"
 
     def test_polymorphic_metadata_discriminator_validation(self):
         """Verify invalid 'kind' discriminator is rejected."""

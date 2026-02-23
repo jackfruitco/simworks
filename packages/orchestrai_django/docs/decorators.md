@@ -91,7 +91,7 @@ Registers a **DjangoBaseCodec** that validates model output against a schema and
 ```python
 from orchestrai_django.api.decorators import codec
 from orchestrai_django.api.types import DjangoBaseCodec
-from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
+from apps.chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 
 @codec
@@ -121,7 +121,7 @@ Registers a **PromptSection** (PromptKit) in the global registry for the Prompt 
 ```python
 from orchestrai_django.api.decorators import prompt_section
 from orchestrai_django.api.types import PromptSection
-from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
+from apps.chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 @prompt_section
 class PatientInitialSection(PromptSection, ChatlabMixin, StandardizedPatientMixin):

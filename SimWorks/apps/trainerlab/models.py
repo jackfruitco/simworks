@@ -4,7 +4,7 @@ from django.db import models
 from polymorphic.models import PolymorphicModel
 from django.utils.translation import gettext_lazy as _
 
-from simulation.models import BaseSession
+from apps.simcore.models import BaseSession
 
 
 class TrainerSession(BaseSession):
@@ -31,7 +31,7 @@ class ABCEvent(PolymorphicModel):
     warnings.warn("`ABCEvent.event_type` is deprecated. Use `ABCEvent.polymorphic_ctype` instead.", DeprecationWarning, stacklevel=2)
     # event_type = models.ForeignKey(EventType, on_delete=models.CASCADE, related_name="events")
 
-    simulation = models.ForeignKey("simulation.Simulation", on_delete=models.CASCADE, related_name="events")
+    simulation = models.ForeignKey("simcore.Simulation", on_delete=models.CASCADE, related_name="events")
 
     def __str__(self):
         return f"{self.__class__.__name__} at {self.timestamp:%H:%M:%S}"

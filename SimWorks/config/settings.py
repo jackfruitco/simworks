@@ -6,7 +6,7 @@ from pathlib import Path
 import logfire
 from django.core.exceptions import ImproperlyConfigured
 
-from core.utils.system import check_env
+from apps.common.utils.system import check_env
 from .logging import LOGGING
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -70,7 +70,7 @@ AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = [
     "daphne",
     "channels",
-    "apps.accounts.apps.AccountsConfig",
+    "apps.accounts",
     # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -87,9 +87,9 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.apple",
     "allauth.socialaccount.providers.google",
     "django_htmx",
-    "core",
-    "simulation",
-    "chatlab",
+    "apps.common",
+    "apps.simcore",
+    "apps.chatlab",
     "apps.trainerlab",
     "orchestrai_django",
     "imagekit",
@@ -97,8 +97,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
-    "core.middleware.HealthCheckMiddleware",
-    "core.middleware.CorrelationIDMiddleware",
+    "apps.common.middleware.HealthCheckMiddleware",
+    "apps.common.middleware.CorrelationIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -124,7 +124,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "core.context_processors.debug_flag",
+                "apps.common.context_processors.debug_flag",
             ],
         },
     },
@@ -297,7 +297,7 @@ logfire.instrument_httpx(
 logfire.instrument_django(excluded_urls="/health(?:/|$)")
 logfire.instrument_openai(suppress_other_instrumentation=False)
 
-CSRF_FAILURE_VIEW = "core.views.csrf_failure"
+CSRF_FAILURE_VIEW = "apps.common.views.csrf_failure"
 
 STRAWBERRY_DJANGO = {
     "FIELD_DESCRIPTION_FROM_HELP_TEXT": True,

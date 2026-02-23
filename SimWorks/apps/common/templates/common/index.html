@@ -1,0 +1,189 @@
+{% extends 'common/base_core.html' %}
+{% load static %}
+
+{% block parallax %}
+    <div id="parallax" class="display-container" style="background: linear-gradient(135deg, rgba(75, 93, 67, 0.95), rgba(44, 107, 237, 0.85)), url('{% static "images/hero-bg.jpg" %}') center/cover; min-height: 70vh; display: flex; align-items: center; justify-content: center;">
+        <div style="max-width: 900px; padding: 2rem; text-align: center;">
+            <h1 style="font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 700; color: white; margin-bottom: 1.5rem; line-height: 1.2; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);">
+                Jackfruit<span style="color: var(--jckfrt-yellow);"> Med</span><span style="color: var(--jckfrt-red); font-style: italic;">Sim</span>
+            </h1>
+            <p style="font-size: clamp(1.125rem, 2.5vw, 1.5rem); color: rgba(255, 255, 255, 0.95); margin-bottom: 2rem; line-height: 1.6;">
+                Clinical Simulations for Medical Training, powered by OrchestrAI™
+            </p>
+            <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                {% if user.is_authenticated %}
+                    <a href="{% url 'chatlab:index' %}" class="btn gradient-accent" style="font-size: 1.125rem; padding: 1rem 2rem;">
+                        <span class="iconify" data-icon="mdi:flask"></span>
+                        Go to ChatLab
+                    </a>
+                {% else %}
+                    <a href="{% url 'account_signup' %}" class="btn gradient-accent" style="font-size: 1.125rem; padding: 1rem 2rem;">
+                        <span class="iconify" data-icon="mdi:account-plus"></span>
+                        Get Started
+                    </a>
+                    <a href="{% url 'account_login' %}" class="btn outline-accent" style="font-size: 1.125rem; padding: 1rem 2rem; background: rgba(255, 255, 255, 0.1); border-color: white; color: white;">
+                        <span class="iconify" data-icon="mdi:login"></span>
+                        Sign In
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block content %}
+<!-- Features Section -->
+<section style="padding: 5rem 2rem; max-width: 1400px; margin: 0 auto;">
+    <div style="text-align: center; margin-bottom: 4rem;">
+        <h2 style="font-size: 2.5rem; font-weight: 700; color: var(--color-text-dark); margin-bottom: 1rem;">
+            Why Choose MedSim?
+        </h2>
+        <p style="font-size: 1.25rem; color: var(--color-muted); max-width: 700px; margin: 0 auto;">
+            Transform your medical training with realistic, AI-driven patient simulations
+        </p>
+    </div>
+
+    <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+        <div class="feature-card">
+            <div class="feature-card-icon">
+                <span class="iconify" data-icon="mdi:robot"></span>
+            </div>
+            <h3 class="feature-card-title">AI-Powered Patients</h3>
+            <p class="feature-card-description">
+                Interact with realistic AI patients that respond naturally to your questions and treatments, adapting to your clinical decisions in real-time.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-card-icon">
+                <span class="iconify" data-icon="mdi:clipboard-text"></span>
+            </div>
+            <h3 class="feature-card-title">Clinical Documentation</h3>
+            <p class="feature-card-description">
+                Practice real-world documentation with integrated patient history, lab results, and clinical notes—all dynamically generated.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-card-icon">
+                <span class="iconify" data-icon="mdi:chart-line"></span>
+            </div>
+            <h3 class="feature-card-title">Performance Analytics</h3>
+            <p class="feature-card-description">
+                Receive detailed feedback on your clinical reasoning, communication skills, and diagnostic accuracy after each simulation.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-card-icon">
+                <span class="iconify" data-icon="mdi:school"></span>
+            </div>
+            <h3 class="feature-card-title">Educator Tools</h3>
+            <p class="feature-card-description">
+                Instructors can create custom scenarios, track student progress, and provide targeted guidance throughout training.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-card-icon">
+                <span class="iconify" data-icon="mdi:clock-fast"></span>
+            </div>
+            <h3 class="feature-card-title">24/7 Availability</h3>
+            <p class="feature-card-description">
+                Train anytime, anywhere. No scheduling conflicts, no resource limitations—just unlimited practice opportunities.
+            </p>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-card-icon">
+                <span class="iconify" data-icon="mdi:shield-check"></span>
+            </div>
+            <h3 class="feature-card-title">Safe Learning Environment</h3>
+            <p class="feature-card-description">
+                Make mistakes without consequences. Build confidence and competence in a risk-free, supportive training environment.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works Section -->
+<section style="padding: 5rem 2rem; background: linear-gradient(135deg, rgba(44, 107, 237, 0.05), rgba(210, 166, 64, 0.05));">
+    <div style="max-width: 1200px; margin: 0 auto;">
+        <div style="text-align: center; margin-bottom: 4rem;">
+            <h2 style="font-size: 2.5rem; font-weight: 700; color: var(--color-text-dark); margin-bottom: 1rem;">
+                How It Works
+            </h2>
+            <p style="font-size: 1.25rem; color: var(--color-muted);">
+                Get started with MedSim in three simple steps
+            </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 3rem; position: relative;">
+            <div class="card-modern card-elevated" style="text-align: center;">
+                <div class="card-body">
+                    <div style="width: 4rem; height: 4rem; margin: 0 auto 1.5rem; border-radius: 50%; background: linear-gradient(135deg, var(--color-accent-blue), #1e40af); display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: 700;">
+                        1
+                    </div>
+                    <h3 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-dark);">
+                        Choose a Scenario
+                    </h3>
+                    <p style="color: var(--color-muted); line-height: 1.6;">
+                        Select from our library of clinical cases or create your own custom scenarios to match your learning objectives.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card-modern card-elevated" style="text-align: center;">
+                <div class="card-body">
+                    <div style="width: 4rem; height: 4rem; margin: 0 auto 1.5rem; border-radius: 50%; background: linear-gradient(135deg, var(--color-accent-blue), #1e40af); display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: 700;">
+                        2
+                    </div>
+                    <h3 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-dark);">
+                        Interact with Patients
+                    </h3>
+                    <p style="color: var(--color-muted); line-height: 1.6;">
+                        Chat naturally with AI patients, order labs, review results, and make clinical decisions just like in real practice.
+                    </p>
+                </div>
+            </div>
+
+            <div class="card-modern card-elevated" style="text-align: center;">
+                <div class="card-body">
+                    <div style="width: 4rem; height: 4rem; margin: 0 auto 1.5rem; border-radius: 50%; background: linear-gradient(135deg, var(--color-accent-blue), #1e40af); display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; font-weight: 700;">
+                        3
+                    </div>
+                    <h3 style="font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-dark);">
+                        Review & Improve
+                    </h3>
+                    <p style="color: var(--color-muted); line-height: 1.6;">
+                        Get instant feedback on your performance, identify areas for improvement, and track your progress over time.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA Section -->
+<section style="padding: 5rem 2rem; text-align: center;">
+    <div style="max-width: 800px; margin: 0 auto;">
+        <h2 style="font-size: 2.5rem; font-weight: 700; color: var(--color-text-dark); margin-bottom: 1.5rem;">
+            Ready to Transform Your Training?
+        </h2>
+        <p style="font-size: 1.25rem; color: var(--color-muted); margin-bottom: 2.5rem; line-height: 1.6;">
+            Join healthcare professionals worldwide who are advancing their clinical skills with MedSim
+        </p>
+        {% if user.is_authenticated %}
+            <a href="{% url 'chatlab:create_simulation' %}" class="btn gradient-pri" style="font-size: 1.25rem; padding: 1rem 2.5rem;">
+                <span class="iconify" data-icon="mdi:rocket-launch"></span>
+                Start Your First Simulation
+            </a>
+        {% else %}
+            <a href="{% url 'account_signup' %}" class="btn gradient-pri" style="font-size: 1.25rem; padding: 1rem 2.5rem;">
+                <span class="iconify" data-icon="mdi:account-plus"></span>
+                Sign Up Now - It's Free
+            </a>
+        {% endif %}
+    </div>
+</section>
+{% endblock content %}

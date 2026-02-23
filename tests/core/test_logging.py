@@ -113,7 +113,7 @@ class TestCorrelationIDMiddlewareIntegration:
 
     def test_middleware_binds_correlation_id(self):
         """Test that the middleware binds correlation ID to structlog context."""
-        from core.middleware import CorrelationIDMiddleware
+        from apps.common.middleware import CorrelationIDMiddleware
 
         def mock_get_response(request):
             # At this point, correlation ID should be bound
@@ -132,7 +132,7 @@ class TestCorrelationIDMiddlewareIntegration:
 
     def test_middleware_clears_context_after_request(self):
         """Test that the middleware clears context after request completes."""
-        from core.middleware import CorrelationIDMiddleware
+        from apps.common.middleware import CorrelationIDMiddleware
 
         def mock_get_response(request):
             from django.http import HttpResponse
@@ -150,7 +150,7 @@ class TestCorrelationIDMiddlewareIntegration:
 
     def test_middleware_uses_provided_correlation_id(self):
         """Test that middleware uses X-Correlation-ID header if provided."""
-        from core.middleware import CorrelationIDMiddleware
+        from apps.common.middleware import CorrelationIDMiddleware
 
         provided_id = "my-custom-correlation-id"
 
@@ -169,7 +169,7 @@ class TestCorrelationIDMiddlewareIntegration:
 
     def test_middleware_clears_context_on_exception(self):
         """Test that context is cleared even if request raises an exception."""
-        from core.middleware import CorrelationIDMiddleware
+        from apps.common.middleware import CorrelationIDMiddleware
 
         def mock_get_response(request):
             raise ValueError("Test error")

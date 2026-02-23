@@ -31,7 +31,7 @@ class OrmOverride:
         class MySchema(BaseModel):
             feedback: Annotated[
                 list[ResultMetafield],
-                OrmOverride(model="simulation.SimulationFeedback"),
+                OrmOverride(model="simcore.SimulationFeedback"),
             ] = Field(...)
     """
 

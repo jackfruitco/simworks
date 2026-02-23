@@ -19,7 +19,7 @@ from api.v1.schemas.simulations import (
     simulation_to_out,
 )
 from config.logging import get_logger
-from core.ratelimit import api_rate_limit
+from apps.common.ratelimit import api_rate_limit
 
 logger = get_logger(__name__)
 
@@ -40,7 +40,7 @@ def list_simulations(
     status: str | None = Query(default=None, description="Filter by status: in_progress, completed"),
 ) -> PaginatedResponse[SimulationOut]:
     """List all simulations for the authenticated user."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     user = request.auth
     queryset = Simulation.objects.filter(user=user).order_by("-start_timestamp")
@@ -83,7 +83,7 @@ def list_simulations(
 @api_rate_limit
 def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     """Get a specific simulation by ID."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     user = request.auth
 
@@ -104,7 +104,7 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
 @api_rate_limit
 def create_simulation(request: HttpRequest, body: SimulationCreate) -> SimulationOut:
     """Create a new simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     user = request.auth
 
@@ -138,7 +138,7 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
 @api_rate_limit
 def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndResponse:
     """End a simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     user = request.auth
 

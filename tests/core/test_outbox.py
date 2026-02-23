@@ -16,8 +16,8 @@ import pytest
 from django.db import IntegrityError
 from django.utils import timezone
 
-from core.models import OutboxEvent
-from core.outbox import (
+from apps.common.models import OutboxEvent
+from apps.common.outbox import (
     build_ws_envelope,
     enqueue_event,
     enqueue_event_sync,
@@ -299,7 +299,7 @@ class TestDrainOutbox:
     @patch("channels.layers.get_channel_layer")
     def test_drain_delivers_pending_events(self, mock_get_channel_layer):
         """Drain delivers pending events to channel layer."""
-        from core.tasks import drain_outbox
+        from apps.common.tasks import drain_outbox
 
         # Create mock channel layer with async group_send
         mock_channel_layer = MagicMock()
@@ -327,7 +327,7 @@ class TestDrainOutbox:
     @patch("channels.layers.get_channel_layer")
     def test_drain_skips_already_delivered(self, mock_get_channel_layer):
         """Drain skips already delivered events."""
-        from core.tasks import drain_outbox
+        from apps.common.tasks import drain_outbox
 
         mock_channel_layer = MagicMock()
         mock_channel_layer.group_send = AsyncMock()
@@ -351,7 +351,7 @@ class TestDrainOutbox:
     @patch("channels.layers.get_channel_layer")
     def test_drain_increments_attempts_on_failure(self, mock_get_channel_layer):
         """Drain increments attempts when delivery fails."""
-        from core.tasks import drain_outbox
+        from apps.common.tasks import drain_outbox
 
         mock_channel_layer = MagicMock()
         mock_channel_layer.group_send.side_effect = Exception("Connection failed")
@@ -376,7 +376,7 @@ class TestDrainOutbox:
     @patch("channels.layers.get_channel_layer")
     def test_drain_marks_failed_after_max_attempts(self, mock_get_channel_layer):
         """Drain marks event as failed after max attempts."""
-        from core.tasks import drain_outbox, DRAIN_MAX_ATTEMPTS
+        from apps.common.tasks import drain_outbox, DRAIN_MAX_ATTEMPTS
 
         mock_channel_layer = MagicMock()
         mock_channel_layer.group_send.side_effect = Exception("Connection failed")
@@ -402,7 +402,7 @@ class TestDrainOutbox:
     @patch("channels.layers.get_channel_layer")
     def test_drain_handles_no_channel_layer(self, mock_get_channel_layer):
         """Drain handles missing channel layer gracefully."""
-        from core.tasks import drain_outbox
+        from apps.common.tasks import drain_outbox
 
         mock_get_channel_layer.return_value = None
         # Should not raise
@@ -415,7 +415,7 @@ class TestCleanupDeliveredEvents:
 
     def test_cleanup_deletes_old_delivered_events(self):
         """Cleanup deletes events delivered more than N days ago."""
-        from core.tasks import cleanup_delivered_events
+        from apps.common.tasks import cleanup_delivered_events
 
         # Create old delivered event
         old_event = enqueue_event_sync(
@@ -448,7 +448,7 @@ class TestCleanupDeliveredEvents:
 
     def test_cleanup_preserves_pending_events(self):
         """Cleanup does not delete pending events."""
-        from core.tasks import cleanup_delivered_events
+        from apps.common.tasks import cleanup_delivered_events
 
         # Create old pending event
         event = enqueue_event_sync(
@@ -470,7 +470,7 @@ class TestRetryFailedEvents:
 
     def test_retry_resets_failed_events(self):
         """Retry resets failed events to pending."""
-        from core.tasks import retry_failed_events
+        from apps.common.tasks import retry_failed_events
 
         # Create failed event
         event = enqueue_event_sync(
@@ -490,7 +490,7 @@ class TestRetryFailedEvents:
 
     def test_retry_preserves_attempt_count(self):
         """Retry preserves the attempt count."""
-        from core.tasks import retry_failed_events
+        from apps.common.tasks import retry_failed_events
 
         event = enqueue_event_sync(
             "retry.event",
@@ -509,7 +509,7 @@ class TestRetryFailedEvents:
 
     def test_retry_skips_old_failed_events(self):
         """Retry skips events that failed more than 24 hours ago."""
-        from core.tasks import retry_failed_events
+        from apps.common.tasks import retry_failed_events
 
         # Create old failed event
         event = enqueue_event_sync(

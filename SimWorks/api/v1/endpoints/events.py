@@ -12,7 +12,7 @@ from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.utils import get_simulation_for_user
 from config.logging import get_logger
-from core.ratelimit import api_rate_limit
+from apps.common.ratelimit import api_rate_limit
 
 logger = get_logger(__name__)
 
@@ -46,7 +46,7 @@ def list_events(
     """
     import uuid as uuid_module
 
-    from core.models import OutboxEvent
+    from apps.common.models import OutboxEvent
 
     user = request.auth
 

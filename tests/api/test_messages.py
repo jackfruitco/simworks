@@ -56,7 +56,7 @@ def auth_client(test_user):
 @pytest.fixture
 def simulation(test_user):
     """Create a test simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     return Simulation.objects.create(
         user=test_user,
@@ -69,7 +69,7 @@ def simulation(test_user):
 @pytest.fixture
 def message(simulation, test_user):
     """Create a test message."""
-    from chatlab.models import Message, RoleChoices
+    from apps.chatlab.models import Message, RoleChoices
 
     return Message.objects.create(
         simulation=simulation,
@@ -113,7 +113,7 @@ class TestListMessages:
         self, auth_client, other_user
     ):
         """Simulation belonging to other user returns 404."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         other_sim = Simulation.objects.create(
             user=other_user,
@@ -126,7 +126,7 @@ class TestListMessages:
 
     def test_list_messages_excludes_deleted(self, auth_client, simulation, test_user):
         """Deleted messages are not returned."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         # Create a deleted message
         Message.objects.create(
@@ -154,7 +154,7 @@ class TestListMessages:
 
     def test_list_messages_ordering_asc(self, auth_client, simulation, test_user):
         """Messages are ordered ascending by default."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         for i in range(3):
             Message.objects.create(
@@ -173,7 +173,7 @@ class TestListMessages:
 
     def test_list_messages_ordering_desc(self, auth_client, simulation, test_user):
         """Messages can be ordered descending."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         for i in range(3):
             Message.objects.create(
@@ -197,7 +197,7 @@ class TestMessagePagination:
 
     def test_pagination_with_limit(self, auth_client, simulation, test_user):
         """Pagination respects limit parameter."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         # Create 5 messages
         for i in range(5):
@@ -217,7 +217,7 @@ class TestMessagePagination:
 
     def test_pagination_with_cursor(self, auth_client, simulation, test_user):
         """Cursor-based pagination returns next page."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         # Create 5 messages
         for i in range(5):
@@ -246,7 +246,7 @@ class TestMessagePagination:
 
     def test_pagination_last_page_has_no_cursor(self, auth_client, simulation, test_user):
         """Last page has no next_cursor."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         # Create 2 messages
         for i in range(2):
@@ -361,7 +361,7 @@ class TestCreateMessage:
         self, auth_client, other_user
     ):
         """Cannot create message in other user's simulation."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         other_sim = Simulation.objects.create(
             user=other_user,
@@ -434,7 +434,7 @@ class TestGetMessage:
         self, auth_client, test_user, message
     ):
         """Message from different simulation returns 404."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         other_sim = Simulation.objects.create(
             user=test_user,
@@ -487,7 +487,7 @@ class TestMessageOutputFormat:
 
     def test_message_role_mapping(self, auth_client, simulation, test_user):
         """Role field is mapped correctly."""
-        from chatlab.models import Message, RoleChoices
+        from apps.chatlab.models import Message, RoleChoices
 
         # User message
         user_msg = Message.objects.create(

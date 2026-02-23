@@ -309,7 +309,7 @@ class PatientInitialOutputSchema(
 # chatlab/orca/schemas/mixins.py
 from pydantic import Field, BaseModel
 from orchestrai_django.types import DjangoOutputItem
-from simulation.orca.schemas.output_items import LLMConditionsCheckItem
+from apps.simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
 class PatientResponseBaseMixin(BaseModel):
     """Common fields for patient response schemas."""
@@ -386,7 +386,7 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
 
 ```python
 # simulation/orca/schemas/feedback.py
-from core.outbox.helpers import broadcast_domain_objects
+from apps.common.outbox.helpers import broadcast_domain_objects
 
 class GenerateInitialSimulationFeedback(BaseModel):
     __persist__ = {"metadata": persist_initial_feedback_block}
@@ -439,10 +439,10 @@ class GenerateInitialSimulationFeedback(BaseModel):
 from orchestrai_django.decorators import persistence_handler
 from orchestrai_django.components.persistence import BasePersistenceHandler
 from orchestrai.types import Response
-from chatlab.orca.mixins import ChatlabMixin
-from chatlab.orca.schemas import PatientInitialOutputSchema
-from chatlab.models import Message
-from simulation.orca.mixins import StandardizedPatientMixin
+from apps.chatlab.orca.mixins import ChatlabMixin
+from apps.chatlab.orca.schemas import PatientInitialOutputSchema
+from apps.chatlab.models import Message
+from apps.simulation.orca.mixins import StandardizedPatientMixin
 
 @persistence_handler
 class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersistenceHandler):
@@ -613,7 +613,7 @@ service_cls = registry.get(Identity.get("simcore.feedback.GenerateInitialFeedbac
 ### History Providers
 Apps can register history providers for simulation context:
 ```python
-from simulation.history_registry import register_history_provider
+from apps.simulation.history_registry import register_history_provider
 
 def chatlab_history(simulation_id: int) -> list:
     return Message.objects.filter(simulation_id=simulation_id).order_by('created_at')

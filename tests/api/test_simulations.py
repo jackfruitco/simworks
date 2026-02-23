@@ -57,7 +57,7 @@ def auth_client(test_user):
 @pytest.fixture
 def simulation(test_user):
     """Create a test simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     return Simulation.objects.create(
         user=test_user,
@@ -94,7 +94,7 @@ class TestListSimulations:
         self, auth_client, test_user, other_user
     ):
         """Does not return simulations belonging to other users."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         # Create simulation for other user
         Simulation.objects.create(
@@ -113,7 +113,7 @@ class TestListSimulations:
     def test_list_simulations_with_status_filter(self, auth_client, test_user):
         """Can filter by status."""
         from django.utils.timezone import now
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         # Create an in-progress and completed simulation
         Simulation.objects.create(
@@ -140,7 +140,7 @@ class TestListSimulations:
 
     def test_list_simulations_pagination(self, auth_client, test_user):
         """Pagination with limit and cursor works."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         # Create 5 simulations
         sims = []
@@ -206,7 +206,7 @@ class TestGetSimulation:
         self, auth_client, other_user
     ):
         """Simulation belonging to other user returns 404."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         other_sim = Simulation.objects.create(
             user=other_user,
@@ -343,7 +343,7 @@ class TestEndSimulation:
 
     def test_end_simulation_other_user_returns_404(self, auth_client, other_user):
         """Simulation belonging to other user returns 404."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         other_sim = Simulation.objects.create(
             user=other_user,
@@ -363,7 +363,7 @@ class TestSimulationOutputFormat:
         """Response includes all expected fields."""
         from datetime import timedelta
 
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         sim = Simulation.objects.create(
             user=test_user,
@@ -395,7 +395,7 @@ class TestSimulationOutputFormat:
     def test_simulation_status_values(self, auth_client, test_user):
         """Status field has correct values based on simulation state."""
         from django.utils.timezone import now
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         # In-progress
         sim = Simulation.objects.create(

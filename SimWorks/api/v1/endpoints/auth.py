@@ -19,7 +19,7 @@ except Exception:  # pragma: no cover
     revoke_refresh_token = None
 
 from config.logging import get_logger
-from core.ratelimit import auth_rate_limit
+from apps.common.ratelimit import auth_rate_limit
 
 logger = get_logger(__name__)
 

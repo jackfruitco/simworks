@@ -15,8 +15,8 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "core",
-    "simulation",
-    "chatlab",
+    "apps.simcore",
+    "apps.chatlab",
     "apps.trainerlab",
     "channels",  # For WebSocket support
 ]

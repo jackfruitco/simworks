@@ -77,8 +77,8 @@ if [ "$DJANGO_RUN_DEV_SUPERUSER" = "1" ] && [ "${DJANGO_DEBUG:-}" = "True" ]; th
 from django.contrib.auth import get_user_model; \
 User = get_user_model(); \
 role, created = UserRole.objects.get_or_create(title='SOF Medic')
-User.objects.filter(email='dev@jkfrt.com').exists() or \
-User.objects.create_superuser(email='dev@medim.local', password='dev', role=role)"
+User.objects.filter(email='dev@medsim.local').exists() or \
+User.objects.create_superuser(email='dev@medsim.local', password='dev', role=role)"
 else
   echo "Skipping dev superuser setup — DJANGO_DEBUG is not set to 'True'."
 fi

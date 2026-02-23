@@ -1,0 +1,7 @@
+{# templates/chatlab/partials/sidebar_wrapper.html #}
+{% load core_tags %}
+<div class="sim-sidebar-wrapper" x-data="sidebarState({{ simulation.id }})">
+    {% for tool in tools %}
+        {% include "simcore/tools.html#tool_wrapper" %}
+    {% endfor %}
+</div>

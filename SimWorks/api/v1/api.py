@@ -18,7 +18,7 @@ from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
 from config.logging import get_logger
-from core.ratelimit import RateLimitExceeded
+from apps.common.ratelimit import RateLimitExceeded
 
 logger = get_logger(__name__)
 

@@ -18,8 +18,8 @@ from api.v1.schemas.messages import (
 )
 from api.v1.utils import get_simulation_for_user
 from config.logging import get_logger
-from core.ratelimit import api_rate_limit, message_rate_limit
-from simulation.models import Simulation
+from apps.common.ratelimit import api_rate_limit, message_rate_limit
+from apps.simcore.models import Simulation
 
 logger = get_logger(__name__)
 
@@ -29,7 +29,7 @@ def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
 
     Returns the call_id if successfully enqueued, None otherwise.
     """
-    from chatlab.orca.services import GenerateReplyResponse
+    from apps.chatlab.orca.services import GenerateReplyResponse
 
     async def _enqueue():
         return await GenerateReplyResponse.task.using(
@@ -78,7 +78,7 @@ def list_messages(
     order: str = Query(default="asc", description="Sort order: asc (oldest first) or desc (newest first)"),
 ) -> MessageListResponse:
     """List messages in a simulation with cursor pagination."""
-    from chatlab.models import Message
+    from apps.chatlab.models import Message
 
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user)
@@ -143,7 +143,7 @@ def create_message(
     Returns 201 if the message was created successfully, or
     202 if the message was created and an AI response is pending.
     """
-    from chatlab.models import Message, RoleChoices
+    from apps.chatlab.models import Message, RoleChoices
 
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user)
@@ -190,7 +190,7 @@ def get_message(
     message_id: int,
 ) -> MessageOut:
     """Get a specific message by ID."""
-    from chatlab.models import Message
+    from apps.chatlab.models import Message
 
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user)

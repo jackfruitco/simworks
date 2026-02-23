@@ -20,7 +20,7 @@ from typing import Any
 
 import structlog
 
-from core.utils.system import check_env
+from apps.common.utils.system import check_env
 
 LOG_LEVEL = check_env("DJANGO_LOG_LEVEL", "INFO").upper()
 LOGFIRE_LOG_LEVEL = check_env("LOGFIRE_LOG_LEVEL", "INFO").upper()
@@ -30,7 +30,7 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "()": "core.utils.AppColorFormatter",
+            "()": "apps.common.utils.AppColorFormatter",
             "format": "[{asctime}] {levelname} [{name}:{lineno}] {message}",
             "style": "{",
         },

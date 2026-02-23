@@ -17,12 +17,12 @@ from unittest.mock import Mock, patch, AsyncMock
 from channels.testing import WebsocketCommunicator
 from channels.layers import get_channel_layer
 
-from chatlab.consumers import ChatConsumer
+from apps.chatlab.consumers import ChatConsumer
 
 
 async def create_simulation_and_user():
     """Create a simulation and user for testing (async helper)."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
     from apps.accounts.models import User, UserRole
 
     role, _ = await UserRole.objects.aget_or_create(title="Test")

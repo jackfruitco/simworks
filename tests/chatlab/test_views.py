@@ -43,7 +43,7 @@ def system_user(db, user_role):
 @pytest.fixture
 def simulation(db, user):
     """Create a test simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     return Simulation.objects.create(
         user=user,
@@ -56,7 +56,7 @@ def simulation(db, user):
 @pytest.fixture
 def ai_message(db, simulation, system_user):
     """Create a test AI message from the system user."""
-    from chatlab.models import Message, RoleChoices
+    from apps.chatlab.models import Message, RoleChoices
 
     with patch("chatlab.signals.poke_drain_sync"):
         return Message.objects.create(
@@ -144,7 +144,7 @@ class TestGetSingleMessage:
 
     def test_returns_404_for_wrong_simulation(self, client: Client, user, simulation, ai_message):
         """Test that the endpoint returns 404 if message doesn't belong to simulation."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         # Create another simulation
         other_simulation = Simulation.objects.create(

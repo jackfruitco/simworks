@@ -74,7 +74,7 @@ Token stripping includes core tokens (Prompt, Section, Service, Codec, Generate,
 ### Example with Mixins
 
 ```python
-from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
+from apps.chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin
 
 @codec
 class PatientInitialResponseCodec(DjangoBaseCodec, ChatlabMixin, StandardizedPatientMixin):

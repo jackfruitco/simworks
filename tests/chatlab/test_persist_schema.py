@@ -13,13 +13,13 @@ import pytest
 from uuid import uuid4
 
 from orchestrai_django.persistence import PersistContext, persist_schema
-from chatlab.orca.schemas import (
+from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from simulation.orca.schemas.feedback import GenerateInitialSimulationFeedback
-from chatlab.models import Message, RoleChoices
+from apps.simcore.orca.schemas.feedback import GenerateInitialSimulationFeedback
+from apps.chatlab.models import Message, RoleChoices
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def user(db, user_role):
 
 @pytest.fixture
 def simulation(db, user):
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     return Simulation.objects.create(user=user)
 
@@ -89,7 +89,7 @@ class TestPatientInitialPersistence:
         assert result.sender.email == "system@medsim.local"
 
         # Check metadata was created as PatientDemographics (polymorphic subclass)
-        from simulation.models import SimulationMetadata, PatientDemographics
+        from apps.simcore.models import SimulationMetadata, PatientDemographics
         metadata_count = await SimulationMetadata.objects.filter(
             simulation_id=context.simulation_id
         ).acount()
@@ -120,7 +120,7 @@ class TestPatientInitialPersistence:
 
         await persist_schema(schema, context)
 
-        from simulation.models import SimulationMetadata
+        from apps.simcore.models import SimulationMetadata
         async for meta in SimulationMetadata.objects.filter(simulation_id=context.simulation_id):
             assert "condition_a" not in meta.key
             assert "condition_b" not in meta.key
@@ -145,7 +145,7 @@ class TestPatientInitialPersistence:
         result = await persist_schema(schema, context)
 
         # Check message outbox events
-        from core.models import OutboxEvent
+        from apps.common.models import OutboxEvent
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="chat.message_created",
@@ -234,7 +234,7 @@ class TestPatientReplyPersistence:
         result = await persist_schema(schema, context)
 
         # Check message outbox events
-        from core.models import OutboxEvent
+        from apps.common.models import OutboxEvent
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="chat.message_created",
@@ -269,7 +269,7 @@ class TestPatientResultsPersistence:
 
         result = await persist_schema(schema, context)
 
-        from simulation.models import SimulationMetadata
+        from apps.simcore.models import SimulationMetadata
         meta = await SimulationMetadata.objects.filter(
             simulation_id=context.simulation_id
         ).afirst()
@@ -298,7 +298,7 @@ class TestPatientResultsPersistence:
         result = await persist_schema(schema, context)
 
         # Check metadata outbox events
-        from core.models import OutboxEvent
+        from apps.common.models import OutboxEvent
         metadata_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="metadata.created",
@@ -332,7 +332,7 @@ class TestHotwashPersistence:
 
         result = await persist_schema(schema, context)
 
-        from simulation.models import SimulationFeedback
+        from apps.simcore.models import SimulationFeedback
         feedback_count = await SimulationFeedback.objects.filter(
             simulation_id=context.simulation_id
         ).acount()
@@ -366,7 +366,7 @@ class TestHotwashPersistence:
         result = await persist_schema(schema, context)
 
         # Check that outbox events were created
-        from core.models import OutboxEvent
+        from apps.common.models import OutboxEvent
         events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="feedback.created",
@@ -397,7 +397,7 @@ class TestMROMerging:
     def test_mixin_persist_inherited_by_child(self):
         """PatientInitialOutputSchema should inherit messages persistence from mixin."""
         from orchestrai_django.persistence.engine import _merge_persist_from_mro
-        from chatlab.orca.persisters import persist_messages
+        from apps.chatlab.orca.persisters import persist_messages
 
         persist_map = _merge_persist_from_mro(PatientInitialOutputSchema)
 
@@ -410,7 +410,7 @@ class TestMROMerging:
     def test_child_does_not_need_to_redeclare_mixin_fields(self):
         """PatientReplyOutputSchema should get messages persistence from mixin without redeclaring."""
         from orchestrai_django.persistence.engine import _merge_persist_from_mro
-        from chatlab.orca.persisters import persist_messages
+        from apps.chatlab.orca.persisters import persist_messages
 
         persist_map = _merge_persist_from_mro(PatientReplyOutputSchema)
 

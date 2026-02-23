@@ -13,7 +13,7 @@ import uuid
 import pytest
 from django.test import Client, RequestFactory
 
-from core.middleware import CorrelationIDMiddleware
+from apps.common.middleware import CorrelationIDMiddleware
 
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",

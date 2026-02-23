@@ -64,7 +64,7 @@ def session_client(test_user):
 @pytest.fixture
 def simulation(test_user):
     """Create a test simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     return Simulation.objects.create(
         user=test_user,
@@ -77,7 +77,7 @@ def simulation(test_user):
 @pytest.fixture
 def outbox_events(simulation):
     """Create test outbox events for the simulation."""
-    from core.models import OutboxEvent
+    from apps.common.models import OutboxEvent
 
     events = []
     for i in range(5):
@@ -112,7 +112,7 @@ class TestListEventsAuth:
 
     def test_other_user_returns_404(self, auth_client, other_user):
         """Simulation belonging to other user returns 404."""
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         other_sim = Simulation.objects.create(
             user=other_user,
@@ -245,7 +245,7 @@ class TestListEventsPagination:
 
     def test_default_limit_is_50(self, auth_client, simulation):
         """Default limit is 50."""
-        from core.models import OutboxEvent
+        from apps.common.models import OutboxEvent
 
         # Create 60 events
         for i in range(60):
@@ -270,7 +270,7 @@ class TestListEventsOrdering:
 
     def test_events_ordered_by_created_at(self, auth_client, simulation):
         """Events are returned in created_at order."""
-        from core.models import OutboxEvent
+        from apps.common.models import OutboxEvent
 
         # Create events (they'll be created in order due to auto_now_add)
         for i in range(3):

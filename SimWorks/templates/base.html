@@ -46,8 +46,8 @@
             Alpine.plugin(window.Clipboard)
           })
         </script>
-        <script src="{% static 'core/js/toast-store.js' %}"></script>
-        <script src="{% static 'core/js/notifications.js' %}"></script>
+        <script src="{% static 'common/js/toast-store.js' %}"></script>
+        <script src="{% static 'common/js/notifications.js' %}"></script>
     <script>
     // Global HTMX error handling with retry logic
     document.body.addEventListener('htmx:responseError', function(evt) {
@@ -163,11 +163,11 @@
     {% endblock scripts %}
 
 <audio id="alert-sound" preload="auto">
-  <source src="{% static 'core/sounds/alert.wav' %}" type="audio/wav">
+  <source src="{% static 'common/sounds/alert.wav' %}" type="audio/wav">
 </audio>
 
 <audio id="simulation-ended-sound" preload="auto">
-  <source src="{% static 'core/sounds/simulation_ended.wav' %}" type="audio/wav">
+  <source src="{% static 'common/sounds/simulation_ended.wav' %}" type="audio/wav">
 </audio>
 </body>
 </html>

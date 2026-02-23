@@ -15,7 +15,7 @@ from allauth.socialaccount.models import SocialAccount
 
 from .forms import InvitationForm, ProfileEditForm, AvatarUploadForm
 from .models import Invitation
-from simulation.models import Simulation
+from apps.simcore.models import Simulation
 
 User = get_user_model()
 

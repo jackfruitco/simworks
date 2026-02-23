@@ -349,7 +349,7 @@ async def test_outbox_events_created(context):
     await persist_schema(schema, context)
 
     # Verify outbox events created
-    from core.models import OutboxEvent
+    from apps.common.models import OutboxEvent
     events = await OutboxEvent.objects.filter(
         simulation_id=context.simulation_id,
         event_type="chat.message_created",
@@ -437,7 +437,7 @@ Search logs for: `"Outbox event created"`, `"Delivered outbox event"`
 1. **Implement `post_persist()` in schema**:
    ```python
    async def post_persist(self, results, context):
-       from core.outbox.helpers import broadcast_domain_objects
+       from apps.common.outbox.helpers import broadcast_domain_objects
 
        await broadcast_domain_objects(
            event_type="your.new_event",

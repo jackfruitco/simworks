@@ -6,9 +6,9 @@ from django.template import Context, TemplateDoesNotExist
 from django.template.loader import get_template
 from django.test import RequestFactory
 
-from simulation.models import Simulation
-from simulation.tools.builtins.patient import PatientHistoryTool, PatientResultsTool
-from simulation.tools.builtins.feedback import SimulationFeedbackTool
+from apps.simcore.models import Simulation
+from apps.simcore.tools.builtins.patient import PatientHistoryTool, PatientResultsTool
+from apps.simcore.tools.builtins.feedback import SimulationFeedbackTool
 
 
 @pytest.mark.django_db

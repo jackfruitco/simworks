@@ -136,7 +136,7 @@ generate_initial.using(backend="celery", run_after=30).enqueue(simulation=my_sim
 
 ```python
 from orchestrai_django.api.decorators import llm_service
-from chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin  # optional if using class-based style
+from apps.chatlab.ai.mixins import ChatlabMixin, StandardizedPatientMixin  # optional if using class-based style
 
 @llm_service(origin="chatlab", bucket="standardized_patient", name="initial")
 async def generate_initial(simulation, slim):

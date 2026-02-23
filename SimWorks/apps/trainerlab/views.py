@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect
 from django.views.decorators.http import require_http_methods
 
-from core.decorators import resolve_user
+from apps.common.decorators import resolve_user
 from apps.trainerlab.utils import create_new_simulation
 
 
