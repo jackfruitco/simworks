@@ -1,6 +1,7 @@
 # simworks/config/settings.py
 import os
 import re
+import sys
 from pathlib import Path
 
 import logfire
@@ -11,6 +12,8 @@ from .logging import LOGGING
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Removed sys.path manipulation to prevent duplicate module imports
+# All imports must use full paths: from apps.X import ...
 
 # Quick-start_timestamp development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/

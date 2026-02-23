@@ -74,9 +74,9 @@ async def sign_orders(request, simulation_id):
                 except AttributeError:
                     raise ValueError(f"submitted_orders not found in request body")
 
-            from apps.simcore.orca.services import GenerateInitialFeedbackResponse
+            from apps.simcore.orca.services import GenerateInitialFeedback
 
-            await GenerateInitialFeedbackResponse.task.using(
+            await GenerateInitialFeedback.task.using(
                 context={
                     "simulation_id": simulation_id,
                     "lab_orders": submitted_orders,

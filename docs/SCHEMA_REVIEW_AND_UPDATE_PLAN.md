@@ -35,7 +35,7 @@ This document provides a complete inventory of schemas in the SimWorks codebase,
 | **PatientInitialOutputSchema** | `chatlab/orca/schemas/patient.py` | chatlab | Pydantic + @schema | GenerateInitialResponse service | ✅ Message + Metadata | messages, metadata, llm_conditions_check |
 | **PatientReplyOutputSchema** | `chatlab/orca/schemas/patient.py` | chatlab | Pydantic + @schema | GenerateReplyResponse service | ✅ Message only | image_requested, messages, llm_conditions_check |
 | **PatientResultsOutputSchema** | `chatlab/orca/schemas/patient.py` | chatlab | Pydantic + @schema | Not yet wired | ✅ Metadata only | metadata, llm_conditions_check |
-| **GenerateInitialSimulationFeedback** | `simulation/orca/schemas/feedback.py` | simulation | Pydantic + @schema | GenerateInitialFeedbackResponse | ❌ Not yet wired | llm_conditions_check, metadata (InitialFeedbackBlock) |
+| **GenerateInitialSimulationFeedback** | `simulation/orca/schemas/feedback.py` | simulation | Pydantic + @schema | GenerateInitialFeedback | ❌ Not yet wired | llm_conditions_check, metadata (InitialFeedbackBlock) |
 
 ### 1.2 Output Item Types (Reusable Components)
 

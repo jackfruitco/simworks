@@ -5,7 +5,7 @@ Feedback AI Services for Simulation using Pydantic AI.
 WORKFLOW DIAGRAM
 ================
 
-    GenerateInitialFeedbackResponse / GenerateFeedbackContinuationResponse
+    GenerateInitialFeedback / GenerateFeedbackContinuationReply
       -> @system_prompt methods compose system prompt
       -> Pydantic AI Agent.run() with result_type
       -> Pydantic AI validates response automatically
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 @service
-class GenerateInitialFeedbackResponse(
+class GenerateInitialFeedback(
     FeedbackEducatorMixin,
     MedicalAccuracyMixin,
     FeedbackMixin,  # Identity mixin
@@ -87,7 +87,7 @@ class GenerateInitialFeedbackResponse(
 
 
 @service
-class GenerateFeedbackContinuationResponse(
+class GenerateFeedbackContinuationReply(
     FeedbackEducatorMixin,
     FeedbackMixin,  # Identity mixin
     DjangoBaseService,

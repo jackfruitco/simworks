@@ -215,12 +215,12 @@ from orchestrai_django.decorators import service
 from orchestrai_django.services import DjangoBaseService
 
 @service
-class GenerateInitialFeedbackResponse(FeedbackMixin, DjangoBaseService):
+class GenerateInitialFeedback(FeedbackMixin, DjangoBaseService):
     """Generate the initial patient feedback."""
 
     async def execute(self, simulation_id: int, **kwargs) -> dict:
         # Service implementation
-        # Identity auto-derived: (services, simcore, feedback, GenerateInitialFeedbackResponse)
+        # Identity auto-derived: (services, simcore, feedback, GenerateInitialFeedback)
         pass
 ```
 
@@ -607,7 +607,7 @@ from orchestrai.identity import Identity
 
 app = get_current_app()
 registry = ensure_service_registry(app)
-service_cls = registry.get(Identity.get("simcore.feedback.GenerateInitialFeedbackResponse"))
+service_cls = registry.get(Identity.get("simcore.feedback.GenerateInitialFeedback"))
 ```
 
 ### History Providers
