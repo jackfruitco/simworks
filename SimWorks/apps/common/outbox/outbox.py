@@ -64,7 +64,8 @@ async def enqueue_event(
             idempotency_key="message.created:456",
         )
     """
-    from apps.common.models import OutboxEvent
+    from django.apps import apps
+    OutboxEvent = apps.get_model('common', 'OutboxEvent')
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -112,7 +113,8 @@ def enqueue_event_sync(
 
     Use this when calling from synchronous code (e.g., Django signals).
     """
-    from apps.common.models import OutboxEvent
+    from django.apps import apps
+    OutboxEvent = apps.get_model('common', 'OutboxEvent')
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -221,7 +223,8 @@ async def get_events_for_simulation(
     Returns:
         Tuple of (events, next_cursor, has_more)
     """
-    from apps.common.models import OutboxEvent
+    from django.apps import apps
+    OutboxEvent = apps.get_model('common', 'OutboxEvent')
 
     @sync_to_async
     def _query():
