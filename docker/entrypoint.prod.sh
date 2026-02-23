@@ -23,7 +23,7 @@ python manage.py migrate
 echo
 echo "Creating default user roles if not already exists..."
 python manage.py shell -c "\
-from accounts.models import UserRole; \
+from apps.accounts.models import UserRole; \
 UserRole.objects.exists() or UserRole.objects.bulk_create([ \
     UserRole(title='EMT (NREMT-B)'), \
     UserRole(title='Paramedic (NRP)'), \

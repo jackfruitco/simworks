@@ -102,7 +102,7 @@
             }
           }
         },
-        "description": "Authenticate with username/password and receive JWT tokens.",
+        "description": "Authenticate with email/password and receive JWT tokens.",
         "tags": [
           "auth"
         ],
@@ -144,6 +144,32 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/logout/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_logout",
+        "summary": "Logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Revoke a refresh token/session (server-side), then the client should delete tokens locally.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequest"
               }
             }
           },
@@ -700,14 +726,14 @@
       "LoginRequest": {
         "description": "Request body for token obtain endpoint.",
         "properties": {
-          "username": {
-            "description": "Username or email",
+          "email": {
+            "description": "User email address",
             "examples": [
-              "john.doe"
+              "user@example.com"
             ],
             "maxLength": 255,
             "minLength": 1,
-            "title": "Username",
+            "title": "Email",
             "type": "string"
           },
           "password": {
@@ -722,7 +748,7 @@
           }
         },
         "required": [
-          "username",
+          "email",
           "password"
         ],
         "title": "LoginRequest",
@@ -735,6 +761,18 @@
             "description": "New JWT access token",
             "title": "Access Token",
             "type": "string"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(Optional) Rotated refresh token, if rotation is enabled.",
+            "title": "Refresh Token"
           },
           "expires_in": {
             "description": "Access token lifetime in seconds",
@@ -772,6 +810,22 @@
           "refresh_token"
         ],
         "title": "RefreshRequest",
+        "type": "object"
+      },
+      "LogoutRequest": {
+        "description": "Request body for logout endpoint.",
+        "properties": {
+          "refresh_token": {
+            "description": "Refresh token to revoke",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "LogoutRequest",
         "type": "object"
       },
       "PaginatedResponse_SimulationOut_": {

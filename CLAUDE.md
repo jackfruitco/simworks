@@ -215,12 +215,12 @@ from orchestrai_django.decorators import service
 from orchestrai_django.services import DjangoBaseService
 
 @service
-class GenerateHotwashInitialResponse(FeedbackMixin, DjangoBaseService):
+class GenerateInitialFeedbackResponse(FeedbackMixin, DjangoBaseService):
     """Generate the initial patient feedback."""
 
     async def execute(self, simulation_id: int, **kwargs) -> dict:
         # Service implementation
-        # Identity auto-derived: (services, simcore, feedback, GenerateHotwashInitialResponse)
+        # Identity auto-derived: (services, simcore, feedback, GenerateInitialFeedbackResponse)
         pass
 ```
 
@@ -309,7 +309,7 @@ class PatientInitialOutputSchema(
 # chatlab/orca/schemas/mixins.py
 from pydantic import Field, BaseModel
 from orchestrai_django.types import DjangoOutputItem
-from simulation.orca.schemas.output_items import LLMConditionsCheckItem
+from apps.simulation.orca.schemas.output_items import LLMConditionsCheckItem
 
 class PatientResponseBaseMixin(BaseModel):
     """Common fields for patient response schemas."""
@@ -378,6 +378,48 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
         pass
 ```
 
+### Broadcasting AI Responses via WebSocket
+
+**All AI response schemas** can broadcast events to WebSocket clients using the `post_persist()` hook. This enables real-time UI updates when AI responses are persisted.
+
+**Pattern**: Schema `post_persist()` Hook + Outbox Pattern
+
+```python
+# simulation/orca/schemas/feedback.py
+from apps.common.outbox.helpers import broadcast_domain_objects
+
+class GenerateInitialSimulationFeedback(BaseModel):
+    __persist__ = {"metadata": persist_initial_feedback_block}
+    __persist_primary__ = "metadata"
+
+    async def post_persist(self, results, context):
+        """Broadcast feedback creation to WebSocket clients."""
+        await broadcast_domain_objects(
+            event_type="feedback.created",
+            objects=results.get("metadata", []),
+            context=context,
+            payload_builder=lambda fb: {
+                "feedback_id": fb.id,
+                "key": fb.key,
+                "value": fb.value,
+            },
+        )
+```
+
+**Why This Pattern?**:
+- ✅ **Locality of Behavior**: Broadcast logic lives with persistence logic
+- ✅ **Context-rich**: Access to correlation_id, simulation_id, persisted objects
+- ✅ **DRY**: Shared `broadcast_domain_objects()` helper
+- ✅ **Testable**: Test persistence + broadcast together
+- ✅ **Reliable**: Outbox pattern ensures at-least-once delivery
+
+**Event Types**:
+- `chat.message_created` - New patient/AI messages
+- `metadata.created` - Labs, radiology, demographics, assessments
+- `feedback.created` - Simulation feedback (hotwash)
+
+**Documentation**: See `docs/WEBSOCKET_EVENTS.md` for complete event reference
+
 ### Creating Persistence Handlers
 
 **Persistence handlers** are Django-specific components that persist structured LLM outputs (validated schemas) to domain models. They operate out-of-band via a drain worker for reliability and scalability.
@@ -397,10 +439,10 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
 from orchestrai_django.decorators import persistence_handler
 from orchestrai_django.components.persistence import BasePersistenceHandler
 from orchestrai.types import Response
-from chatlab.orca.mixins import ChatlabMixin
-from chatlab.orca.schemas import PatientInitialOutputSchema
-from chatlab.models import Message
-from simulation.orca.mixins import StandardizedPatientMixin
+from apps.chatlab.orca.mixins import ChatlabMixin
+from apps.chatlab.orca.schemas import PatientInitialOutputSchema
+from apps.chatlab.models import Message
+from apps.simulation.orca.mixins import StandardizedPatientMixin
 
 @persistence_handler
 class PatientInitialPersistence(ChatlabMixin, StandardizedPatientMixin, BasePersistenceHandler):
@@ -565,13 +607,13 @@ from orchestrai.identity import Identity
 
 app = get_current_app()
 registry = ensure_service_registry(app)
-service_cls = registry.get(Identity.get("simcore.feedback.GenerateHotwashInitialResponse"))
+service_cls = registry.get(Identity.get("simcore.feedback.GenerateInitialFeedbackResponse"))
 ```
 
 ### History Providers
 Apps can register history providers for simulation context:
 ```python
-from simulation.history_registry import register_history_provider
+from apps.simulation.history_registry import register_history_provider
 
 def chatlab_history(simulation_id: int) -> list:
     return Message.objects.filter(simulation_id=simulation_id).order_by('created_at')

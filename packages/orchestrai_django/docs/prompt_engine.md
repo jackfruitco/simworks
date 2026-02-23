@@ -23,7 +23,7 @@ The **Prompt Engine** takes one or more `PromptSection` classes/instances and pr
 
 ```python
 from orchestrai_django.components.promptkit import PromptEngine
-from chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
+from apps.chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
 
 prompt = await PromptEngine.abuild_from(
     PatientInitialSection,

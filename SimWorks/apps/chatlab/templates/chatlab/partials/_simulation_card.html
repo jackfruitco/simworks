@@ -1,0 +1,36 @@
+{% load static %}
+
+<article class="card-modern card-interactive simulation-card" data-simulation-id="{{ simulation.id }}" data-status="{{ status|slugify }}">
+    <div class="card-header">
+        <div class="simulation-card__title">
+            <a href="{% url 'chatlab:run_simulation' simulation.id %}" class="card-header-title simulation-card__link">{{ simulation }}</a>
+            {% if simulation.chief_complaint %}
+                <p class="card-header-subtitle">{{ simulation.chief_complaint }}</p>
+            {% endif %}
+        </div>
+
+        {% if status %}
+            <span class="card-status-badge {{ status|slugify }}">{{ status }}</span>
+        {% endif %}
+    </div>
+
+    <div class="card-body card-body-compact">
+        <div class="card-meta">
+            <span class="card-meta-item">
+                <span class="iconify" data-icon="mdi:calendar-start"></span>
+                Started {{ simulation.start_timestamp|date:"M j, Y, g:i A" }}
+            </span>
+            {% if simulation.end_timestamp %}
+                <span class="card-meta-item">
+                    <span class="iconify" data-icon="mdi:calendar-check"></span>
+                    Ended {{ simulation.end_timestamp|date:"M j, Y, g:i A" }}
+                </span>
+            {% elif simulation.time_limit %}
+                <span class="card-meta-item">
+                    <span class="iconify" data-icon="mdi:clock-outline"></span>
+                    Time limit {{ simulation.time_limit }}
+                </span>
+            {% endif %}
+        </div>
+    </div>
+</article>

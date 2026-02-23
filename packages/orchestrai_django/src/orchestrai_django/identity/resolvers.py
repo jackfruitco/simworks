@@ -5,7 +5,7 @@ Subclass of the core IdentityResolver that:
 - infers `namespace` from (arg → class attr → decorator default → Django app label → module root → "default"),
 - honors `domain` precedence from the core resolver (arg → class attr → decorator default → error),
 - resolves `group` without legacy ``kind`` fallbacks (arg → class attr → decorator default → "default"),
-- collects strip tokens from core defaults + Django sources:
+- collects strip tokens from apps.common defaults + Django sources:
   * DJANGO_BASE_STRIP_TOKENS = ("Django", "Mixin")
   * settings.ORCA_IDENTITY_STRIP_TOKENS (list/tuple/CSV) (SIMCORE_* accepted for back-compat)
   * AppConfig.IDENTITY_STRIP_TOKENS (list/tuple)

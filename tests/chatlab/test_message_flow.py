@@ -16,7 +16,7 @@ from django.utils import timezone
 @pytest.fixture
 def user_role(db):
     """Create a test user role."""
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     return UserRole.objects.create(title="Test Role MessageFlow")
 
@@ -24,10 +24,9 @@ def user_role(db):
 @pytest.fixture
 def user(db, user_role):
     """Create a test user."""
-    from accounts.models import CustomUser
+    from apps.accounts.models import User
 
-    return CustomUser.objects.create_user(
-        username="testuser",
+    return User.objects.create_user(
         email="test@example.com",
         password="testpass123",
         role=user_role,
@@ -37,7 +36,7 @@ def user(db, user_role):
 @pytest.fixture
 def simulation(db, user):
     """Create a test simulation."""
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     return Simulation.objects.create(
         user=user,
@@ -53,8 +52,8 @@ class TestMessageBroadcastSignal:
 
     def test_ai_message_creates_outbox_event(self, simulation, user):
         """Test that creating an AI message creates an outbox event."""
-        from chatlab.models import Message, RoleChoices
-        from core.models import OutboxEvent
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
 
         # Capture initial outbox count
         initial_count = OutboxEvent.objects.count()
@@ -82,8 +81,8 @@ class TestMessageBroadcastSignal:
 
     def test_ai_message_outbox_payload_has_message_id(self, simulation, user):
         """Test that the outbox payload includes message_id for deduplication."""
-        from chatlab.models import Message, RoleChoices
-        from core.models import OutboxEvent
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
 
         with patch("chatlab.signals.poke_drain_sync"):
             message = Message.objects.create(
@@ -109,8 +108,8 @@ class TestMessageBroadcastSignal:
 
     def test_user_message_does_not_create_outbox_event(self, simulation, user):
         """Test that user messages don't create outbox events (only AI messages do)."""
-        from chatlab.models import Message, RoleChoices
-        from core.models import OutboxEvent
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
 
         initial_count = OutboxEvent.objects.count()
 
@@ -128,9 +127,9 @@ class TestMessageBroadcastSignal:
 
     def test_duplicate_message_event_is_idempotent(self, simulation, user):
         """Test that duplicate events are prevented by idempotency key."""
-        from chatlab.models import Message, RoleChoices
-        from core.models import OutboxEvent
-        from core.outbox import enqueue_event_sync
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox import enqueue_event_sync
 
         with patch("chatlab.signals.poke_drain_sync"):
             message = Message.objects.create(
@@ -162,8 +161,8 @@ class TestOutboxEnvelopeFormat:
 
     def test_build_ws_envelope_has_required_fields(self, simulation):
         """Test that build_ws_envelope creates correct envelope structure."""
-        from core.models import OutboxEvent
-        from core.outbox import build_ws_envelope
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox import build_ws_envelope
 
         event = OutboxEvent.objects.create(
             event_type="chat.message_created",
@@ -191,8 +190,8 @@ class TestOutboxEnvelopeFormat:
 
     def test_envelope_event_id_enables_deduplication(self, simulation):
         """Test that each event has a unique event_id for client deduplication."""
-        from core.models import OutboxEvent
-        from core.outbox import build_ws_envelope
+        from apps.common.models import OutboxEvent
+        from apps.common.outbox import build_ws_envelope
 
         event1 = OutboxEvent.objects.create(
             event_type="chat.message_created",
@@ -221,8 +220,8 @@ class TestMessagePayloadFormat:
 
     def test_payload_matches_client_expectations(self, simulation, user):
         """Test that payload has all fields expected by chat.js."""
-        from chatlab.models import Message, RoleChoices
-        from core.models import OutboxEvent
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
 
         with patch("chatlab.signals.poke_drain_sync"):
             message = Message.objects.create(
@@ -250,8 +249,8 @@ class TestMessagePayloadFormat:
 
     def test_payload_handles_empty_content(self, simulation, user):
         """Test that payload handles messages with empty/null content."""
-        from chatlab.models import Message, RoleChoices
-        from core.models import OutboxEvent
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
 
         with patch("chatlab.signals.poke_drain_sync"):
             message = Message.objects.create(

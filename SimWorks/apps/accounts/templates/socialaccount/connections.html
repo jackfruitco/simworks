@@ -1,0 +1,98 @@
+{% extends "accounts/accounts_base.html" %}
+{% load socialaccount %}
+{% load static %}
+
+{% block title %}Connected Accounts - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-gray-100">Connected Accounts</h1>
+        <p class="text-gray-600 dark:text-gray-400 mt-2">Manage your social login connections</p>
+    </div>
+
+    {% if form.errors %}
+    <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6">
+        <strong>Error:</strong> Unable to disconnect account. Please try again.
+    </div>
+    {% endif %}
+
+    {% if messages %}
+    {% for message in messages %}
+    <div class="bg-{{ message.tags }}-50 border border-{{ message.tags }}-200 text-{{ message.tags }}-800 rounded-lg p-4 mb-6">
+        {{ message }}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+        {% if form.accounts %}
+        <div class="divide-y divide-gray-200 dark:divide-gray-700">
+            {% for account in form.accounts %}
+            <div class="p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 flex items-center justify-center">
+                        {% if account.provider == 'google' %}
+                            <span class="iconify text-4xl" data-icon="logos:google-icon"></span>
+                        {% elif account.provider == 'apple' %}
+                            <span class="iconify text-4xl" data-icon="ic:baseline-apple"></span>
+                        {% else %}
+                            <span class="iconify text-4xl text-gray-400" data-icon="mdi:link-variant"></span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                            {{ account.get_provider.name }}
+                        </h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            {{ account.display_name|default:account.uid }}
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Connected on {{ account.date_joined|date:"F d, Y" }}
+                        </p>
+                    </div>
+                </div>
+                <div>
+                    <form method="post" action="{% url 'socialaccount_connections' %}" class="inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="account" value="{{ account.id }}">
+                        <button type="submit"
+                                name="disconnect"
+                                class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition flex items-center gap-2"
+                                onclick="return confirm('Are you sure you want to disconnect this account?')">
+                            <span class="iconify" data-icon="mdi:link-variant-off"></span>
+                            Disconnect
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+            <span class="iconify text-6xl text-gray-400 mb-4" data-icon="mdi:link-variant-off"></span>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">No connected accounts</h3>
+            <p class="text-gray-600 dark:text-gray-400">You haven't connected any social accounts yet.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="mt-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+        <div class="flex items-start">
+            <span class="iconify text-blue-600 text-xl mr-3" data-icon="mdi:information"></span>
+            <div>
+                <p class="font-semibold text-blue-900 dark:text-blue-100">Note</p>
+                <p class="text-sm text-blue-800 dark:text-blue-200 mt-1">
+                    You can use connected accounts to sign in to your account. Make sure you always have at least one way to access your account.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-6 flex gap-4">
+        <a href="{% url 'accounts:profile' %}" class="px-6 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 rounded-lg transition font-medium">
+            ← Back to Profile
+        </a>
+    </div>
+</div>
+{% endblock %}

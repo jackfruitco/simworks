@@ -21,10 +21,16 @@ logger = logging.getLogger(__name__)
 
 __all__ = ("ServiceDecorator",)
 
+# Valid base classes for services (BaseService is now the unified Pydantic AI-based class)
+_VALID_SERVICE_BASES = (BaseService,)
+
 
 class ServiceDecorator(BaseDecorator):
     """
     Service decorator specialized for BaseService subclasses.
+
+    BaseService now uses Pydantic AI for LLM execution, replacing the legacy
+    client/codec/provider stack.
 
     Usage
     -----
@@ -32,7 +38,12 @@ class ServiceDecorator(BaseDecorator):
 
         @service
         class MyService(BaseService):
-            ...
+            model = "openai-responses:gpt-5-nano"
+            response_schema = MySchema
+
+            @system_prompt(weight=100)
+            def instructions(self) -> str:
+                return "Instructions..."
 
         # or with explicit hints
         @service(namespace="orchestrai", name="json")
@@ -51,7 +62,7 @@ class ServiceDecorator(BaseDecorator):
 
     def register(self, candidate: Type[Any]) -> None:
         # Guard: ensure we only register service classes
-        if not issubclass(candidate, BaseService):
+        if not issubclass(candidate, _VALID_SERVICE_BASES):
             raise TypeError(
                 f"{candidate.__module__}.{candidate.__name__} must subclass BaseService to use @service"
             )

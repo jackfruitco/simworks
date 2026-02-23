@@ -1,0 +1,18 @@
+{% extends 'chatlab/chatlab_base.html' %}
+{% load static %}
+
+{% block content %}
+<section id="content" class="mx-16" style="max-width: 1400px; margin-left: auto; margin-right: auto;">
+    <div style="background: linear-gradient(135deg, rgba(44, 107, 237, 0.05), rgba(210, 166, 64, 0.05)); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
+        {% include 'partials/_page_header.html' with title="Welcome to ChatLab" description="Start a new simulation or continue where you left off" actions_partial='chatlab/partials/_start_simulation_header_actions.html' %}
+    </div>
+
+    {% if user.is_authenticated %}
+        {% include 'chatlab/partials/simulation_history_base.html' %}
+    {% endif %}
+
+</section>
+
+{% endblock content %}
+
+{# No custom JavaScript needed - modifier selector uses HTMX #}

@@ -1,5 +1,1 @@
-"""Persistence handler components for mapping structured outputs to domain models."""
-
-from .handler import BasePersistenceHandler
-
-__all__ = ["BasePersistenceHandler"]
+# Old BasePersistenceHandler removed — see orchestrai_django.persistence for the new engine.

@@ -7,7 +7,7 @@ from django.http import HttpRequest
 from ninja import Query, Router
 
 from api.v1.schemas.modifiers import ModifierGroupOut
-from core.ratelimit import rate_limit
+from apps.common.ratelimit import rate_limit
 
 router = Router(tags=["modifiers"])
 
@@ -32,7 +32,7 @@ def list_modifier_groups(
     Returns:
         List of modifier groups with their modifiers.
     """
-    from simulation.modifiers import get_modifier_groups
+    from apps.simcore.modifiers import get_modifier_groups
 
     modifier_groups = get_modifier_groups(groups)
     return [ModifierGroupOut(**g) for g in modifier_groups]

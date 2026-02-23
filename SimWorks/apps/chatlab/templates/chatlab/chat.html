@@ -1,0 +1,58 @@
+{% load static %}
+
+<section
+  id="chat-panel"
+  x-data="ChatManager('{{ simulation.id }}', '{{ user.email }}')"
+  class="chat-container"
+  @form:typing="notifyTyping()"
+  @form:send="handleFormSend($event.detail)"
+>
+  <!-- Load Older Button (fallback for scroll) -->
+  <button
+    id="load-older-btn"
+    class="old message-btn"
+    {%  comment %}@click="loadOlderMessages()"{% endcomment %}
+    x-show="hasMoreMessages"
+  >
+    Load Older Messages
+  </button>
+
+  <!-- Loading indicator for messages -->
+  <div id="messages-loading" class="htmx-indicator" style="text-align: center; padding: 1rem; display: none;">
+    <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span> Loading messages...
+  </div>
+
+  <!-- Message area (HTMX loaded & scroll monitored) -->
+  <div
+    id="chat-messages"
+    class="message-list"
+    data-has-messages="false"
+    hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
+    hx-trigger="load"
+    hx-swap="innerHTML"
+    hx-indicator="#messages-loading"
+    role="list"
+    aria-live="polite"
+  >
+    <div id="message-load-anchor" aria-hidden="true"></div>
+    <!-- Messages will be swapped here by HTMX -->
+  </div>
+
+  <!-- New Messages Button -->
+  <button id="new-message-btn" class="new message-btn hidden" title="Jump to latest">
+    ⬇ New Messages
+  </button>
+
+  <!-- Typing indicator -->
+  {% include "chatlab/partials/typing_indicator.html" %}
+
+{% include 'chatlab/partials/input_form.html' %}
+</section>
+
+<audio id="send-sound" preload="auto">
+  <source src="{% static 'chatlab/sounds/send.mp3' %}" type="audio/mpeg">
+</audio>
+
+<audio id="receive-sound" preload="auto">
+  <source src="{% static 'chatlab/sounds/receive.mp3' %}" type="audio/mpeg">
+</audio>

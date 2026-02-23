@@ -43,6 +43,8 @@ class ResultMetafield(StrictBaseModel):
         description="Metadata value - JSON primitive types only"
     )
 
+    __orm_model__ = "simcore.SimulationMetadata"
+
 
 # ---- Result-side message item ----
 
@@ -61,5 +63,5 @@ class ResultMessageItem(StrictBaseModel):
     content: list[ResultContent] = Field(..., min_length=1)
     item_meta: list[ResultMetafield] = Field(
         ...,
-        description="Metadata entries as key-value pairs"
+        description="Metadata entries as key-value pairs (use empty list [] if none)"
     )

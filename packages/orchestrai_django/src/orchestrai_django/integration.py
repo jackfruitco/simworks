@@ -29,21 +29,6 @@ def _coerce_mapping(value: Any) -> Mapping[str, Any]:
     raise TypeError("Django settings for OrchestrAI must be a mapping or None")
 
 
-def _validate_single_mode(mapping: Mapping[str, Any]) -> None:
-    mode = (mapping.get("MODE") or "single").lower()
-    if mode != "single":
-        return
-
-    if "CLIENTS" in mapping or "PROVIDERS" in mapping:
-        raise ValueError("SINGLE mode configuration must not include CLIENTS or PROVIDERS")
-
-    client_conf = mapping.get("CLIENT")
-    from collections.abc import Mapping as AbcMapping
-
-    if not isinstance(client_conf, AbcMapping) or not client_conf:
-        raise ValueError("SINGLE mode requires ORCA_CONFIG['CLIENT'] to be a non-empty mapping")
-
-
 def _existing_modules_for_root(root: str) -> list[str]:
     discovered: list[str] = []
     try:
@@ -112,17 +97,28 @@ def configure_from_django_settings(
 ) -> Settings:
     """Load OrchestrAI configuration from ``django.conf.settings`` using the current API.
 
-    Django's responsibility here is ONLY to compute DISCOVERY_PATHS from INSTALLED_APPS
-    and inject it into the core Settings. Core OrchestrAI discovery imports everything
-    uniformly via app.autodiscover_components().
+    Configuration layering:
+    1. Core OrchestrAI defaults (e.g., API_KEY_ENVVARS with standard env vars)
+    2. Django-specific defaults (e.g., API_KEY_ENVVARS with ORCA_ prefixed env vars)
+    3. User settings via ORCA_CONFIG or ORCHESTRAI Django setting
+
+    Django's responsibility here is to:
+    - Apply Django-specific defaults (namespaced env vars, etc.)
+    - Compute DISCOVERY_PATHS from INSTALLED_APPS
+    - Inject configuration into core Settings
+
+    Core OrchestrAI discovery imports modules uniformly via app.autodiscover_components().
     """
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
-    mapping = _collect_mapping_from_settings(dj_settings, namespace)
-    _validate_single_mode(mapping)
+    from orchestrai_django.conf.defaults import DJANGO_DEFAULTS
 
+    user_mapping = _collect_mapping_from_settings(dj_settings, namespace)
+
+    # Layer: core defaults → Django defaults → user settings
     conf = Settings()
-    conf.update_from_mapping(mapping)
+    conf.update_from_mapping(DJANGO_DEFAULTS)
+    conf.update_from_mapping(user_mapping)
 
     try:
         from orchestrai.components.services.django import use_django_task_proxy
@@ -136,11 +132,8 @@ def configure_from_django_settings(
     discovery_paths.extend(_build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ())))
     conf["DISCOVERY_PATHS"] = tuple(_dedupe_preserve_order(discovery_paths))
 
-    django_fixups = ("orchestrai_django.fixups:PersistenceRegistryFixup",)
-    existing_fixups = tuple(conf.get("FIXUPS", ()))
-    conf["FIXUPS"] = tuple(existing_fixups) + tuple(
-        fx for fx in django_fixups if fx not in existing_fixups
-    )
+    # No Django-specific fixups needed (persistence is declarative via __persist__)
+    pass
 
     if app is not None and hasattr(app, "configure"):
         app.configure(conf.as_dict())

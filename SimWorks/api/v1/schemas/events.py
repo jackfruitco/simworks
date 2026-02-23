@@ -14,6 +14,35 @@ class EventEnvelope(BaseModel):
 
     Matches the standardized envelope format defined in CLAUDE.md.
     Used for both WebSocket delivery and catch-up API responses.
+
+    **Supported Event Types**:
+    - ``chat.message_created`` - New chat message from patient or user
+    - ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)
+    - ``feedback.created`` - Simulation feedback/hotwash item created
+    - ``typing.started`` / ``typing.stopped`` - Typing indicators
+    - ``simulation.ended`` - Simulation completed
+
+    **Event Payload Structures**:
+
+    ``chat.message_created``:
+    - ``message_id`` (int): Message database ID
+    - ``content`` (str): Message text content
+    - ``role`` (str): Message role (user, assistant, etc.)
+    - ``is_from_ai`` (bool): Whether message is AI-generated
+    - ``display_name`` (str): Display name for sender
+    - ``timestamp`` (str): ISO timestamp
+    - ``image_requested`` (bool, optional): Whether images were requested
+
+    ``metadata.created``:
+    - ``metadata_id`` (int): Metadata database ID
+    - ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)
+    - ``key`` (str): Metadata key
+    - ``value`` (str): Metadata value
+
+    ``feedback.created``:
+    - ``feedback_id`` (int): Feedback database ID
+    - ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)
+    - ``value`` (str): Feedback value
     """
 
     event_id: str = Field(
@@ -23,8 +52,11 @@ class EventEnvelope(BaseModel):
     )
     event_type: str = Field(
         ...,
-        description="Event type (e.g., 'message.created', 'typing.started')",
-        examples=["message.created"],
+        description=(
+            "Event type: chat.message_created, metadata.created, feedback.created, "
+            "typing.started, typing.stopped, simulation.ended"
+        ),
+        examples=["chat.message_created", "metadata.created", "feedback.created"],
     )
     created_at: datetime = Field(
         ...,
@@ -37,5 +69,5 @@ class EventEnvelope(BaseModel):
     )
     payload: dict[str, Any] = Field(
         ...,
-        description="Event-specific payload data",
+        description="Event-specific payload data (structure varies by event_type)",
     )

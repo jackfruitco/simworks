@@ -8,6 +8,7 @@ dependencies = [
     "channels>=4.3.2",
     "channels-redis>=4.3.0",
     "daphne>=4.2.1",
+    "django-allauth[socialaccount]==65.14.3",
     "django-autoslug>=1.9.9",
     # "django-celery-beat>=2.8.1",
     "django-htmx>=1.27.0",
@@ -18,7 +19,7 @@ dependencies = [
     "faker>=40.1.0",
     "httpcore>=1.0.9",
     "logfire[django]==4.16.0",
-    "openai>=2.15.0",
+    "openai==2.21.0",
     "opentelemetry-instrumentation-httpx>=0.58b0",
     "pillow>=11.3.0",
     "pre-commit>=4.5.0",
@@ -35,9 +36,10 @@ dependencies = [
     "python-slugify>=8.0.4",
     "orchestrai",
     "orchestrai-django",
-    "django>=6.0",
+    "django==6.0.2",
     "twisted[http2,tls]>=25.5.0",
     "structlog>=25.5.0",
+    "django-cors-headers>=4.9.0",
 ]
 
 [tool.uv.workspace]

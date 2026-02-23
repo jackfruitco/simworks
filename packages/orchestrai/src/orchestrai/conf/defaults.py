@@ -2,14 +2,7 @@
 
 DEFAULTS: dict[str, object] = {
     "MODE": "single",
-    "CLIENT": None,
-    "CLIENTS": {},
-    "PROVIDERS": {},
     "DISCOVERY_PATHS": (
-        "orchestrai.contrib.provider_backends.*",
-        # "orchestrai.contrib.provider_backends.openai",
-        "orchestrai.contrib.provider_codecs",
-        "orchestrai.contrib.provider_codecs.openai",
         "*.orca.services",
         "*.orca.output_schemas",
         "*.orca.codecs",
@@ -20,14 +13,20 @@ DEFAULTS: dict[str, object] = {
     "FIXUPS": (),
     "LOADER": "orchestrai.loaders.default:DefaultLoader",
     "IDENTITY_STRIP_TOKENS": tuple(),
-    # Provider/backend defaults
-    "PROVIDER_DEFAULT_TIMEOUT": 60,
-    "PROVIDER_DEFAULT_MODEL": "gpt-4o-mini",
-    "PROVIDER_DEFAULT_PROFILE": "default",
-    # Client/runtime defaults
-    "CLIENT_DEFAULT_TIMEOUT": None,
-    "CLIENT_DEFAULT_MAX_RETRIES": 3,
-    "CLIENT_DEFAULT_TELEMETRY_ENABLED": True,
-    "CLIENT_DEFAULT_LOG_PROMPTS": False,
-    "CLIENT_DEFAULT_RAISE_ON_ERROR": True,
+    # Service defaults (Pydantic AI)
+    "DEFAULT_TIMEOUT": 60,
+    "DEFAULT_MODEL": "openai-responses:gpt-5-nano",
+    "DEFAULT_MAX_RETRIES": 3,
+    # API key environment variable names (standard provider defaults)
+    # These map provider names to the environment variable containing the API key.
+    # OrchestrAI Django overrides these with ORCA_ prefixed variants.
+    "API_KEY_ENVVARS": {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "google": "GOOGLE_API_KEY",
+        "gemini": "GOOGLE_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+        "cohere": "COHERE_API_KEY",
+    },
 }

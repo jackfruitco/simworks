@@ -62,6 +62,7 @@ class Request(StrictBaseModel):
     max_output_tokens: int | None = None
     stream: bool = False
     image_format: str | None = None
+    use_native_output: bool = False
 
     @field_serializer("response_schema", when_used="json")
     def _serialize_response_schema(

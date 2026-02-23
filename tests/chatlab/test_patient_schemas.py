@@ -10,12 +10,19 @@ Validates:
 import pytest
 from pydantic import ValidationError
 
-from chatlab.orca.schemas import (
+from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from simulation.orca.schemas.output_items import LLMConditionsCheckItem
+from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+from apps.simcore.orca.schemas.metadata_items import (
+    LabResultItem,
+    RadResultItem,
+    PatientHistoryItem,
+    PatientDemographicsItem,
+    SimulationMetadataItem,
+)
 
 
 class TestPatientInitialSchema:
@@ -54,16 +61,15 @@ class TestPatientInitialSchema:
         # Check has properties
         assert len(schema_json["properties"]) > 0
 
-    def test_schema_has_provider_compatibility(self):
-        """Verify schema was validated and tagged by @schema decorator."""
-        assert hasattr(PatientInitialOutputSchema, "_provider_compatibility")
-        assert PatientInitialOutputSchema._provider_compatibility.get("openai") is True
-
-        assert hasattr(PatientInitialOutputSchema, "_validated_schema")
-        assert isinstance(PatientInitialOutputSchema._validated_schema, dict)
+    def test_schema_is_pydantic_model(self):
+        """Verify schema is a valid Pydantic BaseModel (no @schema decorator needed for Pydantic AI)."""
+        # These are plain Pydantic models - Pydantic AI handles validation natively
+        assert hasattr(PatientInitialOutputSchema, "model_validate")
+        assert hasattr(PatientInitialOutputSchema, "model_json_schema")
+        assert hasattr(PatientInitialOutputSchema, "model_config")
 
     def test_schema_round_trip_parse(self):
-        """Verify schema can parse representative OpenAI output."""
+        """Verify schema can parse representative OpenAI output with polymorphic metadata."""
         sample_output = {
             "messages": [
                 {
@@ -72,10 +78,18 @@ class TestPatientInitialSchema:
                     "item_meta": [],
                 }
             ],
-            # PatientInitialOutputSchema.metadata is list[ResultMetafield] (simple key-value)
+            # PatientInitialOutputSchema.metadata is list[MetadataItem] (polymorphic union)
             "metadata": [
-                {"key": "patient_name", "value": "John Smith"},
-                {"key": "age", "value": "45"},
+                {
+                    "kind": "patient_demographics",
+                    "key": "age",
+                    "value": "45"
+                },
+                {
+                    "kind": "patient_demographics",
+                    "key": "gender",
+                    "value": "Male"
+                },
             ],
             "llm_conditions_check": [
                 {"key": "ready_for_questions", "value": "true"}
@@ -89,12 +103,16 @@ class TestPatientInitialSchema:
         assert len(parsed.messages) == 1
         assert parsed.messages[0].content[0].text == "Hello, I'm the patient."
 
-        # Verify metadata as list[ResultMetafield]
+        # Verify metadata as list[MetadataItem] (polymorphic)
         assert len(parsed.metadata) == 2
-        assert parsed.metadata[0].key == "patient_name"
-        assert parsed.metadata[0].value == "John Smith"
-        assert parsed.metadata[1].key == "age"
-        assert parsed.metadata[1].value == "45"
+        assert isinstance(parsed.metadata[0], PatientDemographicsItem)
+        assert parsed.metadata[0].key == "age"
+        assert parsed.metadata[0].value == "45"
+        assert parsed.metadata[0].kind == "patient_demographics"
+
+        assert isinstance(parsed.metadata[1], PatientDemographicsItem)
+        assert parsed.metadata[1].key == "gender"
+        assert parsed.metadata[1].value == "Male"
 
         assert len(parsed.llm_conditions_check) == 1
         assert parsed.llm_conditions_check[0].key == "ready_for_questions"
@@ -133,6 +151,192 @@ class TestPatientInitialSchema:
         # Should mention minItems or list constraint
         error_str = str(exc_info.value).lower()
         assert "message" in error_str or "list" in error_str
+
+    def test_polymorphic_lab_result_metadata(self):
+        """Verify LabResultItem with all required fields."""
+        sample_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Here are your lab results."}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {
+                    "kind": "lab_result",
+                    "key": "Hemoglobin",
+                    "value": "14.5",
+                    "panel_name": "Complete Blood Count",
+                    "result_unit": "g/dL",
+                    "reference_range_low": "12.0",
+                    "reference_range_high": "16.0",
+                    "result_flag": "normal",
+                    "result_comment": "Within normal limits"
+                }
+            ],
+            "llm_conditions_check": [],
+        }
+
+        parsed = PatientInitialOutputSchema.model_validate(sample_output)
+        assert len(parsed.metadata) == 1
+        lab_result = parsed.metadata[0]
+
+        assert isinstance(lab_result, LabResultItem)
+        assert lab_result.kind == "lab_result"
+        assert lab_result.key == "Hemoglobin"
+        assert lab_result.value == "14.5"
+        assert lab_result.panel_name == "Complete Blood Count"
+        assert lab_result.result_unit == "g/dL"
+        assert lab_result.result_flag == "normal"
+        assert lab_result.__orm_model__ == "simulation.LabResult"
+
+    def test_polymorphic_rad_result_metadata(self):
+        """Verify RadResultItem with required fields."""
+        sample_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Here are your radiology results."}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {
+                    "kind": "rad_result",
+                    "key": "Chest X-Ray",
+                    "value": "No acute cardiopulmonary disease",
+                    "result_flag": "normal"
+                }
+            ],
+            "llm_conditions_check": [],
+        }
+
+        parsed = PatientInitialOutputSchema.model_validate(sample_output)
+        assert len(parsed.metadata) == 1
+        rad_result = parsed.metadata[0]
+
+        assert isinstance(rad_result, RadResultItem)
+        assert rad_result.kind == "rad_result"
+        assert rad_result.key == "Chest X-Ray"
+        assert rad_result.result_flag == "normal"
+        assert rad_result.__orm_model__ == "simulation.RadResult"
+
+    def test_polymorphic_patient_history_metadata(self):
+        """Verify PatientHistoryItem with required fields."""
+        sample_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Tell me about your medical history."}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {
+                    "kind": "patient_history",
+                    "key": "Hypertension",
+                    "value": "Diagnosed with essential hypertension",
+                    "is_resolved": False,
+                    "duration": "5 years"
+                }
+            ],
+            "llm_conditions_check": [],
+        }
+
+        parsed = PatientInitialOutputSchema.model_validate(sample_output)
+        assert len(parsed.metadata) == 1
+        history = parsed.metadata[0]
+
+        assert isinstance(history, PatientHistoryItem)
+        assert history.kind == "patient_history"
+        assert history.key == "Hypertension"
+        assert history.is_resolved is False
+        assert history.duration == "5 years"
+        assert history.__orm_model__ == "simulation.PatientHistory"
+
+    def test_polymorphic_mixed_metadata_types(self):
+        """Verify multiple metadata types in single schema."""
+        sample_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello"}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {
+                    "kind": "patient_demographics",
+                    "key": "age",
+                    "value": "65"
+                },
+                {
+                    "kind": "patient_history",
+                    "key": "Diabetes Type 2",
+                    "value": "Controlled with metformin",
+                    "is_resolved": False,
+                    "duration": "10 years"
+                },
+                {
+                    "kind": "lab_result",
+                    "key": "Glucose",
+                    "value": "110",
+                    "result_unit": "mg/dL",
+                    "reference_range_low": "70",
+                    "reference_range_high": "100",
+                    "result_flag": "abnormal",
+                    "result_comment": "Slightly elevated"
+                },
+                {
+                    "kind": "generic",
+                    "key": "notes",
+                    "value": "Patient cooperative and alert"
+                }
+            ],
+            "llm_conditions_check": [],
+        }
+
+        parsed = PatientInitialOutputSchema.model_validate(sample_output)
+        assert len(parsed.metadata) == 4
+
+        # Verify discriminated union resolved correctly
+        assert isinstance(parsed.metadata[0], PatientDemographicsItem)
+        assert isinstance(parsed.metadata[1], PatientHistoryItem)
+        assert isinstance(parsed.metadata[2], LabResultItem)
+        assert isinstance(parsed.metadata[3], SimulationMetadataItem)
+
+        # Verify each has correct __orm_model__
+        assert parsed.metadata[0].__orm_model__ == "simulation.PatientDemographics"
+        assert parsed.metadata[1].__orm_model__ == "simulation.PatientHistory"
+        assert parsed.metadata[2].__orm_model__ == "simulation.LabResult"
+        assert parsed.metadata[3].__orm_model__ == "simcore.SimulationMetadata"
+
+    def test_polymorphic_metadata_discriminator_validation(self):
+        """Verify invalid 'kind' discriminator is rejected."""
+        invalid_output = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Test"}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [
+                {
+                    "kind": "invalid_kind",  # Invalid discriminator
+                    "key": "test",
+                    "value": "test"
+                }
+            ],
+            "llm_conditions_check": [],
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            PatientInitialOutputSchema.model_validate(invalid_output)
+
+        error_str = str(exc_info.value).lower()
+        assert "discriminator" in error_str or "kind" in error_str
 
 
 class TestPatientReplySchema:

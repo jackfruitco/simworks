@@ -43,7 +43,7 @@ from orchestrai_django.api.types import DjangoBaseCodec
 class PatientInitialCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         # example: save one message
-        from chatlab.models import Message
+        from apps.chatlab.models import Message
 
         msg = Message.objects.create(
             simulation=response.simulation,
@@ -68,7 +68,7 @@ from django.db import transaction
 @codec
 class PatientResultsCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
-        from chatlab.models import Result
+        from apps.chatlab.models import Result
 
         with transaction.atomic():
             count = 0
@@ -94,7 +94,7 @@ the entire persistence operation **rolls back**.
 @codec
 class EncounterCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
-        from chatlab.models import Encounter, Observation
+        from apps.chatlab.models import Encounter, Observation
 
         enc = Encounter.objects.create(
             simulation=response.simulation,
@@ -125,7 +125,7 @@ from django.db import transaction, IntegrityError
 @codec
 class SafeCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
-        from chatlab.models import AIResponse
+        from apps.chatlab.models import AIResponse
 
         with transaction.atomic():
             obj, created = AIResponse.objects.get_or_create(
@@ -156,7 +156,7 @@ encounter_saved = Signal()
 @codec
 class EncounterCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
-        from chatlab.models import Encounter
+        from apps.chatlab.models import Encounter
         enc = Encounter.objects.create(...)
         encounter_saved.send(sender=self.__class__, encounter=enc, response=response)
         return {"encounter_id": enc.id}
@@ -193,7 +193,7 @@ Or handle the built-in **emitter** signals elsewhere to react to responses.
 class PatientFeedbackCodec(DjangoBaseCodec):
     def persist(self, *, response, parsed) -> dict:
         from django.db import transaction
-        from chatlab.models import Feedback, FeedbackMetric
+        from apps.chatlab.models import Feedback, FeedbackMetric
 
         with transaction.atomic():
             fb = Feedback.objects.create(
@@ -215,8 +215,8 @@ class PatientFeedbackCodec(DjangoBaseCodec):
 
 ```python
 def test_feedback_codec_persist(db, simulation):
-    from chatlab.ai.codecs import PatientFeedbackCodec as Codec
-    from chatlab.models import Feedback
+    from apps.chatlab.ai.codecs import PatientFeedbackCodec as Codec
+    from apps.chatlab.models import Feedback
 
     codec = Codec()
 

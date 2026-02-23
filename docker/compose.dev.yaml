@@ -17,7 +17,7 @@ services:
       # - ..:/app
       - static-vol:/app/static
       - media-vol:/app/media
-    command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
+    # command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -25,18 +25,18 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - SimWorksNet
+      - MedSimNet
     depends_on:
       db:
         condition: service_healthy
 
   db:
     profiles: ["core"]
-    image: postgres:${DB_IMAGE_TAG:-17.2-alpine}
+    image: postgres:${DB_IMAGE_TAG:-18.2-alpine}
     restart: always
     user: postgres
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     env_file:
       - .env
     environment:
@@ -46,7 +46,7 @@ services:
       POSTGRES_HOST: ${DB_HOST:-db}
       POSTGRES_PORT: ${DB_PORT:-5432}
     networks:
-      - SimWorksNet
+      - MedSimNet
     expose:
       - '${DB_PORT:-5432}'
     hostname: 'db'
@@ -73,7 +73,7 @@ services:
     depends_on:
       - server
     networks:
-      - SimWorksNet
+      - MedSimNet
     entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
   redis:
@@ -84,7 +84,7 @@ services:
     container_name: ${REDIS_HOSTNAME:-redis}
     hostname: ${REDIS_HOSTNAME:-redis}
     networks:
-      - SimWorksNet
+      - MedSimNet
     expose:
       - '${REDIS_PORT:-6379}'
 
@@ -113,7 +113,7 @@ services:
       - media-vol:/app/media
     restart: unless-stopped
     networks:
-      - SimWorksNet
+      - MedSimNet
     hostname: 'celery-worker'
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
@@ -150,7 +150,7 @@ services:
       server:
         condition: service_started
     networks:
-      - SimWorksNet
+      - MedSimNet
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
@@ -169,5 +169,5 @@ volumes:
   static-vol:
   media-vol:
 networks:
-  SimWorksNet:
+  MedSimNet:
     driver: bridge

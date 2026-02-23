@@ -31,11 +31,10 @@ from api.v1.auth import (
 @pytest.fixture
 def test_user(django_user_model):
     """Create a test user with a role."""
-    from accounts.models import UserRole
+    from apps.accounts.models import UserRole
 
     role = UserRole.objects.create(title="Test Role JWT")
     return django_user_model.objects.create_user(
-        username="jwtuser",
         password="testpass123",
         email="jwt@example.com",
         role=role,
@@ -57,7 +56,7 @@ class TestTokenGeneration:
         payload = jwt.decode(token, get_jwt_secret(), algorithms=["HS256"])
 
         assert payload["sub"] == str(test_user.pk)
-        assert payload["username"] == test_user.username
+        assert payload["email"] == test_user.email
         assert payload["type"] == "access"
         assert "exp" in payload
         assert "iat" in payload
@@ -209,7 +208,7 @@ class TestAuthEndpoints:
         client = Client()
         response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "testpass123"},
+            data={"email": "jwt@example.com", "password": "testpass123"},
             content_type="application/json",
         )
 
@@ -225,7 +224,7 @@ class TestAuthEndpoints:
         client = Client()
         response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "wrongpassword"},
+            data={"email": "jwt@example.com", "password": "wrongpassword"},
             content_type="application/json",
         )
 
@@ -250,7 +249,7 @@ class TestAuthEndpoints:
         client = Client()
         response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "testpass123"},
+            data={"email": "jwt@example.com", "password": "testpass123"},
             content_type="application/json",
         )
 
@@ -325,7 +324,6 @@ class TestJWTProtectedEndpoints:
         now = datetime.now(timezone.utc)
         payload = {
             "sub": str(test_user.pk),
-            "username": test_user.username,
             "email": test_user.email,
             "type": "access",
             "iat": now - timedelta(hours=2),
@@ -365,7 +363,7 @@ class TestFullAuthFlow:
         # Step 1: Login
         login_response = client.post(
             "/api/v1/auth/token/",
-            data={"username": "jwtuser", "password": "testpass123"},
+            data={"email": "jwt@example.com", "password": "testpass123"},
             content_type="application/json",
         )
         assert login_response.status_code == 200
@@ -405,7 +403,7 @@ class TestDualAuth:
         client.force_login(test_user)
 
         # Access messages endpoint (uses DualAuth) with session auth
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         sim = Simulation.objects.create(
             user=test_user,
@@ -421,7 +419,7 @@ class TestDualAuth:
         client = Client()
 
         # Access messages endpoint with JWT auth
-        from simulation.models import Simulation
+        from apps.simcore.models import Simulation
 
         sim = Simulation.objects.create(
             user=test_user,
@@ -436,13 +434,12 @@ class TestDualAuth:
 
     def test_dual_auth_prefers_session_over_jwt(self, test_user, django_user_model):
         """When both session and JWT are present, session takes precedence."""
-        from accounts.models import UserRole
-        from simulation.models import Simulation
+        from apps.accounts.models import UserRole
+        from apps.simcore.models import Simulation
 
         # Create a second user for JWT
         role = UserRole.objects.create(title="Test Role JWT2")
         other_user = django_user_model.objects.create_user(
-            username="otheruser",
             password="pass123",
             email="other@example.com",
             role=role,

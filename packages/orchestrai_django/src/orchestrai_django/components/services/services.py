@@ -1,71 +1,90 @@
 # orchestrai_django/components/services/services.py
-import logging
-from abc import ABC
-from typing import Any, Callable, Awaitable, ClassVar
+"""
+Django Pydantic AI Service Base.
 
-from orchestrai.components import BaseService
-from orchestrai.components.promptkit import PromptSectionSpec
-from orchestrai.types import Response
-from orchestrai_django.components.promptkit.render_section import \
-    render_section as _default_renderer  # async (namespace, section_key, context) -> str
-from orchestrai_django.signals import emitter as _default_emitter  # DjangoSignalEmitter instance
+This module provides a Django-aware version of the Pydantic AI service
+that integrates with Django signals, models, and task execution.
+
+Usage:
+    from pydantic import BaseModel
+    from orchestrai_django.components.services import DjangoBaseService
+    from orchestrai.prompts import system_prompt
+
+    class PatientResponse(BaseModel):
+        messages: list[str]
+
+    class GenerateResponse(DjangoBaseService):
+        response_schema = PatientResponse
+        model = "openai-responses:gpt-5-nano"
+        use_native_output = True
+
+        @system_prompt(weight=100)
+        def base_instructions(self) -> str:
+            return "You are a helpful medical assistant..."
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from abc import ABC
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from orchestrai.components.services import BaseService
+from orchestrai_django.signals import emitter as _default_emitter
+
+if TYPE_CHECKING:
+    from pydantic_ai.result import RunResult
 
 logger = logging.getLogger(__name__)
 
-RenderSection = Callable[[str, str, dict[str, Any]], Awaitable[str]]
-
 
 class DjangoBaseService(BaseService, ABC):
-    """Django-aware convenience subclass of BaseService.
+    """
+    Django-aware Pydantic AI service base class.
 
-    It keeps the core retry/backoff + tracing behavior from BaseService,
-    but provides Django defaults for:
-      - emitter: a Django-signal (and/or Outbox) emitter
-      - render_section: template/prompt rendering that can reach Django models
+    Extends BaseService with:
+    - Django signal emission for request/response events
+    - Integration with Django task execution (Django Tasks framework)
+    - Support for ServiceCall persistence
+    - Context-first result hooks (on_success_ctx, on_failure_ctx)
 
-    You can still override any of these by passing them explicitly to __init__
-    or by subclassing.
+    This is the recommended base class for SimWorks services using
+    Pydantic AI.
 
-    Build Request (hooks)
-    ---------------------
-    `BaseService` provides a concrete `abuild_request(**ctx) -> Request`
-    that assembles the final backend-agnostic request using hooks:
-      - `_abuild_request_instructions(prompt, **ctx) -> list[InputItem]`
-      - `_abuild_request_user_input(prompt, **ctx) -> list[InputItem]`
-      - `_abuild_request_extras(prompt, **ctx) -> list[InputItem]`
+    Example:
+        class PatientService(DjangoBaseService):
+            model = "openai-responses:gpt-5-nano"
+            response_schema = PatientResponse
+            use_native_output = True
 
-    Prompt assembly is delegated to `BaseService.aget_prompt()`, which uses the
-    PromptEngine and (optional) PromptPlan.
-
-    Most services should **not** override `abuild_request` directly. Prefer
-    overriding the hook methods above; `DjangoBaseService` inherits the core
-    behavior unchanged and simply provides Django-friendly defaults.
-
-    Identity defaults
-    -----------------
-    Identity is resolved via the shared `IdentityMixin` used by BaseService.
-
-    Codec resolution
-    ----------------
-    Codecs are registered once in the core codec registry and addressed by
-    tuple4 identity. `DjangoBaseService` does not override codec resolution;
-    it inherits the async-first resolver from `BaseService` and the per-call
-    codec lifecycle (`aprepare` + `arun` / `run_stream`).
+            @system_prompt(weight=100)
+            def instructions(self) -> str:
+                return "You are a patient simulator..."
     """
 
-    # Attribute to attach Django "Task" class
-    task: ClassVar[Any]
+    abstract: ClassVar[bool] = True
 
-    # Optional async renderer for PromptSection → string
-    render_section: RenderSection | None = None
+    # Task proxy inherits from BaseService - Django layer patches it via use_django_task_proxy()
+    # in the OrchestrAIDjangoConfig.ready() method to provide DjangoTaskProxy with
+    # persistence and background execution support.
 
-    def __init__(self, context: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        """Constructor that passes context through without domain coupling.
-
-        This layer is intentionally generic; it does not inspect domain-specific
-        keys (e.g., "simulation_id"). Services/apps are responsible for placing
-        any required identifiers into `context` and validating them.
+    def __init__(
+        self,
+        *,
+        context: dict[str, Any] | None = None,
+        emitter: Any | None = None,
+        **kwargs: Any,
+    ) -> None:
         """
+        Initialize the Django Pydantic AI service.
+
+        Args:
+            context: Service execution context
+            emitter: Custom emitter for signals (defaults to Django signal emitter)
+            **kwargs: Additional arguments passed to BaseService
+        """
+        # Reject context via arbitrary kwargs
         ctx_from_kwargs = kwargs.pop("ctx", None)
         context_from_kwargs = kwargs.pop("context", None)
         if ctx_from_kwargs is not None or context_from_kwargs is not None:
@@ -74,48 +93,70 @@ class DjangoBaseService(BaseService, ABC):
                 "Pass context through the 'context' parameter or using(ctx={...})."
             )
 
-        super().__init__(context=context or {}, **kwargs)
+        super().__init__(context=context, **kwargs)
 
-        # Inject Django defaults only if not provided explicitly
-        if self.emitter is None:
-            self.emitter = _default_emitter
+        # Django signal emitter
+        self.emitter = emitter or _default_emitter
 
-        # Renderer default: async section renderer that can hit Django models/templates
-        if getattr(self, "render_section", None) is None:
-            self.render_section = _default_renderer
-
-    # ------------------------------------------------------------------
-    # Promotion helpers
-    # ------------------------------------------------------------------
-    def promote_request(self, req, *, context: dict | None = None):
-        """Promote a core Request into a Django-aware request using service identity.
-
-        Parameters
-        ----------
-        req : Request
-            The backend-agnostic request to promote.
-        context : dict | None
-            Optional extra context to carry through the promotion pipeline.
-            If omitted, `self.context` is used.
+    async def arun(self, **ctx: Any) -> "RunResult":
         """
-        from orchestrai_django.components.services.promote import promote_request_for_service
+        Execute the service with Django integration.
 
-        return promote_request_for_service(
-            self,
-            req,
-            context=(context or self.context or {}),
-        )
+        Emits Django signals for request/response events and
+        handles persistence of service call records.
+        """
+        # Merge context
+        if ctx:
+            self.context.update(ctx)
+
+        try:
+            # Emit request signal
+            if self.emitter:
+                self.emitter.emit_request(
+                    self.context,
+                    self.identity.namespace or "",
+                    None,  # Request DTO - not used with Pydantic AI
+                )
+
+            # Execute via parent
+            result = await super().arun(**ctx)
+
+            # Emit response signal
+            if self.emitter:
+                # Pass the RunResult for signal compatibility
+                self.emitter.emit_response(
+                    self.context,
+                    self.identity.namespace or "",
+                    result,
+                )
+
+            return result
+
+        except Exception as e:
+            # Emit failure signal
+            if self.emitter:
+                self.emitter.emit_failure(
+                    self.context,
+                    self.identity.namespace or "",
+                    self.context.get("correlation_id"),
+                    str(e),
+                )
+            raise
+
+    def _generate_call_id(self) -> str:
+        """Generate a unique call ID for this service execution."""
+        return str(uuid.uuid4())
 
     # ------------------------------------------------------------------
     # Result hooks (context-first)
     # ------------------------------------------------------------------
-    async def on_success_ctx(self, *, context: dict[str, Any], resp: Response) -> None:
+    async def on_success_ctx(self, *, context: dict[str, Any], result: "RunResult") -> None:
         """Context-first success hook (preferred in Django layer).
 
         Override this in subclasses instead of `on_success` if you want a
         keyword-only context argument.
         """
-        return None
+        pass
 
     async def on_failure_ctx(self, *, context: dict[str, Any], err: Exception) -> None:
         """Context-first failure hook (preferred in Django layer).
@@ -123,33 +164,20 @@ class DjangoBaseService(BaseService, ABC):
         Override this in subclasses instead of `on_failure` if you want a
         keyword-only context argument.
         """
-        return None
+        pass
 
-    async def on_success(self, context: dict[str, Any], resp: Response) -> None:
+    async def on_success(self, context: dict[str, Any], result: "RunResult") -> None:
         """BaseService callback override.
 
         Delegates to `on_success_ctx` so subclasses can implement either
         style without fighting the BaseService signature.
         """
-        await self.on_success_ctx(context=context or {}, resp=resp)
+        await self.on_success_ctx(context=context or {}, result=result)
 
-    async def on_failure(self, context: dict[str, Any], err: Exception) -> None:
+    async def on_failure(self, context: dict[str, Any], error: Exception) -> None:
         """BaseService callback override.
 
         Delegates to `on_failure_ctx` so subclasses can implement either
         style without fighting the BaseService signature.
         """
-        await self.on_failure_ctx(context=context or {}, err=err)
-
-    # ------------------------------------------------------------------
-    # Prompt registry helper (optional)
-    # ------------------------------------------------------------------
-    def _get_registry_section_or_none(self) -> PromptSectionSpec | None:
-        """Return a `PromptSectionSpec` for this service identity, or None.
-
-        This is a thin wrapper over the core BaseService prompt resolution helper
-        and is kept for legacy Django integrations that previously relied on a
-        Django-side registry lookup. New code should prefer the prompt plan
-        mechanisms and `BaseService.aget_prompt()` directly.
-        """
-        return self._try_get_matching_prompt_section()
+        await self.on_failure_ctx(context=context or {}, err=error)

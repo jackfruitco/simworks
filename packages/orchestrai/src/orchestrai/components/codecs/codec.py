@@ -190,6 +190,10 @@ class BaseCodec(IdentityMixin, BaseComponent, ABC):
                 },
         ):
             try:
+                svc = getattr(self, "service", None)
+                if svc is not None and hasattr(svc, "use_native_output"):
+                    req.use_native_output = bool(svc.use_native_output)
+
                 # Ensure response schema cls is attached to request if not already.
                 if getattr(req, "response_schema", None) is None:
                     req.response_schema = schema_cls_

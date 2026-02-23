@@ -108,19 +108,19 @@ class TestMakeJsonSafe:
         result = make_json_safe(SampleEnum.OPTION_A)
         assert result == "a"
 
-    def test_bytes_converts_to_utf8_string(self):
-        """bytes converts to UTF-8 string."""
+    def test_bytes_converts_to_base64_string(self):
+        """bytes converts to base64-encoded string."""
         val = b"hello world"
         result = make_json_safe(val)
-        assert result == "hello world"
+        assert result == "aGVsbG8gd29ybGQ="  # base64 of "hello world"
         assert isinstance(result, str)
 
-    def test_bytes_with_invalid_utf8(self):
-        """bytes with invalid UTF-8 uses replacement character."""
-        val = b"\xff\xfe"
+    def test_bytes_binary_data(self):
+        """Binary bytes (e.g., image data) encodes to base64."""
+        val = b"\xff\xfe\x00\x01"
         result = make_json_safe(val)
+        assert result == "//4AAQ=="  # base64 of the binary data
         assert isinstance(result, str)
-        # Should contain replacement characters, not crash
 
     def test_pydantic_model_converts_to_dict(self):
         """Pydantic model converts via model_dump(mode='json')."""

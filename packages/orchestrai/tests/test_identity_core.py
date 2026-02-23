@@ -2,31 +2,22 @@ import pytest
 
 from orchestrai.components.codecs import BaseCodec
 from orchestrai.components.promptkit import PromptSection
-from orchestrai.components.providerkit import BaseProvider
 from orchestrai.components.schemas import BaseOutputSchema
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators import (
     codec,
     prompt_section,
-    provider,
-    provider_backend,
     schema,
     service,
 )
 from orchestrai.decorators.components.codec_decorator import CodecDecorator
 from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
-from orchestrai.decorators.components.provider_decorators import (
-    ProviderBackendDecorator,
-    ProviderDecorator,
-)
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
 from orchestrai.identity import Identity, IdentityResolver
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
     PROMPT_SECTIONS_DOMAIN,
-    PROVIDER_BACKENDS_DOMAIN,
-    PROVIDERS_DOMAIN,
     SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
     normalize_domain,
@@ -54,7 +45,7 @@ def test_domain_precedence_and_normalization_default_context():
 @pytest.mark.parametrize(
     "domain_arg, domain_attr, expected, source",
     [
-        ("Provider Backends", "AttrDomain", "provider-backends", "arg"),
+        ("CODECS", "AttrDomain", "codecs", "arg"),
         (None, "CODECS", "codecs", "attr"),
     ],
 )
@@ -129,18 +120,9 @@ def test_decorators_apply_domain_defaults_per_component_type():
         def register(self, candidate):  # type: ignore[override]
             return None
 
-    class NoopProviderDecorator(ProviderDecorator):
-        def register(self, candidate):  # type: ignore[override]
-            return None
-
-    class NoopProviderBackendDecorator(ProviderBackendDecorator):
-        def register(self, candidate):  # type: ignore[override]
-            return None
-
     @NoopServiceDecorator()(namespace="demo", group="svc", name="svc")
     class DemoService(BaseService):
         abstract = False
-        provider_name = "stub"
 
     @NoopCodecDecorator()(namespace="demo", group="codec", name="json")
     class DemoCodec(BaseCodec):
@@ -155,17 +137,7 @@ def test_decorators_apply_domain_defaults_per_component_type():
         abstract = False
         instruction = "hi"
 
-    @NoopProviderDecorator()(namespace="demo", group="provider", name="default")
-    class DemoProvider(BaseProvider):
-        abstract = False
-
-    @NoopProviderBackendDecorator()(namespace="demo", group="backend", name="default")
-    class DemoBackend(BaseProvider):
-        abstract = False
-
     assert DemoService.identity.as_str == "services.demo.svc.svc"
     assert DemoCodec.identity.as_str == "codecs.demo.codec.json"
     assert DemoSchema.identity.as_str == "schemas.demo.schema.out"
     assert DemoPrompt.identity.as_str == "prompt-sections.demo.prompt.section"
-    assert DemoProvider.identity.as_str == "providers.demo.provider.default"
-    assert DemoBackend.identity.as_str == "provider-backends.demo.backend.default"

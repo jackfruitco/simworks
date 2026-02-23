@@ -66,7 +66,7 @@ class DjangoTaskProxy:
         return dispatch
 
     def _build_record(self, call: ServiceCall, dispatch: dict[str, Any]):
-        from orchestrai_django.models import ServiceCallRecord
+        from orchestrai_django.models import ServiceCall as ServiceCallModel
         from django.utils import timezone
 
         backend = dispatch.get("backend") or "immediate"
@@ -75,17 +75,22 @@ class DjangoTaskProxy:
 
         assert_jsonable(self._spec.service_kwargs, path="service_kwargs")
 
-        return ServiceCallRecord(
+        # Derive schema_fqn from the service's response_schema class
+        service_cls = self._spec.service_cls
+        schema_cls = getattr(service_cls, "response_schema", None)
+        schema_fqn = f"{schema_cls.__module__}.{schema_cls.__qualname__}" if schema_cls else None
+
+        return ServiceCallModel(
             id=call.id,
             service_identity=dispatch.get("service") or call.dispatch.get("service"),
             service_kwargs=self._spec.service_kwargs,
+            schema_fqn=schema_fqn,
             backend=backend,
             queue=queue,
             task_id=task_id,
             status=call.status,
             input=call.input,
             context=call.context,
-            result=call.result,
             error=call.error,
             dispatch=dispatch,
             created_at=timezone.make_aware(call.created_at)

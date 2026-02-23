@@ -12,7 +12,7 @@ import warnings
 from typing import Any, ClassVar, Mapping, TypeVar, Callable
 from asgiref.sync import async_to_sync
 
-from core.models import PersistModel
+from apps.common.models import PersistModel
 from orchestrai.components.codecs import BaseCodec
 from orchestrai.components.codecs.exceptions import CodecDecodeError
 from orchestrai.types import Response

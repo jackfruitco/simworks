@@ -1,0 +1,141 @@
+# chatlab/models.py
+import logging
+
+from django.conf import settings
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+from apps.common.models import PersistModel
+from apps.simcore.models import BaseSession, Simulation, SimulationImage
+
+logger = logging.getLogger(__name__)
+
+
+class RoleChoices(models.TextChoices):
+    USER = "U", _("user")
+    ASSISTANT = "A", _("assistant")
+
+
+class ChatSession(BaseSession):
+    """
+    Represents a session within ChatLab that extends a shared Simulation instance.
+    Additional chat-specific behaviors or fields can be added here.
+    """
+
+    pass
+
+
+class Message(PersistModel):
+    class MessageType(models.TextChoices):
+        TEXT = "text", "Text"
+        IMAGE = "image", "Image"
+        VIDEO = "video", "Video"
+        AUDIO = "audio", "Audio"
+        FILE = "file", "File"
+        SYSTEM = "system", "System"
+
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    simulation = models.ForeignKey(
+        Simulation, on_delete=models.CASCADE, related_name="input"
+    )
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    content = models.TextField(blank=True, null=True)
+    role = models.CharField(
+        max_length=2,
+        choices=RoleChoices.choices,
+        default=RoleChoices.USER,
+    )
+
+    message_type = models.CharField(
+        max_length=16,
+        choices=MessageType.choices,
+        default=MessageType.TEXT,
+    )
+
+    # Media
+    media = models.ManyToManyField(
+        SimulationImage, through="MessageMediaLink", related_name="input", blank=True
+    )
+
+    # UX/Status enhancements
+    is_from_ai = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
+    is_read = models.BooleanField(default=False)
+    image_requested = models.BooleanField(
+        default=False,
+        help_text="Whether this message references images/scans that should be generated"
+    )
+
+    service_call_attempt = models.ForeignKey(
+        "orchestrai_django.ServiceCallAttempt",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="messages",
+        help_text="Link to service call attempt that produced this message",
+    )
+    provider_response_id = models.CharField(null=True, blank=True, max_length=255)
+    display_name = models.CharField(max_length=100, blank=True)
+
+    def set_provider_resp_id(self, id_):
+        self.provider_response_id = id_
+        self.save(update_fields=["provider_response_id"])
+
+    # TODO deprecated -- remove before v0.8.0
+    def set_openai_id(self, openai_id):
+        logger.warning(
+            "set_openai_id is deprecated. Use set_provider_resp_id instead.",
+            DeprecationWarning,
+        )
+        self.set_provider_resp_id(openai_id)
+
+    def get_previous_openai_id(self) -> str | None:
+        """Return most recent OpenAI response_ID in current simulation"""
+        previous_message = (
+            Message.objects.filter(
+                simulation=self.simulation,
+                timestamp__lt=self.timestamp,
+                role=RoleChoices.ASSISTANT,  # Only consider ASSISTANT input
+                provider_response_id__isnull=False,  # That have an provider_response_id set
+            )
+            .order_by("-timestamp")
+            .first()
+        )
+        return previous_message.provider_response_id if previous_message else None
+
+    def get_openai_input(self) -> dict:
+        """Return list formatted for OpenAI Responses API input."""
+        return {
+            "role": self.get_role_display(),
+            "content": self.content,
+        }
+
+    def is_media(self):
+        return self.message_type in {
+            self.MessageType.IMAGE,
+            self.MessageType.VIDEO,
+            self.MessageType.AUDIO,
+            self.MessageType.FILE,
+        }
+
+    @property
+    def has_media(self):
+        return self.media.exists()
+
+    class Meta:
+        ordering = ["timestamp"]
+
+    def __str__(self):
+        return f"ChatLab Sim#{self.simulation.pk} {self.get_message_type_display()} by {self.sender} at {self.timestamp:%H:%M:%S}"
+
+
+class MessageMediaLink(PersistModel):
+    created = models.DateTimeField(auto_now_add=True)
+    modified = models.DateTimeField(auto_now=True)
+
+    message = models.ForeignKey("chatlab.Message", on_delete=models.CASCADE)
+    media = models.ForeignKey("simcore.SimulationImage", on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = ("message", "media")

@@ -9,16 +9,15 @@ from django.tasks import task
 from django.utils import timezone
 
 from orchestrai import get_current_app
-from orchestrai.components.services.calls import to_jsonable
-from orchestrai.components.services.calls.mixins import _STATUS_FAILED, _STATUS_RUNNING, _STATUS_SUCCEEDED, _NullEmitter
+from orchestrai.components.services.calls.mixins import _NullEmitter
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry.active_app import get_component_store
 from orchestrai.registry.services import ensure_service_registry
 
 from orchestrai_django.models import (
-    ServiceCallRecord,
     ServiceCallAttempt,
+    ServiceCall as ServiceCallModel,
     AttemptStatus,
     CallStatus,
     AttemptAllocationError,
@@ -64,6 +63,181 @@ def _manual_extract_fields(obj):
                 logger.warning(f"Failed to extract field {field_name}: {field_err}")
                 result[field_name] = None
     return result
+
+
+def _resolve_response_schema(schema):
+    """Best-effort unwrap of response schema (handles NativeOutput wrappers)."""
+    from typing import get_args, get_origin
+
+    if schema is None:
+        return None
+
+    if isinstance(schema, type):
+        return schema
+
+    for attr in ("inner_type", "type_", "schema", "output_type", "result_type", "type"):
+        inner = getattr(schema, attr, None)
+        if isinstance(inner, type):
+            return inner
+
+    origin = get_origin(schema)
+    args = get_args(schema)
+    if origin and args:
+        for arg in args:
+            if isinstance(arg, type):
+                return arg
+
+    return None
+
+
+def _extract_agent_config(service) -> dict | None:
+    """Extract Pydantic AI Agent configuration from service for debugging.
+
+    Captures model settings, system prompts, tools, and other Agent configuration.
+    """
+    from orchestrai.utils.json import make_json_safe
+
+    config = {}
+
+    try:
+        # Get the Agent instance if it exists
+        agent = getattr(service, '_agent', None) or getattr(service, 'agent', None)
+
+        if agent is None:
+            return None
+
+        # Model information
+        config["model"] = str(getattr(agent, 'model', None))
+        config["model_settings"] = make_json_safe(getattr(agent, 'model_settings', {}))
+
+        # System prompts
+        system_prompts = []
+        if hasattr(agent, 'system_prompts'):
+            for prompt in agent.system_prompts:
+                if callable(prompt):
+                    system_prompts.append({"type": "callable", "name": getattr(prompt, '__name__', str(prompt))})
+                else:
+                    system_prompts.append({"type": "string", "content": str(prompt)[:500]})
+        config["system_prompts"] = system_prompts
+
+        # Tools
+        tools_list = []
+        if hasattr(agent, 'tools'):
+            for tool in agent.tools:
+                tool_info = {
+                    "name": getattr(tool, '__name__', str(tool)),
+                    "type": type(tool).__name__,
+                }
+                if hasattr(tool, '__doc__') and tool.__doc__:
+                    tool_info["description"] = tool.__doc__[:200]
+                tools_list.append(tool_info)
+        config["tools"] = tools_list
+
+        # Result type / schema
+        config["result_type"] = str(getattr(agent, 'result_type', None))
+
+        # Other settings
+        config["retries"] = getattr(agent, 'retries', None)
+        config["result_tool_name"] = getattr(agent, 'result_tool_name', None)
+        config["result_tool_description"] = getattr(agent, 'result_tool_description', None)
+
+        return make_json_safe(config)
+
+    except Exception as e:
+        logger.debug(f"Failed to extract agent config: {e}")
+        return {"error": str(e)}
+
+
+def _build_request_json(service, payload, context, request_obj):
+    """Construct a request JSON payload for debugging."""
+    from orchestrai.prompts.decorators import collect_prompts, render_prompt_methods
+
+    prompt_text = ""
+    try:
+        prompts = getattr(service, "_prompt_methods", None) or collect_prompts(type(service))
+
+        class _Ctx:
+            def __init__(self, deps):
+                self.deps = deps
+
+        ctx = _Ctx(getattr(service, "context", None) or context)
+        prompt_text = async_to_sync(render_prompt_methods)(service, prompts, ctx)
+    except Exception:
+        prompt_text = ""
+
+    if request_obj is not None:
+        try:
+            request_json = request_obj.model_dump(mode="json")
+        except TypeError:
+            request_json = _manual_extract_fields(request_obj)
+
+        if prompt_text:
+            input_items = request_json.get("input")
+            if isinstance(input_items, list):
+                has_system = any(
+                    isinstance(item, dict) and item.get("role") in ("system", "developer")
+                    for item in input_items
+                )
+                if not has_system:
+                    input_items.insert(0, {"role": "system", "content": prompt_text})
+        if context:
+            prev_id = context.get("previous_provider_response_id") or context.get("previous_response_id")
+            if prev_id:
+                request_json["previous_provider_response_id"] = prev_id
+        return request_json
+
+    schema_cls = getattr(service, "response_schema", None)
+    schema_ident = None
+    if schema_cls is not None:
+        schema_ident = getattr(getattr(schema_cls, "identity", None), "as_str", None)
+        if schema_ident is None:
+            schema_ident = f"{schema_cls.__module__}.{schema_cls.__name__}"
+
+    model = getattr(service, "effective_model", None)
+    if callable(model):
+        try:
+            model = model()
+        except Exception:
+            model = getattr(service, "model", None)
+    if model is None:
+        model = getattr(service, "model", None)
+
+    from orchestrai.utils.json import make_json_safe
+
+    payload = payload or {}
+    context = context or {}
+
+    input_items = []
+    if prompt_text:
+        input_items.append({"role": "system", "content": prompt_text})
+
+    message_history = payload.get("message_history") or context.get("message_history")
+    if message_history:
+        if isinstance(message_history, list):
+            input_items.extend(message_history)
+        else:
+            input_items.append({"history": message_history})
+
+    user_message = payload.get("user_message") or context.get("user_message")
+    if user_message:
+        input_items.append({"role": "user", "content": user_message})
+
+    if not input_items:
+        input_items = [payload]
+
+    request_json = {
+        "model": model,
+        "input": input_items,
+        "context": context,
+        "response_schema": schema_ident,
+        "use_native_output": bool(getattr(service, "use_native_output", False)),
+        "tools": [],
+    }
+    if context:
+        prev_id = context.get("previous_provider_response_id") or context.get("previous_response_id")
+        if prev_id:
+            request_json["previous_provider_response_id"] = prev_id
+    return make_json_safe(request_json)
 
 
 def _debug_app_context(where: str) -> None:
@@ -137,12 +311,12 @@ def run_service_call_task(call_id: str):
 
 def run_service_call(call_id: str):
     """
-    Execute a stored :class:`ServiceCallRecord` with automatic retry logic.
+    Execute a stored :class:`ServiceCall` with automatic retry logic.
 
     Uses ServiceCallAttempt to track individual execution attempts.
     Retries on failure up to ORCA_MAX_ATTEMPTS times (default: 4).
     Uses exponential backoff between retries.
-    After max retries, marks record as failed and emits ai_response_failed signal.
+    After max retries, marks call as failed and emits ai_response_failed signal.
     """
 
     try:
@@ -160,17 +334,17 @@ def run_service_call(call_id: str):
     max_attempts = _get_max_attempts()
     attempt_record = None
 
-    # Claim the record and allocate an attempt under a DB transaction
+    # Claim the call and allocate an attempt under a DB transaction
     with transaction.atomic():
-        record = ServiceCallRecord.objects.select_for_update().get(pk=call_id)
+        call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
 
         # Check if already completed
-        if record.status == CallStatus.COMPLETED:
+        if call.status == CallStatus.COMPLETED:
             logger.info("Service call %s already completed, skipping", call_id)
-            return to_jsonable(record.as_call())
+            return call.to_jsonable()
 
         # Get current attempt count
-        current_attempt_count = record.attempts.count()
+        current_attempt_count = call.attempts.count()
 
         if current_attempt_count >= max_attempts:
             logger.warning(
@@ -178,31 +352,31 @@ def run_service_call(call_id: str):
                 call_id,
                 max_attempts,
             )
-            record.status = CallStatus.FAILED
-            record.error = f"Max attempts ({max_attempts}) reached"
-            record.finished_at = timezone.now()
-            record.save(update_fields=["status", "error", "finished_at"])
-            return to_jsonable(record.as_call())
+            call.status = CallStatus.FAILED
+            call.error = f"Max attempts ({max_attempts}) reached"
+            call.finished_at = timezone.now()
+            call.save(update_fields=["status", "error", "finished_at"])
+            return call.to_jsonable()
 
         # Allocate new attempt
         try:
-            attempt_record = record.allocate_attempt()
+            attempt_record = call.allocate_attempt()
         except AttemptAllocationError:
             logger.warning("Service call %s: attempt allocation failed (already completed)", call_id)
-            return to_jsonable(record.as_call())
+            return call.to_jsonable()
 
-        # Update record status
-        if record.status != CallStatus.IN_PROGRESS:
-            record.status = CallStatus.IN_PROGRESS
-        record.started_at = record.started_at or timezone.now()
+        # Update call status
+        if call.status != CallStatus.IN_PROGRESS:
+            call.status = CallStatus.IN_PROGRESS
+        call.started_at = call.started_at or timezone.now()
 
         # Populate related_object_id from context if not set
-        if not record.related_object_id and record.context:
-            sim_id = record.context.get("simulation_id")
+        if not call.related_object_id and call.context:
+            sim_id = call.context.get("simulation_id")
             if sim_id:
-                record.related_object_id = str(sim_id)
+                call.related_object_id = str(sim_id)
 
-        record.save(update_fields=["status", "started_at", "related_object_id"])
+        call.save(update_fields=["status", "started_at", "related_object_id"])
 
     current_attempt = attempt_record.attempt
     logger.info(
@@ -212,14 +386,8 @@ def run_service_call(call_id: str):
         max_attempts
     )
 
-    service_cls = registry.get(Identity.get(record.service_identity))
-    service = service_cls(**record.service_kwargs)
-
-    call = record.as_call()
-    call.id = record.id
-    call.created_at = _normalize_dt(record.created_at)
-    call.status = _STATUS_RUNNING
-    call.started_at = record.started_at
+    service_cls = registry.get(Identity.get(call.service_identity))
+    service = service_cls(**call.service_kwargs)
 
     if getattr(service, "emitter", None) is None:
         try:
@@ -228,56 +396,116 @@ def run_service_call(call_id: str):
             pass
 
     try:
-        payload = record.input or {}
+        payload = call.input or {}
 
         # Mark attempt as dispatched before calling the service
         attempt_record.mark_dispatched()
 
-        if hasattr(service, "execute") and callable(service.execute):
-            execute = service.execute
-            if inspect.iscoroutinefunction(execute):
-                result = async_to_sync(execute)(**payload)
-            else:
-                result = execute(**payload)
+        # Prefer arun (Pydantic AI services), then aexecute, then execute
+        if hasattr(service, "arun") and callable(service.arun):
+            result = async_to_sync(service.arun)(**payload)
         elif hasattr(service, "aexecute") and callable(service.aexecute):
             aexecute = service.aexecute
             if inspect.iscoroutinefunction(aexecute):
                 result = async_to_sync(aexecute)(**payload)
             else:  # pragma: no cover - defensive fallback
                 result = aexecute(**payload)
+        elif hasattr(service, "execute") and callable(service.execute):
+            execute = service.execute
+            if inspect.iscoroutinefunction(execute):
+                result = async_to_sync(execute)(**payload)
+            else:
+                result = async_to_sync(service.aexecute)(**payload) if hasattr(service, "aexecute") else execute(**payload)
         else:  # pragma: no cover - defensive
-            raise RuntimeError("Service does not implement execute/aexecute")
+            raise RuntimeError("Service does not implement arun/aexecute/execute")
 
-        # Success! Store Response and mark for domain persistence
-        # Phase 1: Store full Response object (atomic)
+        # Success! Store result and mark for domain persistence
         with transaction.atomic():
-            # Serialize Response to JSON if it's a Response object
+            # Serialize result to JSON
+            call_output_data = None
             if hasattr(result, "model_dump"):
                 try:
                     result_json = result.model_dump(mode="json")
                 except TypeError as e:
-                    # MockValSer error - manually extract fields as workaround
                     if 'MockValSer' in str(e):
                         logger.warning("MockValSer error during result serialization, manually extracting fields")
                         result_json = _manual_extract_fields(result)
                     else:
                         raise
-            else:
+                call_output_data = result_json
+            elif hasattr(result, "output") and hasattr(result, "all_messages_json"):
+                # Pydantic AI AgentRunResult (dataclass)
+                output = result.output
+                if hasattr(output, "model_dump"):
+                    output_json = output.model_dump(mode="json")
+                elif isinstance(output, dict):
+                    output_json = output
+                else:
+                    output_json = {"raw_value": str(output)}
+
+                timestamp_val = result.timestamp() if callable(result.timestamp) else result.timestamp
+
+                from orchestrai.utils.json import make_json_safe
+
+                result_json = {
+                    "output": output_json,
+                    "messages": make_json_safe(result.all_messages_json()),
+                    "run_id": str(result.run_id) if result.run_id else None,
+                    "timestamp": timestamp_val.isoformat() if timestamp_val else None,
+                }
+                call_output_data = output_json
+            elif isinstance(result, dict):
                 result_json = result
+                call_output_data = result
+            else:
+                logger.warning(
+                    "Unknown result type %s, converting to string",
+                    type(result).__name__
+                )
+                result_json = {"raw_value": str(result)}
 
             # Update attempt record with response data
             provider_meta = getattr(result, 'provider_meta', None) or {}
             usage = getattr(result, 'usage', None)
-            provider_response_id = provider_meta.get("id")
+
+            # For AgentRunResult, usage is a method that returns RunUsage
+            if callable(usage):
+                usage = usage()
+
+            provider_response_id = None
+            if isinstance(provider_meta, dict):
+                provider_response_id = (
+                    provider_meta.get("id")
+                    or provider_meta.get("response_id")
+                    or provider_meta.get("request_id")
+                )
+            if not provider_response_id:
+                response_obj = getattr(result, "response", None)
+                response_id = getattr(response_obj, "provider_response_id", None)
+                if response_id:
+                    provider_response_id = response_id
+            if not provider_response_id:
+                for attr in ("provider_response_id", "response_id", "id"):
+                    value = getattr(result, attr, None)
+                    if value:
+                        provider_response_id = value
+                        break
 
             attempt_record.response_raw = result_json
-            attempt_record.response_provider_raw = provider_meta.get("raw")
+            attempt_record.response_provider_raw = provider_meta.get("raw") if isinstance(provider_meta, dict) else None
+            prev_provider_response_id = None
+            if call.context:
+                prev_provider_response_id = (
+                    call.context.get("previous_provider_response_id")
+                    or call.context.get("previous_response_id")
+                )
+            attempt_record.previous_provider_response_id = prev_provider_response_id
             attempt_record.provider_response_id = provider_response_id
-            attempt_record.finish_reason = provider_meta.get("finish_reason")
+            attempt_record.finish_reason = provider_meta.get("finish_reason") if isinstance(provider_meta, dict) else None
             attempt_record.received_at = timezone.now()
 
-            # Serialize structured_data if it's a Pydantic model
-            structured_data = getattr(result, 'structured_data', None)
+            # Serialize structured_data/output if it's a Pydantic model
+            structured_data = getattr(result, 'output', None) or getattr(result, 'structured_data', None)
             if structured_data is not None:
                 if hasattr(structured_data, 'model_dump'):
                     try:
@@ -288,6 +516,8 @@ def run_service_call(call_id: str):
                     attempt_record.structured_data = structured_data
                 else:
                     attempt_record.structured_data = {"raw_value": str(structured_data)}
+                if call_output_data is None:
+                    call_output_data = attempt_record.structured_data
 
             # Token usage
             if usage:
@@ -302,33 +532,28 @@ def run_service_call(call_id: str):
             attempt_record.status = AttemptStatus.RECEIVED
             attempt_record.save(update_fields=["status", "updated_at"])
 
-            # Lock record and mark as successful
-            locked_record = ServiceCallRecord.objects.select_for_update().get(pk=call_id)
+            # Lock call and mark as successful
+            locked_call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
             try:
-                locked_record.mark_attempt_successful(
+                locked_call.mark_attempt_successful(
                     attempt_record,
-                    result_json,
+                    call_output_data,
                     provider_response_id=provider_response_id
                 )
             except AlreadySucceededError:
-                # Another attempt already succeeded - this is fine
                 logger.info(
                     "Service call %s: attempt %d finished but another attempt already succeeded",
                     call_id,
                     current_attempt
                 )
-                return to_jsonable(locked_record.as_call())
+                return locked_call.to_jsonable()
 
-            # Refresh record after atomic update
-            record.refresh_from_db()
-
-            call.result = result_json
-            call.status = _STATUS_SUCCEEDED
-            call.finished_at = record.finished_at
+            # Refresh call after atomic update
+            call.refresh_from_db()
 
             # Mark for domain persistence
-            record.domain_persisted = False
-            record.save(update_fields=["domain_persisted"])
+            call.domain_persisted = False
+            call.save(update_fields=["domain_persisted"])
 
         logger.info(
             "Service call %s succeeded on attempt %d, attempting inline persistence",
@@ -339,91 +564,101 @@ def run_service_call(call_id: str):
         # Populate attempt record with request data
         try:
             request_obj = getattr(result, 'request', None)
+            request_json = _build_request_json(service, payload, call.context, request_obj)
 
-            if request_obj:
-                # Serialize request to JSON
+            # Capture Agent configuration for debugging
+            agent_config = _extract_agent_config(service)
+            if agent_config:
+                attempt_record.agent_config = agent_config
+
+            # Capture Pydantic AI Request object (raw)
+            if request_obj is not None:
                 try:
-                    request_json = request_obj.model_dump(mode="json")
+                    pydantic_request_json = request_obj.model_dump(mode="json")
+                    attempt_record.request_pydantic = pydantic_request_json
                 except TypeError:
-                    request_json = _manual_extract_fields(request_obj)
+                    # Handle MockValSer or other serialization issues
+                    pydantic_request_json = _manual_extract_fields(request_obj)
+                    attempt_record.request_pydantic = pydantic_request_json
 
-                attempt_record.request_raw = request_json
+            if request_json:
+                attempt_record.request_input = request_json
+                attempt_record.request_provider = request_json
 
                 # Extract messages for easier querying
                 messages_json = []
-                if hasattr(request_obj, 'input') and request_obj.input:
+                if request_obj is not None and hasattr(request_obj, 'input') and request_obj.input:
                     for item in request_obj.input:
                         try:
                             messages_json.append(item.model_dump(mode="json"))
                         except (TypeError, AttributeError):
                             messages_json.append(str(item))
+                else:
+                    req_input = request_json.get("input")
+                    if isinstance(req_input, list):
+                        messages_json = req_input
                 attempt_record.request_messages = messages_json
 
                 # Extract tools for easier querying
-                if hasattr(request_obj, 'tools') and request_obj.tools:
+                if request_obj is not None and hasattr(request_obj, 'tools') and request_obj.tools:
                     try:
                         attempt_record.request_tools = [t.model_dump(mode="json") for t in request_obj.tools]
                     except (TypeError, AttributeError):
                         attempt_record.request_tools = [str(t) for t in request_obj.tools]
+                else:
+                    req_tools = request_json.get("tools")
+                    if isinstance(req_tools, list):
+                        attempt_record.request_tools = req_tools
 
                 # Get response schema identity if available
-                if hasattr(request_obj, 'response_schema') and request_obj.response_schema:
-                    identity = getattr(getattr(request_obj.response_schema, 'identity', None), 'as_str', None)
-                    attempt_record.request_schema_identity = identity
+                if request_obj is not None and hasattr(request_obj, 'response_schema') and request_obj.response_schema:
+                    schema_cls = _resolve_response_schema(request_obj.response_schema)
+                    if schema_cls is not None:
+                        identity = getattr(getattr(schema_cls, 'identity', None), 'as_str', None)
+                        if identity is None:
+                            identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
+                        attempt_record.schema_fqn = identity
+                        call.schema_fqn = identity
 
-                attempt_record.request_model = getattr(request_obj, 'model', None)
+                attempt_record.request_model = getattr(request_obj, 'model', None) or request_json.get("model")
                 attempt_record.save()
 
             # Store attempt ID in context for persistence handlers
-            if record.context is None:
-                record.context = {}
-            record.context["_service_call_attempt_id"] = attempt_record.id
-            record.save(update_fields=["context"])
+            if call.context is None:
+                call.context = {}
+            call.context["_service_call_attempt_id"] = attempt_record.id
+            update_fields = ["context"]
+            if call.schema_fqn:
+                update_fields.append("schema_fqn")
+            if request_json is not None:
+                if call.request is None:
+                    call.request = request_json
+                elif call.request == request_json:
+                    call.request = request_json
+            if call.request is not None:
+                update_fields.append("request")
+            if call.context.get("previous_provider_response_id") or call.context.get("previous_response_id"):
+                call.previous_provider_response_id = (
+                    call.context.get("previous_provider_response_id")
+                    or call.context.get("previous_response_id")
+                )
+                update_fields.append("previous_provider_response_id")
+            call.save(update_fields=update_fields)
 
         except Exception as req_err:
             logger.warning(f"Failed to populate request data for call {call_id}: {req_err}")
 
-        # Attempt inline persistence instead of deferring to drain worker
+        # Attempt inline persistence via declarative persist_schema()
         try:
-            from orchestrai.types import Response
-            from orchestrai.identity.domains import PERSIST_DOMAIN
-
-            response = Response.model_validate(record.result)
-            store = get_component_store(app)
-            persistence_registry = store.registry(PERSIST_DOMAIN) if store else None
-
-            if persistence_registry:
-                domain_obj = async_to_sync(persistence_registry.persist)(response)
-
-                if domain_obj is not None:
-                    record.domain_persisted = True
-                    record.save(update_fields=["domain_persisted"])
-                    logger.info(
-                        "Service call %s: domain persistence complete (created %s)",
-                        call_id,
-                        type(domain_obj).__name__
-                    )
-                else:
-                    # No handler found - mark as done to prevent retry loops
-                    record.domain_persisted = True
-                    record.save(update_fields=["domain_persisted"])
-                    logger.debug(
-                        "Service call %s: no persistence handler found for namespace=%s schema=%s",
-                        call_id,
-                        response.namespace,
-                        response.execution_metadata.get("schema_identity") if response.execution_metadata else None
-                    )
-            else:
-                logger.warning("Service call %s: no persistence registry available", call_id)
+            _inline_persist_service_call(call)
         except Exception as persist_err:
-            logger.warning(
-                "Service call %s: inline persistence failed: %s (will retry via drain worker)",
+            logger.exception(
+                "Service call %s: inline persistence failed (will retry via drain worker)",
                 call_id,
-                persist_err
+                exc_info=True,
             )
-            # Leave domain_persisted=False for drain worker retry
 
-        return to_jsonable(record.as_call())
+        return call.to_jsonable()
 
     except Exception as exc:
         logger.exception(
@@ -439,22 +674,16 @@ def run_service_call(call_id: str):
             is_retryable = _is_retryable_error(exc)
             attempt_record.mark_error(str(exc), is_retryable=is_retryable)
 
-        call.error = str(exc)
-        call.status = _STATUS_FAILED
-        call.finished_at = timezone.now()
-
         # Check if we should retry
         remaining_attempts = max_attempts - current_attempt
         should_retry = remaining_attempts > 0 and (attempt_record is None or attempt_record.is_retryable)
 
         if should_retry:
-            # Calculate backoff delay
             delay = _get_retry_delay(current_attempt)
 
-            # Update record status for retry
-            record.status = CallStatus.IN_PROGRESS
-            record.error = f"Attempt {current_attempt} failed: {str(exc)}"
-            record.save(update_fields=["status", "error"])
+            call.status = CallStatus.IN_PROGRESS
+            call.error = f"Attempt {current_attempt} failed: {str(exc)}"
+            call.save(update_fields=["status", "error"])
 
             logger.info(
                 "Service call %s will retry (attempt %d/%d) after %ds backoff",
@@ -464,26 +693,16 @@ def run_service_call(call_id: str):
                 delay
             )
 
-            # Schedule retry with backoff via Django Tasks
-            # Note: Django Tasks doesn't support delay natively, so we use transaction.on_commit
-            # with a simple approach. For production, consider Celery's countdown.
-            def schedule_retry():
-                import time
-                time.sleep(delay)  # Blocking sleep - in production use proper delay
-                run_service_call_task.enqueue(call_id=call_id)
-
-            # For now, just re-enqueue immediately
-            # TODO: Implement proper delay mechanism
             run_service_call_task.enqueue(call_id=call_id)
 
-            return to_jsonable(call)
+            return call.to_jsonable()
 
         else:
             # Max retries reached - mark as failed and emit signal
-            record.status = CallStatus.FAILED
-            record.error = str(exc)
-            record.finished_at = call.finished_at
-            record.save(update_fields=[
+            call.status = CallStatus.FAILED
+            call.error = str(exc)
+            call.finished_at = timezone.now()
+            call.save(update_fields=[
                 "status",
                 "error",
                 "finished_at",
@@ -495,7 +714,7 @@ def run_service_call(call_id: str):
                 current_attempt
             )
 
-            # Emit failure signal for app-level handling
+            # Emit failure signal
             try:
                 from orchestrai_django.signals import ai_response_failed
 
@@ -503,24 +722,16 @@ def run_service_call(call_id: str):
                     sender=service.__class__,
                     call_id=call_id,
                     error=str(exc),
-                    context=record.context or {}
+                    context=call.context or {}
                 )
             except Exception:
                 logger.exception("Failed to emit ai_response_failed signal")
 
-            return to_jsonable(call)
+            return call.to_jsonable()
 
 
 def _is_retryable_error(exc: Exception) -> bool:
-    """Determine if an exception should trigger a retry.
-
-    Args:
-        exc: The exception that occurred.
-
-    Returns:
-        True if the error is retryable, False otherwise.
-    """
-    # Common non-retryable errors
+    """Determine if an exception should trigger a retry."""
     non_retryable_types = (
         ValueError,
         TypeError,
@@ -531,7 +742,6 @@ def _is_retryable_error(exc: Exception) -> bool:
     if isinstance(exc, non_retryable_types):
         return False
 
-    # Check for specific error messages indicating non-retryable conditions
     error_str = str(exc).lower()
     non_retryable_patterns = [
         "invalid api key",
@@ -547,159 +757,144 @@ def _is_retryable_error(exc: Exception) -> bool:
         if pattern in error_str:
             return False
 
-    # Default to retryable
     return True
 
 
 @task
 def process_pending_persistence():
-    """
-    Process ServiceCallRecords that need domain persistence.
+    """Process ServiceCalls that need domain persistence.
 
-    This task runs periodically (e.g., every 10-30 seconds) and processes
-    records where service execution succeeded but domain persistence hasn't
-    happened yet.
+    Runs periodically and processes calls where service execution succeeded
+    but domain persistence hasn't happened yet. Uses the declarative
+    ``persist_schema()`` engine.
 
     Design:
-        - Idempotent: Uses PersistedChunk tracking for exactly-once semantics
         - Concurrent-safe: Uses select_for_update(skip_locked=True)
         - Retriable: LLM not re-called, only persistence retried
         - Two-phase: Response stored first (atomic), domain persistence separate
 
     Returns:
-        dict with processing stats (processed, failed, pending, skipped)
+        dict with processing stats
     """
-    from orchestrai.types import Response
-
     try:
         from orchestrai_django.apps import ensure_autostarted
         ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
 
-    app = get_current_app()
-    store = get_component_store(app)
-
-    if not store:
-        logger.error("No component store available, skipping persistence")
-        return {"error": "No component store"}
-
-    # Get persistence registry from component store
-    try:
-        from orchestrai.identity.domains import PERSIST_DOMAIN
-        persistence_registry = store.registry(PERSIST_DOMAIN)
-    except Exception as exc:
-        logger.error(f"Failed to get persistence registry: {exc}", exc_info=True)
-        return {"error": f"No persistence registry: {exc}"}
-
-    # Configuration
     max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
     batch_size = getattr(settings, "DOMAIN_PERSIST_BATCH_SIZE", 100)
-
-    # Atomic claim of work with concurrent safety
-    # - select_for_update(skip_locked=True) prevents race conditions
-    # - Filter out exhausted records upfront to avoid wasted work
-    # - Accept both old 'succeeded' status and new CallStatus.COMPLETED
-    with transaction.atomic():
-        pending_records = list(
-            ServiceCallRecord.objects.filter(
-                status__in=[_STATUS_SUCCEEDED, CallStatus.COMPLETED],
-                domain_persisted=False,
-                domain_persist_attempts__lt=max_attempts,
-            )
-            .select_for_update(skip_locked=True)
-            .order_by("finished_at")[:batch_size]
-        )
-
-        # Increment attempt counter for claimed records (inside lock)
-        for record in pending_records:
-            record.domain_persist_attempts += 1
-
-        # Bulk update attempts (fast, within transaction)
-        if pending_records:
-            ServiceCallRecord.objects.bulk_update(
-                pending_records, ["domain_persist_attempts"]
-            )
 
     stats = {
         "processed": 0,
         "failed": 0,
         "skipped": 0,
-        "claimed": len(pending_records),
+        "claimed": 0,
     }
 
-    # Process claimed records (outside lock, can take time)
-    for record in pending_records:
-        try:
-            # Deserialize Response from JSON
-            response = Response.model_validate(record.result)
+    # Claim pending calls
+    with transaction.atomic():
+        pending_calls = list(
+            ServiceCallModel.objects.filter(
+                status=CallStatus.COMPLETED,
+                domain_persisted=False,
+                domain_persist_attempts__lt=max_attempts,
+            )
+            .exclude(schema_fqn__isnull=True)
+            .exclude(schema_fqn="")
+            .select_for_update(skip_locked=True)
+            .order_by("finished_at")[:batch_size]
+        )
 
-            # Persist domain objects (schema-aware routing with idempotency)
-            # The registry.persist() method will:
-            # 1. Route to appropriate handler by (namespace, schema_identity)
-            # 2. Handler uses ensure_idempotent() for exactly-once semantics
-            # 3. Returns None if no handler found (skip gracefully)
-            domain_obj = async_to_sync(persistence_registry.persist)(response)
+        for call in pending_calls:
+            call.domain_persist_attempts += 1
 
-            if domain_obj is None:
-                # No handler found - not an error, just skip
-                stats["skipped"] += 1
-                logger.debug(
-                    f"No persistence handler for call {record.id} "
-                    f"(namespace={response.namespace}, "
-                    f"schema={response.execution_metadata.get('schema_identity')})"
-                )
-
-                # Mark as persisted to avoid reprocessing
-                with transaction.atomic():
-                    record.domain_persisted = True
-                    record.domain_persist_error = None
-                    record.save(update_fields=["domain_persisted", "domain_persist_error"])
-                continue
-
-            # Success - mark as persisted
-            with transaction.atomic():
-                record.domain_persisted = True
-                record.domain_persist_error = None
-                record.save(update_fields=["domain_persisted", "domain_persist_error"])
-
-            stats["processed"] += 1
-            logger.info(
-                f"Persisted domain objects for service call {record.id} "
-                f"(attempt {record.domain_persist_attempts}/{max_attempts})"
+        if pending_calls:
+            ServiceCallModel.objects.bulk_update(
+                pending_calls, ["domain_persist_attempts"]
             )
 
+    stats["claimed"] += len(pending_calls)
+
+    for call in pending_calls:
+        try:
+            _inline_persist_service_call(call)
+            stats["processed"] += 1
         except Exception as exc:
-            # Persistence failed - log and track error
             stats["failed"] += 1
             logger.exception(
-                f"Domain persistence failed for service call {record.id} "
-                f"(attempt {record.domain_persist_attempts}/{max_attempts}): {exc}"
+                "Domain persistence failed for call %s (attempt %d/%d): %s",
+                call.id, call.domain_persist_attempts, max_attempts, exc,
             )
-
-            # Track error
             with transaction.atomic():
-                record.domain_persist_error = str(exc)[:1000]  # Truncate long errors
-                record.save(update_fields=["domain_persist_error"])
+                call.domain_persist_error = str(exc)[:1000]
+                call.save(update_fields=["domain_persist_error"])
 
-            # Check if exhausted
-            if record.domain_persist_attempts >= max_attempts:
-                logger.error(
-                    f"Giving up on domain persistence for {record.id} "
-                    f"after {max_attempts} attempts. Last error: {exc}"
-                )
-                # Mark as persisted to stop retrying (error tracked in domain_persist_error)
+            if call.domain_persist_attempts >= max_attempts:
+                logger.error("Giving up on persistence for %s after %d attempts", call.id, max_attempts)
                 with transaction.atomic():
-                    record.domain_persisted = True  # Prevents infinite retries
-                    record.save(update_fields=["domain_persisted"])
+                    call.domain_persisted = True
+                    call.save(update_fields=["domain_persisted"])
 
     logger.info(
-        f"Domain persistence batch complete: "
-        f"claimed={stats['claimed']}, processed={stats['processed']}, "
-        f"failed={stats['failed']}, skipped={stats['skipped']}"
+        "Domain persistence batch complete: "
+        "claimed=%d, processed=%d, failed=%d, skipped=%d",
+        stats["claimed"], stats["processed"], stats["failed"], stats["skipped"],
     )
 
     return stats
 
 
-__all__ = ["run_service_call", "run_service_call_task", "process_pending_persistence"]
+def _inline_persist_service_call(call: ServiceCallModel):
+    """Run declarative persist_schema() for a ServiceCall."""
+    from orchestrai_django.persistence import PersistContext, persist_schema, resolve_schema_class
+
+    if not call.schema_fqn or call.output_data is None:
+        call.domain_persisted = True
+        call.save(update_fields=["domain_persisted"])
+        logger.debug("Service call %s: no schema_fqn or output_data, skipping", call.id)
+        return
+
+    try:
+        schema_cls = resolve_schema_class(call.schema_fqn)
+    except (ImportError, AttributeError):
+        logger.warning("Service call %s: could not resolve schema %s", call.id, call.schema_fqn)
+        call.domain_persisted = True
+        call.save(update_fields=["domain_persisted"])
+        return
+
+    schema_instance = schema_cls.model_validate(call.output_data)
+
+    ctx = call.context or {}
+    context = PersistContext(
+        simulation_id=ctx.get("simulation_id", 0),
+        call_id=call.id,
+        audit_id=ctx.get("_ai_response_audit_id"),
+        correlation_id=str(call.correlation_id) if call.correlation_id else None,
+        extra={
+            "service_call_attempt_id": ctx.get("_service_call_attempt_id"),
+            "provider_response_id": call.provider_response_id,
+            "previous_provider_response_id": call.previous_provider_response_id,
+        },
+    )
+
+    domain_obj = async_to_sync(persist_schema)(schema_instance, context)
+
+    call.domain_persisted = True
+    call.save(update_fields=["domain_persisted"])
+
+    if domain_obj is not None:
+        logger.info(
+            "Service call %s: domain persistence complete (created %s)",
+            call.id,
+            type(domain_obj).__name__,
+        )
+    else:
+        logger.debug("Service call %s: schema has no __persist__, skipped", call.id)
+
+
+__all__ = [
+    "run_service_call",
+    "run_service_call_task",
+    "process_pending_persistence",
+]

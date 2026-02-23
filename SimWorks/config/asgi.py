@@ -20,8 +20,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 # is populated before importing code that may import ORM models.
 django_asgi_app = get_asgi_application()
 
-from chatlab.routing import websocket_urlpatterns as chatlab_ws
-from core.routing import websocket_urlpatterns as core_ws
+from apps.chatlab.routing import websocket_urlpatterns as chatlab_ws
+from apps.common.routing import websocket_urlpatterns as core_ws
 
 application = ProtocolTypeRouter(
     {

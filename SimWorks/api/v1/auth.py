@@ -34,7 +34,7 @@ class DualAuth(HttpBearer):
         @router.post("/messages/", auth=DualAuth())
         def create_message(request):
             # request.auth contains the authenticated user
-            return {"user": request.auth.username}
+            return {"user": request.auth.email}
     """
 
     def __call__(self, request) -> User | None:
@@ -72,7 +72,7 @@ class JWTAuth(HttpBearer):
         @router.get("/protected/", auth=JWTAuth())
         def protected_endpoint(request):
             # request.auth contains the authenticated user
-            return {"user": request.auth.username}
+            return {"user": request.auth.email}
     """
 
     def authenticate(self, request, token: str) -> User | None:
@@ -150,7 +150,6 @@ def create_access_token(user: User) -> str:
 
     payload = {
         "sub": str(user.pk),
-        "username": user.username,
         "email": user.email,
         "type": "access",
         "iat": now,

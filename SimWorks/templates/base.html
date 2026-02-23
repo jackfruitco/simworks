@@ -11,6 +11,7 @@
     {% endblock style %}
     {% block head-scripts %}
         <script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+        <script defer src="https://unpkg.com/@alpinejs/collapse@3.15.3/dist/cdn.min.js"></script>
         <script defer src="https://unpkg.com/@alpinejs/ui@3.15.3/dist/cdn.min.js"></script>
         <script defer src="https://unpkg.com/@alpinejs/focus@3.15.3/dist/cdn.min.js"></script>
         <script defer src="https://unpkg.com/alpinejs@3.15.3/dist/cdn.min.js"></script>
@@ -45,9 +46,53 @@
             Alpine.plugin(window.Clipboard)
           })
         </script>
-        <script src="{% static 'core/js/toast-store.js' %}"></script>
-        <script src="{% static 'core/js/notifications.js' %}"></script>
+        <script src="{% static 'common/js/toast-store.js' %}"></script>
+        <script src="{% static 'common/js/notifications.js' %}"></script>
     <script>
+    // Global HTMX error handling with retry logic
+    document.body.addEventListener('htmx:responseError', function(evt) {
+      console.error('[HTMX] Response error:', evt.detail);
+      const target = evt.detail.elt;
+
+      // Add retry data attribute if not exists
+      if (!target.dataset.htmxRetryCount) {
+        target.dataset.htmxRetryCount = '0';
+      }
+
+      const retryCount = parseInt(target.dataset.htmxRetryCount);
+      const maxRetries = 3;
+
+      if (retryCount < maxRetries) {
+        target.dataset.htmxRetryCount = (retryCount + 1).toString();
+        console.info(`[HTMX] Retrying request (attempt ${retryCount + 1}/${maxRetries})...`);
+
+        // Retry after exponential backoff
+        setTimeout(() => {
+          htmx.trigger(target, 'htmx:retry');
+        }, Math.pow(2, retryCount) * 1000);
+      } else {
+        // Max retries exceeded - show error to user
+        console.error('[HTMX] Max retries exceeded');
+        if (window.Alpine?.store('toasts')) {
+          window.Alpine.store('toasts').add('Network error. Please refresh the page.', 'error');
+        }
+        target.dataset.htmxRetryCount = '0'; // Reset for next attempt
+      }
+    });
+
+    // Reset retry count on successful request
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+      evt.detail.elt.dataset.htmxRetryCount = '0';
+    });
+
+    // Handle timeout errors
+    document.body.addEventListener('htmx:timeout', function(evt) {
+      console.warn('[HTMX] Request timeout');
+      if (window.Alpine?.store('toasts')) {
+        window.Alpine.store('toasts').add('Request timed out. Please try again.', 'warning');
+      }
+    });
+
     function themeToggle() {
       return {
         dark: false,
@@ -118,11 +163,11 @@
     {% endblock scripts %}
 
 <audio id="alert-sound" preload="auto">
-  <source src="{% static 'core/sounds/alert.wav' %}" type="audio/wav">
+  <source src="{% static 'common/sounds/alert.wav' %}" type="audio/wav">
 </audio>
 
 <audio id="simulation-ended-sound" preload="auto">
-  <source src="{% static 'core/sounds/simulation_ended.wav' %}" type="audio/wav">
+  <source src="{% static 'common/sounds/simulation_ended.wav' %}" type="audio/wav">
 </audio>
 </body>
 </html>

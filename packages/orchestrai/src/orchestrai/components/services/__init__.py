@@ -14,12 +14,17 @@ from .exceptions import (
     ServiceStreamError,
 )
 from .registry import ServiceRegistry, ensure_service_registry, service_registry
-from .service import BaseService
-from .task_proxy import CoreTaskProxy, ServiceSpec
+from .service import BaseService, CoreTaskProxy, TaskDescriptor
+from .task_proxy import ServiceSpec
+
+# Backward compatibility alias - PydanticAIService is now BaseService
+PydanticAIService = BaseService
 
 __all__ = (
     "BaseService",
+    "PydanticAIService",  # Alias for backward compatibility
     "CoreTaskProxy",
+    "TaskDescriptor",
     "ServiceSpec",
     "ServiceCall",
     "assert_jsonable",

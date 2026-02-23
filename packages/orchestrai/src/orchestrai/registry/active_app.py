@@ -11,8 +11,6 @@ from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
     PROMPT_SECTIONS_DOMAIN,
-    PROVIDER_BACKENDS_DOMAIN,
-    PROVIDERS_DOMAIN,
     SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
 )
@@ -32,7 +30,6 @@ def _infer_domain_from_type(component_type: type[Any]) -> str | None:
         from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
         from orchestrai.components.schemas import BaseOutputSchema as _BaseOutputSchema
         from orchestrai.components.promptkit.base import PromptSection as _PromptSection
-        from orchestrai.components.providerkit import BaseProvider as _BaseProvider
     except Exception:
         return None
 
@@ -44,8 +41,6 @@ def _infer_domain_from_type(component_type: type[Any]) -> str | None:
         return SCHEMAS_DOMAIN
     if issubclass(component_type, _PromptSection):
         return PROMPT_SECTIONS_DOMAIN
-    if issubclass(component_type, _BaseProvider):
-        return PROVIDERS_DOMAIN
     return None
 
 
@@ -150,8 +145,6 @@ services = registry_proxy(SERVICES_DOMAIN)
 codecs = registry_proxy(CODECS_DOMAIN)
 schemas = registry_proxy(SCHEMAS_DOMAIN)
 prompt_sections = registry_proxy(PROMPT_SECTIONS_DOMAIN)
-provider_backends = registry_proxy(PROVIDER_BACKENDS_DOMAIN)
-providers = registry_proxy(PROVIDERS_DOMAIN)
 
 
 __all__ = [
@@ -161,8 +154,6 @@ __all__ = [
     "get_component_store",
     "get_registry_for",
     "prompt_sections",
-    "provider_backends",
-    "providers",
     "registry_proxy",
     "route_registration",
     "schemas",

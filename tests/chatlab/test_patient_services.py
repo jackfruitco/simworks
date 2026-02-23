@@ -8,12 +8,12 @@ Tests:
 
 import pytest
 
-from chatlab.orca.services.patient import (
+from apps.chatlab.orca.services.patient import (
     GenerateInitialResponse,
     GenerateReplyResponse,
     GenerateImageResponse,
 )
-from chatlab.orca.schemas import (
+from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
 )

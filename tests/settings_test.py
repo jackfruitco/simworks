@@ -6,19 +6,24 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.admin",
+    "django.contrib.sites",
     "tests.orchestrai_django.fixtures.dummyapp",
     "orchestrai_django",  # core package under test
     # SimWorks apps for integration tests
-    "accounts",
+    "apps.accounts",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
     "core",
-    "simulation",
-    "chatlab",
-    "trainerlab",
+    "apps.simcore",
+    "apps.chatlab",
+    "apps.trainerlab",
     "channels",  # For WebSocket support
 ]
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 USE_TZ = True
-AUTH_USER_MODEL = "accounts.CustomUser"
+AUTH_USER_MODEL = "accounts.User"
+SITE_ID = 1
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # URL configuration
@@ -33,6 +38,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

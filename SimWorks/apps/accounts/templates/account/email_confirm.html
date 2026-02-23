@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Email - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="max-w-md mx-auto mt-8 bg-surface-alt border border-border rounded-lg shadow-lg p-8">
+        {% if confirmation %}
+            <h1 class="text-3xl font-bold text-content mb-6">Confirm Email Address</h1>
+
+            <p class="text-content-secondary mb-6">
+                Please confirm that <strong class="text-content">{{ confirmation.email_address.email }}</strong> is an email address for user <strong class="text-content">{{ confirmation.email_address.user }}</strong>.
+            </p>
+
+            <form method="post" action="{% url 'account_confirm_email' confirmation.key %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="w-full bg-jckfrt-olive hover:bg-jckfrt-olive-hover text-content-light font-medium py-2 px-4 rounded transition-colors">
+                    Confirm Email Address
+                </button>
+            </form>
+        {% else %}
+            <div class="text-center mb-6">
+                <svg class="w-16 h-16 mx-auto text-red-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <h1 class="text-3xl font-bold text-content mb-4">Invalid Confirmation Link</h1>
+            </div>
+
+            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+                <p>This email confirmation link is invalid or has already been used.</p>
+            </div>
+
+            <div class="text-center">
+                <a href="{% url 'account_email' %}"
+                   class="inline-block bg-jckfrt-olive hover:bg-jckfrt-olive-hover text-content-light font-medium py-2 px-6 rounded transition-colors">
+                    Go to Email Management
+                </a>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

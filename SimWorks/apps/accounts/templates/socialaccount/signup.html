@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Complete Social Signup - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    <div class="max-w-md mx-auto mt-8 bg-surface-alt border border-border rounded-lg shadow-lg p-8">
+        <h1 class="text-3xl font-bold text-content mb-6">Complete Your Profile</h1>
+
+        <p class="text-content-secondary mb-6">
+            You're signing up with <strong class="text-content">{{ account.get_provider.name }}</strong>.
+            Please complete your profile information below.
+        </p>
+
+        {% if form.non_field_errors %}
+            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4" role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <!-- Display social account info -->
+        <div class="flex items-center gap-3 p-4 bg-surface border border-border rounded mb-6">
+            {% if account.get_avatar_url %}
+                <img src="{{ account.get_avatar_url }}"
+                     alt="Profile picture"
+                     class="w-12 h-12 rounded-full">
+            {% endif %}
+            <div>
+                <p class="font-medium text-content">{{ account.extra_data.name|default:account.extra_data.email }}</p>
+                <p class="text-sm text-content-secondary">{{ account.extra_data.email }}</p>
+            </div>
+        </div>
+
+        <form method="post" action="" class="space-y-4">
+            {% csrf_token %}
+
+            <!-- Hidden invitation token field -->
+            {% if request.session.invitation_token %}
+                <input type="hidden" name="invitation_token" value="{{ request.session.invitation_token }}">
+            {% endif %}
+
+            <div>
+                <label for="id_email" class="block text-sm font-medium text-content mb-2">Email:</label>
+                {% if form.email.errors %}
+                    <div class="text-red-600 text-sm mb-2">
+                        {{ form.email.errors }}
+                    </div>
+                {% endif %}
+                <input type="email"
+                       name="email"
+                       id="id_email"
+                       required
+                       value="{{ form.email.value|default:account.extra_data.email }}"
+                       class="w-full px-4 py-2 border border-border rounded bg-surface text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:border-transparent">
+            </div>
+
+            <div>
+                <label for="id_first_name" class="block text-sm font-medium text-content mb-2">First Name:</label>
+                {% if form.first_name.errors %}
+                    <div class="text-red-600 text-sm mb-2">
+                        {{ form.first_name.errors }}
+                    </div>
+                {% endif %}
+                <input type="text"
+                       name="first_name"
+                       id="id_first_name"
+                       required
+                       value="{{ form.first_name.value|default:'' }}"
+                       class="w-full px-4 py-2 border border-border rounded bg-surface text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:border-transparent">
+            </div>
+
+            <div>
+                <label for="id_last_name" class="block text-sm font-medium text-content mb-2">Last Name:</label>
+                {% if form.last_name.errors %}
+                    <div class="text-red-600 text-sm mb-2">
+                        {{ form.last_name.errors }}
+                    </div>
+                {% endif %}
+                <input type="text"
+                       name="last_name"
+                       id="id_last_name"
+                       required
+                       value="{{ form.last_name.value|default:'' }}"
+                       class="w-full px-4 py-2 border border-border rounded bg-surface text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:border-transparent">
+            </div>
+
+            <div>
+                <label for="id_role" class="block text-sm font-medium text-content mb-2">Role:</label>
+                {% if form.role.errors %}
+                    <div class="text-red-600 text-sm mb-2">
+                        {{ form.role.errors }}
+                    </div>
+                {% endif %}
+                <select name="role"
+                        id="id_role"
+                        required
+                        class="w-full px-4 py-2 border border-border rounded bg-surface text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:border-transparent">
+                    <option value="">Select a role...</option>
+                    {% for value, label in form.role.field.choices %}
+                        {% if value %}
+                            <option value="{{ value }}" {% if form.role.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+
+            {% if not request.session.invitation_token %}
+                <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded">
+                    <p class="text-sm">
+                        <strong>Note:</strong> An invitation is required to complete signup.
+                        Please use the invitation link sent to your email.
+                    </p>
+                </div>
+            {% endif %}
+
+            <button type="submit"
+                    class="w-full bg-jckfrt-olive hover:bg-jckfrt-olive-hover text-content-light font-medium py-2 px-4 rounded transition-colors">
+                Complete Signup
+            </button>
+        </form>
+
+        <div class="mt-6 text-center text-sm">
+            <p class="text-content-secondary">
+                Already have an account? <a href="{% url 'account_login' %}" class="text-jckfrt-olive hover:underline">Login</a>
+            </p>
+        </div>
+    </div>
+{% endblock %}

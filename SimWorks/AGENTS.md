@@ -71,7 +71,7 @@ def list_messages(request, simulation_id: int, after: str | None = None, limit: 
 
 **Sending events** — always use the outbox:
 ```python
-from core.outbox import enqueue_event
+from apps.common.outbox import enqueue_event
 
 await enqueue_event(
     event_type="message.created",

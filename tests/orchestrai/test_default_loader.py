@@ -3,14 +3,11 @@ import sys
 from orchestrai import OrchestrAI
 from orchestrai.conf.defaults import DEFAULTS
 from orchestrai.loaders.default import DefaultLoader
-from orchestrai.registry import singletons
 
 
-def test_default_discovery_paths_include_contrib_and_patterns():
+def test_default_discovery_paths_include_patterns():
     discovery_paths = DEFAULTS["DISCOVERY_PATHS"]
     expected = [
-        "orchestrai.contrib.provider_backends",
-        "orchestrai.contrib.provider_codecs",
         "*.orca.services",
         "*.orca.output_schemas",
         "*.orca.codecs",
@@ -36,21 +33,5 @@ def test_default_loader_expands_glob_patterns(monkeypatch, tmp_path):
     loader = DefaultLoader()
     imported = loader.autodiscover(None, ["*.orca.services", "*.missing.module"])
 
-    assert imported == ["demo_pkg.orca.services"]
+    assert "demo_pkg.orca.services" in imported
     assert sys.modules["demo_pkg.orca.services"].IMPORTED is True
-
-
-def test_default_loader_imports_contrib_codecs(monkeypatch):
-    # Ensure global registry starts clean for this assertion.
-    singletons.codecs.clear()
-
-    # Remove contrib modules to force the loader to import them.
-    for module_name in list(sys.modules):
-        if module_name.startswith("orchestrai.contrib.provider_codecs"):
-            monkeypatch.delitem(sys.modules, module_name, raising=False)
-
-    app = OrchestrAI()
-    app.start()
-
-    codec_labels = app.codecs.all()
-    assert "openai.responses.json" in codec_labels

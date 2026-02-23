@@ -79,6 +79,5 @@ def message_to_out(msg) -> MessageOut:
         message_type=msg.message_type,
         timestamp=msg.timestamp,
         is_from_ai=msg.is_from_ai,
-        order=msg.order,
         display_name=msg.display_name or "",
     )

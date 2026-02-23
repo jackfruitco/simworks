@@ -6,7 +6,7 @@ from pathlib import Path
 import logfire
 from django.core.exceptions import ImproperlyConfigured
 
-from core.utils.system import check_env
+from apps.common.utils.system import check_env
 from .logging import LOGGING
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -64,13 +64,13 @@ SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
 SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "false").lower() == "true"
 
-AUTH_USER_MODEL = "accounts.CustomUser"
+AUTH_USER_MODEL = "accounts.User"
 
 # Application definition
 INSTALLED_APPS = [
     "daphne",
     "channels",
-    "accounts",
+    "apps.accounts",
     # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",
@@ -78,25 +78,35 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",
     "django.contrib.sitemaps",
+    "corsheaders",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.apple",
+    "allauth.socialaccount.providers.google",
     "django_htmx",
+    "apps.common",
+    "apps.simcore",
+    "apps.chatlab",
+    "apps.trainerlab",
     "orchestrai_django",
-    "core",
-    "simulation",
-    "chatlab",
-    "trainerlab",
     "imagekit",
 ]
 
 MIDDLEWARE = [
-    "core.middleware.HealthCheckMiddleware",
-    "core.middleware.CorrelationIDMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "apps.common.middleware.HealthCheckMiddleware",
+    "apps.common.middleware.CorrelationIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+    "apps.accounts.middleware.InvitationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -114,7 +124,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "core.context_processors.debug_flag",
+                "apps.common.context_processors.debug_flag",
             ],
         },
     },
@@ -149,19 +159,27 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+
+# CORS
+CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)
+CORS_ALLOWED_ORIGINS_REGEX = check_env("DJANGO_CORS_ALLOWED_ORIGINS_REGEX", default=None)
+CORS_ALLOW_ALL_ORIGINS = True if (
+        os.getenv("DJANGO_CORS_ALLOW_ALL_ORIGINS", False) in ("true", "True", True, 1)
+) else False
+
 # ---------------------------------------------------------------------------
-# Orca configugration
+# OrchestrAI configuration
 # ---------------------------------------------------------------------------
+# Services use Pydantic AI's Agent abstraction for LLM execution.
+# API keys are resolved via ORCA_{PROVIDER}_API_KEY environment variables
+# (e.g., ORCA_OPENAI_API_KEY, ORCA_ANTHROPIC_API_KEY).
 ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
 ORCA_CONFIG = {
     "MODE": "single",
-    "CLIENT": {
-        "provider": "openai",
-        "surface": "responses",
-        "api_key_envvar": "ORCA_PROVIDER_API_KEY",
-        "model": os.getenv("ORCA_DEFAULT_MODEL", None),
-    },
+    "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai-responses:gpt-5o-mini"),
 }
 
 TASKS = {
@@ -177,10 +195,10 @@ TASKS = {
 DJANGO_TASKS_MAX_RETRIES = int(os.getenv("DJANGO_TASKS_MAX_RETRIES", "3"))
 DJANGO_TASKS_RETRY_DELAY = int(os.getenv("DJANGO_TASKS_RETRY_DELAY", "5"))  # seconds
 
-REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_HOSTNAME = os.getenv("REDIS_HOSTNAME", "redis")
 REDIS_PORT = os.getenv("REDIS_PORT", 6379)
 REDIS_PASSWORD = check_env("REDIS_PASSWORD")
-REDIS_BASE = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
+REDIS_BASE = f"redis://:{REDIS_PASSWORD}@{REDIS_HOSTNAME}:{REDIS_PORT}"
 
 CHANNEL_LAYERS = {
     "default": {
@@ -279,10 +297,65 @@ logfire.instrument_httpx(
 logfire.instrument_django(excluded_urls="/health(?:/|$)")
 logfire.instrument_openai(suppress_other_instrumentation=False)
 
-CSRF_FAILURE_VIEW = "core.views.csrf_failure"
+CSRF_FAILURE_VIEW = "apps.common.views.csrf_failure"
 
 STRAWBERRY_DJANGO = {
     "FIELD_DESCRIPTION_FROM_HELP_TEXT": True,
     "TYPE_DESCRIPTION_FROM_MODEL_DOCSTRING": True,
     "MUTATIONS_DEFAULT_HANDLE_ERRORS": True,
+}
+
+# ---------------------------------------------------------------------------
+# Django-allauth Configuration
+# ---------------------------------------------------------------------------
+SITE_ID = 1
+
+# Custom adapter and forms for invitation-based signup
+ACCOUNT_ADAPTER = 'apps.accounts.adapters.InvitationAccountAdapter'
+ACCOUNT_FORMS = {
+    'signup': 'apps.accounts.forms.InvitationSignupForm',
+}
+
+# Authentication settings
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_VERIFICATION = 'optional'  # Can be 'mandatory', 'optional', or 'none'
+
+# Redirect URLs
+LOGIN_REDIRECT_URL = '/'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
+
+# Social authentication provider configuration
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        },
+        'APP': {
+            'client_id': os.getenv('GOOGLE_CLIENT_ID', ''),
+            'secret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
+            'key': ''
+        }
+    },
+    'apple': {
+        'APP': {
+            # Service ID (Services ID from Apple Developer Console)
+            'client_id': os.getenv('APPLE_CLIENT_ID', ''),
+            # Team ID
+            'secret': os.getenv('APPLE_TEAM_ID', ''),
+            # Key ID
+            'key': os.getenv('APPLE_KEY_ID', ''),
+            'settings': {
+                # Private key content (from .p8 file)
+                'certificate_key': os.getenv('APPLE_PRIVATE_KEY', ''),
+            }
+        }
+    }
 }

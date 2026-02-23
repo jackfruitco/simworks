@@ -7,7 +7,7 @@ The `Formatter` class in `core/utils/formatters.py` allows you to convert data l
 ## 🔧 Initialization
 
 ```python
-from core.utils.formatters import Formatter
+from apps.common.utils.formatters import Formatter
 
 data = Simulation.objects.values("id", "diagnosis", "chief_complaint")
 formatter = Formatter(data)
@@ -88,7 +88,7 @@ The formatter handles serialization of:
 ## 🧱 Advanced Usage: Register Your Own Format
 
 ```python
-from core.utils.formatters import register_formatter
+from apps.common.utils.formatters import register_formatter
 
 @register_formatter("custom_format")
 def my_formatter(self):

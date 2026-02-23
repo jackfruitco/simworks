@@ -1,5 +1,5 @@
 """Registry components for orchestrai_django."""
 
-from .persistence import PersistenceHandlerRegistry
+# PersistenceHandlerRegistry removed — see orchestrai_django.persistence.
 
-__all__ = ["PersistenceHandlerRegistry"]
+__all__: list[str] = []

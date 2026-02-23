@@ -4,7 +4,7 @@ from typing import Any
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import ServiceCallRecord, ServiceCallAttempt, PersistedChunk
+from .models import ServiceCall, ServiceCallAttempt
 
 
 # ----------------------------- helpers ---------------------------------
@@ -16,13 +16,26 @@ def _short_json(value: Any, max_chars: int = 160) -> str:
     except Exception:
         text = str(value)
     if len(text) > max_chars:
-        text = text[: max_chars - 1] + "…"
+        text = text[: max_chars - 1] + "\u2026"
     return text
 
 
 def _pretty_json(value: Any) -> str:
     """Format JSON for display in admin detail view."""
     try:
+        def _normalize_newlines(text: str) -> str:
+            return text.replace("\\n", "\n").replace("/n", "\n")
+
+        def _walk(val: Any) -> Any:
+            if isinstance(val, str):
+                return _normalize_newlines(val)
+            if isinstance(val, list):
+                return [_walk(item) for item in val]
+            if isinstance(val, dict):
+                return {key: _walk(inner) for key, inner in val.items()}
+            return val
+
+        value = _walk(value)
         return format_html(
             "<pre style='white-space: pre-wrap; max-height: 400px; overflow-y: auto;'>{}</pre>",
             json.dumps(value, indent=2, ensure_ascii=False),
@@ -56,18 +69,9 @@ class ServiceCallAttemptInline(admin.TabularInline):
         return False
 
 
-@admin.register(ServiceCallRecord)
-class ServiceCallRecordAdmin(admin.ModelAdmin):
-    """Admin for service call records.
-
-    Future Enhancements (Phase 3):
-        - Display related user(s) from the simulation context
-        - Show PersistedChunk records linked to this call (domain objects created)
-        - Link to related Simulation object via related_object_id
-        - Display Message/SimulationMetadata objects created by this call
-        - Add filters for related_object_id to find all calls for a simulation
-        - Show attempt success/failure timeline visualization
-    """
+@admin.register(ServiceCall)
+class ServiceCallAdmin(admin.ModelAdmin):
+    """Admin for service calls."""
 
     list_display = (
         "id",
@@ -93,6 +97,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "correlation_id",
         "related_object_id",
         "provider_response_id",
+        "schema_fqn",
     )
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
@@ -113,12 +118,14 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
         "domain_persist_attempts",
         "successful_attempt",
         "provider_response_id",
-        "provider_previous_response_id",
+        "previous_provider_response_id",
         "related_object_id",
         "correlation_id",
+        "schema_fqn",
         "input_pretty",
         "context_pretty",
-        "result_pretty",
+        "request_pretty",
+        "output_data_pretty",
         "error",
     )
     fieldsets = (
@@ -130,6 +137,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
                     ("created_at", "updated_at"),
                     "service_identity",
                     "correlation_id",
+                    "schema_fqn",
                 )
             },
         ),
@@ -150,7 +158,7 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
                 "fields": (
                     "successful_attempt",
                     "provider_response_id",
-                    "provider_previous_response_id",
+                    "previous_provider_response_id",
                 )
             },
         ),
@@ -171,7 +179,8 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
                 "fields": (
                     "input_pretty",
                     "context_pretty",
-                    "result_pretty",
+                    "request_pretty",
+                    "output_data_pretty",
                     "error",
                 )
             },
@@ -179,16 +188,27 @@ class ServiceCallRecordAdmin(admin.ModelAdmin):
     )
 
     @admin.display(description="Input")
-    def input_pretty(self, obj: ServiceCallRecord) -> str:
+    def input_pretty(self, obj: ServiceCall) -> str:
         return _pretty_json(obj.input)
 
     @admin.display(description="Context")
-    def context_pretty(self, obj: ServiceCallRecord) -> str:
+    def context_pretty(self, obj: ServiceCall) -> str:
         return _pretty_json(obj.context) if obj.context else "-"
 
-    @admin.display(description="Result")
-    def result_pretty(self, obj: ServiceCallRecord) -> str:
-        return _pretty_json(obj.result) if obj.result else "-"
+    @admin.display(description="Output Data")
+    def output_data_pretty(self, obj: ServiceCall) -> str:
+        return _pretty_json(obj.output_data) if obj.output_data else "-"
+
+    @admin.display(description="Request JSON")
+    def request_pretty(self, obj: ServiceCall) -> str:
+        if obj.request:
+            return _pretty_json(obj.request)
+        latest = obj.latest_attempt
+        if latest and latest.request_input:
+            return _pretty_json(latest.request_input)
+        if latest and latest.request_provider:
+            return _pretty_json(latest.request_provider)
+        return "-"
 
 
 @admin.register(ServiceCallAttempt)
@@ -227,11 +247,14 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
         "attempt",
         "attempt_correlation_id",
         "status",
-        "request_raw_pretty",
+        "request_input_pretty",
+        "request_pydantic_pretty",
+        "request_provider_pretty",
         "request_messages_pretty",
         "request_tools_pretty",
-        "request_schema_identity",
+        "schema_fqn",
         "request_model",
+        "agent_config_pretty",
         "response_raw_pretty",
         "response_provider_raw_pretty",
         "provider_response_id",
@@ -260,14 +283,25 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Request",
+            "Request Pipeline (3 Layers)",
             {
                 "fields": (
                     "request_model",
-                    "request_schema_identity",
+                    "schema_fqn",
+                    "request_input_pretty",
+                    "request_pydantic_pretty",
+                    "request_provider_pretty",
                     "request_messages_pretty",
                     "request_tools_pretty",
-                    "request_raw_pretty",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
+        (
+            "Agent Configuration",
+            {
+                "fields": (
+                    "agent_config_pretty",
                 ),
                 "classes": ("collapse",),
             },
@@ -311,15 +345,23 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
     def service_call_link(self, obj: ServiceCallAttempt) -> str:
         if obj.service_call:
             return format_html(
-                '<a href="/admin/orchestrai_django/servicecallrecord/{}/change/">{}</a>',
+                '<a href="/admin/orchestrai_django/servicecall/{}/change/">{}</a>',
                 obj.service_call_id,
                 obj.service_call_id[:16] + "..." if len(obj.service_call_id) > 16 else obj.service_call_id,
             )
         return "-"
 
-    @admin.display(description="Request Raw")
-    def request_raw_pretty(self, obj: ServiceCallAttempt) -> str:
-        return _pretty_json(obj.request_raw) if obj.request_raw else "-"
+    @admin.display(description="Request Input (SimWorks)")
+    def request_input_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_input) if obj.request_input else "-"
+
+    @admin.display(description="Request Pydantic (Pydantic AI)")
+    def request_pydantic_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_pydantic) if obj.request_pydantic else "-"
+
+    @admin.display(description="Request Provider (Wire Format)")
+    def request_provider_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.request_provider) if obj.request_provider else "-"
 
     @admin.display(description="Request Messages")
     def request_messages_pretty(self, obj: ServiceCallAttempt) -> str:
@@ -328,6 +370,10 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
     @admin.display(description="Request Tools")
     def request_tools_pretty(self, obj: ServiceCallAttempt) -> str:
         return _pretty_json(obj.request_tools) if obj.request_tools else "-"
+
+    @admin.display(description="Agent Configuration")
+    def agent_config_pretty(self, obj: ServiceCallAttempt) -> str:
+        return _pretty_json(obj.agent_config) if obj.agent_config else "-"
 
     @admin.display(description="Response Raw")
     def response_raw_pretty(self, obj: ServiceCallAttempt) -> str:
@@ -340,54 +386,3 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
     @admin.display(description="Structured Data")
     def structured_data_pretty(self, obj: ServiceCallAttempt) -> str:
         return _pretty_json(obj.structured_data) if obj.structured_data else "-"
-
-
-@admin.register(PersistedChunk)
-class PersistedChunkAdmin(admin.ModelAdmin):
-    """Admin for persisted chunk records."""
-
-    list_display = (
-        "id",
-        "created_at",
-        "call_id",
-        "namespace",
-        "schema_identity_short",
-        "handler_identity_short",
-        "content_type",
-        "object_id",
-    )
-    list_filter = (
-        "namespace",
-        ("created_at", admin.DateFieldListFilter),
-    )
-    search_fields = (
-        "call_id",
-        "schema_identity",
-        "handler_identity",
-        "namespace",
-    )
-    date_hierarchy = "created_at"
-    ordering = ("-created_at",)
-    readonly_fields = (
-        "created_at",
-        "updated_at",
-        "call_id",
-        "schema_identity",
-        "namespace",
-        "handler_identity",
-        "content_type",
-        "object_id",
-        "persisted_at",
-    )
-
-    @admin.display(description="Schema Identity")
-    def schema_identity_short(self, obj: PersistedChunk) -> str:
-        if len(obj.schema_identity) > 40:
-            return obj.schema_identity[:37] + "..."
-        return obj.schema_identity
-
-    @admin.display(description="Handler Identity")
-    def handler_identity_short(self, obj: PersistedChunk) -> str:
-        if len(obj.handler_identity) > 40:
-            return obj.handler_identity[:37] + "..."
-        return obj.handler_identity

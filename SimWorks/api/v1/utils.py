@@ -16,7 +16,7 @@ def get_simulation_for_user(simulation_id: int, user):
     Raises:
         HttpError: 404 if simulation not found or not owned by user
     """
-    from simulation.models import Simulation
+    from apps.simcore.models import Simulation
 
     try:
         return Simulation.objects.get(pk=simulation_id, user=user)
