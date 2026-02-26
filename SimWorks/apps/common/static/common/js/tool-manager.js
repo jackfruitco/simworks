@@ -10,7 +10,7 @@
  * - HTML injection mode (for events that include rendered HTML)
  * - Auto-discovery of tools from DOM
  *
- * **Required Backend Endpoints** (registered in simulation/urls.py):
+ * **Required Backend Endpoints** (registered in simcore/urls.py):
  * - GET /tools/{tool_name}/checksum/{simulation_id}/ → {checksum: string}
  * - GET /tools/{tool_name}/refresh/{simulation_id}/ → HTML partial
  *

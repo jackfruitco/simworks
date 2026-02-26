@@ -73,7 +73,7 @@ class LabResultItem(ResultMetafield):
         description="Optional clinical comment or interpretation"
     )
 
-    __orm_model__ = "simulation.LabResult"
+    __orm_model__ = "simcore.LabResult"
 
 
 class RadResultItem(ResultMetafield):
@@ -98,7 +98,7 @@ class RadResultItem(ResultMetafield):
         description="Result flag (e.g., 'normal', 'abnormal')"
     )
 
-    __orm_model__ = "simulation.RadResult"
+    __orm_model__ = "simcore.RadResult"
 
 
 class PatientHistoryItem(ResultMetafield):
@@ -128,7 +128,7 @@ class PatientHistoryItem(ResultMetafield):
         description="Duration of the condition (e.g., '2 years', 'since childhood')"
     )
 
-    __orm_model__ = "simulation.PatientHistory"
+    __orm_model__ = "simcore.PatientHistory"
 
 
 class PatientDemographicsItem(ResultMetafield):
@@ -148,7 +148,7 @@ class PatientDemographicsItem(ResultMetafield):
         description="Discriminator field (must be 'patient_demographics')"
     )
 
-    __orm_model__ = "simulation.PatientDemographics"
+    __orm_model__ = "simcore.PatientDemographics"
 
 
 class SimulationMetadataItem(ResultMetafield):

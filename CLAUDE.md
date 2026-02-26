@@ -385,7 +385,7 @@ class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
 **Pattern**: Schema `post_persist()` Hook + Outbox Pattern
 
 ```python
-# simulation/orca/schemas/feedback.py
+# simcore/orca/schemas/feedback.py
 from apps.common.outbox.helpers import broadcast_domain_objects
 
 class GenerateInitialSimulationFeedback(BaseModel):

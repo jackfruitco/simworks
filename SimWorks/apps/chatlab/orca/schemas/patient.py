@@ -28,10 +28,10 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
 
     **Metadata Structure**:
     The LLM must generate metadata items with the correct polymorphic structure:
-    - ``kind="lab_result"`` → simulation.LabResult
-    - ``kind="rad_result"`` → simulation.RadResult
-    - ``kind="patient_history"`` → simulation.PatientHistory
-    - ``kind="patient_demographics"`` → simulation.PatientDemographics
+    - ``kind="lab_result"`` → simcore.LabResult
+    - ``kind="rad_result"`` → simcore.RadResult
+    - ``kind="patient_history"`` → simcore.PatientHistory
+    - ``kind="patient_demographics"`` → simcore.PatientDemographics
     - ``kind="generic"`` → simcore.SimulationMetadata (fallback)
 
     Each item type includes required fields matching the Django model structure.

@@ -37,15 +37,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM python:${PYTHON_VERSION}-slim-bookworm AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/app/SimWorks"
 
 WORKDIR /app
 
 # Copy Python deps from builder
 COPY --from=builder /usr/local /usr/local
-
-# Ensure local packages are importable in all stages
-# ENV PYTHONPATH="/app/packages:/app"
 
 # Create user and folders
 ARG UID=10001

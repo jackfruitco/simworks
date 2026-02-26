@@ -1,4 +1,4 @@
-# simulation/modifiers.py
+# simcore/modifiers.py
 """Simulation modifier configuration.
 
 Modifiers allow customization of simulation scenarios. They are grouped

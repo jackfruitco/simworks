@@ -9,7 +9,7 @@ This document outlines the phased implementation plan for migrating SimWorks to 
 **GraphQL (to be removed):**
 - Dependencies: `strawberry-graphql-django==0.70.1`, `strawberry-graphql>=0.287.3`
 - URL: `/graphql/` via `AsyncGraphQLView`
-- Schemas: `accounts/schema.py`, `simulation/schema.py`, `chatlab/schema.py`, `trainerlab/schema.py`
+- Schemas: `accounts/schema.py`, `simcore/schema.py`, `chatlab/schema.py`, `trainerlab/schema.py`
 - Middleware: `config/middleware.py` (RequireApiPermissionMiddleware)
 - Frontend usage: Profile page link to GraphiQL, modifier selector in `_session_form.html`
 - Tests: None found
@@ -367,7 +367,7 @@ This document outlines the phased implementation plan for migrating SimWorks to 
 3. **Remove schema files**
    - `config/schema.py`
    - `accounts/schema.py`
-   - `simulation/schema.py`
+   - `simcore/schema.py`
    - `chatlab/schema.py`
    - `trainerlab/schema.py`
 
