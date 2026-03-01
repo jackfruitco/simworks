@@ -39,6 +39,11 @@ class Message(PersistModel):
     simulation = models.ForeignKey(
         Simulation, on_delete=models.CASCADE, related_name="input"
     )
+    conversation = models.ForeignKey(
+        "simcore.Conversation",
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     content = models.TextField(blank=True, null=True)
     role = models.CharField(

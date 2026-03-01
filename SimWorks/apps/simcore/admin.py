@@ -150,3 +150,20 @@ class SimulationImageAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(ConversationType)
+class ConversationTypeAdmin(admin.ModelAdmin):
+    list_display = ("slug", "display_name", "ai_persona", "locks_with_simulation", "is_active", "sort_order")
+    list_filter = ("locks_with_simulation", "is_active")
+    search_fields = ("slug", "display_name")
+    ordering = ("sort_order",)
+
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ("id", "simulation", "conversation_type", "display_name", "is_archived", "created_at")
+    list_filter = ("conversation_type", "is_archived")
+    search_fields = ("display_name", "simulation__id")
+    raw_id_fields = ("simulation",)
+    ordering = ("-created_at",)
