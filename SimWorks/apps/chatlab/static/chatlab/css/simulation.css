@@ -1,5 +1,9 @@
 @import url('/static/css/theme.css');
-@import url('/static/chatlab/css/chat.css');
+
+#main {
+    padding-top: 0 !important;
+    padding-bottom: var(--footer-height) !important;
+}
 
 /* ───────────────────────────────────────────────
    Base Screens: Simulation Layouts
@@ -16,6 +20,12 @@
     flex-direction: column;
     background-color: var(--color-bg);
     color: var(--color-text-dark);
+}
+
+#chat-panel,
+#chat-messages {
+    min-width: 0;
+    overflow-x: hidden;
 }
 
 .sim-header {
@@ -43,6 +53,7 @@
     flex-direction: column;
     align-items: stretch;
     min-height: 0;
+    overflow-x: hidden;
     touch-action: pan-y;
 }
 
@@ -80,9 +91,10 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-width: 320px;
+    min-width: 0;
     min-height: 0;
     overflow: hidden;
+    overflow-x: hidden;
     transition: filter 0.25s ease;
 }
 .tool-header {
@@ -144,15 +156,6 @@
   height: 20px;
   background-color: var(--color-muted);
   border-radius: 2px;
-}
-
-#footer {
-    max-height: 5vh;
-}
-
-#footer .p-16 {
-    padding: 0 !important;
-    margin: auto;
 }
 
 #order-request-form {

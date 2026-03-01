@@ -8,13 +8,14 @@ services:
     user: "0:0"
     env_file:
       - .env
-    # environment:
-    #   DJANGO_COLLECTSTATIC: "0"
+    environment:
+      DJANGO_COLLECTSTATIC: "1"
+      DJANGO_RUN_TAILWIND_BUILD: "1"
     expose:
       - 8000
     hostname: 'server'
     volumes:
-      # - ..:/app
+      - ../SimWorks:/app/SimWorks
       - static-vol:/app/static
       - media-vol:/app/media
     # command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
@@ -29,6 +30,29 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      tailwind-watch:
+        condition: service_started
+
+  tailwind-watch:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: web
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      CHOKIDAR_USEPOLLING: "1"
+      CHOKIDAR_INTERVAL: "300"
+      DJANGO_ENTRYPOINT_SKIP: "1"
+    command: [ "npm", "run", "watch:css:docker" ]
+    volumes:
+      - ../SimWorks:/app/SimWorks
+      - static-vol:/app/static
+    restart: unless-stopped
+    networks:
+      - MedSimNet
 
   db:
     profiles: ["core"]

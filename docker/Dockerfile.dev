@@ -54,7 +54,7 @@ RUN adduser --disabled-password --gecos "" --home "/nonexistent" \
 
 RUN --mount=type=cache,target=/var/lib/apt/lists \
     --mount=type=cache,target=/var/cache/apt \
-    apt-get update && apt-get install -y --no-install-recommends curl gosu && \
+    apt-get update && apt-get install -y --no-install-recommends curl gosu nodejs npm && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER appuser
@@ -75,6 +75,11 @@ CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django
 
 # === Web Stage (default) ===
 FROM base AS web
+
+USER root
+COPY package.json package-lock.json* postcss.config.js tailwind.config.js /app/
+RUN npm ci --no-audit --no-fund
+USER appuser
 
 COPY SimWorks /app/SimWorks
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.dev.sh /app/docker/entrypoint.sh

@@ -2,8 +2,6 @@
 @import url("spinner.css");
 @import url("theme.css");
 @import url("button.css");
-@import url("header.css");
-@import url("footer.css");
 @import url("components/modern-buttons.css");
 @import url("components/modern-cards.css");
 
@@ -16,16 +14,41 @@ html {
   box-sizing: inherit;
 }
 
-body, main {
+body {
     background-color: var(--jckfrt-olive);
     font-family: "Tahoma", system-ui, sans-serif;
-    height: 100%;
+    min-height: 100%;
+}
+
+main {
+    background-color: var(--jckfrt-olive);
 }
 
 a { color: inherit; }
 .iconify.fit { max-height: 100%; max-width: 100%; }
+.iconify,
+svg.iconify {
+  display: inline-block !important;
+  vertical-align: middle;
+}
 
-#main { padding-top: 35px !important; padding-bottom: var(--footer-height) !important;}
+#main {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  padding-top: 0 !important;
+  padding-bottom: calc(var(--footer-height) + 0.5rem) !important;
+}
+
+.htmx-indicator {
+  display: none !important;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline-flex !important;
+  align-items: center;
+}
 
 #parallax {
     background-attachment: scroll;
@@ -45,7 +68,7 @@ a { color: inherit; }
 /* ───────────────────────────────────────────────
    Utilities: Display & Positions
 ────────────────────────────────────────────────── */
-.flex { width: 100%; display: flex; flex-flow: row wrap; }
+.flex { display: flex; }
 .flex .col { flex-flow: column wrap; float: none; }
 .flex .nowrap { flex-wrap: nowrap; }
 .flex .left { justify-content: center; text-align: center; }
@@ -655,15 +678,4 @@ a { color: inherit; }
   border: 1px solid #c3e6cb;
   border-radius: 4px;
   animation: fadeInUpAndOut 1.5s ease-out forwards;
-}
-
-/* ───────────────────────────────────────────────
-   Visibility Utilities: .visible and .hidden
-────────────────────────────────────────────────── */
-.hidden {
-  display: none !important;
-}
-
-.visible {
-  display: block !important;
 }

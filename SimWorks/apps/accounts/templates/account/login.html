@@ -4,8 +4,11 @@
 {% block title %}Login - {{ SITE_NAME }}{% endblock %}
 
 {% block content %}
-    <div class="max-w-md mx-auto mt-8 bg-surface-alt border border-border rounded-lg shadow-lg p-8">
-        <h1 class="text-3xl font-bold text-content mb-6">Login</h1>
+    {% provider_login_url 'apple' as apple_login_url %}
+    {% provider_login_url 'google' as google_login_url %}
+    <div class="tw-root">
+    <div class="w-full max-w-md md:max-w-xl lg:max-w-2xl mx-auto mt-8 bg-surface-alt border border-border rounded-lg shadow-lg p-6 md:p-8">
+        <h1 class="text-3xl font-bold text-content mb-6 text-center">Login</h1>
 
         {% if form.non_field_errors %}
             <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4" role="alert">
@@ -15,14 +18,8 @@
 
         <!-- Social Authentication Buttons -->
         <div class="flex flex-col gap-3 mb-6">
-            <a href="{% provider_login_url 'apple' %}"
-               class="flex items-center justify-center px-4 py-3 bg-black text-white rounded-md font-medium hover:bg-gray-800 transition-colors">
-                <span>Sign in with Apple</span>
-            </a>
-            <a href="{% provider_login_url 'google' %}"
-               class="flex items-center justify-center px-4 py-3 border-2 border-blue-500 text-blue-600 rounded-md font-medium hover:bg-blue-50 transition-colors">
-                <span>Sign in with Google</span>
-            </a>
+            {% include "accounts/partials/_social_auth_buttons.html" with auth_context='login' provider='apple' href=apple_login_url size='md' %}
+            {% include "accounts/partials/_social_auth_buttons.html" with auth_context='login' provider='google' href=google_login_url size='md' %}
         </div>
 
         <!-- Divider -->
@@ -83,5 +80,6 @@
                 <a href="{% url 'account_reset_password' %}" class="text-jckfrt-olive hover:underline">Forgot password?</a>
             </p>
         </div>
+    </div>
     </div>
 {% endblock %}

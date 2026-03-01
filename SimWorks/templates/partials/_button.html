@@ -3,7 +3,7 @@ Reusable button partial.
 Expected context:
 - label: visible text for the button
 - variant: primary | secondary | ghost | danger (defaults to primary)
-- size: optional size token (e.g., sm, md, lg)
+- size: optional size token (sm, md, lg)
 - type: button type attribute
 - icon: optional iconify name
 Optional helpers:
@@ -12,19 +12,17 @@ Optional helpers:
 - hide_label: when truthy, renders the label visually hidden (screen reader only)
 - label_attrs: raw attributes applied to the label span
 {% endcomment %}
-{% with variant_class=variant|default:'primary' %}
-  {% with size_class=size|default:'' %}
-    <button
-      type="{{ type|default:'button' }}"
-      class="btn {{ variant_class }}{% if size_class %} {{ size_class }}{% endif %}{% if extra_classes %} {{ extra_classes }}{% endif %}"
-      {% if attrs %}{{ attrs|safe }}{% endif %}
-    >
-      {% if icon %}
-        <span class="iconify" data-icon="{{ icon }}" data-inline="false"{% if label and not hide_label %} style="margin-right: 0.35rem;"{% endif %}></span>
-      {% endif %}
-      {% if label %}
-        <span class="{% if hide_label %}sr-only{% endif %}"{% if label_attrs %} {{ label_attrs|safe }}{% endif %}>{{ label }}</span>
-      {% endif %}
-    </button>
-  {% endwith %}
+{% with btn_variant=variant|default:'primary' btn_size=size|default:'md' %}
+  <button
+    type="{{ type|default:'button' }}"
+    class="btn inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jckfrt-olive focus-visible:ring-offset-2 {% if btn_size == 'sm' %}min-h-10 px-3 py-2 text-sm{% elif btn_size == 'lg' %}min-h-12 px-5 py-3 text-base{% else %}min-h-11 px-4 py-2 text-sm{% endif %} {% if btn_variant == 'danger' %}bg-red-600 text-white hover:bg-red-700{% elif btn_variant == 'ghost' %}border border-border bg-surface text-content hover:bg-surface-alt{% elif btn_variant == 'secondary' %}border border-border bg-surface-alt text-content hover:bg-surface{% else %}bg-jckfrt-olive text-content-light hover:bg-jckfrt-olive-hover{% endif %}{% if extra_classes %} {{ extra_classes }}{% endif %}"
+    {% if attrs %}{{ attrs|safe }}{% endif %}
+  >
+    {% if icon %}
+      <span class="iconify" data-icon="{{ icon }}" data-inline="false"></span>
+    {% endif %}
+    {% if label %}
+      <span class="{% if hide_label %}sr-only{% endif %}"{% if label_attrs %} {{ label_attrs|safe }}{% endif %}>{{ label }}</span>
+    {% endif %}
+  </button>
 {% endwith %}

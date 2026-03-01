@@ -1,20 +1,17 @@
-{% load static %}
-
 <form id="simulation-search-form"
       hx-get="{% url 'chatlab:index' %}"
       hx-target="#simulation-history-list"
       hx-push-url="true"
       hx-trigger="submit"
       hx-indicator="#search-loading"
-      class="card-modern mb-6"
+      class="rounded-xl border border-border bg-surface p-4 shadow-sm"
       x-data="{ searchQuery: '{{ search_query }}' }">
-    <div class="card-body">
-        <div class="form-group mb-4">
-            <label class="form-label" for="simulation-search-input">
-                <span class="iconify mr-2" data-icon="mdi:magnify"></span>
+    <div class="space-y-4">
+        <div>
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary" for="simulation-search-input">
                 Search Simulations
             </label>
-            <div class="form-widget" style="position: relative;">
+            <div class="relative">
                 <input id="simulation-search-input"
                        type="text"
                        name="q"
@@ -22,32 +19,29 @@
                        value="{{ search_query }}"
                        autocomplete="off"
                        x-model="searchQuery"
-                       style="padding-right: 2.5rem;"
-                       class="form-group input">
+                       class="min-h-11 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 pr-10 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive">
                 <button type="button"
                         x-show="searchQuery.length > 0"
                         @click="searchQuery = ''; $el.closest('form').querySelector('input[name=q]').value = ''"
-                        style="position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--color-muted);">
+                        class="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-content-secondary transition-colors hover:bg-surface">
                     <span class="iconify" data-icon="mdi:close-circle"></span>
                 </button>
             </div>
         </div>
 
-        <div class="form-group mb-4">
-            <label class="form-label inline" for="search-messages-checkbox" style="display: flex; align-items: center; cursor: pointer;">
-                <input id="search-messages-checkbox"
-                       type="checkbox"
-                       name="search_messages"
-                       value="1"{% if search_messages %} checked{% endif %}
-                       style="margin-right: 0.5rem;">
-                <span>Include message content in search</span>
-            </label>
-        </div>
+        <label class="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content">
+            <input id="search-messages-checkbox"
+                   type="checkbox"
+                   name="search_messages"
+                   value="1"{% if search_messages %} checked{% endif %}
+                   class="h-4 w-4 rounded border-border text-jckfrt-olive focus:ring-jckfrt-olive">
+            <span>Include message content in search</span>
+        </label>
 
-        <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
-            <button class="btn outline-pri" type="submit">
-                <span id="search-loading" class="htmx-indicator" style="display: none; margin-right: 0.5rem;">
-                    <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
+        <div class="flex justify-end">
+            <button class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover" type="submit">
+                <span id="search-loading" class="htmx-indicator" style="display: none;">
+                    <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
                 </span>
                 <span class="iconify" data-icon="mdi:magnify"></span>
                 <span>Search</span>

@@ -1,3 +1,7 @@
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 SECRET_KEY = "test"
 JWT_SECRET_KEY = "test-jwt-secret-key-for-tests"
 INSTALLED_APPS = [
@@ -14,7 +18,9 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
-    "core",
+    "allauth.socialaccount.providers.apple",
+    "allauth.socialaccount.providers.google",
+    "apps.common",
     "apps.simcore",
     "apps.chatlab",
     "apps.trainerlab",
@@ -31,8 +37,8 @@ ROOT_URLCONF = "config.urls"
 
 # Middleware configuration
 MIDDLEWARE = [
-    "core.middleware.HealthCheckMiddleware",
-    "core.middleware.CorrelationIDMiddleware",
+    "apps.common.middleware.HealthCheckMiddleware",
+    "apps.common.middleware.CorrelationIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -47,7 +53,7 @@ MIDDLEWARE = [
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "SimWorks" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -64,4 +70,31 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer"
     }
+}
+
+# Mirror production allauth behavior for email-only user model.
+ACCOUNT_LOGIN_METHODS = {"email"}
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APP": {
+            "client_id": "test-google-client-id",
+            "secret": "test-google-secret",
+            "key": "",
+        }
+    },
+    "apple": {
+        "APP": {
+            "client_id": "test-apple-client-id",
+            "secret": "test-apple-team-id",
+            "key": "test-apple-key-id",
+            "settings": {
+                "certificate_key": "test-apple-private-key",
+            },
+        }
+    },
 }

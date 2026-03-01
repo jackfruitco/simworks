@@ -1,18 +1,21 @@
 {% extends 'chatlab/chatlab_base.html' %}
-{% load static %}
 
 {% block content %}
-<section id="content" class="mx-16" style="max-width: 1400px; margin-left: auto; margin-right: auto;">
-    <div style="background: linear-gradient(135deg, rgba(44, 107, 237, 0.05), rgba(210, 166, 64, 0.05)); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem;">
-        {% include 'partials/_page_header.html' with title="Welcome to ChatLab" description="Start a new simulation or continue where you left off" actions_partial='chatlab/partials/_start_simulation_header_actions.html' %}
+<section id="content" class="tw-root mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div class="rounded-2xl border border-border bg-gradient-to-br from-jckfrt-olive/10 via-jckfrt-yellow/10 to-surface p-4 shadow-xl sm:p-6 lg:p-8">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-content sm:text-3xl">Welcome to ChatLab</h1>
+                <p class="mt-2 max-w-2xl text-sm text-content-secondary sm:text-base">Start a new simulation or continue where you left off.</p>
+            </div>
+            {% include 'chatlab/partials/_start_simulation_header_actions.html' %}
+        </div>
     </div>
 
     {% if user.is_authenticated %}
-        {% include 'chatlab/partials/simulation_history_base.html' %}
+        <div class="mt-6">
+            {% include 'chatlab/partials/simulation_history_base.html' %}
+        </div>
     {% endif %}
-
 </section>
-
 {% endblock content %}
-
-{# No custom JavaScript needed - modifier selector uses HTMX #}

@@ -144,7 +144,7 @@ class TestRateLimitDecorator:
 
     def test_allows_request_when_redis_unavailable(self):
         """Test that requests are allowed when Redis is unavailable (fail open)."""
-        with patch("core.ratelimit.get_redis_client", return_value=None):
+        with patch("apps.common.ratelimit.get_redis_client", return_value=None):
 
             @rate_limit(key="ip", limit=1, period=60)
             def my_endpoint(request):
@@ -164,7 +164,7 @@ class TestRateLimitDecorator:
         mock_pipe.execute.return_value = [None, 5, None, None]  # At limit
         mock_redis.zrange.return_value = [(b"12345:123", time.time() - 30)]
 
-        with patch("core.ratelimit.get_redis_client", return_value=mock_redis):
+        with patch("apps.common.ratelimit.get_redis_client", return_value=mock_redis):
 
             @rate_limit(key="ip", limit=5, period=60)
             def my_endpoint(request):

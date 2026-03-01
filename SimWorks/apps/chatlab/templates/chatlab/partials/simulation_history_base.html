@@ -1,24 +1,23 @@
-{% load static %}
-
-<section id="simulation-history" class="simulation-history-section">
-
-    <h2>
-      {% with name=user.first_name %}
-        {{ name|default:"Your" }}{% if name %}'s{% endif %} Simulation History
-      {% endwith %}
-    </h2>
+<section id="simulation-history" class="space-y-4 rounded-2xl border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+    <div class="flex flex-col gap-1">
+        <h2 class="text-xl font-semibold text-content sm:text-2xl">
+            {% with name=user.first_name %}
+                {{ name|default:"Your" }}{% if name %}'s{% endif %} Simulation History
+            {% endwith %}
+        </h2>
+        <p class="text-sm text-content-secondary">Search and resume prior sessions.</p>
+    </div>
 
     {% if simulations %}
         {% include 'chatlab/partials/simulation_history_search.html' %}
         {% include 'chatlab/partials/simulation_history_list.html' %}
     {% else %}
-        {% url 'chatlab:create_simulation' as create_simulation_url %}
-        {% include 'partials/_empty_state.html' with
-            title="No simulations yet"
-            body="Start your first scenario to see it show up here."
-            cta_url=create_simulation_url
-            cta_text="Start a simulation"
-            cta_class="btn sm pri" %}
+        <div class="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+            <h3 class="text-lg font-semibold text-content">No simulations yet</h3>
+            <p class="mt-2 text-sm text-content-secondary">Start your first scenario to see it show up here.</p>
+            <a href="{% url 'chatlab:create_simulation' %}" class="mt-4 inline-flex min-h-11 items-center rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover">
+                Start a simulation
+            </a>
+        </div>
     {% endif %}
-
 </section>

@@ -6,6 +6,7 @@
     <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
     <link rel="icon" type="image/x-icon" href="{% block favicon %}{% static 'icons/i-internal-medicine.svg' %}{% endblock %}">
     {% block style %}
+        <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
         <link rel="stylesheet" href="{% static 'css/base.css' %}">
         <link rel="stylesheet" href="{% static 'css/notification.css' %}">
     {% endblock style %}
@@ -23,7 +24,7 @@
     <meta name="description" property="og:description" content="{% block meta_description %}{{ SITE_DESCRIPTION }}{% endblock %}">
     <meta name="keywords" content="seo">
 </head>
-<body class="background"
+<body class="tw-root background"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 
     {# Context attributes block - use html `data-` attributes #}

@@ -17,18 +17,18 @@ app.autodiscover_tasks()
 app.conf.beat_schedule = {
     # Drain outbox every 15 seconds for reliable event delivery
     "drain-outbox-every-15-seconds": {
-        "task": "core.tasks.drain_outbox",
+        "task": "apps.common.tasks.drain_outbox",
         "schedule": 15.0,  # seconds
     },
     # Clean up old delivered events daily at 3 AM
     "cleanup-old-outbox-events-daily": {
-        "task": "core.tasks.cleanup_delivered_events",
+        "task": "apps.common.tasks.cleanup_delivered_events",
         "schedule": crontab(hour=3, minute=0),
         "kwargs": {"days_old": 7},
     },
     # Retry failed events every hour
     "retry-failed-outbox-events-hourly": {
-        "task": "core.tasks.retry_failed_events",
+        "task": "apps.common.tasks.retry_failed_events",
         "schedule": crontab(minute=30),  # At 30 minutes past each hour
     },
 }

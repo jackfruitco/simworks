@@ -46,7 +46,7 @@ def new_invite(request):
 @user_passes_test(is_inviter)
 def invite_success(request, token):
     invite = Invitation.objects.get(token=token)
-    return render(request, "accounts/invite_success.html", {"invite": invite})
+    return render(request, "accounts/invite_success_page.html", {"invite": invite})
 
 
 @login_required

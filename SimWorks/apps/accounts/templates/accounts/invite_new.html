@@ -4,28 +4,35 @@
 {% block title %}Invite User - {{ SITE_NAME }}{% endblock %}
 
 {% block content %}
-  <div id="invite-content" class="invite-container center">
-      <h1>Invite a User</h1>
+<div class="tw-root mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 lg:px-8">
+  <div id="invite-content" class="rounded-2xl border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+      <h1 class="text-2xl font-bold text-content sm:text-3xl">Invite a User</h1>
+      <p class="mt-2 text-sm text-content-secondary">Create a secure invitation token for new account onboarding.</p>
+
       {% if form.errors %}
-        <div class="error">
+        <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
           Please correct the errors below.
         </div>
       {% endif %}
+
       <form method="post"
             action="{% url 'accounts:new-invite' %}"
             hx-post="{% url 'accounts:new-invite' %}"
             hx-target="#invite-content"
             hx-swap="innerHTML transition:true"
             hx-indicator="#invite-loading"
-      >
+            class="mt-6 space-y-4 [&_p]:space-y-2 [&_label]:block [&_label]:text-sm [&_label]:font-semibold [&_label]:text-content [&_input]:min-h-11 [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:px-3 [&_input]:py-2 [&_input]:text-content [&_input:focus]:outline-none [&_input:focus]:ring-2 [&_input:focus]:ring-jckfrt-olive [&_select]:min-h-11 [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:border-border [&_select]:bg-surface [&_select]:px-3 [&_select]:py-2 [&_select]:text-content [&_select:focus]:outline-none [&_select:focus]:ring-2 [&_select:focus]:ring-jckfrt-olive [&_ul.errorlist]:list-none [&_ul.errorlist]:rounded-lg [&_ul.errorlist]:border [&_ul.errorlist]:border-red-200 [&_ul.errorlist]:bg-red-50 [&_ul.errorlist]:px-3 [&_ul.errorlist]:py-2 [&_ul.errorlist]:text-sm [&_ul.errorlist]:text-red-700">
           {% csrf_token %}
           {{ form.as_p }}
-          <button class="btn pri m-auto" type="submit" hx-indicator="#invite-loading">
-              Create Invite Token
-          </button>
-          <span id="invite-loading" class="loading-icon" style="display: none;">
-              <span class="iconify" data-icon="line-md:loading-twotone-loop" data-inline="false"></span>
-          </span>
+          <div class="flex items-center gap-3">
+              <button class="inline-flex min-h-11 items-center rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover" type="submit" hx-indicator="#invite-loading">
+                  Create Invite Token
+              </button>
+              <span id="invite-loading" class="htmx-indicator text-content-secondary" style="display: none;">
+                  <span class="iconify animate-spin text-xl" data-icon="line-md:loading-twotone-loop" data-inline="false"></span>
+              </span>
+          </div>
       </form>
   </div>
+</div>
 {% endblock %}

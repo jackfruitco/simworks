@@ -3,50 +3,41 @@
 <section
   id="chat-panel"
   x-data="ChatManager('{{ simulation.id }}', '{{ user.email }}')"
-  class="chat-container"
+  class="chat-container flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4"
   @form:typing="notifyTyping()"
-  @form:send="handleFormSend($event.detail)"
->
-  <!-- Load Older Button (fallback for scroll) -->
-  <button
-    id="load-older-btn"
-    class="old message-btn"
-    {%  comment %}@click="loadOlderMessages()"{% endcomment %}
-    x-show="hasMoreMessages"
-  >
+  @form:send="handleFormSend($event.detail)">
+  <button id="load-older-btn"
+          class="old message-btn mx-auto inline-flex min-h-9 items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary transition-colors hover:bg-surface-alt"
+          x-show="hasMoreMessages">
     Load Older Messages
   </button>
 
-  <!-- Loading indicator for messages -->
-  <div id="messages-loading" class="htmx-indicator" style="text-align: center; padding: 1rem; display: none;">
-    <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span> Loading messages...
+  <div id="messages-loading" class="htmx-indicator py-2 text-center text-sm text-content-secondary" style="display: none;">
+    <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
+    Loading messages...
   </div>
 
-  <!-- Message area (HTMX loaded & scroll monitored) -->
-  <div
-    id="chat-messages"
-    class="message-list"
-    data-has-messages="false"
-    hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
-    hx-trigger="load"
-    hx-swap="innerHTML"
-    hx-indicator="#messages-loading"
-    role="list"
-    aria-live="polite"
-  >
+  <div id="chat-messages"
+       class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface-alt p-3 sm:p-4"
+       data-has-messages="false"
+       hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
+       hx-trigger="load"
+       hx-swap="innerHTML"
+       hx-indicator="#messages-loading"
+       role="list"
+       aria-live="polite">
     <div id="message-load-anchor" aria-hidden="true"></div>
-    <!-- Messages will be swapped here by HTMX -->
   </div>
 
-  <!-- New Messages Button -->
-  <button id="new-message-btn" class="new message-btn hidden" title="Jump to latest">
-    ⬇ New Messages
+  <button id="new-message-btn"
+          class="new message-btn hidden mx-auto inline-flex min-h-10 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content shadow-sm transition-colors hover:bg-surface-alt"
+          title="Jump to latest">
+    <span class="iconify" data-icon="mdi:arrow-down"></span>
+    New Messages
   </button>
 
-  <!-- Typing indicator -->
   {% include "chatlab/partials/typing_indicator.html" %}
-
-{% include 'chatlab/partials/input_form.html' %}
+  {% include 'chatlab/partials/input_form.html' %}
 </section>
 
 <audio id="send-sound" preload="auto">

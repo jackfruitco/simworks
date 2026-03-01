@@ -1,5 +1,5 @@
-<div class="invite-actions mb-16">
-    <button class="btn pri sm" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
-        Switch to <span x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
+<div class="flex gap-2">
+    <button type="button" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-alt" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+        Switch to <span class="ml-1" x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
     </button>
 </div>

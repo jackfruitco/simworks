@@ -60,9 +60,7 @@
         <span>{{ tool.display_name }}</span>
 
         {# Tool badges #}
-        {% if tool.data|length == 0 %}
-            <span class="tool-badge tool-badge-empty">Empty</span>
-        {% elif tool.is_new %}
+        {% if tool.is_new %}
             <span class="tool-badge tool-badge-new">New</span>
         {% elif tool.has_updates %}
             <span class="tool-badge tool-badge-updated">Updated</span>

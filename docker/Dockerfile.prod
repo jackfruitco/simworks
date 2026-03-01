@@ -6,6 +6,17 @@ ARG PYTHON_VERSION=3.14
 # === UV Stage ===
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
+# === Frontend Assets Stage ===
+FROM node:20-bookworm-slim AS assets
+
+WORKDIR /app
+
+COPY package.json package-lock.json* postcss.config.js tailwind.config.js ./
+RUN npm ci --no-audit --no-fund
+
+COPY SimWorks /app/SimWorks
+RUN npm run build:css
+
 # === Builder Stage ===
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
 
@@ -72,6 +83,7 @@ CMD ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django
 FROM base AS web
 
 COPY SimWorks /app/SimWorks
+COPY --from=assets /app/SimWorks/static/css/tailwind.css /app/SimWorks/static/css/tailwind.css
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.prod.sh /app/docker/entrypoint.sh
 COPY --chown=appuser:appuser --chmod=0755 docker/healthcheck.sh /app/docker/healthcheck.sh
 

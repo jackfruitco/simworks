@@ -1,35 +1,36 @@
-{% comment %} Render a single chat message bubble {% endcomment %}
 <div
-  class="chat-bubble {% if not message.is_from_ai and message.sender.id == user.id %}outgoing{% else %}incoming{% endif %}"
+  class="chat-bubble relative block w-fit max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm sm:max-w-[75%] {% if not message.is_from_ai and message.sender.id == user.id %}outgoing ml-auto rounded-br-md bg-[var(--color-bg-outgoing)] text-[var(--color-text-light)]{% else %}incoming mr-auto rounded-bl-md bg-[var(--color-bg-incoming)] text-[var(--color-text-dark)]{% endif %}"
   data-message-id="{{ message.id }}"
   data-has-media="{{ message.has_media }}"
   role="listitem"
-  aria-label="{{ message.display_name|default:message.sender.get_full_name|default:message.sender.email|default:'AI' }}"
->
-  <strong class="sender-name">
+  aria-label="{{ message.display_name|default:message.sender.get_full_name|default:message.sender.email|default:'AI' }}">
+  {% if message.is_from_ai or message.sender.id != user.id %}
+  <strong class="sender-name mb-1 block text-xs font-semibold text-content-secondary">
     {{ message.display_name|default:message.sender.get_full_name|default:message.sender.email|default:'AI' }}
   </strong>
+  {% endif %}
+
   {% if message.has_media %}
-    <div class="media-container" role="list">
+    <div class="media-container mb-2 grid grid-cols-2 gap-2" role="list">
       {% for media in message.media.all %}
-        <div id="media_{{ media.uuid }}" class="media-wrapper" role="listitem">
-          <img src="{{ media.thumbnail.url }}" alt="{{ media.description }}" class="media-image">
+        <div id="media_{{ media.uuid }}" class="media-wrapper overflow-hidden rounded-md border border-border" role="listitem">
+          <img src="{{ media.thumbnail.url }}" alt="{{ media.description }}" class="media-image h-full w-full object-cover">
         </div>
       {% endfor %}
     </div>
   {% endif %}
-  {{ message.content|linebreaksbr }}
-  <div class="timestamp">
-    <time
-      class="bubble-time"
+
+  <div class="break-words">{{ message.content|linebreaksbr }}</div>
+
+  <div class="timestamp mt-1 flex items-center justify-end gap-1 text-[10px] opacity-80 sm:text-xs">
+    <time class="bubble-time"
       datetime="{{ message.timestamp|date:'c' }}"
       x-data="{ time: new Date('{{ message.timestamp|date:'c' }}').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) }"
-      x-text="time"
-    >{{ message.timestamp|date:"H:i" }}</time>
+      x-text="time">{{ message.timestamp|date:"H:i" }}</time>
     {% if message.sender and message.sender == user %}
-    <span class="status-icons" x-data="{ delivered: true, read: false }">
-      <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
-      <span class="iconify status-icon read-icon" data-icon="fa6-regular:circle-check" data-inline="false" x-show="read"></span>
+    <span class="status-icons relative ml-1 inline-flex h-4 w-5" x-data="{ delivered: true, read: false }">
+      <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
+      <span class="iconify status-icon read-icon absolute left-1 top-0 text-[11px] text-emerald-500" data-icon="fa6-regular:circle-check" data-inline="false" x-show="read"></span>
     </span>
     {% endif %}
   </div>

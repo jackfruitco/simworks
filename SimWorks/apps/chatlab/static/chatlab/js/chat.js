@@ -311,7 +311,7 @@ function ChatManager(simulation_id, currentUser) {
                 } else {
                     // Fallback: append error message to chat
                     const errorDiv = document.createElement('div');
-                    errorDiv.className = 'chat-error';
+                    errorDiv.className = 'rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700';
                     errorDiv.textContent = 'Failed to load message. Please refresh the page.';
                     this.messagesDiv.appendChild(errorDiv);
                 }
@@ -500,16 +500,20 @@ function ChatManager(simulation_id, currentUser) {
 
         _buildMessageBubble(content, isFromSelf, displayName, status, mediaList) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = `chat-bubble ${isFromSelf ? 'outgoing' : 'incoming'}`;
+            messageDiv.className = `chat-bubble relative block w-fit max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm sm:max-w-[75%] ${
+                isFromSelf
+                    ? 'outgoing ml-auto rounded-br-md bg-[var(--color-bg-outgoing)] text-[var(--color-text-light)]'
+                    : 'incoming mr-auto rounded-bl-md bg-[var(--color-bg-incoming)] text-[var(--color-text-dark)]'
+            }`;
 
             const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
             const mediaHtml = this._renderMediaHtml(mediaList);
 
             messageDiv.innerHTML = `
-                ${!isFromSelf ? `<strong class="sender-name">${this.escapeHtml(displayName)}</strong>` : ''}
+                ${!isFromSelf ? `<strong class="sender-name mb-1 block text-xs font-semibold text-content-secondary">${this.escapeHtml(displayName)}</strong>` : ''}
                 ${mediaHtml}
-                ${content}
-                <div class="timestamp">
+                <div class="break-words">${content}</div>
+                <div class="timestamp mt-1 flex items-center justify-end gap-1 text-[10px] opacity-80 sm:text-xs">
                     <span class="bubble-time">${timestamp}</span>
                     ${isFromSelf ? this._renderStatusIcons(status) : ''}
                 </div>
@@ -520,9 +524,11 @@ function ChatManager(simulation_id, currentUser) {
         _renderMediaHtml(mediaList) {
             if (!Array.isArray(mediaList) || mediaList.length === 0) return '';
             return `
-                <div class="media-container">
+                <div class="media-container mb-2 grid grid-cols-2 gap-2">
                     ${mediaList.map(media => `
-                        <img src="${media.url}" class="media-image" alt="media-${media.id}">
+                        <div class="media-wrapper overflow-hidden rounded-md border border-border">
+                            <img src="${media.url}" class="media-image h-full w-full object-cover" alt="media-${media.id}">
+                        </div>
                     `).join('')}
                 </div>
             `;
@@ -532,9 +538,9 @@ function ChatManager(simulation_id, currentUser) {
             const delivered = !!status;
             const read = status === 'read';
             return `
-                <span class="status-icons" x-data="{ delivered: ${delivered}, read: ${read} }">
-                    <span class="iconify status-icon delivered-icon" data-icon="fa6-regular:circle-check" x-show="delivered"></span>
-                    <span class="iconify status-icon read-icon" data-icon="fa6-regular:circle-check" x-show="read"></span>
+                <span class="status-icons relative ml-1 inline-flex h-4 w-5" x-data="{ delivered: ${delivered}, read: ${read} }">
+                    <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary" data-icon="fa6-regular:circle-check" x-show="delivered"></span>
+                    <span class="iconify status-icon read-icon absolute left-1 top-0 text-[11px] text-emerald-500" data-icon="fa6-regular:circle-check" x-show="read"></span>
                 </span>
             `;
         },
@@ -545,9 +551,9 @@ function ChatManager(simulation_id, currentUser) {
             if (isSender || wasAtBottom) {
                 this.messagesDiv.scrollTo({ top: this.messagesDiv.scrollHeight, behavior: 'smooth' });
             } else {
-                this.newMessageBtn.classList.remove('hidden', 'bounce');
-                this.newMessageBtn.classList.add('bounce');
-                setTimeout(() => this.newMessageBtn.classList.remove('bounce'), 1000);
+                this.newMessageBtn.classList.remove('hidden', 'animate-bounce');
+                this.newMessageBtn.classList.add('animate-bounce');
+                setTimeout(() => this.newMessageBtn.classList.remove('animate-bounce'), 1000);
             }
         },
 

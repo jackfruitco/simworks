@@ -14,6 +14,7 @@ DJANGO_RUN_MAKEMIGRATIONS_CHECK="${DJANGO_RUN_MAKEMIGRATIONS_CHECK:-1}"
 DJANGO_RUN_MIGRATE="${DJANGO_RUN_MIGRATE:-1}"
 DJANGO_RUN_SEED_ROLES="${DJANGO_RUN_SEED_ROLES:-1}"
 DJANGO_RUN_DEV_SUPERUSER="${DJANGO_RUN_DEV_SUPERUSER:-1}"
+DJANGO_RUN_TAILWIND_BUILD="${DJANGO_RUN_TAILWIND_BUILD:-1}"
 
 # If running as root, fix perms on mounted volumes then drop to appuser.
 if [ "$(id -u)" = "0" ]; then
@@ -27,32 +28,55 @@ echo "Entrypoint running as: $(id)"
 # Set Django settings module
 export DJANGO_SETTINGS_MODULE=config.settings
 
-# Collect static files
+# Build Tailwind CSS from source before static collection.
+echo "-------------------------------------------------------------"
 echo
-echo "Collecting static files..."
-if [ "${DJANGO_COLLECTSTATIC:-0}" = "1" ]; then
-  python manage.py collectstatic --noinput --clear
+if [ "$DJANGO_RUN_TAILWIND_BUILD" = "1" ]; then
+  echo "Starting Tailwind CSS build..."
+  npm run build:css
+else
+  echo "Skipping Tailwind build — DJANGO_RUN_TAILWIND_BUILD=$DJANGO_RUN_TAILWIND_BUILD"
 fi
 
+# Collect static files
+echo "-------------------------------------------------------------"
 echo
-echo "Checking for pending migrations (dry-run)..."
-if [ "$DJANGO_RUN_MAKEMIGRATIONS_CHECK" = "1" ] && ! python manage.py makemigrations --check --dry-run; then
-  echo "Migrations are pending; generate them locally with 'python manage.py makemigrations' if desired."
+if [ "${DJANGO_COLLECTSTATIC:-0}" = "1" ]; then
+  echo "Starting static file collection..."
+  python manage.py collectstatic -v 1 --noinput --clear
+else
+  echo "Skipping static file collection - DJANGO_COLLECTSTATIC=$DJANGO_COLLECTSTATIC"
+fi
+
+# Migration Check
+echo "-------------------------------------------------------------"
+echo
+if [ "$DJANGO_RUN_MAKEMIGRATIONS_CHECK" = "1" ]; then
+  echo "Starting pending migrations check..."
+  if ! python manage.py makemigrations --check --dry-run; then
+    echo "Migrations are pending; generate them locally with 'python manage.py makemigrations' if desired."
+  else
+    echo "No migrations pending."
+  fi
+else
+  echo "Skipping pending migration check - DJANGO_RUN_MAKEMIGRATIONS_CHECK=$DJANGO_RUN_MAKEMIGRATIONS_CHECK"
 fi
 
 # Apply database migrations
+echo "-------------------------------------------------------------"
 echo
-echo "Applying database migrations..."
 if [ "$DJANGO_RUN_MIGRATE" = "1" ]; then
+  echo "Starting database migrations..."
   python manage.py migrate
 else
-  echo "Skipping migrate — DJANGO_RUN_MIGRATE=$DJANGO_RUN_MIGRATE"
+  echo "Skipping migration — DJANGO_RUN_MIGRATE=$DJANGO_RUN_MIGRATE"
 fi
 
 # Create default UserRole objects
+echo "-------------------------------------------------------------"
+echo
 if [ "$DJANGO_RUN_SEED_ROLES" = "1" ]; then
-  echo
-  echo "Creating default user roles if not already exists..."
+  echo "Starting default user/role seed if not exist..."
   python manage.py shell -c "\
 from apps.accounts.models import UserRole; \
 UserRole.objects.exists() or UserRole.objects.bulk_create([ \
@@ -70,8 +94,9 @@ fi
 
 # Create AppDev superuser if it doesn't exist,
 # and only if DJANGO_DEBUG is set to True in .env
+echo "-------------------------------------------------------------"
+echo
 if [ "$DJANGO_RUN_DEV_SUPERUSER" = "1" ] && [ "${DJANGO_DEBUG:-}" = "True" ]; then
-  echo
   echo "Creating developer superuser if not exists..."
   python manage.py shell -c "\
 from django.contrib.auth import get_user_model; \
@@ -84,6 +109,7 @@ else
 fi
 
 # Start server
+echo "-------------------------------------------------------------"
 echo
 echo "Starting daphne server..."
 exec daphne -b 0.0.0.0 -p 8000 --access-log /dev/null config.asgi:application

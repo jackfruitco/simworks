@@ -1,26 +1,22 @@
-{% load static %}
-
-<div class="simulation-history-section" x-data="simulationHistoryData()">
-    <!-- Filters and Sorting -->
-    <div class="history-controls">
-        <!-- Search/Filter Bar -->
-        <div class="filter-bar">
-            <div class="filter-group">
-                <label class="filter-label">Status</label>
+<div class="space-y-4" x-data="simulationHistoryData()">
+    <section class="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6">
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div class="space-y-2">
+                <label class="block text-xs font-semibold uppercase tracking-wide text-content-secondary">Status</label>
                 <select x-model="filters.status"
                         @change="applyFilters()"
-                        class="filter-select">
+                        class="min-h-11 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive">
                     <option value="">All</option>
                     <option value="complete">Complete</option>
                     <option value="in_progress">In Progress</option>
                 </select>
             </div>
 
-            <div class="filter-group">
-                <label class="filter-label">Sort By</label>
+            <div class="space-y-2">
+                <label class="block text-xs font-semibold uppercase tracking-wide text-content-secondary">Sort By</label>
                 <select x-model="filters.sort"
                         @change="applyFilters()"
-                        class="filter-select">
+                        class="min-h-11 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive">
                     <option value="-start_timestamp">Newest First</option>
                     <option value="start_timestamp">Oldest First</option>
                     <option value="diagnosis">Diagnosis (A-Z)</option>
@@ -28,44 +24,46 @@
                 </select>
             </div>
 
-            <div class="filter-group">
-                <label class="filter-label">Date Range</label>
-                <div class="date-range-inputs">
+            <div class="space-y-2 md:col-span-2 xl:col-span-1">
+                <label class="block text-xs font-semibold uppercase tracking-wide text-content-secondary">Date Range</label>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                     <input type="date"
                            x-model="filters.date_from"
                            @change="applyFilters()"
-                           class="filter-input"
+                           class="min-h-11 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive"
                            placeholder="From">
-                    <span class="mx-2">to</span>
+                    <span class="hidden text-center text-sm text-content-secondary sm:block">to</span>
                     <input type="date"
                            x-model="filters.date_to"
                            @change="applyFilters()"
-                           class="filter-input"
+                           class="min-h-11 w-full rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive"
                            placeholder="To">
                 </div>
             </div>
 
-            <button @click="clearFilters()"
-                    class="btn-clear-filters"
-                    x-show="hasActiveFilters()">
-                <span class="iconify" data-icon="mdi:filter-remove"></span>
-                Clear Filters
-            </button>
+            <div class="flex items-end">
+                <button @click="clearFilters()"
+                        x-show="hasActiveFilters()"
+                        type="button"
+                        class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100 md:w-auto">
+                    <span class="iconify" data-icon="mdi:filter-remove"></span>
+                    Clear Filters
+                </button>
+            </div>
         </div>
-    </div>
+    </section>
 
-    <!-- Simulation List -->
-    <div class="simulation-list-container">
+    <section class="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-4">
         <div id="simulation-list"
-             class="simulation-list"
+             class="max-h-[36rem] space-y-3 overflow-y-auto pr-1"
              hx-get="{% url 'accounts:simulation-history' %}"
              hx-trigger="load"
              hx-swap="innerHTML"
              @scroll="handleScroll($event)">
-            <div class="loading-spinner">
-                <span class="iconify spin" data-icon="mdi:loading"></span>
+            <div class="flex items-center justify-center gap-2 py-10 text-sm text-content-secondary">
+                <span class="iconify animate-spin text-lg" data-icon="mdi:loading"></span>
                 Loading simulations...
             </div>
         </div>
-    </div>
+    </section>
 </div>
