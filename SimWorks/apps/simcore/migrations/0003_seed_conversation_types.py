@@ -89,8 +89,8 @@ def create_stitch_bot_user(apps, schema_editor):
 
 
 def backfill_conversations(apps, schema_editor):
-    """For every Simulation that has messages, create a patient Conversation
-    and link all existing messages to it."""
+    """For every legacy Simulation, ensure a patient Conversation exists,
+    then link any existing conversation-less messages to it."""
     Simulation = apps.get_model("simcore", "Simulation")
     Conversation = apps.get_model("simcore", "Conversation")
     ConversationType = apps.get_model("simcore", "ConversationType")
@@ -98,21 +98,12 @@ def backfill_conversations(apps, schema_editor):
 
     patient_type = ConversationType.objects.get(slug="simulated_patient")
 
-    # Find all simulation IDs that have at least one message
-    sim_ids_with_messages = (
-        Message.objects.filter(conversation__isnull=True)
-        .values_list("simulation_id", flat=True)
-        .distinct()
-    )
-
-    for sim_id in sim_ids_with_messages:
-        try:
-            sim = Simulation.objects.get(pk=sim_id)
-        except Simulation.DoesNotExist:
-            continue
+    # Ensure every existing simulation has a default patient conversation,
+    # even if it currently has zero messages.
+    for sim in Simulation.objects.all().iterator():
 
         conv, _ = Conversation.objects.get_or_create(
-            simulation=sim,
+            simulation_id=sim.id,
             conversation_type=patient_type,
             defaults={
                 "display_name": sim.sim_patient_display_name or "Patient",
@@ -121,7 +112,7 @@ def backfill_conversations(apps, schema_editor):
 
         # Bulk update messages for this simulation
         Message.objects.filter(
-            simulation_id=sim_id,
+            simulation_id=sim.id,
             conversation__isnull=True,
         ).update(conversation=conv)
 
