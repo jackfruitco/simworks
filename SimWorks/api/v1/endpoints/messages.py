@@ -5,6 +5,7 @@ Uses cursor-based pagination for listing messages.
 """
 
 from asgiref.sync import async_to_sync
+from django.db import transaction
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.errors import HttpError
@@ -218,28 +219,38 @@ def create_message(
     if conversation.is_locked:
         raise HttpError(400, "This conversation is locked")
 
-    # Create the user message
-    message = Message.objects.create(
-        simulation=sim,
-        conversation=conversation,
-        sender=user,
-        content=body.content,
-        role=RoleChoices.USER,
-        message_type=body.message_type,
-        is_from_ai=False,
-        display_name=user.get_full_name() or user.email,
-    )
+    with transaction.atomic():
+        # Create the user message
+        message = Message.objects.create(
+            simulation=sim,
+            conversation=conversation,
+            sender=user,
+            content=body.content,
+            role=RoleChoices.USER,
+            message_type=body.message_type,
+            is_from_ai=False,
+            display_name=user.get_full_name() or user.email,
+        )
 
-    logger.info(
-        "message.created",
-        message_id=message.pk,
-        simulation_id=simulation_id,
-        conversation_id=conversation.pk,
-        message_type=body.message_type,
-    )
+        logger.info(
+            "message.created",
+            message_id=message.pk,
+            simulation_id=simulation_id,
+            conversation_id=conversation.pk,
+            message_type=body.message_type,
+        )
 
-    # Enqueue the AI response generation (dispatched by conversation type)
-    _enqueue_ai_reply(conversation, simulation_id, message.pk)
+        # Enqueue the AI response generation (dispatched by conversation type)
+        call_id = _enqueue_ai_reply(conversation, simulation_id, message.pk)
+        if call_id is None:
+            logger.warning(
+                "message.ai_reply_not_enqueued",
+                simulation_id=simulation_id,
+                conversation_id=conversation.pk,
+                message_id=message.pk,
+                conversation_persona=conversation.conversation_type.ai_persona,
+            )
+            raise HttpError(400, "AI replies are not available for this conversation yet")
 
     # Return 202 Accepted since an AI response will be generated asynchronously
     return 202, message_to_out(message)
