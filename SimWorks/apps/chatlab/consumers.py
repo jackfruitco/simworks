@@ -286,6 +286,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     sender=sender,
                     content=content,
                     role=RoleChoices.USER,
+                    feedback_conversation=True,
                 )
                 logger.debug(f"Consumer received feedback message: {user_msg.pk}")
                 await self._generate_stitch_response(user_msg)
@@ -429,7 +430,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @sync_to_async
     def save_message(
-            self, simulation: Simulation, sender, content: str, role: str = "A"
+            self,
+            simulation: Simulation,
+            sender,
+            content: str,
+            role: str = "A",
+            feedback_conversation: bool = False,
     ) -> Message:
         """
         Save a message to the database using the Message model.
@@ -443,8 +449,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
+        from apps.simcore.models import Conversation, ConversationType
+
+        conversation_slug = (
+            "simulated_feedback" if feedback_conversation else "simulated_patient"
+        )
+        conversation_type = ConversationType.objects.filter(slug=conversation_slug).first()
+        if not conversation_type:
+            raise ValueError(f"Conversation type '{conversation_slug}' is not configured")
+
+        conversation, _ = Conversation.objects.get_or_create(
+            simulation=simulation,
+            conversation_type=conversation_type,
+            defaults={
+                "display_name": simulation.sim_patient_display_name
+                or conversation_type.display_name,
+                "display_initials": simulation.sim_patient_initials or "Unk",
+            },
+        )
+
         return Message.objects.create(
             simulation=simulation,
+            conversation=conversation,
             role=role,
             sender=sender,
             content=content,

@@ -29,7 +29,7 @@ def _resolve_conversation(sim, conversation_id=None):
     If ``conversation_id`` is given, fetch that specific conversation within the
     simulation. Otherwise fall back to the default patient conversation.
     """
-    from apps.simcore.models import Conversation
+    from apps.simcore.models import Conversation, ConversationType
 
     if conversation_id:
         try:
@@ -39,17 +39,21 @@ def _resolve_conversation(sim, conversation_id=None):
         except Conversation.DoesNotExist:
             raise HttpError(404, "Conversation not found")
 
-    # Default: first patient conversation for this simulation
-    conv = (
-        Conversation.objects.filter(
-            simulation=sim,
-            conversation_type__slug="simulated_patient",
-        )
-        .select_related("conversation_type", "simulation")
-        .first()
+    # Default: patient conversation for this simulation.
+    # Backward compatibility: create it on demand for older simulations that
+    # were created before conversation auto-provisioning existed.
+    patient_type = ConversationType.objects.filter(slug="simulated_patient").first()
+    if not patient_type:
+        raise HttpError(500, "Patient conversation type is not configured")
+
+    conv, _ = Conversation.objects.get_or_create(
+        simulation=sim,
+        conversation_type=patient_type,
+        defaults={
+            "display_name": sim.sim_patient_display_name or patient_type.display_name,
+            "display_initials": sim.sim_patient_initials or "Unk",
+        },
     )
-    if not conv:
-        raise HttpError(400, "No patient conversation found for this simulation")
     return conv
 
 

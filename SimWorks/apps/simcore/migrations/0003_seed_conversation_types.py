@@ -73,12 +73,17 @@ def seed_conversation_types(apps, schema_editor):
 def create_stitch_bot_user(apps, schema_editor):
     """Create a dedicated bot User for Stitch AI messages."""
     User = apps.get_model("accounts", "User")
+    UserRole = apps.get_model("accounts", "UserRole")
+
+    stitch_role, _ = UserRole.objects.get_or_create(title="Bot")
+
     User.objects.get_or_create(
         email=STITCH_BOT_EMAIL,
         defaults={
             "first_name": "Stitch",
             "last_name": "Bot",
             "is_active": False,  # Cannot log in
+            "role": stitch_role,
         },
     )
 
