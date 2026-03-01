@@ -54,6 +54,22 @@ async def create_new_simulation(
     session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
     logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
+    # Create the patient conversation for this simulation
+    from apps.simcore.models import Conversation, ConversationType
+
+    patient_type = await ConversationType.objects.aget(slug="simulated_patient")
+    patient_conv = await Conversation.objects.acreate(
+        simulation=simulation,
+        conversation_type=patient_type,
+        display_name=simulation.sim_patient_display_name,
+        display_initials=simulation.sim_patient_initials or "Unk",
+    )
+    logger.debug(
+        "patient conversation #%s created for simulation #%s",
+        patient_conv.id,
+        simulation.id,
+    )
+
     # Enqueue initial AI response (fire-and-forget)
     # Failures will be handled via ai_response_failed signal receiver
     from .orca.services import GenerateInitialResponse
@@ -62,6 +78,7 @@ async def create_new_simulation(
         context={
             "simulation_id": simulation.id,
             "user_id": user.id,
+            "conversation_id": patient_conv.id,
         }
     ).aenqueue()
 

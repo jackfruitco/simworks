@@ -13,6 +13,13 @@ class MessageOut(BaseModel):
 
     id: int = Field(..., description="Message ID")
     simulation_id: int = Field(..., description="Simulation ID this message belongs to")
+    conversation_id: int | None = Field(
+        default=None, description="Conversation ID this message belongs to"
+    )
+    conversation_type: str | None = Field(
+        default=None,
+        description="Conversation type slug (e.g. 'simulated_patient', 'simulated_feedback')",
+    )
     sender_id: int = Field(..., description="ID of the user who sent the message")
     content: str | None = Field(default=None, description="Message content")
     role: Literal["user", "assistant"] = Field(
@@ -42,6 +49,10 @@ class MessageCreate(BaseModel):
         default="text",
         description="Type of message (only 'text' supported via API)",
     )
+    conversation_id: int | None = Field(
+        default=None,
+        description="Target conversation ID. Defaults to patient conversation if omitted.",
+    )
 
 
 class MessageListResponse(BaseModel):
@@ -69,10 +80,23 @@ ROLE_MAP = {
 
 
 def message_to_out(msg) -> MessageOut:
-    """Convert a Message model instance to MessageOut schema."""
+    """Convert a Message model instance to MessageOut schema.
+
+    Handles both messages with and without conversation (backward compat).
+    """
+    conversation_type = None
+    if hasattr(msg, "conversation") and msg.conversation_id:
+        # Try to get slug from pre-fetched conversation_type
+        conv = msg.conversation if hasattr(msg, "_conversation_cache") else None
+        if conv and hasattr(conv, "conversation_type"):
+            conversation_type = conv.conversation_type.slug
+        # If not pre-fetched, we'll leave it None to avoid N+1 queries
+
     return MessageOut(
         id=msg.pk,
         simulation_id=msg.simulation_id,
+        conversation_id=msg.conversation_id if hasattr(msg, "conversation_id") else None,
+        conversation_type=conversation_type,
         sender_id=msg.sender_id,
         content=msg.content,
         role=ROLE_MAP.get(msg.role, "user"),

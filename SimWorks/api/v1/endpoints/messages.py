@@ -19,26 +19,58 @@ from api.v1.schemas.messages import (
 from api.v1.utils import get_simulation_for_user
 from config.logging import get_logger
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
-from apps.simcore.models import Simulation
 
 logger = get_logger(__name__)
 
 
-def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
+def _resolve_conversation(sim, conversation_id=None):
+    """Resolve the target conversation for a message.
+
+    If ``conversation_id`` is given, fetch that specific conversation within the
+    simulation. Otherwise fall back to the default patient conversation.
+    """
+    from apps.simcore.models import Conversation
+
+    if conversation_id:
+        try:
+            return Conversation.objects.select_related(
+                "conversation_type", "simulation"
+            ).get(pk=conversation_id, simulation=sim)
+        except Conversation.DoesNotExist:
+            raise HttpError(404, "Conversation not found")
+
+    # Default: first patient conversation for this simulation
+    conv = (
+        Conversation.objects.filter(
+            simulation=sim,
+            conversation_type__slug="simulated_patient",
+        )
+        .select_related("conversation_type", "simulation")
+        .first()
+    )
+    if not conv:
+        raise HttpError(400, "No patient conversation found for this simulation")
+    return conv
+
+
+def _enqueue_patient_reply(
+    simulation_id: int, user_msg_pk: int, conversation_id: int | None = None,
+) -> str | None:
     """Enqueue the GenerateReplyResponse service for a user message.
 
     Returns the call_id if successfully enqueued, None otherwise.
     """
     from apps.chatlab.orca.services import GenerateReplyResponse
 
+    context = {
+        "simulation_id": simulation_id,
+        "user_msg": user_msg_pk,
+    }
+    if conversation_id:
+        context["conversation_id"] = conversation_id
+
     async def _enqueue():
-        return await GenerateReplyResponse.task.using(
-            context={
-                "simulation_id": simulation_id,
-                "user_msg": user_msg_pk,
-                # previous_response_id will be auto-fetched by the service mixin
-            }
-        ).aenqueue()
+        return await GenerateReplyResponse.task.using(context=context).aenqueue()
 
     try:
         call_id = async_to_sync(_enqueue)()
@@ -60,6 +92,29 @@ def _enqueue_patient_reply(simulation_id: int, user_msg_pk: int) -> str | None:
         )
         return None
 
+
+def _enqueue_ai_reply(conversation, simulation_id: int, user_msg_pk: int) -> str | None:
+    """Dispatch to the correct AI service based on conversation type's ai_persona."""
+    persona = conversation.conversation_type.ai_persona
+    if persona == "patient":
+        return _enqueue_patient_reply(simulation_id, user_msg_pk, conversation.id)
+    elif persona == "stitch":
+        # Stitch service will be implemented in PR 2
+        logger.info(
+            "service.stitch_not_yet_implemented",
+            simulation_id=simulation_id,
+            conversation_id=conversation.id,
+        )
+        return None
+    else:
+        logger.warning(
+            "service.unknown_persona",
+            persona=persona,
+            conversation_id=conversation.id,
+        )
+        return None
+
+
 router = Router(tags=["messages"], auth=DualAuth())
 
 
@@ -67,7 +122,8 @@ router = Router(tags=["messages"], auth=DualAuth())
     "/{simulation_id}/messages/",
     response=MessageListResponse,
     summary="List messages in a simulation",
-    description="Returns messages for a simulation with cursor-based pagination.",
+    description="Returns messages for a simulation with cursor-based pagination. "
+    "Optionally filter by conversation_id.",
 )
 @api_rate_limit
 def list_messages(
@@ -76,6 +132,7 @@ def list_messages(
     limit: int = Query(default=50, ge=1, le=100, description="Max messages to return"),
     cursor: str | None = Query(default=None, description="Cursor for pagination (message ID)"),
     order: str = Query(default="asc", description="Sort order: asc (oldest first) or desc (newest first)"),
+    conversation_id: int | None = Query(default=None, description="Filter to a specific conversation"),
 ) -> MessageListResponse:
     """List messages in a simulation with cursor pagination."""
     from apps.chatlab.models import Message
@@ -85,6 +142,10 @@ def list_messages(
 
     # Base queryset
     queryset = Message.objects.filter(simulation=sim, is_deleted=False)
+
+    # Filter by conversation if specified
+    if conversation_id is not None:
+        queryset = queryset.filter(conversation_id=conversation_id)
 
     # Apply ordering
     if order == "desc":
@@ -148,13 +209,15 @@ def create_message(
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user)
 
-    # Check if simulation is still in progress
-    if sim.is_complete:
-        raise HttpError(400, "Cannot send messages to a completed simulation")
+    # Resolve conversation and check per-conversation lock
+    conversation = _resolve_conversation(sim, body.conversation_id)
+    if conversation.is_locked:
+        raise HttpError(400, "This conversation is locked")
 
     # Create the user message
     message = Message.objects.create(
         simulation=sim,
+        conversation=conversation,
         sender=user,
         content=body.content,
         role=RoleChoices.USER,
@@ -167,11 +230,12 @@ def create_message(
         "message.created",
         message_id=message.pk,
         simulation_id=simulation_id,
+        conversation_id=conversation.pk,
         message_type=body.message_type,
     )
 
-    # Enqueue the AI response generation
-    _enqueue_patient_reply(simulation_id, message.pk)
+    # Enqueue the AI response generation (dispatched by conversation type)
+    _enqueue_ai_reply(conversation, simulation_id, message.pk)
 
     # Return 202 Accepted since an AI response will be generated asynchronously
     return 202, message_to_out(message)

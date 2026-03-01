@@ -78,6 +78,8 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
                     "is_from_ai": msg.is_from_ai,
                     "display_name": msg.display_name or "",
                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
+                    "conversation_id": msg.conversation_id,
+                    "conversation_type": "simulated_patient",
                 },
             )
 
@@ -155,6 +157,8 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
                     "display_name": msg.display_name or "",
                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
                     "image_requested": msg.image_requested,
+                    "conversation_id": msg.conversation_id,
+                    "conversation_type": "simulated_patient",
                 },
             )
 

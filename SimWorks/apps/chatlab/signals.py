@@ -57,6 +57,14 @@ def broadcast_new_message(sender, instance, created, **kwargs):
 
     if created and not instance.is_from_ai:
         try:
+            # Resolve conversation type slug (avoid N+1 via cached FK)
+            conversation_type = None
+            if instance.conversation_id:
+                try:
+                    conversation_type = instance.conversation.conversation_type.slug
+                except Exception:
+                    pass  # FK not prefetched; leave as None
+
             # Build payload matching the existing broadcast_message format
             payload = {
                 "id": instance.id,
@@ -71,6 +79,8 @@ def broadcast_new_message(sender, instance, created, **kwargs):
                 "displayName": instance.display_name or "",
                 "senderId": instance.sender_id,
                 "sender_id": instance.sender_id,  # Snake_case alias
+                "conversation_id": instance.conversation_id,
+                "conversation_type": conversation_type,
             }
 
             # Create outbox event with idempotency key based on message ID

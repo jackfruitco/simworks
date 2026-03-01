@@ -23,6 +23,27 @@ def _extract_text(msg: ResultMessageItem) -> str:
     return ""
 
 
+async def _resolve_conversation_id(ctx: PersistContext) -> int | None:
+    """Resolve conversation_id from context, falling back to the patient conversation."""
+    extra = ctx.extra or {}
+    conversation_id = extra.get("conversation_id")
+    if conversation_id:
+        return conversation_id
+
+    # Backward compat: find patient conversation for this simulation
+    from apps.simcore.models import Conversation
+
+    conv = await (
+        Conversation.objects.filter(
+            simulation_id=ctx.simulation_id,
+            conversation_type__slug="simulated_patient",
+        )
+        .values_list("id", flat=True)
+        .afirst()
+    )
+    return conv
+
+
 async def persist_messages(
     messages: list[ResultMessageItem], ctx: PersistContext
 ) -> list:
@@ -39,6 +60,7 @@ async def persist_messages(
     system_user = await aget_or_create_system_user()
     sim = await Simulation.objects.aget(id=ctx.simulation_id)
     display_name = sim.sim_patient_display_name or "AI"
+    conversation_id = await _resolve_conversation_id(ctx)
 
     created = []
     attempt_obj = None
@@ -59,6 +81,7 @@ async def persist_messages(
 
         m = await Message.objects.acreate(
             simulation_id=ctx.simulation_id,
+            conversation_id=conversation_id,
             content=text,
             role=RoleChoices.ASSISTANT,
             is_from_ai=True,
