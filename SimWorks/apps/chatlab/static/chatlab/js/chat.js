@@ -94,9 +94,10 @@ function chatFormState({ isLocked }) {
  *  - Tab bar rendered when conversations.length > 1
  *  - Messages routed to the correct conversation via conversation_id
  */
-function ChatManager(simulation_id, currentUser) {
+function ChatManager(simulation_id, currentUserId, currentUserEmail) {
     return {
-        currentUser,
+        currentUserId: Number.parseInt(currentUserId, 10),
+        currentUserEmail,
         simulation_id,
         socket: null,
         eventBus: null,
@@ -104,20 +105,36 @@ function ChatManager(simulation_id, currentUser) {
         messageText: '',
         typingTimeout: null,
         lastTypedTime: 0,
-        typingUsers: [],
+        typingUsersByConversation: {},
         hasMoreMessages: true,
+        isMessagesLoading: false,
+        isOlderLoading: false,
         systemDisplayInitials: '',
         systemDisplayName: '',
         isChatLocked: false,
+        conversationCache: {},
+        pendingClientMessages: new Map(),
+        clientMessageSeq: 0,
+        seenMessageIds: new Set(),
+        seenMessageOrder: [],
+        maxSeenMessageIds: 1000,
+        isAtMessagesTop: false,
+        olderLoadFailed: false,
 
         // --- Multi-conversation state ---
         conversations: [],
         activeConversationId: null,
 
+        get activeTypingUsers() {
+            if (!this.activeConversationId) return [];
+            return this.typingUsersByConversation[this.activeConversationId] || [];
+        },
+
         init() {
             this.messageInput = document.getElementById('chat-message-input');
             this.messageForm = document.getElementById('chat-form');
             this.messagesDiv = document.getElementById('chat-messages');
+            this.messagesPanel = document.getElementById('chat-messages-panel');
             this.simMetadataDiv = document.getElementById('simulation_metadata_tool');
             this.patientMetadataDiv = document.getElementById('patient_history_tool');
             this.csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -154,15 +171,25 @@ function ChatManager(simulation_id, currentUser) {
             });
 
             this.messagesDiv.addEventListener('scroll', () => {
+                this._updateScrollState();
                 if (this.isScrolledToBottom()) {
                     this.newMessageBtn.classList.add('hidden');
-                    this.newMessageBtn.classList.remove('bounce');
+                    this.newMessageBtn.classList.remove('animate-bounce');
                 }
-                // Autoload older messages when at the top
-                if (this.messagesDiv.scrollTop === 0 && this.hasMoreMessages) {
+                if (this._shouldAutoLoadOlder()) {
                     this.loadOlderMessages();
                 }
             });
+
+            this._updateScrollState();
+        },
+
+        _setMessagesLoading(loading) {
+            this.isMessagesLoading = loading;
+        },
+
+        _setOlderLoading(loading) {
+            this.isOlderLoading = loading;
         },
 
         // ----- Conversation management -----
@@ -183,12 +210,13 @@ function ChatManager(simulation_id, currentUser) {
                 const data = await resp.json();
                 this.conversations = (data.items || []).map(c => ({
                     ...c,
+                    id: this._normalizeConversationId(c.id),
                     _unread: 0,
                 }));
 
                 // Default to first conversation (patient) if none active
                 if (this.conversations.length && !this.activeConversationId) {
-                    this.activeConversationId = this.conversations[0].id;
+                    this.activeConversationId = this._normalizeConversationId(this.conversations[0].id);
                 }
 
                 // Sync form lock state with active conversation
@@ -202,29 +230,47 @@ function ChatManager(simulation_id, currentUser) {
          * Get the currently active conversation object.
          */
         getActiveConversation() {
-            return this.conversations.find(c => c.id === this.activeConversationId) || null;
+            const activeConversationId = this._normalizeConversationId(this.activeConversationId);
+            return this.conversations.find(c => c.id === activeConversationId) || null;
         },
 
         /**
          * Switch the visible conversation. Reloads messages for the target conversation.
          */
         switchConversation(convId) {
-            if (convId === this.activeConversationId) return;
+            const nextConversationId = this._normalizeConversationId(convId);
+            if (!nextConversationId || nextConversationId === this.activeConversationId) return;
 
-            this.activeConversationId = convId;
+            const previousConversationId = this.activeConversationId;
+            if (previousConversationId) {
+                this._cacheConversationHtml(previousConversationId);
+                this._clearSystemTyping(previousConversationId);
+            }
+
+            this.activeConversationId = nextConversationId;
+            this.hasMoreMessages = true;
+            this.olderLoadFailed = false;
+            this.newMessageBtn?.classList.add('hidden');
 
             // Reset unread badge for this conversation
-            const conv = this.conversations.find(c => c.id === convId);
-            if (conv) conv._unread = 0;
+            this.conversations = this.conversations.map(c =>
+                c.id === nextConversationId
+                    ? { ...c, _unread: 0 }
+                    : c
+            );
 
             // Sync form lock state
             this._syncFormLock();
 
-            // Reload messages for this conversation via HTMX
-            const url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/?conversation_id=${convId}`;
-            htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' });
+            const restoredFromCache = this._restoreConversationFromCache(nextConversationId);
+            if (!restoredFromCache) {
+                this._fetchConversationMessages(nextConversationId, { scrollToBottom: true, force: true });
+                return;
+            }
 
-            this.hasMoreMessages = true;
+            this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+            this._updateScrollState();
+            this._checkConversationFreshness(nextConversationId);
         },
 
         /**
@@ -313,7 +359,11 @@ function ChatManager(simulation_id, currentUser) {
                     refreshMode: 'checksum',
                 },
                 'simulation_feedback': {
-                    refreshOn: ['simulation.feedback_created', 'simulation.hotwash.created'],
+                    refreshOn: [
+                        'simulation.feedback_created',
+                        'feedback.created',
+                        'simulation.hotwash.created',
+                    ],
                     refreshMode: 'html_inject',
                 },
                 'patient_results': {
@@ -339,16 +389,31 @@ function ChatManager(simulation_id, currentUser) {
             // Determine if message is from AI (incoming) or from current user (outgoing)
             const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? data.isFromAI ?? data.is_from_ai ?? false;
             const senderId = data.senderId ?? data.sender_id;
-            const isFromSelf = !isFromSimulatedUser && (
-                senderId === parseInt(this.currentUser) ||
-                data.user === this.currentUser
+            const messageIdRaw = data.message_id ?? data.id;
+            const messageIdParsed = Number.parseInt(messageIdRaw, 10);
+            const messageId = Number.isFinite(messageIdParsed) ? messageIdParsed : null;
+            const msgConversationId = this._normalizeConversationId(
+                data.conversation_id ?? this.activeConversationId
             );
-            const messageId = data.message_id ?? data.id;
-            const msgConversationId = data.conversation_id ?? null;
+            const activeConversationId = this._normalizeConversationId(this.activeConversationId);
+            const senderIdNum = Number.parseInt(senderId, 10);
+            const senderEmail = data.user ?? data.sender_email ?? data.senderEmail ?? null;
+            const isFromSelf = !isFromSimulatedUser && (
+                (Number.isFinite(senderIdNum) && senderIdNum === this.currentUserId) ||
+                (!!senderEmail && !!this.currentUserEmail && senderEmail === this.currentUserEmail)
+            );
+
+            if (messageId && this._hasSeenMessage(messageId)) {
+                console.debug("[ChatManager] Skipping seen message event", messageId);
+                return;
+            }
+            if (messageId) {
+                this._rememberSeenMessage(messageId);
+            }
 
             // If from simulated user (AI), stop typing indicator
             if (isFromSimulatedUser) {
-                this.simulateSystemTyping(false);
+                this.simulateSystemTyping(false, msgConversationId || activeConversationId);
 
                 // Sidebar pulse for new messages
                 if (localStorage.getItem('seenSidebarTray') === 'true') {
@@ -360,12 +425,15 @@ function ChatManager(simulation_id, currentUser) {
             // Route by conversation: if message belongs to a different conversation,
             // increment unread badge instead of rendering in the active view.
             // Use immutable update to ensure Alpine reactivity triggers.
-            if (msgConversationId && msgConversationId !== this.activeConversationId) {
-                this.conversations = this.conversations.map(c =>
-                    c.id === msgConversationId
-                        ? { ...c, _unread: (c._unread || 0) + 1 }
-                        : c
-                );
+            if (msgConversationId && msgConversationId !== activeConversationId) {
+                if (!isFromSelf) {
+                    this.conversations = this.conversations.map(c =>
+                        c.id === msgConversationId
+                            ? { ...c, _unread: (c._unread || 0) + 1 }
+                            : c
+                    );
+                }
+                this._markConversationDirty(msgConversationId);
 
                 // Play receive sound even for background conversation messages
                 const receiveSound = document.getElementById("receive-sound");
@@ -383,6 +451,11 @@ function ChatManager(simulation_id, currentUser) {
                 receiveSound.play().catch(() => {});
             }
 
+            if (isFromSelf && messageId && this._reconcilePendingMessageByEcho(data.content, messageId, msgConversationId)) {
+                this._cacheConversationHtml(msgConversationId, { dirty: false });
+                return;
+            }
+
             // Deduplication check
             if (messageId && this._messageExists(messageId)) {
                 console.debug("[ChatManager] Skipping duplicate message", messageId);
@@ -392,7 +465,7 @@ function ChatManager(simulation_id, currentUser) {
             // For AI messages, fetch server-rendered HTML via WebSocket-first pattern
             // This ensures HTML structure matches server templates
             if (isFromSimulatedUser && messageId) {
-                this._fetchAndAppendMessage(messageId);
+                this._fetchAndAppendMessage(messageId, msgConversationId || activeConversationId);
                 return;
             }
 
@@ -418,10 +491,7 @@ function ChatManager(simulation_id, currentUser) {
                 messageId,
                 data.mediaList ?? []
             );
-
-            if (this.messagesDiv.scrollHeight <= this.messagesDiv.clientHeight + 100) {
-                this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
-            }
+            this._cacheConversationHtml(msgConversationId || activeConversationId, { dirty: false });
         },
 
         /**
@@ -434,14 +504,16 @@ function ChatManager(simulation_id, currentUser) {
         /**
          * Fetch server-rendered message HTML via HTMX and append to chat
          */
-        _fetchAndAppendMessage(messageId) {
+        _fetchAndAppendMessage(messageId, conversationId = this.activeConversationId) {
             const url = `/chatlab/simulation/${this.simulation_id}/message/${messageId}/`;
+            const wasAtBottomBeforeAppend = this.isScrolledToBottom();
 
             htmx.ajax('GET', url, {
                 target: '#chat-messages',
                 swap: 'beforeend',
             }).then(() => {
-                this._handleScrollBehavior(false);
+                this._handleScrollBehavior(false, wasAtBottomBeforeAppend);
+                this._cacheConversationHtml(conversationId, { dirty: false });
             }).catch((err) => {
                 console.error("[ChatManager] Failed to fetch message:", err);
                 // Show error to user
@@ -458,7 +530,10 @@ function ChatManager(simulation_id, currentUser) {
         },
 
         handleTyping(data, started) {
-            if (data.user !== this.currentUser) {
+            if (
+                data.user !== this.currentUserEmail &&
+                !(data.sender_id && Number.parseInt(data.sender_id, 10) === this.currentUserId)
+            ) {
                 this.updateTypingUsers(data, started);
             }
         },
@@ -487,13 +562,19 @@ function ChatManager(simulation_id, currentUser) {
         notifyTyping() {
             const now = Date.now();
             if (!this.typingTimeout && now - this.lastTypedTime > 2000) {
-                this.socket.send('typing', { user: this.currentUser });
+                this.socket.send('typing', {
+                    user: this.currentUserEmail,
+                    conversation_id: this.activeConversationId,
+                });
                 this.lastTypedTime = now;
             }
 
             clearTimeout(this.typingTimeout);
             this.typingTimeout = setTimeout(() => {
-                this.socket.send('stopped_typing', { user: this.currentUser });
+                this.socket.send('stopped_typing', {
+                    user: this.currentUserEmail,
+                    conversation_id: this.activeConversationId,
+                });
                 this.typingTimeout = null;
             }, 1000);
         },
@@ -523,13 +604,25 @@ function ChatManager(simulation_id, currentUser) {
             const conv = this.getActiveConversation();
             if (conv?.is_locked) return;
 
+            const optimisticKey = `client-${Date.now()}-${++this.clientMessageSeq}`;
             // Optimistic UI: show message immediately
-            this.appendMessage(
+            const optimisticBubble = this.appendMessage(
                 message,
                 true,
                 'sent',
-                this.currentUser,
+                this.currentUserEmail,
+                null,
+                [],
+                optimisticKey,
             );
+            if (optimisticBubble) {
+                this.pendingClientMessages.set(optimisticKey, {
+                    bubble: optimisticBubble,
+                    content: message,
+                    conversationId: this.activeConversationId,
+                });
+                this._cacheConversationHtml(this.activeConversationId, { dirty: false });
+            }
 
             this.messageText = '';
 
@@ -570,11 +663,22 @@ function ChatManager(simulation_id, currentUser) {
                     throw new Error(errorData.detail || `HTTP ${response.status}`);
                 }
 
+                const responseData = await response.json().catch(() => ({}));
+                const serverMessageId = responseData?.id ?? responseData?.message_id ?? null;
+                if (serverMessageId) {
+                    this._reconcilePendingMessage(optimisticKey, serverMessageId);
+                }
+
                 // 202 Accepted - AI response will arrive via WebSocket
                 console.debug('[ChatManager] Message sent via API, awaiting AI response via WebSocket');
             } catch (error) {
                 console.error('[ChatManager] Failed to send message:', error);
                 this.simulateSystemTyping(false);
+                const pending = this.pendingClientMessages.get(optimisticKey);
+                if (pending?.bubble) {
+                    pending.bubble.remove();
+                }
+                this.pendingClientMessages.delete(optimisticKey);
                 alert(`Failed to send message: ${error.message}`);
             }
         },
@@ -587,23 +691,34 @@ function ChatManager(simulation_id, currentUser) {
             await this.sendMessage();
         },
 
-        appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
+        appendMessage(
+            content,
+            isFromSelf,
+            status = "",
+            displayName = "",
+            messageId = null,
+            mediaList = [],
+            clientMessageId = null,
+        ) {
             console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName });
 
             content = this._coerceContent(content);
             status = status || "";
 
-            if (this._isDuplicateMessage(content, messageId)) return;
+            if (this._isDuplicateMessage(messageId, clientMessageId)) return null;
 
             if (!isFromSelf && displayName === "") {
                 displayName = this.systemDisplayName;
             }
 
+            const wasAtBottomBeforeAppend = this.isScrolledToBottom();
             const bubble = this._buildMessageBubble(content, isFromSelf, displayName, status, mediaList);
             if (messageId) bubble.dataset.messageId = messageId;
+            if (clientMessageId) bubble.dataset.clientMessageId = clientMessageId;
 
             this.messagesDiv.appendChild(bubble);
-            this._handleScrollBehavior(isFromSelf);
+            this._handleScrollBehavior(isFromSelf, wasAtBottomBeforeAppend);
+            return bubble;
         },
 
         _coerceContent(content) {
@@ -622,30 +737,18 @@ function ChatManager(simulation_id, currentUser) {
             return this.escapeHtml(content);
         },
 
-        _isDuplicateMessage(content, messageId) {
-            let existing = null;
-
-            if (messageId) {
-                existing = this.messagesDiv.querySelector(`[data-message-id="${messageId}"]`);
-            }
-
-            if (!existing && content) {
-                // Use exact match on the message content element to avoid false positives
-                // from substring matching against display names, timestamps, etc.
-                const contentEls = this.messagesDiv.querySelectorAll('.chat-bubble .break-words');
-                existing = Array.from(contentEls).find(el =>
-                    el.textContent.trim() === content
-                )?.closest('.chat-bubble') || null;
-                if (existing && messageId) {
-                    existing.dataset.messageId = messageId;
-                }
-            }
-
-            if (existing) {
-                console.debug("[ChatManager] Skipping duplicate message", messageId || "(no id)");
+        _isDuplicateMessage(messageId, clientMessageId) {
+            if (messageId && this._messageExists(messageId)) {
+                console.debug("[ChatManager] Skipping duplicate message", messageId);
                 return true;
             }
-
+            if (
+                clientMessageId &&
+                this.messagesDiv.querySelector(`[data-client-message-id="${clientMessageId}"]`)
+            ) {
+                console.debug("[ChatManager] Skipping duplicate optimistic message", clientMessageId);
+                return true;
+            }
             return false;
         },
 
@@ -696,10 +799,8 @@ function ChatManager(simulation_id, currentUser) {
             `;
         },
 
-        _handleScrollBehavior(isSender) {
-            const wasAtBottom = this.isScrolledToBottom();
-
-            if (isSender || wasAtBottom) {
+        _handleScrollBehavior(isSender, wasAtBottomBeforeAppend = false) {
+            if (isSender || wasAtBottomBeforeAppend) {
                 this.messagesDiv.scrollTo({ top: this.messagesDiv.scrollHeight, behavior: 'smooth' });
             } else {
                 this.newMessageBtn.classList.remove('hidden', 'animate-bounce');
@@ -723,103 +824,312 @@ function ChatManager(simulation_id, currentUser) {
          */
         loadInitialMessages() {
             if (!this.activeConversationId) {
-                // No conversations yet — fall back to unfiltered load
-                this.loadOlderMessages();
                 return;
             }
-            const url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/?conversation_id=${this.activeConversationId}`;
-            htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' }).then(() => {
-                this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+            this._fetchConversationMessages(this.activeConversationId, {
+                scrollToBottom: true,
+                force: true,
             });
         },
 
         loadOlderMessages() {
-            console.debug("[ChatManager] loadOlderMessages() called");
+            const activeConversationId = this._normalizeConversationId(this.activeConversationId);
+            if (this.isOlderLoading || this.isMessagesLoading || !activeConversationId) {
+                return;
+            }
+
             const container = document.getElementById('chat-messages');
-            const firstMessage = container.firstElementChild;
+            const firstMessage = container.querySelector('.chat-bubble[data-message-id]');
             const messageId = firstMessage?.dataset?.messageId || null;
+            this._setOlderLoading(true);
 
-            const loadButton = document.getElementById('load-older-btn');
-            if (loadButton) {
-                loadButton.disabled = true;
-                loadButton.textContent = "Loading...";
+            if (!messageId) {
+                this.hasMoreMessages = false;
+                this.olderLoadFailed = false;
+                this._cacheConversationHtml(activeConversationId, { hasMore: false, dirty: false });
+                this._setOlderLoading(false);
+                this._updateScrollState();
+                return;
             }
 
-            if (messageId) {
-                let anchor = document.getElementById('message-load-anchor');
-                if (!anchor) {
-                    anchor = document.createElement('div');
-                    anchor.id = 'message-load-anchor';
-                    container.prepend(anchor);
-                }
+            let anchor = document.getElementById('message-load-anchor');
+            if (!anchor) {
+                anchor = document.createElement('div');
+                anchor.id = 'message-load-anchor';
+                container.prepend(anchor);
+            }
 
-                const previousHeight = container.scrollHeight;
-                let url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/older/?before=${messageId}`;
-                if (this.activeConversationId) {
-                    url += `&conversation_id=${this.activeConversationId}`;
-                }
+            const previousHeight = container.scrollHeight;
+            let url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/older/?before=${messageId}`;
+            if (activeConversationId) {
+                url += `&conversation_id=${activeConversationId}`;
+            }
 
-                // Use single HTMX request with afterSwap handler
-                htmx.ajax('GET', url, {
-                    target: anchor,
-                    swap: 'beforebegin',
-                }).then(() => {
-                    // Maintain scroll position after prepending messages
-                    const addedHeight = container.scrollHeight - previousHeight;
-                    container.scrollTop += addedHeight;
+            htmx.ajax('GET', url, {
+                target: anchor,
+                swap: 'beforebegin',
+            }).then(() => {
+                const addedHeight = container.scrollHeight - previousHeight;
+                container.scrollTop += addedHeight;
 
-                    // Check if more messages exist by inspecting the response
-                    const newFirstMessage = container.firstElementChild;
-                    if (!newFirstMessage?.dataset?.messageId || newFirstMessage === firstMessage) {
-                        this.hasMoreMessages = false;
-                        if (loadButton) loadButton.style.display = "none";
-                    } else {
-                        if (loadButton) {
-                            loadButton.disabled = false;
-                            loadButton.textContent = "Load Older Messages";
-                        }
-                    }
-                }).catch(err => {
-                    console.error("[ChatManager] Failed to load older messages:", err);
-                    if (loadButton) {
-                        loadButton.disabled = false;
-                        loadButton.textContent = "Load Older Messages";
-                    }
-                    // Show error to user
-                    if (window.Alpine?.store('toasts')) {
-                        window.Alpine.store('toasts').add('Failed to load older messages', 'error');
-                    }
+                const newFirstMessage = container.querySelector('.chat-bubble[data-message-id]');
+                this.hasMoreMessages = !!newFirstMessage?.dataset?.messageId &&
+                    newFirstMessage.dataset.messageId !== messageId;
+                this.olderLoadFailed = false;
+                this._cacheConversationHtml(activeConversationId, {
+                    hasMore: this.hasMoreMessages,
+                    dirty: false,
                 });
-            }
+            }).catch(err => {
+                console.error("[ChatManager] Failed to load older messages:", err);
+                this.olderLoadFailed = true;
+                if (window.Alpine?.store('toasts')) {
+                    window.Alpine.store('toasts').add('Failed to load older messages', 'error');
+                }
+            }).finally(() => {
+                this._setOlderLoading(false);
+                this._updateScrollState();
+            });
         },
 
         updateTypingUsers(data, started = true) {
-            const displayName = data.display_name || data.user || 'Someone';
+            const conversationId = this._normalizeConversationId(
+                data.conversation_id ?? this.activeConversationId
+            );
+            if (!conversationId) return;
+
             const displayInitials = data.display_initials || 'Unk';
+            const existingUsers = this.typingUsersByConversation[conversationId] || [];
+            let nextUsers = existingUsers;
+
             if (!started) {
-                this.typingUsers = this.typingUsers.filter(u => u.user !== data.user);
+                nextUsers = existingUsers.filter(u => u.user !== data.user);
             } else {
-                const alreadyTyping = this.typingUsers.some(u => u.user === data.user);
+                const alreadyTyping = existingUsers.some(u => u.user === data.user);
                 if (!alreadyTyping) {
-                    this.typingUsers.push({ user: data.user, displayInitials });
+                    nextUsers = [...existingUsers, { user: data.user, displayInitials }];
                 }
             }
+
+            this.typingUsersByConversation = {
+                ...this.typingUsersByConversation,
+                [conversationId]: nextUsers,
+            };
+
+            if (!nextUsers.length) {
+                delete this.typingUsersByConversation[conversationId];
+            }
+
             console.debug(
                 '[ChatManager]',
                 data.user,
                 (started ? 'started' : 'stopped'), 'typing.',
-                this.typingUsers.length, 'users typing:',
-                JSON.stringify(this.typingUsers)
+                nextUsers.length, 'users typing:',
+                JSON.stringify(nextUsers)
             );
         },
 
-        simulateSystemTyping(started = true) {
+        simulateSystemTyping(started = true, conversationId = this.activeConversationId) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return;
             const dataSim = {
                 user: 'System',
                 display_initials: this.systemDisplayInitials || 'Unk',
-                display_name: this.systemDisplayName || 'Someone'
+                display_name: this.systemDisplayName || 'Someone',
+                conversation_id: normalizedConversationId,
             };
             this.updateTypingUsers(dataSim, started);
+        },
+
+        _clearSystemTyping(conversationId) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return;
+            const users = this.typingUsersByConversation[normalizedConversationId] || [];
+            const nextUsers = users.filter(u => u.user !== 'System');
+            this.typingUsersByConversation = {
+                ...this.typingUsersByConversation,
+                [normalizedConversationId]: nextUsers,
+            };
+            if (!nextUsers.length) {
+                delete this.typingUsersByConversation[normalizedConversationId];
+            }
+        },
+
+        _markConversationDirty(conversationId) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return;
+            const cache = this.conversationCache[normalizedConversationId];
+            if (!cache) return;
+            cache.dirty = true;
+        },
+
+        _getLastMessageIdFromDom() {
+            const messageBubbles = this.messagesDiv.querySelectorAll('.chat-bubble[data-message-id]');
+            const last = messageBubbles[messageBubbles.length - 1];
+            if (!last) return null;
+            const id = Number.parseInt(last.dataset.messageId, 10);
+            return Number.isFinite(id) ? id : null;
+        },
+
+        _cacheConversationHtml(conversationId, overrides = {}) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId || !this.messagesDiv) return;
+            const current = this.conversationCache[normalizedConversationId] || {};
+            const defaultHasMore = current.hasMore ?? this.hasMoreMessages;
+            this.conversationCache[normalizedConversationId] = {
+                html: this.messagesDiv.innerHTML,
+                lastMessageId: this._getLastMessageIdFromDom(),
+                hasMore: defaultHasMore,
+                dirty: current.dirty || false,
+                fetchedAt: Date.now(),
+                ...overrides,
+            };
+        },
+
+        _restoreConversationFromCache(conversationId) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return false;
+            const cache = this.conversationCache[normalizedConversationId];
+            if (!cache?.html) return false;
+            this.messagesDiv.innerHTML = cache.html;
+            this.hasMoreMessages = cache.hasMore !== false;
+            this.olderLoadFailed = false;
+            return true;
+        },
+
+        _fetchConversationMessages(conversationId, { scrollToBottom = false, force = false } = {}) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return;
+            if (this.isMessagesLoading && !force) return;
+
+            this._setMessagesLoading(true);
+            this.hasMoreMessages = true;
+            this.olderLoadFailed = false;
+            const url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/?conversation_id=${normalizedConversationId}`;
+            htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' }).then(() => {
+                if (scrollToBottom) {
+                    this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+                    this.newMessageBtn?.classList.add('hidden');
+                }
+                this._cacheConversationHtml(normalizedConversationId, {
+                    dirty: false,
+                    hasMore: true,
+                });
+                this._updateScrollState();
+            }).catch((err) => {
+                console.error('[ChatManager] Failed to load messages:', err);
+                if (window.Alpine?.store('toasts')) {
+                    window.Alpine.store('toasts').add('Failed to load messages', 'error');
+                }
+            }).finally(() => {
+                this._setMessagesLoading(false);
+                this._updateScrollState();
+            });
+        },
+
+        async _checkConversationFreshness(conversationId) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return;
+            const cache = this.conversationCache[normalizedConversationId];
+            if (!cache) return;
+
+            try {
+                const resp = await fetch(
+                    `/api/v1/simulations/${this.simulation_id}/messages/?conversation_id=${normalizedConversationId}&order=desc&limit=1`,
+                    { headers: { 'X-CSRFToken': this.csrfToken } },
+                );
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const latestId = data?.items?.[0]?.id ?? null;
+                const shouldRefresh = cache.dirty || (latestId && latestId !== cache.lastMessageId);
+                if (shouldRefresh) {
+                    this._fetchConversationMessages(normalizedConversationId, { force: true });
+                } else {
+                    cache.fetchedAt = Date.now();
+                }
+            } catch (err) {
+                console.warn('[ChatManager] Freshness check failed:', err);
+            }
+        },
+
+        _reconcilePendingMessage(clientKey, serverMessageId) {
+            const pending = this.pendingClientMessages.get(clientKey);
+            if (!pending?.bubble || !serverMessageId) return;
+            pending.bubble.dataset.messageId = serverMessageId;
+            delete pending.bubble.dataset.clientMessageId;
+            this.pendingClientMessages.delete(clientKey);
+            this._rememberSeenMessage(Number.parseInt(serverMessageId, 10));
+            this._cacheConversationHtml(pending.conversationId, { dirty: false });
+        },
+
+        _normalizeContentForCompare(content) {
+            if (typeof content !== 'string') return '';
+            let normalized = content;
+            if (normalized.startsWith('"') && normalized.endsWith('"')) {
+                try {
+                    normalized = JSON.parse(normalized);
+                } catch (e) {
+                    // Keep original string when parse fails.
+                }
+            }
+            return String(normalized).trim();
+        },
+
+        _reconcilePendingMessageByEcho(content, messageId, conversationId) {
+            const normalizedConversationId = this._normalizeConversationId(conversationId);
+            if (!normalizedConversationId) return false;
+            const normalizedEcho = this._normalizeContentForCompare(content);
+            for (const [key, pending] of this.pendingClientMessages.entries()) {
+                if (pending.conversationId !== normalizedConversationId) continue;
+                if (normalizedEcho && normalizedEcho !== pending.content.trim()) continue;
+                if (!pending.bubble?.isConnected) {
+                    this.pendingClientMessages.delete(key);
+                    continue;
+                }
+                pending.bubble.dataset.messageId = messageId;
+                delete pending.bubble.dataset.clientMessageId;
+                this.pendingClientMessages.delete(key);
+                return true;
+            }
+            return false;
+        },
+
+        _normalizeConversationId(value) {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isFinite(parsed) ? parsed : null;
+        },
+
+        _updateScrollState() {
+            if (!this.messagesDiv) return;
+            this.isAtMessagesTop = this.messagesDiv.scrollTop <= 3;
+        },
+
+        _shouldAutoLoadOlder() {
+            return (
+                this.isAtMessagesTop &&
+                this.hasMoreMessages &&
+                !this.olderLoadFailed &&
+                !this.isMessagesLoading &&
+                !this.isOlderLoading
+            );
+        },
+
+        _hasSeenMessage(messageId) {
+            return this.seenMessageIds.has(messageId);
+        },
+
+        _rememberSeenMessage(messageId) {
+            if (!Number.isFinite(messageId)) return;
+            if (this.seenMessageIds.has(messageId)) return;
+            this.seenMessageIds.add(messageId);
+            this.seenMessageOrder.push(messageId);
+
+            if (this.seenMessageOrder.length > this.maxSeenMessageIds) {
+                const expired = this.seenMessageOrder.shift();
+                if (expired !== undefined) {
+                    this.seenMessageIds.delete(expired);
+                }
+            }
         },
 
         initScrollWatcher() {

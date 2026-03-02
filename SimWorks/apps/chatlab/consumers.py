@@ -301,6 +301,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "user_typing",
                 "user": user_,
                 "display_initials": display_initials,
+                "conversation_id": data.get("conversation_id"),
             },
         )
 
@@ -348,6 +349,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 "type": "user_stopped_typing",
                 "user": user_,
+                "conversation_id": data.get("conversation_id"),
             },
         )
 
@@ -408,6 +410,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "user": event.get("user", "unknown"),
                     "display_name": event.get("display_name", "Unknown"),
                     "display_initials": event.get("display_initials", "Unk"),
+                    "conversation_id": event.get("conversation_id"),
                 },
                 default=json_default,
             )
@@ -427,6 +430,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "stopped_typing",
                     "user": event.get("user", "unknown"),
+                    "conversation_id": event.get("conversation_id"),
                 },
                 default=json_default,
             )

@@ -85,6 +85,7 @@ class SimulationEventBus {
             'typing',
             'stopped_typing',
             'simulation.feedback_created',
+            'feedback.created',
             'simulation.hotwash.created',
             'simulation.feedback.continue_conversation',
             'simulation.hotwash.continue_conversation',

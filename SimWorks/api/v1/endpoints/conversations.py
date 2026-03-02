@@ -3,6 +3,7 @@
 Provides list, create, and detail operations for conversations within simulations.
 """
 
+from django.db import transaction
 from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
@@ -21,6 +22,55 @@ from apps.common.ratelimit import api_rate_limit
 logger = get_logger(__name__)
 
 router = Router(tags=["conversations"], auth=DualAuth())
+
+STITCH_GREETING_MESSAGE = (
+    "Hey, what would you like to discuss? Do you have a specific question "
+    "about your performance or this scenario?"
+)
+
+
+def _create_feedback_starter_message(sim, conversation):
+    """Create the initial Stitch greeting message for new feedback conversations."""
+    from apps.chatlab.models import Message, RoleChoices
+    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+    from apps.common.utils.accounts import get_system_user
+
+    stitch_user = get_system_user("Stitch")
+    message = Message.objects.create(
+        simulation=sim,
+        conversation=conversation,
+        sender=stitch_user,
+        content=STITCH_GREETING_MESSAGE,
+        role=RoleChoices.ASSISTANT,
+        message_type=Message.MessageType.TEXT,
+        is_from_ai=True,
+        display_name="Stitch",
+    )
+
+    payload = {
+        "id": message.id,
+        "message_id": message.id,
+        "role": message.role,
+        "content": message.content or "",
+        "timestamp": message.timestamp.isoformat() if message.timestamp else None,
+        "status": "completed",
+        "messageType": message.message_type,
+        "isFromAi": message.is_from_ai,
+        "isFromAI": message.is_from_ai,
+        "displayName": message.display_name or "",
+        "senderId": message.sender_id,
+        "sender_id": message.sender_id,
+        "conversation_id": conversation.id,
+        "conversation_type": conversation.conversation_type.slug,
+    }
+    event = enqueue_event_sync(
+        event_type="chat.message_created",
+        simulation_id=sim.id,
+        payload=payload,
+        idempotency_key=f"chat.message_created:{message.id}",
+    )
+    if event:
+        poke_drain_sync()
 
 
 @router.get(
@@ -91,12 +141,15 @@ def create_conversation(
         display_name = conv_type.display_name
         display_initials = conv_type.display_name[:2]
 
-    conv = Conversation.objects.create(
-        simulation=sim,
-        conversation_type=conv_type,
-        display_name=display_name,
-        display_initials=display_initials,
-    )
+    with transaction.atomic():
+        conv = Conversation.objects.create(
+            simulation=sim,
+            conversation_type=conv_type,
+            display_name=display_name,
+            display_initials=display_initials,
+        )
+        if conv_type.slug == "simulated_feedback":
+            _create_feedback_starter_message(sim, conv)
 
     logger.info(
         "conversation.created",

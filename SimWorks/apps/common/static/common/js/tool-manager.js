@@ -85,12 +85,14 @@ class ToolManager {
         const tool = {
             name: toolName,
             elementId,
+            headerId: config.headerId || `${toolName}-tool-header`,
             checksum: initialChecksum,
             config: {
                 refreshOn: config.refreshOn || [],
                 refreshMode: config.refreshMode || 'checksum',
             },
             unsubscribers: [],
+            headerClearHandler: null,
         };
 
         // Subscribe to events
@@ -102,9 +104,11 @@ class ToolManager {
         }
 
         this.tools.set(toolName, tool);
+        this._attachHeaderClearListener(toolName);
 
         console.debug(`[ToolManager] Registered tool: ${toolName}`, {
             elementId,
+            headerId: tool.headerId,
             checksum: initialChecksum,
             refreshOn: tool.config.refreshOn,
             refreshMode: tool.config.refreshMode,
@@ -129,13 +133,17 @@ class ToolManager {
             this.tools.set(toolName, {
                 name: toolName,
                 elementId: div.id,
+                headerId: `${toolName}-tool-header`,
                 checksum: initialChecksum,
                 config: {
                     refreshOn: [],
                     refreshMode: 'checksum',
                 },
                 unsubscribers: [],
+                headerClearHandler: null,
             });
+
+            this._attachHeaderClearListener(toolName);
 
             console.debug(`[ToolManager] Auto-discovered tool: ${toolName}`, {
                 checksum: initialChecksum,
@@ -213,6 +221,8 @@ class ToolManager {
         htmx.ajax('GET', `/tools/${toolName}/refresh/${this.simulationId}/`, {
             target: targetDiv,
             swap: 'innerHTML',
+        }).then(() => {
+            this._setToolUpdated(toolName, true);
         });
 
         console.info(`[ToolManager] Refresh requested for '${toolName}' via HTMX`);
@@ -236,10 +246,43 @@ class ToolManager {
         }
 
         if (element) {
+            const previousHtml = element.innerHTML;
             element.innerHTML = html;
+            if (previousHtml !== html) {
+                this._setToolUpdated(toolName, true);
+            }
             console.info(`[ToolManager] Refreshed '${toolName}' via HTML inject`);
         } else {
             console.warn(`[ToolManager] Could not find element for tool: ${toolName}`);
+        }
+    }
+
+    _attachHeaderClearListener(toolName) {
+        const tool = this.tools.get(toolName);
+        if (!tool) return;
+        if (tool.headerClearHandler) return;
+
+        const header = document.getElementById(tool.headerId);
+        if (!header) return;
+
+        const handler = () => this._setToolUpdated(toolName, false);
+        header.addEventListener('click', handler);
+        tool.headerClearHandler = handler;
+    }
+
+    _setToolUpdated(toolName, isUpdated) {
+        const tool = this.tools.get(toolName);
+        if (!tool) return;
+
+        const header = document.getElementById(tool.headerId);
+        if (!header) return;
+
+        const badgeId = `${toolName}-tool-update-badge`;
+        const badge = document.getElementById(badgeId);
+
+        header.classList.toggle('tool-header-updated', !!isUpdated);
+        if (badge) {
+            badge.classList.toggle('hidden', !isUpdated);
         }
     }
 
@@ -255,6 +298,11 @@ class ToolManager {
         for (const unsub of tool.unsubscribers) {
             unsub();
         }
+        if (tool.headerClearHandler) {
+            const header = document.getElementById(tool.headerId);
+            header?.removeEventListener('click', tool.headerClearHandler);
+            tool.headerClearHandler = null;
+        }
 
         this.tools.delete(toolName);
         console.debug(`[ToolManager] Unregistered tool: ${toolName}`);
@@ -267,6 +315,10 @@ class ToolManager {
         for (const [toolName, tool] of this.tools) {
             for (const unsub of tool.unsubscribers) {
                 unsub();
+            }
+            if (tool.headerClearHandler) {
+                const header = document.getElementById(tool.headerId);
+                header?.removeEventListener('click', tool.headerClearHandler);
             }
         }
         this.tools.clear();

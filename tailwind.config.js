@@ -10,12 +10,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        content: '#222222',
-        'content-secondary': '#888888',
-        'content-light': '#ffffff',
-        surface: '#ffffff',
-        'surface-alt': '#f5f5f5',
-        border: '#dddddd',
+        content: 'var(--color-text-dark)',
+        'content-secondary': 'var(--color-muted)',
+        'content-light': 'var(--color-text-light)',
+        surface: 'var(--color-bg)',
+        'surface-alt': 'var(--color-bg-alt)',
+        border: 'var(--color-border)',
         'jckfrt-olive': '#4B5D43',
         'jckfrt-olive-hover': '#44543C',
         'jckfrt-yellow': '#D2A640',

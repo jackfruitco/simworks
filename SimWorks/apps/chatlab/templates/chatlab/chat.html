@@ -2,7 +2,7 @@
 
 <section
   id="chat-panel"
-  x-data="ChatManager('{{ simulation.id }}', '{{ user.email }}')"
+  x-data="ChatManager('{{ simulation.id }}', '{{ user.id }}', '{{ user.email|escapejs }}')"
   class="chat-container flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4"
   @form:typing="notifyTyping()"
   @form:send="handleFormSend($event.detail)">
@@ -25,33 +25,43 @@
     </template>
   </div>
 
-  <button id="load-older-btn"
-          class="old message-btn mx-auto inline-flex min-h-9 items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary transition-colors hover:bg-surface-alt"
-          x-show="hasMoreMessages">
-    Load Older Messages
-  </button>
+  <div id="chat-messages-panel"
+       class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden rounded-xl border border-border bg-surface-alt p-3 sm:p-4">
+    <button id="load-older-btn"
+            class="old message-btn mx-auto inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary transition-colors hover:bg-surface-alt"
+            x-show="isAtMessagesTop && hasMoreMessages && olderLoadFailed"
+            :disabled="isMessagesLoading || isOlderLoading"
+            @click="loadOlderMessages()">
+      <span class="iconify" data-icon="mdi:refresh"></span>
+      <span>Load Older Messages</span>
+    </button>
 
-  <div id="messages-loading" class="htmx-indicator py-2 text-center text-sm text-content-secondary" style="display: none;">
-    <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
-    Loading messages...
+    <div x-show="isMessagesLoading || isOlderLoading"
+         class="mx-auto inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary">
+      <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
+      <span>Loading messages...</span>
+    </div>
+
+    <div id="chat-messages-stack" class="relative flex min-h-0 min-w-0 flex-1">
+      <div id="chat-messages"
+           class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto"
+           data-has-messages="false"
+           role="list"
+           aria-live="polite">
+        <div id="message-load-anchor" aria-hidden="true"></div>
+      </div>
+
+      <button id="new-message-btn"
+              class="new message-btn hidden inline-flex min-h-10 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content shadow-sm transition-colors hover:bg-surface-alt"
+              title="Jump to latest">
+        <span class="iconify" data-icon="mdi:arrow-down"></span>
+        New Messages
+      </button>
+    </div>
+
+    {% include "chatlab/partials/typing_indicator.html" %}
   </div>
 
-  <div id="chat-messages"
-       class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface-alt p-3 sm:p-4"
-       data-has-messages="false"
-       role="list"
-       aria-live="polite">
-    <div id="message-load-anchor" aria-hidden="true"></div>
-  </div>
-
-  <button id="new-message-btn"
-          class="new message-btn hidden mx-auto inline-flex min-h-10 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content shadow-sm transition-colors hover:bg-surface-alt"
-          title="Jump to latest">
-    <span class="iconify" data-icon="mdi:arrow-down"></span>
-    New Messages
-  </button>
-
-  {% include "chatlab/partials/typing_indicator.html" %}
   {% include 'chatlab/partials/input_form.html' %}
 </section>
 

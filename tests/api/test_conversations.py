@@ -45,14 +45,17 @@ def patient_type(db):
     """Create a patient conversation type."""
     from apps.simcore.models import ConversationType
 
-    return ConversationType.objects.create(
+    conv_type, _ = ConversationType.objects.get_or_create(
         slug="simulated_patient",
-        display_name="Simulated Patient",
-        ai_persona="patient",
-        locks_with_simulation=True,
-        available_in=["chatlab"],
-        sort_order=0,
+        defaults={
+            "display_name": "Simulated Patient",
+            "ai_persona": "patient",
+            "locks_with_simulation": True,
+            "available_in": ["chatlab"],
+            "sort_order": 0,
+        },
     )
+    return conv_type
 
 
 @pytest.fixture
@@ -60,14 +63,17 @@ def feedback_type(db):
     """Create a feedback conversation type (Stitch)."""
     from apps.simcore.models import ConversationType
 
-    return ConversationType.objects.create(
+    conv_type, _ = ConversationType.objects.get_or_create(
         slug="simulated_feedback",
-        display_name="Simulation Feedback",
-        ai_persona="stitch",
-        locks_with_simulation=False,
-        available_in=["chatlab"],
-        sort_order=10,
+        defaults={
+            "display_name": "Simulation Feedback",
+            "ai_persona": "stitch",
+            "locks_with_simulation": False,
+            "available_in": ["chatlab"],
+            "sort_order": 10,
+        },
     )
+    return conv_type
 
 
 @pytest.fixture
@@ -145,6 +151,83 @@ class TestCreateConversation:
         assert data["display_name"] == "Stitch"
         assert data["is_locked"] is False
 
+    def test_create_feedback_conversation_creates_initial_stitch_message(
+        self, auth_client, simulation, feedback_type
+    ):
+        """New feedback conversation gets an initial Stitch greeting message."""
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/conversations/",
+            data={"conversation_type": "simulated_feedback"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        conversation_id = response.json()["id"]
+
+        messages = Message.objects.filter(
+            simulation=simulation,
+            conversation_id=conversation_id,
+        )
+        assert messages.count() == 1
+
+        greeting = messages.get()
+        assert greeting.role == RoleChoices.ASSISTANT
+        assert greeting.is_from_ai is True
+        assert greeting.display_name == "Stitch"
+        assert greeting.content == (
+            "Hey, what would you like to discuss? Do you have a specific "
+            "question about your performance or this scenario?"
+        )
+
+        assert OutboxEvent.objects.filter(
+            simulation_id=simulation.pk,
+            event_type="chat.message_created",
+            idempotency_key=f"chat.message_created:{greeting.id}",
+        ).exists()
+
+    def test_create_feedback_conversation_idempotent_does_not_duplicate_greeting(
+        self, auth_client, simulation, feedback_type
+    ):
+        """Idempotent create does not create a second Stitch greeting."""
+        from apps.chatlab.models import Message
+        from apps.common.models import OutboxEvent
+
+        first = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/conversations/",
+            data={"conversation_type": "simulated_feedback"},
+            content_type="application/json",
+        )
+        second = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/conversations/",
+            data={"conversation_type": "simulated_feedback"},
+            content_type="application/json",
+        )
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert first.json()["id"] == second.json()["id"]
+
+        conversation_id = first.json()["id"]
+        assert Message.objects.filter(
+            simulation=simulation,
+            conversation_id=conversation_id,
+            display_name="Stitch",
+        ).count() == 1
+
+        greeting = Message.objects.get(
+            simulation=simulation,
+            conversation_id=conversation_id,
+            display_name="Stitch",
+        )
+        assert OutboxEvent.objects.filter(
+            simulation_id=simulation.pk,
+            event_type="chat.message_created",
+            idempotency_key=f"chat.message_created:{greeting.id}",
+        ).count() == 1
+
     def test_create_conversation_idempotent_returns_200(
         self, auth_client, simulation, conversation, patient_type
     ):
@@ -211,7 +294,7 @@ class TestConversationLocking:
         """Patient conversation shows is_locked=True after simulation ends."""
         from unittest.mock import patch
 
-        with patch("simulation.models.Simulation.generate_feedback"):
+        with patch("apps.simcore.models.Simulation.generate_feedback"):
             simulation.end()
 
         response = auth_client.get(
@@ -238,7 +321,7 @@ class TestConversationLocking:
             display_initials="St",
         )
 
-        with patch("simulation.models.Simulation.generate_feedback"):
+        with patch("apps.simcore.models.Simulation.generate_feedback"):
             simulation.end()
 
         response = auth_client.get(
