@@ -1,4 +1,4 @@
-# Data migration: seed ConversationType rows and Stitch bot user,
+# Data migration: seed ConversationType rows and Stitch Sim user,
 # then backfill Conversation + Message.conversation for existing data.
 
 from django.db import migrations
@@ -57,7 +57,7 @@ CONVERSATION_TYPES = [
     },
 ]
 
-STITCH_BOT_EMAIL = "stitch@simworks.local"
+STITCH_USER_EMAIL = "stitch@simworks.local"
 
 
 def seed_conversation_types(apps, schema_editor):
@@ -70,18 +70,18 @@ def seed_conversation_types(apps, schema_editor):
         )
 
 
-def create_stitch_bot_user(apps, schema_editor):
-    """Create a dedicated bot User for Stitch AI messages."""
+def create_stitch_sim_user(apps, schema_editor):
+    """Create a dedicated Sim User for Stitch AI messages."""
     User = apps.get_model("accounts", "User")
     UserRole = apps.get_model("accounts", "UserRole")
 
-    stitch_role, _ = UserRole.objects.get_or_create(title="Bot")
+    stitch_role, _ = UserRole.objects.get_or_create(title="Sim")
 
     User.objects.get_or_create(
-        email=STITCH_BOT_EMAIL,
+        email=STITCH_USER_EMAIL,
         defaults={
             "first_name": "Stitch",
-            "last_name": "Bot",
+            "last_name": "Sim",
             "is_active": False,  # Cannot log in
             "role": stitch_role,
         },
@@ -123,9 +123,9 @@ def reverse_seed(apps, schema_editor):
     ConversationType.objects.filter(slug__in=slugs).delete()
 
 
-def reverse_bot_user(apps, schema_editor):
+def reverse_sim_user(apps, schema_editor):
     User = apps.get_model("accounts", "User")
-    User.objects.filter(email=STITCH_BOT_EMAIL).delete()
+    User.objects.filter(email=STITCH_USER_EMAIL).delete()
 
 
 def reverse_backfill(apps, schema_editor):
@@ -145,6 +145,6 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(seed_conversation_types, reverse_seed),
-        migrations.RunPython(create_stitch_bot_user, reverse_bot_user),
+        migrations.RunPython(create_stitch_sim_user, reverse_sim_user),
         migrations.RunPython(backfill_conversations, reverse_backfill),
     ]
