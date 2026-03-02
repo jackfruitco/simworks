@@ -13,6 +13,13 @@ class MessageOut(BaseModel):
 
     id: int = Field(..., description="Message ID")
     simulation_id: int = Field(..., description="Simulation ID this message belongs to")
+    conversation_id: int | None = Field(
+        default=None, description="Conversation ID this message belongs to"
+    )
+    conversation_type: str | None = Field(
+        default=None,
+        description="Conversation type slug (e.g. 'simulated_patient', 'simulated_feedback')",
+    )
     sender_id: int = Field(..., description="ID of the user who sent the message")
     content: str | None = Field(default=None, description="Message content")
     role: Literal["user", "assistant"] = Field(
@@ -25,7 +32,6 @@ class MessageOut(BaseModel):
     )
     timestamp: datetime = Field(..., description="When the message was created")
     is_from_ai: bool = Field(..., description="Whether this message is from the AI")
-    order: int | None = Field(default=None, description="Message order in the simulation")
     display_name: str = Field(default="", description="Display name for the sender")
 
 
@@ -41,6 +47,10 @@ class MessageCreate(BaseModel):
     message_type: Literal["text"] = Field(
         default="text",
         description="Type of message (only 'text' supported via API)",
+    )
+    conversation_id: int | None = Field(
+        default=None,
+        description="Target conversation ID. Defaults to patient conversation if omitted.",
     )
 
 
@@ -69,10 +79,25 @@ ROLE_MAP = {
 
 
 def message_to_out(msg) -> MessageOut:
-    """Convert a Message model instance to MessageOut schema."""
+    """Convert a Message model instance to MessageOut schema.
+
+    Handles both messages with and without conversation (backward compat).
+    Uses select_related("conversation__conversation_type") when available.
+    """
+    conversation_type = None
+    conv_id = getattr(msg, "conversation_id", None)
+    if conv_id:
+        try:
+            # Works when select_related("conversation__conversation_type") was used
+            conversation_type = msg.conversation.conversation_type.slug
+        except AttributeError:
+            pass
+
     return MessageOut(
         id=msg.pk,
         simulation_id=msg.simulation_id,
+        conversation_id=conv_id,
+        conversation_type=conversation_type,
         sender_id=msg.sender_id,
         content=msg.content,
         role=ROLE_MAP.get(msg.role, "user"),

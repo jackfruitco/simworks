@@ -74,6 +74,103 @@ class BaseSession(models.Model):
         abstract = True
 
 
+class ConversationType(models.Model):
+    """Reference table for conversation types across all labs.
+
+    Defines the purpose and behavior of a conversation thread within a simulation.
+    The ``ai_persona`` field drives AI service dispatch in a data-driven way so that
+    adding a new conversation type does not require code changes in the dispatch layer.
+
+    Initial types (seeded via data migration):
+    - simulated_patient: Patient chat (locks with simulation)
+    - simulated_feedback: Post-sim Stitch debrief
+    - simulated_progress_feedback: Cumulative progress review
+    - simulation_engine: TrainerLab engine conversation
+    - simulated_coach: Future coaching persona
+    """
+
+    slug = models.SlugField(max_length=40, unique=True)
+    display_name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(
+        max_length=50, blank=True,
+        help_text="Iconify icon identifier, e.g. 'mdi:robot'",
+    )
+    ai_persona = models.CharField(
+        max_length=40, blank=True,
+        help_text="AI persona slug for service dispatch (e.g. 'patient', 'stitch')",
+    )
+    locks_with_simulation = models.BooleanField(
+        default=True,
+        help_text="If True, conversation becomes read-only when simulation ends",
+    )
+    available_in = models.JSONField(
+        default=list, blank=True,
+        help_text="Lab apps where this type is available, e.g. ['chatlab', 'trainerlab']",
+    )
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["sort_order", "slug"]
+        verbose_name = "Conversation Type"
+        verbose_name_plural = "Conversation Types"
+
+    def __str__(self):
+        return self.display_name
+
+
+class Conversation(PersistModel):
+    """A distinct message thread within a simulation.
+
+    Each simulation can have multiple conversations (patient, feedback, coaching, etc.).
+    Locking behaviour is determined by the associated ``ConversationType``.
+    Created on-demand — the patient conversation is auto-created when a simulation
+    starts; other types (e.g. Stitch feedback) are created when the user requests them.
+    """
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    simulation = models.ForeignKey(
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="conversations",
+    )
+    conversation_type = models.ForeignKey(
+        ConversationType,
+        on_delete=models.PROTECT,
+        related_name="conversations",
+    )
+    display_name = models.CharField(max_length=100, blank=True)
+    display_initials = models.CharField(max_length=5, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_archived = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["simulation", "conversation_type"],
+                name="idx_conv_sim_type",
+            ),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["simulation", "conversation_type"],
+                name="uniq_conversation_simulation_type",
+            ),
+        ]
+        ordering = ["created_at"]
+
+    @property
+    def is_locked(self) -> bool:
+        """Conversation is locked when its type says it locks with simulation and sim is done."""
+        if self.conversation_type.locks_with_simulation:
+            return self.simulation.is_complete
+        return False
+
+    def __str__(self):
+        return f"{self.conversation_type.display_name} — Sim#{self.simulation_id}"
+
+
 class Simulation(models.Model):
     """
     Represents a Simulation entity.

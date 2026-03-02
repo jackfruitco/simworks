@@ -35,6 +35,7 @@ export type SimulationEventType =
 
     // Simulation state events
     | 'simulation.feedback_created'
+    | 'feedback.created'
     | 'simulation.hotwash.created'
     | 'simulation.feedback.continue_conversation'
     | 'simulation.hotwash.continue_conversation'
@@ -107,7 +108,8 @@ export interface ChatMessageCreatedEvent extends BaseEvent {
     isFromLLM?: boolean;
     isFromAi?: boolean;
     status?: 'sent' | 'delivered' | 'read';
-    feedbackConversation?: boolean;
+    conversation_id?: number;
+    conversation_type?: string;
     mediaList?: MediaItem[];
 }
 
@@ -128,6 +130,7 @@ export interface TypingEvent extends BaseEvent {
     user: string;
     display_name?: string;
     display_initials?: string;
+    conversation_id?: number;
 }
 
 /**
@@ -136,6 +139,7 @@ export interface TypingEvent extends BaseEvent {
 export interface StoppedTypingEvent extends BaseEvent {
     type: 'stopped_typing';
     user: string;
+    conversation_id?: number;
 }
 
 /**
@@ -151,7 +155,7 @@ export interface MessageStatusUpdateEvent extends BaseEvent {
  * Feedback created event
  */
 export interface FeedbackCreatedEvent extends BaseEvent {
-    type: 'simulation.feedback_created' | 'simulation.hotwash.created';
+    type: 'simulation.feedback_created' | 'feedback.created' | 'simulation.hotwash.created';
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
 }
@@ -266,7 +270,7 @@ export interface SendMessageCommand {
     content: string;
     role: 'user';
     status?: 'sent';
-    feedbackConversation?: boolean;
+    conversation_id?: number;
 }
 
 /**
@@ -275,6 +279,7 @@ export interface SendMessageCommand {
 export interface TypingCommand {
     type: 'typing';
     user: string;
+    conversation_id?: number;
 }
 
 /**
@@ -283,6 +288,7 @@ export interface TypingCommand {
 export interface StoppedTypingCommand {
     type: 'stopped_typing';
     user: string;
+    conversation_id?: number;
 }
 
 /**

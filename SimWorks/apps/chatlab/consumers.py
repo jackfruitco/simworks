@@ -11,12 +11,10 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 from orchestrai.utils.json import json_default
-from apps.chatlab.utils import await_if_needed
 
 from apps.simcore.models import Simulation
 from apps.simcore.utils import get_user_initials
 from .models import Message
-from .models import RoleChoices
 
 logger = logging.getLogger(__name__)
 
@@ -161,14 +159,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         event_type = data.get("type")
         ChatConsumer.log(func_name, f"{event_type} event received: {data}")
 
-        # Gate by simulation state
+        # Gate by simulation state — only allow lifecycle/typing events after end.
+        # Message creation is handled by the REST API with per-conversation locking.
         ended = await self.is_simulation_ended(self.simulation)
         if ended:
-            # Always allow lightweight client lifecycle and typing signals
             allowed_when_ended = {"client_ready", "typing", "stopped_typing"}
-            # Also allow instructor/feedback input to continue after end
-            is_feedback_chat = event_type == "chat.message_created" and data.get("feedbackConversation") is True
-            if event_type not in allowed_when_ended and not is_feedback_chat:
+            if event_type not in allowed_when_ended:
                 ChatConsumer.log(func_name, f"dropping '{event_type}' because simulation has ended", level=logging.INFO)
                 return
 
@@ -207,13 +203,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         # Set preferred content mode (support both content_mode and contentMode)
         await self.handle_content_mode(data.get("content_mode") or data.get("contentMode"))
-
-    async def _generate_stitch_response(self, user_msg: Message) -> None:
-        """Generate a response from Stitch for feedback conversations.
-
-        TODO: Implement feedback conversation flow with Stitch service.
-        """
-        raise NotImplementedError("Stitch feedback conversation not yet implemented")
 
     async def is_simulation_ended(self, simulation: Simulation) -> bool:
         """
@@ -254,10 +243,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         DEPRECATED: Message creation via WebSocket is deprecated. Clients should
         POST to /api/v1/simulations/{id}/messages/ instead. The REST endpoint
-        handles both message persistence and AI response generation.
-
-        This handler now only broadcasts typing indicators. It no longer saves
-        messages or triggers AI responses.
+        handles both message persistence, per-conversation locking, and AI
+        response generation (including Stitch replies).
 
         :param data: A dict containing at least 'content' and 'role'
         """
@@ -271,28 +258,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             stacklevel=2,
         )
 
-        # Feedback conversations still use WebSocket for now
-        feedback_conversation = data.get("feedbackConversation")
-        if feedback_conversation:
-            is_from_user = data.get("role", "").upper() == "USER"
-            if is_from_user:
-                content = data["content"]
-                sender = self.scope["user"]
-                simulation = await sync_to_async(Simulation.objects.get)(
-                    id=self.simulation_id
-                )
-                user_msg = await self.save_message(
-                    simulation=simulation,
-                    sender=sender,
-                    content=content,
-                    role=RoleChoices.USER,
-                )
-                logger.debug(f"Consumer received feedback message: {user_msg.pk}")
-                await self._generate_stitch_response(user_msg)
-            return
-
-        # For regular messages, log deprecation and do nothing
-        # Clients should POST to REST API instead
         logger.info(
             "handle_message: ignoring WS message creation (deprecated). "
             "Client should POST to /api/v1/simulations/%s/messages/",
@@ -336,6 +301,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "type": "user_typing",
                 "user": user_,
                 "display_initials": display_initials,
+                "conversation_id": data.get("conversation_id"),
             },
         )
 
@@ -383,6 +349,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 "type": "user_stopped_typing",
                 "user": user_,
+                "conversation_id": data.get("conversation_id"),
             },
         )
 
@@ -427,29 +394,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
-    @sync_to_async
-    def save_message(
-            self, simulation: Simulation, sender, content: str, role: str = "A"
-    ) -> Message:
-        """
-        Save a message to the database using the Message model.
-
-        :param simulation: Simulation instance
-        :param sender: User instance (or None if System user)
-        :param content: Text of the message
-        :param role: Role type (USER, ASSISTANT, etc.)
-        :return: The created Message instance
-        """
-        func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(func_name)
-
-        return Message.objects.create(
-            simulation=simulation,
-            role=role,
-            sender=sender,
-            content=content,
-        )
-
     async def user_typing(self, event: dict) -> None:
         """
         Handle 'user_typing' event by sending data to the client.
@@ -466,6 +410,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "user": event.get("user", "unknown"),
                     "display_name": event.get("display_name", "Unknown"),
                     "display_initials": event.get("display_initials", "Unk"),
+                    "conversation_id": event.get("conversation_id"),
                 },
                 default=json_default,
             )
@@ -485,6 +430,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "stopped_typing",
                     "user": event.get("user", "unknown"),
+                    "conversation_id": event.get("conversation_id"),
                 },
                 default=json_default,
             )

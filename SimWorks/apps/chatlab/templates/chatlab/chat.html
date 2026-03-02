@@ -2,41 +2,66 @@
 
 <section
   id="chat-panel"
-  x-data="ChatManager('{{ simulation.id }}', '{{ user.email }}')"
+  x-data="ChatManager('{{ simulation.id }}', '{{ user.id }}', '{{ user.email|escapejs }}')"
   class="chat-container flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4"
   @form:typing="notifyTyping()"
   @form:send="handleFormSend($event.detail)">
-  <button id="load-older-btn"
-          class="old message-btn mx-auto inline-flex min-h-9 items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary transition-colors hover:bg-surface-alt"
-          x-show="hasMoreMessages">
-    Load Older Messages
-  </button>
-
-  <div id="messages-loading" class="htmx-indicator py-2 text-center text-sm text-content-secondary" style="display: none;">
-    <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
-    Loading messages...
+  {# Conversation Tab Bar — visible when more than one conversation exists #}
+  <div id="conversation-tabs"
+       x-show="conversations.length > 1"
+       x-cloak
+       class="flex flex-nowrap gap-1 overflow-x-auto border-b border-border px-1 pt-1">
+    <template x-for="conv in conversations" :key="conv.id">
+      <button @click="switchConversation(conv.id)"
+              :class="activeConversationId === conv.id
+                  ? 'border-b-2 border-jckfrt-olive text-content font-semibold'
+                  : 'text-content-secondary hover:text-content'"
+              class="conversation-tab relative px-3 py-1.5 text-xs transition-colors">
+        <span x-text="conv.display_name"></span>
+        <span x-show="conv._unread > 0"
+              class="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+              x-text="conv._unread"></span>
+      </button>
+    </template>
   </div>
 
-  <div id="chat-messages"
-       class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface-alt p-3 sm:p-4"
-       data-has-messages="false"
-       hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
-       hx-trigger="load"
-       hx-swap="innerHTML"
-       hx-indicator="#messages-loading"
-       role="list"
-       aria-live="polite">
-    <div id="message-load-anchor" aria-hidden="true"></div>
+  <div id="chat-messages-panel"
+       class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden rounded-xl border border-border bg-surface-alt p-3 sm:p-4">
+    <button id="load-older-btn"
+            class="old message-btn mx-auto inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary transition-colors hover:bg-surface-alt"
+            x-show="isAtMessagesTop && hasMoreMessages && olderLoadFailed"
+            :disabled="isMessagesLoading || isOlderLoading"
+            @click="loadOlderMessages()">
+      <span class="iconify" data-icon="mdi:refresh"></span>
+      <span>Load Older Messages</span>
+    </button>
+
+    <div x-show="isMessagesLoading || isOlderLoading"
+         class="mx-auto inline-flex min-h-9 items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary">
+      <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
+      <span>Loading messages...</span>
+    </div>
+
+    <div id="chat-messages-stack" class="relative flex min-h-0 min-w-0 flex-1">
+      <div id="chat-messages"
+           class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto"
+           data-has-messages="false"
+           role="list"
+           aria-live="polite">
+        <div id="message-load-anchor" aria-hidden="true"></div>
+      </div>
+
+      <button id="new-message-btn"
+              class="new message-btn hidden inline-flex min-h-10 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content shadow-sm transition-colors hover:bg-surface-alt"
+              title="Jump to latest">
+        <span class="iconify" data-icon="mdi:arrow-down"></span>
+        New Messages
+      </button>
+    </div>
+
+    {% include "chatlab/partials/typing_indicator.html" %}
   </div>
 
-  <button id="new-message-btn"
-          class="new message-btn hidden mx-auto inline-flex min-h-10 items-center gap-1 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content shadow-sm transition-colors hover:bg-surface-alt"
-          title="Jump to latest">
-    <span class="iconify" data-icon="mdi:arrow-down"></span>
-    New Messages
-  </button>
-
-  {% include "chatlab/partials/typing_indicator.html" %}
   {% include 'chatlab/partials/input_form.html' %}
 </section>
 

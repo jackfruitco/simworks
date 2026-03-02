@@ -12,6 +12,7 @@ from ninja.security import django_auth
 
 from api.v1.auth import JWTAuth
 from api.v1.endpoints.auth import router as auth_router
+from api.v1.endpoints.conversations import router as conversations_router
 from api.v1.endpoints.events import router as events_router
 from api.v1.endpoints.messages import router as messages_router
 from api.v1.endpoints.modifiers import router as modifiers_router
@@ -187,6 +188,7 @@ def health_check_jwt(request: HttpRequest) -> HealthResponse:
 # Register routers
 api.add_router("/auth", auth_router)
 api.add_router("/simulations", simulations_router)
+api.add_router("/simulations", conversations_router)  # Conversations nested under simulations
 api.add_router("/simulations", messages_router)  # Messages are nested under simulations
 api.add_router("/simulations", events_router)  # Events (catch-up) are nested under simulations
 api.add_router("/config", modifiers_router)  # Configuration endpoints (modifiers, etc.)

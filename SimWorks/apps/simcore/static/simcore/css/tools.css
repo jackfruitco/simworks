@@ -47,6 +47,11 @@
     border-bottom-color: var(--color-accent-blue);
 }
 
+.tool-panel-header.tool-header-updated {
+    box-shadow: inset 0 0 0 1px rgba(75, 93, 67, 0.35);
+    animation: toolHeaderPulse 1.1s ease-in-out 2;
+}
+
 .tool-panel-title {
     display: flex;
     align-items: center;
@@ -423,6 +428,18 @@
     }
 }
 
+@keyframes toolHeaderPulse {
+    0% {
+        box-shadow: inset 0 0 0 0 rgba(75, 93, 67, 0.15);
+    }
+    50% {
+        box-shadow: inset 0 0 0 2px rgba(75, 93, 67, 0.45);
+    }
+    100% {
+        box-shadow: inset 0 0 0 1px rgba(75, 93, 67, 0.35);
+    }
+}
+
 .skeleton-item {
     height: 3rem;
     background: var(--color-bg-alt);
@@ -458,4 +475,30 @@
     .tool-panel-header:hover {
         background: rgba(255, 255, 255, 0.05);
     }
+}
+
+/* Theme compatibility for hardcoded utility classes in tool content */
+body[data-theme="dark"] .tool-body .bg-white {
+    background-color: var(--color-bg-alt) !important;
+}
+
+body[data-theme="dark"] .tool-body .text-gray-900,
+body[data-theme="dark"] .tool-body .text-gray-800,
+body[data-theme="dark"] .tool-body .text-gray-700,
+body[data-theme="dark"] .tool-body .text-gray-600,
+body[data-theme="dark"] .tool-body .text-gray-500 {
+    color: var(--color-text-dark) !important;
+}
+
+body[data-theme="dark"] .tool-body .border-gray-300,
+body[data-theme="dark"] .tool-body .border-gray-200 {
+    border-color: var(--color-border) !important;
+}
+
+body[data-theme="dark"] .tool-body .bg-blue-100 {
+    background-color: rgba(75, 93, 67, 0.2) !important;
+}
+
+body[data-theme="dark"] .tool-body .text-blue-700 {
+    color: var(--jckfrt-yellow) !important;
 }

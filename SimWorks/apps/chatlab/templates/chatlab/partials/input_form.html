@@ -2,7 +2,6 @@
     @submit.prevent="send"
     x-data="chatFormState({
         isLocked: {{ simulation_locked|yesno:'true,false' }},
-        isFeedbackContinuation: {{ feedback_continuation|yesno:'true,false' }},
     })"
     class="mt-auto flex items-end gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm">
   <button type="button"

@@ -17,15 +17,15 @@ class MessageAdmin(admin.ModelAdmin):
     list_display = (
         "__str__",
         "simulation",
+        "conversation",
         "sender",
         "role",
     )
-    list_filter = ("simulation", "role", "sender")
+    list_filter = ("simulation", "role", "sender", "conversation__conversation_type")
 
     fieldsets = [
-        (None, {"fields": (("simulation", "order"), ("sender", "role"))}),
+        (None, {"fields": (("simulation", "conversation", "order"), ("sender", "role"))}),
         ("Contents", {"fields": ("content",)}),
-        # ("AI Response", {"classes": ("collapse",), "fields": ("response__normalized",)}),
     ]
 
     def has_change_permission(self, request, obj=None):

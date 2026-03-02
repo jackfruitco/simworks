@@ -23,6 +23,87 @@ def _extract_text(msg: ResultMessageItem) -> str:
     return ""
 
 
+async def _resolve_conversation_id(ctx: PersistContext) -> int | None:
+    """Resolve conversation_id from context, falling back to the patient conversation."""
+    extra = ctx.extra or {}
+    conversation_id = extra.get("conversation_id")
+    if conversation_id:
+        return conversation_id
+
+    # Backward compat: find patient conversation for this simulation
+    from apps.simcore.models import Conversation
+
+    conv = await (
+        Conversation.objects.filter(
+            simulation_id=ctx.simulation_id,
+            conversation_type__slug="simulated_patient",
+        )
+        .values_list("id", flat=True)
+        .afirst()
+    )
+    return conv
+
+
+async def persist_stitch_messages(
+    messages: list[ResultMessageItem], ctx: PersistContext
+) -> list:
+    """Persist ResultMessageItem list → chatlab.Message instances for Stitch.
+
+    Same pattern as ``persist_messages`` but uses the Stitch bot user and
+    requires ``conversation_id`` in context (no fallback to patient conversation).
+    """
+    from apps.chatlab.models import Message, RoleChoices
+    from apps.common.utils.accounts import get_system_user
+    from asgiref.sync import sync_to_async
+
+    stitch_user = await sync_to_async(get_system_user)("Stitch")
+
+    # Stitch messages must always target a specific conversation — don't silently
+    # fall back to the patient conversation.
+    extra = ctx.extra or {}
+    conversation_id = extra.get("conversation_id")
+    if not conversation_id:
+        logger.error(
+            "persist_stitch_messages called without conversation_id, sim=%s",
+            ctx.simulation_id,
+        )
+        raise ValueError("conversation_id is required for Stitch message persistence")
+
+    created = []
+    attempt_obj = None
+    provider_response_id = None
+    extra = ctx.extra or {}
+    attempt_id = extra.get("service_call_attempt_id")
+    if attempt_id:
+        try:
+            from orchestrai_django.models import ServiceCallAttempt
+            attempt_obj = await ServiceCallAttempt.objects.aget(pk=attempt_id)
+        except Exception as exc:
+            logger.warning("Failed to load ServiceCallAttempt %s: %s", attempt_id, exc)
+    provider_response_id = extra.get("provider_response_id")
+
+    for msg in messages:
+        text = _extract_text(msg)
+        if not text:
+            continue
+
+        m = await Message.objects.acreate(
+            simulation_id=ctx.simulation_id,
+            conversation_id=conversation_id,
+            content=text,
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+            message_type="text",
+            sender=stitch_user,
+            display_name="Stitch",
+            service_call_attempt=attempt_obj,
+            provider_response_id=provider_response_id,
+        )
+        created.append(m)
+
+    return created
+
+
 async def persist_messages(
     messages: list[ResultMessageItem], ctx: PersistContext
 ) -> list:
@@ -39,6 +120,7 @@ async def persist_messages(
     system_user = await aget_or_create_system_user()
     sim = await Simulation.objects.aget(id=ctx.simulation_id)
     display_name = sim.sim_patient_display_name or "AI"
+    conversation_id = await _resolve_conversation_id(ctx)
 
     created = []
     attempt_obj = None
@@ -59,6 +141,7 @@ async def persist_messages(
 
         m = await Message.objects.acreate(
             simulation_id=ctx.simulation_id,
+            conversation_id=conversation_id,
             content=text,
             role=RoleChoices.ASSISTANT,
             is_from_ai=True,

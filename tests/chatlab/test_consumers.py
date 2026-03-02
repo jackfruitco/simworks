@@ -299,6 +299,7 @@ class TestTypingEventHandlers:
             "type": "user_typing",
             "user": "TestUser",
             "display_initials": "TU",
+            "conversation_id": 42,
         })
 
         # Verify the event was formatted and sent
@@ -307,6 +308,7 @@ class TestTypingEventHandlers:
         sent_data = json.loads(sent_messages[0])
         assert sent_data["type"] == "typing"
         assert sent_data["display_initials"] == "TU"
+        assert sent_data["conversation_id"] == 42
 
         await communicator.disconnect()
 
@@ -343,6 +345,7 @@ class TestTypingEventHandlers:
         await consumer.user_stopped_typing({
             "type": "user_stopped_typing",
             "user": "TestUser",
+            "conversation_id": 42,
         })
 
         # Verify the event was formatted and sent
@@ -351,5 +354,6 @@ class TestTypingEventHandlers:
         sent_data = json.loads(sent_messages[0])
         assert sent_data["type"] == "stopped_typing"
         assert sent_data["user"] == "TestUser"
+        assert sent_data["conversation_id"] == 42
 
         await communicator.disconnect()
