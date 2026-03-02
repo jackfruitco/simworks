@@ -1,21 +1,62 @@
 # simworks/config/settings.py
 import os
-import re
-import sys
 from pathlib import Path
 
-import logfire
-from django.core.exceptions import ImproperlyConfigured
-
 from apps.common.utils.system import check_env
+
+from .auth_settings import (
+    ACCOUNT_ADAPTER,
+    ACCOUNT_EMAIL_VERIFICATION,
+    ACCOUNT_FORMS,
+    ACCOUNT_LOGIN_METHODS,
+    ACCOUNT_LOGOUT_REDIRECT_URL,
+    ACCOUNT_SIGNUP_FIELDS,
+    ACCOUNT_USER_MODEL_USERNAME_FIELD,
+    LOGIN_REDIRECT_URL,
+    SITE_ID,
+    SOCIALACCOUNT_PROVIDERS,
+)
+from .settings_parsers import bool_from_env, int_from_env
 from .logging import LOGGING
+from . import observability_settings  # noqa: F401
+from .security_settings import (
+    ALLOWED_HOSTS,
+    CSRF_COOKIE_SECURE,
+    CSRF_TRUSTED_ORIGINS,
+    DJANGO_BEHIND_PROXY,
+    SECURE_HSTS_INCLUDE_SUBDOMAINS,
+    SECURE_HSTS_PRELOAD,
+    SECURE_HSTS_SECONDS,
+    SECURE_PROXY_SSL_HEADER,
+    SECURE_SSL_REDIRECT,
+    SESSION_COOKIE_SECURE,
+    USE_X_FORWARDED_HOST,
+)
+from .task_settings import (
+    CELERY_ACCEPT_CONTENT,
+    CELERY_BEAT_SCHEDULER,
+    CELERY_BROKER_URL,
+    CELERY_RESULT_BACKEND,
+    CELERY_TASK_SERIALIZER,
+    CELERY_TASK_SOFT_TIME_LIMIT,
+    CELERY_TASK_TIME_LIMIT,
+    CHANNEL_LAYERS,
+    DJANGO_TASKS_MAX_RETRIES,
+    DJANGO_TASKS_RETRY_DELAY,
+    RATE_LIMIT_API_REQUESTS,
+    RATE_LIMIT_AUTH_REQUESTS,
+    RATE_LIMIT_MESSAGE_REQUESTS,
+    REDIS_BASE,
+    REDIS_HOSTNAME,
+    REDIS_PASSWORD,
+    REDIS_PORT,
+    TASKS,
+)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-# Removed sys.path manipulation to prevent duplicate module imports
-# All imports must use full paths: from apps.X import ...
 
-# Quick-start_timestamp development settings - unsuitable for production
+# Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key claimed in production secret!
@@ -25,47 +66,7 @@ SECRET_KEY = os.getenv(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
-
-# Set Allowed Hosts
-if (hosts := os.getenv("DJANGO_ALLOWED_HOSTS")) is not None:
-    ALLOWED_HOSTS = [host for host in re.split(r"\s*,\s*", hosts.strip()) if host]
-else:
-    ALLOWED_HOSTS = []
-
-# CSRF Configuration
-if (origins := os.getenv("CSRF_TRUSTED_ORIGINS", None)) is not None:
-    CSRF_TRUSTED_ORIGINS = [
-        origin for origin in re.split(r"\s*,\s*", origins.strip()) if origin
-    ]
-else:
-    CSRF_TRUSTED_ORIGINS = []
-
-CSRF_COOKIE_SECURE = os.getenv("CSRF_COOKIE_SECURE", "true").lower() == "true"
-
-# ---------------------------------------------------------------------------
-# Reverse-proxy / Cloudflare Tunnel settings
-# ---------------------------------------------------------------------------
-# Set DJANGO_BEHIND_PROXY=true in environments where a reverse proxy (nginx,
-# Cloudflare Tunnel, LB) terminates TLS and forwards requests to Django.
-DJANGO_BEHIND_PROXY = os.getenv("DJANGO_BEHIND_PROXY", "false").lower() == "true"
-
-# If true, Django will treat requests as HTTPS when the proxy sets
-# `X-Forwarded-Proto: https`.
-# (Note: Django expects the setting value to be the *header name* as seen in
-# request.META, hence HTTP_X_FORWARDED_PROTO.)
-if DJANGO_BEHIND_PROXY:
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    USE_X_FORWARDED_HOST = True
-
-# Optional hardening (recommended for prod behind TLS-terminating proxy)
-SECURE_SSL_REDIRECT = os.getenv("DJANGO_SECURE_SSL_REDIRECT", "false").lower() == "true"
-SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true"
-
-# HSTS (only safe if the public site is always HTTPS)
-SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
-SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "false").lower() == "true"
-SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "false").lower() == "true"
+DEBUG = bool_from_env("DJANGO_DEBUG", default=False)
 
 AUTH_USER_MODEL = "accounts.User"
 
@@ -137,10 +138,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-# Database engine can be chosen via profile variable "DATABASE"
 db_engine = os.getenv("DATABASE", "postgresql")
-
 if db_engine == "sqlite3":
     DATABASES = {
         "default": {
@@ -164,20 +162,12 @@ else:
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-
 # CORS
 CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)
 CORS_ALLOWED_ORIGINS_REGEX = check_env("DJANGO_CORS_ALLOWED_ORIGINS_REGEX", default=None)
-CORS_ALLOW_ALL_ORIGINS = True if (
-        os.getenv("DJANGO_CORS_ALLOW_ALL_ORIGINS", False) in ("true", "True", True, 1)
-) else False
+CORS_ALLOW_ALL_ORIGINS = bool_from_env("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=False)
 
-# ---------------------------------------------------------------------------
 # OrchestrAI configuration
-# ---------------------------------------------------------------------------
-# Services use Pydantic AI's Agent abstraction for LLM execution.
-# API keys are resolved via ORCA_{PROVIDER}_API_KEY environment variables
-# (e.g., ORCA_OPENAI_API_KEY, ORCA_ANTHROPIC_API_KEY).
 ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
 ORCA_CONFIG = {
@@ -185,97 +175,33 @@ ORCA_CONFIG = {
     "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai-responses:gpt-5o-mini"),
 }
 
-TASKS = {
-    "default": {
-        "BACKEND": "orchestrai_django.backends.async_thread.AsyncThreadBackend",
-    },
-    "immediate": {
-        "BACKEND": "django.tasks.backends.immediate.ImmediateBackend",
-    },
-}
-
-# Django Tasks Retry Configuration (for orchestrai_django)
-DJANGO_TASKS_MAX_RETRIES = int(os.getenv("DJANGO_TASKS_MAX_RETRIES", "3"))
-DJANGO_TASKS_RETRY_DELAY = int(os.getenv("DJANGO_TASKS_RETRY_DELAY", "5"))  # seconds
-
-REDIS_HOSTNAME = os.getenv("REDIS_HOSTNAME", "redis")
-REDIS_PORT = os.getenv("REDIS_PORT", 6379)
-REDIS_PASSWORD = check_env("REDIS_PASSWORD")
-REDIS_BASE = f"redis://:{REDIS_PASSWORD}@{REDIS_HOSTNAME}:{REDIS_PORT}"
-
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [f"{REDIS_BASE}/0"],
-        },
-    }
-}
-
-# Celery config
-CELERY_BROKER_URL = f"{REDIS_BASE}/1"
-CELERY_RESULT_BACKEND = f"{REDIS_BASE}/2"
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_TASK_TIME_LIMIT = 30  # seconds
-CELERY_TASK_SOFT_TIME_LIMIT = 25  # seconds
-
-# Celery Beat config
-CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-
 # JWT Configuration (for mobile API clients)
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)  # Use separate key in production
-JWT_ACCESS_TOKEN_LIFETIME = int(os.getenv("JWT_ACCESS_TOKEN_LIFETIME", 3600))  # 1 hour
-JWT_REFRESH_TOKEN_LIFETIME = int(os.getenv("JWT_REFRESH_TOKEN_LIFETIME", 604800))  # 7 days
-
-# Rate Limiting Configuration
-# Uses Redis database 3 for rate limit counters
-RATE_LIMIT_AUTH_REQUESTS = int(os.getenv("RATE_LIMIT_AUTH_REQUESTS", 5))  # per minute per IP
-RATE_LIMIT_MESSAGE_REQUESTS = int(os.getenv("RATE_LIMIT_MESSAGE_REQUESTS", 30))  # per minute per user
-RATE_LIMIT_API_REQUESTS = int(os.getenv("RATE_LIMIT_API_REQUESTS", 100))  # per minute per user
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
+JWT_ACCESS_TOKEN_LIFETIME = int_from_env("JWT_ACCESS_TOKEN_LIFETIME", default=3600, minimum=1)
+JWT_REFRESH_TOKEN_LIFETIME = int_from_env("JWT_REFRESH_TOKEN_LIFETIME", default=604800, minimum=1)
 
 # Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
 # Internationalization
-# https://docs.djangoproject.com/en/5.1/topics/i18n/
-
 LANGUAGE_CODE = "en-us"
-
 TIME_ZONE = "UTC"
-
 USE_I18N = True
-
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR.parent / "static"
-STATICFILES_DIRS = [
-    BASE_DIR / "static",
-]
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Media files (uploaded by users)
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR.parent / "media"
-
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -285,80 +211,4 @@ SITE_ADMIN = {
     "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
 }
 
-logfire_token = os.getenv("LOGFIRE_TOKEN")
-if logfire_token:
-    logfire.configure(token=logfire_token)
-else:
-    # Allow local/test environments to run without Logfire authentication.
-    logfire.configure(send_to_logfire=False)
-logfire.instrument_httpx(
-    capture_all=True
-    # capture_response_body=True,
-    # capture_request_body=True,
-    # capture_headers=True,
-)
-logfire.instrument_django(excluded_urls="/health(?:/|$)")
-logfire.instrument_openai(suppress_other_instrumentation=False)
-
 CSRF_FAILURE_VIEW = "apps.common.views.csrf_failure"
-
-STRAWBERRY_DJANGO = {
-    "FIELD_DESCRIPTION_FROM_HELP_TEXT": True,
-    "TYPE_DESCRIPTION_FROM_MODEL_DOCSTRING": True,
-    "MUTATIONS_DEFAULT_HANDLE_ERRORS": True,
-}
-
-# ---------------------------------------------------------------------------
-# Django-allauth Configuration
-# ---------------------------------------------------------------------------
-SITE_ID = 1
-
-# Custom adapter and forms for invitation-based signup
-ACCOUNT_ADAPTER = 'apps.accounts.adapters.InvitationAccountAdapter'
-ACCOUNT_FORMS = {
-    'signup': 'apps.accounts.forms.InvitationSignupForm',
-}
-
-# Authentication settings
-ACCOUNT_LOGIN_METHODS = {'email'}
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_VERIFICATION = 'optional'  # Can be 'mandatory', 'optional', or 'none'
-
-# Redirect URLs
-LOGIN_REDIRECT_URL = '/'
-ACCOUNT_LOGOUT_REDIRECT_URL = '/'
-
-# Social authentication provider configuration
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'SCOPE': [
-            'profile',
-            'email',
-        ],
-        'AUTH_PARAMS': {
-            'access_type': 'online',
-        },
-        'APP': {
-            'client_id': os.getenv('GOOGLE_CLIENT_ID', ''),
-            'secret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
-            'key': ''
-        }
-    },
-    'apple': {
-        'APP': {
-            # Service ID (Services ID from Apple Developer Console)
-            'client_id': os.getenv('APPLE_CLIENT_ID', ''),
-            # Team ID
-            'secret': os.getenv('APPLE_TEAM_ID', ''),
-            # Key ID
-            'key': os.getenv('APPLE_KEY_ID', ''),
-            'settings': {
-                # Private key content (from .p8 file)
-                'certificate_key': os.getenv('APPLE_PRIVATE_KEY', ''),
-            }
-        }
-    }
-}
