@@ -154,6 +154,11 @@ def _enqueue_ai_reply(conversation, simulation_id: int, user_msg_pk: int) -> str
         return None
 
 
+def _supports_ai_reply(conversation) -> bool:
+    """Return whether this conversation can enqueue AI replies."""
+    return conversation.conversation_type.ai_persona in {"patient", "stitch"}
+
+
 router = Router(tags=["messages"], auth=DualAuth())
 
 
@@ -252,6 +257,14 @@ def create_message(
     conversation = _resolve_conversation(sim, body.conversation_id)
     if conversation.is_locked:
         raise HttpError(400, "This conversation is locked")
+    if not _supports_ai_reply(conversation):
+        logger.warning(
+            "message.ai_reply_not_enqueued",
+            simulation_id=simulation_id,
+            conversation_id=conversation.pk,
+            conversation_persona=conversation.conversation_type.ai_persona,
+        )
+        raise HttpError(400, "AI replies are not available for this conversation yet")
 
     with transaction.atomic():
         # Create the user message
@@ -274,17 +287,10 @@ def create_message(
             message_type=body.message_type,
         )
 
-        # Enqueue the AI response generation (dispatched by conversation type)
-        call_id = _enqueue_ai_reply(conversation, simulation_id, message.pk)
-        if call_id is None:
-            logger.warning(
-                "message.ai_reply_not_enqueued",
-                simulation_id=simulation_id,
-                conversation_id=conversation.pk,
-                message_id=message.pk,
-                conversation_persona=conversation.conversation_type.ai_persona,
-            )
-            raise HttpError(400, "AI replies are not available for this conversation yet")
+        # Enqueue only after the user message transaction commits.
+        transaction.on_commit(
+            lambda: _enqueue_ai_reply(conversation, simulation_id, message.pk)
+        )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
     return 202, message_to_out(message)
