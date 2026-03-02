@@ -135,7 +135,9 @@ def get_metadata_checksum(request, simulation_id):
 
 
 @require_GET
+@login_required
 def refresh_messages(request, simulation_id):
+    get_object_or_404(Simulation, id=simulation_id, user=request.user)
     qs = Message.objects.filter(simulation_id=simulation_id)
 
     # Filter by conversation when specified (multi-conversation support)
@@ -149,7 +151,9 @@ def refresh_messages(request, simulation_id):
 
 
 @require_GET
+@login_required
 def load_older_messages(request, simulation_id):
+    get_object_or_404(Simulation, id=simulation_id, user=request.user)
     before_id = request.GET.get("before")
     try:
         before_message = Message.objects.get(id=before_id)
@@ -206,6 +210,7 @@ def end_simulation(request, simulation_id):
 @login_required
 def get_single_message(request, simulation_id, message_id):
     """Return HTML for a single message (for HTMX append after WebSocket notification)."""
+    get_object_or_404(Simulation, id=simulation_id, user=request.user)
     try:
         message = Message.objects.select_related("sender").prefetch_related("media").get(
             id=message_id,

@@ -57,7 +57,17 @@ async def persist_stitch_messages(
     from asgiref.sync import sync_to_async
 
     stitch_user = await sync_to_async(get_system_user)("Stitch")
-    conversation_id = await _resolve_conversation_id(ctx)
+
+    # Stitch messages must always target a specific conversation — don't silently
+    # fall back to the patient conversation.
+    extra = ctx.extra or {}
+    conversation_id = extra.get("conversation_id")
+    if not conversation_id:
+        logger.error(
+            "persist_stitch_messages called without conversation_id, sim=%s",
+            ctx.simulation_id,
+        )
+        raise ValueError("conversation_id is required for Stitch message persistence")
 
     created = []
     attempt_obj = None

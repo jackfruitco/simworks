@@ -32,7 +32,6 @@ class MessageOut(BaseModel):
     )
     timestamp: datetime = Field(..., description="When the message was created")
     is_from_ai: bool = Field(..., description="Whether this message is from the AI")
-    order: int | None = Field(default=None, description="Message order in the simulation")
     display_name: str = Field(default="", description="Display name for the sender")
 
 
@@ -83,19 +82,21 @@ def message_to_out(msg) -> MessageOut:
     """Convert a Message model instance to MessageOut schema.
 
     Handles both messages with and without conversation (backward compat).
+    Uses select_related("conversation__conversation_type") when available.
     """
     conversation_type = None
-    if hasattr(msg, "conversation") and msg.conversation_id:
-        # Try to get slug from pre-fetched conversation_type
-        conv = msg.conversation if hasattr(msg, "_conversation_cache") else None
-        if conv and hasattr(conv, "conversation_type"):
-            conversation_type = conv.conversation_type.slug
-        # If not pre-fetched, we'll leave it None to avoid N+1 queries
+    conv_id = getattr(msg, "conversation_id", None)
+    if conv_id:
+        try:
+            # Works when select_related("conversation__conversation_type") was used
+            conversation_type = msg.conversation.conversation_type.slug
+        except AttributeError:
+            pass
 
     return MessageOut(
         id=msg.pk,
         simulation_id=msg.simulation_id,
-        conversation_id=msg.conversation_id if hasattr(msg, "conversation_id") else None,
+        conversation_id=conv_id,
         conversation_type=conversation_type,
         sender_id=msg.sender_id,
         content=msg.content,

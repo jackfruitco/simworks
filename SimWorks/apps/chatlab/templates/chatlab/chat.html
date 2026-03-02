@@ -10,7 +10,7 @@
   <div id="conversation-tabs"
        x-show="conversations.length > 1"
        x-cloak
-       class="flex gap-1 border-b border-border px-1 pt-1">
+       class="flex flex-nowrap gap-1 overflow-x-auto border-b border-border px-1 pt-1">
     <template x-for="conv in conversations" :key="conv.id">
       <button @click="switchConversation(conv.id)"
               :class="activeConversationId === conv.id
@@ -39,10 +39,6 @@
   <div id="chat-messages"
        class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface-alt p-3 sm:p-4"
        data-has-messages="false"
-       hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
-       hx-trigger="load"
-       hx-swap="innerHTML"
-       hx-indicator="#messages-loading"
        role="list"
        aria-live="polite">
     <div id="message-load-anchor" aria-hidden="true"></div>

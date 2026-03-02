@@ -179,30 +179,30 @@ def list_messages(
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user)
 
-    # Base queryset
-    queryset = Message.objects.filter(simulation=sim, is_deleted=False)
+    # Base queryset with select_related to avoid N+1 on conversation_type
+    queryset = Message.objects.filter(simulation=sim, is_deleted=False).select_related(
+        "conversation__conversation_type"
+    )
 
     # Filter by conversation if specified
     if conversation_id is not None:
         queryset = queryset.filter(conversation_id=conversation_id)
 
-    # Apply ordering
+    # Apply ordering using pk (stable, monotonic cursor)
     if order == "desc":
-        queryset = queryset.order_by("-order")
-        # Cursor is for messages with order < cursor
+        queryset = queryset.order_by("-pk")
         if cursor:
             try:
-                cursor_order = int(cursor)
-                queryset = queryset.filter(order__lt=cursor_order)
+                cursor_pk = int(cursor)
+                queryset = queryset.filter(pk__lt=cursor_pk)
             except (ValueError, TypeError):
                 raise HttpError(400, "Invalid cursor format")
     else:
-        queryset = queryset.order_by("order")
-        # Cursor is for messages with order > cursor
+        queryset = queryset.order_by("pk")
         if cursor:
             try:
-                cursor_order = int(cursor)
-                queryset = queryset.filter(order__gt=cursor_order)
+                cursor_pk = int(cursor)
+                queryset = queryset.filter(pk__gt=cursor_pk)
             except (ValueError, TypeError):
                 raise HttpError(400, "Invalid cursor format")
 
@@ -216,7 +216,7 @@ def list_messages(
     next_cursor = None
     if has_more and messages:
         last_message = messages[-1]
-        next_cursor = str(last_message.order)
+        next_cursor = str(last_message.pk)
 
     return MessageListResponse(
         items=[message_to_out(msg) for msg in messages],

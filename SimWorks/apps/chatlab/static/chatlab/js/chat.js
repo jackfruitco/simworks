@@ -8,9 +8,17 @@ function chatFormState({ isLocked }) {
         isLocked,
         messageText: '',
         showEmojiPicker: false,
+        _conversationType: 'simulated_patient',
         init() {
             // Initial lock state comes from server-rendered template.
-            // Subsequent updates are driven reactively by ChatManager.
+            // Listen for conversation lock changes dispatched by ChatManager.
+            const chatPanel = this.$el.closest('[x-data*="ChatManager"]');
+            if (chatPanel) {
+                chatPanel.addEventListener('conversation:lock-changed', (e) => {
+                    this.isLocked = e.detail.isLocked;
+                    this._conversationType = e.detail.conversationType || 'simulated_patient';
+                });
+            }
         },
         toggleEmojiPicker() {
             this.showEmojiPicker = !this.showEmojiPicker;
@@ -57,10 +65,7 @@ function chatFormState({ isLocked }) {
         },
         placeholderText() {
             if (this.isLocked) return 'This conversation is read-only';
-            // Check active conversation type via ChatManager
-            const chatMgr = this._getChatManager();
-            const conv = chatMgr?.getActiveConversation?.();
-            if (conv && conv.conversation_type !== 'simulated_patient') {
+            if (this._conversationType !== 'simulated_patient') {
                 return 'Message Stitch...';
             }
             return 'Message';
@@ -74,14 +79,6 @@ function chatFormState({ isLocked }) {
         emojiAriaLabel() {
             return this.showEmojiPicker ? 'Hide emoji picker' : 'Insert emoji';
         },
-        /**
-         * Walk up the Alpine data stack to find the ChatManager instance.
-         */
-        _getChatManager() {
-            // Alpine stores a data stack on the root element
-            const root = this.$el?.closest('[x-data*="ChatManager"]');
-            return root?._x_dataStack?.[0] ?? null;
-        }
     };
 }
 
@@ -143,9 +140,12 @@ function ChatManager(simulation_id, currentUser) {
             // Setup event listeners
             this.setupEventListeners();
 
+            // Listen for stitch:create events from external buttons (e.g. tools panel)
+            this.$el.addEventListener('stitch:create', () => this.createStitchConversation());
+
             // Load conversations from API, then load messages for active conversation
             this.loadConversations().then(() => {
-                this.loadOlderMessages();
+                this.loadInitialMessages();
             });
 
             this.newMessageBtn.addEventListener('click', () => {
@@ -259,16 +259,13 @@ function ChatManager(simulation_id, currentUser) {
 
         /**
          * Synchronize the form lock state with the active conversation's is_locked property.
+         * Uses $dispatch to communicate with the chatFormState component reactively.
          */
         _syncFormLock() {
             const conv = this.getActiveConversation();
             const locked = conv ? conv.is_locked : this.isChatLocked;
-
-            // Update the chat form's Alpine state
-            const formEl = document.getElementById('chat-form');
-            if (formEl?._x_dataStack) {
-                formEl._x_dataStack[0].isLocked = locked;
-            }
+            const conversationType = conv?.conversation_type ?? 'simulated_patient';
+            this.$dispatch('conversation:lock-changed', { isLocked: locked, conversationType });
         },
 
         // ----- Socket / EventBus -----
@@ -362,9 +359,13 @@ function ChatManager(simulation_id, currentUser) {
 
             // Route by conversation: if message belongs to a different conversation,
             // increment unread badge instead of rendering in the active view.
+            // Use immutable update to ensure Alpine reactivity triggers.
             if (msgConversationId && msgConversationId !== this.activeConversationId) {
-                const conv = this.conversations.find(c => c.id === msgConversationId);
-                if (conv) conv._unread = (conv._unread || 0) + 1;
+                this.conversations = this.conversations.map(c =>
+                    c.id === msgConversationId
+                        ? { ...c, _unread: (c._unread || 0) + 1 }
+                        : c
+                );
 
                 // Play receive sound even for background conversation messages
                 const receiveSound = document.getElementById("receive-sound");
@@ -629,9 +630,12 @@ function ChatManager(simulation_id, currentUser) {
             }
 
             if (!existing && content) {
-                existing = Array.from(this.messagesDiv.children).find(div =>
-                    div.textContent.includes(content)
-                );
+                // Use exact match on the message content element to avoid false positives
+                // from substring matching against display names, timestamps, etc.
+                const contentEls = this.messagesDiv.querySelectorAll('.chat-bubble .break-words');
+                existing = Array.from(contentEls).find(el =>
+                    el.textContent.trim() === content
+                )?.closest('.chat-bubble') || null;
                 if (existing && messageId) {
                     existing.dataset.messageId = messageId;
                 }
@@ -711,6 +715,22 @@ function ChatManager(simulation_id, currentUser) {
                 .replace(/>/g, "&gt;")
                 .replace(/"/g, "&quot;")
                 .replace(/'/g, "&#039;");
+        },
+
+        /**
+         * Load the initial batch of messages for the active conversation.
+         * Called after conversations are loaded (replaces hx-trigger="load" to avoid race).
+         */
+        loadInitialMessages() {
+            if (!this.activeConversationId) {
+                // No conversations yet — fall back to unfiltered load
+                this.loadOlderMessages();
+                return;
+            }
+            const url = `/chatlab/simulation/${this.simulation_id}/refresh/?conversation_id=${this.activeConversationId}`;
+            htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' }).then(() => {
+                this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+            });
         },
 
         loadOlderMessages() {
