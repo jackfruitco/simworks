@@ -4,7 +4,7 @@
      x-cloak>
     <div id="indicator-wrapper"
          class="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs text-content-secondary shadow-sm">
-        <template x-for="user in typingUsers" :key="user.email">
+        <template x-for="user in typingUsers" :key="user.user">
             <div class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-jckfrt-olive/20 text-[10px] font-bold text-jckfrt-olive">
                 <span x-text="user.displayInitials"></span>
             </div>

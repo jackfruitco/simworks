@@ -6,6 +6,25 @@
   class="chat-container flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4"
   @form:typing="notifyTyping()"
   @form:send="handleFormSend($event.detail)">
+  {# Conversation Tab Bar — visible when more than one conversation exists #}
+  <div id="conversation-tabs"
+       x-show="conversations.length > 1"
+       x-cloak
+       class="flex flex-nowrap gap-1 overflow-x-auto border-b border-border px-1 pt-1">
+    <template x-for="conv in conversations" :key="conv.id">
+      <button @click="switchConversation(conv.id)"
+              :class="activeConversationId === conv.id
+                  ? 'border-b-2 border-jckfrt-olive text-content font-semibold'
+                  : 'text-content-secondary hover:text-content'"
+              class="conversation-tab relative px-3 py-1.5 text-xs transition-colors">
+        <span x-text="conv.display_name"></span>
+        <span x-show="conv._unread > 0"
+              class="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+              x-text="conv._unread"></span>
+      </button>
+    </template>
+  </div>
+
   <button id="load-older-btn"
           class="old message-btn mx-auto inline-flex min-h-9 items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold text-content-secondary transition-colors hover:bg-surface-alt"
           x-show="hasMoreMessages">
@@ -20,10 +39,6 @@
   <div id="chat-messages"
        class="message-list flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-surface-alt p-3 sm:p-4"
        data-has-messages="false"
-       hx-get="{% url 'chatlab:refresh_messages' simulation.id %}"
-       hx-trigger="load"
-       hx-swap="innerHTML"
-       hx-indicator="#messages-loading"
        role="list"
        aria-live="polite">
     <div id="message-load-anchor" aria-hidden="true"></div>

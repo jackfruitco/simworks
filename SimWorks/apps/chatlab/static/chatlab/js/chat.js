@@ -1,14 +1,24 @@
 /**
  * Chat form state - Alpine component for message input
+ *
+ * Reads lock state from the parent ChatManager's active conversation.
  */
-function chatFormState({ isLocked, isFeedbackContinuation }) {
+function chatFormState({ isLocked }) {
     return {
         isLocked,
-        isFeedbackContinuation,
         messageText: '',
         showEmojiPicker: false,
+        _conversationType: 'simulated_patient',
         init() {
-            this.syncFromRoot();
+            // Initial lock state comes from server-rendered template.
+            // Listen for conversation lock changes dispatched by ChatManager.
+            const chatPanel = this.$el.closest('[x-data*="ChatManager"]');
+            if (chatPanel) {
+                chatPanel.addEventListener('conversation:lock-changed', (e) => {
+                    this.isLocked = e.detail.isLocked;
+                    this._conversationType = e.detail.conversationType || 'simulated_patient';
+                });
+            }
         },
         toggleEmojiPicker() {
             this.showEmojiPicker = !this.showEmojiPicker;
@@ -53,23 +63,22 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
         sendFromMobile() {
             this.send();
         },
-        syncFromRoot() {
-            // Form now manages its own state via $dispatch events
-        },
         placeholderText() {
-            if (this.isLocked) return 'Simulation locked — chat is read-only';
-            if (this.isFeedbackContinuation) return 'Message Stitch to continue feedback conversation';
+            if (this.isLocked) return 'This conversation is read-only';
+            if (this._conversationType !== 'simulated_patient') {
+                return 'Message Stitch...';
+            }
             return 'Message';
         },
         messageAriaLabel() {
-            return this.isLocked ? 'Simulation locked — chat is read-only' : 'Message';
+            return this.isLocked ? 'Conversation is read-only' : 'Message';
         },
         sendAriaLabel() {
-            return this.isLocked ? 'Send message (disabled while simulation is locked)' : 'Send message';
+            return this.isLocked ? 'Send message (disabled while conversation is locked)' : 'Send message';
         },
         emojiAriaLabel() {
             return this.showEmojiPicker ? 'Hide emoji picker' : 'Insert emoji';
-        }
+        },
     };
 }
 
@@ -78,6 +87,12 @@ function chatFormState({ isLocked, isFeedbackContinuation }) {
  *
  * Uses SimulationSocket internally and listens for sim:* events via EventBus.
  * Tool refresh is handled declaratively by ToolManager.
+ *
+ * Multi-conversation support:
+ *  - conversations[]: loaded from API on init
+ *  - activeConversationId: currently visible conversation
+ *  - Tab bar rendered when conversations.length > 1
+ *  - Messages routed to the correct conversation via conversation_id
  */
 function ChatManager(simulation_id, currentUser) {
     return {
@@ -93,8 +108,11 @@ function ChatManager(simulation_id, currentUser) {
         hasMoreMessages: true,
         systemDisplayInitials: '',
         systemDisplayName: '',
-        feedbackContinueConversation: false,
         isChatLocked: false,
+
+        // --- Multi-conversation state ---
+        conversations: [],
+        activeConversationId: null,
 
         init() {
             this.messageInput = document.getElementById('chat-message-input');
@@ -107,7 +125,6 @@ function ChatManager(simulation_id, currentUser) {
 
             // Get DOM data attributes
             const simulationContext = document.getElementById('context');
-            this.feedbackContinueConversation = simulationContext?.dataset.feedbackContinuation === 'true';
             this.isChatLocked = simulationContext?.dataset.isChatLocked === 'true';
 
             // Content mode for server responses
@@ -122,7 +139,14 @@ function ChatManager(simulation_id, currentUser) {
 
             // Setup event listeners
             this.setupEventListeners();
-            this.loadOlderMessages();
+
+            // Listen for stitch:create events from external buttons (e.g. tools panel)
+            this.$el.addEventListener('stitch:create', () => this.createStitchConversation());
+
+            // Load conversations from API, then load messages for active conversation
+            this.loadConversations().then(() => {
+                this.loadInitialMessages();
+            });
 
             this.newMessageBtn.addEventListener('click', () => {
                 this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
@@ -140,6 +164,111 @@ function ChatManager(simulation_id, currentUser) {
                 }
             });
         },
+
+        // ----- Conversation management -----
+
+        /**
+         * Load conversations for this simulation from the REST API.
+         */
+        async loadConversations() {
+            try {
+                const resp = await fetch(
+                    `/api/v1/simulations/${this.simulation_id}/conversations/`,
+                    { headers: { 'X-CSRFToken': this.csrfToken } },
+                );
+                if (!resp.ok) {
+                    console.warn('[ChatManager] Failed to load conversations:', resp.status);
+                    return;
+                }
+                const data = await resp.json();
+                this.conversations = (data.items || []).map(c => ({
+                    ...c,
+                    _unread: 0,
+                }));
+
+                // Default to first conversation (patient) if none active
+                if (this.conversations.length && !this.activeConversationId) {
+                    this.activeConversationId = this.conversations[0].id;
+                }
+
+                // Sync form lock state with active conversation
+                this._syncFormLock();
+            } catch (err) {
+                console.error('[ChatManager] Error loading conversations:', err);
+            }
+        },
+
+        /**
+         * Get the currently active conversation object.
+         */
+        getActiveConversation() {
+            return this.conversations.find(c => c.id === this.activeConversationId) || null;
+        },
+
+        /**
+         * Switch the visible conversation. Reloads messages for the target conversation.
+         */
+        switchConversation(convId) {
+            if (convId === this.activeConversationId) return;
+
+            this.activeConversationId = convId;
+
+            // Reset unread badge for this conversation
+            const conv = this.conversations.find(c => c.id === convId);
+            if (conv) conv._unread = 0;
+
+            // Sync form lock state
+            this._syncFormLock();
+
+            // Reload messages for this conversation via HTMX
+            const url = `/chatlab/simulation/${this.simulation_id}/refresh/?conversation_id=${convId}`;
+            htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' });
+
+            this.hasMoreMessages = true;
+        },
+
+        /**
+         * Create a Stitch feedback conversation (on-demand) and switch to it.
+         */
+        async createStitchConversation() {
+            try {
+                const resp = await fetch(
+                    `/api/v1/simulations/${this.simulation_id}/conversations/`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': this.csrfToken,
+                        },
+                        body: JSON.stringify({ conversation_type: 'simulated_feedback' }),
+                    },
+                );
+                if (resp.ok || resp.status === 201) {
+                    await this.loadConversations();
+                    const stitch = this.conversations.find(
+                        c => c.conversation_type === 'simulated_feedback'
+                    );
+                    if (stitch) this.switchConversation(stitch.id);
+                } else {
+                    console.error('[ChatManager] Failed to create Stitch conversation:', resp.status);
+                }
+            } catch (err) {
+                console.error('[ChatManager] Error creating Stitch conversation:', err);
+            }
+        },
+
+        /**
+         * Synchronize the form lock state with the active conversation's is_locked property.
+         * Uses $dispatch to communicate with the chatFormState component reactively.
+         */
+        _syncFormLock() {
+            const conv = this.getActiveConversation();
+            const locked = conv ? conv.is_locked : this.isChatLocked;
+            const conversationType = conv?.conversation_type ?? 'simulated_patient';
+            this.$dispatch('conversation:lock-changed', { isLocked: locked, conversationType });
+        },
+
+        // ----- Socket / EventBus -----
 
         /**
          * Initialize SimulationSocket
@@ -165,14 +294,6 @@ function ChatManager(simulation_id, currentUser) {
             this.eventBus.on('stopped_typing', (data) => this.handleTyping(data, false));
             this.eventBus.on('message_status_update', (data) => this.handleMessageStatusUpdate(data));
             this.eventBus.on('error', (data) => this.handleError(data));
-
-            // Feedback continuation events (UI state only)
-            this.eventBus.on('simulation.feedback.continue_conversation', () => {
-                this.feedbackContinueConversation = true;
-            });
-            this.eventBus.on('simulation.hotwash.continue_conversation', () => {
-                this.feedbackContinueConversation = true;
-            });
         },
 
         /**
@@ -216,13 +337,14 @@ function ChatManager(simulation_id, currentUser) {
 
         handleChatMessage(data) {
             // Determine if message is from AI (incoming) or from current user (outgoing)
-            const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? data.isFromAI ?? false;
+            const isFromSimulatedUser = data.isFromLLM ?? data.isFromAi ?? data.isFromAI ?? data.is_from_ai ?? false;
             const senderId = data.senderId ?? data.sender_id;
             const isFromSelf = !isFromSimulatedUser && (
                 senderId === parseInt(this.currentUser) ||
                 data.user === this.currentUser
             );
             const messageId = data.message_id ?? data.id;
+            const msgConversationId = data.conversation_id ?? null;
 
             // If from simulated user (AI), stop typing indicator
             if (isFromSimulatedUser) {
@@ -233,6 +355,25 @@ function ChatManager(simulation_id, currentUser) {
                     localStorage.removeItem('seenSidebarTray');
                     if (this.sidebarGesture) this.sidebarGesture.shouldPulse = true;
                 }
+            }
+
+            // Route by conversation: if message belongs to a different conversation,
+            // increment unread badge instead of rendering in the active view.
+            // Use immutable update to ensure Alpine reactivity triggers.
+            if (msgConversationId && msgConversationId !== this.activeConversationId) {
+                this.conversations = this.conversations.map(c =>
+                    c.id === msgConversationId
+                        ? { ...c, _unread: (c._unread || 0) + 1 }
+                        : c
+                );
+
+                // Play receive sound even for background conversation messages
+                const receiveSound = document.getElementById("receive-sound");
+                if (!isFromSelf && receiveSound) {
+                    receiveSound.currentTime = 0;
+                    receiveSound.play().catch(() => {});
+                }
+                return;
             }
 
             // Play receive sound for incoming messages
@@ -269,11 +410,9 @@ function ChatManager(simulation_id, currentUser) {
                 }
             }
 
-            const isFeedbackConversation = !!data.feedbackConversation;
             this.appendMessage(
                 content,
                 isFromSelf,
-                isFeedbackConversation,
                 status,
                 displayName,
                 messageId,
@@ -378,13 +517,16 @@ function ChatManager(simulation_id, currentUser) {
          */
         async sendMessage() {
             const message = this.messageText.trim();
-            if (!message || this.isChatLocked) return;
+            if (!message) return;
+
+            // Check active conversation lock
+            const conv = this.getActiveConversation();
+            if (conv?.is_locked) return;
 
             // Optimistic UI: show message immediately
             this.appendMessage(
                 message,
                 true,
-                this.feedbackContinueConversation,
                 'sent',
                 this.currentUser,
             );
@@ -402,6 +544,15 @@ function ChatManager(simulation_id, currentUser) {
             this.simulateSystemTyping(true);
 
             try {
+                const body = {
+                    content: message,
+                    message_type: 'text',
+                };
+                // Include conversation_id so server routes to correct conversation
+                if (this.activeConversationId) {
+                    body.conversation_id = this.activeConversationId;
+                }
+
                 const response = await fetch(
                     `/api/v1/simulations/${this.simulation_id}/messages/`,
                     {
@@ -410,10 +561,7 @@ function ChatManager(simulation_id, currentUser) {
                             'Content-Type': 'application/json',
                             'X-CSRFToken': this.csrfToken,
                         },
-                        body: JSON.stringify({
-                            content: message,
-                            message_type: 'text',
-                        }),
+                        body: JSON.stringify(body),
                     }
                 );
 
@@ -439,8 +587,8 @@ function ChatManager(simulation_id, currentUser) {
             await this.sendMessage();
         },
 
-        appendMessage(content, isFromSelf, isFeedbackConversation, status = "", displayName = "", messageId = null, mediaList = []) {
-            console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName, isFeedbackConversation });
+        appendMessage(content, isFromSelf, status = "", displayName = "", messageId = null, mediaList = []) {
+            console.info("[ChatManager] New message!", { content, isFromSelf, status, displayName });
 
             content = this._coerceContent(content);
             status = status || "";
@@ -482,9 +630,12 @@ function ChatManager(simulation_id, currentUser) {
             }
 
             if (!existing && content) {
-                existing = Array.from(this.messagesDiv.children).find(div =>
-                    div.textContent.includes(content)
-                );
+                // Use exact match on the message content element to avoid false positives
+                // from substring matching against display names, timestamps, etc.
+                const contentEls = this.messagesDiv.querySelectorAll('.chat-bubble .break-words');
+                existing = Array.from(contentEls).find(el =>
+                    el.textContent.trim() === content
+                )?.closest('.chat-bubble') || null;
                 if (existing && messageId) {
                     existing.dataset.messageId = messageId;
                 }
@@ -566,6 +717,22 @@ function ChatManager(simulation_id, currentUser) {
                 .replace(/'/g, "&#039;");
         },
 
+        /**
+         * Load the initial batch of messages for the active conversation.
+         * Called after conversations are loaded (replaces hx-trigger="load" to avoid race).
+         */
+        loadInitialMessages() {
+            if (!this.activeConversationId) {
+                // No conversations yet — fall back to unfiltered load
+                this.loadOlderMessages();
+                return;
+            }
+            const url = `/chatlab/simulation/${this.simulation_id}/refresh/?conversation_id=${this.activeConversationId}`;
+            htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' }).then(() => {
+                this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+            });
+        },
+
         loadOlderMessages() {
             console.debug("[ChatManager] loadOlderMessages() called");
             const container = document.getElementById('chat-messages');
@@ -587,7 +754,10 @@ function ChatManager(simulation_id, currentUser) {
                 }
 
                 const previousHeight = container.scrollHeight;
-                const url = `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`;
+                let url = `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`;
+                if (this.activeConversationId) {
+                    url += `&conversation_id=${this.activeConversationId}`;
+                }
 
                 // Use single HTMX request with afterSwap handler
                 htmx.ajax('GET', url, {

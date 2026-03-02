@@ -53,7 +53,7 @@ def list_conversations(
 
 @router.post(
     "/{simulation_id}/conversations/",
-    response={201: ConversationOut},
+    response={200: ConversationOut, 201: ConversationOut},
     summary="Create a conversation",
     description="Creates a new conversation in a simulation (e.g. start a Stitch feedback chat).",
 )
@@ -80,8 +80,8 @@ def create_conversation(
         simulation=sim, conversation_type=conv_type
     ).first()
     if existing:
-        # Return the existing conversation rather than error
-        return 201, conversation_to_out(existing)
+        # Return the existing conversation (200, not 201 — nothing was created)
+        return 200, conversation_to_out(existing)
 
     # Derive display name from conversation type
     if conv_type.ai_persona == "stitch":

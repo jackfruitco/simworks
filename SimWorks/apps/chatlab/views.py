@@ -124,23 +124,6 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
         "simulation_locked": simulation.is_complete,
     }
 
-    # Checks for feedback continuation -
-    #   If a simulation has ended, but the user requests to continue feedback discussion,
-    #   a request will be made to run_simulation with feedback_continue_conversation=True
-    #   This will override the simulation lock to allow user's to type in the chat window.
-    val = request.GET.get("feedback_continue_conversation", "").lower()
-    feedback_continuation = val in ("true", "1", "yes", "on")
-    context["feedback_continuation"] = feedback_continuation
-
-    if feedback_continuation:
-        context["simulation_locked"] = False
-
-        logger.debug(
-            "Simulation pk=%s: user requesting feedback continuation. "
-            "Overriding context (simulation_locked=%s, feedback_continuation=%s)",
-            simulation_id, context["simulation_locked"], context["feedback_continuation"],
-        )
-
     return await sync_to_async(render)(request, "chatlab/simulation.html", context)
 
 
@@ -152,27 +135,43 @@ def get_metadata_checksum(request, simulation_id):
 
 
 @require_GET
+@login_required
 def refresh_messages(request, simulation_id):
-    messages = Message.objects.filter(simulation_id=simulation_id).order_by(
-        "-timestamp"
-    )[:5]
-    messages = reversed(messages)  # Show oldest at top
-    return render(request, "chatlab/partials/messages.html", {"messages": messages})
+    get_object_or_404(Simulation, id=simulation_id, user=request.user)
+    qs = Message.objects.filter(simulation_id=simulation_id)
+
+    # Filter by conversation when specified (multi-conversation support)
+    conversation_id = request.GET.get("conversation_id")
+    if conversation_id:
+        qs = qs.filter(conversation_id=conversation_id)
+
+    msg_list = qs.order_by("-timestamp")[:5]
+    msg_list = reversed(msg_list)  # Show oldest at top
+    return render(request, "chatlab/partials/messages.html", {"messages": msg_list})
 
 
 @require_GET
+@login_required
 def load_older_messages(request, simulation_id):
+    get_object_or_404(Simulation, id=simulation_id, user=request.user)
     before_id = request.GET.get("before")
     try:
         before_message = Message.objects.get(id=before_id)
     except Message.DoesNotExist:
         return JsonResponse({"error": "Message not found."}, status=404)
 
-    messages = Message.objects.filter(
+    qs = Message.objects.filter(
         simulation_id=simulation_id, timestamp__lt=before_message.timestamp
-    ).order_by("-timestamp")[:5]
-    messages = reversed(messages)
-    return render(request, "chatlab/partials/messages.html", {"messages": messages})
+    )
+
+    # Filter by conversation when specified (multi-conversation support)
+    conversation_id = request.GET.get("conversation_id")
+    if conversation_id:
+        qs = qs.filter(conversation_id=conversation_id)
+
+    msg_list = qs.order_by("-timestamp")[:5]
+    msg_list = reversed(msg_list)
+    return render(request, "chatlab/partials/messages.html", {"messages": msg_list})
 
 
 from django.views.decorators.http import require_POST
@@ -211,6 +210,7 @@ def end_simulation(request, simulation_id):
 @login_required
 def get_single_message(request, simulation_id, message_id):
     """Return HTML for a single message (for HTMX append after WebSocket notification)."""
+    get_object_or_404(Simulation, id=simulation_id, user=request.user)
     try:
         message = Message.objects.select_related("sender").prefetch_related("media").get(
             id=message_id,

@@ -69,20 +69,18 @@
 
     <div class="tool-panel-actions">
         {% if tool.name|lower == "simulation_feedback" %}
-        <form method="POST"
-              action="{% url 'chatlab:run_simulation' simulation.id %}?feedback_continue_conversation=true"
-              x-show="
-                {{ simulation_locked|default_if_none:False|yesno:'true,false' }}
-                && !{{ feedback_continuation|default_if_none:False|yesno:'true,false' }}
-              "
-              @click.stop>
-            {% csrf_token %}
-            <button type="submit"
-                    class="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200">
-                <span class="iconify mr-1" data-icon="mdi:message-reply" data-inline="true"></span>
-                Continue with Stitch
-            </button>
-        </form>
+        <button type="button"
+                x-show="{{ simulation_locked|default_if_none:False|yesno:'true,false' }}"
+                x-cloak
+                @click.stop="
+                    document.getElementById('chat-panel')?.dispatchEvent(
+                        new CustomEvent('stitch:create', { bubbles: false })
+                    );
+                "
+                class="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200">
+            <span class="iconify mr-1" data-icon="mdi:robot" data-inline="true"></span>
+            Continue with Stitch
+        </button>
         {% endif %}
 
         <button type="button"

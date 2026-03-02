@@ -98,19 +98,53 @@ def _enqueue_patient_reply(
         return None
 
 
+def _enqueue_stitch_reply(
+    simulation_id: int, user_msg_pk: int, conversation_id: int,
+) -> str | None:
+    """Enqueue the GenerateStitchReply service for a user message.
+
+    Returns the call_id if successfully enqueued, None otherwise.
+    """
+    from apps.chatlab.orca.services import GenerateStitchReply
+
+    context = {
+        "simulation_id": simulation_id,
+        "user_msg": user_msg_pk,
+        "conversation_id": conversation_id,
+    }
+
+    async def _enqueue():
+        return await GenerateStitchReply.task.using(context=context).aenqueue()
+
+    try:
+        call_id = async_to_sync(_enqueue)()
+        logger.info(
+            "service.enqueued",
+            service="GenerateStitchReply",
+            simulation_id=simulation_id,
+            user_msg_pk=user_msg_pk,
+            conversation_id=conversation_id,
+            call_id=call_id,
+        )
+        return call_id
+    except Exception as e:
+        logger.exception(
+            "service.enqueue_failed",
+            service="GenerateStitchReply",
+            simulation_id=simulation_id,
+            user_msg_pk=user_msg_pk,
+            error=str(e),
+        )
+        return None
+
+
 def _enqueue_ai_reply(conversation, simulation_id: int, user_msg_pk: int) -> str | None:
     """Dispatch to the correct AI service based on conversation type's ai_persona."""
     persona = conversation.conversation_type.ai_persona
     if persona == "patient":
         return _enqueue_patient_reply(simulation_id, user_msg_pk, conversation.id)
     elif persona == "stitch":
-        # Stitch service will be implemented in PR 2
-        logger.info(
-            "service.stitch_not_yet_implemented",
-            simulation_id=simulation_id,
-            conversation_id=conversation.id,
-        )
-        return None
+        return _enqueue_stitch_reply(simulation_id, user_msg_pk, conversation.id)
     else:
         logger.warning(
             "service.unknown_persona",
@@ -145,30 +179,30 @@ def list_messages(
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user)
 
-    # Base queryset
-    queryset = Message.objects.filter(simulation=sim, is_deleted=False)
+    # Base queryset with select_related to avoid N+1 on conversation_type
+    queryset = Message.objects.filter(simulation=sim, is_deleted=False).select_related(
+        "conversation__conversation_type"
+    )
 
     # Filter by conversation if specified
     if conversation_id is not None:
         queryset = queryset.filter(conversation_id=conversation_id)
 
-    # Apply ordering
+    # Apply ordering using pk (stable, monotonic cursor)
     if order == "desc":
-        queryset = queryset.order_by("-order")
-        # Cursor is for messages with order < cursor
+        queryset = queryset.order_by("-pk")
         if cursor:
             try:
-                cursor_order = int(cursor)
-                queryset = queryset.filter(order__lt=cursor_order)
+                cursor_pk = int(cursor)
+                queryset = queryset.filter(pk__lt=cursor_pk)
             except (ValueError, TypeError):
                 raise HttpError(400, "Invalid cursor format")
     else:
-        queryset = queryset.order_by("order")
-        # Cursor is for messages with order > cursor
+        queryset = queryset.order_by("pk")
         if cursor:
             try:
-                cursor_order = int(cursor)
-                queryset = queryset.filter(order__gt=cursor_order)
+                cursor_pk = int(cursor)
+                queryset = queryset.filter(pk__gt=cursor_pk)
             except (ValueError, TypeError):
                 raise HttpError(400, "Invalid cursor format")
 
@@ -182,7 +216,7 @@ def list_messages(
     next_cursor = None
     if has_more and messages:
         last_message = messages[-1]
-        next_cursor = str(last_message.order)
+        next_cursor = str(last_message.pk)
 
     return MessageListResponse(
         items=[message_to_out(msg) for msg in messages],
