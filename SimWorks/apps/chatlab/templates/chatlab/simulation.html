@@ -19,8 +19,7 @@
 
 {% block context_attrs %}
     {{ block.super }}
-    data-feedback-continuation="{{ feedback_continuation|yesno:'true,false' }}"
-    data-is-chat-locked="{{ simulation.simulation_locked|yesno:'true,false' }}"
+    data-is-chat-locked="{{ simulation_locked|yesno:'true,false' }}"
     data-sim-id="{{ simulation.id }}"
     data-end-simulation-url="{% url 'chatlab:end_simulation' simulation.id %}"
 {% endblock context_attrs %}

@@ -44,6 +44,56 @@ async def _resolve_conversation_id(ctx: PersistContext) -> int | None:
     return conv
 
 
+async def persist_stitch_messages(
+    messages: list[ResultMessageItem], ctx: PersistContext
+) -> list:
+    """Persist ResultMessageItem list → chatlab.Message instances for Stitch.
+
+    Same pattern as ``persist_messages`` but uses the Stitch bot user and
+    requires ``conversation_id`` in context (no fallback to patient conversation).
+    """
+    from apps.chatlab.models import Message, RoleChoices
+    from apps.common.utils.accounts import get_system_user
+    from asgiref.sync import sync_to_async
+
+    stitch_user = await sync_to_async(get_system_user)("Stitch")
+    conversation_id = await _resolve_conversation_id(ctx)
+
+    created = []
+    attempt_obj = None
+    provider_response_id = None
+    extra = ctx.extra or {}
+    attempt_id = extra.get("service_call_attempt_id")
+    if attempt_id:
+        try:
+            from orchestrai_django.models import ServiceCallAttempt
+            attempt_obj = await ServiceCallAttempt.objects.aget(pk=attempt_id)
+        except Exception as exc:
+            logger.warning("Failed to load ServiceCallAttempt %s: %s", attempt_id, exc)
+    provider_response_id = extra.get("provider_response_id")
+
+    for msg in messages:
+        text = _extract_text(msg)
+        if not text:
+            continue
+
+        m = await Message.objects.acreate(
+            simulation_id=ctx.simulation_id,
+            conversation_id=conversation_id,
+            content=text,
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+            message_type="text",
+            sender=stitch_user,
+            display_name="Stitch",
+            service_call_attempt=attempt_obj,
+            provider_response_id=provider_response_id,
+        )
+        created.append(m)
+
+    return created
+
+
 async def persist_messages(
     messages: list[ResultMessageItem], ctx: PersistContext
 ) -> list:

@@ -107,7 +107,8 @@ export interface ChatMessageCreatedEvent extends BaseEvent {
     isFromLLM?: boolean;
     isFromAi?: boolean;
     status?: 'sent' | 'delivered' | 'read';
-    feedbackConversation?: boolean;
+    conversation_id?: number;
+    conversation_type?: string;
     mediaList?: MediaItem[];
 }
 
@@ -266,7 +267,7 @@ export interface SendMessageCommand {
     content: string;
     role: 'user';
     status?: 'sent';
-    feedbackConversation?: boolean;
+    conversation_id?: number;
 }
 
 /**

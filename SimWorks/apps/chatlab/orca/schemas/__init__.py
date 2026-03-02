@@ -3,9 +3,11 @@ from .patient import (
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
+from .stitch import StitchReplyOutputSchema
 
 __all__ = [
     "PatientInitialOutputSchema",
     "PatientReplyOutputSchema",
     "PatientResultsOutputSchema",
+    "StitchReplyOutputSchema",
 ]
