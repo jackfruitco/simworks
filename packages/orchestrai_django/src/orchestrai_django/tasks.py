@@ -866,16 +866,21 @@ def _inline_persist_service_call(call: ServiceCallModel):
     schema_instance = schema_cls.model_validate(call.output_data)
 
     ctx = call.context or {}
+    extra = dict(ctx)
+    extra.update(
+        {
+            "service_call_attempt_id": ctx.get("_service_call_attempt_id"),
+            "provider_response_id": call.provider_response_id,
+            "previous_provider_response_id": call.previous_provider_response_id,
+        }
+    )
+
     context = PersistContext(
         simulation_id=ctx.get("simulation_id", 0),
         call_id=call.id,
         audit_id=ctx.get("_ai_response_audit_id"),
         correlation_id=str(call.correlation_id) if call.correlation_id else None,
-        extra={
-            "service_call_attempt_id": ctx.get("_service_call_attempt_id"),
-            "provider_response_id": call.provider_response_id,
-            "previous_provider_response_id": call.previous_provider_response_id,
-        },
+        extra=extra,
     )
 
     domain_obj = async_to_sync(persist_schema)(schema_instance, context)

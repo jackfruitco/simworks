@@ -5,7 +5,6 @@ Tests the HTMX endpoints used for real-time message rendering.
 
 import pytest
 from django.test import Client
-from unittest.mock import patch
 
 
 @pytest.fixture
@@ -54,19 +53,152 @@ def simulation(db, user):
 
 
 @pytest.fixture
-def ai_message(db, simulation, system_user):
+def ai_message(db, simulation, system_user, patient_conversation):
     """Create a test AI message from the system user."""
     from apps.chatlab.models import Message, RoleChoices
 
-    with patch("chatlab.signals.poke_drain_sync"):
-        return Message.objects.create(
-            simulation=simulation,
-            sender=system_user,
-            content="Hello, I am your patient.",
-            role=RoleChoices.ASSISTANT,
-            is_from_ai=True,
-            display_name="Test Patient",
+    return Message.objects.create(
+        simulation=simulation,
+        conversation=patient_conversation,
+        sender=system_user,
+        content="Hello, I am your patient.",
+        role=RoleChoices.ASSISTANT,
+        is_from_ai=True,
+        display_name="Test Patient",
+    )
+
+
+@pytest.fixture
+def patient_conversation(db, simulation):
+    """Create a patient conversation for refresh endpoint tests."""
+    from apps.simcore.models import Conversation, ConversationType
+
+    conv_type = ConversationType.objects.create(
+        slug="test_simulated_patient",
+        display_name="Patient",
+        ai_persona="patient",
+        locks_with_simulation=True,
+    )
+    return Conversation.objects.create(
+        simulation=simulation,
+        conversation_type=conv_type,
+        display_name="Patient",
+        display_initials="Pt",
+    )
+
+
+@pytest.fixture
+def feedback_conversation(db, simulation):
+    """Create a second conversation to validate conversation filtering."""
+    from apps.simcore.models import Conversation, ConversationType
+
+    conv_type = ConversationType.objects.create(
+        slug="test_simulated_feedback",
+        display_name="Feedback",
+        ai_persona="stitch",
+        locks_with_simulation=False,
+    )
+    return Conversation.objects.create(
+        simulation=simulation,
+        conversation_type=conv_type,
+        display_name="Feedback",
+        display_initials="Fb",
+    )
+
+
+@pytest.fixture
+def patient_conversation_message(db, simulation, system_user, patient_conversation):
+    """Create a message in the patient conversation."""
+    from apps.chatlab.models import Message, RoleChoices
+
+    return Message.objects.create(
+        simulation=simulation,
+        conversation=patient_conversation,
+        sender=system_user,
+        content="Patient conversation message",
+        role=RoleChoices.ASSISTANT,
+        is_from_ai=True,
+        display_name="Test Patient",
+    )
+
+
+@pytest.fixture
+def feedback_conversation_message(db, simulation, system_user, feedback_conversation):
+    """Create a message in the feedback conversation."""
+    from apps.chatlab.models import Message, RoleChoices
+
+    return Message.objects.create(
+        simulation=simulation,
+        conversation=feedback_conversation,
+        sender=system_user,
+        content="Feedback conversation message",
+        role=RoleChoices.ASSISTANT,
+        is_from_ai=True,
+        display_name="Stitch",
+    )
+
+
+@pytest.mark.django_db
+class TestRefreshMessages:
+    """Tests for message refresh HTMX endpoints."""
+
+    def test_refresh_messages_canonical_route_returns_200(
+        self, client: Client, user, simulation, patient_conversation_message
+    ):
+        client.force_login(user)
+
+        response = client.get(
+            f"/chatlab/simulation/{simulation.id}/refresh/messages/"
+            f"?conversation_id={patient_conversation_message.conversation_id}"
         )
+
+        assert response.status_code == 200
+        assert "text/html" in response["Content-Type"]
+        assert "Patient conversation message" in response.content.decode()
+
+    def test_refresh_messages_legacy_routes_return_200(
+        self, client: Client, user, simulation, patient_conversation_message
+    ):
+        client.force_login(user)
+
+        for route in ("refresh/", "refresh/input/"):
+            response = client.get(
+                f"/chatlab/simulation/{simulation.id}/{route}"
+                f"?conversation_id={patient_conversation_message.conversation_id}"
+            )
+            assert response.status_code == 200
+            assert "Patient conversation message" in response.content.decode()
+
+    def test_refresh_messages_filters_by_conversation_id(
+        self,
+        client: Client,
+        user,
+        simulation,
+        patient_conversation_message,
+        feedback_conversation_message,
+    ):
+        client.force_login(user)
+
+        response = client.get(
+            f"/chatlab/simulation/{simulation.id}/refresh/messages/"
+            f"?conversation_id={patient_conversation_message.conversation_id}"
+        )
+        content = response.content.decode()
+
+        assert response.status_code == 200
+        assert "Patient conversation message" in content
+        assert "Feedback conversation message" not in content
+
+    def test_refresh_messages_requires_authentication(
+        self, client: Client, simulation, patient_conversation_message
+    ):
+        for route in ("refresh/messages/", "refresh/", "refresh/input/"):
+            response = client.get(
+                f"/chatlab/simulation/{simulation.id}/{route}"
+                f"?conversation_id={patient_conversation_message.conversation_id}"
+            )
+            assert response.status_code == 302
+            assert "/accounts/login/" in response["Location"]
 
 
 @pytest.mark.django_db

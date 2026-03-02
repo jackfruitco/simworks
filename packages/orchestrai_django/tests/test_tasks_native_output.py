@@ -177,6 +177,7 @@ def test_inline_persist_uses_output_data_even_if_empty(monkeypatch):
 
     async def fake_persist_schema(schema, context):
         calls["persisted"] = True
+        calls["persist_context"] = context
         return object()
 
     def fake_resolve_schema_class(_):
@@ -187,9 +188,15 @@ def test_inline_persist_uses_output_data_even_if_empty(monkeypatch):
             self.id = "call-2"
             self.schema_fqn = "tests.schema.DummySchema"
             self.output_data = {}
-            self.context = {}
+            self.context = {
+                "simulation_id": 123,
+                "conversation_id": 456,
+                "_service_call_attempt_id": "attempt-1",
+            }
             self.correlation_id = None
             self.domain_persisted = False
+            self.provider_response_id = None
+            self.previous_provider_response_id = None
 
         def save(self, update_fields=None):
             self.saved_fields = update_fields
@@ -209,4 +216,7 @@ def test_inline_persist_uses_output_data_even_if_empty(monkeypatch):
 
     assert calls.get("validated") == {}
     assert calls.get("persisted") is True
+    assert calls["persist_context"].simulation_id == 123
+    assert calls["persist_context"].extra["conversation_id"] == 456
+    assert calls["persist_context"].extra["service_call_attempt_id"] == "attempt-1"
     assert call.domain_persisted is True

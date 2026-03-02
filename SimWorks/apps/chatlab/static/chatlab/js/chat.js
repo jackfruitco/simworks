@@ -221,7 +221,7 @@ function ChatManager(simulation_id, currentUser) {
             this._syncFormLock();
 
             // Reload messages for this conversation via HTMX
-            const url = `/chatlab/simulation/${this.simulation_id}/refresh/?conversation_id=${convId}`;
+            const url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/?conversation_id=${convId}`;
             htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' });
 
             this.hasMoreMessages = true;
@@ -727,7 +727,7 @@ function ChatManager(simulation_id, currentUser) {
                 this.loadOlderMessages();
                 return;
             }
-            const url = `/chatlab/simulation/${this.simulation_id}/refresh/?conversation_id=${this.activeConversationId}`;
+            const url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/?conversation_id=${this.activeConversationId}`;
             htmx.ajax('GET', url, { target: '#chat-messages', swap: 'innerHTML' }).then(() => {
                 this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
             });
@@ -754,7 +754,7 @@ function ChatManager(simulation_id, currentUser) {
                 }
 
                 const previousHeight = container.scrollHeight;
-                let url = `/chatlab/simulation/${this.simulation_id}/refresh/older-input/?before=${messageId}`;
+                let url = `/chatlab/simulation/${this.simulation_id}/refresh/messages/older/?before=${messageId}`;
                 if (this.activeConversationId) {
                     url += `&conversation_id=${this.activeConversationId}`;
                 }
