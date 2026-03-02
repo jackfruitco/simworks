@@ -3,7 +3,7 @@
 Provides list, create, and detail operations for conversations within simulations.
 """
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
@@ -125,14 +125,6 @@ def create_conversation(
     except ConversationType.DoesNotExist:
         raise HttpError(400, f"Unknown conversation type: {body.conversation_type}")
 
-    # Check if this conversation type already exists for this simulation
-    existing = Conversation.objects.filter(
-        simulation=sim, conversation_type=conv_type
-    ).first()
-    if existing:
-        # Return the existing conversation (200, not 201 — nothing was created)
-        return 200, conversation_to_out(existing)
-
     # Derive display name from conversation type
     if conv_type.ai_persona == "stitch":
         display_name = "Stitch"
@@ -141,15 +133,21 @@ def create_conversation(
         display_name = conv_type.display_name
         display_initials = conv_type.display_name[:2]
 
-    with transaction.atomic():
-        conv = Conversation.objects.create(
-            simulation=sim,
-            conversation_type=conv_type,
-            display_name=display_name,
-            display_initials=display_initials,
-        )
-        if conv_type.slug == "simulated_feedback":
-            _create_feedback_starter_message(sim, conv)
+    try:
+        with transaction.atomic():
+            conv, created = Conversation.objects.get_or_create(
+                simulation=sim,
+                conversation_type=conv_type,
+                defaults={
+                    "display_name": display_name,
+                    "display_initials": display_initials,
+                },
+            )
+            if created and conv_type.slug == "simulated_feedback":
+                _create_feedback_starter_message(sim, conv)
+    except IntegrityError:
+        conv = Conversation.objects.get(simulation=sim, conversation_type=conv_type)
+        created = False
 
     logger.info(
         "conversation.created",
@@ -158,7 +156,8 @@ def create_conversation(
         conversation_type=body.conversation_type,
     )
 
-    return 201, conversation_to_out(conv)
+    status_code = 201 if created else 200
+    return status_code, conversation_to_out(conv)
 
 
 @router.get(

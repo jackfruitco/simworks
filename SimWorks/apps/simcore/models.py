@@ -152,6 +152,12 @@ class Conversation(PersistModel):
                 name="idx_conv_sim_type",
             ),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["simulation", "conversation_type"],
+                name="uniq_conversation_simulation_type",
+            ),
+        ]
         ordering = ["created_at"]
 
     @property
