@@ -12,7 +12,7 @@ FROM node:20-bookworm-slim AS assets
 WORKDIR /app
 
 COPY package.json package-lock.json* postcss.config.js tailwind.config.js ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --cache /tmp/.npm
 
 COPY SimWorks /app/SimWorks
 RUN npm run build:css

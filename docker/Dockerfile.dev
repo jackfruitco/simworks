@@ -52,7 +52,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists \
 USER appuser
 
 COPY package.json package-lock.json* postcss.config.js tailwind.config.js /app/
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --cache /tmp/.npm
 
 COPY SimWorks /app/SimWorks
 COPY --chown=appuser:appuser --chmod=0755 docker/entrypoint.sh /app/docker/entrypoint.sh
