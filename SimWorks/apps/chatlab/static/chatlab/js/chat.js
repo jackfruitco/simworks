@@ -1001,23 +1001,18 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
                     <span class="iconify status-icon sending-icon absolute left-0 top-0 text-[11px] text-content-secondary ${normalizedStatus === 'sending' ? '' : 'hidden'}" data-icon="svg-spinners:3-dots-scale"></span>
                     <span class="iconify status-icon sent-icon absolute left-0 top-0 text-[11px] text-content-secondary ${normalizedStatus === 'sent' ? '' : 'hidden'}" data-icon="fa6-regular:circle-check"></span>
                     <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary ${normalizedStatus === 'delivered' ? '' : 'hidden'}" data-icon="fa6-solid:check-double"></span>
-<<<<<<< ours
-                    <span class="iconify status-icon failed-icon absolute left-0 top-0 text-[11px] text-red-500 ${normalizedStatus === 'failed' ? '' : 'hidden'}" data-icon="fa6-solid:triangle-exclamation"></span>
-=======
->>>>>>> theirs
+
+                    <!--<span class="iconify status-icon failed-icon absolute left-0 top-0 text-[11px] text-red-500 ${normalizedStatus === 'failed' ? '' : 'hidden'}" data-icon="fa6-solid:triangle-exclamation"></span> -->
                 </span>
             `;
         },
 
         _normalizeDeliveryStatus(status) {
-<<<<<<< ours
-            return ['sending', 'sent', 'delivered', 'failed'].includes(status) ? status : 'sent';
-=======
+            // return ['sending', 'sent', 'delivered', 'failed'].includes(status) ? status : 'sent';
             // Temporary hotfix: suppress failed indicator in UI until backend status
             // transitions are fully corrected in a follow-up release.
             if (status === 'failed') return 'delivered';
             return ['sending', 'sent', 'delivered'].includes(status) ? status : 'sent';
->>>>>>> theirs
         },
 
         _setStatusIcons(statusIcons, status) {
@@ -1029,10 +1024,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
                 sending: statusIcons.querySelector('.sending-icon'),
                 sent: statusIcons.querySelector('.sent-icon'),
                 delivered: statusIcons.querySelector('.delivered-icon'),
-<<<<<<< ours
-                failed: statusIcons.querySelector('.failed-icon'),
-=======
->>>>>>> theirs
+                // failed: statusIcons.querySelector('.failed-icon'),
             };
 
             Object.entries(iconByStatus).forEach(([name, el]) => {
@@ -1066,12 +1058,9 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
         },
 
         _syncRetryButton(bubble, data = {}) {
-<<<<<<< ours
-            const status = data.status || bubble.querySelector('.status-icons')?.dataset?.status;
-=======
+            // const status = data.status || bubble.querySelector('.status-icons')?.dataset?.status;
             const rawStatus = data.status || bubble.querySelector('.status-icons')?.dataset?.status;
             const status = this._normalizeDeliveryStatus(rawStatus);
->>>>>>> theirs
             const retryable = data.retryable !== false;
             let retryButton = bubble.querySelector('.js-retry-message');
 
