@@ -9,9 +9,9 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_MIGRATE: "1"
-      DJANGO_CREATE_DEFAULT_ROLES: "1"
-      DJANGO_COLLECTSTATIC: "0"
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-0}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-0}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-0}
     expose:
       - 8000
     hostname: 'server'
@@ -46,9 +46,9 @@ services:
     environment:
       CHOKIDAR_USEPOLLING: "1"
       CHOKIDAR_INTERVAL: "300"
-      DJANGO_MIGRATE: "0"
-      DJANGO_CREATE_DEFAULT_ROLES: "0"
-      DJANGO_COLLECTSTATIC: "0"
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-0}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-0}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-0}
     command: ["npm", "run", "watch:css:docker"]
     volumes:
       - ../SimWorks:/app/SimWorks
