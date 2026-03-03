@@ -32,6 +32,10 @@
  *   - sim:typing
  *   - sim:stopped_typing
  *   - sim:simulation.feedback_created
+ *   - sim:message_status_update
+ *   - sim:simulation.state_changed
+ *   - sim:feedback.failed
+ *   - sim:feedback.retrying
  *   - sim:simulation.metadata.results_created
  *   - sim:error
  *   - sim:connected

@@ -114,7 +114,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         # Simulate sim patient typing to the client
-        if is_new_simulation:
+        if is_new_simulation and self.simulation.status == Simulation.SimulationStatus.IN_PROGRESS:
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -214,15 +214,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        if simulation.end_timestamp:
+        if simulation.is_complete:
             return True
 
         if (
                 simulation.time_limit
                 and (simulation.start_timestamp + simulation.time_limit) < timezone.now()
         ):
-            simulation.end_timestamp = timezone.now()
-            await sync_to_async(simulation.save)()
+            await sync_to_async(simulation.mark_timed_out)()
 
             # Send notification to the user
             await self.channel_layer.group_send(
@@ -489,6 +488,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "type": "message_status_update",
                     "id": event["id"],
                     "status": event["status"],
+                    "retryable": event.get("retryable"),
+                    "error_code": event.get("error_code"),
+                    "error_text": event.get("error_text"),
                 },
                 default=json_default,
             )

@@ -5,12 +5,13 @@ Provides CRUD operations for simulations.
 
 from datetime import timedelta
 
+from asgiref.sync import async_to_sync
+from django.db.models import Q
 from django.http import HttpRequest
-from django.utils.timezone import now
 from ninja import Query, Router
 from ninja.errors import HttpError
 
-from api.v1.auth import JWTAuth
+from api.v1.auth import DualAuth
 from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.simulations import (
     SimulationCreate,
@@ -23,7 +24,62 @@ from apps.common.ratelimit import api_rate_limit
 
 logger = get_logger(__name__)
 
-router = Router(tags=["simulations"], auth=JWTAuth())
+router = Router(tags=["simulations"], auth=DualAuth())
+USER_RETRY_LIMIT = 2
+
+
+def _emit_feedback_event(simulation_id: int, event_type: str, payload: dict) -> None:
+    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+
+    event = enqueue_event_sync(
+        event_type=event_type,
+        simulation_id=simulation_id,
+        payload=payload,
+    )
+    if event:
+        poke_drain_sync()
+
+
+def _enqueue_initial_response(simulation, conversation_id: int) -> str | None:
+    from apps.chatlab.orca.services import GenerateInitialResponse
+
+    async def _enqueue():
+        return await GenerateInitialResponse.task.using(
+            context={
+                "simulation_id": simulation.id,
+                "user_id": simulation.user_id,
+                "conversation_id": conversation_id,
+            }
+        ).aenqueue()
+
+    try:
+        return async_to_sync(_enqueue)()
+    except Exception:
+        logger.exception(
+            "service.enqueue_failed",
+            service="GenerateInitialResponse",
+            simulation_id=simulation.id,
+        )
+        return None
+
+
+def _enqueue_feedback(simulation_id: int) -> str | None:
+    from apps.simcore.orca.services import GenerateInitialFeedback
+
+    async def _enqueue():
+        return await GenerateInitialFeedback.task.using(
+            context={"simulation_id": simulation_id}
+        ).aenqueue()
+
+    try:
+        return async_to_sync(_enqueue)()
+    except Exception:
+        logger.exception(
+            "service.enqueue_failed",
+            service="GenerateInitialFeedback",
+            simulation_id=simulation_id,
+        )
+        return None
 
 
 @router.get(
@@ -37,7 +93,10 @@ def list_simulations(
     request: HttpRequest,
     limit: int = Query(default=20, ge=1, le=100, description="Max items to return"),
     cursor: str | None = Query(default=None, description="Cursor for pagination (simulation ID)"),
-    status: str | None = Query(default=None, description="Filter by status: in_progress, completed"),
+    status: str | None = Query(
+        default=None,
+        description="Filter by status: in_progress, completed, timed_out, failed, canceled",
+    ),
 ) -> PaginatedResponse[SimulationOut]:
     """List all simulations for the authenticated user."""
     from apps.simcore.models import Simulation
@@ -47,9 +106,15 @@ def list_simulations(
 
     # Apply status filter
     if status == "in_progress":
-        queryset = queryset.filter(end_timestamp__isnull=True)
+        queryset = queryset.filter(status="in_progress", end_timestamp__isnull=True)
     elif status == "completed":
-        queryset = queryset.filter(end_timestamp__isnull=False)
+        queryset = queryset.filter(
+            Q(status="completed") | Q(status="in_progress", end_timestamp__isnull=False)
+        )
+    elif status in {"failed", "canceled"}:
+        queryset = queryset.filter(status=status)
+    elif status == "timed_out":
+        queryset = queryset.filter(status="timed_out")
 
     # Apply cursor-based pagination (using ID for simplicity)
     if cursor:
@@ -160,3 +225,118 @@ def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndRes
         end_timestamp=sim.end_timestamp,
         status="completed",
     )
+
+
+@router.post(
+    "/{simulation_id}/retry-initial/",
+    response={202: SimulationOut},
+    summary="Retry initial simulation generation",
+    description="Retries initial patient generation for a failed simulation.",
+)
+@api_rate_limit
+def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, SimulationOut]:
+    from apps.simcore.models import Simulation, Conversation, ConversationType
+
+    user = request.auth
+    try:
+        sim = Simulation.objects.get(pk=simulation_id, user=user)
+    except Simulation.DoesNotExist:
+        raise HttpError(404, "Simulation not found")
+
+    if sim.status != Simulation.SimulationStatus.FAILED:
+        raise HttpError(400, "Simulation is not in failed state")
+
+    if not (
+        sim.terminal_reason_code.startswith("initial_generation")
+        or sim.terminal_reason_code in {"provider_timeout", "provider_transient_error"}
+    ):
+        raise HttpError(400, "Initial generation retry is not available for this failure")
+
+    if sim.initial_retry_count >= USER_RETRY_LIMIT:
+        raise HttpError(400, "Retry limit reached for initial generation")
+
+    patient_type = ConversationType.objects.filter(slug="simulated_patient").first()
+    if not patient_type:
+        raise HttpError(500, "Patient conversation type is not configured")
+
+    conversation, _ = Conversation.objects.get_or_create(
+        simulation=sim,
+        conversation_type=patient_type,
+        defaults={
+            "display_name": sim.sim_patient_display_name or patient_type.display_name,
+            "display_initials": sim.sim_patient_initials or "Unk",
+        },
+    )
+
+    sim.initial_retry_count += 1
+    sim.save(update_fields=["initial_retry_count"])
+    sim.mark_in_progress()
+
+    call_id = _enqueue_initial_response(sim, conversation.id)
+    if not call_id:
+        retryable = sim.initial_retry_count < USER_RETRY_LIMIT
+        sim.mark_failed(
+            reason_code="initial_generation_enqueue_failed",
+            reason_text="We could not restart this simulation. Please try again.",
+            retryable=retryable,
+        )
+        raise HttpError(500, "Failed to enqueue initial generation retry")
+
+    return 202, simulation_to_out(sim)
+
+
+@router.post(
+    "/{simulation_id}/retry-feedback/",
+    response={202: SimulationOut},
+    summary="Retry feedback generation",
+    description="Retries post-simulation feedback generation.",
+)
+@api_rate_limit
+def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, SimulationOut]:
+    from apps.simcore.models import Simulation
+
+    user = request.auth
+    try:
+        sim = Simulation.objects.get(pk=simulation_id, user=user)
+    except Simulation.DoesNotExist:
+        raise HttpError(404, "Simulation not found")
+
+    if sim.status not in {
+        Simulation.SimulationStatus.COMPLETED,
+        Simulation.SimulationStatus.TIMED_OUT,
+    }:
+        raise HttpError(400, "Feedback retry is only available for ended simulations")
+
+    if sim.feedback_retry_count >= USER_RETRY_LIMIT:
+        raise HttpError(400, "Retry limit reached for feedback generation")
+
+    sim.feedback_retry_count += 1
+    sim.save(update_fields=["feedback_retry_count"])
+
+    _emit_feedback_event(
+        simulation_id=sim.id,
+        event_type="feedback.retrying",
+        payload={
+            "simulation_id": sim.id,
+            "retryable": sim.feedback_retry_count < USER_RETRY_LIMIT,
+            "retry_count": sim.feedback_retry_count,
+        },
+    )
+
+    call_id = _enqueue_feedback(sim.id)
+    if not call_id:
+        retryable = sim.feedback_retry_count < USER_RETRY_LIMIT
+        _emit_feedback_event(
+            simulation_id=sim.id,
+            event_type="feedback.failed",
+            payload={
+                "simulation_id": sim.id,
+                "error_code": "feedback_enqueue_failed",
+                "error_text": "Feedback generation failed. Please try again.",
+                "retryable": retryable,
+                "retry_count": sim.feedback_retry_count,
+            },
+        )
+        raise HttpError(500, "Failed to enqueue feedback retry")
+
+    return 202, simulation_to_out(sim)

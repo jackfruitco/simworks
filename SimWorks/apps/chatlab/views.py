@@ -20,6 +20,7 @@ from apps.simcore.tools import aget_tool, alist_tools
 from .models import Message
 
 logger = logging.getLogger(__name__)
+INITIAL_RETRY_LIMIT = 2
 
 
 @login_required
@@ -114,6 +115,11 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
     await maybe_start_simulation(simulation)
 
     logger.debug(f"Sim{simulation_id} requested tools: {included_tools} ")
+    simulation_retryable = (
+        simulation.status == Simulation.SimulationStatus.FAILED
+        and simulation.terminal_reason_code.startswith("initial_generation")
+        and simulation.initial_retry_count < INITIAL_RETRY_LIMIT
+    )
 
     context = {
         "simulation": simulation,
@@ -122,6 +128,10 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
         "sim_end_unix": simulation.end_timestamp_ms or 0,
         "time_limit_ms": simulation.time_limit_ms or 0,
         "simulation_locked": simulation.is_complete,
+        "simulation_status": simulation.status,
+        "simulation_terminal_reason_code": simulation.terminal_reason_code,
+        "simulation_terminal_reason_text": simulation.terminal_reason_text,
+        "simulation_retryable": simulation_retryable,
     }
 
     return await sync_to_async(render)(request, "chatlab/simulation.html", context)
