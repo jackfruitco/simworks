@@ -29,6 +29,7 @@
       x-text="time">{{ message.timestamp|date:"H:i" }}</time>
     {% if message.sender and message.sender == user %}
     <span class="status-icons relative ml-1 inline-flex h-4 w-5"
+<<<<<<< ours
           data-status="{{ message.delivery_status|default:'sent' }}">
       <span class="iconify status-icon sent-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status|default:'sent' != 'sent' %}hidden{% endif %}"
             data-icon="fa6-regular:circle-check"
@@ -39,6 +40,15 @@
       <span class="iconify status-icon failed-icon absolute left-0 top-0 text-[11px] text-red-500 {% if message.delivery_status != 'failed' %}hidden{% endif %}"
             data-icon="fa6-solid:triangle-exclamation"
             data-inline="false"></span>
+=======
+          data-status="{% if message.delivery_status == 'failed' %}delivered{% else %}{{ message.delivery_status|default:'sent' }}{% endif %}">
+      <span class="iconify status-icon sent-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status|default:'sent' != 'sent' %}hidden{% endif %}"
+            data-icon="fa6-regular:circle-check"
+            data-inline="false"></span>
+      <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status != 'delivered' and message.delivery_status != 'failed' %}hidden{% endif %}"
+            data-icon="fa6-solid:check-double"
+            data-inline="false"></span>
+>>>>>>> theirs
     </span>
     {% if message.delivery_status == 'failed' and message.delivery_retryable %}
     <button type="button"
