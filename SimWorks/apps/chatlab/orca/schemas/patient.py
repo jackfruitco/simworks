@@ -18,6 +18,24 @@ from .mixins import PatientResponseBaseMixin
 logger = logging.getLogger(__name__)
 
 
+def _metadata_kind(meta) -> str:
+    """Resolve metadata kind without touching lazy ORM relations in async context."""
+    model_name = getattr(getattr(meta, "_meta", None), "model_name", "") or ""
+    kind_by_model = {
+        "labresult": "lab_result",
+        "radresult": "rad_result",
+        "patienthistory": "patient_history",
+        "patientdemographics": "patient_demographics",
+        "simulationfeedback": "simulation_feedback",
+        "simulationmetadata": "generic",
+    }
+    if model_name in kind_by_model:
+        return kind_by_model[model_name]
+
+    class_name = meta.__class__.__name__.lower()
+    return kind_by_model.get(class_name, "generic")
+
+
 class PatientInitialOutputSchema(PatientResponseBaseMixin):
     """Output for the initial patient response turn.
 
@@ -92,7 +110,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
                 context=context,
                 payload_builder=lambda meta: {
                     "metadata_id": meta.id,
-                    "kind": meta.polymorphic_ctype.model if hasattr(meta, 'polymorphic_ctype') else "generic",
+                    "kind": _metadata_kind(meta),
                     "key": meta.key,
                     "value": meta.value,
                 },
@@ -219,7 +237,7 @@ class PatientResultsOutputSchema(BaseModel):
                 context=context,
                 payload_builder=lambda meta: {
                     "metadata_id": meta.id,
-                    "kind": meta.polymorphic_ctype.model if hasattr(meta, 'polymorphic_ctype') else "generic",
+                    "kind": _metadata_kind(meta),
                     "key": meta.key,
                     "value": meta.value,
                 },

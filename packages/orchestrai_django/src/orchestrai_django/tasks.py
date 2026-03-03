@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from dataclasses import dataclass
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
@@ -26,6 +27,24 @@ from orchestrai_django.models import (
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
+
+
+class _SuppressFailureEmitter:
+    """Emitter wrapper that suppresses per-attempt failure signals.
+
+    In `run_service_call`, retries are managed here. We only want to emit
+    `ai_response_failed` once on terminal failure (after retries exhausted),
+    not on each transient attempt exception.
+    """
+
+    def __init__(self, delegate):
+        self._delegate = delegate
+
+    def emit_failure(self, *args, **kwargs):
+        return None
+
+    def __getattr__(self, item):
+        return getattr(self._delegate, item)
 
 
 def _manual_extract_fields(obj):
@@ -299,6 +318,66 @@ def _get_retry_delay(attempt: int) -> int:
     return base * (2 ** (attempt - 1))
 
 
+@dataclass(frozen=True)
+class ErrorClassification:
+    system_retryable: bool
+    user_retryable: bool
+    reason_code: str
+
+
+def _emit_message_delivered_status(call: ServiceCallModel) -> None:
+    """Emit delivered status when the service attempt is dispatched.
+
+    Delivered means backend has successfully prepared and dispatched the provider call.
+    """
+    context = call.context or {}
+    user_msg_id = context.get("user_msg") or context.get("user_msg_id")
+    simulation_id = context.get("simulation_id")
+    if not user_msg_id or not simulation_id:
+        return
+
+    try:
+        from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+        from apps.chatlab.models import Message
+
+        try:
+            message = Message.objects.get(pk=user_msg_id)
+            message.delivery_status = Message.DeliveryStatus.DELIVERED
+            message.delivery_error_code = ""
+            message.delivery_error_text = ""
+            message.save(
+                update_fields=[
+                    "delivery_status",
+                    "delivery_error_code",
+                    "delivery_error_text",
+                ]
+            )
+        except Exception:
+            logger.debug("Could not update delivery status on message %s", user_msg_id, exc_info=True)
+
+        event = enqueue_event_sync(
+            event_type="message_status_update",
+            simulation_id=int(simulation_id),
+            payload={
+                "id": int(user_msg_id),
+                "status": "delivered",
+                "retryable": False,
+                "error_code": None,
+                "error_text": None,
+            },
+            idempotency_key=f"message_status_update:{user_msg_id}:delivered",
+        )
+        if event:
+            poke_drain_sync()
+    except Exception:
+        logger.debug(
+            "Failed to emit delivered status for call=%s user_msg=%s",
+            call.id,
+            user_msg_id,
+            exc_info=True,
+        )
+
+
 @task
 def run_service_call_task(call_id: str):
     """
@@ -315,7 +394,7 @@ def run_service_call(call_id: str):
 
     Uses ServiceCallAttempt to track individual execution attempts.
     Retries on failure up to ORCA_MAX_ATTEMPTS times (default: 4).
-    Uses exponential backoff between retries.
+    Retries are immediate.
     After max retries, marks call as failed and emits ai_response_failed signal.
     """
 
@@ -389,17 +468,24 @@ def run_service_call(call_id: str):
     service_cls = registry.get(Identity.get(call.service_identity))
     service = service_cls(**call.service_kwargs)
 
-    if getattr(service, "emitter", None) is None:
-        try:
+    # Suppress service-level per-attempt failure emissions inside retry loop.
+    # Terminal failure is emitted explicitly below when retries are exhausted.
+    try:
+        emitter = getattr(service, "emitter", None)
+        if emitter is None:
             service.emitter = _NullEmitter()
-        except Exception:
-            pass
+        else:
+            service.emitter = _SuppressFailureEmitter(emitter)
+    except Exception:
+        # Never break execution because of emitter decoration.
+        logger.debug("Failed to decorate service emitter for call=%s", call_id, exc_info=True)
 
     try:
         payload = call.input or {}
 
         # Mark attempt as dispatched before calling the service
         attempt_record.mark_dispatched()
+        _emit_message_delivered_status(call)
 
         # Prefer arun (Pydantic AI services), then aexecute, then execute
         if hasattr(service, "arun") and callable(service.arun):
@@ -670,27 +756,30 @@ def run_service_call(call_id: str):
         )
 
         # Mark attempt as failed
+        classification = _classify_error(exc)
+
         if attempt_record:
-            is_retryable = _is_retryable_error(exc)
-            attempt_record.mark_error(str(exc), is_retryable=is_retryable)
+            attempt_record.mark_error(
+                str(exc),
+                is_retryable=classification.system_retryable,
+            )
 
         # Check if we should retry
         remaining_attempts = max_attempts - current_attempt
-        should_retry = remaining_attempts > 0 and (attempt_record is None or attempt_record.is_retryable)
+        should_retry = remaining_attempts > 0 and (
+            attempt_record is None or attempt_record.is_retryable
+        )
 
         if should_retry:
-            delay = _get_retry_delay(current_attempt)
-
             call.status = CallStatus.IN_PROGRESS
             call.error = f"Attempt {current_attempt} failed: {str(exc)}"
             call.save(update_fields=["status", "error"])
 
             logger.info(
-                "Service call %s will retry (attempt %d/%d) after %ds backoff",
+                "Service call %s will retry immediately (attempt %d/%d)",
                 call_id,
                 current_attempt + 1,
                 max_attempts,
-                delay
             )
 
             run_service_call_task.enqueue(call_id=call_id)
@@ -722,7 +811,9 @@ def run_service_call(call_id: str):
                     sender=service.__class__,
                     call_id=call_id,
                     error=str(exc),
-                    context=call.context or {}
+                    context=call.context or {},
+                    reason_code=classification.reason_code,
+                    user_retryable=classification.user_retryable,
                 )
             except Exception:
                 logger.exception("Failed to emit ai_response_failed signal")
@@ -730,8 +821,8 @@ def run_service_call(call_id: str):
             return call.to_jsonable()
 
 
-def _is_retryable_error(exc: Exception) -> bool:
-    """Determine if an exception should trigger a retry."""
+def _classify_error(exc: Exception) -> ErrorClassification:
+    """Classify errors for system retry and user retry semantics."""
     non_retryable_types = (
         ValueError,
         TypeError,
@@ -740,7 +831,11 @@ def _is_retryable_error(exc: Exception) -> bool:
     )
 
     if isinstance(exc, non_retryable_types):
-        return False
+        return ErrorClassification(
+            system_retryable=False,
+            user_retryable=False,
+            reason_code="invalid_request",
+        )
 
     error_str = str(exc).lower()
     non_retryable_patterns = [
@@ -755,9 +850,40 @@ def _is_retryable_error(exc: Exception) -> bool:
 
     for pattern in non_retryable_patterns:
         if pattern in error_str:
-            return False
+            return ErrorClassification(
+                system_retryable=False,
+                user_retryable=False,
+                reason_code="provider_auth_or_request_error",
+            )
 
-    return True
+    timeout_patterns = ["timeout", "timed out", "deadline exceeded"]
+    for pattern in timeout_patterns:
+        if pattern in error_str:
+            return ErrorClassification(
+                system_retryable=True,
+                user_retryable=True,
+                reason_code="provider_timeout",
+            )
+
+    network_patterns = [
+        "connection",
+        "temporarily unavailable",
+        "service unavailable",
+        "rate limit",
+    ]
+    for pattern in network_patterns:
+        if pattern in error_str:
+            return ErrorClassification(
+                system_retryable=True,
+                user_retryable=True,
+                reason_code="provider_transient_error",
+            )
+
+    return ErrorClassification(
+        system_retryable=True,
+        user_retryable=True,
+        reason_code="provider_unknown_error",
+    )
 
 
 @task

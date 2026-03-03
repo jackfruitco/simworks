@@ -33,6 +33,26 @@ class MessageOut(BaseModel):
     timestamp: datetime = Field(..., description="When the message was created")
     is_from_ai: bool = Field(..., description="Whether this message is from the AI")
     display_name: str = Field(default="", description="Display name for the sender")
+    delivery_status: Literal["sent", "delivered", "failed"] = Field(
+        default="sent",
+        description="Delivery status of outgoing messages",
+    )
+    delivery_error_code: str = Field(
+        default="",
+        description="Machine-readable delivery error code",
+    )
+    delivery_error_text: str = Field(
+        default="",
+        description="User-safe delivery error text",
+    )
+    delivery_retryable: bool = Field(
+        default=True,
+        description="Whether the message can be retried by the user",
+    )
+    delivery_retry_count: int = Field(
+        default=0,
+        description="How many user retries have been attempted for this message",
+    )
 
 
 class MessageCreate(BaseModel):
@@ -105,4 +125,9 @@ def message_to_out(msg) -> MessageOut:
         timestamp=msg.timestamp,
         is_from_ai=msg.is_from_ai,
         display_name=msg.display_name or "",
+        delivery_status=getattr(msg, "delivery_status", "sent"),
+        delivery_error_code=getattr(msg, "delivery_error_code", ""),
+        delivery_error_text=getattr(msg, "delivery_error_text", ""),
+        delivery_retryable=getattr(msg, "delivery_retryable", True),
+        delivery_retry_count=getattr(msg, "delivery_retry_count", 0),
     )

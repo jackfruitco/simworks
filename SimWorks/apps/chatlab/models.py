@@ -34,6 +34,11 @@ class Message(PersistModel):
         FILE = "file", "File"
         SYSTEM = "system", "System"
 
+    class DeliveryStatus(models.TextChoices):
+        SENT = "sent", "Sent"
+        DELIVERED = "delivered", "Delivered"
+        FAILED = "failed", "Failed"
+
     timestamp = models.DateTimeField(auto_now_add=True)
 
     simulation = models.ForeignKey(
@@ -71,6 +76,16 @@ class Message(PersistModel):
         default=False,
         help_text="Whether this message references images/scans that should be generated"
     )
+    delivery_status = models.CharField(
+        max_length=16,
+        choices=DeliveryStatus.choices,
+        default=DeliveryStatus.SENT,
+        db_index=True,
+    )
+    delivery_error_code = models.CharField(max_length=100, blank=True, default="")
+    delivery_error_text = models.TextField(blank=True, default="")
+    delivery_retryable = models.BooleanField(default=True)
+    delivery_retry_count = models.PositiveSmallIntegerField(default=0)
 
     service_call_attempt = models.ForeignKey(
         "orchestrai_django.ServiceCallAttempt",

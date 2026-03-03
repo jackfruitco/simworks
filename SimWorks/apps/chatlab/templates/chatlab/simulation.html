@@ -22,6 +22,10 @@
     data-is-chat-locked="{{ simulation_locked|yesno:'true,false' }}"
     data-sim-id="{{ simulation.id }}"
     data-end-simulation-url="{% url 'chatlab:end_simulation' simulation.id %}"
+    data-simulation-status="{{ simulation_status }}"
+    data-simulation-terminal-reason-code="{{ simulation_terminal_reason_code }}"
+    data-simulation-terminal-reason-text="{{ simulation_terminal_reason_text }}"
+    data-simulation-retryable="{{ simulation_retryable|yesno:'true,false' }}"
 {% endblock context_attrs %}
 
 {% block content %}

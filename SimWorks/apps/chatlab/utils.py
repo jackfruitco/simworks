@@ -34,53 +34,69 @@ async def create_new_simulation(
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
     must_be_async()
+    user_label = getattr(user, "email", f"user#{getattr(user, 'id', 'unknown')}")
     logger.debug(
-        f"received request to create new simulation for {user.email!r} "
+        f"received request to create new simulation for {user_label!r} "
         f"with modifiers {modifiers!r} (force {force!r})"
     )
 
     sim_patient_full_name = await generate_fake_name()
 
-    # Create base Simulation
-    simulation = await Simulation.abuild(
-        user=user,
-        app_=APP_NAME,
-        sim_patient_full_name=sim_patient_full_name,
-        modifiers=modifiers,
-    )
-    logger.debug(f"simulation #{simulation.id} created")
+    simulation = None
+    try:
+        # Create base Simulation
+        simulation = await Simulation.abuild(
+            user=user,
+            app_=APP_NAME,
+            sim_patient_full_name=sim_patient_full_name,
+            modifiers=modifiers,
+        )
+        logger.debug(f"simulation #{simulation.id} created")
 
-    # Link ChatLab extension
-    session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
-    logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
+        # Link ChatLab extension
+        session: ChatSession = await ChatSession.objects.acreate(simulation=simulation)
+        logger.debug(f"chatlab session #{session.id} linked simulation #{simulation.id}")
 
-    # Create the patient conversation for this simulation
-    from apps.simcore.models import Conversation, ConversationType
+        # Create the patient conversation for this simulation
+        from apps.simcore.models import Conversation, ConversationType
 
-    patient_type = await ConversationType.objects.aget(slug="simulated_patient")
-    patient_conv = await Conversation.objects.acreate(
-        simulation=simulation,
-        conversation_type=patient_type,
-        display_name=simulation.sim_patient_display_name,
-        display_initials=simulation.sim_patient_initials or "Unk",
-    )
-    logger.debug(
-        "patient conversation #%s created for simulation #%s",
-        patient_conv.id,
-        simulation.id,
-    )
+        patient_type = await ConversationType.objects.aget(slug="simulated_patient")
+        patient_conv = await Conversation.objects.acreate(
+            simulation=simulation,
+            conversation_type=patient_type,
+            display_name=simulation.sim_patient_display_name,
+            display_initials=simulation.sim_patient_initials or "Unk",
+        )
+        logger.debug(
+            "patient conversation #%s created for simulation #%s",
+            patient_conv.id,
+            simulation.id,
+        )
+    except Exception:
+        logger.exception("Failed while provisioning a new simulation")
+        if simulation is not None:
+            await simulation.adelete()
+        raise
 
     # Enqueue initial AI response (fire-and-forget)
-    # Failures will be handled via ai_response_failed signal receiver
     from .orca.services import GenerateInitialResponse
 
-    call_id = await GenerateInitialResponse.task.using(
-        context={
-            "simulation_id": simulation.id,
-            "user_id": user.id,
-            "conversation_id": patient_conv.id,
-        }
-    ).aenqueue()
+    try:
+        call_id = await GenerateInitialResponse.task.using(
+            context={
+                "simulation_id": simulation.id,
+                "user_id": user.id,
+                "conversation_id": patient_conv.id,
+            }
+        ).aenqueue()
+    except Exception:
+        logger.exception("Initial generation enqueue failed for simulation %s", simulation.id)
+        await sync_to_async(simulation.mark_failed)(
+            reason_code="initial_generation_enqueue_failed",
+            reason_text="We could not start this simulation. Please try again.",
+            retryable=True,
+        )
+        return simulation
 
     logger.info(
         "Simulation %s created, initial response enqueued as call %s",

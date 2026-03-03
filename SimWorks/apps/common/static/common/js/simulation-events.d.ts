@@ -40,6 +40,9 @@ export type SimulationEventType =
     | 'simulation.feedback.continue_conversation'
     | 'simulation.hotwash.continue_conversation'
     | 'simulation.metadata.results_created'
+    | 'simulation.state_changed'
+    | 'feedback.failed'
+    | 'feedback.retrying'
 
     // TrainerLab events (future)
     | 'vitals.updated'
@@ -148,7 +151,35 @@ export interface StoppedTypingEvent extends BaseEvent {
 export interface MessageStatusUpdateEvent extends BaseEvent {
     type: 'message_status_update';
     id: number;
-    status: 'delivered' | 'read';
+    status: 'sent' | 'delivered' | 'failed';
+    retryable?: boolean;
+    error_code?: string;
+    error_text?: string;
+}
+
+export interface SimulationStateChangedEvent extends BaseEvent {
+    type: 'simulation.state_changed';
+    simulation_id: number;
+    status: 'in_progress' | 'completed' | 'timed_out' | 'failed' | 'canceled';
+    terminal_reason_code?: string;
+    terminal_reason_text?: string;
+    retryable?: boolean;
+}
+
+export interface FeedbackFailedEvent extends BaseEvent {
+    type: 'feedback.failed';
+    simulation_id: number;
+    error_code?: string;
+    error_text?: string;
+    retryable?: boolean;
+    retry_count?: number;
+}
+
+export interface FeedbackRetryingEvent extends BaseEvent {
+    type: 'feedback.retrying';
+    simulation_id: number;
+    retryable?: boolean;
+    retry_count?: number;
 }
 
 /**
@@ -234,6 +265,9 @@ export type SimulationEvent =
     | TypingEvent
     | StoppedTypingEvent
     | MessageStatusUpdateEvent
+    | SimulationStateChangedEvent
+    | FeedbackFailedEvent
+    | FeedbackRetryingEvent
     | FeedbackCreatedEvent
     | FeedbackContinuationEvent
     | MetadataResultsCreatedEvent

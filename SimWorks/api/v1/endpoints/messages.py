@@ -22,6 +22,65 @@ from config.logging import get_logger
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
 
 logger = get_logger(__name__)
+USER_RETRY_LIMIT = 2
+
+
+def _emit_message_status(
+    *,
+    simulation_id: int,
+    message_id: int,
+    status: str,
+    retryable: bool | None = None,
+    error_code: str | None = None,
+    error_text: str | None = None,
+) -> None:
+    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+
+    payload = {
+        "id": message_id,
+        "status": status,
+        "retryable": retryable,
+        "error_code": error_code,
+        "error_text": error_text,
+    }
+    event = enqueue_event_sync(
+        event_type="message_status_update",
+        simulation_id=simulation_id,
+        payload=payload,
+        idempotency_key=f"message_status_update:{message_id}:{status}:{retryable}:{error_code or 'none'}",
+    )
+    if event:
+        poke_drain_sync()
+
+
+def _mark_message_failed(message_id: int, error_code: str, error_text: str, retryable: bool = True) -> None:
+    from apps.chatlab.models import Message
+
+    try:
+        msg = Message.objects.get(pk=message_id)
+    except Message.DoesNotExist:
+        return
+
+    msg.delivery_status = Message.DeliveryStatus.FAILED
+    msg.delivery_error_code = error_code
+    msg.delivery_error_text = error_text
+    msg.delivery_retryable = retryable and msg.delivery_retry_count < USER_RETRY_LIMIT
+    msg.save(
+        update_fields=[
+            "delivery_status",
+            "delivery_error_code",
+            "delivery_error_text",
+            "delivery_retryable",
+        ]
+    )
+    _emit_message_status(
+        simulation_id=msg.simulation_id,
+        message_id=msg.id,
+        status=Message.DeliveryStatus.FAILED,
+        retryable=msg.delivery_retryable,
+        error_code=msg.delivery_error_code,
+        error_text=msg.delivery_error_text,
+    )
 
 
 def _resolve_conversation(sim, conversation_id=None):
@@ -159,6 +218,22 @@ def _supports_ai_reply(conversation) -> bool:
     return conversation.conversation_type.ai_persona in {"patient", "stitch"}
 
 
+def _enqueue_ai_reply_and_handle_failure(
+    conversation,
+    simulation_id: int,
+    user_msg_pk: int,
+) -> None:
+    call_id = _enqueue_ai_reply(conversation, simulation_id, user_msg_pk)
+    if call_id:
+        return
+    _mark_message_failed(
+        message_id=user_msg_pk,
+        error_code="enqueue_failed",
+        error_text="Message queued locally but failed to start AI processing. Try again.",
+        retryable=True,
+    )
+
+
 router = Router(tags=["messages"], auth=DualAuth())
 
 
@@ -278,6 +353,9 @@ def create_message(
             is_from_ai=False,
             display_name=user.get_full_name() or user.email,
         )
+        message.delivery_status = Message.DeliveryStatus.SENT
+        message.delivery_retryable = True
+        message.save(update_fields=["delivery_status", "delivery_retryable"])
 
         logger.info(
             "message.created",
@@ -289,10 +367,95 @@ def create_message(
 
         # Enqueue only after the user message transaction commits.
         transaction.on_commit(
-            lambda: _enqueue_ai_reply(conversation, simulation_id, message.pk)
+            lambda: _enqueue_ai_reply_and_handle_failure(
+                conversation, simulation_id, message.pk
+            )
+        )
+        transaction.on_commit(
+            lambda: _emit_message_status(
+                simulation_id=simulation_id,
+                message_id=message.pk,
+                status=Message.DeliveryStatus.SENT,
+                retryable=True,
+            )
         )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
+    return 202, message_to_out(message)
+
+
+@router.post(
+    "/{simulation_id}/messages/{message_id}/retry/",
+    response={202: MessageOut},
+    summary="Retry a failed outgoing message",
+    description="Retries AI processing for a previously failed outgoing user message.",
+)
+@message_rate_limit
+def retry_message(
+    request: HttpRequest,
+    simulation_id: int,
+    message_id: int,
+) -> tuple[int, MessageOut]:
+    from apps.chatlab.models import Message
+
+    user = request.auth
+    sim = get_simulation_for_user(simulation_id, user)
+
+    try:
+        message = Message.objects.select_related(
+            "conversation__conversation_type"
+        ).get(
+            pk=message_id,
+            simulation=sim,
+            sender=user,
+            is_deleted=False,
+            is_from_ai=False,
+        )
+    except Message.DoesNotExist:
+        raise HttpError(404, "Message not found")
+
+    if message.delivery_status != Message.DeliveryStatus.FAILED:
+        raise HttpError(400, "Only failed messages can be retried")
+
+    if not message.delivery_retryable or message.delivery_retry_count >= USER_RETRY_LIMIT:
+        raise HttpError(400, "Retry limit reached for this message")
+
+    conversation = message.conversation
+    if conversation.is_locked:
+        raise HttpError(400, "This conversation is locked")
+    if not _supports_ai_reply(conversation):
+        raise HttpError(400, "AI replies are not available for this conversation")
+
+    with transaction.atomic():
+        message.delivery_retry_count += 1
+        message.delivery_status = Message.DeliveryStatus.SENT
+        message.delivery_error_code = ""
+        message.delivery_error_text = ""
+        message.delivery_retryable = message.delivery_retry_count < USER_RETRY_LIMIT
+        message.save(
+            update_fields=[
+                "delivery_retry_count",
+                "delivery_status",
+                "delivery_error_code",
+                "delivery_error_text",
+                "delivery_retryable",
+            ]
+        )
+
+        transaction.on_commit(
+            lambda: _enqueue_ai_reply_and_handle_failure(
+                conversation, simulation_id, message.pk
+            )
+        )
+        transaction.on_commit(
+            lambda: _emit_message_status(
+                simulation_id=simulation_id,
+                message_id=message.pk,
+                status=Message.DeliveryStatus.SENT,
+                retryable=message.delivery_retryable,
+            )
+        )
+
     return 202, message_to_out(message)
 
 

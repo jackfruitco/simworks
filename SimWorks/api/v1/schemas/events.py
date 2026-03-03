@@ -17,10 +17,13 @@ class EventEnvelope(BaseModel):
 
     **Supported Event Types**:
     - ``chat.message_created`` - New chat message from patient or user
+    - ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)
     - ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)
     - ``feedback.created`` - Simulation feedback/hotwash item created
+    - ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events
     - ``typing.started`` / ``typing.stopped`` - Typing indicators
     - ``simulation.ended`` - Simulation completed
+    - ``simulation.state_changed`` - Simulation status changed
 
     **Event Payload Structures**:
 
@@ -53,10 +56,11 @@ class EventEnvelope(BaseModel):
     event_type: str = Field(
         ...,
         description=(
-            "Event type: chat.message_created, metadata.created, feedback.created, "
-            "typing.started, typing.stopped, simulation.ended"
+            "Event type: chat.message_created, message_status_update, metadata.created, "
+            "feedback.created, feedback.failed, feedback.retrying, "
+            "typing.started, typing.stopped, simulation.ended, simulation.state_changed"
         ),
-        examples=["chat.message_created", "metadata.created", "feedback.created"],
+        examples=["chat.message_created", "message_status_update", "simulation.state_changed"],
     )
     created_at: datetime = Field(
         ...,
