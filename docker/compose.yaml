@@ -4,9 +4,9 @@ services:
     env_file:
       - stack.env
     environment:
-      - DJANGO_MIGRATE=1
-      - DJANGO_CREATE_DEFAULT_ROLES=1
-      - DJANGO_COLLECTSTATIC=0
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
     expose:
       - 8000
     # hostname: 'server'
@@ -92,10 +92,10 @@ services:
     env_file:
       - stack.env
     environment:
-      - PYTHONPATH=/app/SimWorks
-      - DJANGO_MIGRATE=0
-      - DJANGO_CREATE_DEFAULT_ROLES=0
-      - DJANGO_COLLECTSTATIC=0
+      PYTHONPATH: /app/SimWorks
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
     user: appuser
     command: ["celery", "-A", "config", "worker", "--pool=threads", "--loglevel=info"]
     depends_on:
@@ -126,10 +126,10 @@ services:
     env_file:
       - stack.env
     environment:
-      - PYTHONPATH=/app/SimWorks
-      - DJANGO_MIGRATE=0
-      - DJANGO_CREATE_DEFAULT_ROLES=0
-      - DJANGO_COLLECTSTATIC=0
+      PYTHONPATH: /app/SimWorks
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
     command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
     user: appuser
     volumes:
