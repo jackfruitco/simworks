@@ -36,14 +36,13 @@ This guide walks you through preparing a local SimWorks development environment,
 
 ## Running the stack
 1. **Run with Docker + Make (recommended for local development)**
-   The repository includes a dev-focused compose file and Make targets that handle permissions on bind-mounted volumes and make collectstatic opt-in by default.【F:docker/compose.dev.yaml†L1-L22】【F:Makefile†L1-L35】
+   The repository includes a dev-focused compose file and Make targets for local stack lifecycle tasks.【F:docker/compose.dev.yaml†L1-L22】【F:Makefile†L1-L35】
 
    - Build and start the stack (server, database, Redis):
      ```bash
      make dev-up
      ```
-     The `server` container begins as root only long enough to `chown` the mounted static/media/log directories, then re-execs as the non-root `appuser` defined in `docker/entrypoint.dev.sh`.【F:docker/compose.dev.yaml†L1-L22】【F:docker/entrypoint.dev.sh†L5-L22】
-     The entrypoint now performs a dry-run migration check; if you see a pending migrations message, create them manually (for example: `uv run python SimWorks/manage.py makemigrations`).
+     The `server` and `tailwind-watch` containers run as non-root `appuser`, and share `docker/entrypoint.sh` startup logic. In dev, migrations and role seeding are enabled by default, while collectstatic remains opt-in unless `DJANGO_COLLECTSTATIC=1`.【F:docker/compose.dev.yaml†L1-L58】【F:docker/entrypoint.sh†L1-L46】
 
    - Tail server logs:
      ```bash

@@ -5,7 +5,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.dev
       target: runtime
-    user: "0:0"
+    user: appuser
     env_file:
       - .env
     environment:
@@ -40,7 +40,7 @@ services:
       dockerfile: docker/Dockerfile.dev
       target: runtime
     entrypoint: []
-    user: "0:0"
+    user: appuser
     env_file:
       - .env
     environment:

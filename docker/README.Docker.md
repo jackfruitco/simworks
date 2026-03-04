@@ -34,12 +34,13 @@ docs for more detail on building and pushing.
 #### Development (without rebuilding image each code change)
 
 - `docker/compose.dev.yaml` mounts `../SimWorks:/app/SimWorks` into the `server` container.
-- `docker/entrypoint.dev.sh` runs `npm run build:css` (configurable) and then `collectstatic`.
+- `docker/entrypoint.sh` is shared by dev/prod and conditionally runs startup tasks (`collectstatic`, `migrate`, role seeding) based on `DJANGO_*` flags.
 - `tailwind-watch` service runs `npm run watch:css:docker` and writes directly to
   `/app/static/css/tailwind.css` (the shared static volume served by nginx).
 - Defaults in dev compose:
-  - `DJANGO_RUN_TAILWIND_BUILD=1`
-  - `DJANGO_COLLECTSTATIC=1`
+  - `DJANGO_MIGRATE=1`
+  - `DJANGO_CREATE_DEFAULT_ROLES=1`
+  - `DJANGO_COLLECTSTATIC` unset (skipped unless explicitly set to `1`)
 
 For quick iteration after editing templates/CSS without image rebuild:
 

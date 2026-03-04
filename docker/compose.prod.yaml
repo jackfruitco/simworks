@@ -2,7 +2,7 @@ services:
   web:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile.prod
     env_file:
       - stack.env
     expose:
