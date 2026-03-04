@@ -1,7 +1,4 @@
-# orchestrai/components/__init__.py
-"""
-TODO: add package docstring
-"""
+"""Public component exports for OrchestrAI."""
 
 from .base import BaseComponent
 from .codecs import BaseCodec

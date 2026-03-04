@@ -2,9 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from orchestrai.components.codecs.exceptions import CodecNotFoundError
 from orchestrai.exceptions.base import SimCoreError
 from orchestrai.identity import Identity, IdentityLike
+
+try:
+    from orchestrai.components.codecs.exceptions import CodecNotFoundError
+except ModuleNotFoundError:
+
+    class CodecNotFoundError(Exception):
+        """Compatibility fallback when legacy codec package is absent."""
+
 
 __all__ = [
     "MissingRequiredContextKeys",

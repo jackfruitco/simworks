@@ -27,21 +27,37 @@ _pending = PendingRegistrations()
 
 def _infer_domain_from_type(component_type: type[Any]) -> str | None:
     try:
-        from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
-        from orchestrai.components.promptkit.base import PromptSection as _PromptSection
-        from orchestrai.components.schemas import BaseOutputSchema as _BaseOutputSchema
         from orchestrai.components.services.service import BaseService as _BaseService
     except Exception:
         return None
 
     if issubclass(component_type, _BaseService):
         return SERVICES_DOMAIN
-    if issubclass(component_type, _BaseCodec):
-        return CODECS_DOMAIN
-    if issubclass(component_type, _BaseOutputSchema):
-        return SCHEMAS_DOMAIN
-    if issubclass(component_type, _PromptSection):
-        return PROMPT_SECTIONS_DOMAIN
+
+    try:
+        from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
+
+        if issubclass(component_type, _BaseCodec):
+            return CODECS_DOMAIN
+    except Exception:
+        pass
+
+    try:
+        from orchestrai.components.schemas import BaseOutputSchema as _BaseOutputSchema
+
+        if issubclass(component_type, _BaseOutputSchema):
+            return SCHEMAS_DOMAIN
+    except Exception:
+        pass
+
+    try:
+        from orchestrai.components.promptkit.base import PromptSection as _PromptSection
+
+        if issubclass(component_type, _PromptSection):
+            return PROMPT_SECTIONS_DOMAIN
+    except Exception:
+        pass
+
     return None
 
 

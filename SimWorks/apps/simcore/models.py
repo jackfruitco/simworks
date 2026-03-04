@@ -4,6 +4,7 @@ from datetime import timedelta
 import logging
 import mimetypes
 import os
+from typing import TYPE_CHECKING
 import uuid
 import warnings
 
@@ -20,9 +21,11 @@ from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from apps.common.models import PersistModel
-from orchestrai_django.components.promptkit import Prompt
 
 from .utils import randomize_display_name
+
+if TYPE_CHECKING:
+    from orchestrai_django.components.promptkit import Prompt
 
 logger = logging.getLogger(__name__)
 
@@ -535,7 +538,7 @@ class Simulation(models.Model):
 
     @classmethod
     async def abuild(
-        cls, *, user=None, prompt: Prompt = None, app_name=None, from_scenario=False, **kwargs
+        cls, *, user=None, prompt: "Prompt" = None, app_name=None, from_scenario=False, **kwargs
     ):
         """Class method factory for creating simulations"""
 
