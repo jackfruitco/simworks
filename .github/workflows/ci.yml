@@ -60,7 +60,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          uv run pytest -ra \
+          DJANGO_SETTINGS_MODULE=tests.settings_test uv run pytest -ra \
             --cov=SimWorks \
             --cov=packages/orchestrai/src/orchestrai \
             --cov=packages/orchestrai_django/src/orchestrai_django \
