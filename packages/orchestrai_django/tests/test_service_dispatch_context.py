@@ -1,5 +1,3 @@
-import pytest
-
 from orchestrai.components.services.django.task_proxy import DjangoServiceSpec, DjangoTaskProxy
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
