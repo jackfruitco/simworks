@@ -135,6 +135,7 @@ jobs:
     timeout-minutes: 20
     env:
       PYTEST_FAILURE_ARTIFACT_DIR: .pytest-failure-artifacts
+      DJANGO_SETTINGS_MODULE: tests.settings_test
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -155,11 +156,11 @@ jobs:
       - name: Run unit lane
         run: |
           start=$(date +%s)
-          uv run pytest -m "unit and not slow" -n auto --dist loadscope --durations=25
+          uv run pytest -m "unit and not slow" --ds=tests.settings_test -n auto --dist loadscope --durations=25
           end=$(date +%s)
           echo "## unit_fast" >> "$GITHUB_STEP_SUMMARY"
           echo "- Runtime: $((end-start))s" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Command: \\`uv run pytest -m \"unit and not slow\" -n auto --dist loadscope --durations=25\\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Command: \\`uv run pytest -m \"unit and not slow\" --ds=tests.settings_test -n auto --dist loadscope --durations=25\\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload unit failure artifacts
         if: failure()
@@ -176,6 +177,7 @@ jobs:
     timeout-minutes: 25
     env:
       PYTEST_FAILURE_ARTIFACT_DIR: .pytest-failure-artifacts
+      DJANGO_SETTINGS_MODULE: tests.settings_test
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -196,11 +198,11 @@ jobs:
       - name: Run integration core lane
         run: |
           start=$(date +%s)
-          uv run pytest -m "integration and not slow" -n auto --dist loadscope --durations=25
+          uv run pytest -m "integration and not slow" --ds=tests.settings_test --durations=25
           end=$(date +%s)
           echo "## integration_core" >> "$GITHUB_STEP_SUMMARY"
           echo "- Runtime: $((end-start))s" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Command: \\`uv run pytest -m \"integration and not slow\" -n auto --dist loadscope --durations=25\\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Command: \\`uv run pytest -m \"integration and not slow\" --ds=tests.settings_test --durations=25\\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload integration failure artifacts
         if: failure()
