@@ -1,42 +1,46 @@
-name: CI
+name: ci
 
 on:
-  push:
-    branches: ["main"]
-    tags: ["v*", "main*"]
   pull_request:
-    branches: ["main"]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
   pull-requests: write
 
 jobs:
-  test:
+  ci:
+    name: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       DJANGO_SETTINGS_MODULE: config.settings
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "20"
           cache: "npm"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
         with:
           enable-cache: true
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: uv sync --locked --dev
 
       - name: Install frontend dependencies
@@ -48,11 +52,63 @@ jobs:
       - name: Verify Tailwind CSS is committed
         run: git diff --exit-code -- SimWorks/static/css/tailwind.css
 
-      - name: Lint and format
+      - name: Run Django system checks
+        run: uv run python SimWorks/manage.py check
+
+      - name: Run lint and formatting checks
         run: uv run pre-commit run --all-files
 
       - name: Run tests with coverage
-        run: uv run pytest --cov --cov-report=xml
+        run: uv run pytest
+
+      - name: Validate OpenAPI schema is up to date
+        working-directory: SimWorks
+        run: |
+          uv run python manage.py export_openapi --output /tmp/current-schema.json
+
+          if ! diff -q /tmp/current-schema.json ../docs/openapi/v1.json > /dev/null 2>&1; then
+            echo "::error::OpenAPI schema is out of date. Run 'uv run python SimWorks/manage.py export_openapi --output docs/openapi/v1.json' and commit the changes."
+            echo ""
+            echo "Differences:"
+            diff /tmp/current-schema.json ../docs/openapi/v1.json || true
+            exit 1
+          fi
+          echo "OpenAPI schema is up to date"
+
+      - name: Validate OpenAPI schema structure
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+
+          with open("docs/openapi/v1.json", encoding="utf-8") as f:
+              schema = json.load(f)
+
+          errors = []
+
+          if "openapi" not in schema:
+              errors.append("Missing 'openapi' version field")
+          elif not schema["openapi"].startswith("3."):
+              errors.append(f"Unsupported OpenAPI version: {schema['openapi']}")
+
+          if "info" not in schema:
+              errors.append("Missing 'info' field")
+          elif "title" not in schema.get("info", {}):
+              errors.append("Missing 'info.title' field")
+
+          if "paths" not in schema:
+              errors.append("Missing 'paths' field")
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          print(f"Valid OpenAPI {schema['openapi']} schema")
+          print(f"Title: {schema['info']['title']}")
+          print(f"Version: {schema['info'].get('version', 'N/A')}")
+          print(f"Endpoints: {len(schema['paths'])}")
+          PY
 
       - name: Generate coverage summary
         id: coverage-summary
@@ -75,95 +131,61 @@ jobs:
             outputs.write(f"coverage={coverage}\n")
           PY
 
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+      - name: Update sticky coverage comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const coverage = process.env.coverage;
-            const body = `## CI Coverage\nTotal coverage: ${coverage}%`;
+            const marker = '<!-- ci-coverage-comment -->';
+            const coverage = process.env.COVERAGE;
+            const body = `${marker}\n## CI Coverage\nTotal coverage: ${coverage}%`;
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-            await github.rest.issues.createComment({ owner, repo, issue_number, body });
-        env:
-          coverage: ${{ steps.coverage-summary.outputs.coverage }}
 
-      - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user.type === 'Bot' &&
+              comment.body &&
+              comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
+        env:
+          COVERAGE: ${{ steps.coverage-summary.outputs.coverage }}
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: coverage-xml
           path: coverage.xml
+          if-no-files-found: error
+          retention-days: 7
 
-  api-schema:
-    runs-on: ubuntu-latest
-    env:
-      DJANGO_SETTINGS_MODULE: config.settings
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Upload coverage to Codecov
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de
         with:
-          python-version: "3.12"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --locked --dev
-
-      - name: Validate OpenAPI schema is up to date
-        working-directory: SimWorks
-        run: |
-          # Export current schema
-          uv run python manage.py export_openapi --output /tmp/current-schema.json
-
-          # Compare with committed schema
-          if ! diff -q /tmp/current-schema.json ../docs/openapi/v1.json > /dev/null 2>&1; then
-            echo "::error::OpenAPI schema is out of date. Run 'uv run python SimWorks/manage.py export_openapi --output docs/openapi/v1.json' and commit the changes."
-            echo ""
-            echo "Differences:"
-            diff /tmp/current-schema.json ../docs/openapi/v1.json || true
-            exit 1
-          fi
-          echo "✓ OpenAPI schema is up to date"
-
-      - name: Validate OpenAPI schema structure
-        run: |
-          python - <<'PY'
-          import json
-          import sys
-
-          with open("docs/openapi/v1.json") as f:
-              schema = json.load(f)
-
-          # Basic OpenAPI 3.x validation
-          errors = []
-
-          if "openapi" not in schema:
-              errors.append("Missing 'openapi' version field")
-          elif not schema["openapi"].startswith("3."):
-              errors.append(f"Unsupported OpenAPI version: {schema['openapi']}")
-
-          if "info" not in schema:
-              errors.append("Missing 'info' field")
-          elif "title" not in schema.get("info", {}):
-              errors.append("Missing 'info.title' field")
-
-          if "paths" not in schema:
-              errors.append("Missing 'paths' field")
-
-          if errors:
-              for error in errors:
-                  print(f"::error::{error}")
-              sys.exit(1)
-
-          print(f"✓ Valid OpenAPI {schema['openapi']} schema")
-          print(f"  Title: {schema['info']['title']}")
-          print(f"  Version: {schema['info'].get('version', 'N/A')}")
-          print(f"  Endpoints: {len(schema['paths'])}")
-          PY
+          files: coverage.xml
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
