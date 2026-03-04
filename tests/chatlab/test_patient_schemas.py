@@ -178,7 +178,7 @@ class TestPatientInitialSchema:
         assert lab_result.panel_name == "Complete Blood Count"
         assert lab_result.result_unit == "g/dL"
         assert lab_result.result_flag == "normal"
-        assert lab_result.__orm_model__ == "simulation.LabResult"
+        assert lab_result.__orm_model__ == "simcore.LabResult"
 
     def test_polymorphic_rad_result_metadata(self):
         """Verify RadResultItem with required fields."""
@@ -209,7 +209,7 @@ class TestPatientInitialSchema:
         assert rad_result.kind == "rad_result"
         assert rad_result.key == "Chest X-Ray"
         assert rad_result.result_flag == "normal"
-        assert rad_result.__orm_model__ == "simulation.RadResult"
+        assert rad_result.__orm_model__ == "simcore.RadResult"
 
     def test_polymorphic_patient_history_metadata(self):
         """Verify PatientHistoryItem with required fields."""
@@ -242,7 +242,7 @@ class TestPatientInitialSchema:
         assert history.key == "Hypertension"
         assert history.is_resolved is False
         assert history.duration == "5 years"
-        assert history.__orm_model__ == "simulation.PatientHistory"
+        assert history.__orm_model__ == "simcore.PatientHistory"
 
     def test_polymorphic_mixed_metadata_types(self):
         """Verify multiple metadata types in single schema."""
@@ -288,9 +288,9 @@ class TestPatientInitialSchema:
         assert isinstance(parsed.metadata[3], SimulationMetadataItem)
 
         # Verify each has correct __orm_model__
-        assert parsed.metadata[0].__orm_model__ == "simulation.PatientDemographics"
-        assert parsed.metadata[1].__orm_model__ == "simulation.PatientHistory"
-        assert parsed.metadata[2].__orm_model__ == "simulation.LabResult"
+        assert parsed.metadata[0].__orm_model__ == "simcore.PatientDemographics"
+        assert parsed.metadata[1].__orm_model__ == "simcore.PatientHistory"
+        assert parsed.metadata[2].__orm_model__ == "simcore.LabResult"
         assert parsed.metadata[3].__orm_model__ == "simcore.SimulationMetadata"
 
     def test_polymorphic_metadata_discriminator_validation(self):
@@ -369,14 +369,14 @@ class TestPatientResultsSchema:
 
     def test_round_trip_with_metadata(self):
         """Verify parsing with metadata items."""
-        # PatientResultsOutputSchema.metadata is list[ResultMessageItem]
-        # (complex items with content and item_meta)
+        # PatientResultsOutputSchema.metadata is list[MetadataItem]
+        # (discriminated union with a required kind field).
         sample_output = {
             "metadata": [
                 {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Final diagnosis: ..."}],
-                    "item_meta": [{"key": "key", "value": "final_diagnosis"}],
+                    "kind": "generic",
+                    "key": "final_diagnosis",
+                    "value": "Community-acquired pneumonia",
                 }
             ],
             "llm_conditions_check": [],
@@ -384,6 +384,6 @@ class TestPatientResultsSchema:
 
         parsed = PatientResultsOutputSchema.model_validate(sample_output)
         assert len(parsed.metadata) == 1
-        # Verify item_meta as list[ResultMetafield]
-        meta_keys = {mf.key: mf.value for mf in parsed.metadata[0].item_meta}
-        assert meta_keys["key"] == "final_diagnosis"
+        assert isinstance(parsed.metadata[0], SimulationMetadataItem)
+        assert parsed.metadata[0].key == "final_diagnosis"
+        assert parsed.metadata[0].value == "Community-acquired pneumonia"

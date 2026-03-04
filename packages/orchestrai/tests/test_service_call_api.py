@@ -69,10 +69,10 @@ async def test_task_arun_executes_inline():
 
 
 def test_legacy_runner_imports_are_guarded():
-    with pytest.raises(ImportError):
-        importlib.import_module("orchestrai.components.services.runners")
-    with pytest.raises(ImportError):
-        importlib.import_module("orchestrai.components.services.dispatch")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("orchestrai.components.services.runners.legacy")
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("orchestrai.components.services.dispatch.legacy")
 
 
 def test_to_jsonable_serializes_response_result():

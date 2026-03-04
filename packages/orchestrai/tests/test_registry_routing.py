@@ -38,7 +38,7 @@ def test_prompt_section_get_uses_prompt_section_registry():
     app = type("App", (), {"component_store": store})()
 
     with push_active_registry_app(app):
-        resolved = PromptSection.get(DemoPromptSection.identity)
+        resolved = store.get(PROMPT_SECTIONS_DOMAIN, DemoPromptSection.identity)
 
     assert resolved is DemoPromptSection
     assert PROMPT_SECTIONS_DOMAIN in store.domains()

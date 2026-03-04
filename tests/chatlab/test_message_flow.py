@@ -45,27 +45,46 @@ def simulation(db, user):
     )
 
 
+@pytest.fixture
+def patient_type(db):
+    from apps.simcore.models import ConversationType
+
+    return ConversationType.objects.get(slug="simulated_patient")
+
+
+@pytest.fixture
+def conversation(db, simulation, patient_type):
+    from apps.simcore.models import Conversation
+
+    return Conversation.objects.create(
+        simulation=simulation,
+        conversation_type=patient_type,
+        display_name="Test Patient",
+        display_initials="TP",
+    )
+
+
 @pytest.mark.django_db
 class TestMessageBroadcastSignal:
     """Tests for the message broadcast signal handler."""
 
-    def test_ai_message_creates_outbox_event(self, simulation, user):
-        """Test that creating an AI message creates an outbox event."""
+    def test_non_ai_message_creates_outbox_event(self, simulation, user, conversation):
+        """Test that creating a non-AI message creates an outbox event."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
 
         # Capture initial outbox count
         initial_count = OutboxEvent.objects.count()
 
-        # Create an AI message (triggers signal)
-        # Note: sender is required by the model, but is_from_ai=True indicates it's from AI
-        with patch("chatlab.signals.poke_drain_sync"):
+        # Non-AI messages are broadcast by signal as a safety net path.
+        with patch("apps.common.outbox.poke_drain_sync"):
             message = Message.objects.create(
                 simulation=simulation,
-                sender=user,  # Required field, but is_from_ai indicates source
-                content="Hello, I am your patient.",
-                role=RoleChoices.ASSISTANT,
-                is_from_ai=True,
+                conversation=conversation,
+                sender=user,
+                content="Hello doctor.",
+                role=RoleChoices.USER,
+                is_from_ai=False,
                 display_name="Test Patient",
             )
 
@@ -78,18 +97,19 @@ class TestMessageBroadcastSignal:
         assert event.simulation_id == simulation.id
         assert event.idempotency_key == f"chat.message_created:{message.id}"
 
-    def test_ai_message_outbox_payload_has_message_id(self, simulation, user):
+    def test_user_message_outbox_payload_has_message_id(self, simulation, user, conversation):
         """Test that the outbox payload includes message_id for deduplication."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
 
-        with patch("chatlab.signals.poke_drain_sync"):
+        with patch("apps.common.outbox.poke_drain_sync"):
             message = Message.objects.create(
                 simulation=simulation,
+                conversation=conversation,
                 sender=user,
                 content="Test content",
-                role=RoleChoices.ASSISTANT,
-                is_from_ai=True,
+                role=RoleChoices.USER,
+                is_from_ai=False,
                 display_name="Test Patient",
             )
 
@@ -102,11 +122,11 @@ class TestMessageBroadcastSignal:
         assert payload["id"] == message.id
         assert payload["message_id"] == message.id
         assert payload["content"] == "Test content"
-        assert payload["isFromAi"] is True
-        assert payload["status"] == "completed"
+        assert payload["isFromAi"] is False
+        assert payload["status"] == "sent"
 
-    def test_user_message_does_not_create_outbox_event(self, simulation, user):
-        """Test that user messages don't create outbox events (only AI messages do)."""
+    def test_user_message_creates_outbox_event(self, simulation, user, conversation):
+        """Test that user messages create outbox events."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
 
@@ -115,28 +135,33 @@ class TestMessageBroadcastSignal:
         # Create a user message (is_from_ai=False)
         Message.objects.create(
             simulation=simulation,
+            conversation=conversation,
             sender=user,
             content="Hello doctor",
             role=RoleChoices.USER,
             is_from_ai=False,
         )
 
-        # Verify no outbox event was created
-        assert OutboxEvent.objects.count() == initial_count
+        # Verify outbox event was created
+        assert OutboxEvent.objects.count() == initial_count + 1
+        event = OutboxEvent.objects.latest("created_at")
+        assert event.event_type == "chat.message_created"
+        assert event.payload["isFromAi"] is False
 
-    def test_duplicate_message_event_is_idempotent(self, simulation, user):
+    def test_duplicate_message_event_is_idempotent(self, simulation, user, conversation):
         """Test that duplicate events are prevented by idempotency key."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
         from apps.common.outbox import enqueue_event_sync
 
-        with patch("chatlab.signals.poke_drain_sync"):
+        with patch("apps.common.outbox.poke_drain_sync"):
             message = Message.objects.create(
                 simulation=simulation,
+                conversation=conversation,
                 sender=user,
                 content="Test content",
-                role=RoleChoices.ASSISTANT,
-                is_from_ai=True,
+                role=RoleChoices.USER,
+                is_from_ai=False,
             )
 
         initial_count = OutboxEvent.objects.count()
@@ -217,18 +242,19 @@ class TestOutboxEnvelopeFormat:
 class TestMessagePayloadFormat:
     """Tests for the message payload format sent to clients."""
 
-    def test_payload_matches_client_expectations(self, simulation, user):
+    def test_payload_matches_client_expectations(self, simulation, user, conversation):
         """Test that payload has all fields expected by chat.js."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
 
-        with patch("chatlab.signals.poke_drain_sync"):
+        with patch("apps.common.outbox.poke_drain_sync"):
             Message.objects.create(
                 simulation=simulation,
+                conversation=conversation,
                 sender=user,
                 content="Test message",
-                role=RoleChoices.ASSISTANT,
-                is_from_ai=True,
+                role=RoleChoices.USER,
+                is_from_ai=False,
                 message_type="text",
                 display_name="Dr. Patient",
             )
@@ -246,18 +272,19 @@ class TestMessagePayloadFormat:
         assert "status" in payload  # completed/pending
         assert "messageType" in payload  # chat/feedback
 
-    def test_payload_handles_empty_content(self, simulation, user):
+    def test_payload_handles_empty_content(self, simulation, user, conversation):
         """Test that payload handles messages with empty/null content."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
 
-        with patch("chatlab.signals.poke_drain_sync"):
+        with patch("apps.common.outbox.poke_drain_sync"):
             Message.objects.create(
                 simulation=simulation,
+                conversation=conversation,
                 sender=user,
                 content="",  # Empty content
-                role=RoleChoices.ASSISTANT,
-                is_from_ai=True,
+                role=RoleChoices.USER,
+                is_from_ai=False,
             )
 
         event = OutboxEvent.objects.latest("created_at")

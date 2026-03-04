@@ -88,7 +88,7 @@ class TaskDescriptor:
     """
 
     def __get__(self, instance: Any, owner: type | None = None) -> CoreTaskProxy:
-        from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec
+        from orchestrai.components.services.task_proxy import ServiceSpec
 
         service_cls = owner or type(instance)
         kwargs: dict[str, Any] = {}

@@ -6,6 +6,7 @@ from orchestrai_django.signals import ai_response_failed
 
 class DummyAttempt:
     def __init__(self):
+        self.id = "attempt-1"
         self.attempt = 1
         self.status = None
         self.response_raw = None
@@ -45,6 +46,7 @@ class DummyCall:
         self.output_data = None
         self.error = None
         self.dispatch = {}
+        self.request = None
         self.backend = "immediate"
         self.queue = None
         self.task_id = None
@@ -114,6 +116,13 @@ class FakeRequest:
     response_schema = FakeSchemaWrapper(FakeSchema)
     model = "fake-model"
 
+    def model_dump(self, mode="json"):
+        return {
+            "model": self.model,
+            "input": [],
+            "tools": [],
+        }
+
 
 class FakeResponse:
     provider_response_id = "resp-123"
@@ -154,10 +163,18 @@ def test_run_service_call_stores_output_and_schema(monkeypatch):
     def _select_for_update(*args, **kwargs):
         return types.SimpleNamespace(get=lambda **kw: call)
 
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
     monkeypatch.setattr(
         tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService)
     )
     monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+    monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
     monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
 
     result = tasks.run_service_call(call.id)

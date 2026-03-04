@@ -303,7 +303,7 @@ class TestEndSimulation:
 
         assert response.status_code == 401
 
-    @patch("simulation.models.Simulation.generate_feedback")
+    @patch("apps.simcore.models.Simulation.generate_feedback")
     def test_end_simulation_success(self, mock_feedback, auth_client, simulation):
         """Ends simulation successfully."""
         response = auth_client.post(f"/api/v1/simulations/{simulation.pk}/end/")
@@ -321,7 +321,7 @@ class TestEndSimulation:
         # Verify feedback generation was called
         mock_feedback.assert_called_once()
 
-    @patch("simulation.models.Simulation.generate_feedback")
+    @patch("apps.simcore.models.Simulation.generate_feedback")
     def test_end_simulation_already_ended_returns_400(self, mock_feedback, auth_client, simulation):
         """Ending already-ended simulation returns 400."""
         # First end

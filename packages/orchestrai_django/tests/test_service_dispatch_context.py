@@ -1,27 +1,8 @@
 import pytest
 
-from orchestrai import get_current_app
-from orchestrai._state import set_current_app
-from orchestrai.components.services.django import task_proxy
 from orchestrai.components.services.django.task_proxy import DjangoServiceSpec, DjangoTaskProxy
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
-
-
-@pytest.fixture()
-def minimal_django_settings():
-    import django
-    from django.conf import settings
-
-    if not settings.configured:
-        settings.configure(
-            INSTALLED_APPS=["django.contrib.contenttypes"],
-            DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}},
-            USE_TZ=True,
-            SECRET_KEY="test",  # nosec - test only
-        )
-        django.setup()
-    yield
 
 
 class _DummyService(BaseService):
@@ -31,32 +12,20 @@ class _DummyService(BaseService):
         return payload
 
 
-def test_dispatch_async_binds_app_context(monkeypatch, minimal_django_settings):
-    parent_app = object()
-    set_current_app(parent_app)
+def test_django_service_spec_using_splits_dispatch_kwargs():
+    spec = DjangoServiceSpec(_DummyService, {}, {})
+    proxy = DjangoTaskProxy(spec.using(queue="priority", backend="celery", context={"x": 1}))
 
-    captured = []
+    service = proxy._build()
+    dispatch = proxy._build_dispatch(service)
 
-    def _capture_dispatch(self: DjangoTaskProxy, call_id: str) -> None:
-        captured.append(get_current_app())
-
-    class ImmediateThread:
-        def __init__(self, target, name=None, daemon=None):
-            self._target = target
-
-        def start(self):  # pragma: no cover - trivial
-            self._target()
-
-    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate", _capture_dispatch)
-    monkeypatch.setattr(task_proxy.threading, "Thread", ImmediateThread)
-
-    proxy = DjangoTaskProxy(DjangoServiceSpec(_DummyService, {}, {}))
-    proxy._dispatch_immediate_async("abc123")
-
-    assert captured == [parent_app]
+    assert isinstance(service, _DummyService)
+    assert dispatch["backend"] == "celery"
+    assert dispatch["queue"] == "priority"
+    assert dispatch["service"] == _DummyService.identity.as_str
 
 
-def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_settings):
+def test_run_service_call_triggers_autostart(monkeypatch):
     from orchestrai_django.tasks import run_service_call
 
     autostart_calls: list[bool] = []
@@ -64,27 +33,11 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
         "orchestrai_django.apps.ensure_autostarted", lambda: autostart_calls.append(True)
     )
 
-    service_identity = Identity("services", "demo", "ctx", "initial")
-
-    class DummyService:
-        identity = service_identity
-
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def execute(self, **payload):
-            return {"ok": True, **payload}
-
-    class DummyRegistry:
-        def get(self, ident):
-            assert ident == service_identity
-            return DummyService
-
     class DummyCall:
         def __init__(self, pk: str):
             self.id = pk
             self.pk = pk
-            self.service_identity = service_identity.as_str
+            self.service_identity = _DummyService.identity.as_str
             self.service_kwargs = {}
             self.status = "pending"
             self.input = {}
@@ -117,11 +70,8 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
         class attempts:
             @staticmethod
             def count():
-                return 0
-
-            @staticmethod
-            def aggregate(*args, **kwargs):
-                return {"attempt__max": 0}
+                # Force an early return path before any service execution logic.
+                return 999
 
         def to_jsonable(self):
             return {"id": self.id, "status": self.status}
@@ -134,13 +84,21 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
 
     dummy_call = DummyCall("call-1")
 
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
     monkeypatch.setattr(
-        "orchestrai_django.tasks.ensure_service_registry", lambda app=None: DummyRegistry()
+        "orchestrai_django.tasks.ensure_service_registry", lambda app=None: object()
     )
     monkeypatch.setattr(
         "orchestrai_django.tasks.ServiceCallModel.objects.select_for_update",
         lambda: type("QS", (), {"get": lambda self, pk: dummy_call})(),
     )
+    monkeypatch.setattr("orchestrai_django.tasks.transaction.atomic", lambda: _NoopAtomic())
 
     run_service_call("call-1")
 

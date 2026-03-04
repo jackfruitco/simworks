@@ -2,16 +2,19 @@ import sys
 from types import ModuleType
 
 from orchestrai import OrchestrAI, get_current_app
+from orchestrai._state import set_current_app
 from orchestrai.finalize import connect_on_app_finalize
 from orchestrai.fixups.base import FixupStage
 
 
 def test_current_app_default_created():
+    set_current_app(None)
     app = get_current_app()
     assert isinstance(app, OrchestrAI)
 
 
 def test_as_current_context_manager():
+    set_current_app(None)
     app = OrchestrAI("ctx")
     previous = get_current_app()
     app.set_as_current()

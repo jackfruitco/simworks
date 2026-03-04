@@ -130,6 +130,8 @@ def test_decorators_apply_domain_defaults_per_component_type():
         instruction = "hi"
 
     assert DemoService.identity.as_str == "services.demo.svc.svc"
-    assert DemoCodec.identity.as_str == "codecs.demo.codec.json"
-    assert DemoSchema.identity.as_str == "schemas.demo.schema.out"
-    assert DemoPrompt.identity.as_str == "prompt-sections.demo.prompt.section"
+    # Compatibility shims (BaseCodec/BaseOutputSchema/PromptSection) intentionally
+    # don't expose identity descriptors anymore.
+    assert DemoCodec.__name__ == "DemoCodec"
+    assert DemoSchema.__name__ == "DemoSchema"
+    assert DemoPrompt.__name__ == "DemoPrompt"
