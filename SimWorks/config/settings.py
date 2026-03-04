@@ -170,7 +170,7 @@ CORS_ALLOW_ALL_ORIGINS = bool_from_env("DJANGO_CORS_ALLOW_ALL_ORIGINS", default=
 # OrchestrAI configuration
 ORCA_AUTOSTART = True
 ORCA_ENTRYPOINT = "config.orca:get_orca"
-ORCA_CONFIG = {
+ORCHESTRAI = {
     "MODE": "single",
     "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai-responses:gpt-5o-mini"),
 }

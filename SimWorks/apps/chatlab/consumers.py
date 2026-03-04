@@ -4,7 +4,6 @@ import inspect
 import json
 import logging
 import uuid
-import warnings
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -174,7 +173,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         event_dispatch = {
             "client_ready": self.handle_client_ready,
-            "chat.message_created": self.handle_message,
             "simulation.feedback_created": self.handle_generic_event,
             "typing": self.handle_typing,
             "stopped_typing": self.handle_stopped_typing,
@@ -185,7 +183,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if handler:
             await handler(data)
         else:
-            warnings.warn(f"Unrecognized event type: {event_type} - {data}", stacklevel=2)
+            logger.warning("Unrecognized event type: %s - %s", event_type, data)
 
     async def handle_client_ready(self, data) -> None:
         """
@@ -239,33 +237,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return True
 
         return False
-
-    async def handle_message(self, data: dict) -> None:
-        """
-        Handle incoming user messages via WebSocket.
-
-        DEPRECATED: Message creation via WebSocket is deprecated. Clients should
-        POST to /api/v1/simulations/{id}/messages/ instead. The REST endpoint
-        handles both message persistence, per-conversation locking, and AI
-        response generation (including Stitch replies).
-
-        :param data: A dict containing at least 'content' and 'role'
-        """
-        func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(func_name)
-
-        warnings.warn(
-            "Creating messages via WebSocket is deprecated. "
-            "Use POST /api/v1/simulations/{id}/messages/ instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        logger.info(
-            "handle_message: ignoring WS message creation (deprecated). "
-            "Client should POST to /api/v1/simulations/%s/messages/",
-            self.simulation_id,
-        )
 
     async def handle_typing(self, data: dict) -> None:
         """

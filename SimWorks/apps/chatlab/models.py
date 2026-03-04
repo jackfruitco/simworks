@@ -1,5 +1,4 @@
 # chatlab/models.py
-import logging
 from typing import ClassVar
 
 from django.conf import settings
@@ -8,8 +7,6 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import PersistModel
 from apps.simcore.models import BaseSession, Simulation, SimulationImage
-
-logger = logging.getLogger(__name__)
 
 
 class RoleChoices(models.TextChoices):
@@ -98,28 +95,6 @@ class Message(PersistModel):
     def set_provider_resp_id(self, id_):
         self.provider_response_id = id_
         self.save(update_fields=["provider_response_id"])
-
-    # TODO deprecated -- remove before v0.8.0
-    def set_openai_id(self, openai_id):
-        logger.warning(
-            "set_openai_id is deprecated. Use set_provider_resp_id instead.",
-            DeprecationWarning,
-        )
-        self.set_provider_resp_id(openai_id)
-
-    def get_previous_openai_id(self) -> str | None:
-        """Return most recent OpenAI response_ID in current simulation"""
-        previous_message = (
-            Message.objects.filter(
-                simulation=self.simulation,
-                timestamp__lt=self.timestamp,
-                role=RoleChoices.ASSISTANT,  # Only consider ASSISTANT input
-                provider_response_id__isnull=False,  # That have an provider_response_id set
-            )
-            .order_by("-timestamp")
-            .first()
-        )
-        return previous_message.provider_response_id if previous_message else None
 
     def get_openai_input(self) -> dict:
         """Return list formatted for OpenAI Responses API input."""

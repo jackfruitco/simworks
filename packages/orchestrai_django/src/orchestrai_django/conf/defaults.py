@@ -9,7 +9,7 @@ to avoid conflicts with other libraries or SDKs that might read standard env var
 Layering order:
 1. Core OrchestrAI defaults (e.g., OPENAI_API_KEY)
 2. Django defaults (this file, e.g., ORCA_OPENAI_API_KEY)
-3. User settings via ORCA_CONFIG or ORCHESTRAI Django setting
+3. User settings via ORCHESTRAI Django setting
 """
 
 DJANGO_DEFAULTS: dict[str, object] = {

@@ -78,22 +78,21 @@ Registries are simple, thread-safe mappings with three phases:
 
 The app exposes `services`, `codecs`, `providers`, `clients`, and `prompt_sections` registries. Use `app.clients.register(...)` or decorators to populate them.
 
-## Shared decorators and finalize callbacks
+## Finalize callbacks
 
-Decorators in `orchestrai.shared` let you register components before an app exists:
+Use `connect_on_app_finalize` to register callbacks before an app exists:
 
 ```python
-from orchestrai.shared import shared_service
+from orchestrai.finalize import connect_on_app_finalize
 
-@shared_service()
-def ping():
-    return "pong"
+def _on_finalize(app):
+    app.conf["READY"] = True
+
+connect_on_app_finalize(_on_finalize)
 
 app = OrchestrAI().finalize()
-assert "ping" in app.services
+assert app.conf["READY"] is True
 ```
-
-Callbacks are consumed during every app’s `finalize()`, so multiple app instances see the shared registrations.
 
 ## Current app management
 
@@ -101,8 +100,8 @@ Use `app.as_current()` to scope the active application:
 
 ```python
 with app.as_current():
-    # proxies such as current_app resolve to `app`
-    client = app.client
+    store = app.component_store
+    domains = store.domains()
 ```
 
 Nested contexts restore the previous app automatically.
@@ -156,16 +155,17 @@ The core ships with lightweight span helpers in `orchestrai.tracing.tracing` tha
 
 ```python
 from orchestrai import OrchestrAI
-from orchestrai.shared import shared_service
+from orchestrai.finalize import connect_on_app_finalize
 
-@shared_service()
-def hello(name: str = "world"):
-    return f"hello {name}"
+def _register_mark(app):
+    app.conf["HELLO_READY"] = True
+
+connect_on_app_finalize(_register_mark)
 
 app = OrchestrAI()
-app.configure({"CLIENT": "local", "CLIENTS": {"local": {"name": "local"}}})
+app.configure({"DEFAULT_MODEL": "openai-responses:gpt-5o-mini"})
 app.start()
 
 with app.as_current():
-    print("Services:", app.services.all())
+    print("Domains:", app.component_store.domains())
 ```

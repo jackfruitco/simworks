@@ -18,7 +18,6 @@ Main components
 Conventions
 -----------
 - Identities are normalized to lowercase snake_case.
-- group defaults to `"default"` with a DeprecationWarning.
 - Each codec class is registered, not instantiated; instances are created per-use.
 
 Example

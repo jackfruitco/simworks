@@ -238,10 +238,6 @@ class OrchestrAI:
         self._service_finalize_callbacks.append(callback)
         return callback
 
-    def register_service_runner(self, name: str, runner: object) -> object:
-        """Legacy shim retained for compatibility."""
-        raise RuntimeError("Service runners are no longer supported; use inline tasks instead.")
-
     # ------------------------------------------------------------------
     # Configuration helpers (internal)
     # ------------------------------------------------------------------

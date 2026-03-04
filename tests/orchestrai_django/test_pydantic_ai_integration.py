@@ -164,15 +164,6 @@ class TestDjangoBaseService:
 
         assert service.emitter is mock_emitter
 
-    def test_backward_compatibility_alias(self):
-        """Test that DjangoPydanticAIService is an alias for DjangoBaseService."""
-        from orchestrai_django.components.services import (
-            DjangoBaseService,
-            DjangoPydanticAIService,
-        )
-
-        assert DjangoPydanticAIService is DjangoBaseService
-
 
 class TestBaseService:
     """Tests for BaseService (consolidated Pydantic AI-based service)."""
@@ -222,9 +213,3 @@ class TestBaseService:
         assert len(service._prompt_methods) == 2
         assert service._prompt_methods[0].name == "first"
         assert service._prompt_methods[1].name == "second"
-
-    def test_backward_compatibility_alias(self):
-        """Test that PydanticAIService is an alias for BaseService."""
-        from orchestrai.components.services import BaseService, PydanticAIService
-
-        assert PydanticAIService is BaseService

@@ -20,17 +20,6 @@ urlpatterns = [
         views.refresh_messages,
         name="refresh_messages",
     ),
-    # Legacy aliases for cached clients using older route shapes
-    path(
-        "simulation/<int:simulation_id>/refresh/",
-        views.refresh_messages,
-        name="refresh_messages_legacy",
-    ),
-    path(
-        "simulation/<int:simulation_id>/refresh/input/",
-        views.refresh_messages,
-        name="refresh_messages_input_legacy",
-    ),
     path(
         "simulation/<int:simulation_id>/refresh/metadata/current-checksum/",
         views.get_metadata_checksum,
@@ -40,11 +29,6 @@ urlpatterns = [
         "simulation/<int:simulation_id>/refresh/messages/older/",
         views.load_older_messages,
         name="load_older_messages",
-    ),
-    path(
-        "simulation/<int:simulation_id>/refresh/older-input/",
-        views.load_older_messages,
-        name="load_older_messages_legacy",
     ),
     path(
         "simulation/<int:simulation_id>/end_timestamp/",

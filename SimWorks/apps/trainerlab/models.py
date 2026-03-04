@@ -1,5 +1,3 @@
-import warnings
-
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from polymorphic.models import PolymorphicModel
@@ -28,11 +26,6 @@ class ABCEvent(PolymorphicModel):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    warnings.warn(
-        "`ABCEvent.event_type` is deprecated. Use `ABCEvent.polymorphic_ctype` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     # event_type = models.ForeignKey(EventType, on_delete=models.CASCADE, related_name="events")
 
     simulation = models.ForeignKey(

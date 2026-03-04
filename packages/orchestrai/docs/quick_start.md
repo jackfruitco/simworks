@@ -47,7 +47,7 @@ Or run each step manually:
 ```python
 app.setup()      # prepares loader and registries
 app.discover()   # imports configured discovery modules
-app.finalize()   # attaches shared decorators and freezes registries
+app.finalize()   # runs finalize callbacks and freezes registries
 ```
 
 ## 4. Use the current app
@@ -56,23 +56,23 @@ Use the context manager to scope the current app while resolving registries or c
 
 ```python
 with app.as_current():
-    default_client = app.client
-    available_services = app.services.all()
+    store = app.component_store
+    available_domains = store.domains()
 ```
 
 ## 5. Register components with decorators
 
-Shared decorators enqueue work until `finalize()` runs. For example, register a service before the app exists:
+Finalize callbacks can enqueue work until `finalize()` runs:
 
 ```python
-from orchestrai.shared import shared_service
+from orchestrai.finalize import connect_on_app_finalize
 
-@shared_service()
-def hello_world():
-    return "hello"
+def _on_finalize(app):
+    app.conf["EXAMPLE_READY"] = True
 
+connect_on_app_finalize(_on_finalize)
 app.finalize()
-assert "hello_world" in app.services
+assert app.conf["EXAMPLE_READY"] is True
 ```
 
 Explore the [Full Guide](full_documentation.md) for details on registries, discovery, and extending the framework.

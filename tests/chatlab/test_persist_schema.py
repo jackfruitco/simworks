@@ -49,10 +49,33 @@ def simulation(db, user):
 
 
 @pytest.fixture
-def context(simulation):
+def patient_conversation(db, simulation):
+    from apps.simcore.models import Conversation, ConversationType
+
+    conv_type, _ = ConversationType.objects.get_or_create(
+        slug="simulated_patient",
+        defaults={
+            "display_name": "Simulated Patient",
+            "ai_persona": "patient",
+            "locks_with_simulation": True,
+            "available_in": ["chatlab"],
+            "sort_order": 0,
+        },
+    )
+    return Conversation.objects.create(
+        simulation=simulation,
+        conversation_type=conv_type,
+        display_name=simulation.sim_patient_display_name or "Patient",
+        display_initials=simulation.sim_patient_initials or "Pt",
+    )
+
+
+@pytest.fixture
+def context(simulation, patient_conversation):
     return PersistContext(
         simulation_id=simulation.id,
         call_id=str(uuid4()),
+        extra={"conversation_id": patient_conversation.id},
     )
 
 

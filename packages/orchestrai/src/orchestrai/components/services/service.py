@@ -88,7 +88,7 @@ class TaskDescriptor:
     """
 
     def __get__(self, instance: Any, owner: type | None = None) -> CoreTaskProxy:
-        from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec
+        from orchestrai.components.services.task_proxy import ServiceSpec
 
         service_cls = owner or type(instance)
         kwargs: dict[str, Any] = {}
@@ -290,7 +290,7 @@ class BaseService[T: BaseModel](
         Configuration layering:
         - Standalone OrchestrAI: Uses standard env vars (OPENAI_API_KEY, etc.)
         - Django integration: Uses namespaced env vars (ORCA_OPENAI_API_KEY, etc.)
-        - User override: Via ORCA_CONFIG["API_KEY_ENVVARS"]
+        - User override: Via ORCHESTRAI["API_KEY_ENVVARS"]
 
         Args:
             provider: Provider name (e.g., "openai", "anthropic")
@@ -298,8 +298,6 @@ class BaseService[T: BaseModel](
         Returns:
             Tuple of (api_key, source_envvar) or (None, None) if not found
         """
-        import os
-
         from orchestrai.utils.env_utils import get_api_key, get_api_key_envvar
 
         envvar = get_api_key_envvar(provider)
@@ -312,17 +310,6 @@ class BaseService[T: BaseModel](
                 envvar,
             )
             return api_key, envvar
-
-        # Fallback for backward compatibility: ORCA_PROVIDER_API_KEY
-        generic_envvar = "ORCA_PROVIDER_API_KEY"
-        generic_key = os.environ.get(generic_envvar)
-        if generic_key:
-            logger.debug(
-                "API key for %s found via generic fallback %s",
-                provider,
-                generic_envvar,
-            )
-            return generic_key, generic_envvar
 
         return None, None
 
@@ -372,8 +359,7 @@ class BaseService[T: BaseModel](
         if not api_key and provider in supported_providers:
             configured_envvar = get_api_key_envvar(provider) or f"{provider.upper()}_API_KEY"
             raise ValueError(
-                f"No API key found for provider '{provider}'. "
-                f"Set {configured_envvar} or ORCA_PROVIDER_API_KEY environment variable."
+                f"No API key found for provider '{provider}'. Set {configured_envvar}."
             )
 
         # OpenAI
@@ -628,7 +614,6 @@ class BaseService[T: BaseModel](
         return flatten_context_(self.context)
 
 
-# Re-export for backward compatibility with imports expecting these from this module
 __all__ = [
     "BaseService",
     "CoreTaskProxy",

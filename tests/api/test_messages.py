@@ -60,14 +60,7 @@ def patient_type(db):
     """Create a patient conversation type."""
     from apps.simcore.models import ConversationType
 
-    return ConversationType.objects.create(
-        slug="simulated_patient",
-        display_name="Simulated Patient",
-        ai_persona="patient",
-        locks_with_simulation=True,
-        available_in=["chatlab"],
-        sort_order=0,
-    )
+    return ConversationType.objects.get(slug="simulated_patient")
 
 
 @pytest.fixture
@@ -75,14 +68,7 @@ def feedback_type(db):
     """Create a feedback conversation type (Stitch)."""
     from apps.simcore.models import ConversationType
 
-    return ConversationType.objects.create(
-        slug="simulated_feedback",
-        display_name="Simulation Feedback",
-        ai_persona="stitch",
-        locks_with_simulation=False,
-        available_in=["chatlab"],
-        sort_order=10,
-    )
+    return ConversationType.objects.get(slug="simulated_feedback")
 
 
 @pytest.fixture
@@ -446,7 +432,7 @@ class TestCreateMessage:
 
         assert response.status_code == 404
 
-    @patch("simulation.models.Simulation.generate_feedback")
+    @patch("apps.simcore.models.Simulation.generate_feedback")
     def test_create_message_locked_patient_conversation_returns_400(
         self, mock_feedback, auth_client, simulation, conversation
     ):
@@ -461,7 +447,7 @@ class TestCreateMessage:
 
         assert response.status_code == 400
 
-    @patch("simulation.models.Simulation.generate_feedback")
+    @patch("apps.simcore.models.Simulation.generate_feedback")
     @patch("api.v1.endpoints.messages._enqueue_ai_reply")
     def test_create_message_stitch_conversation_after_lock_succeeds(
         self, mock_enqueue, mock_feedback, auth_client, simulation, feedback_conversation
@@ -522,10 +508,12 @@ class TestCreateMessage:
         assert response.status_code == 404
 
     @patch("api.v1.endpoints.messages._enqueue_ai_reply")
-    def test_create_message_enqueue_failure_returns_400(
+    def test_create_message_enqueue_failure_still_returns_202(
         self, mock_enqueue, auth_client, simulation, conversation
     ):
-        """When AI enqueue fails (returns None), returns 400."""
+        """When AI enqueue fails (returns None), API still accepts the user message."""
+        from apps.chatlab.models import Message
+
         mock_enqueue.return_value = None
 
         response = auth_client.post(
@@ -534,7 +522,11 @@ class TestCreateMessage:
             content_type="application/json",
         )
 
-        assert response.status_code == 400
+        assert response.status_code == 202
+        msg = Message.objects.get(pk=response.json()["id"])
+        assert msg.delivery_status == Message.DeliveryStatus.SENT
+        assert msg.delivery_error_code == ""
+        assert msg.delivery_retryable is True
 
 
 @pytest.mark.django_db
