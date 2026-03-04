@@ -1,6 +1,7 @@
 import types
 
 from orchestrai_django import tasks
+from orchestrai_django.signals import ai_response_failed
 
 
 class DummyAttempt:
@@ -220,3 +221,86 @@ def test_inline_persist_uses_output_data_even_if_empty(monkeypatch):
     assert calls["persist_context"].extra["conversation_id"] == 456
     assert calls["persist_context"].extra["service_call_attempt_id"] == "attempt-1"
     assert call.domain_persisted is True
+
+
+def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkeypatch):
+    class RetryAttempt:
+        def __init__(self):
+            self.attempt = 1
+            self.is_retryable = True
+            self.marked_error = None
+
+        def mark_dispatched(self):
+            return None
+
+        def mark_error(self, error, is_retryable=True):
+            self.marked_error = error
+            self.is_retryable = is_retryable
+
+    class RetryAttempts:
+        @staticmethod
+        def count():
+            return 0
+
+    class RetryCall(DummyCall):
+        def __init__(self):
+            super().__init__()
+            self.context = {"simulation_id": 7, "user_msg": 11}
+            self.attempts = RetryAttempts()
+            self._attempt = RetryAttempt()
+
+        def allocate_attempt(self):
+            return self._attempt
+
+    class NoisyFailingService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.emitter = types.SimpleNamespace(
+                emit_failure=lambda *args, **kwargs: ai_response_failed.send(
+                    sender=self.__class__,
+                    error="attempt-level failure",
+                    context={"simulation_id": 7, "user_msg": 11},
+                )
+            )
+
+        async def arun(self, **payload):
+            # Simulate a transient failure; run_service_call should retry.
+            self.emitter.emit_failure({}, "services.test.native.output", None, "temporarily unavailable")
+            raise RuntimeError("temporarily unavailable")
+
+    call = RetryCall()
+    enqueued_retry_call_ids = []
+    observed_failures = []
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    def _capture_failure(sender, **kwargs):
+        observed_failures.append(kwargs)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    ai_response_failed.connect(_capture_failure, weak=False)
+    try:
+        monkeypatch.setattr(tasks, "ensure_service_registry", lambda app=None: DummyRegistry(NoisyFailingService))
+        monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+        monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+        monkeypatch.setattr(
+            tasks,
+            "run_service_call_task",
+            types.SimpleNamespace(enqueue=lambda call_id: enqueued_retry_call_ids.append(call_id)),
+        )
+
+        result = tasks.run_service_call(call.id)
+    finally:
+        ai_response_failed.disconnect(_capture_failure)
+
+    assert result["status"] == "in_progress"
+    assert enqueued_retry_call_ids == [call.id]
+    # No failure signal should be emitted until retries are exhausted.
+    assert observed_failures == []

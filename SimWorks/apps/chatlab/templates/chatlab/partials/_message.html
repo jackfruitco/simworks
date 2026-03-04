@@ -1,3 +1,5 @@
+{% load static %}
+
 <div
   class="chat-bubble relative block w-fit max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm sm:max-w-[75%] {% if not message.is_from_ai and message.sender.id == user.id %}outgoing ml-auto rounded-br-md bg-[var(--color-bg-outgoing)] text-[var(--color-text-light)]{% else %}incoming mr-auto rounded-bl-md bg-[var(--color-bg-incoming)] text-[var(--color-text-dark)]{% endif %}"
   data-message-id="{{ message.id }}"
@@ -28,10 +30,34 @@
       x-data="{ time: new Date('{{ message.timestamp|date:'c' }}').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) }"
       x-text="time">{{ message.timestamp|date:"H:i" }}</time>
     {% if message.sender and message.sender == user %}
-    <span class="status-icons relative ml-1 inline-flex h-4 w-5" x-data="{ delivered: true, read: false }">
-      <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary" data-icon="fa6-regular:circle-check" data-inline="false" x-show="delivered"></span>
-      <span class="iconify status-icon read-icon absolute left-1 top-0 text-[11px] text-emerald-500" data-icon="fa6-regular:circle-check" data-inline="false" x-show="read"></span>
+    <span class="status-icons relative ml-1 inline-flex h-4 w-5"
+{% block comment %}
+          data-status="{{ message.delivery_status|default:'sent' }}">
+      <span class="iconify status-icon sent-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status|default:'sent' != 'sent' %}hidden{% endif %}"
+            data-icon="fa6-regular:circle-check"
+            data-inline="false"></span>
+      <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status != 'delivered' %}hidden{% endif %}"
+            data-icon="fa6-solid:check-double"
+            data-inline="false"></span>
+      <span class="iconify status-icon failed-icon absolute left-0 top-0 text-[11px] text-red-500 {% if message.delivery_status != 'failed' %}hidden{% endif %}"
+            data-icon="fa6-solid:triangle-exclamation"
+            data-inline="false"></span>
+{% endblock comment %}}
+          data-status="{% if message.delivery_status == 'failed' %}delivered{% else %}{{ message.delivery_status|default:'sent' }}{% endif %}">
+      <span class="iconify status-icon sent-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status|default:'sent' != 'sent' %}hidden{% endif %}"
+            data-icon="fa6-regular:circle-check"
+            data-inline="false"></span>
+      <span class="iconify status-icon delivered-icon absolute left-0 top-0 text-[11px] text-content-secondary {% if message.delivery_status != 'delivered' and message.delivery_status != 'failed' %}hidden{% endif %}"
+            data-icon="fa6-solid:check-double"
+            data-inline="false"></span>
     </span>
+    {% if message.delivery_status == 'failed' and message.delivery_retryable %}
+    <button type="button"
+            class="js-retry-message ml-1 rounded border border-red-300 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"
+            data-message-id="{{ message.id }}">
+      Try again
+    </button>
+    {% endif %}
     {% endif %}
   </div>
 </div>

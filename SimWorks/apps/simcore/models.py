@@ -221,8 +221,26 @@ class Simulation(models.Model):
     :ivar sim_patient_display_name: A display-friendly version of the simulated patient's name.
     :type sim_patient_display_name: str
     """
+    class SimulationStatus(models.TextChoices):
+        IN_PROGRESS = "in_progress", "In Progress"
+        COMPLETED = "completed", "Completed"
+        TIMED_OUT = "timed_out", "Timed Out"
+        FAILED = "failed", "Failed"
+        CANCELED = "canceled", "Canceled"
+
     start_timestamp = models.DateTimeField(auto_now_add=True)
     end_timestamp = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(
+        max_length=24,
+        choices=SimulationStatus.choices,
+        default=SimulationStatus.IN_PROGRESS,
+        db_index=True,
+    )
+    terminal_reason_code = models.CharField(max_length=100, blank=True, default="")
+    terminal_reason_text = models.TextField(blank=True, default="")
+    terminal_at = models.DateTimeField(blank=True, null=True)
+    initial_retry_count = models.PositiveSmallIntegerField(default=0)
+    feedback_retry_count = models.PositiveSmallIntegerField(default=0)
 
     time_limit = models.DurationField(
         blank=True, null=True, help_text="Optional max duration for this simulation"
@@ -277,6 +295,13 @@ class Simulation(models.Model):
     @property
     def is_complete(self) -> bool:
         """Returns True if simulation has ended, either manually or due to timeout."""
+        if self.status in {
+            self.SimulationStatus.COMPLETED,
+            self.SimulationStatus.TIMED_OUT,
+            self.SimulationStatus.FAILED,
+            self.SimulationStatus.CANCELED,
+        }:
+            return True
         if self.end_timestamp:
             return True
         if self.time_limit:
@@ -295,7 +320,21 @@ class Simulation(models.Model):
 
     @property
     def is_timed_out(self):
-        return bool(self.time_limit and now() > self.start_timestamp + self.time_limit)
+        if self.status == self.SimulationStatus.TIMED_OUT:
+            return True
+        return bool(
+            not self.end_timestamp
+            and self.time_limit
+            and now() > self.start_timestamp + self.time_limit
+        )
+
+    @property
+    def is_failed(self) -> bool:
+        return self.status == self.SimulationStatus.FAILED
+
+    @property
+    def is_canceled(self) -> bool:
+        return self.status == self.SimulationStatus.CANCELED
 
     @property
     def length(self) -> timedelta | None:
@@ -322,9 +361,129 @@ class Simulation(models.Model):
             return int(self.time_limit.total_seconds() * 1000)
         return 0
 
+    def _broadcast_state_change(self, retryable: bool | None = None) -> None:
+        """Broadcast simulation state transitions via outbox.
+
+        Broadcast is a non-critical side effect and should not break state changes.
+        """
+        try:
+            from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+
+            payload = {
+                "simulation_id": self.pk,
+                "status": self.status,
+                "terminal_reason_code": self.terminal_reason_code or None,
+                "terminal_reason_text": self.terminal_reason_text or None,
+                "retryable": retryable,
+                "terminal_at": self.terminal_at.isoformat() if self.terminal_at else None,
+            }
+            event = enqueue_event_sync(
+                event_type="simulation.state_changed",
+                simulation_id=self.pk,
+                payload=payload,
+            )
+            if event:
+                poke_drain_sync()
+        except Exception:
+            logger.exception("Failed to broadcast simulation state change for sim=%s", self.pk)
+
+    def mark_in_progress(self) -> None:
+        self.end_timestamp = None
+        self.status = self.SimulationStatus.IN_PROGRESS
+        self.terminal_reason_code = ""
+        self.terminal_reason_text = ""
+        self.terminal_at = None
+        self.save(
+            update_fields=[
+                "end_timestamp",
+                "status",
+                "terminal_reason_code",
+                "terminal_reason_text",
+                "terminal_at",
+            ]
+        )
+        self._broadcast_state_change(retryable=True)
+
+    def mark_completed(self) -> None:
+        timestamp = now()  # type: ignore[assignment]
+        self.end_timestamp = timestamp
+        self.status = self.SimulationStatus.COMPLETED
+        self.terminal_reason_code = ""
+        self.terminal_reason_text = ""
+        self.terminal_at = timestamp
+        self.save(
+            update_fields=[
+                "end_timestamp",
+                "status",
+                "terminal_reason_code",
+                "terminal_reason_text",
+                "terminal_at",
+            ]
+        )
+        self._broadcast_state_change(retryable=False)
+
+    def mark_timed_out(self) -> None:
+        timestamp = now()  # type: ignore[assignment]
+        self.end_timestamp = timestamp
+        self.status = self.SimulationStatus.TIMED_OUT
+        self.terminal_reason_code = "timed_out"
+        self.terminal_reason_text = "Simulation timed out."
+        self.terminal_at = timestamp
+        self.save(
+            update_fields=[
+                "end_timestamp",
+                "status",
+                "terminal_reason_code",
+                "terminal_reason_text",
+                "terminal_at",
+            ]
+        )
+        self._broadcast_state_change(retryable=False)
+
+    def mark_failed(
+        self,
+        *,
+        reason_code: str,
+        reason_text: str,
+        retryable: bool = True,
+    ) -> None:
+        timestamp = now()  # type: ignore[assignment]
+        self.end_timestamp = timestamp
+        self.status = self.SimulationStatus.FAILED
+        self.terminal_reason_code = reason_code
+        self.terminal_reason_text = reason_text
+        self.terminal_at = timestamp
+        self.save(
+            update_fields=[
+                "end_timestamp",
+                "status",
+                "terminal_reason_code",
+                "terminal_reason_text",
+                "terminal_at",
+            ]
+        )
+        self._broadcast_state_change(retryable=retryable)
+
+    def mark_canceled(self, *, reason_code: str = "canceled_by_user", reason_text: str = "Canceled by user") -> None:
+        timestamp = now()  # type: ignore[assignment]
+        self.end_timestamp = timestamp
+        self.status = self.SimulationStatus.CANCELED
+        self.terminal_reason_code = reason_code
+        self.terminal_reason_text = reason_text
+        self.terminal_at = timestamp
+        self.save(
+            update_fields=[
+                "end_timestamp",
+                "status",
+                "terminal_reason_code",
+                "terminal_reason_text",
+                "terminal_at",
+            ]
+        )
+        self._broadcast_state_change(retryable=False)
+
     def end(self) -> None:
-        self.end_timestamp = now()   # type: ignore[assignment]
-        self.save()
+        self.mark_completed()
         self.generate_feedback()
 
     async def aend(self) -> None:

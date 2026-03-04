@@ -35,9 +35,21 @@ class SimulationOut(BaseModel):
         ...,
         description="Initials for the simulated patient",
     )
-    status: Literal["in_progress", "completed", "timed_out"] = Field(
+    status: Literal["in_progress", "completed", "timed_out", "failed", "canceled"] = Field(
         ...,
         description="Current status of the simulation",
+    )
+    terminal_reason_code: str = Field(
+        default="",
+        description="Machine-readable terminal reason code",
+    )
+    terminal_reason_text: str = Field(
+        default="",
+        description="User-safe terminal reason text",
+    )
+    terminal_at: datetime | None = Field(
+        default=None,
+        description="Timestamp when simulation entered terminal state",
     )
 
 
@@ -81,7 +93,17 @@ class SimulationEndResponse(BaseModel):
 
 def simulation_to_out(sim) -> SimulationOut:
     """Convert a Simulation model instance to SimulationOut schema."""
-    if sim.is_timed_out:
+    raw_status = getattr(sim, "status", None)
+    if raw_status in {"completed", "timed_out", "failed", "canceled"}:
+        status = raw_status
+    elif raw_status == "in_progress":
+        if sim.is_timed_out:
+            status = "timed_out"
+        elif sim.end_timestamp:
+            status = "completed"
+        else:
+            status = "in_progress"
+    elif sim.is_timed_out:
         status = "timed_out"
     elif sim.is_complete:
         status = "completed"
@@ -99,4 +121,7 @@ def simulation_to_out(sim) -> SimulationOut:
         patient_display_name=sim.sim_patient_display_name,
         patient_initials=sim.sim_patient_initials,
         status=status,
+        terminal_reason_code=getattr(sim, "terminal_reason_code", "") or "",
+        terminal_reason_text=getattr(sim, "terminal_reason_text", "") or "",
+        terminal_at=getattr(sim, "terminal_at", None),
     )
