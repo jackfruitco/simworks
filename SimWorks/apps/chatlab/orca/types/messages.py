@@ -1,6 +1,4 @@
-
-
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from pydantic import Field
 
@@ -12,6 +10,6 @@ class MessageItem(StrictBaseModel):
     role: str
     content: str
 
-    db_pk: Optional[int] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    attachments: List[AttachmentItem] = Field(default_factory=list)
+    db_pk: int | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+    attachments: list[AttachmentItem] = Field(default_factory=list)

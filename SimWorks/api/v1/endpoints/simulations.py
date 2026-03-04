@@ -19,8 +19,8 @@ from api.v1.schemas.simulations import (
     SimulationOut,
     simulation_to_out,
 )
-from config.logging import get_logger
 from apps.common.ratelimit import api_rate_limit
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -122,7 +122,7 @@ def list_simulations(
             cursor_id = int(cursor)
             queryset = queryset.filter(pk__lt=cursor_id)
         except (ValueError, TypeError):
-            raise HttpError(400, "Invalid cursor format")
+            raise HttpError(400, "Invalid cursor format") from None
 
     simulations = list(queryset[: limit + 1])
     has_more = len(simulations) > limit
@@ -155,7 +155,7 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     try:
         sim = Simulation.objects.get(pk=simulation_id, user=user)
     except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
+        raise HttpError(404, "Simulation not found") from None
 
     return simulation_to_out(sim)
 
@@ -210,7 +210,7 @@ def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndRes
     try:
         sim = Simulation.objects.get(pk=simulation_id, user=user)
     except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
+        raise HttpError(404, "Simulation not found") from None
 
     if sim.is_complete:
         raise HttpError(400, "Simulation is already ended")
@@ -235,13 +235,13 @@ def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndRes
 )
 @api_rate_limit
 def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, SimulationOut]:
-    from apps.simcore.models import Simulation, Conversation, ConversationType
+    from apps.simcore.models import Conversation, ConversationType, Simulation
 
     user = request.auth
     try:
         sim = Simulation.objects.get(pk=simulation_id, user=user)
     except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
+        raise HttpError(404, "Simulation not found") from None
 
     if sim.status != Simulation.SimulationStatus.FAILED:
         raise HttpError(400, "Simulation is not in failed state")
@@ -299,7 +299,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
     try:
         sim = Simulation.objects.get(pk=simulation_id, user=user)
     except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
+        raise HttpError(404, "Simulation not found") from None
 
     if sim.status not in {
         Simulation.SimulationStatus.COMPLETED,

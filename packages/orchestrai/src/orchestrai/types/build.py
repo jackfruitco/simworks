@@ -14,11 +14,10 @@ Key characteristics:
 DO NOT use these in schema definitions - use Result* types instead.
 """
 
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field
 
-from .content import ContentRole
 from .build_content import BuildContent
-from .meta import Metafield
+from .content import ContentRole
 
 __all__ = (
     "BuildMessageItem",
@@ -28,20 +27,22 @@ __all__ = (
 
 # ---- Build-side metadata ----
 
+
 class BuildMetafield(BaseModel):
     """
     Metadata field for construction - ergonomic, allows flexibility.
 
     For schema definitions, use ResultMetafield instead.
     """
+
     key: str = Field(..., min_length=1, description="Metadata key identifier")
     value: str | int | float | bool | None = Field(
-        ...,
-        description="Metadata value - JSON primitive types only"
+        ..., description="Metadata value - JSON primitive types only"
     )
 
 
 # ---- Build-side message item ----
+
 
 class BuildMessageItem(BaseModel):
     """
@@ -54,9 +55,10 @@ class BuildMessageItem(BaseModel):
 
     Defaults provided for convenience. For schema definitions, use ResultMessageItem.
     """
+
     role: ContentRole
     content: list[BuildContent]
     item_meta: list[BuildMetafield] = Field(
         default_factory=list,  # Default empty list for convenience
-        description="Metadata entries as key-value pairs"
+        description="Metadata entries as key-value pairs",
     )

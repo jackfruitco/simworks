@@ -8,16 +8,16 @@ Tests cover:
 - Real schema compliance checks
 """
 
-import pytest
 from pydantic import BaseModel, Field, ValidationError
+import pytest
 
-from orchestrai.types import Metafield, HasItemMeta, OutputItem, ContentRole, OutputTextContent
 from orchestrai.schema_lint import (
-    lint_schema,
-    format_violations,
-    validate_pydantic_schema,
     SchemaViolation,
+    format_violations,
+    lint_schema,
+    validate_pydantic_schema,
 )
+from orchestrai.types import ContentRole, HasItemMeta, Metafield, OutputItem, OutputTextContent
 
 
 class TestMetafield:
@@ -57,7 +57,10 @@ class TestMetafield:
         """Metafield rejects empty string keys."""
         with pytest.raises(ValidationError) as exc_info:
             Metafield(key="", value="test")
-        assert "min_length" in str(exc_info.value).lower() or "string_too_short" in str(exc_info.value).lower()
+        assert (
+            "min_length" in str(exc_info.value).lower()
+            or "string_too_short" in str(exc_info.value).lower()
+        )
 
     def test_metafield_rejects_dict_value(self):
         """Metafield rejects dict values (must use primitives only)."""
@@ -81,6 +84,7 @@ class TestMetafield:
 
     def test_metafield_in_list_default_empty(self):
         """Metafield list defaults to empty."""
+
         class TestSchema(BaseModel):
             meta: list[Metafield] = Field(default_factory=list)
 
@@ -89,13 +93,16 @@ class TestMetafield:
 
     def test_metafield_in_list_accepts_multiple(self):
         """Metafield list accepts multiple entries."""
+
         class TestSchema(BaseModel):
             meta: list[Metafield] = Field(default_factory=list)
 
-        obj = TestSchema(meta=[
-            Metafield(key="a", value=1),
-            Metafield(key="b", value="test"),
-        ])
+        obj = TestSchema(
+            meta=[
+                Metafield(key="a", value=1),
+                Metafield(key="b", value="test"),
+            ]
+        )
         assert len(obj.meta) == 2
         assert obj.meta[0].key == "a"
         assert obj.meta[1].value == "test"
@@ -106,6 +113,7 @@ class TestHasItemMeta:
 
     def test_has_item_meta_provides_field(self):
         """HasItemMeta mixin provides item_meta field."""
+
         class TestModel(HasItemMeta, BaseModel):
             name: str
 
@@ -115,13 +123,11 @@ class TestHasItemMeta:
 
     def test_has_item_meta_accepts_values(self):
         """HasItemMeta accepts metadata values."""
+
         class TestModel(HasItemMeta, BaseModel):
             name: str
 
-        obj = TestModel(
-            name="test",
-            item_meta=[Metafield(key="type", value="example")]
-        )
+        obj = TestModel(name="test", item_meta=[Metafield(key="type", value="example")])
         assert len(obj.item_meta) == 1
         assert obj.item_meta[0].key == "type"
 
@@ -134,7 +140,7 @@ class TestOutputItemMigration:
         output = OutputItem(
             role=ContentRole.ASSISTANT,
             content=[OutputTextContent(type="output_text", text="Hello")],
-            item_meta=[]
+            item_meta=[],
         )
         assert output.item_meta == []
 
@@ -146,7 +152,7 @@ class TestOutputItemMigration:
             item_meta=[
                 Metafield(key="source", value="llm"),
                 Metafield(key="tokens", value=100),
-            ]
+            ],
         )
         assert len(output.item_meta) == 2
         assert output.item_meta[0].key == "source"
@@ -165,11 +171,9 @@ class TestSchemaLint:
         """Lint returns empty list for compliant schema."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {"type": "string"}
-            },
+            "properties": {"name": {"type": "string"}},
             "required": ["name"],
-            "additionalProperties": False
+            "additionalProperties": False,
         }
         violations = lint_schema(schema)
         assert violations == []
@@ -179,7 +183,7 @@ class TestSchemaLint:
         schema = {
             "type": "object",
             "properties": {"name": {"type": "string"}},
-            "required": ["name"]
+            "required": ["name"],
             # Missing additionalProperties
         }
         violations = lint_schema(schema)
@@ -189,12 +193,7 @@ class TestSchemaLint:
 
     def test_lint_detects_additional_properties_true(self):
         """Lint detects additionalProperties: true."""
-        schema = {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": True
-        }
+        schema = {"type": "object", "properties": {}, "required": [], "additionalProperties": True}
         violations = lint_schema(schema)
         assert any(v.rule == "additionalProperties_true" for v in violations)
 
@@ -204,7 +203,7 @@ class TestSchemaLint:
             "type": "object",
             "properties": {},
             "required": [],
-            "additionalProperties": {"type": "string"}
+            "additionalProperties": {"type": "string"},
         }
         violations = lint_schema(schema)
         assert any(v.rule == "additionalProperties_open_map" for v in violations)
@@ -214,7 +213,7 @@ class TestSchemaLint:
         schema = {
             "type": "object",
             "required": [],
-            "additionalProperties": False
+            "additionalProperties": False,
             # Missing properties
         }
         violations = lint_schema(schema)
@@ -224,12 +223,9 @@ class TestSchemaLint:
         """Lint detects required not containing all property keys."""
         schema = {
             "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"}
-            },
+            "properties": {"name": {"type": "string"}, "age": {"type": "integer"}},
             "required": ["name"],  # Missing "age"
-            "additionalProperties": False
+            "additionalProperties": False,
         }
         violations = lint_schema(schema)
         assert any(v.rule == "required_incomplete" for v in violations)
@@ -246,23 +242,13 @@ class TestSchemaLint:
 
     def test_lint_detects_root_anyof(self):
         """Lint detects root-level anyOf."""
-        schema = {
-            "anyOf": [
-                {"type": "string"},
-                {"type": "integer"}
-            ]
-        }
+        schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
         violations = lint_schema(schema)
         assert any(v.rule == "root_anyOf" for v in violations)
 
     def test_lint_detects_root_oneof(self):
         """Lint detects root-level oneOf."""
-        schema = {
-            "oneOf": [
-                {"type": "string"},
-                {"type": "integer"}
-            ]
-        }
+        schema = {"oneOf": [{"type": "string"}, {"type": "integer"}]}
         violations = lint_schema(schema)
         assert any(v.rule == "root_oneOf" for v in violations)
 
@@ -274,12 +260,12 @@ class TestSchemaLint:
                 "nested": {
                     "type": "object",
                     "properties": {"value": {"type": "string"}},
-                    "required": ["value"]
+                    "required": ["value"],
                     # Missing additionalProperties on nested object
                 }
             },
             "required": ["nested"],
-            "additionalProperties": False
+            "additionalProperties": False,
         }
         violations = lint_schema(schema)
         assert any("nested" in v.path for v in violations)
@@ -292,9 +278,9 @@ class TestSchemaLint:
             "items": {
                 "type": "object",
                 "properties": {},
-                "required": []
+                "required": [],
                 # Missing additionalProperties on item object
-            }
+            },
         }
         violations = lint_schema(schema)
         assert any("items" in v.path for v in violations)
@@ -310,10 +296,10 @@ class TestSchemaLint:
                 "MyType": {
                     "type": "object",
                     "properties": {},
-                    "required": []
+                    "required": [],
                     # Missing additionalProperties in definition
                 }
-            }
+            },
         }
         violations = lint_schema(schema)
         assert any("$defs" in v.path for v in violations)
@@ -331,7 +317,7 @@ class TestSchemaLint:
                 path="$.properties.meta",
                 rule="additionalProperties_missing",
                 message="Object must have additionalProperties",
-                suggestion="Add additionalProperties: False"
+                suggestion="Add additionalProperties: False",
             )
         ]
         result = format_violations(violations)
@@ -342,6 +328,7 @@ class TestSchemaLint:
 
     def test_validate_pydantic_schema_strict_raises(self):
         """validate_pydantic_schema raises ValueError in strict mode."""
+
         class BadSchema(BaseModel):
             # This will have additionalProperties missing by default
             class Config:
@@ -353,6 +340,7 @@ class TestSchemaLint:
 
     def test_validate_pydantic_schema_non_strict_returns_violations(self):
         """validate_pydantic_schema returns violations in non-strict mode."""
+
         class BadSchema(BaseModel):
             class Config:
                 extra = "allow"
@@ -376,6 +364,7 @@ class TestSchemaComplianceIntegration:
 
     def test_has_item_meta_schemas_are_compliant(self):
         """Schemas using HasItemMeta are compliant."""
+
         class MySchema(HasItemMeta, BaseModel):
             name: str
 

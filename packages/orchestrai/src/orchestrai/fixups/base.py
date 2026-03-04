@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from enum import Enum, auto
+import logging
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -26,8 +26,7 @@ class FixupStage(Enum):
 class Fixup(Protocol):
     """A callable hook invoked at lifecycle checkpoints."""
 
-    def apply(self, stage: FixupStage, app: Any, **context: Any) -> Any:
-        ...
+    def apply(self, stage: FixupStage, app: Any, **context: Any) -> Any: ...
 
 
 class NoOpFixup:

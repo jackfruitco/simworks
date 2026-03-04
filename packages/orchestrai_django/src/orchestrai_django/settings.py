@@ -21,7 +21,7 @@ Notes:
 - Keep this small and dependency-free so it can be imported anywhere.
 """
 
-from typing import Any, Tuple
+from typing import Any
 
 try:  # Django may not be fully configured in certain tooling contexts
     from django.conf import settings as dj_settings
@@ -34,16 +34,16 @@ except Exception:  # pragma: no cover - defensive import guard
 DEFAULTS = {
     # Single strictness knob for identity collisions across all registries
     "SIMCORE_COLLISIONS_STRICT": True,
-
     # Global tokens applied to the *name* part only (case-insensitive)
     # Per-app tokens should come from AppConfig.IDENTITY_STRIP_TOKENS
-    "SIMCORE_IDENTITY_STRIP_TOKENS": tuple(),  # type: Tuple[str, ...]
+    "SIMCORE_IDENTITY_STRIP_TOKENS": (),  # type: tuple[str, ...]
 }
 
 
 # ----------------------------
 # Accessors
 # ----------------------------
+
 
 def get_setting(key: str, default: Any | None = None) -> Any:
     """Return a setting from the Django project or fallback to defaults.
@@ -67,12 +67,14 @@ def get_bool(key: str, default: bool | None = None) -> bool:
     return bool(val)
 
 
-def get_tokens_global() -> Tuple[str, ...]:
+def get_tokens_global() -> tuple[str, ...]:
     """Return global identity strip tokens as a tuple of strings (CI semantics elsewhere)."""
-    val: Any = get_setting("SIMCORE_IDENTITY_STRIP_TOKENS", DEFAULTS["SIMCORE_IDENTITY_STRIP_TOKENS"])
+    val: Any = get_setting(
+        "SIMCORE_IDENTITY_STRIP_TOKENS", DEFAULTS["SIMCORE_IDENTITY_STRIP_TOKENS"]
+    )
     # Normalize into a tuple[str, ...]
     if val is None:
-        return tuple()
+        return ()
     if isinstance(val, (list, tuple, set)):
         return tuple(str(x) for x in val if isinstance(x, str))
     # Single string: allow comma-separated or space-separated for convenience
@@ -80,17 +82,19 @@ def get_tokens_global() -> Tuple[str, ...]:
         raw = [p.strip() for p in val.replace(",", " ").split() if p.strip()]
         return tuple(raw)
     # Unknown type: fallback safely
-    return tuple()
+    return ()
 
 
 # Convenience aliases used throughout the package
-STRICT_COLLISIONS: bool = get_bool("SIMCORE_COLLISIONS_STRICT", DEFAULTS["SIMCORE_COLLISIONS_STRICT"])
-GLOBAL_NAME_TOKENS: Tuple[str, ...] = get_tokens_global()
+STRICT_COLLISIONS: bool = get_bool(
+    "SIMCORE_COLLISIONS_STRICT", DEFAULTS["SIMCORE_COLLISIONS_STRICT"]
+)
+GLOBAL_NAME_TOKENS: tuple[str, ...] = get_tokens_global()
 
 __all__ = [
-    "get_setting",
-    "get_bool",
-    "get_tokens_global",
-    "STRICT_COLLISIONS",
     "GLOBAL_NAME_TOKENS",
+    "STRICT_COLLISIONS",
+    "get_bool",
+    "get_setting",
+    "get_tokens_global",
 ]

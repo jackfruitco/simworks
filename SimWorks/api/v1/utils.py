@@ -20,5 +20,5 @@ def get_simulation_for_user(simulation_id: int, user):
 
     try:
         return Simulation.objects.get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found")
+    except Simulation.DoesNotExist as err:
+        raise HttpError(404, "Simulation not found") from err

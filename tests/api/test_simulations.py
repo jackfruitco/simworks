@@ -11,8 +11,8 @@ Tests that:
 
 from unittest.mock import patch
 
-import pytest
 from django.test import Client
+import pytest
 
 from api.v1.auth import create_access_token
 
@@ -90,9 +90,7 @@ class TestListSimulations:
         assert data["items"][0]["id"] == simulation.pk
         assert data["has_more"] is False
 
-    def test_list_simulations_excludes_other_users(
-        self, auth_client, test_user, other_user
-    ):
+    def test_list_simulations_excludes_other_users(self, auth_client, test_user, other_user):
         """Does not return simulations belonging to other users."""
         from apps.simcore.models import Simulation
 
@@ -113,6 +111,7 @@ class TestListSimulations:
     def test_list_simulations_with_status_filter(self, auth_client, test_user):
         """Can filter by status."""
         from django.utils.timezone import now
+
         from apps.simcore.models import Simulation
 
         # Create an in-progress and completed simulation
@@ -202,9 +201,7 @@ class TestGetSimulation:
 
         assert response.status_code == 404
 
-    def test_get_simulation_other_user_returns_404(
-        self, auth_client, other_user
-    ):
+    def test_get_simulation_other_user_returns_404(self, auth_client, other_user):
         """Simulation belonging to other user returns 404."""
         from apps.simcore.models import Simulation
 
@@ -306,7 +303,7 @@ class TestEndSimulation:
 
         assert response.status_code == 401
 
-    @patch("simulation.models.Simulation.generate_feedback")
+    @patch("apps.simcore.models.Simulation.generate_feedback")
     def test_end_simulation_success(self, mock_feedback, auth_client, simulation):
         """Ends simulation successfully."""
         response = auth_client.post(f"/api/v1/simulations/{simulation.pk}/end/")
@@ -324,7 +321,7 @@ class TestEndSimulation:
         # Verify feedback generation was called
         mock_feedback.assert_called_once()
 
-    @patch("simulation.models.Simulation.generate_feedback")
+    @patch("apps.simcore.models.Simulation.generate_feedback")
     def test_end_simulation_already_ended_returns_400(self, mock_feedback, auth_client, simulation):
         """Ending already-ended simulation returns 400."""
         # First end
@@ -395,6 +392,7 @@ class TestSimulationOutputFormat:
     def test_simulation_status_values(self, auth_client, test_user):
         """Status field has correct values based on simulation state."""
         from django.utils.timezone import now
+
         from apps.simcore.models import Simulation
 
         # In-progress

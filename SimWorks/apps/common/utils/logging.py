@@ -1,18 +1,19 @@
 # common/utils/logging.py
 import logging
+from typing import ClassVar
 
 
 class AppColorFormatter(logging.Formatter):
-    COLORS = {
-        "chatlab": "\033[34m",              # Dark Blue
-        "orchestrai": "\033[32m",           # Dark Green
-        "orchestrai_django": "\033[32m",    # Dark Green
-        "accounts": "\033[35m",             # Dark Magenta
-        "notifications": "\033[33m",        # Dark Yellow/Brown
-        "simcore": "\033[36m",              # Dark Cyan
-        # "common": "\033[30m",               # Black
+    COLORS: ClassVar[dict[str, str]] = {
+        "chatlab": "\033[34m",
+        "orchestrai": "\033[32m",
+        "orchestrai_django": "\033[32m",
+        "accounts": "\033[35m",
+        "notifications": "\033[33m",
+        "simcore": "\033[36m",
     }
-    RESET = "\033[0m"
+
+    RESET: ClassVar[str] = "\033[0m"
 
     def format(self, record):
         parts = record.name.split(".")
@@ -26,7 +27,9 @@ class AppColorFormatter(logging.Formatter):
         return super().format(record)
 
 
-def log_model_save(instance, created: bool, model_name: str = None, extra: dict = None):
+def log_model_save(
+    instance, created: bool, model_name: str | None = None, extra: dict | None = None
+):
     """
     Standardized logger for model save events.
 
@@ -54,5 +57,7 @@ def log_model_save(instance, created: bool, model_name: str = None, extra: dict 
     else:
         extra_data = ""
 
-    msg = f"{prefix} {instance} (ID: {obj_id}) was {'CREATED' if created else 'UPDATED'}.{extra_data}"
+    msg = (
+        f"{prefix} {instance} (ID: {obj_id}) was {'CREATED' if created else 'UPDATED'}.{extra_data}"
+    )
     model_logger.info(msg)

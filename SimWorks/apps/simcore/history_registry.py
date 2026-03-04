@@ -1,7 +1,4 @@
 # simcore/history_registry.py
-import csv
-import io
-import json
 
 from apps.common.utils import Formatter
 
@@ -16,7 +13,7 @@ def register_history_provider(app_label, func):
     _registry[app_label] = func
 
 
-def get_sim_history(simulation, format: str = None):
+def get_sim_history(simulation, format: str | None = None):
     """
     Returns a combined list of history records from all registered apps for a given simulation.
     If a format is provided, returns a formatted representation using core.utils.Formatter.

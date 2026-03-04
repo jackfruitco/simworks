@@ -5,20 +5,23 @@ This module attempts to use the core PromptRegistry to influence template resolu
 if it is present, allowing project-level prompt definitions to participate in Django
 template selection.
 """
+
 from collections.abc import Mapping
-from typing import Any, Optional
+from typing import Any
+
 from asgiref.sync import sync_to_async
 from django.template.loader import select_template
 from django.utils import timezone
 
 from orchestrai.registry import prompt_sections
 
+
 async def render_section(
     namespace: str,
     section_key: str,
     simulation: Any,
     *,
-    ctx: Optional[Mapping[str, Any]] = None,
+    ctx: Mapping[str, Any] | None = None,
 ) -> str:
     """
     Render a prompt section with Django templates.
@@ -60,15 +63,13 @@ async def render_section(
             # If the registry integration fails for any reason, fall back to static candidates
             registry_candidates = []
 
-    candidates = (
-        list(dict.fromkeys(registry_candidates)) +  # de-dupe while preserving order
-        [
-            f"{namespace}/ai/prompts/{section_key}.txt",
-            f"{namespace}/ai/prompts/{section_key}.md",
-            f"ai/prompts/{namespace}/{section_key}.txt",
-            f"ai/prompts/{section_key}.txt",
-        ]
-    )
+    candidates = [
+        *dict.fromkeys(registry_candidates),  # de-dupe while preserving order
+        f"{namespace}/ai/prompts/{section_key}.txt",
+        f"{namespace}/ai/prompts/{section_key}.md",
+        f"ai/prompts/{namespace}/{section_key}.txt",
+        f"ai/prompts/{section_key}.txt",
+    ]
 
     template = await sync_to_async(select_template)(candidates)
 

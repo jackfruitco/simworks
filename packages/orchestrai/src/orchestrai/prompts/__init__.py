@@ -20,13 +20,13 @@ Usage:
 """
 
 from orchestrai.prompts.decorators import (
-    system_prompt,
-    collect_prompts,
     PromptMethod,
+    collect_prompts,
+    system_prompt,
 )
 
 __all__ = [
-    "system_prompt",
-    "collect_prompts",
     "PromptMethod",
+    "collect_prompts",
+    "system_prompt",
 ]

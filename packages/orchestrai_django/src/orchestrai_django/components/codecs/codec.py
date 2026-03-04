@@ -2,14 +2,14 @@
 """
 This module provides the DjangoBaseCodec façade.
 
-It subclasses the core BaseCodec and offers fan-out and persistence helpers
-that are deprecated and will be moved to the service layer.
+It subclasses the core BaseCodec and offers fan-out and persistence helpers.
 """
 
 import asyncio
+from collections.abc import Callable, Mapping
 import logging
-import warnings
-from typing import Any, ClassVar, Mapping, TypeVar, Callable
+from typing import Any, ClassVar, TypeVar
+
 from asgiref.sync import async_to_sync
 
 from apps.common.models import PersistModel
@@ -23,16 +23,13 @@ __all__ = ("DjangoBaseCodec",)
 
 M = TypeVar("M", bound=PersistModel)
 
+
 class DjangoBaseCodec(BaseCodec):
     """
     DjangoBaseCodec is a Django-facing façade over the core BaseCodec.
 
     It provides asynchronous decoding and validation of payloads, along with
-    deprecated fan-out and persistence behavior for Django model instances.
-
-    The fan-out and persistence logic is **deprecated**. New code should prefer
-    handling persistence in service `finalize()` methods. This logic will be
-    removed in a later milestone.
+    fan-out and persistence behavior for Django model instances.
 
     Two patterns are supported:
 
@@ -60,6 +57,7 @@ class DjangoBaseCodec(BaseCodec):
              "metadata": lambda item: {"simulation": sim},  # callable per-item OK
          }
     """
+
     abstract: ClassVar[bool] = True
 
     # Map a section key in the validated payload to either:
@@ -75,7 +73,9 @@ class DjangoBaseCodec(BaseCodec):
 
     # Static defaults to set on new instances per section.
     # Values may be dicts or callables taking the item and returning a dict.
-    section_defaults: dict[str, Mapping[str, Any] | Callable[[Mapping[str, Any]], Mapping[str, Any]]] | None = None
+    section_defaults: (
+        dict[str, Mapping[str, Any] | Callable[[Mapping[str, Any]], Mapping[str, Any]]] | None
+    ) = None
 
     # ---- public entrypoints ------------------------------------------------
     async def adecode(self, resp: Response) -> Any:
@@ -115,15 +115,6 @@ class DjangoBaseCodec(BaseCodec):
         """
         return async_to_sync(self.adecode)(resp)
 
-    # Backwards-friendly aliases (arun/run) for callers that still use the old name.
-    async def arun(self, resp: Response) -> Any:
-        """Alias for `adecode` to support legacy call sites."""
-        return await self.adecode(resp)
-
-    def run(self, resp: Response) -> Any:
-        """Alias for `decode` to support legacy call sites."""
-        return self.decode(resp)
-
     # ---- internal helpers --------------------------------------------------
     def _normalize_validated_payload(self, validated: Any) -> Mapping[str, Any]:
         """
@@ -134,24 +125,16 @@ class DjangoBaseCodec(BaseCodec):
             return validated.model_dump(mode="python", exclude_none=True)  # type: ignore[return-value]
         if isinstance(validated, Mapping):
             return validated
-        raise CodecDecodeError(f"{self.__class__.__name__}: unknown validated payload type {type(validated)!r}")
+        raise CodecDecodeError(
+            f"{self.__class__.__name__}: unknown validated payload type {type(validated)!r}"
+        )
 
     # ---- core persistence --------------------------------------------------
     async def persist_sections(self, vdict: Mapping[str, Any]) -> list[PersistModel]:
         """
-        DEPRECATED: Fan-out and persistence should be handled at the service layer.
-
         This method persists sections of the validated payload into Django model
         instances according to the schema_model_map and related configuration.
-
-        Callers should prefer service-level persistence (e.g. in finalize() methods).
         """
-        warnings.warn(
-            "this method is deprecated; use service-level persistence instead",
-            DeprecationWarning,
-            stacklevel=2
-        )
-
         coros: list[asyncio.Future] = []
         instances: list[PersistModel] = []
 
@@ -174,13 +157,15 @@ class DjangoBaseCodec(BaseCodec):
 
             for item in seq:
                 if not isinstance(item, Mapping):
-                    raise CodecDecodeError(f"Items in section '{section_key}' must be mappings, not {type(item)!r}")
+                    raise CodecDecodeError(
+                        f"Items in section '{section_key}' must be mappings, not {type(item)!r}"
+                    )
 
                 # choose model class
                 model_cls: type[M]
                 if routed:
                     kind_val = str(item.get(kind_field, "__default__"))
-                    model_cls = (target.get(kind_val) or target.get("__default__"))  # type: ignore[assignment]
+                    model_cls = target.get(kind_val) or target.get("__default__")  # type: ignore[assignment]
                     if model_cls is None:
                         raise CodecDecodeError(
                             f"No model mapping for section '{section_key}' kind='{kind_val}' and no '__default__'"
@@ -213,9 +198,7 @@ class DjangoBaseCodec(BaseCodec):
                 instance = model_cls(**base_defaults)  # type: ignore[call-arg]
                 instances.append(instance)
 
-                coros.append(
-                    instance.apersist(item, translate_keys=translate_map)
-                )
+                coros.append(instance.apersist(item, translate_keys=translate_map))
 
         if not coros:
             return []

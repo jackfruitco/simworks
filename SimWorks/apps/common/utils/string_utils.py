@@ -43,9 +43,9 @@ def to_snake_case(s: str) -> str:
         - `foo-bar` -> `foo_bar`
         - `foo bar` -> `foo_bar`
     """
-    s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', s)
-    s2 = re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1)
-    return re.sub(r'[_\-\s]+', '_', s2).lower()
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", s)
+    s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
+    return re.sub(r"[_\-\s]+", "_", s2).lower()
 
 
 def to_camel_case(s: str) -> str:
@@ -64,6 +64,6 @@ def to_camel_case(s: str) -> str:
         - `foo-bar` -> `fooBar`
         - `foo bar` -> `fooBar`
     """
-    parts = re.split(r'[_\-\s]+', s)
+    parts = re.split(r"[_\-\s]+", s)
     first, rest = parts[0].lower(), [p.capitalize() for p in parts[1:]]
-    return ''.join([first] + rest)
+    return "".join([first, *rest])

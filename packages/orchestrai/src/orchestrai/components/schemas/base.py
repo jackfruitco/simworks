@@ -1,21 +1,15 @@
-# orchestrai/components/schemas/base.py
+"""Minimal schema compatibility bases."""
 
-from typing import ClassVar
+from __future__ import annotations
 
-from orchestrai.identity import IdentityMixin
-from orchestrai.identity.domains import SCHEMAS_DOMAIN
-from orchestrai.types import StrictBaseModel
+from pydantic import BaseModel, ConfigDict
 
 
-class BaseOutputItem(StrictBaseModel):
-    """Default Pydantic model for LLM output schema items."""
-    pass
+class BaseOutputSchema(BaseModel):
+    """Legacy compatibility base for output schemas."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
-class BaseOutputSchema(StrictBaseModel, IdentityMixin):
-    """Default Pydantic model for LLM output schemas.
-
-    Async-first registry access with a sync convenience wrapper.
-    """
-    DOMAIN: ClassVar[str] = SCHEMAS_DOMAIN
-    domain: ClassVar[str | None] = SCHEMAS_DOMAIN
+class BaseOutputItem(BaseOutputSchema):
+    """Legacy compatibility base for nested schema items."""

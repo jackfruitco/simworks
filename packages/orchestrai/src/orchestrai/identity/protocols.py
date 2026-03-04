@@ -1,24 +1,24 @@
 # orchestrai/identity/protocols.py
 
 
-from typing import Protocol, Any, runtime_checkable, ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .identity import Identity
 
-__all__ = ["IdentityResolverProtocol", "IdentityProtocol"]
+__all__ = ["IdentityProtocol", "IdentityResolverProtocol"]
 
 
 class IdentityResolverProtocol(Protocol):
     def resolve(
-            self,
-            candidate: type,
-            *,
-            domain: str | None = ...,
-            namespace: str | None = ...,
-            group: str | None = ...,
-            name: str | None = ...,
-            context: dict[str, Any] | None = ...,
+        self,
+        candidate: type,
+        *,
+        domain: str | None = ...,
+        namespace: str | None = ...,
+        group: str | None = ...,
+        name: str | None = ...,
+        context: dict[str, Any] | None = ...,
     ) -> "Identity": ...
 
 

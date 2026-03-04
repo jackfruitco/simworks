@@ -6,16 +6,14 @@ Tests:
 - Schema validation at service boundary
 """
 
-import pytest
-
-from apps.chatlab.orca.services.patient import (
-    GenerateInitialResponse,
-    GenerateReplyResponse,
-    GenerateImageResponse,
-)
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
+)
+from apps.chatlab.orca.services.patient import (
+    GenerateImageResponse,
+    GenerateInitialResponse,
+    GenerateReplyResponse,
 )
 
 
@@ -32,10 +30,12 @@ class TestGenerateInitialResponseService:
         assert hasattr(GenerateInitialResponse, "required_context_keys")
         assert "simulation_id" in GenerateInitialResponse.required_context_keys
 
-    def test_service_has_prompt_plan(self):
-        """Verify prompt_plan is defined."""
-        assert hasattr(GenerateInitialResponse, "prompt_plan")
-        assert len(GenerateInitialResponse.prompt_plan) > 0
+    def test_service_collects_prompt_methods(self):
+        """Verify prompt methods are collected on service instances."""
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        method_names = {m.name for m in service._prompt_methods}
+        assert "patient_name_instructions" in method_names
+        assert "base_instructions" in method_names
 
 
 class TestGenerateReplyResponseService:

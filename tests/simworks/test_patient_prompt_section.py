@@ -1,19 +1,4 @@
-import importlib
-import sys
-import types
-
 import pytest
-from django.core.exceptions import ObjectDoesNotExist
-
-
-class DummyManager:
-    def __init__(self, simulation):
-        self.simulation = simulation
-
-    async def aget(self, pk):
-        if pk == self.simulation.pk:
-            return self.simulation
-        raise ObjectDoesNotExist
 
 
 class DummySimulation:
@@ -22,45 +7,46 @@ class DummySimulation:
         self.sim_patient_full_name = full_name
 
 
-@pytest.fixture()
-def patient_module(monkeypatch):
+class DummyManager:
+    def __init__(self, simulation: DummySimulation):
+        self.simulation = simulation
+
+    async def aget(self, pk):
+        if pk == self.simulation.pk:
+            return self.simulation
+        raise ValueError("not found")
+
+
+@pytest.mark.asyncio
+async def test_patient_name_instructions_defaults_when_no_context():
+    from apps.chatlab.orca.services.patient import GenerateInitialResponse
+
+    service = GenerateInitialResponse(context={})
+
+    rendered = await service.patient_name_instructions()
+    assert rendered == "You are a standardized patient."
+
+
+@pytest.mark.asyncio
+async def test_patient_name_instructions_uses_simulation_from_context():
+    from apps.chatlab.orca.services.patient import GenerateInitialResponse
+
     simulation = DummySimulation(pk=101, full_name="Jamie Patient")
-    DummySimulation.objects = DummyManager(simulation)
+    service = GenerateInitialResponse(context={"simulation": simulation})
 
-    dummy_models = types.SimpleNamespace(Simulation=DummySimulation)
-    monkeypatch.setitem(sys.modules, "simulation.models", dummy_models)
-    sys.modules.pop("simulation.orca.prompts.sections.patient", None)
-
-    module = importlib.import_module("simulation.orca.prompts.sections.patient")
-    return module, simulation
+    rendered = await service.patient_name_instructions()
+    assert "Jamie Patient" in rendered
 
 
 @pytest.mark.asyncio
-async def test_patient_section_requires_context(patient_module):
-    module, _ = patient_module
-    section = module.PatientNameSection()
+async def test_patient_name_instructions_resolves_simulation_id(monkeypatch):
+    from apps.chatlab.orca.services.patient import GenerateInitialResponse
+    from apps.simcore.models import Simulation
 
-    with pytest.raises(ValueError) as exc_info:
-        await section.render_instruction()
+    simulation = DummySimulation(pk=101, full_name="Jamie Patient")
+    monkeypatch.setattr(Simulation, "objects", DummyManager(simulation))
 
-    assert "Missing required context variable" in str(exc_info.value)
+    service = GenerateInitialResponse(context={"simulation_id": 101})
+    rendered = await service.patient_name_instructions()
 
-
-@pytest.mark.asyncio
-async def test_patient_section_renders_from_simulation_object(patient_module):
-    module, simulation = patient_module
-    section = module.PatientNameSection()
-
-    rendered = await section.render_instruction(simulation=simulation)
-
-    assert simulation.sim_patient_full_name in rendered
-
-
-@pytest.mark.asyncio
-async def test_patient_section_resolves_simulation_id(patient_module):
-    module, simulation = patient_module
-    section = module.PatientNameSection()
-
-    rendered = await section.render_instruction(simulation_id=simulation.pk)
-
-    assert simulation.sim_patient_full_name in rendered
+    assert "Jamie Patient" in rendered

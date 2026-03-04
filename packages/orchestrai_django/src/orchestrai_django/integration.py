@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 import importlib
 import importlib.util
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from orchestrai.conf.settings import Settings
 
@@ -82,11 +83,6 @@ def _collect_mapping_from_settings(dj_settings: Any, namespace: str) -> dict[str
     if namespaced:
         return namespaced
 
-    # Legacy fallback to ORCA_CONFIG for backwards compatibility
-    legacy = getattr(dj_settings, "ORCA_CONFIG", None)
-    if legacy is not None:
-        return dict(_coerce_mapping(legacy))
-
     return {}
 
 
@@ -100,7 +96,7 @@ def configure_from_django_settings(
     Configuration layering:
     1. Core OrchestrAI defaults (e.g., API_KEY_ENVVARS with standard env vars)
     2. Django-specific defaults (e.g., API_KEY_ENVVARS with ORCA_ prefixed env vars)
-    3. User settings via ORCA_CONFIG or ORCHESTRAI Django setting
+    3. User settings via ORCHESTRAI Django setting
 
     Django's responsibility here is to:
     - Apply Django-specific defaults (namespaced env vars, etc.)
@@ -133,7 +129,6 @@ def configure_from_django_settings(
     conf["DISCOVERY_PATHS"] = tuple(_dedupe_preserve_order(discovery_paths))
 
     # No Django-specific fixups needed (persistence is declarative via __persist__)
-    pass
 
     if app is not None and hasattr(app, "configure"):
         app.configure(conf.as_dict())

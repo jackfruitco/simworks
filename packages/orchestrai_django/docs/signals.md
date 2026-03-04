@@ -38,7 +38,7 @@ class MyService(DjangoBaseService):
 
 ### 1) `emit_request(simulation_id, identity, request_dto)`
 
-**When:** Just before sending the LLM request.  
+**When:** Just before sending the LLM request.
 **Payload:**
 
 ```python
@@ -65,7 +65,7 @@ Useful for logging, auditing, and correlating with subsequent events.
 
 ### 2) `emit_response(simulation_id, identity, response_dto)`
 
-**When:** After a successful non-streaming completion.  
+**When:** After a successful non-streaming completion.
 **Payload:**
 
 ```python
@@ -92,7 +92,7 @@ Use this to persist final AI output, run post-processing, or update UI.
 
 ### 3) `emit_failure(simulation_id, identity, correlation_id, error)`
 
-**When:** After an exception (request/stream).  
+**When:** After an exception (request/stream).
 **Payload:**
 
 ```python
@@ -110,7 +110,7 @@ Best used to capture errors, retry counts, and notify monitoring systems.
 
 ### 4) `emit_stream_chunk(simulation_id, identity, chunk_dto)`
 
-**When:** During streaming responses (tokens/segments).  
+**When:** During streaming responses (tokens/segments).
 **Payload:**
 
 ```python
@@ -132,7 +132,7 @@ You can broadcast these events over websockets to update the UI in real-time.
 
 ### 5) `emit_stream_complete(simulation_id, identity, correlation_id)`
 
-**When:** After a stream ends gracefully.  
+**When:** After a stream ends gracefully.
 **Payload:**
 
 ```python
@@ -207,7 +207,7 @@ This makes it safe to join chunks and completions later.
 
 ## Idempotency & Retries
 
-Your receivers might be called more than once in error scenarios.  
+Your receivers might be called more than once in error scenarios.
 Use `request_correlation_id` + identity to dedupe persisted records.
 
 Example pattern:
@@ -240,9 +240,9 @@ AIResponse.objects.get_or_create(
 
 ## Summary
 
-✅ Observe every step of the AI request lifecycle  
-✅ Integrates with Django signals seamlessly  
-✅ Correlate requests, streams, responses, and failures  
+✅ Observe every step of the AI request lifecycle
+✅ Integrates with Django signals seamlessly
+✅ Correlate requests, streams, responses, and failures
 ✅ Ideal for telemetry, persistence, and realtime UX
 
 ---

@@ -2,18 +2,18 @@
 import logging
 
 from asgiref.sync import sync_to_async
-from apps.chatlab.utils import (
-    create_new_simulation,
-    maybe_start_simulation,
-)
-from apps.common.decorators import resolve_user, simulation_required
-from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
+
+from apps.chatlab.utils import (
+    create_new_simulation,
+    maybe_start_simulation,
+)
+from apps.common.decorators import resolve_user, simulation_required
 from apps.simcore.models import Simulation
 from apps.simcore.tools import aget_tool, alist_tools
 
@@ -54,9 +54,7 @@ def index(request):
     page_obj = paginator.get_page(page_number)
 
     template = (
-        "chatlab/partials/simulation_history_list.html"
-        if request.htmx
-        else "chatlab/index.html"
+        "chatlab/partials/simulation_history_list.html" if request.htmx else "chatlab/index.html"
     )
     return render(
         request,
@@ -75,9 +73,7 @@ async def create_simulation(request):
     modifiers = request.GET.getlist("modifier")
     # Errors during AI service execution are handled via signal receivers
     simulation = await create_new_simulation(user=request.user, modifiers=modifiers)
-    return await sync_to_async(redirect)(
-        "chatlab:run_simulation", simulation_id=simulation.id
-    )
+    return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 
 @login_required
@@ -85,9 +81,7 @@ async def create_simulation(request):
 @simulation_required("simulation_id", owner_required=True)
 async def run_simulation(request, simulation_id, included_tools="__ALL__"):
     try:
-        simulation = await Simulation.objects.select_related("user").aget(
-            id=simulation_id
-        )
+        simulation = await Simulation.objects.select_related("user").aget(id=simulation_id)
     except Simulation.DoesNotExist:
         return Http404("Simulation not found.")
 
@@ -170,9 +164,7 @@ def load_older_messages(request, simulation_id):
     except Message.DoesNotExist:
         return JsonResponse({"error": "Message not found."}, status=404)
 
-    qs = Message.objects.filter(
-        simulation_id=simulation_id, timestamp__lt=before_message.timestamp
-    )
+    qs = Message.objects.filter(simulation_id=simulation_id, timestamp__lt=before_message.timestamp)
 
     # Filter by conversation when specified (multi-conversation support)
     conversation_id = request.GET.get("conversation_id")
@@ -182,9 +174,6 @@ def load_older_messages(request, simulation_id):
     msg_list = qs.order_by("-timestamp")[:5]
     msg_list = reversed(msg_list)
     return render(request, "chatlab/partials/messages.html", {"messages": msg_list})
-
-
-from django.views.decorators.http import require_POST
 
 
 @require_GET
@@ -222,14 +211,22 @@ def get_single_message(request, simulation_id, message_id):
     """Return HTML for a single message (for HTMX append after WebSocket notification)."""
     get_object_or_404(Simulation, id=simulation_id, user=request.user)
     try:
-        message = Message.objects.select_related("sender").prefetch_related("media").get(
-            id=message_id,
-            simulation_id=simulation_id,
+        message = (
+            Message.objects.select_related("sender")
+            .prefetch_related("media")
+            .get(
+                id=message_id,
+                simulation_id=simulation_id,
+            )
         )
     except Message.DoesNotExist:
         return HttpResponse("", status=404)
 
-    return render(request, "chatlab/partials/_message.html", {
-        "message": message,
-        "user": request.user,
-    })
+    return render(
+        request,
+        "chatlab/partials/_message.html",
+        {
+            "message": message,
+            "user": request.user,
+        },
+    )

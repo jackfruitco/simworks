@@ -1,47 +1,15 @@
-# orchestrai/components/schemas/__init__.py
-"""
-OrchestrAI Schemas Module (DEPRECATED).
+"""Compatibility schema base classes for legacy imports."""
 
-.. deprecated:: 0.5.0
-    The @schema decorator and BaseOutputSchema are deprecated.
-    Use plain Pydantic BaseModel classes as response_schema instead.
-    Pydantic AI validates structured output natively.
+from __future__ import annotations
 
-Migration Guide:
-    Before:
-        from orchestrai_django.decorators import schema
-        from orchestrai.components.schemas import BaseOutputSchema
+from collections.abc import Iterable
 
-        @schema
-        class MyOutputSchema(BaseOutputSchema):
-            messages: list[str]
+from .base import BaseOutputItem, BaseOutputSchema
 
-    After:
-        from pydantic import BaseModel
 
-        class MyOutputSchema(BaseModel):
-            messages: list[str]
+def sort_adapters(adapters: Iterable[object]) -> list[object]:
+    """Sort adapters by optional `priority` (desc), preserving deterministic order."""
+    return sorted(adapters, key=lambda adapter: int(getattr(adapter, "priority", 0)), reverse=True)
 
-        class MyService(PydanticAIService):
-            response_schema = MyOutputSchema
-"""
-import warnings
 
-warnings.warn(
-    "orchestrai.components.schemas is deprecated and will be removed in OrchestrAI 1.0. "
-    "Use plain Pydantic BaseModel classes instead.",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
-from .base import BaseOutputSchema, BaseOutputItem
-from .helpers import sort_adapters
-from .adapters import BaseSchemaAdapter, BaseOutputAdapter
-
-__all__ = (
-    "BaseOutputSchema",
-    "BaseOutputItem",
-    "BaseSchemaAdapter",
-    "BaseOutputAdapter",
-    "sort_adapters",
-)
+__all__ = ["BaseOutputItem", "BaseOutputSchema", "sort_adapters"]

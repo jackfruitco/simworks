@@ -8,13 +8,11 @@ Tests that:
 5. Protected endpoints work with JWT auth
 """
 
-import time
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from datetime import UTC, datetime, timedelta
 
+from django.test import Client
 import jwt
 import pytest
-from django.test import Client, override_settings
 
 from api.v1.auth import (
     InvalidTokenError,
@@ -110,7 +108,7 @@ class TestTokenValidation:
     def test_decode_access_token_expired_raises(self, test_user):
         """Expired access token raises InvalidTokenError."""
         # Create token that expired 1 second ago
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = {
             "sub": str(test_user.pk),
             "type": "access",
@@ -127,8 +125,8 @@ class TestTokenValidation:
         payload = {
             "sub": str(test_user.pk),
             "type": "access",
-            "iat": datetime.now(timezone.utc),
-            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
         }
         token = jwt.encode(payload, "wrong-secret", algorithm="HS256")
 
@@ -175,7 +173,7 @@ class TestTokenRefresh:
 
     def test_refresh_access_token_expired_refresh_raises(self, test_user):
         """Expired refresh token raises InvalidTokenError."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = {
             "sub": str(test_user.pk),
             "type": "refresh",
@@ -321,7 +319,7 @@ class TestJWTProtectedEndpoints:
     def test_jwt_endpoint_with_expired_token_returns_401(self, test_user):
         """Accessing JWT-protected endpoint with expired token returns 401."""
         # Create expired token
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload = {
             "sub": str(test_user.pk),
             "email": test_user.email,

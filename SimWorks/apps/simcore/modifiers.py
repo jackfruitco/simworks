@@ -17,8 +17,6 @@ Usage:
     modifier = get_modifier("short_encounter")
 """
 
-from typing import Optional
-
 # Modifier group definitions
 # Format: group_name -> {description, modifiers: [{key, description}]}
 MODIFIER_GROUPS = {
@@ -72,7 +70,7 @@ MODIFIER_GROUPS = {
 }
 
 
-def get_modifier_groups(groups: Optional[list[str]] = None) -> list[dict]:
+def get_modifier_groups(groups: list[str] | None = None) -> list[dict]:
     """
     Get modifier groups, optionally filtered by group names.
 
@@ -82,25 +80,24 @@ def get_modifier_groups(groups: Optional[list[str]] = None) -> list[dict]:
     Returns:
         List of modifier group dicts with 'group', 'description', and 'modifiers' keys.
     """
-    if groups is None:
-        group_names = list(MODIFIER_GROUPS.keys())
-    else:
-        group_names = groups
+    group_names = list(MODIFIER_GROUPS.keys()) if groups is None else groups
 
     result = []
     for group_name in group_names:
         if group_name in MODIFIER_GROUPS:
             group_data = MODIFIER_GROUPS[group_name]
-            result.append({
-                "group": group_name,
-                "description": group_data["description"],
-                "modifiers": group_data["modifiers"],
-            })
+            result.append(
+                {
+                    "group": group_name,
+                    "description": group_data["description"],
+                    "modifiers": group_data["modifiers"],
+                }
+            )
 
     return result
 
 
-def get_modifier(key: str) -> Optional[dict]:
+def get_modifier(key: str) -> dict | None:
     """
     Get a specific modifier by key.
 

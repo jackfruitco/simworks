@@ -4,6 +4,6 @@ This module is retained for backward compatibility; new code should import
 from ``orchestrai.identity.domains`` instead.
 """
 
-from .domains import DEFAULT_DOMAIN, normalize_domain  # noqa: F401
+from .domains import DEFAULT_DOMAIN, normalize_domain
 
 __all__ = ["DEFAULT_DOMAIN", "normalize_domain"]

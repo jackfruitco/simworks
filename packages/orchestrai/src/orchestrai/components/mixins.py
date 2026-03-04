@@ -4,7 +4,7 @@ from inspect import iscoroutinefunction
 
 from asgiref.sync import sync_to_async
 
-from ..tracing import service_span, SpanPath
+from ..tracing import SpanPath, service_span
 
 
 class SetupTeardownMixin:

@@ -44,10 +44,7 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
-        "logfire": {
-            "class": "logfire.LogfireLoggingHandler",
-            "level": LOGFIRE_LOG_LEVEL
-        },
+        "logfire": {"class": "logfire.LogfireLoggingHandler", "level": LOGFIRE_LOG_LEVEL},
     },
     "root": {
         "handlers": ["console", "logfire"],
@@ -94,7 +91,6 @@ LOGGING = {
             "level": check_env("SIMULATION_LOG_LEVEL", None) or LOG_LEVEL,
             "propagate": False,
         },
-
         # ---------- AI loggers -------------------------------------------------------------------
         "orchestrai": {
             "handlers": ["console", "logfire"],

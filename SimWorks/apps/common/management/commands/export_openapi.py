@@ -54,10 +54,10 @@ class Command(BaseCommand):
                 import yaml
 
                 output = yaml.dump(schema, default_flow_style=False, sort_keys=False)
-            except ImportError:
+            except ImportError as err:
                 raise CommandError(
                     "PyYAML is required for YAML output. Install with: uv add pyyaml"
-                )
+                ) from err
         else:
             output = json.dumps(schema, indent=options["indent"])
 
@@ -66,8 +66,6 @@ class Command(BaseCommand):
             output_path = Path(options["output"])
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(output)
-            self.stdout.write(
-                self.style.SUCCESS(f"OpenAPI schema exported to {options['output']}")
-            )
+            self.stdout.write(self.style.SUCCESS(f"OpenAPI schema exported to {options['output']}"))
         else:
             self.stdout.write(output)

@@ -30,18 +30,19 @@ Key behaviors
   the Identity layer (resolvers/utils).
 """
 
+from collections.abc import Callable
 import logging
 import os
-from typing import Any, Optional, Type, TypeVar, Callable, cast
+from typing import Any, TypeVar, cast
 
-from orchestrai.tracing import service_span_sync
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import DEFAULT_DOMAIN
 from orchestrai.identity.resolvers import IdentityResolver
+from orchestrai.tracing import service_span_sync
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=Type[Any])
+T = TypeVar("T", bound=type[Any])
 
 
 def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
@@ -51,23 +52,36 @@ def _filter_trace_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
     if level == "debug":
         return attrs
     base_keys = {
-        "orchestrai.decorator", "orchestrai.class", "orchestrai.identity",
-        "orchestrai.tuple4.post_norm", "orchestrai.identity.name.explicit",
-        "orchestrai.identity.label", "orchestrai.identity.tuple4"
-        "orchestrai.identity.domain", "orchestrai.identity.namespace",
-        "orchestrai.identity.group", "orchestrai.identity.name",
+        "orchestrai.decorator",
+        "orchestrai.class",
+        "orchestrai.identity",
+        "orchestrai.tuple4.post_norm",
+        "orchestrai.identity.name.explicit",
+        "orchestrai.identity.label",
+        "orchestrai.identity.tuple4orchestrai.identity.domain",
+        "orchestrai.identity.namespace",
+        "orchestrai.identity.group",
+        "orchestrai.identity.name",
         # helpful snapshots when present
-        "orchestrai.tuple3.raw", "orchestrai.tuple3.post_strip",
-        "orchestrai.strip_tokens", "orchestrai.strip_tokens_list",
+        "orchestrai.tuple3.raw",
+        "orchestrai.tuple3.post_strip",
+        "orchestrai.strip_tokens",
+        "orchestrai.strip_tokens_list",
     }
     if level == "info":
         return {k: v for k, v in attrs.items() if k in base_keys or not k.startswith("orchestrai.")}
     minimal_keys = {
-        "orchestrai.decorator", "orchestrai.class", "orchestrai.identity",
-        "orchestrai.tuple4.post_norm", "orchestrai.identity.name.explicit",
-        "orchestrai.identity.label", "orchestrai.identity.tuple4",
-        "orchestrai.identity.domain", "orchestrai.identity.namespace",
-        "orchestrai.identity.group", "orchestrai.identity.name",
+        "orchestrai.decorator",
+        "orchestrai.class",
+        "orchestrai.identity",
+        "orchestrai.tuple4.post_norm",
+        "orchestrai.identity.name.explicit",
+        "orchestrai.identity.label",
+        "orchestrai.identity.tuple4",
+        "orchestrai.identity.domain",
+        "orchestrai.identity.namespace",
+        "orchestrai.identity.group",
+        "orchestrai.identity.name",
     }
     return {k: v for k, v in attrs.items() if k in minimal_keys or not k.startswith("orchestrai.")}
 
@@ -103,22 +117,22 @@ class BaseDecorator:
     # ---------------- public API: dual-form decorator ----------------
     def __call__(
         self,
-        _cls: Optional[T] = None,
+        _cls: T | None = None,
         *,
-        domain: Optional[str] = None,
-        namespace: Optional[str] = None,
-        group: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
+        domain: str | None = None,
+        namespace: str | None = None,
+        group: str | None = None,
+        kind: str | None = None,
+        name: str | None = None,
         **extras: Any,
     ) -> T | Callable[[T], T]:
         """Support both forms:
 
-            @decorator
-            class Foo: ...
+        @decorator
+        class Foo: ...
 
-            @decorator(domain="d", namespace="x", group="y", name="z")
-            class Foo: ...
+        @decorator(domain="d", namespace="x", group="y", name="z")
+        class Foo: ...
         """
 
         def _apply(cls: T) -> T:
@@ -155,8 +169,8 @@ class BaseDecorator:
                 pin_func(identity, meta_dict)
             else:
                 # fallback: set private cache attributes to avoid importing IdentityMixin here
-                setattr(cls, "_IdentityMixin__identity_cached", identity)
-                setattr(cls, "_IdentityMixin__identity_meta_cached", meta_dict)
+                cls._IdentityMixin__identity_cached = identity
+                cls._IdentityMixin__identity_meta_cached = meta_dict
 
             # 3) Bind any extra decorator metadata
             self.bind_extras(cls, extras)
@@ -180,7 +194,9 @@ class BaseDecorator:
             }
             span_attrs = {k: v for k, v in span_attrs_raw.items() if v is not None}
             span_attrs = _filter_trace_attrs(span_attrs)
-            with service_span_sync(f"orchestrai.decorator.apply ({cls.__name__})", attributes=span_attrs):
+            with service_span_sync(
+                f"orchestrai.decorator.apply ({cls.__name__})", attributes=span_attrs
+            ):
                 label = getattr(self, "log_category", None) or self.__class__.__name__
                 label = str(label).upper()
                 logger.info("[%s] ✅ discovered `%s`", label, identity.as_str)
@@ -208,12 +224,12 @@ class BaseDecorator:
 
     def derive_identity(
         self,
-        cls: Type[Any],
+        cls: type[Any],
         *,
-        domain: Optional[str],
-        namespace: Optional[str],
-        group: Optional[str],
-        name: Optional[str],
+        domain: str | None,
+        namespace: str | None,
+        group: str | None,
+        name: str | None,
     ) -> tuple[Identity, dict[str, Any] | None]:
         """Derive + validate identity using the configured resolver (core default).
 
@@ -240,11 +256,13 @@ class BaseDecorator:
         )
         return identity, meta
 
-    def bind_extras(self, cls: Type[Any], extras: dict[str, Any]) -> None:  # pragma: no cover - default no-op
+    def bind_extras(
+        self, cls: type[Any], extras: dict[str, Any]
+    ) -> None:  # pragma: no cover - default no-op
         """Optional metadata hook for domain decorators (e.g., prompt plans)."""
         return
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: type[Any]) -> None:
         """Default registration logic.
 
         - Retrieves a registry via ``get_registry()``.

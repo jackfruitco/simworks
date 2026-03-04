@@ -25,15 +25,20 @@ Usage:
         await poke_drain()
 """
 
+from __future__ import annotations
+
+from datetime import UTC, datetime
 import logging
+from typing import TYPE_CHECKING, Any
 import uuid
-from datetime import datetime, timezone
-from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.db import IntegrityError, transaction
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from apps.common.models import OutboxEvent
 
 
 async def enqueue_event(
@@ -42,7 +47,7 @@ async def enqueue_event(
     payload: dict[str, Any],
     idempotency_key: str | None = None,
     correlation_id: str | None = None,
-) -> "OutboxEvent | None":
+) -> OutboxEvent | None:
     """Create an outbox event atomically.
 
     Args:
@@ -65,7 +70,8 @@ async def enqueue_event(
         )
     """
     from django.apps import apps
-    OutboxEvent = apps.get_model('common', 'OutboxEvent')
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -108,13 +114,14 @@ def enqueue_event_sync(
     payload: dict[str, Any],
     idempotency_key: str | None = None,
     correlation_id: str | None = None,
-) -> "OutboxEvent | None":
+) -> OutboxEvent | None:
     """Synchronous version of enqueue_event.
 
     Use this when calling from synchronous code (e.g., Django signals).
     """
     from django.apps import apps
-    OutboxEvent = apps.get_model('common', 'OutboxEvent')
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -143,7 +150,7 @@ def enqueue_event_sync(
         return None
 
 
-def build_ws_envelope(event: "OutboxEvent") -> dict[str, Any]:
+def build_ws_envelope(event: OutboxEvent) -> dict[str, Any]:
     """Build a WebSocket event envelope from an OutboxEvent.
 
     The envelope format follows the standardized structure defined in CLAUDE.md:
@@ -165,7 +172,9 @@ def build_ws_envelope(event: "OutboxEvent") -> dict[str, Any]:
     return {
         "event_id": str(event.id),
         "event_type": event.event_type,
-        "created_at": event.created_at.isoformat() if event.created_at else datetime.now(timezone.utc).isoformat(),
+        "created_at": event.created_at.isoformat()
+        if event.created_at
+        else datetime.now(UTC).isoformat(),
         "correlation_id": event.correlation_id,
         "payload": event.payload,
     }
@@ -210,7 +219,7 @@ async def get_events_for_simulation(
     simulation_id: int,
     cursor: str | None = None,
     limit: int = 50,
-) -> tuple[list["OutboxEvent"], str | None, bool]:
+) -> tuple[list[OutboxEvent], str | None, bool]:
     """Get events for a simulation (catch-up endpoint).
 
     This allows clients to fetch missed events after reconnection.
@@ -224,7 +233,8 @@ async def get_events_for_simulation(
         Tuple of (events, next_cursor, has_more)
     """
     from django.apps import apps
-    OutboxEvent = apps.get_model('common', 'OutboxEvent')
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
 
     @sync_to_async
     def _query():

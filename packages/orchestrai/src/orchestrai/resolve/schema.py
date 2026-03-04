@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
-from typing import Iterable
 
 from orchestrai.components.schemas import BaseOutputSchema, sort_adapters
 from orchestrai.identity import Identity
@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 def apply_schema_adapters(
-        schema_cls: type[BaseOutputSchema] | None,
-        adapters: Iterable,
+    schema_cls: type[BaseOutputSchema] | None,
+    adapters: Iterable,
 ) -> dict | None:
     """Return an adapted JSON schema when a model and adapters exist."""
 
@@ -25,7 +25,7 @@ def apply_schema_adapters(
 
     try:
         # Use cached schema from decorator to avoid MockValSer pollution
-        schema_json = getattr(schema_cls, '_validated_schema', None)
+        schema_json = getattr(schema_cls, "_validated_schema", None)
         if schema_json is None:
             # Fallback: generate and rebuild to clear MockValSer
             schema_json = schema_cls.model_json_schema()
@@ -45,12 +45,12 @@ def apply_schema_adapters(
 
 
 def resolve_schema(
-        *,
-        identity,
-        override: type[BaseOutputSchema] | None = None,
-        default: type[BaseOutputSchema] | None = None,
-        adapters: Iterable | None = None,
-        store=None,
+    *,
+    identity,
+    override: type[BaseOutputSchema] | None = None,
+    default: type[BaseOutputSchema] | None = None,
+    adapters: Iterable | None = None,
+    store=None,
 ) -> ResolutionResult[type[BaseOutputSchema] | None]:
     """Resolve a response schema with simple precedence.
 
@@ -69,23 +69,27 @@ def resolve_schema(
         branch = ResolutionBranch(
             "override",
             override,
-            identity=getattr(override, "identity", None).as_str if hasattr(override, "identity") else None,
+            identity=getattr(override, "identity", None).as_str
+            if hasattr(override, "identity")
+            else None,
             reason="response_schema override provided",
         )
         # Schema adaptation is codec's responsibility; don't apply here
         branch.meta["schema_json"] = None
-        return ResolutionResult(override, branch, branches + [branch])
+        return ResolutionResult(override, branch, [*branches, branch])
 
     if default is not None:
         branch = ResolutionBranch(
             "class",
             default,
-            identity=getattr(default, "identity", None).as_str if hasattr(default, "identity") else None,
+            identity=getattr(default, "identity", None).as_str
+            if hasattr(default, "identity")
+            else None,
             reason="class-level response_schema",
         )
         # Schema adaptation is codec's responsibility; don't apply here
         branch.meta["schema_json"] = None
-        return ResolutionResult(default, branch, branches + [branch])
+        return ResolutionResult(default, branch, [*branches, branch])
 
     candidate = None
     if store is not None:
@@ -106,15 +110,17 @@ def resolve_schema(
         branch = ResolutionBranch(
             "registry",
             candidate,
-            identity=getattr(candidate, "identity", None).as_str if hasattr(candidate, "identity") else None,
+            identity=getattr(candidate, "identity", None).as_str
+            if hasattr(candidate, "identity")
+            else None,
             reason="matched schema in ComponentStore",
         )
         # Schema adaptation is codec's responsibility; don't apply here
         branch.meta["schema_json"] = None
-        return ResolutionResult(candidate, branch, branches + [branch])
+        return ResolutionResult(candidate, branch, [*branches, branch])
 
     branch = ResolutionBranch("none", None, reason="no response schema resolved")
-    return ResolutionResult(None, branch, branches + [branch])
+    return ResolutionResult(None, branch, [*branches, branch])
 
 
 __all__ = [

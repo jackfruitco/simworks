@@ -12,7 +12,7 @@ DEFAULTS: dict[str, object] = {
     ),
     "FIXUPS": (),
     "LOADER": "orchestrai.loaders.default:DefaultLoader",
-    "IDENTITY_STRIP_TOKENS": tuple(),
+    "IDENTITY_STRIP_TOKENS": (),
     # Service defaults (Pydantic AI)
     "DEFAULT_TIMEOUT": 60,
     "DEFAULT_MODEL": "openai-responses:gpt-5-nano",

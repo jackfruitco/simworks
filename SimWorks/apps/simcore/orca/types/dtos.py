@@ -1,33 +1,37 @@
-from typing import Optional, Literal, Dict, Any, Annotated, TypeAlias, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
-from orchestrai_django.types import StrictBaseModel, Boolish
+from orchestrai_django.types import Boolish, StrictBaseModel
 
 
 # ---------- Metadata (DTO) ---------------------------------------------------------
 class BaseMetafield(StrictBaseModel):
     kind: str
     key: str = Field(..., max_length=255)
-    db_pk: Optional[int] = None
+    db_pk: int | None = None
 
 
 class GenericMetafield(BaseMetafield):
     kind: Literal["generic"]
-    value: Optional[str] = None
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    value: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class LabResultMetafield(BaseMetafield):
     kind: Literal["lab_result"]
-    panel_name: Optional[str] = Field(..., max_length=100)
-    result_name: str = Field(..., )
-    result_value: str = Field(..., )
-    result_unit: Optional[str] = Field(..., max_length=20)
-    reference_range_low: Optional[str] = Field(..., max_length=50)
-    reference_range_high: Optional[str] = Field(..., max_length=50)
+    panel_name: str | None = Field(..., max_length=100)
+    result_name: str = Field(
+        ...,
+    )
+    result_value: str = Field(
+        ...,
+    )
+    result_unit: str | None = Field(..., max_length=20)
+    reference_range_low: str | None = Field(..., max_length=50)
+    reference_range_high: str | None = Field(..., max_length=50)
     result_flag: Literal["normal", "abnormal"] = Field(..., max_length=20)
-    result_comment: Optional[str] = Field(..., max_length=500)
+    result_comment: str | None = Field(..., max_length=500)
 
 
 class RadResultMetafield(BaseMetafield):
@@ -86,19 +90,17 @@ class OverallFeedbackMetafield(FeedbackMetafieldBase):
     value: str = Field(...)  # , max_length=1250)
 
 
-MetafieldItem: TypeAlias = Annotated[
-    Union[
-        GenericMetafield,
-        LabResultMetafield,
-        RadResultMetafield,
-        PatientHistoryMetafield,
-        PatientDemographicsMetafield,
-        SimulationMetafield,
-        ScenarioMetafield,
-        CorrectDiagnosisFeedback,
-        CorrectTreatmentPlanFeedback,
-        PatientExperienceFeedback,
-        OverallFeedbackMetafield,
-    ],
+type MetafieldItem = Annotated[
+    GenericMetafield
+    | LabResultMetafield
+    | RadResultMetafield
+    | PatientHistoryMetafield
+    | PatientDemographicsMetafield
+    | SimulationMetafield
+    | ScenarioMetafield
+    | CorrectDiagnosisFeedback
+    | CorrectTreatmentPlanFeedback
+    | PatientExperienceFeedback
+    | OverallFeedbackMetafield,
     Field(discriminator="kind"),
 ]

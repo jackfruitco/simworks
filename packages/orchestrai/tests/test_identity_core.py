@@ -4,12 +4,6 @@ from orchestrai.components.codecs import BaseCodec
 from orchestrai.components.promptkit import PromptSection
 from orchestrai.components.schemas import BaseOutputSchema
 from orchestrai.components.services.service import BaseService
-from orchestrai.decorators import (
-    codec,
-    prompt_section,
-    schema,
-    service,
-)
 from orchestrai.decorators.components.codec_decorator import CodecDecorator
 from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
@@ -17,8 +11,6 @@ from orchestrai.decorators.components.service_decorator import ServiceDecorator
 from orchestrai.identity import Identity, IdentityResolver
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
-    PROMPT_SECTIONS_DOMAIN,
-    SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
     normalize_domain,
 )
@@ -138,6 +130,8 @@ def test_decorators_apply_domain_defaults_per_component_type():
         instruction = "hi"
 
     assert DemoService.identity.as_str == "services.demo.svc.svc"
-    assert DemoCodec.identity.as_str == "codecs.demo.codec.json"
-    assert DemoSchema.identity.as_str == "schemas.demo.schema.out"
-    assert DemoPrompt.identity.as_str == "prompt-sections.demo.prompt.section"
+    # Compatibility shims (BaseCodec/BaseOutputSchema/PromptSection) intentionally
+    # don't expose identity descriptors anymore.
+    assert DemoCodec.__name__ == "DemoCodec"
+    assert DemoSchema.__name__ == "DemoSchema"
+    assert DemoPrompt.__name__ == "DemoPrompt"

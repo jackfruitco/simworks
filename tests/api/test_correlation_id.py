@@ -10,8 +10,8 @@ Tests that the middleware:
 import re
 import uuid
 
-import pytest
 from django.test import Client, RequestFactory
+import pytest
 
 from apps.common.middleware import CorrelationIDMiddleware
 

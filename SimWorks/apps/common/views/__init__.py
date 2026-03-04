@@ -1,6 +1,6 @@
 # common/views/__init__.py
-from .views import *
 from .failure_views import *
+from .views import *
 
 __all__ = []
 __all__ += views.__all__

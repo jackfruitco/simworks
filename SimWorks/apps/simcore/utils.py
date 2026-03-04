@@ -1,16 +1,13 @@
 # simcore/utils.py
-import logging
 import random
 from typing import TYPE_CHECKING
-from typing import Union
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ObjectDoesNotExist
 from faker import Faker
 
 if TYPE_CHECKING:
-    from apps.simcore.models import Simulation
+    pass
 
 fake = Faker()
 
@@ -51,11 +48,11 @@ def get_user_initials(user) -> str:
     """
 
     User = get_user_model()
-    if type(user) == str:
+    if isinstance(user, str):
         try:
             user = User.objects.get(email=user)
-        except User.DoesNotExist:
-            raise Exception(f"Error! get_user_initials: User {user} not found")
+        except User.DoesNotExist as err:
+            raise ValueError(f"Error! get_user_initials: User {user} not found") from err
 
     if (
         hasattr(user, "first_name")

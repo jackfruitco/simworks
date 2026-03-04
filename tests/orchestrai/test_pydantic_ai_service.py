@@ -4,15 +4,14 @@ Tests for BaseService (Pydantic AI-based service).
 These tests verify the BaseService class and related components.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import BaseModel
+import pytest
 
 from orchestrai.prompts import system_prompt
 from orchestrai.prompts.decorators import (
     collect_prompts,
-    is_system_prompt,
     get_prompt_weight,
+    is_system_prompt,
     render_prompt_methods,
 )
 
@@ -224,9 +223,3 @@ class TestBaseServiceIntegration:
 
         assert service.context["initial"] == "value"
         assert service.context["added"] == "context"
-
-    def test_pydantic_ai_service_alias(self):
-        """Test that PydanticAIService is an alias for BaseService."""
-        from orchestrai.components.services import BaseService, PydanticAIService
-
-        assert PydanticAIService is BaseService

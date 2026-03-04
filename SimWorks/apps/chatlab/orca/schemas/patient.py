@@ -7,12 +7,13 @@ Pydantic AI handles validation natively - no @schema decorator needed.
 """
 
 import logging
+from typing import ClassVar
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from orchestrai.types import ResultMessageItem
-from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
 from apps.simcore.orca.schemas.metadata_items import MetadataItem
+from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+
 from .mixins import PatientResponseBaseMixin
 
 logger = logging.getLogger(__name__)
@@ -62,10 +63,10 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
 
     metadata: list[MetadataItem] = Field(
         ...,
-        description="Patient demographics and initial metadata (polymorphic structure with 'kind' discriminator)"
+        description="Patient demographics and initial metadata (polymorphic structure with 'kind' discriminator)",
     )
 
-    __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
+    __persist__: ClassVar[dict[str, None]] = {"metadata": None}  # auto-map via item.__orm_model__
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
@@ -80,7 +81,6 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
             context: PersistContext with simulation_id, correlation_id, etc.
         """
         from apps.common.outbox.helpers import broadcast_domain_objects
-        from apps.chatlab.models import Message
 
         # Broadcast messages
         messages = results.get("messages", [])
@@ -130,10 +130,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     - Enables real-time UI updates when patient responds
     """
 
-    image_requested: bool = Field(
-        ...,
-        description="Whether the response references images/scans"
-    )
+    image_requested: bool = Field(..., description="Whether the response references images/scans")
 
     __persist_primary__ = "messages"
 
@@ -155,7 +152,10 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
         # Update image_requested flag if needed
         if self.image_requested and messages:
-            logger.info("Image requested for simulation %s - flag set on Message records", context.simulation_id)
+            logger.info(
+                "Image requested for simulation %s - flag set on Message records",
+                context.simulation_id,
+            )
             for msg in messages:
                 if isinstance(msg, Message):
                     msg.image_requested = True
@@ -207,14 +207,13 @@ class PatientResultsOutputSchema(BaseModel):
 
     metadata: list[MetadataItem] = Field(
         ...,
-        description="Scored observations and final assessment (polymorphic structure with 'kind' discriminator)"
+        description="Scored observations and final assessment (polymorphic structure with 'kind' discriminator)",
     )
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
-        ...,
-        description="Completion and workflow flags"
+        ..., description="Completion and workflow flags"
     )
 
-    __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
+    __persist__: ClassVar[dict[str, None]] = {"metadata": None}  # auto-map via item.__orm_model__
     __persist_primary__ = "metadata"
 
     async def post_persist(self, results, context):

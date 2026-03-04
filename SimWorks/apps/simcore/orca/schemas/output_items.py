@@ -4,7 +4,7 @@ This module contains base output items that can be used across multiple schemas.
 These are plain Pydantic models for use with Pydantic AI.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class LLMConditionsCheckItem(BaseModel):
@@ -13,6 +13,7 @@ class LLMConditionsCheckItem(BaseModel):
     Used for internal flags that control workflow logic but are not persisted
     to the database. Examples: 'ready_for_questions', 'session_complete', etc.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     key: str = Field(..., description="Condition key/name")
@@ -32,27 +33,21 @@ class InitialFeedbackBlock(BaseModel):
     - `patient_experience`: int (0-5) - Patient experience rating (5=excellent)
     - `overall_feedback`: str (min 1 char) - Narrative feedback
     """
+
     model_config = ConfigDict(extra="forbid")
 
     correct_diagnosis: bool = Field(
-        ...,
-        description="Whether the user identified the correct diagnosis during the simulation."
+        ..., description="Whether the user identified the correct diagnosis during the simulation."
     )
 
     correct_treatment_plan: bool = Field(
-        ...,
-        description="Whether the user proposed an appropriate treatment plan"
+        ..., description="Whether the user proposed an appropriate treatment plan"
     )
 
     patient_experience: int = Field(
-        ...,
-        ge=0,
-        le=5,
-        description="Patient experience rating (0=poor, 5=excellent)"
+        ..., ge=0, le=5, description="Patient experience rating (0=poor, 5=excellent)"
     )
 
     overall_feedback: str = Field(
-        ...,
-        min_length=1,
-        description="Overall narrative feedback for the learner"
+        ..., min_length=1, description="Overall narrative feedback for the learner"
     )

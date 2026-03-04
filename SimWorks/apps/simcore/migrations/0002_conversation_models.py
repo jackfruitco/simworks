@@ -1,12 +1,11 @@
 # Hand-written migration: adds ConversationType + Conversation models
 import uuid
 
-import django.db.models.deletion
 from django.db import migrations, models
+import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("simcore", "0001_initial"),
     ]

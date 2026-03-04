@@ -14,5 +14,6 @@ class IdentityCollisionError(IdentityError):
 class IdentityValidationError(IdentityError):
     """Raised when identity is malformed (arity/empties/non-strings)."""
 
+
 class IdentityResolutionError(IdentityError):
     """Raised when identity resolution fails. Is the input identity-like?"""

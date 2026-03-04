@@ -1,4 +1,4 @@
-# Jackfruit SimWorks – Button Styles
+# Jackfruit SimWorks - Button Styles
 
 This guide documents the standardized button styles used across SimWorks. Each variant uses consistent CSS classes and theme variables defined in `button.css` and `theme.css`.
 

@@ -1,20 +1,27 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
-from orchestrai.components.codecs.exceptions import CodecNotFoundError
 from orchestrai.exceptions.base import SimCoreError
 from orchestrai.identity import Identity, IdentityLike
 
+try:
+    from orchestrai.components.codecs.exceptions import CodecNotFoundError
+except ModuleNotFoundError:
+
+    class CodecNotFoundError(Exception):
+        """Compatibility fallback when legacy codec package is absent."""
+
+
 __all__ = [
-    "ServiceError",
-    "ServiceConfigError",
-    "ServiceCodecResolutionError",
-    "ServiceBuildRequestError",
-    "ServiceStreamError",
-    "ServiceDispatchError",
-    "ServiceDiscoveryError",
     "MissingRequiredContextKeys",
+    "ServiceBuildRequestError",
+    "ServiceCodecResolutionError",
+    "ServiceConfigError",
+    "ServiceDiscoveryError",
+    "ServiceDispatchError",
+    "ServiceError",
+    "ServiceStreamError",
 ]
 
 
@@ -29,7 +36,7 @@ class ServiceConfigError(ServiceError):
 class ServiceCodecResolutionError(ServiceError, CodecNotFoundError):
     """Raised when a service cannot resolve a usable codec for execution."""
 
-    def __init__(self, *, ident: IdentityLike | None = None, codec: Optional[str], service: str):
+    def __init__(self, *, ident: IdentityLike | None = None, codec: str | None, service: str):
         identity: Identity | None = None
         if ident is not None:
             try:

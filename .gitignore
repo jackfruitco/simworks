@@ -14,6 +14,8 @@ eggs/
 .egg-info/
 MANIFEST
 
+*.key
+
 */.DS_Store*
 
 # Virtual environment

@@ -33,28 +33,29 @@ Key behaviors
 This module must not import any decorator or registry code to avoid cycles.
 """
 
-
-import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Optional, Any, TypeVar
+import re
+from typing import Any, TypeVar
 
-from . import registry_resolvers as _rr
-from .identity import Identity, IdentityLike
-from .domains import DEFAULT_DOMAIN, normalize_domain
-from .utils import module_root, get_effective_strip_tokens, snake
 from ..types.protocols import RegistryProtocol
+from . import registry_resolvers as _rr
+from .domains import DEFAULT_DOMAIN, normalize_domain
+from .identity import Identity, IdentityLike
+from .utils import get_effective_strip_tokens, module_root, snake
 
 __all__ = [
     "IdentityResolver",
     "NameResolution",
-    "resolve_identity",
     "Resolve",
+    "resolve_identity",
 ]
 
 
 # ------------------------- helpers (pure) -------------------------
 
-def _is_nonempty_str(value: Optional[str]) -> bool:
+
+def _is_nonempty_str(value: str | None) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
@@ -106,10 +107,15 @@ def _validate_parts(domain: str, namespace: str, group: str, name: str) -> None:
 
     - non-empty strings
     - max length 128
-    - allowed chars: A–Z, a–z, 0–9, '.', '_', '-'
+    - allowed chars: A-Z, a-z, 0-9, '.', '_', '-'
     """
     allowed_re = re.compile(r"^[A-Za-z0-9._-]+$")
-    for label, value in (("domain", domain), ("namespace", namespace), ("group", group), ("name", name)):
+    for label, value in (
+        ("domain", domain),
+        ("namespace", namespace),
+        ("group", group),
+        ("name", name),
+    ):
         if not isinstance(value, str):
             raise TypeError(f"{label} must be a string (got {type(value)!r})")
         v = value.strip()
@@ -122,6 +128,7 @@ def _validate_parts(domain: str, namespace: str, group: str, name: str) -> None:
 
 
 # ------------------------- resolver -------------------------
+
 
 @dataclass
 class NameResolution:
@@ -142,14 +149,14 @@ class IdentityResolver:
 
     # ----- public API -----
     def resolve(
-            self,
-            cls: type,
-            *,
-            domain: Optional[str] = None,
-            namespace: Optional[str] = None,
-            group: Optional[str] = None,
-            name: Optional[str] = None,
-            context: Optional[dict[str, Any]] = None,
+        self,
+        cls: type,
+        *,
+        domain: str | None = None,
+        namespace: str | None = None,
+        group: str | None = None,
+        name: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> tuple[Identity, dict[str, Any]]:
         """Resolve identity and return (Identity, meta) for tracing.
 
@@ -162,11 +169,7 @@ class IdentityResolver:
 
         defaults_raw = context.get("defaults", {})
         defaults = dict(defaults_raw) if isinstance(defaults_raw, dict) else {}
-        domain_default = (
-            context.get("default_domain")
-            or defaults.get("domain")
-            or DEFAULT_DOMAIN
-        )
+        domain_default = context.get("default_domain") or defaults.get("domain") or DEFAULT_DOMAIN
         namespace_default = context.get("default_namespace") or defaults.get("namespace")
         group_default = context.get("default_group") or defaults.get("group")
 
@@ -246,11 +249,11 @@ class IdentityResolver:
 
     # ----- hook methods / override points -----
     def _resolve_domain(
-            self,
-            cls: type,
-            domain_arg: Optional[str],
-            domain_attr: Optional[str],
-            decorator_default: Optional[str],
+        self,
+        cls: type,
+        domain_arg: str | None,
+        domain_attr: str | None,
+        decorator_default: str | None,
     ) -> tuple[str, str]:
         """Return (normalized value, source). Precedence: arg > attr > decorator default > error."""
         if _is_nonempty_str(domain_arg):
@@ -262,11 +265,11 @@ class IdentityResolver:
         raise ValueError("domain is required for identity resolution")
 
     def _resolve_namespace(
-            self,
-            cls: type,
-            namespace_arg: Optional[str],
-            namespace_attr: Optional[str],
-            decorator_default: Optional[str] = None,
+        self,
+        cls: type,
+        namespace_arg: str | None,
+        namespace_attr: str | None,
+        decorator_default: str | None = None,
     ) -> tuple[str, str]:
         """Return (value, source). Default: arg > attr > decorator default > module_root > 'default'."""
         if _is_nonempty_str(namespace_arg):
@@ -281,12 +284,12 @@ class IdentityResolver:
         return "default", "derived"
 
     def _resolve_group(
-            self,
-            cls: type,
-            group_arg: Optional[str],
-            group_attr: Optional[str],
-            legacy_kind_attr: Optional[str],
-            decorator_default: Optional[str] = None,
+        self,
+        cls: type,
+        group_arg: str | None,
+        group_attr: str | None,
+        legacy_kind_attr: str | None,
+        decorator_default: str | None = None,
     ) -> tuple[str, str]:
         """Return (value, source). Default: arg > attr/legacy kind > decorator default > 'default'."""
         if _is_nonempty_str(group_arg):
@@ -316,11 +319,11 @@ class IdentityResolver:
         return get_effective_strip_tokens()
 
     def _resolve_name(
-            self,
-            cls: type,
-            name_arg: Optional[str],
-            name_attr: Optional[str],
-            tokens: Iterable[str],
+        self,
+        cls: type,
+        name_arg: str | None,
+        name_attr: str | None,
+        tokens: Iterable[str],
     ) -> NameResolution:
         # Explicit?
         if _is_nonempty_str(name_arg):
@@ -330,7 +333,9 @@ class IdentityResolver:
         if _is_nonempty_str(name_attr):
             raw = str(name_attr).strip()
             norm = _normalize_name(raw, lower=False)
-            return NameResolution(value=norm, explicit=True, source="attr", raw=raw, post_strip=norm)
+            return NameResolution(
+                value=norm, explicit=True, source="attr", raw=raw, post_strip=norm
+            )
 
         # Derived from class name
         cls_name = getattr(cls, "__name__", "") or "default"
@@ -344,24 +349,29 @@ class IdentityResolver:
         if not norm:
             # Final guard: ensure non-empty
             norm = _normalize_name(raw, lower=True) or "default"
-        return NameResolution(value=norm, explicit=False, source="derived", raw=raw, post_strip=stripped)
+        return NameResolution(
+            value=norm, explicit=False, source="derived", raw=raw, post_strip=stripped
+        )
 
 
 # ------------------------- convenience -------------------------
 
+
 def resolve_identity(
-        cls: type,
-        *,
-        resolver: Optional[IdentityResolver] = None,
-        domain: Optional[str] = None,
-        namespace: Optional[str] = None,
-        group: Optional[str] = None,
-        name: Optional[str] = None,
-        context: Optional[dict[str, Any]] = None,
+    cls: type,
+    *,
+    resolver: IdentityResolver | None = None,
+    domain: str | None = None,
+    namespace: str | None = None,
+    group: str | None = None,
+    name: str | None = None,
+    context: dict[str, Any] | None = None,
 ) -> tuple[Identity, dict[str, Any]]:
     """Public helper to resolve identity using a provided or default resolver."""
     r = resolver or IdentityResolver()
-    return r.resolve(cls, domain=domain, namespace=namespace, group=group, name=name, context=context)
+    return r.resolve(
+        cls, domain=domain, namespace=namespace, group=group, name=name, context=context
+    )
 
 
 # ------------------------- facade (ergonomic sugar) -------------------------
@@ -377,23 +387,23 @@ class Resolve:
 
     @staticmethod
     def for_(
-            component: type[T],
-            identity: IdentityLike,
-            *,
-            __from: RegistryProtocol | None = None,
+        component: type[T],
+        identity: IdentityLike,
+        *,
+        __from: RegistryProtocol | None = None,
     ) -> T:
         """Strict resolver: resolve a registered component by identity.
 
-          Returns the resolved component or raises if not found.
-          """
+        Returns the resolved component or raises if not found.
+        """
         return _rr.for_(component, identity, __from=__from)
 
     @staticmethod
     def try_for_(
-            component: type[T],
-            identity: IdentityLike,
-            *,
-            __from: RegistryProtocol | None = None,
+        component: type[T],
+        identity: IdentityLike,
+        *,
+        __from: RegistryProtocol | None = None,
     ) -> T | None:
         """Safe resolver: never raises on lookup failure; returns None instead."""
         return _rr.try_for_(component, identity, __from=__from)
@@ -416,4 +426,4 @@ class Resolve:
     @staticmethod
     def label_from_component(comp: Any) -> str:
         """Return the canonical label for a component that exposes `.identity`."""
-        return getattr(comp, "identity").as_str
+        return comp.identity.as_str

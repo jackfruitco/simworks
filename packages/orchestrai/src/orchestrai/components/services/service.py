@@ -46,28 +46,29 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
-import logging
 from abc import ABC
-from datetime import datetime, UTC
+import asyncio
+from datetime import UTC, datetime
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
+import logging
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from pydantic import BaseModel
 from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from orchestrai.components.base import BaseComponent
 from orchestrai.components.mixins import LifecycleMixin
-from orchestrai.components.services.calls import ServiceCall
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
 from orchestrai.identity import IdentityMixin
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.prompts.decorators import collect_prompts
-from orchestrai.tracing import get_tracer, service_span, flatten_context as flatten_context_
+from orchestrai.tracing import flatten_context as flatten_context_, get_tracer, service_span
 
 if TYPE_CHECKING:
     from pydantic_ai import Agent
     from pydantic_ai.result import RunResult
+
+    from orchestrai.components.services.task_proxy import ServiceSpec
 
 logger = logging.getLogger(__name__)
 tracer = get_tracer("orchestrai.service")
@@ -86,8 +87,8 @@ class TaskDescriptor:
     when orchestrai_django is installed, enabling background task dispatch.
     """
 
-    def __get__(self, instance: Any, owner: type | None = None) -> "CoreTaskProxy":
-        from orchestrai.components.services.task_proxy import CoreTaskProxy, ServiceSpec
+    def __get__(self, instance: Any, owner: type | None = None) -> CoreTaskProxy:
+        from orchestrai.components.services.task_proxy import ServiceSpec
 
         service_cls = owner or type(instance)
         kwargs: dict[str, Any] = {}
@@ -108,14 +109,13 @@ class CoreTaskProxy:
     DjangoTaskProxy for persistence and background execution support.
     """
 
-    def __init__(self, spec: "ServiceSpec"):
-        from orchestrai.components.services.task_proxy import ServiceSpec
+    def __init__(self, spec: ServiceSpec):
         self._spec = spec
 
     def _build(self) -> ServiceCallMixin:
         return self._spec.service_cls(**self._spec.service_kwargs)
 
-    def using(self, **service_kwargs: Any) -> "CoreTaskProxy":
+    def using(self, **service_kwargs: Any) -> CoreTaskProxy:
         if "queue" in service_kwargs:
             raise ValueError("queue dispatch is not supported for inline tasks")
         return CoreTaskProxy(self._spec.using(**service_kwargs))
@@ -156,7 +156,9 @@ class CoreTaskProxy:
         return {"service": ident_str or service.__class__.__name__}
 
 
-class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent, ABC, Generic[T]):
+class BaseService[T: BaseModel](
+    IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent, ABC
+):
     """
     Pydantic AI-based service class for LLM-backed AI operations.
 
@@ -268,6 +270,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
         # 3. Config default
         from orchestrai import get_current_app
+
         app = get_current_app()
         if app and app.conf:
             config_default = app.conf.get("DEFAULT_MODEL")
@@ -287,7 +290,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         Configuration layering:
         - Standalone OrchestrAI: Uses standard env vars (OPENAI_API_KEY, etc.)
         - Django integration: Uses namespaced env vars (ORCA_OPENAI_API_KEY, etc.)
-        - User override: Via ORCA_CONFIG["API_KEY_ENVVARS"]
+        - User override: Via ORCHESTRAI["API_KEY_ENVVARS"]
 
         Args:
             provider: Provider name (e.g., "openai", "anthropic")
@@ -295,8 +298,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         Returns:
             Tuple of (api_key, source_envvar) or (None, None) if not found
         """
-        import os
-
         from orchestrai.utils.env_utils import get_api_key, get_api_key_envvar
 
         envvar = get_api_key_envvar(provider)
@@ -309,17 +310,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 envvar,
             )
             return api_key, envvar
-
-        # Fallback for backward compatibility: ORCA_PROVIDER_API_KEY
-        generic_envvar = "ORCA_PROVIDER_API_KEY"
-        generic_key = os.environ.get(generic_envvar)
-        if generic_key:
-            logger.debug(
-                "API key for %s found via generic fallback %s",
-                provider,
-                generic_envvar,
-            )
-            return generic_key, generic_envvar
 
         return None, None
 
@@ -354,26 +344,28 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         provider, model_name = model_str.split(":", 1)
 
         # Clean `openai-{API}` provider format
-        if "-" in provider: provider = provider.split("-")[0]
+        if "-" in provider:
+            provider = provider.split("-")[0]
 
         api_key, source_envvar = self._get_api_key_for_provider(provider)
 
         # Check if API key is required but missing
         # Supported providers are those configured in API_KEY_ENVVARS
         app = get_current_app()
-        supported_providers = set(app.conf.get("API_KEY_ENVVARS", {}).keys()) if app and app.conf else set()
+        supported_providers = (
+            set(app.conf.get("API_KEY_ENVVARS", {}).keys()) if app and app.conf else set()
+        )
 
         if not api_key and provider in supported_providers:
             configured_envvar = get_api_key_envvar(provider) or f"{provider.upper()}_API_KEY"
             raise ValueError(
-                f"No API key found for provider '{provider}'. "
-                f"Set {configured_envvar} or ORCA_PROVIDER_API_KEY environment variable."
+                f"No API key found for provider '{provider}'. Set {configured_envvar}."
             )
 
         # OpenAI
         if provider == "openai":
-            from pydantic_ai.models.openai import OpenAIModel
             from pydantic_ai.providers.openai import OpenAIProvider
+
             logger.info(
                 "Creating OpenAI model '%s' with API key from %s",
                 model_name,
@@ -385,6 +377,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if provider == "anthropic":
             from pydantic_ai.models.anthropic import AnthropicModel
             from pydantic_ai.providers.anthropic import AnthropicProvider
+
             logger.info(
                 "Creating Anthropic model '%s' with API key from %s",
                 model_name,
@@ -396,6 +389,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if provider in ("google", "gemini"):
             from pydantic_ai.models.gemini import GeminiModel
             from pydantic_ai.providers.google import GoogleProvider
+
             logger.info(
                 "Creating Gemini model '%s' with API key from %s",
                 model_name,
@@ -407,6 +401,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if provider == "groq":
             from pydantic_ai.models.groq import GroqModel
             from pydantic_ai.providers.groq import GroqProvider
+
             logger.info(
                 "Creating Groq model '%s' with API key from %s",
                 model_name,
@@ -418,6 +413,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if provider == "mistral":
             from pydantic_ai.models.mistral import MistralModel
             from pydantic_ai.providers.mistral import MistralProvider
+
             logger.info(
                 "Creating Mistral model '%s' with API key from %s",
                 model_name,
@@ -429,6 +425,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if provider == "cohere":
             from pydantic_ai.models.cohere import CohereModel
             from pydantic_ai.providers.cohere import CohereProvider
+
             logger.info(
                 "Creating Cohere model '%s' with API key from %s",
                 model_name,
@@ -463,9 +460,8 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if self.fallback_models:
             try:
                 from pydantic_ai.models.fallback import FallbackModel
-                fallback_models = [
-                    self._build_model_with_api_key(m) for m in self.fallback_models
-                ]
+
+                fallback_models = [self._build_model_with_api_key(m) for m in self.fallback_models]
                 model = FallbackModel(model, *fallback_models)
             except ImportError:
                 logger.warning("FallbackModel not available, using primary model only")
@@ -483,23 +479,16 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
 
         # Register system prompt methods
         for pm in self._prompt_methods:
-            # Get the bound method and create a wrapper
             method_name = pm.name
+            is_dynamic = pm.is_dynamic
 
-            # Create a closure to capture the method name
-            def make_prompt_fn(name: str, is_dynamic: bool):
-                async def prompt_fn(ctx=None):
-                    bound_method = getattr(self, name)
-                    if is_dynamic and ctx is not None:
-                        result = bound_method(ctx)
-                    else:
-                        result = bound_method()
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    return result or ""
-                return prompt_fn
+            async def prompt_fn(ctx=None, _name: str = method_name, _is_dynamic: bool = is_dynamic):
+                bound_method = getattr(self, _name)
+                result = bound_method(ctx) if _is_dynamic and ctx is not None else bound_method()
+                if asyncio.iscoroutine(result):
+                    result = await result
+                return result or ""
 
-            prompt_fn = make_prompt_fn(method_name, pm.is_dynamic)
             agent.system_prompt(prompt_fn, dynamic=pm.is_dynamic)
 
         return agent
@@ -511,7 +500,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         if missing:
             raise ValueError(f"Missing required context keys: {', '.join(missing)}")
 
-    def setup(self, **ctx: Any) -> "BaseService":
+    def setup(self, **ctx: Any) -> BaseService:
         """Merge incoming context and validate required keys."""
         incoming = ctx.get("context") if "context" in ctx else ctx
         if isinstance(incoming, dict) and incoming:
@@ -519,7 +508,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         self.check_required_context()
         return self
 
-    def teardown(self, **ctx: Any) -> "BaseService":
+    def teardown(self, **ctx: Any) -> BaseService:
         """Teardown hook (no-op by default)."""
         return self
 
@@ -527,7 +516,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         """Post-processing hook (passthrough by default)."""
         return result
 
-    async def arun(self, **ctx: Any) -> "RunResult[T]":
+    async def arun(self, **ctx: Any) -> RunResult[T]:
         """
         Execute the service using Pydantic AI Agent.
 
@@ -571,10 +560,9 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                 message_history = self.context.get("message_history")
 
                 model_settings = None
-                previous_response_id = (
-                    self.context.get("previous_provider_response_id")
-                    or self.context.get("previous_response_id")
-                )
+                previous_response_id = self.context.get(
+                    "previous_provider_response_id"
+                ) or self.context.get("previous_response_id")
                 if previous_response_id:
                     model_settings = {
                         "openai_previous_response_id": previous_response_id,
@@ -610,13 +598,11 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
             await self.on_failure(self.context, e)
             raise
 
-    async def on_success(self, context: dict[str, Any], result: "RunResult[T]") -> None:
+    async def on_success(self, context: dict[str, Any], result: RunResult[T]) -> None:
         """Called after successful execution. Override in subclasses."""
-        pass
 
     async def on_failure(self, context: dict[str, Any], error: Exception) -> None:
         """Called after failed execution. Override in subclasses."""
-        pass
 
     @property
     def slug(self) -> str:
@@ -628,7 +614,6 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         return flatten_context_(self.context)
 
 
-# Re-export for backward compatibility with imports expecting these from this module
 __all__ = [
     "BaseService",
     "CoreTaskProxy",

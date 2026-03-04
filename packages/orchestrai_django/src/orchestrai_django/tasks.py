@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import inspect
 import logging
-from dataclasses import dataclass
 
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django.db import transaction
 from django.tasks import task
 from django.utils import timezone
 
@@ -15,16 +16,13 @@ from orchestrai.identity import Identity
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry.active_app import get_component_store
 from orchestrai.registry.services import ensure_service_registry
-
 from orchestrai_django.models import (
-    ServiceCallAttempt,
-    ServiceCall as ServiceCallModel,
+    AlreadySucceededError,
+    AttemptAllocationError,
     AttemptStatus,
     CallStatus,
-    AttemptAllocationError,
-    AlreadySucceededError,
+    ServiceCall as ServiceCallModel,
 )
-from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +50,12 @@ def _manual_extract_fields(obj):
     from orchestrai.utils.json import make_json_safe
 
     result = {}
-    if hasattr(obj, 'model_fields'):
-        for field_name in obj.model_fields.keys():
+    if hasattr(obj, "model_fields"):
+        for field_name in obj.model_fields:
             try:
                 value = getattr(obj, field_name, None)
                 # Handle nested Pydantic models
-                if hasattr(value, 'model_dump'):
+                if hasattr(value, "model_dump"):
                     try:
                         # Use mode="json" to ensure UUID/datetime are converted
                         result[field_name] = value.model_dump(mode="json")
@@ -66,13 +64,15 @@ def _manual_extract_fields(obj):
                         result[field_name] = _manual_extract_fields(value)
                 elif isinstance(value, list):
                     result[field_name] = [
-                        _manual_extract_fields(item) if hasattr(item, 'model_fields')
+                        _manual_extract_fields(item)
+                        if hasattr(item, "model_fields")
                         else make_json_safe(item)
                         for item in value
                     ]
                 elif isinstance(value, dict):
                     result[field_name] = {
-                        k: _manual_extract_fields(v) if hasattr(v, 'model_fields')
+                        k: _manual_extract_fields(v)
+                        if hasattr(v, "model_fields")
                         else make_json_safe(v)
                         for k, v in value.items()
                     }
@@ -120,45 +120,47 @@ def _extract_agent_config(service) -> dict | None:
 
     try:
         # Get the Agent instance if it exists
-        agent = getattr(service, '_agent', None) or getattr(service, 'agent', None)
+        agent = getattr(service, "_agent", None) or getattr(service, "agent", None)
 
         if agent is None:
             return None
 
         # Model information
-        config["model"] = str(getattr(agent, 'model', None))
-        config["model_settings"] = make_json_safe(getattr(agent, 'model_settings', {}))
+        config["model"] = str(getattr(agent, "model", None))
+        config["model_settings"] = make_json_safe(getattr(agent, "model_settings", {}))
 
         # System prompts
         system_prompts = []
-        if hasattr(agent, 'system_prompts'):
+        if hasattr(agent, "system_prompts"):
             for prompt in agent.system_prompts:
                 if callable(prompt):
-                    system_prompts.append({"type": "callable", "name": getattr(prompt, '__name__', str(prompt))})
+                    system_prompts.append(
+                        {"type": "callable", "name": getattr(prompt, "__name__", str(prompt))}
+                    )
                 else:
                     system_prompts.append({"type": "string", "content": str(prompt)[:500]})
         config["system_prompts"] = system_prompts
 
         # Tools
         tools_list = []
-        if hasattr(agent, 'tools'):
+        if hasattr(agent, "tools"):
             for tool in agent.tools:
                 tool_info = {
-                    "name": getattr(tool, '__name__', str(tool)),
+                    "name": getattr(tool, "__name__", str(tool)),
                     "type": type(tool).__name__,
                 }
-                if hasattr(tool, '__doc__') and tool.__doc__:
+                if hasattr(tool, "__doc__") and tool.__doc__:
                     tool_info["description"] = tool.__doc__[:200]
                 tools_list.append(tool_info)
         config["tools"] = tools_list
 
         # Result type / schema
-        config["result_type"] = str(getattr(agent, 'result_type', None))
+        config["result_type"] = str(getattr(agent, "result_type", None))
 
         # Other settings
-        config["retries"] = getattr(agent, 'retries', None)
-        config["result_tool_name"] = getattr(agent, 'result_tool_name', None)
-        config["result_tool_description"] = getattr(agent, 'result_tool_description', None)
+        config["retries"] = getattr(agent, "retries", None)
+        config["result_tool_name"] = getattr(agent, "result_tool_name", None)
+        config["result_tool_description"] = getattr(agent, "result_tool_description", None)
 
         return make_json_safe(config)
 
@@ -200,7 +202,9 @@ def _build_request_json(service, payload, context, request_obj):
                 if not has_system:
                     input_items.insert(0, {"role": "system", "content": prompt_text})
         if context:
-            prev_id = context.get("previous_provider_response_id") or context.get("previous_response_id")
+            prev_id = context.get("previous_provider_response_id") or context.get(
+                "previous_response_id"
+            )
             if prev_id:
                 request_json["previous_provider_response_id"] = prev_id
         return request_json
@@ -253,7 +257,9 @@ def _build_request_json(service, payload, context, request_obj):
         "tools": [],
     }
     if context:
-        prev_id = context.get("previous_provider_response_id") or context.get("previous_response_id")
+        prev_id = context.get("previous_provider_response_id") or context.get(
+            "previous_response_id"
+        )
         if prev_id:
             request_json["previous_provider_response_id"] = prev_id
     return make_json_safe(request_json)
@@ -272,7 +278,7 @@ def _debug_app_context(where: str) -> None:
                 if hasattr(svc_reg, "count"):
                     count = svc_reg.count()  # type: ignore[assignment]
                 else:
-                    items = getattr(svc_reg, "items", lambda: [])()
+                    items = getattr(svc_reg, "items", list)()
                     count = len(list(items))
             except Exception:
                 count = "<?>"
@@ -337,8 +343,8 @@ def _emit_message_delivered_status(call: ServiceCallModel) -> None:
         return
 
     try:
-        from apps.common.outbox import enqueue_event_sync, poke_drain_sync
         from apps.chatlab.models import Message
+        from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
         try:
             message = Message.objects.get(pk=user_msg_id)
@@ -353,7 +359,9 @@ def _emit_message_delivered_status(call: ServiceCallModel) -> None:
                 ]
             )
         except Exception:
-            logger.debug("Could not update delivery status on message %s", user_msg_id, exc_info=True)
+            logger.debug(
+                "Could not update delivery status on message %s", user_msg_id, exc_info=True
+            )
 
         event = enqueue_event_sync(
             event_type="message_status_update",
@@ -441,7 +449,9 @@ def run_service_call(call_id: str):
         try:
             attempt_record = call.allocate_attempt()
         except AttemptAllocationError:
-            logger.warning("Service call %s: attempt allocation failed (already completed)", call_id)
+            logger.warning(
+                "Service call %s: attempt allocation failed (already completed)", call_id
+            )
             return call.to_jsonable()
 
         # Update call status
@@ -458,12 +468,7 @@ def run_service_call(call_id: str):
         call.save(update_fields=["status", "started_at", "related_object_id"])
 
     current_attempt = attempt_record.attempt
-    logger.info(
-        "Executing service call %s (attempt %d/%d)",
-        call_id,
-        current_attempt,
-        max_attempts
-    )
+    logger.info("Executing service call %s (attempt %d/%d)", call_id, current_attempt, max_attempts)
 
     service_cls = registry.get(Identity.get(call.service_identity))
     service = service_cls(**call.service_kwargs)
@@ -501,7 +506,11 @@ def run_service_call(call_id: str):
             if inspect.iscoroutinefunction(execute):
                 result = async_to_sync(execute)(**payload)
             else:
-                result = async_to_sync(service.aexecute)(**payload) if hasattr(service, "aexecute") else execute(**payload)
+                result = (
+                    async_to_sync(service.aexecute)(**payload)
+                    if hasattr(service, "aexecute")
+                    else execute(**payload)
+                )
         else:  # pragma: no cover - defensive
             raise RuntimeError("Service does not implement arun/aexecute/execute")
 
@@ -513,8 +522,10 @@ def run_service_call(call_id: str):
                 try:
                     result_json = result.model_dump(mode="json")
                 except TypeError as e:
-                    if 'MockValSer' in str(e):
-                        logger.warning("MockValSer error during result serialization, manually extracting fields")
+                    if "MockValSer" in str(e):
+                        logger.warning(
+                            "MockValSer error during result serialization, manually extracting fields"
+                        )
                         result_json = _manual_extract_fields(result)
                     else:
                         raise
@@ -529,7 +540,9 @@ def run_service_call(call_id: str):
                 else:
                     output_json = {"raw_value": str(output)}
 
-                timestamp_val = result.timestamp() if callable(result.timestamp) else result.timestamp
+                timestamp_val = (
+                    result.timestamp() if callable(result.timestamp) else result.timestamp
+                )
 
                 from orchestrai.utils.json import make_json_safe
 
@@ -545,14 +558,13 @@ def run_service_call(call_id: str):
                 call_output_data = result
             else:
                 logger.warning(
-                    "Unknown result type %s, converting to string",
-                    type(result).__name__
+                    "Unknown result type %s, converting to string", type(result).__name__
                 )
                 result_json = {"raw_value": str(result)}
 
             # Update attempt record with response data
-            provider_meta = getattr(result, 'provider_meta', None) or {}
-            usage = getattr(result, 'usage', None)
+            provider_meta = getattr(result, "provider_meta", None) or {}
+            usage = getattr(result, "usage", None)
 
             # For AgentRunResult, usage is a method that returns RunUsage
             if callable(usage):
@@ -578,22 +590,27 @@ def run_service_call(call_id: str):
                         break
 
             attempt_record.response_raw = result_json
-            attempt_record.response_provider_raw = provider_meta.get("raw") if isinstance(provider_meta, dict) else None
+            attempt_record.response_provider_raw = (
+                provider_meta.get("raw") if isinstance(provider_meta, dict) else None
+            )
             prev_provider_response_id = None
             if call.context:
-                prev_provider_response_id = (
-                    call.context.get("previous_provider_response_id")
-                    or call.context.get("previous_response_id")
-                )
+                prev_provider_response_id = call.context.get(
+                    "previous_provider_response_id"
+                ) or call.context.get("previous_response_id")
             attempt_record.previous_provider_response_id = prev_provider_response_id
             attempt_record.provider_response_id = provider_response_id
-            attempt_record.finish_reason = provider_meta.get("finish_reason") if isinstance(provider_meta, dict) else None
+            attempt_record.finish_reason = (
+                provider_meta.get("finish_reason") if isinstance(provider_meta, dict) else None
+            )
             attempt_record.received_at = timezone.now()
 
             # Serialize structured_data/output if it's a Pydantic model
-            structured_data = getattr(result, 'output', None) or getattr(result, 'structured_data', None)
+            structured_data = getattr(result, "output", None) or getattr(
+                result, "structured_data", None
+            )
             if structured_data is not None:
-                if hasattr(structured_data, 'model_dump'):
+                if hasattr(structured_data, "model_dump"):
                     try:
                         attempt_record.structured_data = structured_data.model_dump(mode="json")
                     except TypeError:
@@ -607,10 +624,10 @@ def run_service_call(call_id: str):
 
             # Token usage
             if usage:
-                attempt_record.input_tokens = getattr(usage, 'input_tokens', 0) or 0
-                attempt_record.output_tokens = getattr(usage, 'output_tokens', 0) or 0
-                attempt_record.total_tokens = getattr(usage, 'total_tokens', 0) or 0
-                attempt_record.reasoning_tokens = getattr(usage, 'reasoning_tokens', 0) or 0
+                attempt_record.input_tokens = getattr(usage, "input_tokens", 0) or 0
+                attempt_record.output_tokens = getattr(usage, "output_tokens", 0) or 0
+                attempt_record.total_tokens = getattr(usage, "total_tokens", 0) or 0
+                attempt_record.reasoning_tokens = getattr(usage, "reasoning_tokens", 0) or 0
 
             attempt_record.save()
 
@@ -622,15 +639,13 @@ def run_service_call(call_id: str):
             locked_call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
             try:
                 locked_call.mark_attempt_successful(
-                    attempt_record,
-                    call_output_data,
-                    provider_response_id=provider_response_id
+                    attempt_record, call_output_data, provider_response_id=provider_response_id
                 )
             except AlreadySucceededError:
                 logger.info(
                     "Service call %s: attempt %d finished but another attempt already succeeded",
                     call_id,
-                    current_attempt
+                    current_attempt,
                 )
                 return locked_call.to_jsonable()
 
@@ -644,12 +659,12 @@ def run_service_call(call_id: str):
         logger.info(
             "Service call %s succeeded on attempt %d, attempting inline persistence",
             call_id,
-            current_attempt
+            current_attempt,
         )
 
         # Populate attempt record with request data
         try:
-            request_obj = getattr(result, 'request', None)
+            request_obj = getattr(result, "request", None)
             request_json = _build_request_json(service, payload, call.context, request_obj)
 
             # Capture Agent configuration for debugging
@@ -673,7 +688,7 @@ def run_service_call(call_id: str):
 
                 # Extract messages for easier querying
                 messages_json = []
-                if request_obj is not None and hasattr(request_obj, 'input') and request_obj.input:
+                if request_obj is not None and hasattr(request_obj, "input") and request_obj.input:
                     for item in request_obj.input:
                         try:
                             messages_json.append(item.model_dump(mode="json"))
@@ -686,9 +701,11 @@ def run_service_call(call_id: str):
                 attempt_record.request_messages = messages_json
 
                 # Extract tools for easier querying
-                if request_obj is not None and hasattr(request_obj, 'tools') and request_obj.tools:
+                if request_obj is not None and hasattr(request_obj, "tools") and request_obj.tools:
                     try:
-                        attempt_record.request_tools = [t.model_dump(mode="json") for t in request_obj.tools]
+                        attempt_record.request_tools = [
+                            t.model_dump(mode="json") for t in request_obj.tools
+                        ]
                     except (TypeError, AttributeError):
                         attempt_record.request_tools = [str(t) for t in request_obj.tools]
                 else:
@@ -697,16 +714,22 @@ def run_service_call(call_id: str):
                         attempt_record.request_tools = req_tools
 
                 # Get response schema identity if available
-                if request_obj is not None and hasattr(request_obj, 'response_schema') and request_obj.response_schema:
+                if (
+                    request_obj is not None
+                    and hasattr(request_obj, "response_schema")
+                    and request_obj.response_schema
+                ):
                     schema_cls = _resolve_response_schema(request_obj.response_schema)
                     if schema_cls is not None:
-                        identity = getattr(getattr(schema_cls, 'identity', None), 'as_str', None)
+                        identity = getattr(getattr(schema_cls, "identity", None), "as_str", None)
                         if identity is None:
                             identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
                         attempt_record.schema_fqn = identity
                         call.schema_fqn = identity
 
-                attempt_record.request_model = getattr(request_obj, 'model', None) or request_json.get("model")
+                attempt_record.request_model = getattr(
+                    request_obj, "model", None
+                ) or request_json.get("model")
                 attempt_record.save()
 
             # Store attempt ID in context for persistence handlers
@@ -716,18 +739,16 @@ def run_service_call(call_id: str):
             update_fields = ["context"]
             if call.schema_fqn:
                 update_fields.append("schema_fqn")
-            if request_json is not None:
-                if call.request is None:
-                    call.request = request_json
-                elif call.request == request_json:
-                    call.request = request_json
+            if request_json is not None and (call.request is None or call.request == request_json):
+                call.request = request_json
             if call.request is not None:
                 update_fields.append("request")
-            if call.context.get("previous_provider_response_id") or call.context.get("previous_response_id"):
-                call.previous_provider_response_id = (
-                    call.context.get("previous_provider_response_id")
-                    or call.context.get("previous_response_id")
-                )
+            if call.context.get("previous_provider_response_id") or call.context.get(
+                "previous_response_id"
+            ):
+                call.previous_provider_response_id = call.context.get(
+                    "previous_provider_response_id"
+                ) or call.context.get("previous_response_id")
                 update_fields.append("previous_provider_response_id")
             call.save(update_fields=update_fields)
 
@@ -737,7 +758,7 @@ def run_service_call(call_id: str):
         # Attempt inline persistence via declarative persist_schema()
         try:
             _inline_persist_service_call(call)
-        except Exception as persist_err:
+        except Exception:
             logger.exception(
                 "Service call %s: inline persistence failed (will retry via drain worker)",
                 call_id,
@@ -752,7 +773,7 @@ def run_service_call(call_id: str):
             call_id,
             current_attempt,
             max_attempts,
-            str(exc)
+            str(exc),
         )
 
         # Mark attempt as failed
@@ -772,7 +793,7 @@ def run_service_call(call_id: str):
 
         if should_retry:
             call.status = CallStatus.IN_PROGRESS
-            call.error = f"Attempt {current_attempt} failed: {str(exc)}"
+            call.error = f"Attempt {current_attempt} failed: {exc!s}"
             call.save(update_fields=["status", "error"])
 
             logger.info(
@@ -791,16 +812,18 @@ def run_service_call(call_id: str):
             call.status = CallStatus.FAILED
             call.error = str(exc)
             call.finished_at = timezone.now()
-            call.save(update_fields=[
-                "status",
-                "error",
-                "finished_at",
-            ])
+            call.save(
+                update_fields=[
+                    "status",
+                    "error",
+                    "finished_at",
+                ]
+            )
 
             logger.error(
                 "Service call %s failed after %d attempts, no more retries",
                 call_id,
-                current_attempt
+                current_attempt,
             )
 
             # Emit failure signal
@@ -904,6 +927,7 @@ def process_pending_persistence():
     """
     try:
         from orchestrai_django.apps import ensure_autostarted
+
         ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
@@ -936,9 +960,7 @@ def process_pending_persistence():
             call.domain_persist_attempts += 1
 
         if pending_calls:
-            ServiceCallModel.objects.bulk_update(
-                pending_calls, ["domain_persist_attempts"]
-            )
+            ServiceCallModel.objects.bulk_update(pending_calls, ["domain_persist_attempts"])
 
     stats["claimed"] += len(pending_calls)
 
@@ -950,22 +972,29 @@ def process_pending_persistence():
             stats["failed"] += 1
             logger.exception(
                 "Domain persistence failed for call %s (attempt %d/%d): %s",
-                call.id, call.domain_persist_attempts, max_attempts, exc,
+                call.id,
+                call.domain_persist_attempts,
+                max_attempts,
+                exc,
             )
             with transaction.atomic():
                 call.domain_persist_error = str(exc)[:1000]
                 call.save(update_fields=["domain_persist_error"])
 
             if call.domain_persist_attempts >= max_attempts:
-                logger.error("Giving up on persistence for %s after %d attempts", call.id, max_attempts)
+                logger.error(
+                    "Giving up on persistence for %s after %d attempts", call.id, max_attempts
+                )
                 with transaction.atomic():
                     call.domain_persisted = True
                     call.save(update_fields=["domain_persisted"])
 
     logger.info(
-        "Domain persistence batch complete: "
-        "claimed=%d, processed=%d, failed=%d, skipped=%d",
-        stats["claimed"], stats["processed"], stats["failed"], stats["skipped"],
+        "Domain persistence batch complete: claimed=%d, processed=%d, failed=%d, skipped=%d",
+        stats["claimed"],
+        stats["processed"],
+        stats["failed"],
+        stats["skipped"],
     )
 
     return stats
@@ -1025,7 +1054,7 @@ def _inline_persist_service_call(call: ServiceCallModel):
 
 
 __all__ = [
+    "process_pending_persistence",
     "run_service_call",
     "run_service_call_task",
-    "process_pending_persistence",
 ]

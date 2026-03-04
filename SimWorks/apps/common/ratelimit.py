@@ -12,15 +12,16 @@ Usage:
         ...
 """
 
+from collections.abc import Callable
+from functools import wraps
 import hashlib
 import time
-from functools import wraps
-from typing import Callable, Literal
+from typing import Literal
 
-import redis
 from django.conf import settings
 from django.http import HttpRequest
 from ninja.errors import HttpError
+import redis
 
 
 def get_redis_client() -> redis.Redis:
@@ -191,7 +192,7 @@ def rate_limit(
             rate_key = get_rate_limit_key(request, key, key_prefix)
 
             # Check rate limit
-            is_allowed, count, retry_after = check_rate_limit(
+            is_allowed, _, retry_after = check_rate_limit(
                 redis_client,
                 rate_key,
                 limit,

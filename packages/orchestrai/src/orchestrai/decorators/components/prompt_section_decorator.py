@@ -8,7 +8,7 @@ Core prompt section decorator.
 """
 
 import logging
-from typing import Any, Type
+from typing import Any
 
 from orchestrai.components.promptkit import PromptSection
 from orchestrai.decorators.base import BaseDecorator
@@ -47,7 +47,7 @@ class PromptSectionDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "prompt_sections"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: type[Any]) -> None:
         # Guard: ensure we only register prompt_section classes
         if not issubclass(candidate, PromptSection):
             raise TypeError(

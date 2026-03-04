@@ -13,7 +13,6 @@ urlpatterns = [
         views.run_simulation,
         name="run_simulation",
     ),
-
     # HTMX endpoints
     # path(
     #     "simulation/<int:simulation_id>/end_timestamp/",

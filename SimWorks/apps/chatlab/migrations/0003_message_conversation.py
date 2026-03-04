@@ -1,10 +1,9 @@
 # Hand-written migration: adds Message.conversation FK (nullable for now)
-import django.db.models.deletion
 from django.db import migrations, models
+import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("chatlab", "0002_initial"),
         ("simcore", "0002_conversation_models"),

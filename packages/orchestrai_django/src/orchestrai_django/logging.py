@@ -1,9 +1,9 @@
 # orchestrai_django/logging.py
 
 
-from contextlib import contextmanager, asynccontextmanager
-from collections.abc import Mapping, MutableMapping
-from typing import Any, Dict, Iterator, AsyncIterator
+from collections.abc import AsyncIterator, Iterator, Mapping, MutableMapping
+from contextlib import asynccontextmanager, contextmanager
+from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode, Tracer
@@ -23,7 +23,7 @@ def get_tracer() -> Tracer:
     return _TRACER
 
 
-def _span_attributes_from_ctx(ctx: Mapping[str, Any] | None) -> Dict[str, Any]:
+def _span_attributes_from_ctx(ctx: Mapping[str, Any] | None) -> dict[str, Any]:
     if not ctx:
         return {}
     # Whitelist common attributes to avoid leaking large objects
@@ -39,7 +39,7 @@ def _span_attributes_from_ctx(ctx: Mapping[str, Any] | None) -> Dict[str, Any]:
         "model",
         "stream",
     )
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for k in keys:
         v = ctx.get(k)
         if v is not None:
@@ -67,7 +67,9 @@ def service_span(name: str, *, attributes: Mapping[str, Any] | None = None) -> I
 
 
 @asynccontextmanager
-async def aservice_span(name: str, *, attributes: Mapping[str, Any] | None = None) -> AsyncIterator[None]:
+async def aservice_span(
+    name: str, *, attributes: Mapping[str, Any] | None = None
+) -> AsyncIterator[None]:
     """Async variant of service_span."""
     tracer = get_tracer()
     attrs = dict(attributes or {})
@@ -80,7 +82,9 @@ async def aservice_span(name: str, *, attributes: Mapping[str, Any] | None = Non
             raise
 
 
-def inject_trace_headers(headers: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
+def inject_trace_headers(
+    headers: MutableMapping[str, str] | None = None,
+) -> MutableMapping[str, str]:
     """Inject current trace context into HTTP headers (for backend SDKs/HTTPX).
 
     Returns the mapping passed in (or a new one) with W3C traceparent/tracestate.

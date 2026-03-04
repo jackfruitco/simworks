@@ -8,43 +8,45 @@ and selected low-level utilities. Identity derivation is centralized in
 Exports intentionally avoid wildcard imports to keep the surface explicit.
 """
 
-
-from .identity import IdentityLike, Identity
-from .mixins import IdentityMixin
-from .resolvers import Resolve as _Resolve, IdentityResolver, resolve_identity
-from .protocols import IdentityResolverProtocol, IdentityProtocol
-from .utils import DEFAULT_IDENTITY_STRIP_TOKENS, coerce_identity_key
 from .domains import (
-    DEFAULT_DOMAIN,
-    SUPPORTED_DOMAINS,
-    SERVICES_DOMAIN,
     CODECS_DOMAIN,
+    DEFAULT_DOMAIN,
+    PERSIST_DOMAIN,
     PROMPT_SECTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
-    PERSIST_DOMAIN,
+    SERVICES_DOMAIN,
+    SUPPORTED_DOMAINS,
     normalize_domain,
 )
+from .identity import Identity, IdentityLike
+from .mixins import IdentityMixin
+from .protocols import IdentityProtocol, IdentityResolverProtocol
+from .resolvers import IdentityResolver, Resolve as _Resolve, resolve_identity
+from .utils import DEFAULT_IDENTITY_STRIP_TOKENS, coerce_identity_key
 
 # Ergonomic namespace without coupling the dataclass to registries:
 Identity.resolve = _Resolve  # type: ignore[attr-defined]
 
 __all__ = [
-    # Types
-    "Identity", "IdentityLike", "IdentityResolver",
+    "CODECS_DOMAIN",
+    "DEFAULT_DOMAIN",
     # Constants
     "DEFAULT_IDENTITY_STRIP_TOKENS",
-    "DEFAULT_DOMAIN",
-    "SUPPORTED_DOMAINS",
-    "SERVICES_DOMAIN",
-    "CODECS_DOMAIN",
+    "PERSIST_DOMAIN",
     "PROMPT_SECTIONS_DOMAIN",
     "SCHEMAS_DOMAIN",
-    "PERSIST_DOMAIN",
-    "normalize_domain",
+    "SERVICES_DOMAIN",
+    "SUPPORTED_DOMAINS",
+    # Types
+    "Identity",
+    "IdentityLike",
+    "IdentityProtocol",
+    "IdentityResolver",
+    # Protocols
+    "IdentityResolverProtocol",
     # Helpers
     "coerce_identity_key",
-    # Protocols
-    "IdentityResolverProtocol", "IdentityProtocol",
+    "normalize_domain",
 ]
 
 # Only expose IdentityMixin if it exists locally.

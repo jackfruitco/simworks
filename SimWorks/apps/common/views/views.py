@@ -2,8 +2,7 @@
 from django.shortcuts import render
 from django.views.generic import TemplateView
 
-
-__all__ = ["index", "RobotsView"]
+__all__ = ["RobotsView", "index"]
 
 
 def index(request):

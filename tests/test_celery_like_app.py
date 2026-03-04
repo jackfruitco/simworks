@@ -1,68 +1,77 @@
 import sys
 from types import ModuleType
 
-import pytest
-
 from orchestrai import OrchestrAI, get_current_app
-from orchestrai.fixups.base import BaseFixup
-from orchestrai.shared import shared_service
+from orchestrai._state import set_current_app
+from orchestrai.finalize import connect_on_app_finalize
+from orchestrai.fixups.base import FixupStage
 
 
 def test_current_app_default_created():
+    set_current_app(None)
     app = get_current_app()
     assert isinstance(app, OrchestrAI)
 
 
 def test_as_current_context_manager():
+    set_current_app(None)
     app = OrchestrAI("ctx")
-    with app.as_current():
-        assert get_current_app() is app
-    assert get_current_app() is not app
+    previous = get_current_app()
+    app.set_as_current()
+    assert get_current_app() is app
+    previous.set_as_current()
+    assert get_current_app() is previous
 
 
 def test_setup_is_idempotent():
     app = OrchestrAI()
-    app.conf.update_from_mapping({"CLIENT": {"name": "alpha"}})
+    app.conf.update_from_mapping({"MODE": "single"})
     app.setup()
+    first_loader = app.loader
     app.setup()
-    assert app.client == {"name": "alpha"}
+    assert app.loader is first_loader
+    assert app._setup_done is True
+
 
 def test_default_client_uses_full_configuration():
     app = OrchestrAI()
     app.conf.update_from_mapping(
         {
-            "CLIENT": "alpha",
-            "CLIENTS": {"alpha": {"name": "alpha", "token": "secret"}},
+            "DEFAULT_MODEL": "openai-responses:gpt-5o-mini",
             "MODE": "pod",
         }
     )
 
     app.setup()
 
-    assert app.client == {"name": "alpha", "token": "secret"}
+    assert app.conf.get("DEFAULT_MODEL") == "openai-responses:gpt-5o-mini"
+    assert app.conf.get("MODE") == "pod"
 
-def test_shared_service_attaches_on_finalize():
-    @shared_service()
-    def demo():
-        return "ok"
 
+def test_finalize_callback_attaches_on_finalize():
+    seen = []
+
+    def _mark(app):
+        seen.append(app.name)
+
+    connect_on_app_finalize(_mark)
     app = OrchestrAI()
     app.finalize()
-    assert "demo" in app.services.all()
-    assert app.services.get("demo")() == "ok"
+    assert app.name in seen
 
 
-class DummyFixup(BaseFixup):
+class DummyFixup:
     def __init__(self):
         self.setup_calls = 0
         self.autodiscover_calls = 0
 
-    def on_setup(self, app):
-        self.setup_calls += 1
-
-    def autodiscover_sources(self, app):
-        self.autodiscover_calls += 1
-        return []
+    def apply(self, stage, app, **context):
+        if stage == FixupStage.CONFIGURE_POST:
+            self.setup_calls += 1
+        if stage == FixupStage.AUTODISCOVER_PRE:
+            self.autodiscover_calls += 1
+            return []
+        return None
 
 
 class RecordingLoader:
@@ -101,4 +110,3 @@ def test_fixup_hooks_called(monkeypatch):
     assert fixup.setup_calls == 1
     app.autodiscover_components()
     assert fixup.autodiscover_calls == 1
-

@@ -1,10 +1,12 @@
 # orchestrai_django/signals.py
 
-from typing import TypedDict, Optional, Union, Dict, Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from django.dispatch import Signal
+
 from orchestrai.utils.json import make_json_safe
+
 
 # NEW: light helpers to introspect request/response + identity
 def _as_dict(obj: Any) -> dict:
@@ -20,25 +22,27 @@ def _as_dict(obj: Any) -> dict:
             return dump()  # Pydantic v2 style
         except TypeError as e:
             # MockValSer error - manually extract fields instead
-            if 'MockValSer' in str(e):
+            if "MockValSer" in str(e):
                 result = {}
                 # Manually extract all model fields
-                if hasattr(obj, 'model_fields'):
-                    for field_name in obj.model_fields.keys():
+                if hasattr(obj, "model_fields"):
+                    for field_name in obj.model_fields:
                         try:
                             value = getattr(obj, field_name, None)
                             # Recursively convert nested Pydantic models
-                            if hasattr(value, 'model_dump'):
+                            if hasattr(value, "model_dump"):
                                 result[field_name] = _as_dict(value)
                             elif isinstance(value, list):
                                 result[field_name] = [
-                                    _as_dict(item) if hasattr(item, 'model_dump')
+                                    _as_dict(item)
+                                    if hasattr(item, "model_dump")
                                     else make_json_safe(item)
                                     for item in value
                                 ]
                             elif isinstance(value, dict):
                                 result[field_name] = {
-                                    k: _as_dict(v) if hasattr(v, 'model_dump')
+                                    k: _as_dict(v)
+                                    if hasattr(v, "model_dump")
                                     else make_json_safe(v)
                                     for k, v in value.items()
                                 }
@@ -60,7 +64,7 @@ def _as_dict(obj: Any) -> dict:
     return {"value": repr(obj)}
 
 
-def _split_identity(identity: str) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+def _split_identity(identity: str) -> tuple[str | None, str | None, str | None, str | None]:
     """
     Split an identity string like 'services.chatlab.standardized_patient.initial'
     into (domain, namespace, kind/group, service_name). Any missing pieces are None.
@@ -75,85 +79,85 @@ def _split_identity(identity: str) -> tuple[Optional[str], Optional[str], Option
 
 class RequestSentPayload(TypedDict, total=False):
     request: dict
-    request_audit_pk: Optional[int]
-    domain: Optional[str]
-    namespace: Optional[str]
-    kind: Optional[str]
-    service_name: Optional[str]
-    client_name: Optional[str]
-    provider_name: Optional[str]
+    request_audit_pk: int | None
+    domain: str | None
+    namespace: str | None
+    kind: str | None
+    service_name: str | None
+    client_name: str | None
+    provider_name: str | None
     # DB linkage
-    object_db_pk: Optional[Union[int, UUID]]
+    object_db_pk: int | UUID | None
     # Correlation / codec
-    correlation_id: Optional[UUID]
-    codec_name: Optional[str]
+    correlation_id: UUID | None
+    codec_name: str | None
     # Context-first
-    context: Optional[Dict[str, Any]]
+    context: dict[str, Any] | None
 
 
 class ResponseReceivedPayload(TypedDict, total=False):
     response: dict
-    response_audit_pk: Optional[int]
-    request_audit_pk: Optional[int]
-    domain: Optional[str]
-    namespace: Optional[str]
-    kind: Optional[str]
-    service_name: Optional[str]
-    client_name: Optional[str]
-    provider_name: Optional[str]
+    response_audit_pk: int | None
+    request_audit_pk: int | None
+    domain: str | None
+    namespace: str | None
+    kind: str | None
+    service_name: str | None
+    client_name: str | None
+    provider_name: str | None
     # Optional generic DB linkage
-    object_db_pk: Optional[Union[int, UUID]]
+    object_db_pk: int | UUID | None
     # Correlation / codec
-    correlation_id: Optional[UUID]
-    codec_name: Optional[str]
+    correlation_id: UUID | None
+    codec_name: str | None
     # Context-first
-    context: Optional[Dict[str, Any]]
+    context: dict[str, Any] | None
 
 
 class ResponseReadyPayload(TypedDict, total=False):
     response: dict
-    response_audit_pk: Optional[int]
-    request_audit_pk: Optional[int]
-    domain: Optional[str]
-    namespace: Optional[str]
-    kind: Optional[str]
-    service_name: Optional[str]
-    client_name: Optional[str]
-    provider_name: Optional[str]
+    response_audit_pk: int | None
+    request_audit_pk: int | None
+    domain: str | None
+    namespace: str | None
+    kind: str | None
+    service_name: str | None
+    client_name: str | None
+    provider_name: str | None
     # Generic DB linkage (preferred) + legacy name for back-compat
-    object_db_pk: Optional[Union[int, UUID]]
+    object_db_pk: int | UUID | None
     # Correlation / codec
-    correlation_id: Optional[UUID]
-    codec_name: Optional[str]
+    correlation_id: UUID | None
+    codec_name: str | None
     # Context-first
-    context: Optional[Dict[str, Any]]
+    context: dict[str, Any] | None
 
 
 class ResponseFailedPayload(TypedDict, total=False):
     error: str
-    request_audit_pk: Optional[int]
-    domain: Optional[str]
-    namespace: Optional[str]
-    kind: Optional[str]
-    service_name: Optional[str]
-    client_name: Optional[str]
-    provider_name: Optional[str]
+    request_audit_pk: int | None
+    domain: str | None
+    namespace: str | None
+    kind: str | None
+    service_name: str | None
+    client_name: str | None
+    provider_name: str | None
     # Generic DB linkage (preferred) + legacy name for back-compat
-    object_db_pk: Optional[Union[int, UUID]]
+    object_db_pk: int | UUID | None
     # Correlation
-    correlation_id: Optional[UUID]
+    correlation_id: UUID | None
     # Context-first
-    context: Optional[Dict[str, Any]]
+    context: dict[str, Any] | None
 
 
 class OutboxDispatchPayload(TypedDict, total=False):
     message: dict
-    domain: Optional[str]
-    namespace: Optional[str]
+    domain: str | None
+    namespace: str | None
     # Generic DB linkage (preferred) + legacy name for back-compat
-    object_db_pk: Optional[Union[int, UUID]]
+    object_db_pk: int | UUID | None
     # Context-first
-    context: Optional[Dict[str, Any]]
+    context: dict[str, Any] | None
 
 
 ai_request_sent = Signal()
@@ -275,18 +279,18 @@ class DjangoSignalEmitter:
 emitter = DjangoSignalEmitter()
 
 __all__ = [
+    "OutboxDispatchPayload",
     # payload contracts
     "RequestSentPayload",
-    "ResponseReceivedPayload",
-    "ResponseReadyPayload",
     "ResponseFailedPayload",
-    "OutboxDispatchPayload",
+    "ResponseReadyPayload",
+    "ResponseReceivedPayload",
+    "ai_outbox_dispatch",
     # signals
     "ai_request_sent",
-    "ai_response_received",
-    "ai_response_ready",
     "ai_response_failed",
-    "ai_outbox_dispatch",
+    "ai_response_ready",
+    "ai_response_received",
     "domain_object_created",
     "emitter",
 ]

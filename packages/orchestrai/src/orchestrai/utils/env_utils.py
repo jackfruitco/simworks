@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from orchestrai import OrchestrAI
 
 
-def get_api_key_envvar(provider: str, app: "OrchestrAI | None" = None) -> str | None:
+def get_api_key_envvar(provider: str, app: OrchestrAI | None = None) -> str | None:
     """
     Get the configured environment variable name for a provider's API key.
 
@@ -35,7 +35,7 @@ def get_api_key_envvar(provider: str, app: "OrchestrAI | None" = None) -> str | 
     return envvars.get(provider)
 
 
-def get_api_key(provider: str, app: "OrchestrAI | None" = None) -> str | None:
+def get_api_key(provider: str, app: OrchestrAI | None = None) -> str | None:
     """
     Get the API key for a provider using the configured environment variable.
 

@@ -26,17 +26,16 @@ Settings
 import importlib
 import logging
 import os
-import threading
 import sys
+import threading
 from typing import Any
 
 from django.apps import AppConfig
 from django.conf import settings as dj_settings
 
 from orchestrai._state import get_current_app, set_current_app
-from orchestrai.tracing import service_span_sync
-
 from orchestrai.components.services.django import use_django_task_proxy
+from orchestrai.tracing import service_span_sync
 from orchestrai_django.integration import DjangoAdapter
 
 logger = logging.getLogger(__name__)
@@ -135,8 +134,10 @@ def _import_from_path(path: str) -> Any:
 def _maybe_start(app: Any) -> None:
     """Start an OrchestrAI application using the current lifecycle."""
 
-    if not hasattr(app, "ensure_ready") or not callable(getattr(app, "ensure_ready")):
-        raise TypeError("ORCA_ENTRYPOINT must resolve to an OrchestrAI instance with .ensure_ready()")
+    if not hasattr(app, "ensure_ready") or not callable(app.ensure_ready):
+        raise TypeError(
+            "ORCA_ENTRYPOINT must resolve to an OrchestrAI instance with .ensure_ready()"
+        )
 
     adapter = DjangoAdapter(app)
     adapter.configure()
@@ -147,8 +148,8 @@ def _register_current_app(app: Any) -> None:
     """Persist the resolved app on settings and the context var."""
 
     try:
-        setattr(dj_settings, "_ORCA_APP", app)
-        setattr(dj_settings, "_ORCHESTRAI_APP", app)
+        dj_settings._ORCA_APP = app
+        dj_settings._ORCHESTRAI_APP = app
     except Exception:
         logger.debug("Failed to set django settings _ORCA_APP", exc_info=True)
 
@@ -204,7 +205,9 @@ def _autostart(entrypoint: str) -> Any | None:
     return app_instance
 
 
-def ensure_autostarted(entrypoint: str | None = None, *, check_skip_commands: bool = True) -> Any | None:
+def ensure_autostarted(
+    entrypoint: str | None = None, *, check_skip_commands: bool = True
+) -> Any | None:
     """Ensure the OrchestrAI app has autostarted (idempotent, thread-safe)."""
 
     if not _autostart_enabled():

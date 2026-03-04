@@ -5,12 +5,11 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from django.db import transaction
-
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
 from orchestrai.components.services.task_proxy import ServiceSpec
 from orchestrai.orm_mode import must_be_async, must_be_sync
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,14 +28,14 @@ def _split_kwargs(kwargs: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any
 class DjangoServiceSpec(ServiceSpec):
     dispatch_kwargs: dict[str, Any] | None = None
 
-    def using(self, **service_kwargs: Any) -> "DjangoServiceSpec":
+    def using(self, **service_kwargs: Any) -> DjangoServiceSpec:
         svc_kwargs, dispatch_kwargs = _split_kwargs(service_kwargs)
         merged_dispatch = {**(self.dispatch_kwargs or {}), **dispatch_kwargs}
         merged_service = {**self.service_kwargs, **svc_kwargs}
         return DjangoServiceSpec(self.service_cls, merged_service, merged_dispatch)
 
     @property
-    def task(self) -> "DjangoTaskProxy":
+    def task(self) -> DjangoTaskProxy:
         return DjangoTaskProxy(self)
 
 
@@ -52,7 +51,7 @@ class DjangoTaskProxy:
     def _build(self) -> ServiceCallMixin:
         return self._spec.service_cls(**self._spec.service_kwargs)
 
-    def using(self, **service_kwargs: Any) -> "DjangoTaskProxy":
+    def using(self, **service_kwargs: Any) -> DjangoTaskProxy:
         return DjangoTaskProxy(self._spec.using(**service_kwargs))
 
     # ------------------------------------------------------------------
@@ -66,8 +65,9 @@ class DjangoTaskProxy:
         return dispatch
 
     def _build_record(self, call: ServiceCall, dispatch: dict[str, Any]):
-        from orchestrai_django.models import ServiceCall as ServiceCallModel
         from django.utils import timezone
+
+        from orchestrai_django.models import ServiceCall as ServiceCallModel
 
         backend = dispatch.get("backend") or "immediate"
         queue = dispatch.get("queue")
@@ -129,9 +129,7 @@ class DjangoTaskProxy:
         task_result = run_service_call_task.enqueue(call_id=call_id)
 
         logger.debug(
-            "DjangoTaskProxy: Enqueued service call %s as Django task %s",
-            call_id,
-            task_result.id
+            "DjangoTaskProxy: Enqueued service call %s as Django task %s", call_id, task_result.id
         )
 
         return task_result.id
@@ -269,7 +267,7 @@ def use_django_task_proxy() -> None:
 
 __all__ = [
     "DjangoServiceSpec",
-    "DjangoTaskProxy",
     "DjangoTaskDescriptor",
+    "DjangoTaskProxy",
     "use_django_task_proxy",
 ]

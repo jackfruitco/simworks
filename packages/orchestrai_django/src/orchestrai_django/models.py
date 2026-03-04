@@ -1,6 +1,5 @@
 # orchestrai_django/models.py
 from datetime import timedelta
-from decimal import Decimal
 from uuid import uuid4
 
 from django.core.exceptions import ValidationError
@@ -50,12 +49,10 @@ class TimestampedModel(models.Model):
 
 class AttemptAllocationError(Exception):
     """Raised when attempt allocation fails."""
-    pass
 
 
 class AlreadySucceededError(Exception):
     """Raised when trying to mark success on an already-succeeded call."""
-    pass
 
 
 class ServiceCallQuerySet(models.QuerySet):
@@ -79,10 +76,14 @@ class ServiceCallQuerySet(models.QuerySet):
 
     def pending_persistence(self):
         """Return calls awaiting domain persistence."""
-        return self.filter(
-            status=CallStatus.COMPLETED,
-            domain_persisted=False,
-        ).exclude(schema_fqn__isnull=True).exclude(schema_fqn='')
+        return (
+            self.filter(
+                status=CallStatus.COMPLETED,
+                domain_persisted=False,
+            )
+            .exclude(schema_fqn__isnull=True)
+            .exclude(schema_fqn="")
+        )
 
     def for_simulation(self, simulation_id):
         """Return calls for a specific simulation."""
@@ -90,9 +91,7 @@ class ServiceCallQuerySet(models.QuerySet):
 
     def with_retries(self):
         """Return calls that required multiple attempts."""
-        return self.annotate(
-            attempt_count=Count('attempts')
-        ).filter(attempt_count__gt=1)
+        return self.annotate(attempt_count=Count("attempts")).filter(attempt_count__gt=1)
 
     def by_service(self, service_identity):
         """Return calls for a specific service."""
@@ -201,21 +200,17 @@ class ServiceCall(TimestampedModel):
         decimal_places=6,
         null=True,
         blank=True,
-        help_text="Cost in USD for input tokens"
+        help_text="Cost in USD for input tokens",
     )
     output_cost_usd = models.DecimalField(
         max_digits=10,
         decimal_places=6,
         null=True,
         blank=True,
-        help_text="Cost in USD for output tokens"
+        help_text="Cost in USD for output tokens",
     )
     total_cost_usd = models.DecimalField(
-        max_digits=10,
-        decimal_places=6,
-        null=True,
-        blank=True,
-        help_text="Total cost in USD"
+        max_digits=10, decimal_places=6, null=True, blank=True, help_text="Total cost in USD"
     )
 
     # Error tracking
@@ -228,11 +223,11 @@ class ServiceCall(TimestampedModel):
 
     # Winner tracking
     successful_attempt = models.ForeignKey(
-        'ServiceCallAttempt',
+        "ServiceCallAttempt",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name='won_call',
+        related_name="won_call",
         help_text="The attempt that succeeded",
     )
 
@@ -277,11 +272,7 @@ class ServiceCall(TimestampedModel):
     )
 
     # Task tracking (if using Celery/Django Tasks)
-    backend = models.CharField(
-        max_length=64,
-        choices=Backend.choices,
-        default=Backend.IMMEDIATE
-    )
+    backend = models.CharField(max_length=64, choices=Backend.choices, default=Backend.IMMEDIATE)
     queue = models.CharField(max_length=128, null=True, blank=True)
     task_id = models.CharField(max_length=128, null=True, blank=True)
 
@@ -295,17 +286,17 @@ class ServiceCall(TimestampedModel):
         db_table = "service_call"
         verbose_name = "Service Call"
         verbose_name_plural = "Service Calls"
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["service_identity", "status"]),
             models.Index(fields=["status", "domain_persisted", "finished_at"]),
             models.Index(fields=["related_object_id", "-finished_at"]),
             models.Index(fields=["related_object_id", "status", "-finished_at"]),
             # Additional indexes for common patterns
-            models.Index(fields=['status', '-created_at']),
-            models.Index(fields=['service_identity', 'status', '-created_at']),
-            models.Index(fields=['provider_response_id']),
-            models.Index(fields=['schema_fqn', 'status']),
+            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["service_identity", "status", "-created_at"]),
+            models.Index(fields=["provider_response_id"]),
+            models.Index(fields=["schema_fqn", "status"]),
         ]
 
     def __str__(self) -> str:
@@ -313,16 +304,14 @@ class ServiceCall(TimestampedModel):
 
     def __repr__(self) -> str:
         return (
-            f"<ServiceCall id={self.pk!r} "
-            f"service={self.service_identity!r} "
-            f"status={self.status!r}>"
+            f"<ServiceCall id={self.pk!r} service={self.service_identity!r} status={self.status!r}>"
         )
 
     # Convenience properties for accessing attempts
     @cached_property
     def latest_attempt(self):
         """Get the most recent attempt."""
-        return self.attempts.order_by('-attempt').first()
+        return self.attempts.order_by("-attempt").first()
 
     @cached_property
     def final_attempt(self):
@@ -398,51 +387,52 @@ class ServiceCall(TimestampedModel):
     def to_span_attributes(self) -> dict:
         """Export as OpenTelemetry span attributes."""
         return {
-            'service.call.id': str(self.id),
-            'service.identity': self.service_identity,
-            'service.status': self.status,
-            'service.input_tokens': self.input_tokens,
-            'service.output_tokens': self.output_tokens,
-            'service.total_tokens': self.total_tokens,
-            'service.reasoning_tokens': self.reasoning_tokens,
-            'service.duration_ms': self.duration_ms,
-            'service.backend': self.backend,
-            'service.model': self.model_name,
-            'service.correlation_id': str(self.correlation_id),
+            "service.call.id": str(self.id),
+            "service.identity": self.service_identity,
+            "service.status": self.status,
+            "service.input_tokens": self.input_tokens,
+            "service.output_tokens": self.output_tokens,
+            "service.total_tokens": self.total_tokens,
+            "service.reasoning_tokens": self.reasoning_tokens,
+            "service.duration_ms": self.duration_ms,
+            "service.backend": self.backend,
+            "service.model": self.model_name,
+            "service.correlation_id": str(self.correlation_id),
         }
 
     def to_dict(self) -> dict:
         """Return as dict with Python objects (datetimes, etc.)."""
         return {
-            'id': self.id,
-            'service_identity': self.service_identity,
-            'status': self.status,
-            'created_at': self.created_at,
-            'started_at': self.started_at,
-            'finished_at': self.finished_at,
-            'duration_seconds': self.duration_seconds,
-            'input_tokens': self.input_tokens,
-            'output_tokens': self.output_tokens,
-            'total_tokens': self.total_tokens,
-            'reasoning_tokens': self.reasoning_tokens,
-            'output_data': self.output_data,
-            'error': self.error,
-            'backend': self.backend,
-            'model_name': self.model_name,
-            'correlation_id': self.correlation_id,
+            "id": self.id,
+            "service_identity": self.service_identity,
+            "status": self.status,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "finished_at": self.finished_at,
+            "duration_seconds": self.duration_seconds,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "reasoning_tokens": self.reasoning_tokens,
+            "output_data": self.output_data,
+            "error": self.error,
+            "backend": self.backend,
+            "model_name": self.model_name,
+            "correlation_id": self.correlation_id,
         }
 
     def to_jsonable(self) -> dict:
         """Export the service call as a JSON-serializable dict."""
         from orchestrai.utils import make_json_safe
+
         data = self.to_dict()
         # Convert datetime objects to ISO strings
-        for key in ('created_at', 'started_at', 'finished_at'):
+        for key in ("created_at", "started_at", "finished_at"):
             if data[key]:
                 data[key] = data[key].isoformat()
         # Convert UUID to string
-        data['id'] = str(data['id'])
-        data['correlation_id'] = str(data['correlation_id'])
+        data["id"] = str(data["id"])
+        data["correlation_id"] = str(data["correlation_id"])
         return make_json_safe(data)
 
     def clean(self):
@@ -451,26 +441,23 @@ class ServiceCall(TimestampedModel):
 
         # Validate that successful calls have output_data
         if self.status == CallStatus.COMPLETED and not self.output_data:
-            raise ValidationError({
-                'output_data': 'Completed calls must have output_data'
-            })
+            raise ValidationError({"output_data": "Completed calls must have output_data"})
 
         # Validate that failed calls have error message
         if self.status == CallStatus.FAILED and not self.error:
-            raise ValidationError({
-                'error': 'Failed calls must have error message'
-            })
+            raise ValidationError({"error": "Failed calls must have error message"})
 
         # Validate successful_attempt exists if status is COMPLETED
         if self.status == CallStatus.COMPLETED and not self.successful_attempt:
-            raise ValidationError({
-                'successful_attempt': 'Completed calls must have successful_attempt set'
-            })
+            raise ValidationError(
+                {"successful_attempt": "Completed calls must have successful_attempt set"}
+            )
 
     def get_absolute_url(self):
         """Get Django admin URL for this object."""
         from django.urls import reverse
-        return reverse('admin:orchestrai_django_servicecall_change', args=[str(self.pk)])
+
+        return reverse("admin:orchestrai_django_servicecall_change", args=[str(self.pk)])
 
     def mark_running(self) -> None:
         """Mark the call as running."""
@@ -559,7 +546,9 @@ class ServiceCall(TimestampedModel):
             AlreadySucceededError: If call already has a successful attempt.
         """
         if self.successful_attempt is not None:
-            raise AlreadySucceededError(f"Call already succeeded with attempt {self.successful_attempt.attempt}")
+            raise AlreadySucceededError(
+                f"Call already succeeded with attempt {self.successful_attempt.attempt}"
+            )
 
         # Mark attempt
         attempt.status = AttemptStatus.SCHEMA_OK
@@ -574,21 +563,30 @@ class ServiceCall(TimestampedModel):
 
         # Aggregate token usage from attempts
         attempt_totals = self.attempts.aggregate(
-            total_input=Sum('input_tokens'),
-            total_output=Sum('output_tokens'),
-            total_all=Sum('total_tokens'),
-            total_reasoning=Sum('reasoning_tokens'),
+            total_input=Sum("input_tokens"),
+            total_output=Sum("output_tokens"),
+            total_all=Sum("total_tokens"),
+            total_reasoning=Sum("reasoning_tokens"),
         )
-        self.input_tokens = attempt_totals['total_input'] or 0
-        self.output_tokens = attempt_totals['total_output'] or 0
-        self.total_tokens = attempt_totals['total_all'] or 0
-        self.reasoning_tokens = attempt_totals['total_reasoning'] or 0
+        self.input_tokens = attempt_totals["total_input"] or 0
+        self.output_tokens = attempt_totals["total_output"] or 0
+        self.total_tokens = attempt_totals["total_all"] or 0
+        self.reasoning_tokens = attempt_totals["total_reasoning"] or 0
 
-        self.save(update_fields=[
-            "successful_attempt", "provider_response_id", "output_data",
-            "status", "finished_at", "input_tokens", "output_tokens",
-            "total_tokens", "reasoning_tokens", "updated_at"
-        ])
+        self.save(
+            update_fields=[
+                "successful_attempt",
+                "provider_response_id",
+                "output_data",
+                "status",
+                "finished_at",
+                "input_tokens",
+                "output_tokens",
+                "total_tokens",
+                "reasoning_tokens",
+                "updated_at",
+            ]
+        )
 
     @classmethod
     def retry_failed_persistence(cls, max_age_hours: int = 24) -> int:
@@ -604,12 +602,16 @@ class ServiceCall(TimestampedModel):
             Number of calls marked for retry.
         """
         cutoff = timezone.now() - timedelta(hours=max_age_hours)
-        qs = cls.objects.filter(
-            status=CallStatus.COMPLETED,
-            domain_persisted=False,
-            domain_persist_attempts__lt=10,
-            finished_at__gte=cutoff,
-        ).exclude(schema_fqn__isnull=True).exclude(schema_fqn='')
+        qs = (
+            cls.objects.filter(
+                status=CallStatus.COMPLETED,
+                domain_persisted=False,
+                domain_persist_attempts__lt=10,
+                finished_at__gte=cutoff,
+            )
+            .exclude(schema_fqn__isnull=True)
+            .exclude(schema_fqn="")
+        )
 
         count = qs.update(
             domain_persist_attempts=0,
@@ -776,7 +778,7 @@ class ServiceCallAttempt(TimestampedModel):
         db_table = "service_call_attempt"
         verbose_name = "Service Call Attempt"
         verbose_name_plural = "Service Call Attempts"
-        ordering = ['service_call', 'attempt']
+        ordering = ["service_call", "attempt"]
         constraints = [
             models.UniqueConstraint(
                 fields=["service_call", "attempt"],
@@ -848,7 +850,8 @@ class ServiceCallAttempt(TimestampedModel):
     def get_absolute_url(self):
         """Get Django admin URL for this object."""
         from django.urls import reverse
-        return reverse('admin:orchestrai_django_servicecallattempt_change', args=[self.pk])
+
+        return reverse("admin:orchestrai_django_servicecallattempt_change", args=[self.pk])
 
     def mark_dispatched(self) -> None:
         """Mark this attempt as dispatched to the provider."""

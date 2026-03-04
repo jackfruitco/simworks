@@ -28,11 +28,11 @@ class InvitationMiddleware:
 
     def __call__(self, request: HttpRequest):
         # Check if invitation token is in URL parameters
-        invitation_token = request.GET.get('invitation')
+        invitation_token = request.GET.get("invitation")
 
         if invitation_token:
             # Store in session for use during signup
-            request.session['invitation_token'] = invitation_token
+            request.session["invitation_token"] = invitation_token
 
         response = self.get_response(request)
         return response

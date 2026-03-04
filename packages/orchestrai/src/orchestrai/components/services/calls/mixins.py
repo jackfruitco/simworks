@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
-import uuid
 from datetime import datetime
-from typing import Any
+import inspect
 import logging
+from typing import Any
+import uuid
 
 from orchestrai.components.services.calls import ServiceCall
 
@@ -27,6 +27,7 @@ class _NullEmitter:
 
     def emit_stream_complete(self, *args, **kwargs):
         return None
+
 
 _STATUS_PENDING = "pending"
 _STATUS_RUNNING = "running"
@@ -77,9 +78,7 @@ class ServiceCallMixin:
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(
-                self.acall(payload=payload, context=context, dispatch=dispatch)
-            )
+            return asyncio.run(self.acall(payload=payload, context=context, dispatch=dispatch))
 
         if loop.is_running():
             raise RuntimeError("Cannot call service while an event loop is running")
@@ -185,17 +184,5 @@ class ServiceCallMixin:
 
         return call
 
-    def _sync_run_call(self, **payload: Any) -> ServiceCall:
-        """Deprecated compatibility wrapper. Use :meth:`call` instead."""
 
-        return self.call(payload=payload)
-
-
-# Backwards compatibility
-ExecutionLifecycleMixin = ServiceCallMixin
-ExecutionLifecycleMixin.__doc__ = (
-    "Deprecated alias for ServiceCallMixin. Prefer ServiceCallMixin.call/acall."
-)
-
-
-__all__ = ["ServiceCallMixin", "ExecutionLifecycleMixin"]
+__all__ = ["ServiceCallMixin"]

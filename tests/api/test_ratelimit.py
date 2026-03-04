@@ -3,9 +3,8 @@
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-from django.http import HttpRequest
 from django.test import RequestFactory
+import pytest
 
 from apps.common.ratelimit import (
     RateLimitExceeded,

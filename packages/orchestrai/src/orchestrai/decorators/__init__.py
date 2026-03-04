@@ -1,21 +1,20 @@
 # orchestrai/decorators/__init__.py
-"""Decorator facade (lazy imports to avoid cycles).
+"""Decorator facade (lazy imports to avoid cycles)."""
 
-This package exposes the base registration decorator and *optionally* the
-domain-specific decorator classes/instances via **lazy** attribute access.
-We avoid importing domain modules (services, codecs, promptkit, schemas)
-at import time to prevent circular imports during early Django startup.
-"""
-
+from __future__ import annotations
 
 from .base import BaseDecorator
-from .components import *
+
+
+def __getattr__(name: str):
+    if name == "service":
+        from . import components as _components
+
+        return getattr(_components, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "BaseDecorator",
-    "codec",
     "service",
-    "schema",
-    "prompt_section",
 ]
-

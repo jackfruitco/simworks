@@ -169,7 +169,7 @@ Or handle the built-in **emitter** signals elsewhere to react to responses.
 ## Error Handling
 
 - Exceptions in `persist()` should bubble up; the Service will emit `emit_failure(...)`
-- In **DEBUG**, validation errors raise immediately  
+- In **DEBUG**, validation errors raise immediately
 - In **production**, failed validation is logged and the Codec may be skipped (config-dependent)
 
 **Pro Tip:** Keep `persist()` small and predictable — do heavy work in domain services.
@@ -242,9 +242,9 @@ def test_feedback_codec_persist(db, simulation):
 
 ## Summary
 
-- **Codecs** are the place to persist validated AI outputs into your DB  
-- Use **atomic** transactions, **bulk_create**, and **correlation_id** for robustness  
-- Keep return values **small** and serializable  
+- **Codecs** are the place to persist validated AI outputs into your DB
+- Use **atomic** transactions, **bulk_create**, and **correlation_id** for robustness
+- Keep return values **small** and serializable
 - Rely on **identity alignment** for auto-wiring with Services & Schemas
 
 ---

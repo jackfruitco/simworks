@@ -6,11 +6,11 @@ schemas, reducing duplication and ensuring consistency.
 These are plain Pydantic models for use with Pydantic AI.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from orchestrai.types import ResultMessageItem
-from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
 from apps.chatlab.orca.persisters import persist_messages
+from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+from orchestrai.types import ResultMessageItem
 
 
 class PatientResponseBaseMixin(BaseModel):
@@ -33,13 +33,10 @@ class PatientResponseBaseMixin(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     messages: list[ResultMessageItem] = Field(
-        ...,
-        min_length=1,
-        description="Response messages from the simulated patient"
+        ..., min_length=1, description="Response messages from the simulated patient"
     )
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(
-        ...,
-        description="Internal workflow conditions"
+        ..., description="Internal workflow conditions"
     )
 
     __persist__ = {"messages": persist_messages}

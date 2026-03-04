@@ -12,32 +12,29 @@ a RunContext for accessing dependencies.
 from __future__ import annotations
 
 import asyncio
-import inspect
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from functools import wraps
+import inspect
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Callable,
-    Coroutine,
     Protocol,
     TypeVar,
-    Union,
     overload,
-    TYPE_CHECKING,
 )
 
 if TYPE_CHECKING:
-    from pydantic_ai import RunContext
+    pass
 
 __all__ = [
-    "system_prompt",
-    "collect_prompts",
     "PromptMethod",
     "SystemPromptResult",
+    "collect_prompts",
+    "system_prompt",
 ]
 
 # Type for prompt method return values
-SystemPromptResult = Union[str, None]
+SystemPromptResult = str | None
 
 # Marker attributes set on decorated methods
 _PROMPT_WEIGHT_ATTR = "_orca_prompt_weight"
@@ -65,7 +62,7 @@ class PromptMethod:
     is_dynamic: bool
     name: str
 
-    def __lt__(self, other: "PromptMethod") -> bool:
+    def __lt__(self, other: PromptMethod) -> bool:
         """Sort by weight descending (higher weight = earlier)."""
         if not isinstance(other, PromptMethod):
             return NotImplemented
@@ -73,7 +70,7 @@ class PromptMethod:
 
 
 @overload
-def system_prompt(fn: F) -> F: ...
+def system_prompt[F: PromptMethodProtocol](fn: F) -> F: ...
 
 
 @overload
@@ -84,7 +81,7 @@ def system_prompt(
 ) -> Callable[[F], F]: ...
 
 
-def system_prompt(
+def system_prompt[F: PromptMethodProtocol](
     fn: F | None = None,
     *,
     weight: int = 100,

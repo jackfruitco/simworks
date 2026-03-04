@@ -66,11 +66,7 @@ TEMPLATES = [
 ]
 
 # Channels configuration for WebSocket tests
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
-}
+CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
 # Mirror production allauth behavior for email-only user model.
 ACCOUNT_LOGIN_METHODS = {"email"}

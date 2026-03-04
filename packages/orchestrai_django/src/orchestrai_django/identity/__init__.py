@@ -15,16 +15,18 @@ Notes
 - No Django imports here; `apps.py` writes into this module.
 """
 
-
-
 from .mixins import DjangoIdentityMixin
 from .resolvers import DjangoIdentityResolver
-from .utils import APP_IDENTITY_STRIP_TOKENS, get_app_identity_strip_tokens, infer_namespace_from_module
+from .utils import (
+    APP_IDENTITY_STRIP_TOKENS,
+    get_app_identity_strip_tokens,
+    infer_namespace_from_module,
+)
 
 __all__ = [
+    "APP_IDENTITY_STRIP_TOKENS",
     "DjangoIdentityMixin",
     "DjangoIdentityResolver",
-    "APP_IDENTITY_STRIP_TOKENS",
     "get_app_identity_strip_tokens",
-    "infer_namespace_from_module"
+    "infer_namespace_from_module",
 ]

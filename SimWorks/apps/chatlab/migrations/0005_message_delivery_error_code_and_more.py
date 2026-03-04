@@ -4,35 +4,39 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('chatlab', '0004_message_conversation_not_null'),
+        ("chatlab", "0004_message_conversation_not_null"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='message',
-            name='delivery_error_code',
-            field=models.CharField(blank=True, default='', max_length=100),
+            model_name="message",
+            name="delivery_error_code",
+            field=models.CharField(blank=True, default="", max_length=100),
         ),
         migrations.AddField(
-            model_name='message',
-            name='delivery_error_text',
-            field=models.TextField(blank=True, default=''),
+            model_name="message",
+            name="delivery_error_text",
+            field=models.TextField(blank=True, default=""),
         ),
         migrations.AddField(
-            model_name='message',
-            name='delivery_retry_count',
+            model_name="message",
+            name="delivery_retry_count",
             field=models.PositiveSmallIntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='message',
-            name='delivery_retryable',
+            model_name="message",
+            name="delivery_retryable",
             field=models.BooleanField(default=True),
         ),
         migrations.AddField(
-            model_name='message',
-            name='delivery_status',
-            field=models.CharField(choices=[('sent', 'Sent'), ('delivered', 'Delivered'), ('failed', 'Failed')], db_index=True, default='sent', max_length=16),
+            model_name="message",
+            name="delivery_status",
+            field=models.CharField(
+                choices=[("sent", "Sent"), ("delivered", "Delivered"), ("failed", "Failed")],
+                db_index=True,
+                default="sent",
+                max_length=16,
+            ),
         ),
     ]

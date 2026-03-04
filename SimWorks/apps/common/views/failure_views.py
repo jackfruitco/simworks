@@ -2,7 +2,6 @@
 from django.shortcuts import render
 from opentelemetry import trace
 
-
 __all__ = ["csrf_failure"]
 
 

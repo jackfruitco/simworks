@@ -1,5 +1,3 @@
-
-
 """
 Demotion helpers (Django → core DTOs).
 
@@ -12,7 +10,6 @@ This module mirrors `types/promote.py` (promotion flow) and keeps all logic
 pure (no ORM). Order of items/input is preserved where applicable.
 """
 
-from typing import Optional
 from collections.abc import Sequence
 
 from orchestrai.types import (
@@ -20,11 +17,12 @@ from orchestrai.types import (
     Response,
 )
 from orchestrai.types.messages import InputItem, OutputItem, UsageContent
+
 from .django_dtos import (
-    DjangoRequest,
     DjangoInputItem,
-    DjangoResponse,
     DjangoOutputItem,
+    DjangoRequest,
+    DjangoResponse,
     DjangoUsageContent,
 )
 
@@ -33,9 +31,10 @@ __all__ = ("demote_request", "demote_response")
 
 # ---------------------- helpers -----------------------------------------
 
+
 def _demote_messages(
-        messages_rich: Optional[Sequence[DjangoInputItem]],
-        fallback: Optional[Sequence[InputItem]] = None,
+    messages_rich: Sequence[DjangoInputItem] | None,
+    fallback: Sequence[InputItem] | None = None,
 ) -> list[InputItem]:
     """Best-effort demotion of rich request input to core input.
 
@@ -47,8 +46,8 @@ def _demote_messages(
 
 
 def _demote_response_items(
-        items_rich: Optional[Sequence[DjangoOutputItem]],
-        fallback: Optional[Sequence[OutputItem]] = None,
+    items_rich: Sequence[DjangoOutputItem] | None,
+    fallback: Sequence[OutputItem] | None = None,
 ) -> list[OutputItem]:
     """Demote rich response items to core response items, preserving order."""
     if items_rich:
@@ -56,7 +55,9 @@ def _demote_response_items(
     return list(fallback or [])
 
 
-def _demote_usage(usage_rich: Optional[DjangoUsageContent], fallback: Optional[UsageContent] = None) -> Optional[UsageContent]:
+def _demote_usage(
+    usage_rich: DjangoUsageContent | None, fallback: UsageContent | None = None
+) -> UsageContent | None:
     """Demote rich usage to core usage when present; otherwise return fallback."""
     if usage_rich:
         return UsageContent(**usage_rich.model_dump(mode="json"))
@@ -64,6 +65,7 @@ def _demote_usage(usage_rich: Optional[DjangoUsageContent], fallback: Optional[U
 
 
 # ---------------------- public API --------------------------------------
+
 
 def demote_request(dj_req: DjangoRequest) -> Request:
     """Demote a Django-rich request back to the core Request.
@@ -75,12 +77,12 @@ def demote_request(dj_req: DjangoRequest) -> Request:
     base = dj_req.model_dump(mode="json")
     # Remove Django-only fields
     for key in (
-            "db_pk",
-            "created_at",
-            "updated_at",
-            "object_db_pk",
-            "messages_rich",
-            "prompt_meta",
+        "db_pk",
+        "created_at",
+        "updated_at",
+        "object_db_pk",
+        "messages_rich",
+        "prompt_meta",
     ):
         base.pop(key, None)
 
@@ -98,14 +100,14 @@ def demote_response(dj_resp: DjangoResponse) -> Response:
     """
     base = dj_resp.model_dump(mode="json")
     for key in (
-            "db_pk",
-            "created_at",
-            "updated_at",
-            "outputs_rich",
-            "usage_rich",
-            "request_db_pk",
-            "response_db_pk",
-            "object_db_pk",
+        "db_pk",
+        "created_at",
+        "updated_at",
+        "outputs_rich",
+        "usage_rich",
+        "request_db_pk",
+        "response_db_pk",
+        "object_db_pk",
     ):
         base.pop(key, None)
 

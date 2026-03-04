@@ -1,12 +1,13 @@
+from datetime import datetime
 import decimal
 import html
 import logging
 import os
 import uuid
-from datetime import datetime
+
+from django.http import HttpResponse
 
 from apps.common.utils.formatters.registry import registry
-from django.http import HttpResponse
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +101,7 @@ class Formatter:
 
         formatter = registry.get_with_fallback(format_key)
         if not formatter:
-            logger.warning(
-                f"[Formatter] Unknown format type requested: '{format_type}'"
-            )
+            logger.warning(f"[Formatter] Unknown format type requested: '{format_type}'")
             return registry.get_with_fallback("json")(self)
 
         try:
@@ -111,7 +110,7 @@ class Formatter:
             logger.error(f"[Formatter] Failed to render '{format_type}': {e}")
             return registry.get_with_fallback("json")(self)
 
-    def save(self, format_type, path: str = None, **kwargs):
+    def save(self, format_type, path: str | None = None, **kwargs):
         """
         Render the data to a file.
 
@@ -133,7 +132,7 @@ class Formatter:
         try:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(output)
-        except IOError as e:
+        except OSError as e:
             logger.error(f"[Formatter] Failed to write to {path}: {e}")
             raise
         return path
@@ -189,7 +188,7 @@ class Formatter:
             indent (int): Indentation level for pretty-printing.
             output (str, optional): If provided, writes the output to this file path instead of printing.
         """
-        logger.debug(f"[Formatter] Preparing pretty print")
+        logger.debug("[Formatter] Preparing pretty print")
         if output:
             self.save("json", path=output, indent=indent)
         else:

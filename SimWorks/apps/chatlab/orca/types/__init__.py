@@ -1,7 +1,7 @@
 from .attachments import *
 from .base import *
-from .metadata import *
 from .messages import *
+from .metadata import *
 
 ___all__ = [
     "AttachmentItem",

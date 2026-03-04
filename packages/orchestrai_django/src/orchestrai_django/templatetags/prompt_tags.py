@@ -20,14 +20,12 @@ If the prompt defines templates or text, it renders them. If Django's
 through that helper for full context support.
 """
 
-from typing import Optional
 from django import template
 from django.utils.safestring import mark_safe
 
-register = template.Library()
-
-# Optional integration hooks
 from orchestrai.registry import prompt_sections
+
+register = template.Library()
 
 try:
     # Prefer the Django renderer if available
@@ -39,8 +37,8 @@ except Exception:
 @register.simple_tag(name="prompt")
 def render_prompt_tag(
     key: str,
-    simulation: Optional[object] = None,
-    namespace: Optional[str] = None,
+    simulation: object | None = None,
+    namespace: str | None = None,
 ) -> str:
     """
     Render a registered prompt by key.

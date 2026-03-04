@@ -23,22 +23,21 @@ This module hosts two groups of checks:
 These checks run at startup and can be invoked with `python manage.py check`.
 """
 
-from typing import Any, Dict, List, Optional, Iterable, Tuple
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 import logging
 import re
+from typing import Any
 
 from django.conf import settings
 from django.core import checks
 
-from orchestrai.tracing import service_span_sync
-
 from orchestrai.registry import (
     codecs as codec_registry,
-    services as service_registry,
     prompt_sections as prompt_registry,
     schemas as schema_registry,
+    services as service_registry,
 )
+from orchestrai.tracing import service_span_sync
 
 LOGGER = logging.getLogger(__name__)
 TAG = "orchestrai"
@@ -51,8 +50,11 @@ _ALLOWED_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 # Settings validation (retained, updated docstring from legacy module)
 # ---------------------------------------------------------------------------
 
-@checks.register(checks.Tags.compatibility, checks.Tags.security) #, checks.Tags.settings)
-def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
+
+@checks.register(checks.Tags.compatibility, checks.Tags.security)  # , checks.Tags.settings)
+def check_orchestrai_settings(
+    app_configs: Iterable | None = None, **kwargs
+) -> list[checks.CheckMessage]:
     """
     Validate orchestrai settings structure and key fields.
 
@@ -93,7 +95,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
     }
     """
     with service_span_sync("orchestrai.clients.checks"):
-        messages: List[checks.CheckMessage] = []
+        messages: list[checks.CheckMessage] = []
 
         sim: Mapping[str, Any] = getattr(settings, "orchestrai", {}) or {}
         if not isinstance(sim, Mapping):
@@ -108,7 +110,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
             return messages
 
         # --- PROVIDERS --------------------------------------------------------
-        providers: Mapping[str, Dict[str, Any]] = sim.get("PROVIDERS", {}) or {}
+        providers: Mapping[str, dict[str, Any]] = sim.get("PROVIDERS", {}) or {}
         if not isinstance(providers, Mapping):
             messages.append(
                 checks.Error(
@@ -131,7 +133,9 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
             )
 
         for pkey, cfg in providers.items():
-            with service_span_sync("orchestrai.clients.checks.backend", attributes={"orchestrai.provider_key": pkey}):
+            with service_span_sync(
+                "orchestrai.clients.checks.backend", attributes={"orchestrai.provider_key": pkey}
+            ):
                 if not isinstance(cfg, Mapping):
                     messages.append(
                         checks.Error(
@@ -189,7 +193,7 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                         )
 
         # --- CLIENTS ----------------------------------------------------------
-        clients: Mapping[str, Dict[str, Any]] = sim.get("CLIENTS", {}) or {}
+        clients: Mapping[str, dict[str, Any]] = sim.get("CLIENTS", {}) or {}
         if not isinstance(clients, Mapping):
             messages.append(
                 checks.Error(
@@ -213,7 +217,9 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
 
         default_clients: list[str] = []
         for cname, cfg in clients.items():
-            with service_span_sync("orchestrai.clients.checks.client", attributes={"orchestrai.client_name": cname}):
+            with service_span_sync(
+                "orchestrai.clients.checks.client", attributes={"orchestrai.client_name": cname}
+            ):
                 if not isinstance(cfg, Mapping):
                     messages.append(
                         checks.Error(
@@ -302,7 +308,13 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                 )
             )
         elif isinstance(client_defaults, Mapping):
-            known_keys = {"max_retries", "timeout_s", "telemetry_enabled", "log_prompts", "raise_on_error"}
+            known_keys = {
+                "max_retries",
+                "timeout_s",
+                "telemetry_enabled",
+                "log_prompts",
+                "raise_on_error",
+            }
             for key, val in client_defaults.items():
                 if key not in known_keys:
                     messages.append(
@@ -329,7 +341,9 @@ def check_orchestrai_settings(app_configs: Optional[Iterable] = None, **kwargs) 
                             id=f"{TAG}.W012",
                         )
                     )
-                if key in {"telemetry_enabled", "log_prompts", "raise_on_error"} and not isinstance(val, bool):
+                if key in {"telemetry_enabled", "log_prompts", "raise_on_error"} and not isinstance(
+                    val, bool
+                ):
                     messages.append(
                         checks.Warning(
                             f"orchestrai['CLIENT_DEFAULTS']['{key}'] should be a boolean.",
@@ -365,15 +379,18 @@ def _is_truthy(val: Any) -> bool:
 # Registry integrity checks
 # ---------------------------------------------------------------------------
 
+
 @checks.register(checks.Tags.models)
-def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
+def check_orchestrai_registries(
+    app_configs: Iterable | None = None, **kwargs
+) -> list[checks.CheckMessage]:
     """Validate identity collisions and illegal identities across registries.
 
     - Collisions → `SIMCORE-ID-001` (Error if strict, Warning if non-strict)
     - Invalid identities → `SIMCORE-ID-002` (Error)
     """
     with service_span_sync("orchestrai.registries.checks"):
-        messages: List[checks.CheckMessage] = []
+        messages: list[checks.CheckMessage] = []
         strict = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", True))
 
         registries = [
@@ -387,7 +404,7 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
         for kind, reg in registries:
             try:
                 collisions = list(reg.collisions())
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive
                 LOGGER.exception("registry.collisions.failed %s", kind)
                 continue
             if not collisions:
@@ -419,7 +436,7 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
 
         # Invalid identities (SIMCORE-ID-002) — should not happen because registries validate,
         # but we defensively re-check the stored keys and surface errors if any slipped through.
-        def _validate_tuple4(t: Tuple[str, str, str, str]) -> Optional[str]:
+        def _validate_tuple4(t: tuple[str, str, str, str]) -> str | None:
             dm, ns, kd, nm = t
             for label, val in (("domain", dm), ("namespace", ns), ("group", kd), ("name", nm)):
                 if not isinstance(val, str) or not val.strip():
@@ -431,7 +448,7 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
         for kind, reg in registries:
             try:
                 registered = list(reg.list())
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception:  # pragma: no cover - defensive
                 LOGGER.exception("registry.list.failed %s", kind)
                 continue
             for item in registered:
@@ -448,12 +465,16 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
 
         return messages
 
+
 # ---------------------------------------------------------------------------
 # Pairing checks: Service → (Codec required, Schema optional, Prompt optional)
 # ---------------------------------------------------------------------------
 
+
 @checks.register(checks.Tags.models)
-def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **kwargs) -> List[checks.CheckMessage]:
+def check_orchestrai_service_pairings(
+    app_configs: Iterable | None = None, **kwargs
+) -> list[checks.CheckMessage]:
     """
     For each registered Service:
       - Ensure a Codec can be resolved (ERROR on failure).
@@ -466,12 +487,14 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
       - Codec resolution mirrors runtime: try exact service.identity, then bucket default `(domain, namespace, group, "default")`,
         then an explicit `default_codec_identity` attribute if present.
     """
-    from orchestrai.identity import coerce_identity_key  # lazy import
-    from orchestrai.identity import Identity
-    from orchestrai.identity import IdentityLike
+    from orchestrai.identity import (
+        Identity,
+        IdentityLike,
+        coerce_identity_key,  # lazy import
+    )
 
     with service_span_sync("orchestrai.services.pairing.checks"):
-        messages: List[checks.CheckMessage] = []
+        messages: list[checks.CheckMessage] = []
 
         try:
             svc_classes = list(service_registry.all())  # registered Service classes
@@ -495,14 +518,16 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                 continue
 
             # ---- CODEC (required) ----
-            with service_span_sync("orchestrai.services.pairing.codec", attributes={"service": ident_str}):
+            with service_span_sync(
+                "orchestrai.services.pairing.codec", attributes={"service": ident_str}
+            ):
                 codec_ok = False
 
                 # 1) exact service.identity
-                if codec_registry.get((dm, ns, kd, nm)) is not None:
-                    codec_ok = True
-                # 2) bucket default
-                elif codec_registry.get((dm, ns, kd, "default")) is not None:
+                if (
+                    codec_registry.get((dm, ns, kd, nm)) is not None
+                    or codec_registry.get((dm, ns, kd, "default")) is not None
+                ):
                     codec_ok = True
                 else:
                     # 3) explicit hint on the class (optional)
@@ -526,26 +551,27 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                     )
 
             # ---- SCHEMA (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
-            with service_span_sync("orchestrai.services.pairing.schema", attributes={"service": ident_str}):
-                explicit_schema_hint: IdentityLike | None = getattr(svc_cls, "response_schema_identity", None)
+            with service_span_sync(
+                "orchestrai.services.pairing.schema", attributes={"service": ident_str}
+            ):
+                explicit_schema_hint: IdentityLike | None = getattr(
+                    svc_cls, "response_schema_identity", None
+                )
                 auto_candidates: tuple[tuple[str, str, str, str], ...] = (
                     (dm, ns, kd, nm),
                     (dm, ns, kd, "default"),
                 )
-
-                # Helper: attempt auto resolve by identity
-                def _auto_schema_resolved() -> bool:
-                    for cand in auto_candidates:
-                        if schema_registry.get(cand) is not None:
-                            return True
-                    return False
 
                 if explicit_schema_hint is not None:
                     t4 = coerce_identity_key(explicit_schema_hint)
                     ok = bool(t4) and (schema_registry.get(t4) is not None)
                     if not ok:
                         display = ".".join(t4) if t4 else repr(explicit_schema_hint)
-                        LOGGER.error("service.schema.missing (explicit) service=%s schema=%s", ident_str, display)
+                        LOGGER.error(
+                            "service.schema.missing (explicit) service=%s schema=%s",
+                            ident_str,
+                            display,
+                        )
                         messages.append(
                             checks.Error(
                                 f"Service declares response schema but it is not registered: {display}",
@@ -556,7 +582,7 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                         )
                 else:
                     # Not explicitly explicit: warn if automatic resolution fails
-                    if not _auto_schema_resolved():
+                    if not any(schema_registry.get(cand) is not None for cand in auto_candidates):
                         LOGGER.warning(
                             "service.schema.unresolved (implicit) service=%s tried=(%s, %s)",
                             ident_str,
@@ -577,16 +603,12 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                         )
 
             # ---- PROMPTS (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
-            with service_span_sync("orchestrai.services.pairing.prompts", attributes={"service": ident_str}):
-                required_prompts: Tuple[IdentityLike, ...] | None = getattr(svc_cls, "required_prompt_sections", None)
-
-                # Helper: auto resolve prompt by identity (exact or bucket default)
-                def _auto_prompt_resolved() -> bool:
-                    if prompt_registry.get((dm, ns, kd, nm)) is not None:
-                        return True
-                    if prompt_registry.get((dm, ns, kd, "default")) is not None:
-                        return True
-                    return False
+            with service_span_sync(
+                "orchestrai.services.pairing.prompts", attributes={"service": ident_str}
+            ):
+                required_prompts: tuple[IdentityLike, ...] | None = getattr(
+                    svc_cls, "required_prompt_sections", None
+                )
 
                 if required_prompts:
                     missing: list[str] = []
@@ -610,7 +632,10 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                         )
                 else:
                     # No explicit requirements: warn only if none can be resolved by identity
-                    if not _auto_prompt_resolved():
+                    if (
+                        prompt_registry.get((dm, ns, kd, nm)) is None
+                        and prompt_registry.get((dm, ns, kd, "default")) is None
+                    ):
                         LOGGER.warning(
                             "service.prompts.unresolved (implicit) service=%s tried=(%s, %s)",
                             ident_str,

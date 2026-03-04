@@ -9,7 +9,7 @@ function.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 
 class _CallableResolver(Protocol):
@@ -48,7 +48,7 @@ class Proxy:
         return f"Proxy({self._get_current()!r})"
 
 
-def maybe_evaluate(value: T | Proxy) -> T:
+def maybe_evaluate[T](value: T | Proxy) -> T:
     """Resolve the value if it's a :class:`Proxy`, otherwise return unchanged."""
 
     if isinstance(value, Proxy):

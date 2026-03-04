@@ -4,9 +4,10 @@ Tests for Django Pydantic AI integration.
 These tests verify the DjangoBaseService and related Django components.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
+
 from pydantic import BaseModel
+import pytest
 
 
 class TestServiceCallModel:
@@ -15,8 +16,9 @@ class TestServiceCallModel:
     @pytest.mark.django_db
     def test_service_call_creation(self):
         """Test creating a ServiceCall record."""
-        from orchestrai_django.models import ServiceCall, CallStatus
         import uuid
+
+        from orchestrai_django.models import CallStatus, ServiceCall
 
         call = ServiceCall.objects.create(
             id=str(uuid.uuid4()),
@@ -34,8 +36,9 @@ class TestServiceCallModel:
     @pytest.mark.django_db
     def test_mark_running(self):
         """Test marking a call as running."""
-        from orchestrai_django.models import ServiceCall, CallStatus
         import uuid
+
+        from orchestrai_django.models import CallStatus, ServiceCall
 
         call = ServiceCall.objects.create(
             id=str(uuid.uuid4()),
@@ -51,8 +54,9 @@ class TestServiceCallModel:
     @pytest.mark.django_db
     def test_mark_completed(self):
         """Test marking a call as completed with result data."""
-        from orchestrai_django.models import ServiceCall, CallStatus
         import uuid
+
+        from orchestrai_django.models import CallStatus, ServiceCall
 
         call = ServiceCall.objects.create(
             id=str(uuid.uuid4()),
@@ -81,8 +85,9 @@ class TestServiceCallModel:
     @pytest.mark.django_db
     def test_mark_failed(self):
         """Test marking a call as failed."""
-        from orchestrai_django.models import ServiceCall, CallStatus
         import uuid
+
+        from orchestrai_django.models import CallStatus, ServiceCall
 
         call = ServiceCall.objects.create(
             id=str(uuid.uuid4()),
@@ -99,8 +104,9 @@ class TestServiceCallModel:
     @pytest.mark.django_db
     def test_to_jsonable(self):
         """Test converting call to JSON-serializable dict."""
-        from orchestrai_django.models import ServiceCall, CallStatus
         import uuid
+
+        from orchestrai_django.models import CallStatus, ServiceCall
 
         call = ServiceCall.objects.create(
             id=str(uuid.uuid4()),
@@ -122,8 +128,8 @@ class TestDjangoBaseService:
 
     def test_service_initialization(self):
         """Test that service initializes correctly."""
-        from orchestrai_django.components.services import DjangoBaseService
         from orchestrai.prompts import system_prompt
+        from orchestrai_django.components.services import DjangoBaseService
 
         class TestSchema(BaseModel):
             message: str
@@ -158,15 +164,6 @@ class TestDjangoBaseService:
 
         assert service.emitter is mock_emitter
 
-    def test_backward_compatibility_alias(self):
-        """Test that DjangoPydanticAIService is an alias for DjangoBaseService."""
-        from orchestrai_django.components.services import (
-            DjangoBaseService,
-            DjangoPydanticAIService,
-        )
-
-        assert DjangoPydanticAIService is DjangoBaseService
-
 
 class TestBaseService:
     """Tests for BaseService (consolidated Pydantic AI-based service)."""
@@ -176,7 +173,7 @@ class TestBaseService:
         from orchestrai.components.services import BaseService
 
         # task should be a descriptor that returns a proxy
-        assert hasattr(BaseService, 'task')
+        assert hasattr(BaseService, "task")
 
         class TestSchema(BaseModel):
             message: str
@@ -189,7 +186,7 @@ class TestBaseService:
         # Accessing task on the class should return a proxy
         proxy = TestService.task
         assert proxy is not None
-        assert hasattr(proxy, 'using')
+        assert hasattr(proxy, "using")
 
     def test_prompt_methods_are_collected(self):
         """Test that @system_prompt methods are collected."""
@@ -216,9 +213,3 @@ class TestBaseService:
         assert len(service._prompt_methods) == 2
         assert service._prompt_methods[0].name == "first"
         assert service._prompt_methods[1].name == "second"
-
-    def test_backward_compatibility_alias(self):
-        """Test that PydanticAIService is an alias for BaseService."""
-        from orchestrai.components.services import BaseService, PydanticAIService
-
-        assert PydanticAIService is BaseService

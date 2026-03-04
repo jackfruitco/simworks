@@ -18,8 +18,8 @@ from api.v1.schemas.messages import (
     message_to_out,
 )
 from api.v1.utils import get_simulation_for_user
-from config.logging import get_logger
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 USER_RETRY_LIMIT = 2
@@ -53,7 +53,9 @@ def _emit_message_status(
         poke_drain_sync()
 
 
-def _mark_message_failed(message_id: int, error_code: str, error_text: str, retryable: bool = True) -> None:
+def _mark_message_failed(
+    message_id: int, error_code: str, error_text: str, retryable: bool = True
+) -> None:
     from apps.chatlab.models import Message
 
     try:
@@ -93,11 +95,11 @@ def _resolve_conversation(sim, conversation_id=None):
 
     if conversation_id:
         try:
-            return Conversation.objects.select_related(
-                "conversation_type", "simulation"
-            ).get(pk=conversation_id, simulation=sim)
-        except Conversation.DoesNotExist:
-            raise HttpError(404, "Conversation not found")
+            return Conversation.objects.select_related("conversation_type", "simulation").get(
+                pk=conversation_id, simulation=sim
+            )
+        except Conversation.DoesNotExist as err:
+            raise HttpError(404, "Conversation not found") from err
 
     # Default: patient conversation for this simulation.
     # Backward compatibility: create it on demand for older simulations that
@@ -118,7 +120,9 @@ def _resolve_conversation(sim, conversation_id=None):
 
 
 def _enqueue_patient_reply(
-    simulation_id: int, user_msg_pk: int, conversation_id: int | None = None,
+    simulation_id: int,
+    user_msg_pk: int,
+    conversation_id: int | None = None,
 ) -> str | None:
     """Enqueue the GenerateReplyResponse service for a user message.
 
@@ -158,7 +162,9 @@ def _enqueue_patient_reply(
 
 
 def _enqueue_stitch_reply(
-    simulation_id: int, user_msg_pk: int, conversation_id: int,
+    simulation_id: int,
+    user_msg_pk: int,
+    conversation_id: int,
 ) -> str | None:
     """Enqueue the GenerateStitchReply service for a user message.
 
@@ -250,8 +256,12 @@ def list_messages(
     simulation_id: int,
     limit: int = Query(default=50, ge=1, le=100, description="Max messages to return"),
     cursor: str | None = Query(default=None, description="Cursor for pagination (message ID)"),
-    order: str = Query(default="asc", description="Sort order: asc (oldest first) or desc (newest first)"),
-    conversation_id: int | None = Query(default=None, description="Filter to a specific conversation"),
+    order: str = Query(
+        default="asc", description="Sort order: asc (oldest first) or desc (newest first)"
+    ),
+    conversation_id: int | None = Query(
+        default=None, description="Filter to a specific conversation"
+    ),
 ) -> MessageListResponse:
     """List messages in a simulation with cursor pagination."""
     from apps.chatlab.models import Message
@@ -275,16 +285,16 @@ def list_messages(
             try:
                 cursor_pk = int(cursor)
                 queryset = queryset.filter(pk__lt=cursor_pk)
-            except (ValueError, TypeError):
-                raise HttpError(400, "Invalid cursor format")
+            except (ValueError, TypeError) as err:
+                raise HttpError(400, "Invalid cursor format") from err
     else:
         queryset = queryset.order_by("pk")
         if cursor:
             try:
                 cursor_pk = int(cursor)
                 queryset = queryset.filter(pk__gt=cursor_pk)
-            except (ValueError, TypeError):
-                raise HttpError(400, "Invalid cursor format")
+            except (ValueError, TypeError) as err:
+                raise HttpError(400, "Invalid cursor format") from err
 
     # Fetch one extra to check for more
     messages = list(queryset[: limit + 1])
@@ -367,9 +377,7 @@ def create_message(
 
         # Enqueue only after the user message transaction commits.
         transaction.on_commit(
-            lambda: _enqueue_ai_reply_and_handle_failure(
-                conversation, simulation_id, message.pk
-            )
+            lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
         )
         transaction.on_commit(
             lambda: _emit_message_status(
@@ -402,17 +410,15 @@ def retry_message(
     sim = get_simulation_for_user(simulation_id, user)
 
     try:
-        message = Message.objects.select_related(
-            "conversation__conversation_type"
-        ).get(
+        message = Message.objects.select_related("conversation__conversation_type").get(
             pk=message_id,
             simulation=sim,
             sender=user,
             is_deleted=False,
             is_from_ai=False,
         )
-    except Message.DoesNotExist:
-        raise HttpError(404, "Message not found")
+    except Message.DoesNotExist as err:
+        raise HttpError(404, "Message not found") from err
 
     if message.delivery_status != Message.DeliveryStatus.FAILED:
         raise HttpError(400, "Only failed messages can be retried")
@@ -443,9 +449,7 @@ def retry_message(
         )
 
         transaction.on_commit(
-            lambda: _enqueue_ai_reply_and_handle_failure(
-                conversation, simulation_id, message.pk
-            )
+            lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
         )
         transaction.on_commit(
             lambda: _emit_message_status(
@@ -479,7 +483,7 @@ def get_message(
 
     try:
         message = Message.objects.get(pk=message_id, simulation=sim, is_deleted=False)
-    except Message.DoesNotExist:
-        raise HttpError(404, "Message not found")
+    except Message.DoesNotExist as err:
+        raise HttpError(404, "Message not found") from err
 
     return message_to_out(message)

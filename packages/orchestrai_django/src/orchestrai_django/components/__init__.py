@@ -1,35 +1,38 @@
-"""
-A module that provides foundational implementations for Django-based codecs,
-schemas, services, and prompt-related utilities.
+"""Lazy exports for orchestrai_django component helpers."""
 
-This module includes essential components required for working with Django-based
-applications, such as codecs for handling input and output, service utilities for
-business logic, and prompt utilities for generating and managing interactive
-scenarios. These components can be extended or used as-is to streamline specific
-development workflows.
+from __future__ import annotations
 
-Available Classes:
-- DjangoBaseCodec: Provides base functionality for handling codecs in Django-based systems.
-- DjangoBaseOutputSchema: Defines the base schema for output data in Django applications.
-- DjangoBaseOutputBlock: Represents a block of output data in Django schemas.
-- DjangoBaseOutputItem: Represents an individual item in an output block.
-- DjangoBaseService: Provides foundational service functionality in Django-based systems.
-- DjangoExecutableLLMService: Extends DjangoBaseService for executing language model services.
-- Prompt: Represents a generative or interactive prompt.
-- PromptEngine: Manages prompt generation and rendering.
-- PromptSection: Represents a section in a structured prompt.
-- PromptScenario: Represents a complete scenario built from multiple prompts.
-
-All exports are explicitly defined to ensure clarity regarding provided utilities.
-"""
-from .codecs import DjangoBaseCodec
-from .schemas import DjangoBaseOutputSchema, DjangoBaseOutputBlock, DjangoBaseOutputItem
-from .services import DjangoBaseService
-from .promptkit import Prompt, PromptEngine, PromptSection, PromptScenario
+from importlib import import_module
 
 __all__ = [
     "DjangoBaseCodec",
+    "DjangoBaseOutputBlock",
+    "DjangoBaseOutputItem",
+    "DjangoBaseOutputSchema",
     "DjangoBaseService",
-    "DjangoBaseOutputSchema", "DjangoBaseOutputBlock", "DjangoBaseOutputItem",
-    "Prompt", "PromptEngine", "PromptSection", "PromptScenario",
+    "Prompt",
+    "PromptEngine",
+    "PromptScenario",
+    "PromptSection",
 ]
+
+
+_EXPORTS = {
+    "DjangoBaseCodec": ("orchestrai_django.components.codecs", "DjangoBaseCodec"),
+    "DjangoBaseOutputBlock": ("orchestrai_django.components.schemas", "DjangoBaseOutputBlock"),
+    "DjangoBaseOutputItem": ("orchestrai_django.components.schemas", "DjangoBaseOutputItem"),
+    "DjangoBaseOutputSchema": ("orchestrai_django.components.schemas", "DjangoBaseOutputSchema"),
+    "DjangoBaseService": ("orchestrai_django.components.services", "DjangoBaseService"),
+    "Prompt": ("orchestrai_django.components.promptkit", "Prompt"),
+    "PromptEngine": ("orchestrai_django.components.promptkit", "PromptEngine"),
+    "PromptScenario": ("orchestrai_django.components.promptkit", "PromptScenario"),
+    "PromptSection": ("orchestrai_django.components.promptkit", "PromptSection"),
+}
+
+
+def __getattr__(name: str):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = _EXPORTS[name]
+    module = import_module(module_name)
+    return getattr(module, attr_name)

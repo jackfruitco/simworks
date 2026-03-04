@@ -6,6 +6,7 @@ from django.apps import apps
 # Populated at runtime by `orchestrai_django.apps.OrchestrAIDjangoConfig.ready()`
 APP_IDENTITY_STRIP_TOKENS: tuple[str, ...] = ()
 
+
 def infer_namespace_from_module(module_name: str) -> str:
     """Best-effort inference of a Django app label from a module name.
 
@@ -13,7 +14,7 @@ def infer_namespace_from_module(module_name: str) -> str:
     sits inside a registered app; otherwise returns the first module segment
     lowercased.
 
-    This is **not** identity derivation — it’s only a convenience for cases
+    This is **not** identity derivation — it's only a convenience for cases
     where callers need a lightweight namespace hint and do not have a class.
     """
     for app in apps.get_app_configs():

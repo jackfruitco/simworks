@@ -9,28 +9,27 @@ Core schema decorator.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 """
 
-from typing import Any, Type, TypeVar
 import logging
+from typing import Any, TypeVar
 
-from orchestrai.decorators.base import BaseDecorator
 from orchestrai.components.schemas import BaseOutputSchema
+from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import SCHEMAS_DOMAIN
-from orchestrai.registry import ComponentRegistry
-from orchestrai.registry import schemas as schema_registry
+from orchestrai.registry import ComponentRegistry, schemas as schema_registry
 
 logger = logging.getLogger(__name__)
 
 __all__ = ("SchemaDecorator",)
 
-T = TypeVar("T", bound=Type[Any])
+T = TypeVar("T", bound=type[Any])
 
 
 # Provider validation configuration
 # Maps provider name to validation settings
 PROVIDER_VALIDATION_CONFIG = {
     "openai": {
-        "enabled": True,   # Run validation by default
-        "strict": True,    # Fail on validation error
+        "enabled": True,  # Run validation by default
+        "strict": True,  # Fail on validation error
         "validator": None,  # Lazy loaded to avoid circular imports
     },
     # Future providers can be added here:
@@ -47,8 +46,9 @@ def _get_openai_validator():
     if PROVIDER_VALIDATION_CONFIG["openai"]["validator"] is None:
         try:
             from orchestrai.contrib.provider_backends.openai.schema.validate import (
-                validate_openai_schema
+                validate_openai_schema,
             )
+
             PROVIDER_VALIDATION_CONFIG["openai"]["validator"] = validate_openai_schema
         except ImportError:
             logger.warning("OpenAI schema validator not found, skipping validation")
@@ -83,7 +83,7 @@ class SchemaDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "output_schemas"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: type[Any]) -> None:
         # Guard: ensure we only register schema classes
         if not issubclass(candidate, BaseOutputSchema):
             raise TypeError(
@@ -95,7 +95,7 @@ class SchemaDecorator(BaseDecorator):
 
         super().register(candidate)
 
-    def _validate_and_tag_schema(self, candidate: Type[Any]) -> None:
+    def _validate_and_tag_schema(self, candidate: type[Any]) -> None:
         """Validate schema against enabled providers and tag with compatibility metadata.
 
         This method:
@@ -109,8 +109,10 @@ class SchemaDecorator(BaseDecorator):
         """
         # Generate JSON Schema from Pydantic model
         # Check if candidate has model_json_schema method (Pydantic v2)
-        if not hasattr(candidate, 'model_json_schema'):
-            logger.debug(f"Schema {candidate.__name__} does not have model_json_schema, skipping validation")
+        if not hasattr(candidate, "model_json_schema"):
+            logger.debug(
+                f"Schema {candidate.__name__} does not have model_json_schema, skipping validation"
+            )
             return
 
         try:
@@ -136,12 +138,12 @@ class SchemaDecorator(BaseDecorator):
             ) from e
 
         # Verify rebuild cleared MockValSer (diagnostic logging)
-        if hasattr(candidate, '__pydantic_serializer__'):
-            serializer = getattr(candidate, '__pydantic_serializer__', None)
+        if hasattr(candidate, "__pydantic_serializer__"):
+            serializer = getattr(candidate, "__pydantic_serializer__", None)
             if serializer is not None:
                 # Check if serializer is valid (not mock)
                 serializer_type = type(serializer).__name__
-                if 'Mock' in serializer_type:
+                if "Mock" in serializer_type:
                     logger.error(
                         f"Schema {candidate.__name__} still has mock serializer after rebuild: {serializer_type}"
                     )
@@ -158,10 +160,7 @@ class SchemaDecorator(BaseDecorator):
                 continue
 
             # Lazy load validator
-            if provider == "openai":
-                validator = _get_openai_validator()
-            else:
-                validator = config.get("validator")
+            validator = _get_openai_validator() if provider == "openai" else config.get("validator")
 
             if validator is None:
                 logger.debug(f"No validator found for {provider}, skipping")
@@ -172,7 +171,9 @@ class SchemaDecorator(BaseDecorator):
             try:
                 is_compatible = validator(schema_json, candidate.__name__, strict=strict)
                 compatibility[provider] = is_compatible
-                logger.debug(f"Schema {candidate.__name__} validated for {provider}: {is_compatible}")
+                logger.debug(
+                    f"Schema {candidate.__name__} validated for {provider}: {is_compatible}"
+                )
             except ValueError as e:
                 # Validation failed and strict=True raised error
                 compatibility[provider] = False
@@ -180,16 +181,16 @@ class SchemaDecorator(BaseDecorator):
                 raise  # Re-raise for fail-fast behavior
             except Exception as e:
                 # Unexpected error during validation
-                logger.warning(f"Unexpected error validating {candidate.__name__} for {provider}: {e}")
+                logger.warning(
+                    f"Unexpected error validating {candidate.__name__} for {provider}: {e}"
+                )
                 compatibility[provider] = False
                 if strict:
                     raise
 
         # Tag schema with metadata
-        setattr(candidate, '_provider_compatibility', compatibility)
-        setattr(candidate, '_validated_schema', schema_json)
-        setattr(candidate, '_validated_at', 'decoration')
+        candidate._provider_compatibility = compatibility
+        candidate._validated_schema = schema_json
+        candidate._validated_at = "decoration"
 
-        logger.debug(
-            f"Schema {candidate.__name__} tagged with compatibility: {compatibility}"
-        )
+        logger.debug(f"Schema {candidate.__name__} tagged with compatibility: {compatibility}")

@@ -11,9 +11,9 @@ Public API:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field as dc_field
-from typing import Any, get_args, get_origin
+import logging
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -66,8 +66,14 @@ async def auto_persist_field(
     if isinstance(value, list):
         results = []
         for item in value:
-            model_ref = orm_override.model if orm_override else getattr(type(item), "__orm_model__", None)
-            field_map = orm_override.field_map if orm_override else getattr(type(item), "__orm_field_map__", {})
+            model_ref = (
+                orm_override.model if orm_override else getattr(type(item), "__orm_model__", None)
+            )
+            field_map = (
+                orm_override.field_map
+                if orm_override
+                else getattr(type(item), "__orm_field_map__", {})
+            )
             if model_ref is None:
                 raise ValueError(
                     f"No __orm_model__ on {type(item).__name__} and no OrmOverride "
@@ -77,8 +83,14 @@ async def auto_persist_field(
             results.append(await _create_orm_instance(item, model_cls, field_map, context))
         return results
     else:
-        model_ref = orm_override.model if orm_override else getattr(type(value), "__orm_model__", None)
-        field_map = orm_override.field_map if orm_override else getattr(type(value), "__orm_field_map__", {})
+        model_ref = (
+            orm_override.model if orm_override else getattr(type(value), "__orm_model__", None)
+        )
+        field_map = (
+            orm_override.field_map
+            if orm_override
+            else getattr(type(value), "__orm_field_map__", {})
+        )
         if model_ref is None:
             raise ValueError(
                 f"No __orm_model__ on {type(value).__name__} and no OrmOverride "

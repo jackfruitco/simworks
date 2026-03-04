@@ -1,22 +1,22 @@
 import json
 
-from apps.accounts.models import User
-from apps.accounts.models import UserRole
 from django.core.management.base import BaseCommand
+
+from apps.accounts.models import User, UserRole
 
 
 class Command(BaseCommand):
-    help = "Restore selected users from a JSON file with preserved passwords and roles (but new IDs)."
+    help = (
+        "Restore selected users from a JSON file with preserved passwords and roles (but new IDs)."
+    )
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            "filepath", type=str, help="Path to the JSON file with user data"
-        )
+        parser.add_argument("filepath", type=str, help="Path to the JSON file with user data")
 
     def handle(self, *args, **options):
         filepath = options["filepath"]
 
-        with open(filepath, "r") as file:
+        with open(filepath) as file:
             data = json.load(file)
 
         for obj in data:
@@ -24,17 +24,13 @@ class Command(BaseCommand):
             email = fields["email"]
 
             if User.objects.filter(email=email).exists():
-                self.stdout.write(
-                    self.style.WARNING(f"User '{email}' already exists. Skipping.")
-                )
+                self.stdout.write(self.style.WARNING(f"User '{email}' already exists. Skipping."))
                 continue
 
             role_id = fields.get("role")
             if not role_id:
                 self.stdout.write(
-                    self.style.WARNING(
-                        f"User '{email}' missing role. Assigning default role ID 1."
-                    )
+                    self.style.WARNING(f"User '{email}' missing role. Assigning default role ID 1.")
                 )
                 role_id = 1  # fallback; replace with a sensible default ID or logic
 
@@ -42,9 +38,7 @@ class Command(BaseCommand):
                 role = UserRole.objects.get(id=role_id)
             except UserRole.DoesNotExist:
                 self.stdout.write(
-                    self.style.ERROR(
-                        f"Role ID {role_id} not found for '{email}', skipping user."
-                    )
+                    self.style.ERROR(f"Role ID {role_id} not found for '{email}', skipping user.")
                 )
                 continue
 
@@ -61,6 +55,4 @@ class Command(BaseCommand):
                 role=role,  # required!
             )
             user.save()
-            self.stdout.write(
-                self.style.SUCCESS(f"Created user: {email} with role '{role}'")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Created user: {email} with role '{role}'"))

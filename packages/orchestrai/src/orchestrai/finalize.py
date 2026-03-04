@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Callable, List
+from collections.abc import Callable
 
-
-_finalize_callbacks: List[Callable[[object], None]] = []
+_finalize_callbacks: list[Callable[[object], None]] = []
 
 
 def connect_on_app_finalize(callback: Callable[[object], None]) -> None:
@@ -16,4 +15,3 @@ def consume_finalizers():
     """Return registered finalize callbacks without clearing global storage."""
 
     return list(_finalize_callbacks)
-

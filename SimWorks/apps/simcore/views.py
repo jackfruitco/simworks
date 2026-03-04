@@ -1,9 +1,7 @@
 import json
 
-from django.http import HttpResponseNotFound
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404
-from django.shortcuts import render
+from django.http import HttpResponseNotFound, JsonResponse
+from django.shortcuts import get_object_or_404, render
 from django.template import TemplateDoesNotExist
 from django.template.loader import get_template
 from django.views.decorators.csrf import csrf_exempt
@@ -14,14 +12,10 @@ from apps.simcore.models import Simulation
 from apps.simcore.tools import get_tool
 
 
-def download_simulation_transcript(
-        request, simulation_id, format_type="sim_transcript_txt"
-):
+def download_simulation_transcript(request, simulation_id, format_type="sim_transcript_txt"):
     sim = get_object_or_404(Simulation, id=simulation_id)
     formatter = Formatter(sim.history)
-    return formatter.download(
-        format_type=format_type, filename=f"Sim{sim.pk}_transcript"
-    )
+    return formatter.download(format_type=format_type, filename=f"Sim{sim.pk}_transcript")
 
 
 @require_GET
@@ -40,11 +34,11 @@ def refresh_tool(request, tool_name, simulation_id):
     try:
         # Django 6.0 partial syntax: template.html#partial_name
         template_name = f"simcore/tools.html#{partial_name}"
-        template = get_template(template_name)
+        get_template(template_name)
     except TemplateDoesNotExist:
         # Fallback to generic partial
         template_name = "simcore/tools.html#tool_generic"
-        template = get_template(template_name)
+        get_template(template_name)
 
     context = {"tool": tool, "simulation": simulation}
     return render(request, template_name, context)
@@ -71,8 +65,8 @@ async def sign_orders(request, simulation_id):
             if submitted_orders is None:
                 try:
                     submitted_orders = data.lab_orders
-                except AttributeError:
-                    raise ValueError(f"submitted_orders not found in request body")
+                except AttributeError as err:
+                    raise ValueError("submitted_orders not found in request body") from err
 
             from apps.simcore.orca.services import GenerateInitialFeedback
 

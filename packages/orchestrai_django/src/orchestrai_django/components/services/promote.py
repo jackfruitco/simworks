@@ -15,13 +15,12 @@ normalization. When `service.identity` is unavailable, we make a best-effort fal
 `service.domain/namespace/group/name` (with defaults) without mutating the service.
 """
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
-from orchestrai.types import Request, Response
-from orchestrai.tracing import service_span_sync
 from orchestrai.identity import Identity
-
+from orchestrai.tracing import service_span_sync
+from orchestrai.types import Request, Response
 from orchestrai_django.types import (
     DjangoRequest,
     DjangoResponse,
@@ -38,10 +37,13 @@ __all__ = ["promote_request_for_service", "promote_response_for_service"]
 # identity helpers
 # ---------------------------------------------------------------------------
 
-def _svc_identity_str(service: Any) -> Optional[str]:
+
+def _svc_identity_str(service: Any) -> str | None:
     """Return canonical `domain.namespace.group.name` string for a service if available."""
-    ident: Optional[Identity] = getattr(service, "identity", None)
-    if isinstance(ident, Identity) and all((ident.domain, ident.namespace, ident.group, ident.name)):
+    ident: Identity | None = getattr(service, "identity", None)
+    if isinstance(ident, Identity) and all(
+        (ident.domain, ident.namespace, ident.group, ident.name)
+    ):
         return ident.as_str
     dm = getattr(service, "domain", None) or "default"
     ns = getattr(service, "namespace", None)
@@ -56,13 +58,14 @@ def _svc_identity_str(service: Any) -> Optional[str]:
 # helpers
 # ---------------------------------------------------------------------------
 
-def _svc_identity_tuple4(service: Any) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+
+def _svc_identity_tuple4(service: Any) -> tuple[str | None, str | None, str | None, str | None]:
     """Return (domain, namespace, group, name) for a service, preferring `service.identity`.
 
     We *do not* mutate the service or synthesize an Identity. This is a read-only
     extraction for tracing/DTO enrichment.
     """
-    ident: Optional[Identity] = getattr(service, "identity", None)
+    ident: Identity | None = getattr(service, "identity", None)
     if isinstance(ident, Identity):
         return ident.domain, ident.namespace, ident.group, ident.name
     # best-effort fallbacks for legacy callers
@@ -73,20 +76,28 @@ def _svc_identity_tuple4(service: Any) -> tuple[Optional[str], Optional[str], Op
     return dm, ns, gp, nm
 
 
-def _extract_provider_client(service: Any) -> tuple[Optional[str], Optional[str]]:
+def _extract_provider_client(service: Any) -> tuple[str | None, str | None]:
     """Best-effort extraction of backend/client names from a service instance.
 
     Both values are optional; absence is acceptable for environments that don't register
     backend/client metadata.
     """
-    provider_name: Optional[str] = getattr(service, "provider_name", None) or getattr(service, "backend", None)
-    client_name: Optional[str] = getattr(service, "client_name", None) or getattr(service, "client_id", None)
+    provider_name: str | None = getattr(service, "provider_name", None) or getattr(
+        service, "backend", None
+    )
+    client_name: str | None = getattr(service, "client_name", None) or getattr(
+        service, "client_id", None
+    )
 
     # Fallback: inspect a bound client object if present
     client_obj = getattr(service, "client", None)
     if client_obj is not None:
-        provider_name = getattr(client_obj, "backend", None) or getattr(client_obj, "provider_name", provider_name)
-        client_name = getattr(client_obj, "name", None) or getattr(client_obj, "client_name", client_name)
+        provider_name = getattr(client_obj, "backend", None) or getattr(
+            client_obj, "provider_name", provider_name
+        )
+        client_name = getattr(client_obj, "name", None) or getattr(
+            client_obj, "client_name", client_name
+        )
 
     # Coerce to strings if non-None
     if provider_name is not None:
@@ -101,11 +112,12 @@ def _extract_provider_client(service: Any) -> tuple[Optional[str], Optional[str]
 # promotions
 # ---------------------------------------------------------------------------
 
+
 def promote_request_for_service(
-        service: Any,
-        req: Request,
-        *,
-        context: dict | None = None,
+    service: Any,
+    req: Request,
+    *,
+    context: dict | None = None,
 ) -> DjangoRequest:
     """Promote a core Request into a DjangoRequest with identity + metadata.
 
@@ -127,16 +139,18 @@ def promote_request_for_service(
     prov, cli = _extract_provider_client(service)
 
     with service_span_sync(
-            "svc.promote_request_for_service",
-            attributes={
-                "svc.class": service.__class__.__name__,
-                "orchestrai.identity.service": _svc_identity_str(service),
-                "orchestrai.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
-                "svc.backend": prov,
-                "svc.client": cli,
-                "req.correlation_id": getattr(req, "correlation_id", None),
-                **getattr(service, "flatten_context", lambda: {})(),
-            },
+        "svc.promote_request_for_service",
+        attributes={
+            "svc.class": service.__class__.__name__,
+            "orchestrai.identity.service": _svc_identity_str(service),
+            "orchestrai.identity.service.tuple4": (dm, ns, kd, nm)
+            if all([dm, ns, kd, nm])
+            else None,
+            "svc.backend": prov,
+            "svc.client": cli,
+            "req.correlation_id": getattr(req, "correlation_id", None),
+            **getattr(service, "flatten_context", dict)(),
+        },
     ):
         dj = _dto_promote_request(
             req,
@@ -152,12 +166,12 @@ def promote_request_for_service(
 
 
 def promote_response_for_service(
-        service: Any,
-        resp: Response,
-        *,
-        object_db_pk: int | UUID | None = None,
-        request_db_pk: int | UUID | None = None,
-        response_db_pk: int | UUID | None = None,
+    service: Any,
+    resp: Response,
+    *,
+    object_db_pk: int | UUID | None = None,
+    request_db_pk: int | UUID | None = None,
+    response_db_pk: int | UUID | None = None,
 ) -> DjangoResponse:
     """Promote a core Response into a DjangoResponse with identity + metadata.
 
@@ -181,20 +195,22 @@ def promote_response_for_service(
     prov, cli = _extract_provider_client(service)
 
     with service_span_sync(
-            "svc.promote_response_for_service",
-            attributes={
-                "svc.class": service.__class__.__name__,
-                "orchestrai.identity.service": _svc_identity_str(service),
-                "orchestrai.identity.service.tuple4": (dm, ns, kd, nm) if all([dm, ns, kd, nm]) else None,
-                "svc.backend": prov,
-                "svc.client": cli,
-                "resp.correlation_id": getattr(resp, "correlation_id", None),
-                "resp.request_correlation_id": getattr(resp, "request_correlation_id", None),
-                "db.object_db_pk": str(object_db_pk) if object_db_pk is not None else None,
-                "db.request_pk": str(request_db_pk) if request_db_pk is not None else None,
-                "db.response_pk": str(response_db_pk) if response_db_pk is not None else None,
-                **getattr(service, "flatten_context", lambda: {})(),
-            },
+        "svc.promote_response_for_service",
+        attributes={
+            "svc.class": service.__class__.__name__,
+            "orchestrai.identity.service": _svc_identity_str(service),
+            "orchestrai.identity.service.tuple4": (dm, ns, kd, nm)
+            if all([dm, ns, kd, nm])
+            else None,
+            "svc.backend": prov,
+            "svc.client": cli,
+            "resp.correlation_id": getattr(resp, "correlation_id", None),
+            "resp.request_correlation_id": getattr(resp, "request_correlation_id", None),
+            "db.object_db_pk": str(object_db_pk) if object_db_pk is not None else None,
+            "db.request_pk": str(request_db_pk) if request_db_pk is not None else None,
+            "db.response_pk": str(response_db_pk) if response_db_pk is not None else None,
+            **getattr(service, "flatten_context", dict)(),
+        },
     ):
         dj = _dto_promote_response(
             resp,

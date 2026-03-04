@@ -1,10 +1,10 @@
 # orchestrai/identity/identity.py
+from dataclasses import dataclass
 import logging
 import re
-from dataclasses import dataclass
-from typing import NamedTuple, Union, ClassVar, Any
+from typing import Any, ClassVar, NamedTuple, Self, Union
 
-from .exceptions import IdentityValidationError, IdentityError, IdentityResolutionError
+from .exceptions import IdentityError, IdentityResolutionError, IdentityValidationError
 from .protocols import IdentityProtocol
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ __all__ = [
 # -----------------------------------------------------------------------------
 # Types
 # -----------------------------------------------------------------------------
+
 
 class IdentityKey(NamedTuple):
     """Lightweight quadruple for (domain, namespace, group, name)."""
@@ -48,7 +49,7 @@ def _validate_label(value: str, field: str) -> str:
     - must be a string
     - trimmed value cannot be empty
     - length ≤ 128
-    - allowed characters: A–Z, a–z, 0–9, dot (.), underscore (_), hyphen (-)
+    - allowed characters: A-Z, a-z, 0-9, dot (.), underscore (_), hyphen (-)
 
     Returns the trimmed value on success, raises IdentityValidationError on failure.
     """
@@ -67,6 +68,7 @@ def _validate_label(value: str, field: str) -> str:
 # -----------------------------------------------------------------------------
 # Identity (Value Object)
 # -----------------------------------------------------------------------------
+
 
 @dataclass(frozen=True, slots=True)
 class Identity:
@@ -136,7 +138,7 @@ class Identity:
 
     # ------------------- Constructors -------------------
     @classmethod
-    def get(cls, value: IdentityLike) -> Identity:
+    def get(cls, value: IdentityLike) -> Self:
         """Get an Identity instance from any IdentityLike object.
 
         :param value: An Identity-like object
@@ -145,7 +147,7 @@ class Identity:
         :raises IdentityError: If the input cannot be converted to an Identity.
         """
 
-        def _from_key(key: IdentityKey) -> Identity:
+        def _from_key(key: IdentityKey) -> Self:
             return cls(domain=key.domain, namespace=key.namespace, group=key.group, name=key.name)
 
         def _from_tuple(value_: tuple[str, str, str, str]) -> "Identity":
@@ -203,7 +205,7 @@ class Identity:
         raise IdentityError(f"Unsupported identity input type: {type(value).__name__}")
 
     @classmethod
-    def get_for(cls, value: IdentityLike | IdentityProtocol) -> Identity:
+    def get_for(cls, value: IdentityLike | IdentityProtocol) -> Self:
         """
         Resolve the Identity for a component or IdentityLike:
           • If `value` exposes `.identity`, coerce and return that.
@@ -224,7 +226,7 @@ class Identity:
 
     # ------------------- Coercion helpers -------------------
     @classmethod
-    def try_get(cls, value: IdentityLike) -> Identity | None:
+    def try_get(cls, value: IdentityLike) -> Self | None:
         """Best-effort coercion. Returns None instead of raising on failure."""
         try:
             return cls.get(value)

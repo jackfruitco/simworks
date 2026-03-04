@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
-
+from typing import TypeVar
 
 T = TypeVar("T")
 
 
 @dataclass(slots=True)
-class ResolutionBranch(Generic[T]):
+class ResolutionBranch[T]:
     """A single resolution attempt/branch."""
 
     name: str
@@ -21,7 +20,7 @@ class ResolutionBranch(Generic[T]):
 
 
 @dataclass(slots=True)
-class ResolutionResult(Generic[T]):
+class ResolutionResult[T]:
     """Aggregate result of a resolver with branch history."""
 
     value: T | None

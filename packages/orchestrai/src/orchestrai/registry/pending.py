@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from threading import RLock
-from typing import Iterable
 
 from .records import RegistrationRecord
 

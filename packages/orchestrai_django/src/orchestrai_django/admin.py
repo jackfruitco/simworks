@@ -1,11 +1,10 @@
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import ServiceCall, ServiceCallAttempt
-
 
 # ----------------------------- helpers ---------------------------------
 
@@ -23,6 +22,7 @@ def _short_json(value: Any, max_chars: int = 160) -> str:
 def _pretty_json(value: Any) -> str:
     """Format JSON for display in admin detail view."""
     try:
+
         def _normalize_newlines(text: str) -> str:
             return text.replace("\\n", "\n").replace("/n", "\n")
 
@@ -101,7 +101,7 @@ class ServiceCallAdmin(admin.ModelAdmin):
     )
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
-    inlines = [ServiceCallAttemptInline]
+    inlines: ClassVar[tuple[type[admin.TabularInline], ...]] = (ServiceCallAttemptInline,)
     readonly_fields = (
         "id",
         "created_at",
@@ -300,9 +300,7 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
         (
             "Agent Configuration",
             {
-                "fields": (
-                    "agent_config_pretty",
-                ),
+                "fields": ("agent_config_pretty",),
                 "classes": ("collapse",),
             },
         ),
@@ -347,7 +345,9 @@ class ServiceCallAttemptAdmin(admin.ModelAdmin):
             return format_html(
                 '<a href="/admin/orchestrai_django/servicecall/{}/change/">{}</a>',
                 obj.service_call_id,
-                obj.service_call_id[:16] + "..." if len(obj.service_call_id) > 16 else obj.service_call_id,
+                obj.service_call_id[:16] + "..."
+                if len(obj.service_call_id) > 16
+                else obj.service_call_id,
             )
         return "-"
 

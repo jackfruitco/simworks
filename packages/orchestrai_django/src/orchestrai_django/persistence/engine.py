@@ -11,10 +11,11 @@ Public API:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass, field
 import importlib
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -85,9 +86,7 @@ async def persist_schema(schema: BaseModel, context: PersistContext) -> Any:
             # Auto-map via __orm_model__ on the item type
             from orchestrai_django.persistence.auto_mapper import auto_persist_field
 
-            results[field_name] = await auto_persist_field(
-                field_name, value, schema, context
-            )
+            results[field_name] = await auto_persist_field(field_name, value, schema, context)
 
     # Post-persist hook
     if hasattr(schema, "post_persist"):

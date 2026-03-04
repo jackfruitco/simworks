@@ -7,7 +7,6 @@ from django.views.decorators.http import require_http_methods
 from apps.common.decorators import resolve_user
 from apps.trainerlab.utils import create_new_simulation
 
-
 logger = logging.getLogger(__name__)
 
 

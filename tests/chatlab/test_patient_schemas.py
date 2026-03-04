@@ -7,20 +7,19 @@ Validates:
 - Strict mode enforcement
 """
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
 from apps.simcore.orca.schemas.metadata_items import (
     LabResultItem,
-    RadResultItem,
-    PatientHistoryItem,
     PatientDemographicsItem,
+    PatientHistoryItem,
+    RadResultItem,
     SimulationMetadataItem,
 )
 
@@ -80,20 +79,10 @@ class TestPatientInitialSchema:
             ],
             # PatientInitialOutputSchema.metadata is list[MetadataItem] (polymorphic union)
             "metadata": [
-                {
-                    "kind": "patient_demographics",
-                    "key": "age",
-                    "value": "45"
-                },
-                {
-                    "kind": "patient_demographics",
-                    "key": "gender",
-                    "value": "Male"
-                },
+                {"kind": "patient_demographics", "key": "age", "value": "45"},
+                {"kind": "patient_demographics", "key": "gender", "value": "Male"},
             ],
-            "llm_conditions_check": [
-                {"key": "ready_for_questions", "value": "true"}
-            ],
+            "llm_conditions_check": [{"key": "ready_for_questions", "value": "true"}],
         }
 
         # Parse
@@ -172,7 +161,7 @@ class TestPatientInitialSchema:
                     "reference_range_low": "12.0",
                     "reference_range_high": "16.0",
                     "result_flag": "normal",
-                    "result_comment": "Within normal limits"
+                    "result_comment": "Within normal limits",
                 }
             ],
             "llm_conditions_check": [],
@@ -189,7 +178,7 @@ class TestPatientInitialSchema:
         assert lab_result.panel_name == "Complete Blood Count"
         assert lab_result.result_unit == "g/dL"
         assert lab_result.result_flag == "normal"
-        assert lab_result.__orm_model__ == "simulation.LabResult"
+        assert lab_result.__orm_model__ == "simcore.LabResult"
 
     def test_polymorphic_rad_result_metadata(self):
         """Verify RadResultItem with required fields."""
@@ -206,7 +195,7 @@ class TestPatientInitialSchema:
                     "kind": "rad_result",
                     "key": "Chest X-Ray",
                     "value": "No acute cardiopulmonary disease",
-                    "result_flag": "normal"
+                    "result_flag": "normal",
                 }
             ],
             "llm_conditions_check": [],
@@ -220,7 +209,7 @@ class TestPatientInitialSchema:
         assert rad_result.kind == "rad_result"
         assert rad_result.key == "Chest X-Ray"
         assert rad_result.result_flag == "normal"
-        assert rad_result.__orm_model__ == "simulation.RadResult"
+        assert rad_result.__orm_model__ == "simcore.RadResult"
 
     def test_polymorphic_patient_history_metadata(self):
         """Verify PatientHistoryItem with required fields."""
@@ -238,7 +227,7 @@ class TestPatientInitialSchema:
                     "key": "Hypertension",
                     "value": "Diagnosed with essential hypertension",
                     "is_resolved": False,
-                    "duration": "5 years"
+                    "duration": "5 years",
                 }
             ],
             "llm_conditions_check": [],
@@ -253,7 +242,7 @@ class TestPatientInitialSchema:
         assert history.key == "Hypertension"
         assert history.is_resolved is False
         assert history.duration == "5 years"
-        assert history.__orm_model__ == "simulation.PatientHistory"
+        assert history.__orm_model__ == "simcore.PatientHistory"
 
     def test_polymorphic_mixed_metadata_types(self):
         """Verify multiple metadata types in single schema."""
@@ -266,17 +255,13 @@ class TestPatientInitialSchema:
                 }
             ],
             "metadata": [
-                {
-                    "kind": "patient_demographics",
-                    "key": "age",
-                    "value": "65"
-                },
+                {"kind": "patient_demographics", "key": "age", "value": "65"},
                 {
                     "kind": "patient_history",
                     "key": "Diabetes Type 2",
                     "value": "Controlled with metformin",
                     "is_resolved": False,
-                    "duration": "10 years"
+                    "duration": "10 years",
                 },
                 {
                     "kind": "lab_result",
@@ -286,13 +271,9 @@ class TestPatientInitialSchema:
                     "reference_range_low": "70",
                     "reference_range_high": "100",
                     "result_flag": "abnormal",
-                    "result_comment": "Slightly elevated"
+                    "result_comment": "Slightly elevated",
                 },
-                {
-                    "kind": "generic",
-                    "key": "notes",
-                    "value": "Patient cooperative and alert"
-                }
+                {"kind": "generic", "key": "notes", "value": "Patient cooperative and alert"},
             ],
             "llm_conditions_check": [],
         }
@@ -307,9 +288,9 @@ class TestPatientInitialSchema:
         assert isinstance(parsed.metadata[3], SimulationMetadataItem)
 
         # Verify each has correct __orm_model__
-        assert parsed.metadata[0].__orm_model__ == "simulation.PatientDemographics"
-        assert parsed.metadata[1].__orm_model__ == "simulation.PatientHistory"
-        assert parsed.metadata[2].__orm_model__ == "simulation.LabResult"
+        assert parsed.metadata[0].__orm_model__ == "simcore.PatientDemographics"
+        assert parsed.metadata[1].__orm_model__ == "simcore.PatientHistory"
+        assert parsed.metadata[2].__orm_model__ == "simcore.LabResult"
         assert parsed.metadata[3].__orm_model__ == "simcore.SimulationMetadata"
 
     def test_polymorphic_metadata_discriminator_validation(self):
@@ -326,7 +307,7 @@ class TestPatientInitialSchema:
                 {
                     "kind": "invalid_kind",  # Invalid discriminator
                     "key": "test",
-                    "value": "test"
+                    "value": "test",
                 }
             ],
             "llm_conditions_check": [],
@@ -388,16 +369,14 @@ class TestPatientResultsSchema:
 
     def test_round_trip_with_metadata(self):
         """Verify parsing with metadata items."""
-        # PatientResultsOutputSchema.metadata is list[ResultMessageItem]
-        # (complex items with content and item_meta)
+        # PatientResultsOutputSchema.metadata is list[MetadataItem]
+        # (discriminated union with a required kind field).
         sample_output = {
             "metadata": [
                 {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Final diagnosis: ..."}],
-                    "item_meta": [
-                        {"key": "key", "value": "final_diagnosis"}
-                    ],
+                    "kind": "generic",
+                    "key": "final_diagnosis",
+                    "value": "Community-acquired pneumonia",
                 }
             ],
             "llm_conditions_check": [],
@@ -405,6 +384,6 @@ class TestPatientResultsSchema:
 
         parsed = PatientResultsOutputSchema.model_validate(sample_output)
         assert len(parsed.metadata) == 1
-        # Verify item_meta as list[ResultMetafield]
-        meta_keys = {mf.key: mf.value for mf in parsed.metadata[0].item_meta}
-        assert meta_keys["key"] == "final_diagnosis"
+        assert isinstance(parsed.metadata[0], SimulationMetadataItem)
+        assert parsed.metadata[0].key == "final_diagnosis"
+        assert parsed.metadata[0].value == "Community-acquired pneumonia"

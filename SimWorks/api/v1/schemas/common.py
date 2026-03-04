@@ -3,8 +3,8 @@
 Includes error responses (RFC 7807) and pagination schemas.
 """
 
-from datetime import datetime, timezone
-from typing import Generic, TypeVar
+from datetime import UTC, datetime
+from typing import TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -49,7 +49,7 @@ class ErrorResponse(BaseModel):
     )
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     """Cursor-based pagination response wrapper.
 
     Uses UUID-based cursors for stateless pagination.
@@ -75,6 +75,6 @@ class HealthResponse(BaseModel):
 
     status: str = Field(default="ok", description="Service status")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Current server timestamp",
     )

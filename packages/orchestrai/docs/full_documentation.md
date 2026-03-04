@@ -4,10 +4,10 @@
 
 ## Architecture overview
 
-- **OrchestrAI app** – owns configuration, loader, registries, and lifecycle hooks.
-- **Registries** – lightweight, frozen after `finalize()`, storing services, codecs, providers, clients, and prompt sections.
-- **Shared decorators** – allow registering components before an app exists; callbacks run during `finalize()` for every app.
-- **Loader** – optional autodiscovery helper that imports modules declared in `DISCOVERY_PATHS`.
+- **OrchestrAI app** - owns configuration, loader, registries, and lifecycle hooks.
+- **Registries** - lightweight, frozen after `finalize()`, storing services, codecs, providers, clients, and prompt sections.
+- **Shared decorators** - allow registering components before an app exists; callbacks run during `finalize()` for every app.
+- **Loader** - optional autodiscovery helper that imports modules declared in `DISCOVERY_PATHS`.
 
 ## Public API
 
@@ -15,33 +15,33 @@
 from orchestrai import OrchestrAI, current_app, get_current_app
 ```
 
-- `OrchestrAI` – main application class
-- `current_app` – context-local proxy to the active app
-- `get_current_app()` – returns the active app or creates a default one
+- `OrchestrAI` - main application class
+- `current_app` - context-local proxy to the active app
+- `get_current_app()` - returns the active app or creates a default one
 
 ## Lifecycle
 
-1. **configure(mapping=None, namespace=None)** – apply settings from a mapping.
-2. **config_from_object(obj, namespace=None)** – load settings from a dotted object path.
-3. **config_from_envvar(envvar="ORCHESTRAI_CONFIG_MODULE", namespace=None)** – load settings from an environment variable.
-4. **setup()** – instantiate the loader and populate registries for `CLIENTS` and `PROVIDERS`.
-5. **discover()** – call the loader’s `autodiscover(app, modules)` for each path in `DISCOVERY_PATHS`.
-6. **finalize()** – run shared decorator callbacks and freeze registries.
-7. **start()/run()** – print the jumping-orca banner, run discovery, finalize, and emit a component summary; idempotent.
+1. **configure(mapping=None, namespace=None)** - apply settings from a mapping.
+2. **config_from_object(obj, namespace=None)** - load settings from a dotted object path.
+3. **config_from_envvar(envvar="ORCHESTRAI_CONFIG_MODULE", namespace=None)** - load settings from an environment variable.
+4. **setup()** - instantiate the loader and populate registries for `CLIENTS` and `PROVIDERS`.
+5. **discover()** - call the loader’s `autodiscover(app, modules)` for each path in `DISCOVERY_PATHS`.
+6. **finalize()** - run shared decorator callbacks and freeze registries.
+7. **start()/run()** - print the jumping-orca banner, run discovery, finalize, and emit a component summary; idempotent.
 
 Each method is idempotent and avoids network calls; nothing heavy happens during import.
 
 ## Configuration keys
 
-- `CLIENT` – name of the default client to expose via `app.client`.
-- `CLIENTS` – mapping of client definitions.
-- `PROVIDERS` – mapping of provider definitions.
-- `DISCOVERY_PATHS` – iterable of dotted module paths to import during discovery. The defaults
+- `CLIENT` - name of the default client to expose via `app.client`.
+- `CLIENTS` - mapping of client definitions.
+- `PROVIDERS` - mapping of provider definitions.
+- `DISCOVERY_PATHS` - iterable of dotted module paths to import during discovery. The defaults
   import OrchestrAI’s contrib provider backends/codecs and include glob patterns for common
   project layouts (`*.orca.services`, `*.orca.output_schemas`, `*.orca.codecs`, `*.ai.services`).
   Patterns resolve to real modules before import; unmatched patterns are skipped safely.
-- `LOADER` – dotted path to a loader class; defaults to the lightweight base loader.
-- `MODE` – optional runtime mode flag.
+- `LOADER` - dotted path to a loader class; defaults to the lightweight base loader.
+- `MODE` - optional runtime mode flag.
 
 Default values for client behavior (timeouts, retries, telemetry/logging flags) and provider fallbacks (profiles/models/timeouts) are centralized in [`src/orchestrai/conf/defaults.py`](../src/orchestrai/conf/defaults.py). Treat this module as the single source of truth when adjusting baseline behaviors.
 
@@ -72,28 +72,27 @@ The legacy `load_orca_settings` function remains as a shim and emits a deprecati
 
 Registries are simple, thread-safe mappings with three phases:
 
-1. **register(name, obj)** – allowed before freeze.
-2. **get(name)** – retrieve a registered object.
-3. **freeze()** – prevent further mutation; invoked automatically during `finalize()`.
+1. **register(name, obj)** - allowed before freeze.
+2. **get(name)** - retrieve a registered object.
+3. **freeze()** - prevent further mutation; invoked automatically during `finalize()`.
 
 The app exposes `services`, `codecs`, `providers`, `clients`, and `prompt_sections` registries. Use `app.clients.register(...)` or decorators to populate them.
 
-## Shared decorators and finalize callbacks
+## Finalize callbacks
 
-Decorators in `orchestrai.shared` let you register components before an app exists:
+Use `connect_on_app_finalize` to register callbacks before an app exists:
 
 ```python
-from orchestrai.shared import shared_service
+from orchestrai.finalize import connect_on_app_finalize
 
-@shared_service()
-def ping():
-    return "pong"
+def _on_finalize(app):
+    app.conf["READY"] = True
+
+connect_on_app_finalize(_on_finalize)
 
 app = OrchestrAI().finalize()
-assert "ping" in app.services
+assert app.conf["READY"] is True
 ```
-
-Callbacks are consumed during every app’s `finalize()`, so multiple app instances see the shared registrations.
 
 ## Current app management
 
@@ -101,8 +100,8 @@ Use `app.as_current()` to scope the active application:
 
 ```python
 with app.as_current():
-    # proxies such as current_app resolve to `app`
-    client = app.client
+    store = app.component_store
+    domains = store.domains()
 ```
 
 Nested contexts restore the previous app automatically.
@@ -156,16 +155,17 @@ The core ships with lightweight span helpers in `orchestrai.tracing.tracing` tha
 
 ```python
 from orchestrai import OrchestrAI
-from orchestrai.shared import shared_service
+from orchestrai.finalize import connect_on_app_finalize
 
-@shared_service()
-def hello(name: str = "world"):
-    return f"hello {name}"
+def _register_mark(app):
+    app.conf["HELLO_READY"] = True
+
+connect_on_app_finalize(_register_mark)
 
 app = OrchestrAI()
-app.configure({"CLIENT": "local", "CLIENTS": {"local": {"name": "local"}}})
+app.configure({"DEFAULT_MODEL": "openai-responses:gpt-5o-mini"})
 app.start()
 
 with app.as_current():
-    print("Services:", app.services.all())
+    print("Domains:", app.component_store.domains())
 ```

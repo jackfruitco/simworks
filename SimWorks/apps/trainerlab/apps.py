@@ -3,6 +3,5 @@ from django.apps import AppConfig
 
 
 class TrainerlabConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'apps.trainerlab'
-
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.trainerlab"

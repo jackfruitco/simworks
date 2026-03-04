@@ -16,11 +16,20 @@ All runtime services (server, celery worker, celery beat) deploy from that same 
 
 ## Workflow mapping
 
-- **Release RC (build + tag staging)**
+- **cd-release**
+  - Manual workflow (`workflow_dispatch`)
+  - Runs only from `main`
   - Builds once and pushes: `vX.Y.Z-rcN`, `sha-<gitsha>`, `staging`
-- **Promote to Prod (retag by digest)**
+  - Applies image security checks, SBOM generation, provenance attestation, and keyless signing
+  - Optional webhook trigger controlled by `trigger_webhook` input
+- **cd-promote**
+  - Manual workflow (`workflow_dispatch`)
+  - Runs only from `main`
+  - Requires `production` environment approval
   - Resolves digest from `vX.Y.Z-rcN`
+  - Verifies signature and provenance for the source digest
   - Retags the exact digest to: `vX.Y.Z`, `prod`
+  - Optional webhook trigger controlled by `trigger_webhook` input
 
 ## Portainer stack guidance
 

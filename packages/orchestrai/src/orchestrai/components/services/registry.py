@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Compatibility re-export for the service registry.
 
 Service registry helpers now live under :mod:`orchestrai.registry.services`.
@@ -13,9 +11,10 @@ def get_component_store(app=None):  # pragma: no cover - compatibility helper
 
     return _get(app)
 
+
 __all__ = [
     "ServiceRegistry",
-    "service_registry",
     "ensure_service_registry",
     "get_component_store",
+    "service_registry",
 ]

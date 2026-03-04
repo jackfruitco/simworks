@@ -12,14 +12,16 @@ Messages are now broadcast via the outbox pattern for:
 """
 
 import logging
+
 from asgiref.sync import async_to_sync
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import Message
-from .utils import broadcast_patient_results
 from apps.simcore.models import Simulation, SimulationMetadata
 from orchestrai_django.signals import ai_response_failed
+
+from .models import Message
+from .utils import broadcast_patient_results
 
 logger = logging.getLogger(__name__)
 USER_RETRY_LIMIT = 2
@@ -53,7 +55,9 @@ def _emit_message_status(
         poke_drain_sync()
 
 
-def _emit_feedback_failure(simulation_id: int, *, error_code: str, error_text: str, retryable: bool, retry_count: int) -> None:
+def _emit_feedback_failure(
+    simulation_id: int, *, error_code: str, error_text: str, retryable: bool, retry_count: int
+) -> None:
     from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
     event = enqueue_event_sync(
@@ -177,7 +181,7 @@ def handle_ai_response_failed(
     **kwargs,
 ):
     """Map terminal service failures to user-visible chat/simulation state."""
-    from orchestrai_django.models import ServiceCall, CallStatus
+    from orchestrai_django.models import CallStatus, ServiceCall
 
     context = context or {}
     service_identity = ""
@@ -238,9 +242,7 @@ def handle_ai_response_failed(
         )
         message.delivery_status = Message.DeliveryStatus.FAILED
         message.delivery_error_code = reason_code or "ai_processing_failed"
-        message.delivery_error_text = (
-            "Message failed to deliver to the AI service. Try again."
-        )
+        message.delivery_error_text = "Message failed to deliver to the AI service. Try again."
         message.delivery_retryable = retryable
         message.save(
             update_fields=[
@@ -309,9 +311,7 @@ def broadcast_metadata_update(sender, instance, created, **kwargs):
     if created:
         try:
             async_to_sync(broadcast_patient_results)(instance)
-            logger.debug(
-                f"Broadcasted SimulationMetadata {instance.id} to WebSocket clients"
-            )
+            logger.debug(f"Broadcasted SimulationMetadata {instance.id} to WebSocket clients")
         except Exception as exc:
             logger.warning(
                 f"WebSocket broadcast failed for SimulationMetadata {instance.id}: {exc}"

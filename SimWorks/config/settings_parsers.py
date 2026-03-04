@@ -30,7 +30,9 @@ def int_from_env(name: str, default: int, *, minimum: int | None = None) -> int:
         try:
             result = int(value)
         except ValueError as exc:
-            raise ValueError(f"Environment variable {name} must be an integer, got: {value!r}") from exc
+            raise ValueError(
+                f"Environment variable {name} must be an integer, got: {value!r}"
+            ) from exc
 
     if minimum is not None and result < minimum:
         raise ValueError(f"Environment variable {name} must be >= {minimum}, got: {result}")

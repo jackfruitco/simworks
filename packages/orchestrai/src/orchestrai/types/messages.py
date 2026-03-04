@@ -9,19 +9,21 @@ tasks in the AI module.
 The classes in this module ensure strict type validation using Pydantic and support
 dynamic addition of fields for extensibility.
 """
-from typing import Dict
+
+from typing import Any
 
 from pydantic import Field
 
 from .base import StrictBaseModel
 from .content import ContentRole
 from .input import InputContent
-from .output import OutputContent
 from .meta import Metafield
+from .output import OutputContent
 
 
 class InputItem(StrictBaseModel):
     """Single input message with a role and one or more content parts."""
+
     role: ContentRole
     content: list[InputContent]
 
@@ -35,11 +37,11 @@ class OutputItem(StrictBaseModel):
         - This ensures the schema has additionalProperties: false (required by OpenAI strict mode)
         - Empty list is allowed and is the default
     """
+
     role: ContentRole
     content: list[OutputContent]
     item_meta: list[Metafield] = Field(
-        ...,
-        description="Metadata entries as key-value pairs (OpenAI strict mode compliant)"
+        ..., description="Metadata entries as key-value pairs (OpenAI strict mode compliant)"
     )
 
 
@@ -59,4 +61,4 @@ class UsageContent(StrictBaseModel):
 class ToolItem(StrictBaseModel):
     kind: str  # e.g., "image_generation"
     function: str | None = None
-    arguments: Dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)

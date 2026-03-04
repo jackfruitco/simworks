@@ -22,7 +22,9 @@ class ServiceRegistry(BaseRegistry[Identity, "BaseService"]):
     domain: str = SERVICES_DOMAIN
 
     def __init__(self) -> None:
-        super().__init__(coerce_key=lambda svc: Identity.get_for(getattr(svc, "identity", svc)).label)
+        super().__init__(
+            coerce_key=lambda svc: Identity.get_for(getattr(svc, "identity", svc)).label
+        )
 
 
 def _service_registry_proxy():
@@ -72,4 +74,4 @@ def ensure_service_registry(app: Any | None = None) -> ServiceRegistry:
     return upgraded
 
 
-__all__ = ["ServiceRegistry", "service_registry", "ensure_service_registry"]
+__all__ = ["ServiceRegistry", "ensure_service_registry", "service_registry"]

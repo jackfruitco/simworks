@@ -15,4 +15,4 @@ def test_usage_content_allows_extra_fields():
     u = UsageContent(input_tokens=10, foo=123)  # extra field
     assert u.input_tokens == 10
     # an extra field is stored due to extra="allow"
-    assert getattr(u, "foo") == 123
+    assert u.foo == 123

@@ -6,4 +6,5 @@ from orchestrai_django.identity import DjangoIdentityMixin
 
 class StitchMixin(DjangoIdentityMixin):
     """Identity mixin for the stitch group within the chatlab namespace."""
+
     group = "stitch"

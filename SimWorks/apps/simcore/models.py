@@ -1,27 +1,29 @@
 # simcore/models.py
 import asyncio
+from datetime import timedelta
 import logging
 import mimetypes
 import os
+from typing import TYPE_CHECKING
 import uuid
-import warnings
-from datetime import timedelta
 
-from asgiref.sync import sync_to_async, async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from autoslug import AutoSlugField
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
-from django.db.models import QuerySet
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from apps.common.models import PersistModel
-from orchestrai_django.components.promptkit import Prompt
+
 from .utils import randomize_display_name
+
+if TYPE_CHECKING:
+    from orchestrai_django.components.promptkit import Prompt
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +95,13 @@ class ConversationType(models.Model):
     display_name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     icon = models.CharField(
-        max_length=50, blank=True,
+        max_length=50,
+        blank=True,
         help_text="Iconify icon identifier, e.g. 'mdi:robot'",
     )
     ai_persona = models.CharField(
-        max_length=40, blank=True,
+        max_length=40,
+        blank=True,
         help_text="AI persona slug for service dispatch (e.g. 'patient', 'stitch')",
     )
     locks_with_simulation = models.BooleanField(
@@ -105,7 +109,8 @@ class ConversationType(models.Model):
         help_text="If True, conversation becomes read-only when simulation ends",
     )
     available_in = models.JSONField(
-        default=list, blank=True,
+        default=list,
+        blank=True,
         help_text="Lab apps where this type is available, e.g. ['chatlab', 'trainerlab']",
     )
     is_active = models.BooleanField(default=True)
@@ -221,6 +226,7 @@ class Simulation(models.Model):
     :ivar sim_patient_display_name: A display-friendly version of the simulated patient's name.
     :type sim_patient_display_name: str
     """
+
     class SimulationStatus(models.TextChoices):
         IN_PROGRESS = "in_progress", "In Progress"
         COMPLETED = "completed", "Completed"
@@ -464,7 +470,9 @@ class Simulation(models.Model):
         )
         self._broadcast_state_change(retryable=retryable)
 
-    def mark_canceled(self, *, reason_code: str = "canceled_by_user", reason_text: str = "Canceled by user") -> None:
+    def mark_canceled(
+        self, *, reason_code: str = "canceled_by_user", reason_text: str = "Canceled by user"
+    ) -> None:
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
         self.status = self.SimulationStatus.CANCELED
@@ -493,9 +501,7 @@ class Simulation(models.Model):
         """Generate feedback for this simulation."""
         from .orca.services import GenerateInitialFeedback
 
-        GenerateInitialFeedback.task.using(
-            context={"simulation_id": self.pk}
-        ).enqueue()
+        GenerateInitialFeedback.task.using(context={"simulation_id": self.pk}).enqueue()
 
     def calculate_metadata_checksum(self) -> str:
         from hashlib import sha256
@@ -530,13 +536,7 @@ class Simulation(models.Model):
 
     @classmethod
     async def abuild(
-            cls,
-            *,
-            user=None,
-            prompt: Prompt = None,
-            app_name=None,
-            from_scenario=False,
-            **kwargs
+        cls, *, user=None, prompt: "Prompt" = None, app_name=None, from_scenario=False, **kwargs
     ):
         """Class method factory for creating simulations"""
 
@@ -545,22 +545,31 @@ class Simulation(models.Model):
 
         if from_scenario:
             # TODO: add `Simulation.abuild(from_scenario=True) feature
-            logger.error("Simulation.abuild() called with `from_scenario=True`, but feature is not implemented yet.")
+            logger.error(
+                "Simulation.abuild() called with `from_scenario=True`, but feature is not implemented yet."
+            )
 
         logger.info(f"starting Simulation build for {app_name} (user={user})")
-        logger.debug("... abuild(%s, %s, %s, %s, %s)", user, prompt, app_name, from_scenario, kwargs)
+        logger.debug(
+            "... abuild(%s, %s, %s, %s, %s)", user, prompt, app_name, from_scenario, kwargs
+        )
 
         # Collect valid concrete field names to avoid passing stray kwargs to .acreate()
-        model_field_names = {f.name for f in cls._meta.get_fields() if
-                             getattr(f, "concrete", False) and not getattr(f, "auto_created", False)}
+        model_field_names = {
+            f.name
+            for f in cls._meta.get_fields()
+            if getattr(f, "concrete", False) and not getattr(f, "auto_created", False)
+        }
 
         # Normalize user to instance
         if isinstance(user, (str, int)):
             try:
                 pk = int(user)
-            except (TypeError, ValueError):
-                raise ValueError("`user` must be a User instance or an integer primary key")
-            User = get_user_model()  # noqa: 8106
+            except (TypeError, ValueError) as err:
+                raise ValueError(
+                    "`user` must be a User instance or an integer primary key"
+                ) from err
+            User = get_user_model()
             user = await User.objects.select_related("role").aget(pk=pk)
 
         create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
@@ -585,8 +594,8 @@ class Simulation(models.Model):
             return _simulation
         try:
             return cls.objects.get(pk=_simulation)
-        except (TypeError, ValueError, ObjectDoesNotExist):
-            raise ValueError(f"Cannot resolve {cls.__name__} with input {_simulation!r}")
+        except (TypeError, ValueError, ObjectDoesNotExist) as err:
+            raise ValueError(f"Cannot resolve {cls.__name__} with input {_simulation!r}") from err
 
     @classmethod
     async def aresolve(cls, _simulation: "Simulation | int") -> "Simulation":
@@ -606,11 +615,10 @@ class Simulation(models.Model):
             return _simulation
         try:
             return await cls.objects.aget(pk=_simulation)
-        except (TypeError, ValueError, ObjectDoesNotExist):
-            raise ValueError(f"Cannot resolve {cls.__name__} with input {_simulation!r}")
+        except (TypeError, ValueError, ObjectDoesNotExist) as err:
+            raise ValueError(f"Cannot resolve {cls.__name__} with input {_simulation!r}") from err
 
     def save(self, *args, **kwargs):
-
         # Handle display name update if the full name is changed
         updating_name = False
         if self.pk:
@@ -620,9 +628,7 @@ class Simulation(models.Model):
             updating_name = bool(self.sim_patient_full_name)
 
         if updating_name:
-            self.sim_patient_display_name = randomize_display_name(
-                self.sim_patient_full_name
-            )
+            self.sim_patient_display_name = randomize_display_name(self.sim_patient_full_name)
 
         super().save(*args, **kwargs)
 
@@ -637,9 +643,7 @@ class SimulationMetadata(PersistModel, PolymorphicModel):
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
-    simulation = models.ForeignKey(
-        Simulation, on_delete=models.CASCADE, related_name="metadata"
-    )
+    simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name="metadata")
 
     key = models.CharField(max_length=255)
     value = models.TextField()
@@ -661,44 +665,10 @@ class SimulationMetadata(PersistModel, PolymorphicModel):
             )
         ]
 
-    @classmethod
-    def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
-        warnings.warn(
-            "`cls.format_patient_history` is deprecated. Use 'PatientHistory.to_dict()' instead.",
-            DeprecationWarning,
-        )
-        from collections import defaultdict
-
-        grouped = defaultdict(dict)
-        for entry in history_metadata:
-            key = entry.key
-            value = entry.value
-            prefix, field = key.rsplit(" ", 1)
-            grouped[prefix][field] = value
-        logger.debug(f"grouped: {grouped}")
-
-        formatted = [
-            {
-                "key": prefix,
-                "value": "{diagnosis} ({is_resolved}, {duration})".format(
-                    diagnosis=data.get("diagnosis", "Unknown").title(),
-                    is_resolved=data.get("is_resolved", "Unknown"),
-                    duration=data.get("duration", "Unknown"),
-                ),
-            }
-            for prefix, data in grouped.items()
-        ]
-        logger.debug(f"formatted: {formatted}")
-
-        return formatted
-
     def save(self, *args, **kwargs):
-        is_new = self.pk is None
         super().save(*args, **kwargs)
 
-        self.simulation.metadata_checksum = (
-            self.simulation.calculate_metadata_checksum()
-        )
+        self.simulation.metadata_checksum = self.simulation.calculate_metadata_checksum()
         self.simulation.save(update_fields=["metadata_checksum"])
 
 
@@ -800,7 +770,7 @@ class PatientHistory(SimulationMetadata):
             "is_resolved": self.is_resolved,
             "duration": self.duration,
             "value": self.value,
-            "summary": f"History of {self.diagnosis} ({"now resolved" if self.is_resolved else "ongoing"}, for {self.duration})",
+            "summary": f"History of {self.diagnosis} ({'now resolved' if self.is_resolved else 'ongoing'}, for {self.duration})",
         }
 
     @property
@@ -812,7 +782,6 @@ class PatientHistory(SimulationMetadata):
 
 
 class SimulationFeedback(SimulationMetadata):
-
     @property
     def attribute(self) -> str:
         return self.__class__.__name__
@@ -829,9 +798,7 @@ class SimulationImage(models.Model):
 
     mime_type = models.CharField(max_length=100, blank=True, null=True)
 
-    simulation = models.ForeignKey(
-        Simulation, on_delete=models.CASCADE, related_name="images"
-    )
+    simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name="images")
 
     provider_id = models.CharField(
         max_length=255,
@@ -839,17 +806,6 @@ class SimulationImage(models.Model):
         null=True,
         help_text="OpenAI image ID (if applicable)",
     )
-
-    def openai_id(self) -> str:
-        """Return the OpenAI image ID, if available.
-
-        For backwards compatibility, this method is deprecated and will be removed in the future.
-        """
-        logger.warning(
-            "`openai_id` is deprecated. Use `provider_id` instead.",
-            PendingDeprecationWarning
-        )
-        return self.provider_id
 
     uuid = models.UUIDField(
         default=uuid.uuid4,
@@ -918,9 +874,7 @@ class SimulationImage(models.Model):
                         f"Mismatch in MIME type for {self.original.name}: "
                         f"declared={self.mime_type}, guessed={guessed_mime}"
                     )
-                    raise ValidationError(
-                        f"MIME type mismatch: {self.mime_type} != {guessed_mime}"
-                    )
+                    raise ValidationError(f"MIME type mismatch: {self.mime_type} != {guessed_mime}")
             else:
                 self.mime_type = guessed_mime
         else:

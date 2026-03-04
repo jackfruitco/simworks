@@ -1,0 +1,139 @@
+name: cd-promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_tag:
+        description: "RC tag to promote (e.g. v0.6.0-rc1)"
+        required: true
+        type: string
+      final_version:
+        description: "Final release version without leading v (e.g. 0.6.0)"
+        required: true
+        type: string
+      trigger_webhook:
+        description: "Trigger production Portainer webhook when configured"
+        required: false
+        default: true
+        type: boolean
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+concurrency:
+  group: cd-promote
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  promote:
+    name: cd-promote
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - name: Validate dispatch ref and inputs
+        env:
+          RC_TAG: ${{ inputs.rc_tag }}
+          FINAL_VERSION: ${{ inputs.final_version }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "cd-promote can only run from refs/heads/main. Current ref: ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${RC_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc[0-9]+$ ]]; then
+            echo "rc_tag must match vX.Y.Z-rcN (received: ${RC_TAG})" >&2
+            exit 1
+          fi
+
+          if ! [[ "${FINAL_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "final_version must match X.Y.Z (received: ${FINAL_VERSION})" >&2
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
+
+      - name: Resolve source digest and validate destination tag
+        id: resolve
+        env:
+          RC_TAG: ${{ inputs.rc_tag }}
+          FINAL_VERSION: ${{ inputs.final_version }}
+        run: |
+          set -euo pipefail
+
+          DIGEST="$(
+            docker buildx imagetools inspect "${IMAGE}:${RC_TAG}" 2>/dev/null \
+            | awk '/^Digest:[[:space:]]+/ { print $2; exit }'
+          )"
+
+          if [ -z "${DIGEST}" ]; then
+            echo "Failed to resolve digest for ${IMAGE}:${RC_TAG}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${DIGEST}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Resolved digest is invalid: ${DIGEST}" >&2
+            exit 1
+          fi
+
+          if docker buildx imagetools inspect "${IMAGE}:v${FINAL_VERSION}" > /dev/null 2>&1; then
+            echo "Refusing to overwrite existing immutable release tag: ${IMAGE}:v${FINAL_VERSION}" >&2
+            exit 1
+          fi
+
+          echo "digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify source image signature
+        env:
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-release.yml@refs/heads/main$" \
+            "${IMAGE}@${DIGEST}" > /dev/null
+
+      - name: Verify source provenance attestation
+        env:
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify-attestation \
+            --type slsaprovenance \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-release.yml@refs/heads/main$" \
+            "${IMAGE}@${DIGEST}" > /dev/null
+
+      - name: Promote digest to final and prod tags
+        env:
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+          FINAL_VERSION: ${{ inputs.final_version }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            -t "${IMAGE}:v${FINAL_VERSION}" \
+            -t "${IMAGE}:prod" \
+            "${IMAGE}@${DIGEST}"
+
+      - name: Trigger Portainer prod redeploy
+        if: ${{ inputs.trigger_webhook && secrets.PORTAINER_WEBHOOK_PROD != '' }}
+        run: curl -fsSL -X POST "${{ secrets.PORTAINER_WEBHOOK_PROD }}"

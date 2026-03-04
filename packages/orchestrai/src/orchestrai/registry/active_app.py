@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Callable, Generator
+from typing import Any
 
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
@@ -27,20 +28,36 @@ _pending = PendingRegistrations()
 def _infer_domain_from_type(component_type: type[Any]) -> str | None:
     try:
         from orchestrai.components.services.service import BaseService as _BaseService
-        from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
-        from orchestrai.components.schemas import BaseOutputSchema as _BaseOutputSchema
-        from orchestrai.components.promptkit.base import PromptSection as _PromptSection
     except Exception:
         return None
 
     if issubclass(component_type, _BaseService):
         return SERVICES_DOMAIN
-    if issubclass(component_type, _BaseCodec):
-        return CODECS_DOMAIN
-    if issubclass(component_type, _BaseOutputSchema):
-        return SCHEMAS_DOMAIN
-    if issubclass(component_type, _PromptSection):
-        return PROMPT_SECTIONS_DOMAIN
+
+    try:
+        from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
+
+        if issubclass(component_type, _BaseCodec):
+            return CODECS_DOMAIN
+    except Exception:
+        pass
+
+    try:
+        from orchestrai.components.schemas import BaseOutputSchema as _BaseOutputSchema
+
+        if issubclass(component_type, _BaseOutputSchema):
+            return SCHEMAS_DOMAIN
+    except Exception:
+        pass
+
+    try:
+        from orchestrai.components.promptkit.base import PromptSection as _PromptSection
+
+        if issubclass(component_type, _PromptSection):
+            return PROMPT_SECTIONS_DOMAIN
+    except Exception:
+        pass
+
     return None
 
 
@@ -52,7 +69,7 @@ def set_active_registry_app(app: Any) -> None:
 
 
 @contextmanager
-def push_active_registry_app(app: Any) -> Generator[Any, None, None]:
+def push_active_registry_app(app: Any) -> Generator[Any]:
     token = _active_app.set(app)
     try:
         yield app
@@ -154,10 +171,10 @@ __all__ = [
     "get_component_store",
     "get_registry_for",
     "prompt_sections",
+    "push_active_registry_app",
     "registry_proxy",
     "route_registration",
     "schemas",
     "services",
     "set_active_registry_app",
-    "push_active_registry_app",
 ]

@@ -7,8 +7,8 @@ Tests that:
 4. HTTP status codes are correct (200 for existing, 201 for new)
 """
 
-import pytest
 from django.test import Client
+import pytest
 
 from api.v1.auth import create_access_token
 
@@ -106,13 +106,9 @@ def conversation(simulation, patient_type):
 class TestListConversations:
     """Tests for GET /simulations/{id}/conversations/."""
 
-    def test_list_conversations_returns_conversations(
-        self, auth_client, simulation, conversation
-    ):
+    def test_list_conversations_returns_conversations(self, auth_client, simulation, conversation):
         """Returns conversations for the simulation."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/conversations/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/conversations/")
 
         assert response.status_code == 200
         data = response.json()
@@ -125,9 +121,7 @@ class TestListConversations:
     def test_list_conversations_unauthenticated_returns_401(self, simulation):
         """Unauthenticated request returns 401."""
         client = Client()
-        response = client.get(
-            f"/api/v1/simulations/{simulation.pk}/conversations/"
-        )
+        response = client.get(f"/api/v1/simulations/{simulation.pk}/conversations/")
         assert response.status_code == 401
 
 
@@ -135,9 +129,7 @@ class TestListConversations:
 class TestCreateConversation:
     """Tests for POST /simulations/{id}/conversations/."""
 
-    def test_create_conversation_success(
-        self, auth_client, simulation, feedback_type
-    ):
+    def test_create_conversation_success(self, auth_client, simulation, feedback_type):
         """Creates a new conversation and returns 201."""
         response = auth_client.post(
             f"/api/v1/simulations/{simulation.pk}/conversations/",
@@ -211,22 +203,28 @@ class TestCreateConversation:
         assert first.json()["id"] == second.json()["id"]
 
         conversation_id = first.json()["id"]
-        assert Message.objects.filter(
-            simulation=simulation,
-            conversation_id=conversation_id,
-            display_name="Stitch",
-        ).count() == 1
+        assert (
+            Message.objects.filter(
+                simulation=simulation,
+                conversation_id=conversation_id,
+                display_name="Stitch",
+            ).count()
+            == 1
+        )
 
         greeting = Message.objects.get(
             simulation=simulation,
             conversation_id=conversation_id,
             display_name="Stitch",
         )
-        assert OutboxEvent.objects.filter(
-            simulation_id=simulation.pk,
-            event_type="chat.message_created",
-            idempotency_key=f"chat.message_created:{greeting.id}",
-        ).count() == 1
+        assert (
+            OutboxEvent.objects.filter(
+                simulation_id=simulation.pk,
+                event_type="chat.message_created",
+                idempotency_key=f"chat.message_created:{greeting.id}",
+            ).count()
+            == 1
+        )
 
     def test_create_conversation_idempotent_returns_200(
         self, auth_client, simulation, conversation, patient_type
@@ -242,9 +240,7 @@ class TestCreateConversation:
         data = response.json()
         assert data["id"] == conversation.pk
 
-    def test_create_conversation_unknown_type_returns_400(
-        self, auth_client, simulation
-    ):
+    def test_create_conversation_unknown_type_returns_400(self, auth_client, simulation):
         """Unknown conversation type returns 400."""
         response = auth_client.post(
             f"/api/v1/simulations/{simulation.pk}/conversations/",
@@ -259,9 +255,7 @@ class TestCreateConversation:
 class TestGetConversation:
     """Tests for GET /simulations/{id}/conversations/{uuid}/."""
 
-    def test_get_conversation_success(
-        self, auth_client, simulation, conversation
-    ):
+    def test_get_conversation_success(self, auth_client, simulation, conversation):
         """Returns conversation by UUID."""
         response = auth_client.get(
             f"/api/v1/simulations/{simulation.pk}/conversations/{conversation.uuid}/"
@@ -271,9 +265,7 @@ class TestGetConversation:
         data = response.json()
         assert data["id"] == conversation.pk
 
-    def test_get_conversation_not_found_returns_404(
-        self, auth_client, simulation
-    ):
+    def test_get_conversation_not_found_returns_404(self, auth_client, simulation):
         """Non-existent conversation UUID returns 404."""
         import uuid
 
@@ -297,9 +289,7 @@ class TestConversationLocking:
         with patch("apps.simcore.models.Simulation.generate_feedback"):
             simulation.end()
 
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/conversations/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/conversations/")
         data = response.json()
 
         patient_conv = next(
@@ -312,6 +302,7 @@ class TestConversationLocking:
     ):
         """Feedback/Stitch conversation stays unlocked after simulation ends."""
         from unittest.mock import patch
+
         from apps.simcore.models import Conversation
 
         Conversation.objects.create(
@@ -324,9 +315,7 @@ class TestConversationLocking:
         with patch("apps.simcore.models.Simulation.generate_feedback"):
             simulation.end()
 
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/conversations/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/conversations/")
         data = response.json()
 
         feedback_conv = next(

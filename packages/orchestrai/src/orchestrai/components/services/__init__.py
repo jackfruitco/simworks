@@ -1,15 +1,16 @@
 """Service components and helpers."""
 
+from orchestrai.components.services.calls.mixins import ServiceCallMixin
+
 from .calls import ServiceCall, assert_jsonable, to_jsonable
 from .discovery import discover_services, list_services
-from orchestrai.components.services.calls.mixins import ExecutionLifecycleMixin, ServiceCallMixin
 from .exceptions import (
     MissingRequiredContextKeys,
     ServiceBuildRequestError,
     ServiceCodecResolutionError,
     ServiceConfigError,
-    ServiceDispatchError,
     ServiceDiscoveryError,
+    ServiceDispatchError,
     ServiceError,
     ServiceStreamError,
 )
@@ -17,31 +18,26 @@ from .registry import ServiceRegistry, ensure_service_registry, service_registry
 from .service import BaseService, CoreTaskProxy, TaskDescriptor
 from .task_proxy import ServiceSpec
 
-# Backward compatibility alias - PydanticAIService is now BaseService
-PydanticAIService = BaseService
-
 __all__ = (
     "BaseService",
-    "PydanticAIService",  # Alias for backward compatibility
     "CoreTaskProxy",
-    "TaskDescriptor",
-    "ServiceSpec",
-    "ServiceCall",
-    "assert_jsonable",
-    "to_jsonable",
-    "ServiceCallMixin",
-    "ExecutionLifecycleMixin",
-    "discover_services",
-    "list_services",
-    "ServiceRegistry",
-    "service_registry",
-    "ensure_service_registry",
-    "ServiceError",
-    "ServiceConfigError",
-    "ServiceCodecResolutionError",
-    "ServiceBuildRequestError",
-    "ServiceStreamError",
-    "ServiceDispatchError",
-    "ServiceDiscoveryError",
     "MissingRequiredContextKeys",
+    "ServiceBuildRequestError",
+    "ServiceCall",
+    "ServiceCallMixin",
+    "ServiceCodecResolutionError",
+    "ServiceConfigError",
+    "ServiceDiscoveryError",
+    "ServiceDispatchError",
+    "ServiceError",
+    "ServiceRegistry",
+    "ServiceSpec",
+    "ServiceStreamError",
+    "TaskDescriptor",
+    "assert_jsonable",
+    "discover_services",
+    "ensure_service_registry",
+    "list_services",
+    "service_registry",
+    "to_jsonable",
 )

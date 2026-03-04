@@ -2,6 +2,7 @@
 
 from typing import Any
 
+
 def clean_kwargs(raw: dict[str, Any]) -> dict[str, Any]:
     """Return a shallow-cleaned kwargs dict.
 

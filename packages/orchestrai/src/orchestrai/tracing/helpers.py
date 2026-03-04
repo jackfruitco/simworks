@@ -1,5 +1,6 @@
 # packages/orchestrai/src/orchestrai/tracing/helpers.py
 
+
 def flatten_context(context: dict[str, str]) -> dict[str, str]:
     """Flatten `self.context` into trace-friendly attrs as `context.<key>`.
 

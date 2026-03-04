@@ -15,7 +15,7 @@ class FormatterRegistry:
         """
         return dict(self._extension_map)
 
-    def register(self, name: str, extension: str = None):
+    def register(self, name: str, extension: str | None = None):
         """
         Decorator to register a formatter function under a given format name.
         Optionally maps a file extension to that format.

@@ -3,13 +3,13 @@
 
 import importlib
 import inspect
-from typing import TypeVar, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from orchestrai.components.exceptions import ComponentNotFoundError
 from orchestrai.registry.exceptions import RegistryNotFoundError
-from .identity import Identity, IdentityLike
 
 from ..types.protocols import RegistryProtocol
+from .identity import Identity, IdentityLike
 
 if TYPE_CHECKING:
     from ..registry import BaseRegistry
@@ -33,7 +33,7 @@ def from_(ident: IdentityLike) -> Identity:
     return Identity.get_for(ident)
 
 
-def _resolve_component_type(component_type: type[T] | str) -> type[T]:
+def _resolve_component_type[T](component_type: type[T] | str) -> type[T]:
     """
     Normalize `component_type` into a concrete class.
 
@@ -69,18 +69,16 @@ def _resolve_component_type(component_type: type[T] | str) -> type[T]:
         ) from e
 
     if not inspect.isclass(cls):
-        raise ComponentNotFoundError(
-            f"Resolved {component_type!r} but it is not a class"
-        )
+        raise ComponentNotFoundError(f"Resolved {component_type!r} but it is not a class")
 
     return cls  # type: ignore[return-value]
 
 
-def for_(
-        component_type: type[T] | str,
-        ident: IdentityLike,
-        *,
-        __from: RegistryProtocol | None | BaseRegistry = None,
+def for_[T](
+    component_type: type[T] | str,
+    ident: IdentityLike,
+    *,
+    __from: RegistryProtocol | None | BaseRegistry = None,
 ) -> T:
     """
     Resolve a registered component of the given type by identity.
@@ -177,17 +175,15 @@ def for_(
             return found
 
     # Not found anywhere: hard failure for strict resolver
-    raise ComponentNotFoundError(
-        f"No component found for {ident!r} ({Component.__name__})"
-    )
+    raise ComponentNotFoundError(f"No component found for {ident!r} ({Component.__name__})")
 
 
-def try_for_(
-        component_type: type[T] | str,
-        ident: IdentityLike,
-        *,
-        __from: RegistryProtocol | None = None,
-) -> Optional[T]:
+def try_for_[T](
+    component_type: type[T] | str,
+    ident: IdentityLike,
+    *,
+    __from: RegistryProtocol | None = None,
+) -> T | None:
     """
     Safe resolver variant.
 

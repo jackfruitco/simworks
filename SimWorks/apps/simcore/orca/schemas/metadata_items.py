@@ -15,7 +15,7 @@ The persistence engine uses ``__orm_model__`` to route each item to its
 specific Django model (e.g., LabResultItem → simulation.LabResult).
 """
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -40,37 +40,25 @@ class LabResultItem(ResultMetafield):
     """
 
     kind: Literal["lab_result"] = Field(
-        ...,
-        description="Discriminator field (must be 'lab_result')"
+        ..., description="Discriminator field (must be 'lab_result')"
     )
     panel_name: str | None = Field(
-        None,
-        max_length=100,
-        description="Lab panel name (e.g., 'Complete Blood Count')"
+        None, max_length=100, description="Lab panel name (e.g., 'Complete Blood Count')"
     )
     result_unit: str | None = Field(
-        None,
-        max_length=20,
-        description="Unit of measurement (e.g., 'mg/dL')"
+        None, max_length=20, description="Unit of measurement (e.g., 'mg/dL')"
     )
     reference_range_low: str | None = Field(
-        None,
-        max_length=50,
-        description="Lower bound of reference range"
+        None, max_length=50, description="Lower bound of reference range"
     )
     reference_range_high: str | None = Field(
-        None,
-        max_length=50,
-        description="Upper bound of reference range"
+        None, max_length=50, description="Upper bound of reference range"
     )
     result_flag: Literal["normal", "abnormal"] = Field(
-        ...,
-        description="Result flag indicating normal or abnormal"
+        ..., description="Result flag indicating normal or abnormal"
     )
     result_comment: str | None = Field(
-        None,
-        max_length=500,
-        description="Optional clinical comment or interpretation"
+        None, max_length=500, description="Optional clinical comment or interpretation"
     )
 
     __orm_model__ = "simcore.LabResult"
@@ -89,13 +77,10 @@ class RadResultItem(ResultMetafield):
     """
 
     kind: Literal["rad_result"] = Field(
-        ...,
-        description="Discriminator field (must be 'rad_result')"
+        ..., description="Discriminator field (must be 'rad_result')"
     )
     result_flag: str = Field(
-        ...,
-        max_length=10,
-        description="Result flag (e.g., 'normal', 'abnormal')"
+        ..., max_length=10, description="Result flag (e.g., 'normal', 'abnormal')"
     )
 
     __orm_model__ = "simcore.RadResult"
@@ -115,17 +100,13 @@ class PatientHistoryItem(ResultMetafield):
     """
 
     kind: Literal["patient_history"] = Field(
-        ...,
-        description="Discriminator field (must be 'patient_history')"
+        ..., description="Discriminator field (must be 'patient_history')"
     )
-    is_resolved: bool = Field(
-        ...,
-        description="Whether the condition is currently resolved"
-    )
+    is_resolved: bool = Field(..., description="Whether the condition is currently resolved")
     duration: str = Field(
         ...,
         max_length=100,
-        description="Duration of the condition (e.g., '2 years', 'since childhood')"
+        description="Duration of the condition (e.g., '2 years', 'since childhood')",
     )
 
     __orm_model__ = "simcore.PatientHistory"
@@ -144,8 +125,7 @@ class PatientDemographicsItem(ResultMetafield):
     """
 
     kind: Literal["patient_demographics"] = Field(
-        ...,
-        description="Discriminator field (must be 'patient_demographics')"
+        ..., description="Discriminator field (must be 'patient_demographics')"
     )
 
     __orm_model__ = "simcore.PatientDemographics"
@@ -163,22 +143,17 @@ class SimulationMetadataItem(ResultMetafield):
     - kind: Discriminator (must be "generic")
     """
 
-    kind: Literal["generic"] = Field(
-        ...,
-        description="Discriminator field (must be 'generic')"
-    )
+    kind: Literal["generic"] = Field(..., description="Discriminator field (must be 'generic')")
 
     __orm_model__ = "simcore.SimulationMetadata"
 
 
 # Union type for all metadata items with discriminator-based routing
 MetadataItem = Annotated[
-    Union[
-        LabResultItem,
-        RadResultItem,
-        PatientHistoryItem,
-        PatientDemographicsItem,
-        SimulationMetadataItem,
-    ],
+    LabResultItem
+    | RadResultItem
+    | PatientHistoryItem
+    | PatientDemographicsItem
+    | SimulationMetadataItem,
     Field(discriminator="kind"),
 ]

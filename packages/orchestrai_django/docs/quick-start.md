@@ -113,11 +113,11 @@ async def generate_initial(simulation, slim):
 await generate_initial.execute(simulation=my_sim)
 ```
 
-1. Identity auto-derives (e.g., chatlab.standardized_patient.initial)  
-2. Prompt resolved via registry  
-3. Messages built → request sent to provider  
-4. Codec validates, persists results, and schema validates output  
-5. Returns structured AI response  
+1. Identity auto-derives (e.g., chatlab.standardized_patient.initial)
+2. Prompt resolved via registry
+3. Messages built → request sent to provider
+4. Codec validates, persists results, and schema validates output
+5. Returns structured AI response
 
 ---
 

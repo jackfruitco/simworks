@@ -1,24 +1,25 @@
+from datetime import UTC, datetime
+from enum import Enum
 import inspect
 import json
 import logging
 import uuid
-import warnings
-from datetime import datetime, timezone as dt_timezone
-from enum import Enum
 
 from asgiref.sync import sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
-from orchestrai.utils.json import json_default
 
 from apps.simcore.models import Simulation
 from apps.simcore.utils import get_user_initials
+from orchestrai.utils.json import json_default
+
 from .models import Message
 
 logger = logging.getLogger(__name__)
 
 SYSTEM_USER = "system@medsim.local"
+
 
 class ContentMode(str, Enum):
     HTML = "fullHtml"
@@ -55,9 +56,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Retrieve the simulation object
         self.simulation_id = self.scope["url_route"]["kwargs"]["simulation_id"]
         try:
-            self.simulation = await sync_to_async(Simulation.objects.get)(
-                id=self.simulation_id
-            )
+            self.simulation = await sync_to_async(Simulation.objects.get)(id=self.simulation_id)
         except Simulation.DoesNotExist:
             error_message = f"Simulation with id {self.simulation_id} does not exist."
             ChatConsumer.log(func_name, error_message, level=logging.ERROR)
@@ -139,7 +138,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             msg=f"User {func_name}ed to room {self.room_group_name} (channel: {self.channel_name})",
         )
 
-    async def receive(self, text_data: str = None, bytes_data=None) -> None:
+    async def receive(self, text_data: str | None = None, bytes_data=None) -> None:
         """
         Handles incoming WebSocket input by parsing the data and routing it to the appropriate
         handler based on the event type.
@@ -165,12 +164,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if ended:
             allowed_when_ended = {"client_ready", "typing", "stopped_typing"}
             if event_type not in allowed_when_ended:
-                ChatConsumer.log(func_name, f"dropping '{event_type}' because simulation has ended", level=logging.INFO)
+                ChatConsumer.log(
+                    func_name,
+                    f"dropping '{event_type}' because simulation has ended",
+                    level=logging.INFO,
+                )
                 return
 
         event_dispatch = {
             "client_ready": self.handle_client_ready,
-            "chat.message_created": self.handle_message,
             "simulation.feedback_created": self.handle_generic_event,
             "typing": self.handle_typing,
             "stopped_typing": self.handle_stopped_typing,
@@ -181,7 +183,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if handler:
             await handler(data)
         else:
-            warnings.warn(f"Unrecognized event type: {event_type} – {data}")
+            logger.warning("Unrecognized event type: %s - %s", event_type, data)
 
     async def handle_client_ready(self, data) -> None:
         """
@@ -218,8 +220,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return True
 
         if (
-                simulation.time_limit
-                and (simulation.start_timestamp + simulation.time_limit) < timezone.now()
+            simulation.time_limit
+            and (simulation.start_timestamp + simulation.time_limit) < timezone.now()
         ):
             await sync_to_async(simulation.mark_timed_out)()
 
@@ -236,33 +238,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         return False
 
-    async def handle_message(self, data: dict) -> None:
-        """
-        Handle incoming user messages via WebSocket.
-
-        DEPRECATED: Message creation via WebSocket is deprecated. Clients should
-        POST to /api/v1/simulations/{id}/messages/ instead. The REST endpoint
-        handles both message persistence, per-conversation locking, and AI
-        response generation (including Stitch replies).
-
-        :param data: A dict containing at least 'content' and 'role'
-        """
-        func_name = inspect.currentframe().f_code.co_name
-        ChatConsumer.log(func_name)
-
-        warnings.warn(
-            "Creating messages via WebSocket is deprecated. "
-            "Use POST /api/v1/simulations/{id}/messages/ instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        logger.info(
-            "handle_message: ignoring WS message creation (deprecated). "
-            "Client should POST to /api/v1/simulations/%s/messages/",
-            self.simulation_id,
-        )
-
     async def handle_typing(self, data: dict) -> None:
         """
         Broadcast to the group that a user has started typing.
@@ -277,10 +252,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user_ = data.get("user")
         if not user_:
             scope_user = self.scope.get("user")
-            if scope_user and hasattr(scope_user, 'email'):
-                user_ = scope_user.email
-            else:
-                user_ = SYSTEM_USER
+            user_ = scope_user.email if scope_user and hasattr(scope_user, "email") else SYSTEM_USER
 
         if data.get("username"):
             logger.warning(
@@ -333,10 +305,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user_ = data.get("user")
         if not user_:
             scope_user = self.scope.get("user")
-            if scope_user and hasattr(scope_user, 'email'):
-                user_ = scope_user.email
-            else:
-                user_ = SYSTEM_USER
+            user_ = scope_user.email if scope_user and hasattr(scope_user, "email") else SYSTEM_USER
 
         if data.get("username"):
             logger.warning(
@@ -352,7 +321,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
-    async def handle_content_mode(self, content_mode: str = None) -> None:
+    async def handle_content_mode(self, content_mode: str | None = None) -> None:
         """
         Handles the mode of content presentation by setting it to the provided value
         or falling back to a default value. This function ensures the provided content
@@ -369,9 +338,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except ValueError:
             self.content_mode = ContentMode.HTML
 
-    async def simulate_system_typing(
-            self, display_initials: str, started: bool = True
-    ) -> None:
+    async def simulate_system_typing(self, display_initials: str, started: bool = True) -> None:
         """
         Simulate the system user beginning or stopping typing.
 
@@ -555,7 +522,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return {
             "event_id": event_id or str(uuid.uuid4()),
             "event_type": event_type,
-            "created_at": created_at or datetime.now(dt_timezone.utc).isoformat(),
+            "created_at": created_at or datetime.now(UTC).isoformat(),
             "correlation_id": correlation_id,
             "payload": payload,
         }

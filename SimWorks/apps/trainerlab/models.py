@@ -1,8 +1,6 @@
-import warnings
-
 from django.db import models
-from polymorphic.models import PolymorphicModel
 from django.utils.translation import gettext_lazy as _
+from polymorphic.models import PolymorphicModel
 
 from apps.simcore.models import BaseSession
 
@@ -13,7 +11,6 @@ class TrainerSession(BaseSession):
     Additional training-specific behaviors or fields can be added here.
     """
 
-    pass
 
 # class EventType(models.Model):
 #
@@ -26,12 +23,14 @@ class TrainerSession(BaseSession):
 
 class ABCEvent(PolymorphicModel):
     """Abstract class for Events"""
+
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    warnings.warn("`ABCEvent.event_type` is deprecated. Use `ABCEvent.polymorphic_ctype` instead.", DeprecationWarning, stacklevel=2)
     # event_type = models.ForeignKey(EventType, on_delete=models.CASCADE, related_name="events")
 
-    simulation = models.ForeignKey("simcore.Simulation", on_delete=models.CASCADE, related_name="events")
+    simulation = models.ForeignKey(
+        "simcore.Simulation", on_delete=models.CASCADE, related_name="events"
+    )
 
     def __str__(self):
         return f"{self.__class__.__name__} at {self.timestamp:%H:%M:%S}"
@@ -46,7 +45,6 @@ class Injury(ABCEvent):
         H1 = "H1", _("Hypothermia")
         H2 = "H2", _("Head Injury")
         PFC = "PC", _("Prolonged Field Care")
-
 
     class InjuryLocation(models.TextChoices):
         HEAD_LEFT_ANTERIOR = "HLA", _("Left Anterior Head")
@@ -86,7 +84,6 @@ class Injury(ABCEvent):
         JUNCTIONAL_LEFT_NECK = "JLN", _("Left Junctional Neck")
         JUNCTIONAL_RIGHT_NECK = "JRN", _("Right Junctional Neck")
 
-
     class InjuryKind(models.TextChoices):
         AMPUTATION = "AMP", _("Amputation")
         AMPUTATION_PARTIAL = "PAMP", _("Partial Amputation")
@@ -100,26 +97,28 @@ class Injury(ABCEvent):
 
     injury_category = models.CharField(
         max_length=2,
-        choices=InjuryCategory.choices,     # type: ignore[attr-defined]
+        choices=InjuryCategory.choices,  # type: ignore[attr-defined]
         db_index=True,
-        help_text="The category of the injury"
+        help_text="The category of the injury",
     )
     injury_location = models.CharField(
         max_length=4,
-        choices=InjuryLocation.choices,     # type: ignore[attr-defined]
+        choices=InjuryLocation.choices,  # type: ignore[attr-defined]
         db_index=True,
-        help_text="The location of the injury"
+        help_text="The location of the injury",
     )
     injury_kind = models.CharField(
         max_length=4,
-        choices=InjuryKind.choices,         # type: ignore[attr-defined]
+        choices=InjuryKind.choices,  # type: ignore[attr-defined]
         db_index=True,
-        help_text="The kind of injury"
+        help_text="The kind of injury",
     )
 
     injury_description = models.CharField(max_length=100)
 
-    parent_injury = models.ForeignKey("self", on_delete=models.CASCADE, related_name="children_injuries", null=True, blank=True)
+    parent_injury = models.ForeignKey(
+        "self", on_delete=models.CASCADE, related_name="children_injuries", null=True, blank=True
+    )
     is_treated = models.BooleanField(default=False)
     is_resolved = models.BooleanField(default=False)
 
@@ -142,12 +141,12 @@ class Injury(ABCEvent):
             f"({self.get_injury_category_display()})"
         )
 
+
 class Intervention(ABCEvent):
     class InterventionGroups:
         class TOURNIQUET(models.TextChoices):
             HASTY = "M-TQ-H", _("Hasty Tourniquet")
             DELIBERATE = "M-TQ-D", _("Deliberate Tourniquet")
-
 
         class GAUZE(models.TextChoices):
             PACKED = "M-GZ-PK", _("Non-Hemostatic Gauze Packed")
@@ -156,7 +155,6 @@ class Intervention(ABCEvent):
             WRAPPED_HEMOSTATIC = "M-GZ-WP-H", _("Hemostatic Gauze Wrapped")
             ZFOLDED = "M-GZ-ZF", _("Z-Folded Gauze")
             ZFOLDED_HEMOSTATIC = "M-GZ-ZF-H", _("Hemostatic Z-Folded Gauze")
-
 
         class AIRWAY(models.TextChoices):
             POSITION_RECOVERY = "A-P-R", _("Recovery Position")
@@ -179,6 +177,7 @@ class VitalMeasurement(ABCEvent):
     To reduce LLM AI calls, we use a range of values for each vital sign,
     and the front end will use the min and max values to generate a random value.
     """
+
     min_value = models.PositiveSmallIntegerField(
         help_text="Minimum value for range of this vital sign"
     )
@@ -188,10 +187,7 @@ class VitalMeasurement(ABCEvent):
 
     lock_value = models.BooleanField(
         default=False,
-        help_text=(
-            "Lock the value to the minimum (instead of a range between "
-            "min and max)"
-        ),
+        help_text=("Lock the value to the minimum (instead of a range between min and max)"),
     )
 
     @property

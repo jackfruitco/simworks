@@ -5,21 +5,21 @@
 Service-level demotion helpers.
 
 These helpers demote Django DTOs back into core `orchestrai` request/response
-models. They intentionally preserve the dot‑only identity string (domain.namespace.group.name),
+models. They intentionally preserve the dot-only identity string (domain.namespace.group.name),
 backend/client metadata, and `received_at` on responses, aligning with the
 core model decisions.
 """
 
 from typing import Any
 
+from orchestrai.identity import Identity
+from orchestrai.tracing import service_span_sync
 from orchestrai.types import Request, Response
+from orchestrai_django.types import DjangoRequest, DjangoResponse
 from orchestrai_django.types.demote import (
     demote_request as _dto_demote_request,
     demote_response as _dto_demote_response,
 )
-from orchestrai_django.types import DjangoRequest, DjangoResponse
-from orchestrai.tracing import service_span_sync
-from orchestrai.identity import Identity
 
 
 def _identity_str(ns: str | None, kd: str | None, nm: str | None) -> str | None:
@@ -41,7 +41,9 @@ def _identity_str(ns: str | None, kd: str | None, nm: str | None) -> str | None:
 
 
 def _span_attrs_from_request(dj: DjangoRequest) -> dict[str, Any]:
-    ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
+    ident = _identity_str(
+        getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None)
+    )
     return {
         "orchestrai.identity": ident or None,
         "dj.correlation_id": getattr(dj, "correlation_id", None),
@@ -50,13 +52,19 @@ def _span_attrs_from_request(dj: DjangoRequest) -> dict[str, Any]:
         "dj.name": getattr(dj, "name", None),
         "dj.backend": getattr(dj, "provider_name", None),
         "dj.client": getattr(dj, "client_name", None),
-        "db.object_db_pk": str(getattr(dj, "object_db_pk", None)) if getattr(dj, "object_db_pk", None) is not None else None,
-        "db.request_pk": str(getattr(dj, "db_pk", None)) if getattr(dj, "db_pk", None) is not None else None,
+        "db.object_db_pk": str(getattr(dj, "object_db_pk", None))
+        if getattr(dj, "object_db_pk", None) is not None
+        else None,
+        "db.request_pk": str(getattr(dj, "db_pk", None))
+        if getattr(dj, "db_pk", None) is not None
+        else None,
     }
 
 
 def _span_attrs_from_response(dj: DjangoResponse) -> dict[str, Any]:
-    ident = _identity_str(getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None))
+    ident = _identity_str(
+        getattr(dj, "namespace", None), getattr(dj, "kind", None), getattr(dj, "name", None)
+    )
     return {
         "orchestrai.identity": ident or None,
         "dj.correlation_id": getattr(dj, "correlation_id", None),
@@ -66,9 +74,15 @@ def _span_attrs_from_response(dj: DjangoResponse) -> dict[str, Any]:
         "dj.name": getattr(dj, "name", None),
         "dj.backend": getattr(dj, "provider_name", None),
         "dj.client": getattr(dj, "client_name", None),
-        "db.object_db_pk": str(getattr(dj, "object_db_pk", None)) if getattr(dj, "object_db_pk", None) is not None else None,
-        "db.request_pk": str(getattr(dj, "request_db_pk", None)) if getattr(dj, "request_db_pk", None) is not None else None,
-        "db.response_pk": str(getattr(dj, "db_pk", None)) if getattr(dj, "db_pk", None) is not None else None,
+        "db.object_db_pk": str(getattr(dj, "object_db_pk", None))
+        if getattr(dj, "object_db_pk", None) is not None
+        else None,
+        "db.request_pk": str(getattr(dj, "request_db_pk", None))
+        if getattr(dj, "request_db_pk", None) is not None
+        else None,
+        "db.response_pk": str(getattr(dj, "db_pk", None))
+        if getattr(dj, "db_pk", None) is not None
+        else None,
     }
 
 
@@ -80,8 +94,8 @@ def demote_request_for_service(dj: DjangoRequest) -> Request:
     preserves identity, backend/client, and returns a core Request with unchanged correlation id and codec hints.
     """
     with service_span_sync(
-            "svc.demote_request_for_service",
-            attributes=_span_attrs_from_request(dj),
+        "svc.demote_request_for_service",
+        attributes=_span_attrs_from_request(dj),
     ):
         return _dto_demote_request(dj)
 
@@ -94,8 +108,8 @@ def demote_response_for_service(dj: DjangoResponse) -> Response:
     preserves identity, backend/client metadata, and `received_at`, returning a core Response.
     """
     with service_span_sync(
-            "svc.demote_response_for_service",
-            attributes=_span_attrs_from_response(dj),
+        "svc.demote_response_for_service",
+        attributes=_span_attrs_from_response(dj),
     ):
         return _dto_demote_response(dj)
 

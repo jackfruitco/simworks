@@ -13,14 +13,18 @@ from apps.chatlab.models import ChatSession, Message, MessageMediaLink
 from apps.common.orm_mode import must_be_async
 from apps.common.utils import remove_null_keys
 from apps.simcore.models import (
-    LabResult, RadResult, Simulation, SimulationMetadata,
+    LabResult,
+    RadResult,
+    Simulation,
+    SimulationMetadata,
 )
-from apps.simcore.utils import get_user_initials, generate_fake_name
+from apps.simcore.utils import generate_fake_name, get_user_initials
+
 from .apps import ChatLabConfig
 
 logger = logging.getLogger(__name__)
 
-APP_NAME = getattr(ChatLabConfig, "name") or getattr(ChatLabConfig, "label") or "<unknown>"
+APP_NAME = ChatLabConfig.name or ChatLabConfig.label or "<unknown>"
 
 
 async def await_if_needed(result):
@@ -30,7 +34,7 @@ async def await_if_needed(result):
 
 
 async def create_new_simulation(
-        user, modifiers: list = None, force: bool = False
+    user, modifiers: list | None = None, force: bool = False
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
     must_be_async()
@@ -99,9 +103,7 @@ async def create_new_simulation(
         return simulation
 
     logger.info(
-        "Simulation %s created, initial response enqueued as call %s",
-        simulation.id,
-        call_id
+        "Simulation %s created, initial response enqueued as call %s", simulation.id, call_id
     )
 
     return simulation
@@ -119,18 +121,16 @@ def maybe_start_simulation(simulation):
 @database_sync_to_async
 def add_message_media(message_id, media_id):
     """Adds a media object to a message."""
-    return MessageMediaLink.objects.get_or_create(
-        message_id=message_id, media_id=media_id
-    )
+    return MessageMediaLink.objects.get_or_create(message_id=message_id, media_id=media_id)
 
 
 async def socket_send(
-        __type: str,
-        __group: str = None,
-        __simulation_id: int = None,
-        __payload: dict = None,
-        __status: str = None,
-        **kwargs,
+    __type: str,
+    __group: str | None = None,
+    __simulation_id: int | None = None,
+    __payload: dict | None = None,
+    __status: str | None = None,
+    **kwargs,
 ) -> None:
     """
     Sends an arbitrary payload to the specified WebSocket group.
@@ -176,11 +176,11 @@ async def socket_send(
 
 
 async def broadcast_event(
-        __type: str,
-        __simulation: Simulation | int,
-        __payload: dict | None = None,
-        __status: str = None,
-        **kwargs,
+    __type: str,
+    __simulation: Simulation | int,
+    __payload: dict | None = None,
+    __status: str | None = None,
+    **kwargs,
 ) -> None:
     """Broadcasts an event to the specified group layer.
 
@@ -222,8 +222,8 @@ async def broadcast_event(
 
 
 async def broadcast_patient_results(
-        __source: list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
-        __status: str = None
+    __source: list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
+    __status: str | None = None,
 ) -> None:
     """Broadcasts a patient results event to the specified group layer.
 
@@ -246,9 +246,7 @@ async def broadcast_patient_results(
         __source = [__source]
 
     # Debug logging
-    logger.debug(
-        f"Received {len(__source)} patient results to broadcast to all connected clients."
-    )
+    logger.debug(f"Received {len(__source)} patient results to broadcast to all connected clients.")
 
     # Group results by simulation ID and serialize them before broadcasting
     grouped_results = {}
@@ -261,9 +259,7 @@ async def broadcast_patient_results(
         try:
             serialized = result.serialize()
         except AttributeError as e:
-            logger.error(
-                f"{type(result).__name__} object has no .serialize() method: {e}"
-            )
+            logger.error(f"{type(result).__name__} object has no .serialize() method: {e}")
             skipped += 1
             continue
 
@@ -277,9 +273,7 @@ async def broadcast_patient_results(
         payload = {"tool": "patient_results", "results": grouped_results[sim_id]}
 
         # Send event to the group layer
-        logger.debug(
-            f"Broadcasting {len(grouped_results[sim_id])} results to simulation_{sim_id}"
-        )
+        logger.debug(f"Broadcasting {len(grouped_results[sim_id])} results to simulation_{sim_id}")
         await socket_send(
             __type="simulation.metadata.results_created",
             __payload=payload,
@@ -290,9 +284,9 @@ async def broadcast_patient_results(
 
 
 async def broadcast_message(
-        message: Message | int,
-        status: str = None,
-        **kwargs,
+    message: Message | int,
+    status: str | None = None,
+    **kwargs,
 ) -> None:
     """Broadcasts a message event to the specified group layer.
 
@@ -321,24 +315,24 @@ async def broadcast_message(
     # Get Message instance if provided ID
     if not isinstance(message, Message):
         try:
-            message = await Message.objects.select_related("sender").prefetch_related("media").aget(id=message)
+            message = (
+                await Message.objects.select_related("sender")
+                .prefetch_related("media")
+                .aget(id=message)
+            )
         except Message.DoesNotExist:
             logger.error(msg=f"Message ID {message} not found. Skipping broadcast.")
             return None
 
     # Get Simulation instance from Message FK
     try:
-        simulation = await Simulation.objects.aget(
-            id=message.simulation_id
-        )
+        simulation = await Simulation.objects.aget(id=message.simulation_id)
     except Simulation.DoesNotExist:
-        logger.error(
-            msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast."
-        )
+        logger.error(msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast.")
         return None
 
     # Set channel and group layers to broadcast to
-    channel_layer = get_channel_layer()
+    get_channel_layer()
     group = f"simulation_{message.simulation_id}"
 
     has_sender = message.sender is not None
@@ -377,6 +371,4 @@ async def broadcast_message(
     }
     payload = await sync_to_async(remove_null_keys)(payload)
 
-    return await socket_send(
-        __payload=payload, __group=group, __type="chat.message_created"
-    )
+    return await socket_send(__payload=payload, __group=group, __type="chat.message_created")

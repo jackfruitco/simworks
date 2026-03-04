@@ -1,7 +1,9 @@
 """Tests for structured logging configuration."""
 
-import structlog
+import contextlib
+
 from django.test import RequestFactory
+import structlog
 
 from config.logging import (
     bind_context,
@@ -177,10 +179,8 @@ class TestCorrelationIDMiddlewareIntegration:
         middleware = CorrelationIDMiddleware(mock_get_response)
         request = RequestFactory().get("/test")
 
-        try:
+        with contextlib.suppress(ValueError):
             middleware(request)
-        except ValueError:
-            pass
 
         # Context should still be cleared
         ctx = structlog.contextvars.get_contextvars()

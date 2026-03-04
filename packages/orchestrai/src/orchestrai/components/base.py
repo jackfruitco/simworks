@@ -1,14 +1,14 @@
 # orchestrai/components/base.py
-import logging
 from abc import ABC
-from typing import TYPE_CHECKING, ClassVar
+import logging
+from typing import TYPE_CHECKING, ClassVar, Self
 from uuid import UUID, uuid4
 
-from .exceptions import ComponentNotFoundError
 from ..identity import IdentityLike
+from .exceptions import ComponentNotFoundError
 
 if TYPE_CHECKING:
-    from orchestrai.registry import ComponentRegistry, BaseRegistry
+    from orchestrai.registry import BaseRegistry, ComponentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,8 @@ class BaseComponent(ABC):
         self.uuid: UUID = uuid4()
 
     def __post_init__(self) -> None:
-        pass
+        """Hook for subclasses."""
+        return None
 
     # ----------------------------------------------------------------------------------
     # Registry accessors
@@ -63,7 +64,7 @@ class BaseComponent(ABC):
         return cls.try_get_registry()
 
     @classmethod
-    def get(cls, ident: IdentityLike) -> type[BaseComponent]:
+    def get(cls, ident: IdentityLike) -> type[Self]:
         """Resolve a registered component type by identity (sync)."""
         registry = cls.get_registry()
 
@@ -74,7 +75,7 @@ class BaseComponent(ABC):
         return component_
 
     @classmethod
-    async def aget(cls, ident: IdentityLike) -> type[BaseComponent]:
+    async def aget(cls, ident: IdentityLike) -> type[Self]:
         """
         Async lookup: resolve a registered component type by identity.
 
@@ -89,7 +90,7 @@ class BaseComponent(ABC):
         return component_
 
     @classmethod
-    def try_get(cls, ident: IdentityLike) -> type[BaseComponent] | None:
+    def try_get(cls, ident: IdentityLike) -> type[Self] | None:
         """Sync-safe lookup. Returns None instead of raising."""
         from ..registry.exceptions import RegistryNotFoundError
 
@@ -103,7 +104,7 @@ class BaseComponent(ABC):
             return None
 
     @classmethod
-    async def atry_get(cls, ident: IdentityLike) -> type[BaseComponent] | None:
+    async def atry_get(cls, ident: IdentityLike) -> type[Self] | None:
         """Async-safe lookup. Returns None instead of raising."""
         from ..registry.exceptions import RegistryNotFoundError
 

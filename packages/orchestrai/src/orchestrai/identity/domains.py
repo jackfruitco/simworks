@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 import re
-from typing import Iterable, Optional, Sequence
 
 __all__ = [
-    "SERVICES_DOMAIN",
     "CODECS_DOMAIN",
+    "DEFAULT_DOMAIN",
+    "PERSIST_DOMAIN",
     "PROMPT_SECTIONS_DOMAIN",
     "SCHEMAS_DOMAIN",
-    "PERSIST_DOMAIN",
+    "SERVICES_DOMAIN",
     "SUPPORTED_DOMAINS",
-    "DEFAULT_DOMAIN",
     "normalize_domain",
 ]
 
@@ -42,7 +42,7 @@ def _normalize(value: str) -> str:
 
 
 def normalize_domain(
-    value: Optional[str],
+    value: str | None,
     *,
     default: str | None = DEFAULT_DOMAIN,
     allowed: Sequence[str] | None = SUPPORTED_DOMAINS,
