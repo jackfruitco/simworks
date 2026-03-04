@@ -2,14 +2,14 @@
 
 ### Pipeline
 1. **Definition**
-   - Services subclass `BaseService` or use the `@service` decorator (pins identity and registers in the global services registry). `shared_service` defers registration until app finalize.
+   - Services subclass `BaseService` or use the `@service` decorator (pins identity and registers in the global services registry).
    - Optional class defaults: `codec_cls`, `prompt_plan`, `prompt_engine`, `provider_name`, `response_schema`.
 2. **Registration**
-   - App-local: `OrchestrAI.services.register(name, obj)` (idempotent, frozen on `finalize`).
+   - App-local: `OrchestrAI.component_store.registry("services").register(...)` (idempotent, frozen on `finalize`).
    - Global: decorators register into identity-based registries (`services`, `codecs`, `schemas`, `prompt_sections`).
-   - Discovery: loader imports modules listed in `DISCOVERY_PATHS`; any shared decorators add finalize callbacks that run during `app.finalize()`.
+   - Discovery: loader imports modules listed in `DISCOVERY_PATHS`; finalize callbacks registered via `connect_on_app_finalize` run during `app.finalize()`.
 3. **Resolution**
-   - App-local lookup via `app.services.get(name)` or `current_app.services.get(name)`.
+   - App-local lookup via `app.component_store.registry("services").get(...)`.
    - Identity-based resolution for codecs/schemas/prompt sections via `Identity.resolve.try_for_(kind, identity)` backed by the global registries.
 4. **Preparation**
    - Context merge + `check_required_context`.
@@ -31,7 +31,7 @@
 - **Client**: injected `client` → registry-backed client → factory-built client.
 
 ### Discovery/Registration Hooks
-- `DefaultLoader.autodiscover` imports configured modules; modules using `shared_service`/other shared decorators contribute finalize callbacks consumed during `app.finalize()`.
+- `DefaultLoader.autodiscover` imports configured modules; modules can register finalize callbacks via `connect_on_app_finalize`, consumed during `app.finalize()`.
 
 ### Error Surfaces
 - Missing emitter, prompt plan resolution failure, codec/schema resolution errors, and backend/client issues raise `ServiceConfigError`/`ServiceBuildRequestError` (or propagate codec errors) after retries are exhausted.

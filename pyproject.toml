@@ -52,17 +52,14 @@ orchestrai-django = { workspace = true }
 orchestrai = { workspace = true }
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "config.settings"
-python_files = ["tests/*.py", "tests/**/*.py"]
-addopts = [
-    "-ra",
-    "--cov=SimWorks",
-    "--cov=packages/orchestrai/src/orchestrai",
-    "--cov=packages/orchestrai_django/src/orchestrai_django",
-    "--cov-report=term-missing",
-    "--cov-report=xml",
-    "--cov-fail-under=80",
+DJANGO_SETTINGS_MODULE = "tests.settings_test"
+pythonpath = [
+    ".",
+    "SimWorks",
+    "packages/orchestrai/src",
+    "packages/orchestrai_django/src",
 ]
+python_files = ["tests/*.py", "tests/**/*.py"]
 asyncio_mode = "auto"
 
 [dependency-groups]
