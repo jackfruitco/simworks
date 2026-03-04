@@ -20,13 +20,11 @@ resolves to something usable.
 - **Loader seam**: `orchestrai.loaders.base.BaseLoader` defines the hooks for
   reading config and autodiscovery; `DefaultLoader` implements env-based config
   and simple module importing.
-- **Fixups**: `orchestrai.fixups.base.BaseFixup` defines hooks for integrations
-  to extend autodiscovery or add pre-import logic. Core remains free of Django
-  imports.
-- **Finalize callbacks + shared decorators**: finalize callbacks registered via
-  `connect_on_app_finalize` run during `app.finalize()`. `@shared_service`
-  captures a service function before any app exists and attaches it during
-  finalize.
+- **Fixups**: `orchestrai.fixups.base.Fixup` + `FixupStage` define lifecycle
+  extension points (`apply(stage, app, **context)`) for integrations to extend
+  autodiscovery or add pre-import logic. Core remains free of Django imports.
+- **Finalize callbacks**: callbacks registered via `connect_on_app_finalize`
+  run during `app.finalize()`.
 - **Registries**: `Registry` objects live on the app (`services`, `clients`,
   `providers`, `codecs`, `prompt_sections`) and are frozen on finalize.
 
@@ -41,4 +39,3 @@ resolves to something usable.
 
 Calls to `setup()` and `start()` are idempotent; repeated invocations will not
 duplicate registrations or imports.
-

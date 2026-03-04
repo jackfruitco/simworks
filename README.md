@@ -14,3 +14,15 @@ SimWorks is a Django-based simulation platform with integrated AI orchestration 
 - `cd-promote` promotes a verified release candidate digest to production tags.
 
 See deployment tag conventions and workflow details in `docs/DEPLOYMENT_TAGS.md`.
+
+## Reproduce CI Test Command Locally
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings uv run pytest -ra \
+  --cov=SimWorks \
+  --cov=packages/orchestrai/src/orchestrai \
+  --cov=packages/orchestrai_django/src/orchestrai_django \
+  --cov-report=term-missing \
+  --cov-report=xml \
+  --cov-fail-under=80
+```
