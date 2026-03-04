@@ -34,16 +34,17 @@ class ServiceDecorator(BaseDecorator):
 
     Usage
     -----
-        from orchestrai.decorators import service
+        from orchestrai.decorators import service, orca
+        from orchestrai.instructions import BaseInstruction
+
+        @orca.instruction(order=10)
+        class MyInstruction(BaseInstruction):
+            instruction = "Instructions..."
 
         @service
-        class MyService(BaseService):
+        class MyService(MyInstruction, BaseService):
             model = "openai-responses:gpt-5-nano"
             response_schema = MySchema
-
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "Instructions..."
 
         # or with explicit hints
         @service(namespace="orchestrai", name="json")
