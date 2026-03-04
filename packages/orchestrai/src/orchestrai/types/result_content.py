@@ -16,35 +16,38 @@ Key characteristics:
 DO NOT use these for construction - use Build* types instead.
 """
 
-from typing import Literal, Any
+from typing import Literal
 
 from pydantic import Field
 
 from .base import StrictBaseModel
 
 __all__ = (
-    "ResultContent",
-    "ResultTextContent",
-    "ResultImageContent",
     "ResultAudioContent",
+    "ResultContent",
     "ResultFileContent",
+    "ResultImageContent",
+    "ResultJsonContent",
     "ResultScreenshotContent",
+    "ResultTextContent",
     "ResultToolCallContent",
     "ResultToolResultContent",
-    "ResultJsonContent",
 )
 
 
 # ---- Result-side content types (strict, schema-authoritative) ----
 
+
 class ResultTextContent(StrictBaseModel):
     """Text content for structured outputs - strict, no defaults."""
+
     type: Literal["text"]
     text: str = Field(..., min_length=1)
 
 
 class ResultImageContent(StrictBaseModel):
     """Image content for structured outputs - strict, no defaults."""
+
     type: Literal["image"]
     mime_type: str
     data_b64: str
@@ -52,6 +55,7 @@ class ResultImageContent(StrictBaseModel):
 
 class ResultAudioContent(StrictBaseModel):
     """Audio content for structured outputs - strict, no defaults."""
+
     type: Literal["audio"]
     mime_type: str
     data_b64: str
@@ -59,6 +63,7 @@ class ResultAudioContent(StrictBaseModel):
 
 class ResultFileContent(StrictBaseModel):
     """File content for structured outputs - strict, no defaults."""
+
     type: Literal["file"]
     mime_type: str
     data_b64: str
@@ -66,6 +71,7 @@ class ResultFileContent(StrictBaseModel):
 
 class ResultScreenshotContent(StrictBaseModel):
     """Screenshot content for structured outputs - strict, no defaults."""
+
     type: Literal["screenshot"]
     mime_type: str
     data_b64: str
@@ -77,12 +83,12 @@ class ResultToolCallContent(StrictBaseModel):
     Note: arguments_json is a JSON-encoded string to comply with OpenAI strict mode
     (dict[str, Any] violates additionalProperties: false requirement).
     """
+
     type: Literal["tool_call"]
     call_id: str
     name: str
     arguments_json: str = Field(
-        ...,
-        description="Tool arguments as JSON-encoded string (OpenAI strict mode compliant)"
+        ..., description="Tool arguments as JSON-encoded string (OpenAI strict mode compliant)"
     )
 
 
@@ -91,12 +97,12 @@ class ResultToolResultContent(StrictBaseModel):
 
     All fields are required. Use None for unused fields.
     """
+
     type: Literal["tool_result"]
     call_id: str
     result_text: str | None = Field(...)
     result_json_str: str | None = Field(
-        ...,
-        description="Tool result as JSON-encoded string (for arbitrary structures)"
+        ..., description="Tool result as JSON-encoded string (for arbitrary structures)"
     )
     mime_type: str | None = Field(...)
     data_b64: str | None = Field(...)
@@ -104,10 +110,10 @@ class ResultToolResultContent(StrictBaseModel):
 
 class ResultJsonContent(StrictBaseModel):
     """JSON content for structured outputs - strict, no defaults."""
+
     type: Literal["json"]
     value_json: str = Field(
-        ...,
-        description="JSON content as encoded string (for arbitrary structures)"
+        ..., description="JSON content as encoded string (for arbitrary structures)"
     )
 
 

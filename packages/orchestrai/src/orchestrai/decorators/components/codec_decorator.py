@@ -7,14 +7,14 @@ Core codec decorator.
 - Preserves the `.identity` descriptor from `IdentityMixin` (pinning only, no attr overwrites).
 - Enforces that only BaseCodec subclasses can be decorated.
 """
+
 import logging
-from typing import Any, Type
+from typing import Any
 
 from orchestrai.components.codecs.codec import BaseCodec
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import CODECS_DOMAIN
-from orchestrai.registry import ComponentRegistry
-from orchestrai.registry import codecs as codec_registry
+from orchestrai.registry import ComponentRegistry, codecs as codec_registry
 
 __all__ = ("CodecDecorator",)
 
@@ -48,7 +48,7 @@ class CodecDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "codecs"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: type[Any]) -> None:
         """Register a codec class after guarding its base type.
 
         Ensures only BaseCodec subclasses are registered into the codecs registry.

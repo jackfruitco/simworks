@@ -25,10 +25,10 @@ Usage:
 
 from __future__ import annotations
 
-import logging
-import uuid
 from abc import ABC
+import logging
 from typing import TYPE_CHECKING, Any, ClassVar
+import uuid
 
 from orchestrai.components.services import BaseService
 from orchestrai_django.signals import emitter as _default_emitter
@@ -98,7 +98,7 @@ class DjangoBaseService(BaseService, ABC):
         # Django signal emitter
         self.emitter = emitter or _default_emitter
 
-    async def arun(self, **ctx: Any) -> "RunResult":
+    async def arun(self, **ctx: Any) -> RunResult:
         """
         Execute the service with Django integration.
 
@@ -150,13 +150,12 @@ class DjangoBaseService(BaseService, ABC):
     # ------------------------------------------------------------------
     # Result hooks (context-first)
     # ------------------------------------------------------------------
-    async def on_success_ctx(self, *, context: dict[str, Any], result: "RunResult") -> None:
+    async def on_success_ctx(self, *, context: dict[str, Any], result: RunResult) -> None:
         """Context-first success hook (preferred in Django layer).
 
         Override this in subclasses instead of `on_success` if you want a
         keyword-only context argument.
         """
-        pass
 
     async def on_failure_ctx(self, *, context: dict[str, Any], err: Exception) -> None:
         """Context-first failure hook (preferred in Django layer).
@@ -164,9 +163,8 @@ class DjangoBaseService(BaseService, ABC):
         Override this in subclasses instead of `on_failure` if you want a
         keyword-only context argument.
         """
-        pass
 
-    async def on_success(self, context: dict[str, Any], result: "RunResult") -> None:
+    async def on_success(self, context: dict[str, Any], result: RunResult) -> None:
         """BaseService callback override.
 
         Delegates to `on_success_ctx` so subclasses can implement either

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 import importlib
 import importlib.util
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from orchestrai.conf.settings import Settings
 
@@ -133,7 +134,6 @@ def configure_from_django_settings(
     conf["DISCOVERY_PATHS"] = tuple(_dedupe_preserve_order(discovery_paths))
 
     # No Django-specific fixups needed (persistence is declarative via __persist__)
-    pass
 
     if app is not None and hasattr(app, "configure"):
         app.configure(conf.as_dict())

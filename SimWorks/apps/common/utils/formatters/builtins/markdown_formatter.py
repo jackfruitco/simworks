@@ -15,4 +15,4 @@ def as_markdown(self):
         f"| {r.get('id', '')} | {r.get('start_timestamp', '')} | {r.get('diagnosis', '')} | {r.get('chief_complaint', '')} |"
         for r in rows
     ]
-    return "\n".join([header] + lines)
+    return "\n".join([header, *lines])

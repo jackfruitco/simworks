@@ -8,8 +8,8 @@ Tests that:
 5. Authentication works on protected endpoints
 """
 
-import pytest
 from django.test import Client
+import pytest
 
 
 @pytest.mark.django_db

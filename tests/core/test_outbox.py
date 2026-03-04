@@ -8,13 +8,12 @@ Tests that:
 5. Concurrent drain safety (skip_locked)
 """
 
-import uuid
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from django.db import IntegrityError
 from django.utils import timezone
+import pytest
 
 from apps.common.models import OutboxEvent
 from apps.common.outbox import (
@@ -376,7 +375,7 @@ class TestDrainOutbox:
     @patch("channels.layers.get_channel_layer")
     def test_drain_marks_failed_after_max_attempts(self, mock_get_channel_layer):
         """Drain marks event as failed after max attempts."""
-        from apps.common.tasks import drain_outbox, DRAIN_MAX_ATTEMPTS
+        from apps.common.tasks import DRAIN_MAX_ATTEMPTS, drain_outbox
 
         mock_channel_layer = MagicMock()
         mock_channel_layer.group_send.side_effect = Exception("Connection failed")

@@ -1,14 +1,20 @@
 # orchestrai/registry/base.py
 
 
+from collections.abc import Callable
 import logging
 from threading import RLock
-from typing import Callable, Generic, TypeVar, Any, overload, Literal
+from typing import Any, Literal, TypeVar, overload
 
 from asgiref.sync import sync_to_async
 
-from .exceptions import RegistryDuplicateError, RegistryCollisionError, RegistryFrozenError, RegistryLookupError
 from ..identity.identity import Identity
+from .exceptions import (
+    RegistryCollisionError,
+    RegistryDuplicateError,
+    RegistryFrozenError,
+    RegistryLookupError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +22,7 @@ K = TypeVar("K")
 T = TypeVar("T")
 
 
-class BaseRegistry(Generic[K, T]):
+class BaseRegistry[K, T]:
     """Framework-agnostic registry keyed by an identity-like key K storing classes of T."""
 
     def __init__(self, *, coerce_key: Callable[[Any], K]) -> None:
@@ -42,12 +48,8 @@ class BaseRegistry(Generic[K, T]):
                 candidate_fqcn = f"{cls.__module__}.{cls.__name__}"
 
                 raise RegistryCollisionError(
-                    "Key already registered to different instance: {key} "
-                    "(existing={existing_fqcn}, candidate={candidate_fqcn})".format(
-                        key=key_label,
-                        existing_fqcn=existing_fqcn,
-                        candidate_fqcn=candidate_fqcn,
-                    )
+                    f"Key already registered to different instance: {key_label} "
+                    f"(existing={existing_fqcn}, candidate={candidate_fqcn})"
                 )
             self._store[key] = cls
 
@@ -165,12 +167,10 @@ class BaseRegistry(Generic[K, T]):
 
     # --- enumerate all entries ---
     @overload
-    def items(self, *, as_str: Literal[True]) -> tuple[str, ...]:
-        ...
+    def items(self, *, as_str: Literal[True]) -> tuple[str, ...]: ...
 
     @overload
-    def items(self, *, as_str: Literal[False] = False) -> tuple[type[T], ...]:
-        ...
+    def items(self, *, as_str: Literal[False] = False) -> tuple[type[T], ...]: ...
 
     def items(self, *, as_str: bool = False) -> object:
         """
@@ -187,12 +187,10 @@ class BaseRegistry(Generic[K, T]):
             return tuple(self._store.values())
 
     @overload
-    def all(self, *, as_str: Literal[True]) -> tuple[str, ...]:
-        ...
+    def all(self, *, as_str: Literal[True]) -> tuple[str, ...]: ...
 
     @overload
-    def all(self, *, as_str: Literal[False] = False) -> tuple[type[T], ...]:
-        ...
+    def all(self, *, as_str: Literal[False] = False) -> tuple[type[T], ...]: ...
 
     def all(self, *, as_str: bool = False):
         """
@@ -225,6 +223,7 @@ class BaseRegistry(Generic[K, T]):
             keys_tuple: tuple[K, ...] = tuple(self._store.keys())
 
         if as_csv:
+
             def to_str(k: K) -> str:
                 ident = getattr(k, "as_str", None)
                 return ident if isinstance(ident, str) else str(k)

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import inspect
+from collections.abc import Callable
+import contextlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
+import inspect
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from orchestrai.finalize import connect_on_app_finalize
 
@@ -105,10 +107,8 @@ def register_service_runner(
 
         current_default = getattr(app, "default_service_runner", None)
         if make_default and (allow_override or current_default is None):
-            try:
-                setattr(app, "default_service_runner", runner_name)
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                app.default_service_runner = runner_name
 
     connect_on_app_finalize(_attach)
 

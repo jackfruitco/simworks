@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 import glob
 import importlib
 import importlib.util
 import os
 import sys
-from typing import Iterable, List, Sequence
 
 from .base import BaseLoader
 
@@ -30,7 +30,7 @@ class DefaultLoader(BaseLoader):
         modules = app.conf.get("DISCOVERY_PATHS", ())
         self.autodiscover(app, modules)
 
-    def autodiscover(self, app, modules: Iterable[str]) -> List[str]:
+    def autodiscover(self, app, modules: Iterable[str]) -> list[str]:
         imported: list[str] = []
         resolved = self._resolve_modules(modules)
         expanded = self._expand_package_roots(resolved)

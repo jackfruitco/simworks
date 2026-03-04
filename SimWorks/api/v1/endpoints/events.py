@@ -11,8 +11,8 @@ from api.v1.auth import JWTAuth
 from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.utils import get_simulation_for_user
-from config.logging import get_logger
 from apps.common.ratelimit import api_rate_limit
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -51,7 +51,7 @@ def list_events(
     user = request.auth
 
     # Verify user owns the simulation
-    sim = get_simulation_for_user(simulation_id, user)
+    get_simulation_for_user(simulation_id, user)
 
     # Build queryset
     queryset = OutboxEvent.objects.filter(
@@ -63,14 +63,14 @@ def list_events(
         try:
             cursor_uuid = uuid_module.UUID(cursor)
         except ValueError:
-            raise HttpError(400, "Invalid cursor format: must be a valid UUID")
+            raise HttpError(400, "Invalid cursor format: must be a valid UUID") from None
 
         # Get the created_at of the cursor event
         try:
             cursor_event = OutboxEvent.objects.get(id=cursor_uuid)
             queryset = queryset.filter(created_at__gt=cursor_event.created_at)
         except OutboxEvent.DoesNotExist:
-            raise HttpError(400, "Invalid cursor: event not found")
+            raise HttpError(400, "Invalid cursor: event not found") from None
 
     # Fetch one extra to check for more
     events = list(queryset[: limit + 1])

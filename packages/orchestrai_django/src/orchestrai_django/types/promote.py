@@ -4,7 +4,7 @@ DTO promotion helpers (core -> Django overlays).
 This module performs **pure, lossless** transformations of core orchestrai DTOs
 (`Request`, `Response`, etc.) into Django-rich DTOs (`DjangoLLM*`).
 It does **no identity normalization** or resolver logic and intentionally
-contains **no tracing**. Service‑aware enrichment (identity/backend/client,
+contains **no tracing**. Service-aware enrichment (identity/backend/client,
 spans) belongs in `orchestrai_django.services.promote` / `...demote`.
 
 Behavior:
@@ -13,23 +13,23 @@ Behavior:
 - All extra fields are passed via `**overlay` verbatim.
 """
 
-
-
-from typing import Any, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 from uuid import UUID
 
 from orchestrai.types import (
-    Request,
     InputItem,
-    Response,
     OutputItem,
+    Request,
+    Response,
     UsageContent,
 )
+
 from .django_dtos import (
-    DjangoRequest,
     DjangoInputItem,
-    DjangoResponse,
     DjangoOutputItem,
+    DjangoRequest,
+    DjangoResponse,
     DjangoUsageContent,
 )
 
@@ -40,10 +40,13 @@ __all__ = [
 
 # ---------------------- helpers -----------------------------------------
 
+
 def _promote_messages(
-        messages: Optional[Sequence[InputItem]], *, request_db_pk: int | UUID | None = None,
-        request_correlation_id: UUID | None = None
-) -> List[DjangoInputItem]:
+    messages: Sequence[InputItem] | None,
+    *,
+    request_db_pk: int | UUID | None = None,
+    request_correlation_id: UUID | None = None,
+) -> list[DjangoInputItem]:
     """
     Promote a sequence of InputItem core DTOs into DjangoInputItem DTOs.
 
@@ -56,7 +59,7 @@ def _promote_messages(
     - List of DjangoInputItem with sequence_index preserving order.
     - Returns empty list if input is None or empty.
     """
-    out: List[DjangoInputItem] = []
+    out: list[DjangoInputItem] = []
     if not messages:
         return out
     for idx, msg in enumerate(messages):
@@ -73,11 +76,13 @@ def _promote_messages(
 
 
 def _promote_response_items(
-        items: Optional[Sequence[OutputItem]], *, response_db_pk: int | UUID | None = None,
-        request_db_pk: int | UUID | None = None,
-        request_correlation_id: UUID | None = None,
-        response_correlation_id: UUID | None = None,
-) -> List[DjangoOutputItem]:
+    items: Sequence[OutputItem] | None,
+    *,
+    response_db_pk: int | UUID | None = None,
+    request_db_pk: int | UUID | None = None,
+    request_correlation_id: UUID | None = None,
+    response_correlation_id: UUID | None = None,
+) -> list[DjangoOutputItem]:
     """
     Promote a sequence of OutputItem core DTOs into DjangoOutputItem DTOs.
 
@@ -92,7 +97,7 @@ def _promote_response_items(
     - List of DjangoOutputItem with sequence_index preserving order.
     - Returns empty list if input is None or empty.
     """
-    out: List[DjangoOutputItem] = []
+    out: list[DjangoOutputItem] = []
     if not items:
         return out
     for idx, it in enumerate(items):
@@ -111,10 +116,12 @@ def _promote_response_items(
 
 
 def _promote_usage(
-        usage: Optional[UsageContent], *, response_db_pk: int | UUID | None = None,
-        request_correlation_id: UUID | None = None,
-        response_correlation_id: UUID | None = None,
-) -> Optional[DjangoUsageContent]:
+    usage: UsageContent | None,
+    *,
+    response_db_pk: int | UUID | None = None,
+    request_correlation_id: UUID | None = None,
+    response_correlation_id: UUID | None = None,
+) -> DjangoUsageContent | None:
     """
     Promote an optional UsageContent core DTO into DjangoUsageContent DTO.
 
@@ -132,12 +139,16 @@ def _promote_usage(
     if not usage:
         return None
     data = usage.model_dump(mode="json")
-    return DjangoUsageContent(**data, response_db_pk=response_db_pk,
-                              request_correlation_id=request_correlation_id,
-                              response_correlation_id=response_correlation_id)
+    return DjangoUsageContent(
+        **data,
+        response_db_pk=response_db_pk,
+        request_correlation_id=request_correlation_id,
+        response_correlation_id=response_correlation_id,
+    )
 
 
 # ---------------------- public API --------------------------------------
+
 
 def promote_request(req: Request, **overlay: Any) -> DjangoRequest:
     """Promote a core Request to a Django-rich DjangoRequest.
@@ -153,8 +164,11 @@ def promote_request(req: Request, **overlay: Any) -> DjangoRequest:
     dj = DjangoRequest(**data, **overlay)
 
     # Build rich input for convenience (sequence-indexed), if base input exist
-    dj.messages_rich = _promote_messages(req.input, request_db_pk=dj.db_pk,
-                                         request_correlation_id=getattr(dj, "correlation_id", None))
+    dj.messages_rich = _promote_messages(
+        req.input,
+        request_db_pk=dj.db_pk,
+        request_correlation_id=getattr(dj, "correlation_id", None),
+    )
     return dj
 
 
@@ -179,8 +193,10 @@ def promote_response(resp: Response, **overlay: Any) -> DjangoResponse:
         request_correlation_id=req_corr,
         response_correlation_id=resp_corr,
     )
-    dj.usage_rich = _promote_usage(resp.usage, response_db_pk=dj.db_pk,
-                                   request_correlation_id=req_corr,
-                                   response_correlation_id=resp_corr)
+    dj.usage_rich = _promote_usage(
+        resp.usage,
+        response_db_pk=dj.db_pk,
+        request_correlation_id=req_corr,
+        response_correlation_id=resp_corr,
+    )
     return dj
-

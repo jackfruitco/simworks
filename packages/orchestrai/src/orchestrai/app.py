@@ -11,14 +11,15 @@ The app focuses on a predictable lifecycle:
 
 Services use Pydantic AI's Agent abstraction directly for LLM execution.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 import importlib
 import sys
-from collections.abc import Iterable
-from dataclasses import dataclass, field
 from threading import RLock
-from typing import Any, Callable
+from typing import Any
 
 ORCA_BANNER = r"""
 
@@ -34,7 +35,7 @@ ORCA_BANNER = r"""
 
 """
 
-from ._state import push_current_app, set_current_app
+from ._state import set_current_app
 from .conf.settings import Settings
 from .finalize import consume_finalizers
 from .fixups.base import Fixup, FixupStage
@@ -45,9 +46,11 @@ from .registry.active_app import (
     push_active_registry_app,
     set_active_registry_app,
 )
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _import_string(path: str):
     module_name, sep, attr = path.partition(":")
@@ -60,6 +63,7 @@ def _import_string(path: str):
 # ---------------------------------------------------------------------------
 # Application
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class OrchestrAI:
@@ -82,7 +86,7 @@ class OrchestrAI:
 
     component_store: ComponentStore = field(default_factory=ComponentStore)
 
-    _service_finalize_callbacks: list[Callable[["OrchestrAI"], None]] = field(
+    _service_finalize_callbacks: list[Callable[[OrchestrAI], None]] = field(
         default_factory=list, repr=False
     )
 
@@ -222,13 +226,15 @@ class OrchestrAI:
     # ------------------------------------------------------------------
     # Registration helpers
     # ------------------------------------------------------------------
-    def add_finalize_callback(self, callback: Callable[[OrchestrAI], None]) -> Callable[[OrchestrAI], None]:
+    def add_finalize_callback(
+        self, callback: Callable[[OrchestrAI], None]
+    ) -> Callable[[OrchestrAI], None]:
         self._local_finalize_callbacks.append(callback)
         return callback
 
     def add_service_finalize_callback(
-        self, callback: Callable[["OrchestrAI"], None]
-    ) -> Callable[["OrchestrAI"], None]:
+        self, callback: Callable[[OrchestrAI], None]
+    ) -> Callable[[OrchestrAI], None]:
         self._service_finalize_callbacks.append(callback)
         return callback
 
@@ -259,8 +265,8 @@ class OrchestrAI:
             pkg_version = "unknown"
 
         header = f"OrchestrAI™ v{pkg_version}".strip()
-        company_ = f"\nfrom Jackruit.co™".strip()
-        copyright_ = f"© 2026".strip()
+        company_ = "\nfrom Jackruit.co™".strip()
+        copyright_ = "© 2026".strip()
         return f"{ORCA_BANNER}\n{header}\n{company_}\n{copyright_}\n".rstrip() + "\n"
 
     def print_banner(self, file=None) -> None:

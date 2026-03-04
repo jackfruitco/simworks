@@ -1,13 +1,13 @@
 # common/decorators.py
 from functools import wraps
+from inspect import iscoroutinefunction
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.http import Http404, HttpResponseForbidden
 from django.utils.functional import SimpleLazyObject
-from functools import wraps
-from inspect import iscoroutinefunction
-from django.http import HttpResponseForbidden, Http404
+
 from apps.simcore.models import Simulation
 
 User = get_user_model()
@@ -31,6 +31,7 @@ def resolve_user(view_func):
         return await view_func(request, *args, **kwargs)
 
     return _wrapped_view
+
 
 def simulation_required(kwarg_name: str = "simulation_id", owner_required: bool = True):
     """Decorator to fetch and authorize a Simulation object for a view.
@@ -58,8 +59,10 @@ def simulation_required(kwarg_name: str = "simulation_id", owner_required: bool 
         HttpResponseForbidden: If `owner_required` is True and the Simulation
             does not belong to the requesting user.
     """
+
     def decorator(view_func):
         if iscoroutinefunction(view_func):
+
             @wraps(view_func)
             async def async_wrapper(request, *args, **kwargs):
                 sim_id = kwargs.get(kwarg_name)
@@ -67,12 +70,17 @@ def simulation_required(kwarg_name: str = "simulation_id", owner_required: bool 
                     raise Http404("Simulation id missing.")
                 try:
                     simulation = await Simulation.objects.select_related("user").aget(id=sim_id)
-                except Simulation.DoesNotExist:
-                    raise Http404("Simulation not found.")
-                if owner_required and request.user.is_authenticated and simulation.user_id != request.user.id:
+                except Simulation.DoesNotExist as err:
+                    raise Http404("Simulation not found.") from err
+                if (
+                    owner_required
+                    and request.user.is_authenticated
+                    and simulation.user_id != request.user.id
+                ):
                     return HttpResponseForbidden("This isn't your simulation.")
                 request.simulation = simulation
                 return await view_func(request, *args, **kwargs)
+
             return async_wrapper
 
         @wraps(view_func)
@@ -82,11 +90,17 @@ def simulation_required(kwarg_name: str = "simulation_id", owner_required: bool 
                 raise Http404("Simulation id missing.")
             try:
                 simulation = Simulation.objects.select_related("user").get(id=sim_id)
-            except Simulation.DoesNotExist:
-                raise Http404("Simulation not found.")
-            if owner_required and request.user.is_authenticated and simulation.user_id != request.user.id:
+            except Simulation.DoesNotExist as err:
+                raise Http404("Simulation not found.") from err
+            if (
+                owner_required
+                and request.user.is_authenticated
+                and simulation.user_id != request.user.id
+            ):
                 return HttpResponseForbidden("This isn't your simulation.")
             request.simulation = simulation
             return view_func(request, *args, **kwargs)
+
         return sync_wrapper
+
     return decorator

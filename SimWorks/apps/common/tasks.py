@@ -35,8 +35,8 @@ def drain_outbox(self):
 
     It uses select_for_update(skip_locked=True) for safe concurrent execution.
     """
-    from channels.layers import get_channel_layer
     from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
 
     from apps.common.models import OutboxEvent
     from apps.common.outbox import build_ws_envelope
@@ -126,6 +126,7 @@ def cleanup_delivered_events(self, days_old: int = 7):
         days_old: Delete events delivered more than this many days ago
     """
     from datetime import timedelta
+
     from apps.common.models import OutboxEvent
 
     cutoff = timezone.now() - timedelta(days=days_old)

@@ -7,20 +7,19 @@ Validates:
 - Strict mode enforcement
 """
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
 from apps.simcore.orca.schemas.metadata_items import (
     LabResultItem,
-    RadResultItem,
-    PatientHistoryItem,
     PatientDemographicsItem,
+    PatientHistoryItem,
+    RadResultItem,
     SimulationMetadataItem,
 )
 
@@ -80,20 +79,10 @@ class TestPatientInitialSchema:
             ],
             # PatientInitialOutputSchema.metadata is list[MetadataItem] (polymorphic union)
             "metadata": [
-                {
-                    "kind": "patient_demographics",
-                    "key": "age",
-                    "value": "45"
-                },
-                {
-                    "kind": "patient_demographics",
-                    "key": "gender",
-                    "value": "Male"
-                },
+                {"kind": "patient_demographics", "key": "age", "value": "45"},
+                {"kind": "patient_demographics", "key": "gender", "value": "Male"},
             ],
-            "llm_conditions_check": [
-                {"key": "ready_for_questions", "value": "true"}
-            ],
+            "llm_conditions_check": [{"key": "ready_for_questions", "value": "true"}],
         }
 
         # Parse
@@ -172,7 +161,7 @@ class TestPatientInitialSchema:
                     "reference_range_low": "12.0",
                     "reference_range_high": "16.0",
                     "result_flag": "normal",
-                    "result_comment": "Within normal limits"
+                    "result_comment": "Within normal limits",
                 }
             ],
             "llm_conditions_check": [],
@@ -206,7 +195,7 @@ class TestPatientInitialSchema:
                     "kind": "rad_result",
                     "key": "Chest X-Ray",
                     "value": "No acute cardiopulmonary disease",
-                    "result_flag": "normal"
+                    "result_flag": "normal",
                 }
             ],
             "llm_conditions_check": [],
@@ -238,7 +227,7 @@ class TestPatientInitialSchema:
                     "key": "Hypertension",
                     "value": "Diagnosed with essential hypertension",
                     "is_resolved": False,
-                    "duration": "5 years"
+                    "duration": "5 years",
                 }
             ],
             "llm_conditions_check": [],
@@ -266,17 +255,13 @@ class TestPatientInitialSchema:
                 }
             ],
             "metadata": [
-                {
-                    "kind": "patient_demographics",
-                    "key": "age",
-                    "value": "65"
-                },
+                {"kind": "patient_demographics", "key": "age", "value": "65"},
                 {
                     "kind": "patient_history",
                     "key": "Diabetes Type 2",
                     "value": "Controlled with metformin",
                     "is_resolved": False,
-                    "duration": "10 years"
+                    "duration": "10 years",
                 },
                 {
                     "kind": "lab_result",
@@ -286,13 +271,9 @@ class TestPatientInitialSchema:
                     "reference_range_low": "70",
                     "reference_range_high": "100",
                     "result_flag": "abnormal",
-                    "result_comment": "Slightly elevated"
+                    "result_comment": "Slightly elevated",
                 },
-                {
-                    "kind": "generic",
-                    "key": "notes",
-                    "value": "Patient cooperative and alert"
-                }
+                {"kind": "generic", "key": "notes", "value": "Patient cooperative and alert"},
             ],
             "llm_conditions_check": [],
         }
@@ -326,7 +307,7 @@ class TestPatientInitialSchema:
                 {
                     "kind": "invalid_kind",  # Invalid discriminator
                     "key": "test",
-                    "value": "test"
+                    "value": "test",
                 }
             ],
             "llm_conditions_check": [],
@@ -395,9 +376,7 @@ class TestPatientResultsSchema:
                 {
                     "role": "assistant",
                     "content": [{"type": "text", "text": "Final diagnosis: ..."}],
-                    "item_meta": [
-                        {"key": "key", "value": "final_diagnosis"}
-                    ],
+                    "item_meta": [{"key": "key", "value": "final_diagnosis"}],
                 }
             ],
             "llm_conditions_check": [],

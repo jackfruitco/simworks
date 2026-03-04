@@ -9,17 +9,18 @@ Tests:
 - Schema without __persist__ returns None
 """
 
-import pytest
 from uuid import uuid4
 
-from orchestrai_django.persistence import PersistContext, persist_schema
+import pytest
+
+from apps.chatlab.models import Message, RoleChoices
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
 from apps.simcore.orca.schemas.feedback import GenerateInitialSimulationFeedback
-from apps.chatlab.models import Message, RoleChoices
+from orchestrai_django.persistence import PersistContext, persist_schema
 
 
 @pytest.fixture
@@ -60,22 +61,22 @@ def context(simulation):
 class TestPatientInitialPersistence:
     async def test_creates_message_and_metadata(self, context):
         """persist_schema should create Message (from persist_messages) and metadata (auto-mapped)."""
-        schema = PatientInitialOutputSchema.model_validate({
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Hello, I have chest pain."}],
-                    "item_meta": [],
-                }
-            ],
-            "metadata": [
-                {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
-                {"kind": "patient_demographics", "key": "age", "value": "45"},
-            ],
-            "llm_conditions_check": [
-                {"key": "ready", "value": "true"}
-            ],
-        })
+        schema = PatientInitialOutputSchema.model_validate(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Hello, I have chest pain."}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [
+                    {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
+                    {"kind": "patient_demographics", "key": "age", "value": "45"},
+                ],
+                "llm_conditions_check": [{"key": "ready", "value": "true"}],
+            }
+        )
 
         result = await persist_schema(schema, context)
 
@@ -89,7 +90,8 @@ class TestPatientInitialPersistence:
         assert result.sender.email == "system@medsim.local"
 
         # Check metadata was created as PatientDemographics (polymorphic subclass)
-        from apps.simcore.models import SimulationMetadata, PatientDemographics
+        from apps.simcore.models import PatientDemographics, SimulationMetadata
+
         metadata_count = await SimulationMetadata.objects.filter(
             simulation_id=context.simulation_id
         ).acount()
@@ -103,49 +105,55 @@ class TestPatientInitialPersistence:
 
     async def test_llm_conditions_check_not_persisted(self, context):
         """llm_conditions_check should NOT be persisted."""
-        schema = PatientInitialOutputSchema.model_validate({
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Test message content"}],
-                    "item_meta": [],
-                }
-            ],
-            "metadata": [],
-            "llm_conditions_check": [
-                {"key": "condition_a", "value": "met"},
-                {"key": "condition_b", "value": "not_met"},
-            ],
-        })
+        schema = PatientInitialOutputSchema.model_validate(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Test message content"}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [],
+                "llm_conditions_check": [
+                    {"key": "condition_a", "value": "met"},
+                    {"key": "condition_b", "value": "not_met"},
+                ],
+            }
+        )
 
         await persist_schema(schema, context)
 
         from apps.simcore.models import SimulationMetadata
+
         async for meta in SimulationMetadata.objects.filter(simulation_id=context.simulation_id):
             assert "condition_a" not in meta.key
             assert "condition_b" not in meta.key
 
     async def test_creates_outbox_events_for_messages_and_metadata(self, context):
         """PatientInitialOutputSchema should create outbox events for both messages and metadata."""
-        schema = PatientInitialOutputSchema.model_validate({
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Hello, I have chest pain."}],
-                    "item_meta": [],
-                }
-            ],
-            "metadata": [
-                {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
-                {"kind": "patient_demographics", "key": "age", "value": "45"},
-            ],
-            "llm_conditions_check": [],
-        })
+        schema = PatientInitialOutputSchema.model_validate(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Hello, I have chest pain."}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [
+                    {"kind": "patient_demographics", "key": "patient_name", "value": "John Smith"},
+                    {"kind": "patient_demographics", "key": "age", "value": "45"},
+                ],
+                "llm_conditions_check": [],
+            }
+        )
 
-        result = await persist_schema(schema, context)
+        await persist_schema(schema, context)
 
         # Check message outbox events
         from apps.common.models import OutboxEvent
+
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="chat.message_created",
@@ -180,17 +188,19 @@ class TestPatientInitialPersistence:
 class TestPatientReplyPersistence:
     async def test_creates_message_no_metadata(self, context):
         """PatientReplyOutputSchema only persists messages (image_requested is not persisted)."""
-        schema = PatientReplyOutputSchema.model_validate({
-            "image_requested": False,
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "The pain is on my left side."}],
-                    "item_meta": [],
-                }
-            ],
-            "llm_conditions_check": [],
-        })
+        schema = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": False,
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "The pain is on my left side."}],
+                        "item_meta": [],
+                    }
+                ],
+                "llm_conditions_check": [],
+            }
+        )
 
         result = await persist_schema(schema, context)
 
@@ -199,19 +209,22 @@ class TestPatientReplyPersistence:
 
     async def test_post_persist_called_for_image_requested(self, context, caplog):
         """post_persist hook should log when image_requested is True."""
-        schema = PatientReplyOutputSchema.model_validate({
-            "image_requested": True,
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "Here is the X-ray."}],
-                    "item_meta": [],
-                }
-            ],
-            "llm_conditions_check": [],
-        })
+        schema = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": True,
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Here is the X-ray."}],
+                        "item_meta": [],
+                    }
+                ],
+                "llm_conditions_check": [],
+            }
+        )
 
         import logging
+
         with caplog.at_level(logging.INFO):
             await persist_schema(schema, context)
 
@@ -219,22 +232,25 @@ class TestPatientReplyPersistence:
 
     async def test_creates_outbox_events_for_messages(self, context):
         """PatientReplyOutputSchema should create outbox events for messages."""
-        schema = PatientReplyOutputSchema.model_validate({
-            "image_requested": True,
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "The pain is sharp and sudden."}],
-                    "item_meta": [],
-                }
-            ],
-            "llm_conditions_check": [],
-        })
+        schema = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": True,
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "The pain is sharp and sudden."}],
+                        "item_meta": [],
+                    }
+                ],
+                "llm_conditions_check": [],
+            }
+        )
 
-        result = await persist_schema(schema, context)
+        await persist_schema(schema, context)
 
         # Check message outbox events
         from apps.common.models import OutboxEvent
+
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="chat.message_created",
@@ -256,49 +272,53 @@ class TestPatientReplyPersistence:
 class TestPatientResultsPersistence:
     async def test_creates_metadata_from_results(self, context):
         """PatientResultsOutputSchema persists metadata via custom persist function."""
-        schema = PatientResultsOutputSchema.model_validate({
-            "metadata": [
-                {
-                    "kind": "generic",
-                    "key": "communication_score",
-                    "value": "Good communication skills"
-                }
-            ],
-            "llm_conditions_check": [],
-        })
+        schema = PatientResultsOutputSchema.model_validate(
+            {
+                "metadata": [
+                    {
+                        "kind": "generic",
+                        "key": "communication_score",
+                        "value": "Good communication skills",
+                    }
+                ],
+                "llm_conditions_check": [],
+            }
+        )
 
-        result = await persist_schema(schema, context)
+        await persist_schema(schema, context)
 
         from apps.simcore.models import SimulationMetadata
-        meta = await SimulationMetadata.objects.filter(
-            simulation_id=context.simulation_id
-        ).afirst()
+
+        meta = await SimulationMetadata.objects.filter(simulation_id=context.simulation_id).afirst()
         assert meta is not None
         assert meta.key == "communication_score"
         assert meta.value == "Good communication skills"
 
     async def test_creates_outbox_events_for_metadata(self, context):
         """PatientResultsOutputSchema should create outbox events for metadata."""
-        schema = PatientResultsOutputSchema.model_validate({
-            "metadata": [
-                {
-                    "kind": "generic",
-                    "key": "bedside_manner_score",
-                    "value": "Excellent bedside manner"
-                },
-                {
-                    "kind": "generic",
-                    "key": "history_taking_score",
-                    "value": "Thorough history taking"
-                }
-            ],
-            "llm_conditions_check": [],
-        })
+        schema = PatientResultsOutputSchema.model_validate(
+            {
+                "metadata": [
+                    {
+                        "kind": "generic",
+                        "key": "bedside_manner_score",
+                        "value": "Excellent bedside manner",
+                    },
+                    {
+                        "kind": "generic",
+                        "key": "history_taking_score",
+                        "value": "Thorough history taking",
+                    },
+                ],
+                "llm_conditions_check": [],
+            }
+        )
 
-        result = await persist_schema(schema, context)
+        await persist_schema(schema, context)
 
         # Check metadata outbox events
         from apps.common.models import OutboxEvent
+
         metadata_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="metadata.created",
@@ -320,19 +340,22 @@ class TestPatientResultsPersistence:
 class TestHotwashPersistence:
     async def test_creates_feedback_records(self, context):
         """GenerateInitialSimulationFeedback should create multiple SimulationFeedback records."""
-        schema = GenerateInitialSimulationFeedback.model_validate({
-            "llm_conditions_check": [],
-            "metadata": {
-                "correct_diagnosis": True,
-                "correct_treatment_plan": False,
-                "patient_experience": 4,
-                "overall_feedback": "Good job overall!",
-            },
-        })
+        schema = GenerateInitialSimulationFeedback.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {
+                    "correct_diagnosis": True,
+                    "correct_treatment_plan": False,
+                    "patient_experience": 4,
+                    "overall_feedback": "Good job overall!",
+                },
+            }
+        )
 
-        result = await persist_schema(schema, context)
+        await persist_schema(schema, context)
 
         from apps.simcore.models import SimulationFeedback
+
         feedback_count = await SimulationFeedback.objects.filter(
             simulation_id=context.simulation_id
         ).acount()
@@ -353,20 +376,23 @@ class TestHotwashPersistence:
 
     async def test_creates_outbox_events_for_websocket_broadcast(self, context):
         """GenerateInitialSimulationFeedback should create outbox events for WebSocket delivery."""
-        schema = GenerateInitialSimulationFeedback.model_validate({
-            "llm_conditions_check": [],
-            "metadata": {
-                "correct_diagnosis": True,
-                "correct_treatment_plan": False,
-                "patient_experience": 4,
-                "overall_feedback": "Good job overall!",
-            },
-        })
+        schema = GenerateInitialSimulationFeedback.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {
+                    "correct_diagnosis": True,
+                    "correct_treatment_plan": False,
+                    "patient_experience": 4,
+                    "overall_feedback": "Good job overall!",
+                },
+            }
+        )
 
-        result = await persist_schema(schema, context)
+        await persist_schema(schema, context)
 
         # Check that outbox events were created
         from apps.common.models import OutboxEvent
+
         events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="feedback.created",
@@ -386,18 +412,22 @@ class TestHotwashPersistence:
 
         # Check idempotency keys are unique
         idempotency_keys = [e.idempotency_key async for e in events]
-        assert len(idempotency_keys) == len(set(idempotency_keys)), "Idempotency keys should be unique"
+        assert len(idempotency_keys) == len(set(idempotency_keys)), (
+            "Idempotency keys should be unique"
+        )
 
         # Check all idempotency keys start with event type
         for key in idempotency_keys:
-            assert key.startswith("feedback.created:"), f"Idempotency key should start with event type: {key}"
+            assert key.startswith("feedback.created:"), (
+                f"Idempotency key should start with event type: {key}"
+            )
 
 
 class TestMROMerging:
     def test_mixin_persist_inherited_by_child(self):
         """PatientInitialOutputSchema should inherit messages persistence from mixin."""
-        from orchestrai_django.persistence.engine import _merge_persist_from_mro
         from apps.chatlab.orca.persisters import persist_messages
+        from orchestrai_django.persistence.engine import _merge_persist_from_mro
 
         persist_map = _merge_persist_from_mro(PatientInitialOutputSchema)
 
@@ -409,8 +439,8 @@ class TestMROMerging:
 
     def test_child_does_not_need_to_redeclare_mixin_fields(self):
         """PatientReplyOutputSchema should get messages persistence from mixin without redeclaring."""
-        from orchestrai_django.persistence.engine import _merge_persist_from_mro
         from apps.chatlab.orca.persisters import persist_messages
+        from orchestrai_django.persistence.engine import _merge_persist_from_mro
 
         persist_map = _merge_persist_from_mro(PatientReplyOutputSchema)
 

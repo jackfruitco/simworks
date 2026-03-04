@@ -1,8 +1,8 @@
 """Shared pytest fixtures for orchestrai_django tests."""
 
-import pytest
 import django
 from django.conf import settings
+import pytest
 
 
 @pytest.fixture(scope="session", autouse=True)

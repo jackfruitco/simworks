@@ -1,9 +1,10 @@
+from datetime import UTC, datetime
 import json
 import logging
 import uuid
-from datetime import datetime, timezone as dt_timezone
 
 from channels.generic.websocket import AsyncWebsocketConsumer
+
 from orchestrai.utils.json import json_default
 
 logger = logging.getLogger("notifications")
@@ -13,9 +14,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         try:
             if self.scope["user"].is_anonymous:
-                logger.warning(
-                    "Anonymous user attempted to connect to NotificationsConsumer."
-                )
+                logger.warning("Anonymous user attempted to connect to NotificationsConsumer.")
                 await self.close(code=4001)
             else:
                 self.user = self.scope["user"]
@@ -100,7 +99,7 @@ class NotificationsConsumer(AsyncWebsocketConsumer):
         return {
             "event_id": event_id or str(uuid.uuid4()),
             "event_type": event_type,
-            "created_at": created_at or datetime.now(dt_timezone.utc).isoformat(),
+            "created_at": created_at or datetime.now(UTC).isoformat(),
             "correlation_id": correlation_id,
             "payload": payload,
         }

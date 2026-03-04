@@ -9,4 +9,4 @@ service = ServiceDecorator()
 schema = SchemaDecorator()
 prompt_section = PromptSectionDecorator()
 
-__all__ = ["codec", "service", "schema", "prompt_section"]
+__all__ = ["codec", "prompt_section", "schema", "service"]

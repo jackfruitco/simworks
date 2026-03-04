@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import importlib
-from typing import Iterable
 
 from orchestrai.components.services.exceptions import ServiceDiscoveryError
 from orchestrai.registry.services import ensure_service_registry
@@ -17,9 +17,13 @@ def discover_services(modules: Iterable[str]) -> list[str]:
         except ModuleNotFoundError as exc:
             # Only re-raise when the target module itself is missing (not a child import).
             if exc.name == module.split(".")[0]:
-                raise ServiceDiscoveryError(f"Service discovery module '{module}' not found") from exc
+                raise ServiceDiscoveryError(
+                    f"Service discovery module '{module}' not found"
+                ) from exc
         except Exception as exc:  # pragma: no cover - defensive
-            raise ServiceDiscoveryError(f"Failed to import service discovery module '{module}'") from exc
+            raise ServiceDiscoveryError(
+                f"Failed to import service discovery module '{module}'"
+            ) from exc
         else:
             discovered.append(module)
 

@@ -12,8 +12,13 @@ Compatibility helpers `identity_tuple()` and `identity_str()` are kept as thin
 wrappers that delegate to the new unified API on `IdentityMixin`.
 """
 
+from typing import TYPE_CHECKING
+
 from orchestrai.identity.mixins import IdentityMixin
 from orchestrai_django.identity.resolvers import DjangoIdentityResolver
+
+if TYPE_CHECKING:
+    from .identity import Identity
 
 
 class DjangoIdentityMixin(IdentityMixin):
@@ -30,7 +35,7 @@ class DjangoIdentityMixin(IdentityMixin):
     identity_resolver_cls = DjangoIdentityResolver
 
     @classmethod
-    def resolve_identity(cls) -> "Identity":
+    def resolve_identity(cls) -> Identity:
         """Resolve and cache identity using the Django resolver without `kind` fallback."""
         cached = cls._IdentityMixin__identity_cached  # type: ignore[attr-defined]
         if cached is not None:
@@ -42,15 +47,16 @@ class DjangoIdentityMixin(IdentityMixin):
             if cls._IdentityMixin__identity_cached is not None:  # type: ignore[attr-defined]
                 return cls._IdentityMixin__identity_cached  # type: ignore[attr-defined]
 
-            hints = dict(
-                domain=getattr(cls, "domain", None),
-                namespace=getattr(cls, "namespace", None),
-                group=getattr(cls, "group", None),
-                name=getattr(cls, "name", None),
-            )
+            hints = {
+                "domain": getattr(cls, "domain", None),
+                "namespace": getattr(cls, "namespace", None),
+                "group": getattr(cls, "group", None),
+                "name": getattr(cls, "name", None),
+            }
             ident, meta = resolve_identity_django(cls, **hints, context=None)
             cls._IdentityMixin__identity_cached = ident  # type: ignore[attr-defined]
             cls._IdentityMixin__identity_meta_cached = dict(meta or {})  # type: ignore[attr-defined]
             return ident
+
 
 __all__ = ["DjangoIdentityMixin"]

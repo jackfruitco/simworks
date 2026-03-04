@@ -9,16 +9,16 @@ Tests that Result* types correctly validate:
 - Extra field rejection (strict mode)
 """
 
-import pytest
 from pydantic import ValidationError
+import pytest
+
 from orchestrai.types import (
-    ResultMessageItem,
-    ResultTextContent,
-    ResultImageContent,
-    ResultToolCallContent,
-    ResultToolResultContent,
-    ResultMetafield,
     ContentRole,
+    ResultImageContent,
+    ResultMessageItem,
+    ResultMetafield,
+    ResultTextContent,
+    ResultToolResultContent,
 )
 
 
@@ -66,11 +66,7 @@ class TestResultContentValidation:
             ResultImageContent(type="image", mime_type="image/png")
 
         # All fields provided - should work
-        content = ResultImageContent(
-            type="image",
-            mime_type="image/png",
-            data_b64="base64data"
-        )
+        content = ResultImageContent(type="image", mime_type="image/png", data_b64="base64data")
         assert content.mime_type == "image/png"
 
 
@@ -80,10 +76,7 @@ class TestResultMessageValidation:
     def test_result_message_requires_role(self):
         """ResultMessageItem requires role."""
         with pytest.raises(ValidationError) as exc_info:
-            ResultMessageItem(
-                content=[ResultTextContent(type="text", text="Hi")],
-                item_meta=[]
-            )
+            ResultMessageItem(content=[ResultTextContent(type="text", text="Hi")], item_meta=[])
 
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("role",) for e in errors)
@@ -91,10 +84,7 @@ class TestResultMessageValidation:
     def test_result_message_requires_content(self):
         """ResultMessageItem requires content."""
         with pytest.raises(ValidationError) as exc_info:
-            ResultMessageItem(
-                role=ContentRole.ASSISTANT,
-                item_meta=[]
-            )
+            ResultMessageItem(role=ContentRole.ASSISTANT, item_meta=[])
 
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("content",) for e in errors)
@@ -103,8 +93,7 @@ class TestResultMessageValidation:
         """ResultMessageItem requires item_meta (even if empty)."""
         with pytest.raises(ValidationError) as exc_info:
             ResultMessageItem(
-                role=ContentRole.ASSISTANT,
-                content=[ResultTextContent(type="text", text="Hi")]
+                role=ContentRole.ASSISTANT, content=[ResultTextContent(type="text", text="Hi")]
             )
 
         errors = exc_info.value.errors()
@@ -115,7 +104,7 @@ class TestResultMessageValidation:
         msg = ResultMessageItem(
             role=ContentRole.ASSISTANT,
             content=[ResultTextContent(type="text", text="Hello")],
-            item_meta=[]
+            item_meta=[],
         )
         assert msg.role == ContentRole.ASSISTANT
         assert len(msg.content) == 1
@@ -128,7 +117,7 @@ class TestResultMessageValidation:
                 role=ContentRole.ASSISTANT,
                 content=[ResultTextContent(type="text", text="Hi")],
                 item_meta=[],
-                extra="not_allowed"
+                extra="not_allowed",
             )
 
 
@@ -158,7 +147,7 @@ class TestDiscriminatedUnionValidation:
         msg = ResultMessageItem(
             role=ContentRole.ASSISTANT,
             content=[ResultTextContent(type="text", text="Hello")],
-            item_meta=[]
+            item_meta=[],
         )
         assert isinstance(msg.content[0], ResultTextContent)
 
@@ -166,14 +155,8 @@ class TestDiscriminatedUnionValidation:
         """Content union accepts ResultImageContent."""
         msg = ResultMessageItem(
             role=ContentRole.ASSISTANT,
-            content=[
-                ResultImageContent(
-                    type="image",
-                    mime_type="image/png",
-                    data_b64="data"
-                )
-            ],
-            item_meta=[]
+            content=[ResultImageContent(type="image", mime_type="image/png", data_b64="data")],
+            item_meta=[],
         )
         assert isinstance(msg.content[0], ResultImageContent)
 
@@ -185,7 +168,7 @@ class TestDiscriminatedUnionValidation:
                 ResultTextContent(type="text", text="Hello"),
                 ResultImageContent(type="image", mime_type="image/png", data_b64="data"),
             ],
-            item_meta=[]
+            item_meta=[],
         )
         assert len(msg.content) == 2
         assert isinstance(msg.content[0], ResultTextContent)
@@ -199,10 +182,7 @@ class TestNullableFieldValidation:
         """ResultToolResultContent nullable fields must be explicitly provided."""
         # All nullable fields omitted - should fail
         with pytest.raises(ValidationError):
-            ResultToolResultContent(
-                type="tool_result",
-                call_id="123"
-            )
+            ResultToolResultContent(type="tool_result", call_id="123")
 
         # All fields provided (even None) - should work
         result = ResultToolResultContent(
@@ -211,7 +191,7 @@ class TestNullableFieldValidation:
             result_text=None,
             result_json_str=None,
             mime_type=None,
-            data_b64=None
+            data_b64=None,
         )
         assert result.result_text is None
         assert result.mime_type is None
@@ -224,7 +204,7 @@ class TestNullableFieldValidation:
             result_text="Success",
             result_json_str=None,
             mime_type="text/plain",
-            data_b64=None
+            data_b64=None,
         )
         assert result.result_text == "Success"
         assert result.mime_type == "text/plain"

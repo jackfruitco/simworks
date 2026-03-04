@@ -2,8 +2,8 @@ import importlib
 import sys
 import types
 
-import pytest
 from django.core.exceptions import ObjectDoesNotExist
+import pytest
 
 
 class DummyManager:

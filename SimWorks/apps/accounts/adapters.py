@@ -29,19 +29,14 @@ class InvitationAccountAdapter(DefaultAccountAdapter):
         Returns True only if a valid invitation token exists in the session.
         This applies to BOTH regular signup and social auth signup.
         """
-        invitation_token = request.session.get('invitation_token')
+        invitation_token = request.session.get("invitation_token")
 
         if not invitation_token:
             return False
 
         try:
-            invitation = Invitation.objects.get(
-                token=invitation_token,
-                is_claimed=False
-            )
-            if invitation.is_expired:
-                return False
-            return True
+            invitation = Invitation.objects.get(token=invitation_token, is_claimed=False)
+            return not invitation.is_expired
         except Invitation.DoesNotExist:
             return False
 

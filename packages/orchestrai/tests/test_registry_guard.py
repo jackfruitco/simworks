@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 FORBIDDEN_TOKENS = (
     "orchestrai.registry.singletons",
     "AppRegistry",
@@ -23,4 +22,3 @@ def test_no_legacy_registry_symbols_remain():
                 violations.append(f"{token} found in {path.relative_to(root.parent)}")
 
     assert not violations, "\n".join(violations)
-

@@ -1,7 +1,8 @@
+import asyncio
+import json
 import sys
 import types
-import json
-import asyncio
+
 
 # ----------------------- pydantic stub -----------------------
 class _FieldInfo:
@@ -89,7 +90,7 @@ class RootModel(BaseModel):
         super().__init__(**kwargs)
         self.root = root
 
-    def model_dump(self, *args, **kwargs):  # noqa: D401
+    def model_dump(self, *args, **kwargs):
         data = super().model_dump(*args, **kwargs)
         data["root"] = getattr(self, "root", None)
         return data
@@ -102,18 +103,21 @@ class RootModel(BaseModel):
 def field_validator(*_args, **_kwargs):
     def decorator(fn):
         return fn
+
     return decorator
 
 
 def model_validator(*_args, **_kwargs):
     def decorator(fn):
         return fn
+
     return decorator
 
 
 def field_serializer(*_args, **_kwargs):
     def decorator(fn):
         return fn
+
     return decorator
 
 
@@ -150,12 +154,11 @@ asgiref_sync = types.ModuleType("asgiref.sync")
 def sync_to_async(func):
     async def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
+
     return wrapper
 
 
 def async_to_sync(func):
-    import asyncio
-
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
         if asyncio.iscoroutine(result):
@@ -176,6 +179,7 @@ sys.modules.setdefault("asgiref", asgiref)
 logfire = types.SimpleNamespace(error=lambda *args, **kwargs: None)
 sys.modules.setdefault("logfire", logfire)
 
+
 # ----------------------- slugify stub -----------------------
 def _slugify(value):
     return str(value).replace(" ", "-")
@@ -183,6 +187,7 @@ def _slugify(value):
 
 slugify_module = types.SimpleNamespace(slugify=_slugify)
 sys.modules.setdefault("slugify", slugify_module)
+
 
 # ----------------------- opentelemetry stub -----------------------
 class _Span:
@@ -227,6 +232,7 @@ opentelemetry = types.ModuleType("opentelemetry")
 opentelemetry.trace = opentelemetry_trace
 sys.modules.setdefault("opentelemetry", opentelemetry)
 sys.modules.setdefault("opentelemetry.trace", opentelemetry_trace)
+
 
 class StatusCode:
     ERROR = "error"

@@ -1,7 +1,7 @@
 import importlib
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -11,10 +11,7 @@ REMOVED_SERVICE_RUNNER_MESSAGE = (
 )
 
 SERVICE_RUNNER_PACKAGE_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "src"
-    / "orchestrai_django"
-    / "components"
+    Path(__file__).resolve().parent.parent / "src" / "orchestrai_django" / "components"
 )
 
 MODULE_NAMES = [

@@ -37,6 +37,7 @@ class BaseTool:
             raise ValueError(f"{cls.__name__} must define a tool_name")
 
         from apps.simcore.tools import register_tool
+
         @register_tool(cls.tool_name)
         def fetch_wrapper():
             def fetch(simulation):

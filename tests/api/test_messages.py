@@ -12,8 +12,8 @@ Tests that:
 
 from unittest.mock import patch
 
-import pytest
 from django.test import Client
+import pytest
 
 from api.v1.auth import create_access_token
 
@@ -168,9 +168,7 @@ class TestListMessages:
 
         assert response.status_code == 404
 
-    def test_list_messages_other_user_simulation_returns_404(
-        self, auth_client, other_user
-    ):
+    def test_list_messages_other_user_simulation_returns_404(self, auth_client, other_user):
         """Simulation belonging to other user returns 404."""
         from apps.simcore.models import Simulation
 
@@ -371,7 +369,9 @@ class TestMessagePagination:
         # Verify no overlap
         assert not set(first_page_ids) & set(second_page_ids)
 
-    def test_pagination_last_page_has_no_cursor(self, auth_client, simulation, conversation, test_user):
+    def test_pagination_last_page_has_no_cursor(
+        self, auth_client, simulation, conversation, test_user
+    ):
         """Last page has no next_cursor."""
         from apps.chatlab.models import Message, RoleChoices
 
@@ -393,9 +393,7 @@ class TestMessagePagination:
 
     def test_pagination_invalid_cursor_returns_400(self, auth_client, simulation):
         """Invalid cursor format returns 400."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/?cursor=invalid"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/?cursor=invalid")
 
         assert response.status_code == 400
 
@@ -416,7 +414,9 @@ class TestCreateMessage:
         assert response.status_code == 401
 
     @patch("api.v1.endpoints.messages._enqueue_ai_reply")
-    def test_create_message_success(self, mock_enqueue, auth_client, simulation, conversation, test_user):
+    def test_create_message_success(
+        self, mock_enqueue, auth_client, simulation, conversation, test_user
+    ):
         """Creates message and enqueues AI response."""
         mock_enqueue.return_value = "test-call-id"
 
@@ -504,9 +504,7 @@ class TestCreateMessage:
 
         assert response.status_code == 422
 
-    def test_create_message_other_user_simulation_returns_404(
-        self, auth_client, other_user
-    ):
+    def test_create_message_other_user_simulation_returns_404(self, auth_client, other_user):
         """Cannot create message in other user's simulation."""
         from apps.simcore.models import Simulation
 
@@ -546,17 +544,13 @@ class TestGetMessage:
     def test_get_message_unauthenticated_returns_401(self, simulation, message):
         """Unauthenticated request returns 401."""
         client = Client()
-        response = client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/"
-        )
+        response = client.get(f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/")
 
         assert response.status_code == 401
 
     def test_get_message_success(self, auth_client, simulation, message):
         """Returns message details."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/")
 
         assert response.status_code == 200
         data = response.json()
@@ -565,15 +559,11 @@ class TestGetMessage:
 
     def test_get_message_not_found_returns_404(self, auth_client, simulation):
         """Non-existent message returns 404."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/99999/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/99999/")
 
         assert response.status_code == 404
 
-    def test_get_message_wrong_simulation_returns_404(
-        self, auth_client, test_user, message
-    ):
+    def test_get_message_wrong_simulation_returns_404(self, auth_client, test_user, message):
         """Message from different simulation returns 404."""
         from apps.simcore.models import Simulation
 
@@ -582,9 +572,7 @@ class TestGetMessage:
             sim_patient_full_name="Other Patient",
         )
 
-        response = auth_client.get(
-            f"/api/v1/simulations/{other_sim.pk}/messages/{message.pk}/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{other_sim.pk}/messages/{message.pk}/")
 
         assert response.status_code == 404
 
@@ -593,9 +581,7 @@ class TestGetMessage:
         message.is_deleted = True
         message.save()
 
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/")
 
         assert response.status_code == 404
 
@@ -606,9 +592,7 @@ class TestMessageOutputFormat:
 
     def test_message_includes_all_fields(self, auth_client, simulation, message):
         """Response includes all expected fields."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/")
         data = response.json()
 
         expected_fields = [
@@ -629,9 +613,7 @@ class TestMessageOutputFormat:
 
     def test_message_does_not_include_order_field(self, auth_client, simulation, message):
         """The 'order' field was removed — verify it's not in the response."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/")
         data = response.json()
         assert "order" not in data
 
@@ -647,9 +629,7 @@ class TestMessageOutputFormat:
             role=RoleChoices.USER,
         )
 
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/messages/{user_msg.pk}/"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{user_msg.pk}/")
         assert response.json()["role"] == "user"
 
         assistant_msg = Message.objects.create(

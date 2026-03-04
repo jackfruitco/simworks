@@ -1,16 +1,13 @@
 # simcore/utils.py
-import logging
 import random
 from typing import TYPE_CHECKING
-from typing import Union
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ObjectDoesNotExist
 from faker import Faker
 
 if TYPE_CHECKING:
-    from apps.simcore.models import Simulation
+    pass
 
 fake = Faker()
 

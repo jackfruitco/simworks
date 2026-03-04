@@ -7,10 +7,9 @@ Tests the integration between:
 4. Client-side deduplication data
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from django.utils import timezone
+import pytest
 
 
 @pytest.fixture
@@ -224,7 +223,7 @@ class TestMessagePayloadFormat:
         from apps.common.models import OutboxEvent
 
         with patch("chatlab.signals.poke_drain_sync"):
-            message = Message.objects.create(
+            Message.objects.create(
                 simulation=simulation,
                 sender=user,
                 content="Test message",
@@ -253,7 +252,7 @@ class TestMessagePayloadFormat:
         from apps.common.models import OutboxEvent
 
         with patch("chatlab.signals.poke_drain_sync"):
-            message = Message.objects.create(
+            Message.objects.create(
                 simulation=simulation,
                 sender=user,
                 content="",  # Empty content

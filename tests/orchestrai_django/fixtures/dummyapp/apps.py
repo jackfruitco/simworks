@@ -1,6 +1,7 @@
 # tests/fixtures/dummyapp/apps.py
 from django.apps import AppConfig
 
+
 class DummyappConfig(AppConfig):
     name = "tests.orchestrai_django.fixtures.dummyapp"
     label = "dummyapp"  # app_label used in identity derivation

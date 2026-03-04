@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import logging
 from typing import Any
@@ -36,10 +37,8 @@ class LocalServiceRunner:
         without risking deadlocks. In that case, the caller must use `astart()`.
         """
         if LocalServiceRunner._in_running_loop():
-            try:
+            with contextlib.suppress(Exception):
                 coro.close()
-            except Exception:
-                pass
             raise RuntimeError(
                 "LocalServiceRunner.start() was called from an async context. "
                 "Use `await runner.astart(...)` instead."
@@ -64,7 +63,9 @@ class LocalServiceRunner:
 
         raise AttributeError(f"Service {service_cls} does not expose execute/aexecute")
 
-    async def astart(self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None):
+    async def astart(
+        self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None
+    ):
         """Async-native execution.
 
         - If the service provides `aexecute`, await it.
@@ -91,7 +92,9 @@ class LocalServiceRunner:
         logger.debug(f"{self.__class__.__name__} does not support `aenqueue`; dispatching `astart`")
         return await self.astart(**payload)
 
-    def stream(self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None):
+    def stream(
+        self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None
+    ):
         service = self._build_service(service_cls, service_kwargs)
         kwargs = dict(runner_kwargs or {})
 
@@ -104,7 +107,9 @@ class LocalServiceRunner:
 
         raise AttributeError(f"Service {service_cls} does not support streaming")
 
-    async def astream(self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None):
+    async def astream(
+        self, *, service_cls, service_kwargs: dict[str, Any], phase: str, runner_kwargs=None
+    ):
         service = self._build_service(service_cls, service_kwargs)
         kwargs = dict(runner_kwargs or {})
 

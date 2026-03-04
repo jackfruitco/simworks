@@ -10,8 +10,8 @@ Tests that:
 
 import uuid
 
-import pytest
 from django.test import Client
+import pytest
 
 from api.v1.auth import create_access_token
 
@@ -175,9 +175,7 @@ class TestListEventsPagination:
 
     def test_limit_parameter_works(self, auth_client, simulation, outbox_events):
         """Limit parameter limits results."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/?limit=2"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/?limit=2")
 
         assert response.status_code == 200
         data = response.json()
@@ -188,9 +186,7 @@ class TestListEventsPagination:
     def test_cursor_pagination_works(self, auth_client, simulation, outbox_events):
         """Cursor-based pagination returns correct results."""
         # Get first page
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/?limit=2"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/?limit=2")
         data = response.json()
         first_page_ids = [e["event_id"] for e in data["items"]]
         cursor = data["next_cursor"]
@@ -215,9 +211,7 @@ class TestListEventsPagination:
         assert data["has_more"] is False
         assert data["next_cursor"] is None
 
-    def test_invalid_cursor_returns_400(
-        self, auth_client, simulation, outbox_events
-    ):
+    def test_invalid_cursor_returns_400(self, auth_client, simulation, outbox_events):
         """Invalid cursor returns 400 Bad Request."""
         response = auth_client.get(
             f"/api/v1/simulations/{simulation.pk}/events/?cursor=invalid-uuid"
@@ -229,17 +223,13 @@ class TestListEventsPagination:
 
     def test_limit_validation_min(self, auth_client, simulation):
         """Limit must be at least 1."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/?limit=0"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/?limit=0")
 
         assert response.status_code == 422
 
     def test_limit_validation_max(self, auth_client, simulation):
         """Limit must not exceed 100."""
-        response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/?limit=200"
-        )
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/?limit=200")
 
         assert response.status_code == 422
 

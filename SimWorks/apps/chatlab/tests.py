@@ -110,7 +110,9 @@ def chatlab_modules(monkeypatch):
     utils = importlib.import_module("chatlab.utils")
     consumers = importlib.import_module("chatlab.consumers")
 
-    return SimpleNamespace(utils=utils, consumers=consumers, models=chatlab_models, simulation_models=simulation_models)
+    return SimpleNamespace(
+        utils=utils, consumers=consumers, models=chatlab_models, simulation_models=simulation_models
+    )
 
 
 @pytest.mark.asyncio
@@ -122,8 +124,12 @@ async def test_create_new_simulation_uses_service_call(chatlab_modules, monkeypa
     session = SimpleNamespace(id=3)
 
     monkeypatch.setattr(utils, "generate_fake_name", AsyncMock(return_value="Test User"))
-    monkeypatch.setattr(chatlab_modules.simulation_models.Simulation, "abuild", AsyncMock(return_value=simulation))
-    monkeypatch.setattr(utils.ChatSession, "objects", SimpleNamespace(acreate=AsyncMock(return_value=session)))
+    monkeypatch.setattr(
+        chatlab_modules.simulation_models.Simulation, "abuild", AsyncMock(return_value=simulation)
+    )
+    monkeypatch.setattr(
+        utils.ChatSession, "objects", SimpleNamespace(acreate=AsyncMock(return_value=session))
+    )
 
     calls: dict = {}
 
@@ -157,8 +163,12 @@ async def test_create_new_simulation_cleans_up_on_failure(chatlab_modules, monke
     session = SimpleNamespace(id=4)
 
     monkeypatch.setattr(utils, "generate_fake_name", AsyncMock(return_value="Test User"))
-    monkeypatch.setattr(chatlab_modules.simulation_models.Simulation, "abuild", AsyncMock(return_value=simulation))
-    monkeypatch.setattr(utils.ChatSession, "objects", SimpleNamespace(acreate=AsyncMock(return_value=session)))
+    monkeypatch.setattr(
+        chatlab_modules.simulation_models.Simulation, "abuild", AsyncMock(return_value=simulation)
+    )
+    monkeypatch.setattr(
+        utils.ChatSession, "objects", SimpleNamespace(acreate=AsyncMock(return_value=session))
+    )
 
     class FailingCall:
         def __init__(self, **_kwargs):
@@ -166,7 +176,9 @@ async def test_create_new_simulation_cleans_up_on_failure(chatlab_modules, monke
 
     import chatlab.orca.services as services
 
-    monkeypatch.setattr(services.GenerateInitialResponse, "using", staticmethod(lambda **_kwargs: FailingCall()))
+    monkeypatch.setattr(
+        services.GenerateInitialResponse, "using", staticmethod(lambda **_kwargs: FailingCall())
+    )
 
     with pytest.raises(utils.SimulationSchedulingError):
         await utils.create_new_simulation(user=user)

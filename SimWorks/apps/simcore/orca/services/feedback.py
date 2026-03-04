@@ -24,11 +24,11 @@ PERSISTENCE CONTRACT
 - Creates: SimulationFeedback rows
 - Idempotency: PersistedChunk with (call_id, schema_identity) unique constraint
 """
+
 import logging
 from typing import ClassVar
 
-from apps.common.orca.prompts import FeedbackEducatorMixin
-from apps.common.orca.prompts import MedicalAccuracyMixin
+from apps.common.orca.prompts import FeedbackEducatorMixin, MedicalAccuracyMixin
 from orchestrai.prompts import system_prompt
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import service

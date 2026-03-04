@@ -20,6 +20,7 @@ from typing import Any
 @dataclass
 class SchemaViolation:
     """Represents a schema compliance violation."""
+
     path: str
     rule: str
     message: str
@@ -52,36 +53,44 @@ def lint_schema(schema: dict[str, Any], path: str = "$") -> list[SchemaViolation
         additional_props = schema.get("additionalProperties")
 
         if additional_props is None:
-            violations.append(SchemaViolation(
-                path=path,
-                rule="additionalProperties_missing",
-                message="Object type must have 'additionalProperties' field",
-                suggestion="Add 'additionalProperties': False to this object"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="additionalProperties_missing",
+                    message="Object type must have 'additionalProperties' field",
+                    suggestion="Add 'additionalProperties': False to this object",
+                )
+            )
         elif additional_props is not False:
             if isinstance(additional_props, dict):
-                violations.append(SchemaViolation(
-                    path=path,
-                    rule="additionalProperties_open_map",
-                    message=f"additionalProperties is a schema (open map), must be false for strict mode",
-                    suggestion="Replace dict[str, T] with list[Metafield] or a strict model"
-                ))
+                violations.append(
+                    SchemaViolation(
+                        path=path,
+                        rule="additionalProperties_open_map",
+                        message="additionalProperties is a schema (open map), must be false for strict mode",
+                        suggestion="Replace dict[str, T] with list[Metafield] or a strict model",
+                    )
+                )
             elif additional_props is True:
-                violations.append(SchemaViolation(
-                    path=path,
-                    rule="additionalProperties_true",
-                    message="additionalProperties must be false, not true",
-                    suggestion="Change additionalProperties to false or use list[Metafield]"
-                ))
+                violations.append(
+                    SchemaViolation(
+                        path=path,
+                        rule="additionalProperties_true",
+                        message="additionalProperties must be false, not true",
+                        suggestion="Change additionalProperties to false or use list[Metafield]",
+                    )
+                )
 
         # Rule 2: Objects must have properties
         if "properties" not in schema:
-            violations.append(SchemaViolation(
-                path=path,
-                rule="properties_missing",
-                message="Object type must have 'properties' field (even if empty)",
-                suggestion="Add 'properties': {} or define at least one field"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="properties_missing",
+                    message="Object type must have 'properties' field (even if empty)",
+                    suggestion="Add 'properties': {} or define at least one field",
+                )
+            )
 
         # Rule 3: Required must contain all property keys
         properties = schema.get("properties", {})
@@ -89,12 +98,14 @@ def lint_schema(schema: dict[str, Any], path: str = "$") -> list[SchemaViolation
 
         if properties and set(required) != set(properties.keys()):
             missing = set(properties.keys()) - set(required)
-            violations.append(SchemaViolation(
-                path=path,
-                rule="required_incomplete",
-                message=f"'required' must contain all property keys. Missing: {missing}",
-                suggestion=f"Add {missing} to 'required' list"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="required_incomplete",
+                    message=f"'required' must contain all property keys. Missing: {missing}",
+                    suggestion=f"Add {missing} to 'required' list",
+                )
+            )
 
         # Recurse into properties
         for prop_name, prop_schema in properties.items():
@@ -104,12 +115,14 @@ def lint_schema(schema: dict[str, Any], path: str = "$") -> list[SchemaViolation
     # Rule 4: Arrays must have items
     elif schema.get("type") == "array":
         if "items" not in schema:
-            violations.append(SchemaViolation(
-                path=path,
-                rule="array_items_missing",
-                message="Array type must have 'items' field",
-                suggestion="Define the array item schema in 'items'"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="array_items_missing",
+                    message="Array type must have 'items' field",
+                    suggestion="Define the array item schema in 'items'",
+                )
+            )
         else:
             # Recurse into items
             items = schema.get("items")
@@ -119,30 +132,36 @@ def lint_schema(schema: dict[str, Any], path: str = "$") -> list[SchemaViolation
     # Rule 5: No root-level unions (only check at root path)
     if path == "$":
         if "anyOf" in schema:
-            violations.append(SchemaViolation(
-                path=path,
-                rule="root_anyOf",
-                message="Root-level anyOf (union) not supported by OpenAI strict mode",
-                suggestion="Redesign with discriminated union in a field"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="root_anyOf",
+                    message="Root-level anyOf (union) not supported by OpenAI strict mode",
+                    suggestion="Redesign with discriminated union in a field",
+                )
+            )
         if "oneOf" in schema:
-            violations.append(SchemaViolation(
-                path=path,
-                rule="root_oneOf",
-                message="Root-level oneOf (union) not supported by OpenAI strict mode",
-                suggestion="Redesign with discriminated union in a field"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="root_oneOf",
+                    message="Root-level oneOf (union) not supported by OpenAI strict mode",
+                    suggestion="Redesign with discriminated union in a field",
+                )
+            )
 
     # Rule 6: All schema nodes should have type (warning, not always enforced)
     if "type" not in schema and "$ref" not in schema:
         # Check if this is a union with anyOf/oneOf (allowed in nested positions)
         if not any(k in schema for k in ["anyOf", "oneOf", "allOf"]):
-            violations.append(SchemaViolation(
-                path=path,
-                rule="type_missing",
-                message="Schema node missing 'type' field (may cause issues)",
-                suggestion="Add explicit 'type' field"
-            ))
+            violations.append(
+                SchemaViolation(
+                    path=path,
+                    rule="type_missing",
+                    message="Schema node missing 'type' field (may cause issues)",
+                    suggestion="Add explicit 'type' field",
+                )
+            )
 
     # Recurse into nested schemas (anyOf/oneOf/allOf if present in non-root)
     for union_key in ["anyOf", "oneOf", "allOf"]:
@@ -207,8 +226,6 @@ def validate_pydantic_schema(schema_cls, strict: bool = True) -> list[SchemaViol
 
     if strict and violations:
         report = format_violations(violations)
-        raise ValueError(
-            f"Schema {schema_cls.__name__} violates OpenAI strict mode:\n{report}"
-        )
+        raise ValueError(f"Schema {schema_cls.__name__} violates OpenAI strict mode:\n{report}")
 
     return violations

@@ -32,7 +32,9 @@ def test_get_registry_for_prompt_sections_prefers_prompt_domain():
 
 def test_prompt_section_get_uses_prompt_section_registry():
     store = ComponentStore()
-    store.register(RegistrationRecord(component=DemoPromptSection, identity=DemoPromptSection.identity))
+    store.register(
+        RegistrationRecord(component=DemoPromptSection, identity=DemoPromptSection.identity)
+    )
     app = type("App", (), {"component_store": store})()
 
     with push_active_registry_app(app):
@@ -45,7 +47,9 @@ def test_prompt_section_get_uses_prompt_section_registry():
 
 def test_prompt_section_identity_resolver_prefers_prompt_domain():
     store = ComponentStore()
-    store.register(RegistrationRecord(component=DemoPromptSection, identity=DemoPromptSection.identity))
+    store.register(
+        RegistrationRecord(component=DemoPromptSection, identity=DemoPromptSection.identity)
+    )
     app = type("App", (), {"component_store": store})()
 
     with push_active_registry_app(app):

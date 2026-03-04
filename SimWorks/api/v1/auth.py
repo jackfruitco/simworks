@@ -4,13 +4,13 @@ Provides JWT-based authentication for mobile clients.
 Web clients continue to use session-based authentication.
 """
 
+from datetime import UTC, datetime, timedelta
 import logging
-from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import jwt
 from django.conf import settings
 from django.contrib.auth import get_user_model
+import jwt
 from ninja.security import HttpBearer
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,6 @@ User = get_user_model()
 
 class InvalidTokenError(Exception):
     """Raised when a token is invalid or expired."""
-
-    pass
 
 
 class DualAuth(HttpBearer):
@@ -114,8 +112,7 @@ def get_jwt_secret() -> str:
 
     if settings.DEBUG:
         logger.warning(
-            "JWT_SECRET_KEY not set, falling back to SECRET_KEY. "
-            "Set JWT_SECRET_KEY in production."
+            "JWT_SECRET_KEY not set, falling back to SECRET_KEY. Set JWT_SECRET_KEY in production."
         )
         return settings.SECRET_KEY
 
@@ -144,7 +141,7 @@ def create_access_token(user: User) -> str:
     Returns:
         Encoded JWT access token
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lifetime = get_access_token_lifetime()
     expires_at = now + timedelta(seconds=lifetime)
 
@@ -168,7 +165,7 @@ def create_refresh_token(user: User) -> str:
     Returns:
         Encoded JWT refresh token
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lifetime = get_refresh_token_lifetime()
     expires_at = now + timedelta(seconds=lifetime)
 
@@ -220,9 +217,9 @@ def decode_access_token(token: str) -> dict[str, Any]:
         return payload
 
     except jwt.ExpiredSignatureError:
-        raise InvalidTokenError("Token has expired")
+        raise InvalidTokenError("Token has expired") from None
     except jwt.InvalidTokenError as e:
-        raise InvalidTokenError(f"Invalid token: {e}")
+        raise InvalidTokenError(f"Invalid token: {e}") from None
 
 
 def decode_refresh_token(token: str) -> dict[str, Any]:
@@ -246,9 +243,9 @@ def decode_refresh_token(token: str) -> dict[str, Any]:
         return payload
 
     except jwt.ExpiredSignatureError:
-        raise InvalidTokenError("Refresh token has expired")
+        raise InvalidTokenError("Refresh token has expired") from None
     except jwt.InvalidTokenError as e:
-        raise InvalidTokenError(f"Invalid refresh token: {e}")
+        raise InvalidTokenError(f"Invalid refresh token: {e}") from None
 
 
 def refresh_access_token(refresh_token: str) -> dict[str, Any]:

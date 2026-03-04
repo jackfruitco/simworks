@@ -1,5 +1,6 @@
 # orchestrai/exceptions/registry_exceptions.py
 """Registry exceptions"""
+
 from orchestrai.exceptions.base import SimCoreError
 
 

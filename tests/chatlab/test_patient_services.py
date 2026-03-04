@@ -6,16 +6,14 @@ Tests:
 - Schema validation at service boundary
 """
 
-import pytest
-
-from apps.chatlab.orca.services.patient import (
-    GenerateInitialResponse,
-    GenerateReplyResponse,
-    GenerateImageResponse,
-)
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
+)
+from apps.chatlab.orca.services.patient import (
+    GenerateImageResponse,
+    GenerateInitialResponse,
+    GenerateReplyResponse,
 )
 
 

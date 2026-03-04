@@ -3,7 +3,7 @@
 This module creates and configures the NinjaAPI instance for v1.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from django.http import HttpRequest
 from ninja import NinjaAPI
@@ -18,8 +18,8 @@ from api.v1.endpoints.messages import router as messages_router
 from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
-from config.logging import get_logger
 from apps.common.ratelimit import RateLimitExceeded
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,7 @@ def _build_health_response() -> HealthResponse:
     """Build a standard health check response."""
     return HealthResponse(
         status="ok",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
     )
 
 

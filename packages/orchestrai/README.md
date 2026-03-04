@@ -65,11 +65,11 @@ client_settings: ClientSettings = load_client_settings(settings)
 
 ## Lifecycle overview
 
-1. **configure** – apply settings from mappings, objects, or environment variables.
-2. **setup** – prepare the loader and populate registries for clients, providers, codecs, and services.
-3. **discover** – import configured discovery modules via the loader.
-4. **finalize** – run shared decorators/finalizers and freeze registries.
-5. **start** / **run** – convenience method that prints the banner, runs discovery, and finalizes the app.
+1. **configure** - apply settings from mappings, objects, or environment variables.
+2. **setup** - prepare the loader and populate registries for clients, providers, codecs, and services.
+3. **discover** - import configured discovery modules via the loader.
+4. **finalize** - run shared decorators/finalizers and freeze registries.
+5. **start** / **run** - convenience method that prints the banner, runs discovery, and finalizes the app.
 
 The app never performs network or discovery work during import; all actions are explicit.
 
@@ -78,8 +78,8 @@ The app never performs network or discovery work during import; all actions are 
 The bundled OpenAI backend expects an API key and model to be provided explicitly. Set the following environment variables (or
 configure equivalent settings) before starting your app:
 
-- `ORCA_PROVIDER_API_KEY` – your OpenAI API key (falls back to `OPENAI_API_KEY` if not set)
-- `ORCA_PROVIDER_MODEL` – the default model name (for example, `gpt-4o-mini`)
+- `ORCA_PROVIDER_API_KEY` - your OpenAI API key (falls back to `OPENAI_API_KEY` if not set)
+- `ORCA_PROVIDER_MODEL` - the default model name (for example, `gpt-4o-mini`)
 
 In single mode, set `CLIENT["api_key_envvar"]` to the name of your API key
 environment variable (for example, `ORCA_PROVIDER_API_KEY`). In multi-orca pod
@@ -91,8 +91,8 @@ instantiating the provider.
 
 Comprehensive guides live in the [`docs/`](docs/) directory:
 
-- [Quick Start](docs/quick_start.md) – create an app, configure it, and make your first request.
-- [Full Guide](docs/full_documentation.md) – deep dive into configuration, lifecycle hooks, registries, and discovery.
+- [Quick Start](docs/quick_start.md) - create an app, configure it, and make your first request.
+- [Full Guide](docs/full_documentation.md) - deep dive into configuration, lifecycle hooks, registries, and discovery.
 
 ## Contributing
 

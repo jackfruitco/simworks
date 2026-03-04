@@ -63,6 +63,8 @@ select = [
 ignore = [
   "E501",  # line length handled by ruff-format
   "E203",  # conflicts with formatter slicing
+  "SIM105",
+  "B008",
 ]
 
 # Allow autofix for everything Ruff safely fixes (pre-commit already runs with --fix).
@@ -87,11 +89,14 @@ known-first-party = [
 
 [lint.per-file-ignores]
 # Common patterns:
-"**/__init__.py" = ["F401"]                 # re-export patterns
+"**/__init__.py" = ["F401", "F403", "F405"]             # re-export patterns
 "**/migrations/*.py" = ["E501", "F401", "F841"]  # generated code
 "**/settings*.py" = ["F401"]                # settings modules often import for side-effects
 "**/asgi.py" = ["F401"]
 "**/wsgi.py" = ["F401"]
+"**/models.py" = ["RUF012"]
+"**/forms.py" = ["RUF012"]
+"**/types/**.py" = ["RUF012"]
 
 # Tests: keep it practical (tests often intentionally do "weird" things).
 "tests/**/*.py" = [

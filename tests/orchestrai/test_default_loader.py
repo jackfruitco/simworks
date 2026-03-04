@@ -1,6 +1,5 @@
 import sys
 
-from orchestrai import OrchestrAI
 from orchestrai.conf.defaults import DEFAULTS
 from orchestrai.loaders.default import DefaultLoader
 

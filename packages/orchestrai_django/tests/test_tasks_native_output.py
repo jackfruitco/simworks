@@ -154,7 +154,9 @@ def test_run_service_call_stores_output_and_schema(monkeypatch):
     def _select_for_update(*args, **kwargs):
         return types.SimpleNamespace(get=lambda **kw: call)
 
-    monkeypatch.setattr(tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService))
+    monkeypatch.setattr(
+        tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService)
+    )
     monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
     monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
 
@@ -265,7 +267,9 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
 
         async def arun(self, **payload):
             # Simulate a transient failure; run_service_call should retry.
-            self.emitter.emit_failure({}, "services.test.native.output", None, "temporarily unavailable")
+            self.emitter.emit_failure(
+                {}, "services.test.native.output", None, "temporarily unavailable"
+            )
             raise RuntimeError("temporarily unavailable")
 
     call = RetryCall()
@@ -287,7 +291,9 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
 
     ai_response_failed.connect(_capture_failure, weak=False)
     try:
-        monkeypatch.setattr(tasks, "ensure_service_registry", lambda app=None: DummyRegistry(NoisyFailingService))
+        monkeypatch.setattr(
+            tasks, "ensure_service_registry", lambda app=None: DummyRegistry(NoisyFailingService)
+        )
         monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
         monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
         monkeypatch.setattr(

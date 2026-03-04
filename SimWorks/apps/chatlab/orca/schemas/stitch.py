@@ -6,10 +6,10 @@ Stitch responses are simpler than patient responses — just messages,
 no metadata or conditions checks.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from orchestrai.types import ResultMessageItem
 from apps.chatlab.orca.persisters import persist_stitch_messages
+from orchestrai.types import ResultMessageItem
 
 
 class StitchReplyOutputSchema(BaseModel):

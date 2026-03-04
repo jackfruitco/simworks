@@ -1,31 +1,33 @@
 """Tests for orchestrai.utils.json - JSON serialization utilities."""
 
-import json
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from enum import Enum
+import json
 from uuid import UUID, uuid4
 
-import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from orchestrai.utils.json import json_default, make_json_safe
 
 
 class SampleEnum(Enum):
     """Sample enum for testing."""
+
     OPTION_A = "a"
     OPTION_B = "b"
 
 
 class SampleModel(BaseModel):
     """Sample Pydantic model for testing."""
+
     name: str
     value: int
 
 
 class NestedModel(BaseModel):
     """Nested Pydantic model with UUID field."""
+
     id: UUID
     data: SampleModel
 
@@ -33,6 +35,7 @@ class NestedModel(BaseModel):
 # -----------------------------------------------------------------------------
 # make_json_safe tests
 # -----------------------------------------------------------------------------
+
 
 class TestMakeJsonSafe:
     """Tests for make_json_safe function."""
@@ -132,10 +135,7 @@ class TestMakeJsonSafe:
     def test_pydantic_model_with_uuid_field(self):
         """Pydantic model with UUID field serializes correctly."""
         uid = uuid4()
-        model = NestedModel(
-            id=uid,
-            data=SampleModel(name="nested", value=100)
-        )
+        model = NestedModel(id=uid, data=SampleModel(name="nested", value=100))
         result = make_json_safe(model)
         assert result["id"] == str(uid)
         assert result["data"] == {"name": "nested", "value": 100}
@@ -197,7 +197,7 @@ class TestMakeJsonSafe:
             ],
             "metadata": {
                 "enum": SampleEnum.OPTION_B,
-            }
+            },
         }
         result = make_json_safe(val)
 
@@ -208,6 +208,7 @@ class TestMakeJsonSafe:
 
     def test_object_with_dict_attr(self):
         """Object with __dict__ attribute is converted."""
+
         class SimpleObj:
             def __init__(self):
                 self.name = "test"
@@ -219,6 +220,7 @@ class TestMakeJsonSafe:
 
     def test_unknown_type_converts_to_string(self):
         """Unknown types without __dict__ fall back to string representation."""
+
         class CustomType:
             __slots__ = ()  # No __dict__ attribute
 
@@ -231,6 +233,7 @@ class TestMakeJsonSafe:
 
     def test_empty_object_with_dict(self):
         """Object with empty __dict__ converts to empty dict."""
+
         class EmptyObj:
             pass
 
@@ -242,6 +245,7 @@ class TestMakeJsonSafe:
 # -----------------------------------------------------------------------------
 # json_default tests
 # -----------------------------------------------------------------------------
+
 
 class TestJsonDefault:
     """Tests for json_default function (for use with json.dumps)."""
@@ -275,7 +279,7 @@ class TestJsonDefault:
             ],
             "metadata": {
                 "delta": timedelta(hours=2),
-            }
+            },
         }
         result = json.dumps(data, default=json_default)
         parsed = json.loads(result)
@@ -296,6 +300,7 @@ class TestJsonDefault:
 # -----------------------------------------------------------------------------
 # Integration tests
 # -----------------------------------------------------------------------------
+
 
 class TestIntegration:
     """Integration tests for JSON utilities."""
@@ -341,8 +346,8 @@ class TestIntegration:
                 "metadata": {
                     "simulation_id": 123,
                     "timestamp": datetime.now(),
-                }
-            }
+                },
+            },
         }
 
         # Should serialize without error

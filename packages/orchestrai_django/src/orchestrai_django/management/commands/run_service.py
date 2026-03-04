@@ -95,7 +95,9 @@ class Command(BaseCommand):
             else:
                 result = runner(service_obj, dry_run=dry_run, **context)
         except Exception as exc:
-            raise CommandError(f"Failed to execute service {service_spec!r} via {mode}: {exc}") from exc
+            raise CommandError(
+                f"Failed to execute service {service_spec!r} via {mode}: {exc}"
+            ) from exc
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -136,7 +138,7 @@ class Command(BaseCommand):
         path = options.get("context_file")
         if path:
             try:
-                with open(path, "r", encoding="utf-8") as fh:
+                with open(path, encoding="utf-8") as fh:
                     file_ctx = _coerce_json(fh.read())
             except Exception as exc:  # pragma: no cover - defensive guard
                 raise CommandError(f"Invalid --context-file input: {exc}") from exc

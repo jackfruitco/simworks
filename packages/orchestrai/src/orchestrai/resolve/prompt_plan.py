@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
-from typing import Iterable
 
-from orchestrai.components.promptkit import PromptPlan, PromptSection
+from orchestrai.components.promptkit import PromptPlan
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import PROMPT_SECTIONS_DOMAIN
 
@@ -40,7 +40,7 @@ def resolve_prompt_plan(service) -> ResolutionResult[PromptPlan | None]:
             plan,
             reason=f"provided via {getattr(service, '_prompt_plan_source', 'explicit')}",
         )
-        return ResolutionResult(plan, branch, _iter_unique(branches + [branch]))
+        return ResolutionResult(plan, branch, _iter_unique([*branches, branch]))
 
     # Registry match: prompt section whose identity matches the service
     section_cls = None
@@ -63,13 +63,15 @@ def resolve_prompt_plan(service) -> ResolutionResult[PromptPlan | None]:
         branch = ResolutionBranch(
             "registry",
             plan,
-            identity=getattr(section_cls, "identity", None).as_str if hasattr(section_cls, "identity") else None,
+            identity=getattr(section_cls, "identity", None).as_str
+            if hasattr(section_cls, "identity")
+            else None,
             reason="matched prompt_section in ComponentStore",
         )
-        return ResolutionResult(plan, branch, _iter_unique(branches + [branch]))
+        return ResolutionResult(plan, branch, _iter_unique([*branches, branch]))
 
     branch = ResolutionBranch("none", None, reason="no prompt plan available")
-    return ResolutionResult(None, branch, _iter_unique(branches + [branch]))
+    return ResolutionResult(None, branch, _iter_unique([*branches, branch]))
 
 
 __all__ = ["resolve_prompt_plan"]

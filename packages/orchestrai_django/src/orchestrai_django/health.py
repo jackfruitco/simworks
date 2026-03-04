@@ -19,12 +19,11 @@ Design
 """
 
 import logging
-from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def healthcheck_orchestrai() -> Tuple[bool, str]:
+def healthcheck_orchestrai() -> tuple[bool, str]:
     """
     Run a minimal healthcheck for OrchestrAI.
 

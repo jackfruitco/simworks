@@ -1,9 +1,6 @@
 # common/utils/system.py
 import logging
 import os
-from logging import getLogger
-
-from django.core.exceptions import ImproperlyConfigured
 
 _SENTINEL = object()
 
@@ -23,9 +20,6 @@ def check_env(var_name, default=_SENTINEL):
     except KeyError:
         if default is not _SENTINEL:
             return default
-        error_msg = (
-            f"{var_name} not found! Did you set the environment variable {var_name}?"
-        )
         # TODO re-enable check_env error
         # raise ImproperlyConfigured(error_msg)
 
@@ -47,7 +41,6 @@ def coerce_to_bool(value: str | bool | int) -> bool:
     return bool(value)
 
 
-import logging
 from typing import Any
 
 
@@ -58,7 +51,6 @@ def remove_null_keys(dict_: Any) -> dict[Any, Any]:
 
     If the input is not a dictionary, attempts to coerce it into one.
     """
-    import logging
 
     if not isinstance(dict_, dict):
         try:

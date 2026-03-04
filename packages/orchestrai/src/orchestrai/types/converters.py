@@ -12,35 +12,35 @@ may fail validation if required fields are missing.
 
 from typing import Any
 
-from .build import BuildMessageItem, BuildMetafield
-from .result import ResultMessageItem, ResultMetafield
+from .build import BuildMessageItem
 from .build_content import (
-    BuildTextContent,
-    BuildImageContent,
     BuildAudioContent,
     BuildFileContent,
+    BuildImageContent,
+    BuildJsonContent,
     BuildScreenshotContent,
+    BuildTextContent,
     BuildToolCallContent,
     BuildToolResultContent,
-    BuildJsonContent,
 )
+from .result import ResultMessageItem
 from .result_content import (
-    ResultTextContent,
-    ResultImageContent,
     ResultAudioContent,
+    ResultContent,
     ResultFileContent,
+    ResultImageContent,
+    ResultJsonContent,
     ResultScreenshotContent,
+    ResultTextContent,
     ResultToolCallContent,
     ResultToolResultContent,
-    ResultJsonContent,
-    ResultContent,
 )
 
 __all__ = (
-    "build_to_result",
-    "result_to_build",
     "build_content_to_result",
+    "build_to_result",
     "result_content_to_build",
+    "result_to_build",
 )
 
 

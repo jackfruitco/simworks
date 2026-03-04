@@ -1,5 +1,6 @@
-import pytest
 import asyncio
+
+import pytest
 
 from orchestrai import get_current_app
 from orchestrai.components.services.django import DjangoTaskProxy, use_django_task_proxy
@@ -111,9 +112,9 @@ def test_service_call_jsonable(registered_service):
 async def test_async_enqueue_uses_async_orm(registered_service):
     from orchestrai_django.models import ServiceCall
 
-    task_id = await registered_service.task.using(
-        backend="celery", queue="priority"
-    ).aenqueue(value=1)
+    task_id = await registered_service.task.using(backend="celery", queue="priority").aenqueue(
+        value=1
+    )
 
     fetched = await ServiceCall.objects.aget(id=task_id)
     assert fetched.queue == "priority"

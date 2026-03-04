@@ -17,8 +17,9 @@ Usage:
         )
 """
 
+from collections.abc import Callable
 import logging
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from orchestrai_django.persistence import PersistContext

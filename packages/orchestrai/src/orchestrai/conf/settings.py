@@ -1,10 +1,10 @@
 """Mapping-like configuration inspired by Celery settings handling."""
 
-
+from collections import ChainMap
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 import importlib
 import os
-from collections import ChainMap
-from typing import Any, Iterable, Iterator, Mapping, MutableMapping
+from typing import Any
 
 from .defaults import DEFAULTS
 
@@ -36,13 +36,17 @@ class Settings(MutableMapping[str, Any]):
         module = importlib.import_module(obj)
         self.update_from_mapping(_filter_by_namespace(vars(module), namespace))
 
-    def update_from_envvar(self, envvar: str = "ORCHESTRAI_CONFIG_MODULE", *, namespace: str | None = None) -> None:
+    def update_from_envvar(
+        self, envvar: str = "ORCHESTRAI_CONFIG_MODULE", *, namespace: str | None = None
+    ) -> None:
         module_name = os.environ.get(envvar)
         if not module_name:
             return
         self.update_from_object(module_name, namespace=namespace)
 
-    def update_from_mapping(self, mapping: Mapping[str, Any], *, namespace: str | None = None) -> None:
+    def update_from_mapping(
+        self, mapping: Mapping[str, Any], *, namespace: str | None = None
+    ) -> None:
         self._storage.maps[0].update(_filter_by_namespace(mapping, namespace))
 
     def as_dict(self) -> dict[str, Any]:
@@ -61,4 +65,3 @@ def _filter_by_namespace(mapping: Mapping[str, Any], namespace: str | None) -> d
         short_key = key[len(prefix) :]
         output[short_key] = value
     return output
-

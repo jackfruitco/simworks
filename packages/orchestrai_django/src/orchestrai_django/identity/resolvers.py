@@ -14,16 +14,16 @@ Subclass of the core IdentityResolver that:
 No decorator/registry imports here to avoid cycles.
 """
 
+import logging
 import os
 import re
-import logging
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.apps import apps
 from django.conf import settings
 
 from orchestrai.identity.resolvers import IdentityResolver
-from orchestrai.identity.utils import get_effective_strip_tokens, snake, module_root
+from orchestrai.identity.utils import get_effective_strip_tokens, module_root, snake
 
 if TYPE_CHECKING:  # type-only import to avoid runtime cycles
     from orchestrai.identity import Identity
@@ -79,7 +79,7 @@ def _project_strip_tokens_from_settings() -> list[str]:
     """
     # Preferred: merged settings on the default OrchestrAI app
     app = _default_orca_app_from_django_settings()
-    if app is not None and hasattr(app, "ensure_settings") and callable(getattr(app, "ensure_settings")):
+    if app is not None and hasattr(app, "ensure_settings") and callable(app.ensure_settings):
         try:
             merged = app.ensure_settings()
             val = getattr(merged, "IDENTITY_STRIP_TOKENS", None)
@@ -89,11 +89,13 @@ def _project_strip_tokens_from_settings() -> list[str]:
                 return _as_list_from_maybe_csv(val)
         except Exception:
             # Don't crash identity import if the app isn't ready yet.
-            logger.debug("Failed to read IDENTITY_STRIP_TOKENS from default OrchestrAI app", exc_info=True)
+            logger.debug(
+                "Failed to read IDENTITY_STRIP_TOKENS from default OrchestrAI app", exc_info=True
+            )
 
     # Fallback: explicit ORCA_* setting
     if hasattr(settings, "ORCA_IDENTITY_STRIP_TOKENS"):
-        return _as_list_from_maybe_csv(getattr(settings, "ORCA_IDENTITY_STRIP_TOKENS"))
+        return _as_list_from_maybe_csv(settings.ORCA_IDENTITY_STRIP_TOKENS)
 
     # Fallback: ORCA dict setting
     orca_cfg = getattr(settings, "ORCA", None)
@@ -104,7 +106,7 @@ def _project_strip_tokens_from_settings() -> list[str]:
 
     # Back-compat: SIMCORE_* setting
     if hasattr(settings, "SIMCORE_IDENTITY_STRIP_TOKENS"):
-        return _as_list_from_maybe_csv(getattr(settings, "SIMCORE_IDENTITY_STRIP_TOKENS"))
+        return _as_list_from_maybe_csv(settings.SIMCORE_IDENTITY_STRIP_TOKENS)
 
     return []
 
@@ -122,14 +124,16 @@ def _app_label_variants(label: str) -> list[str]:
     if not label:
         return []
     sn = snake(label)
-    return list({
-        label,
-        label.lower(),
-        label.upper(),
-        sn,
-        sn.replace("_", "-"),
-        label.replace("-", "_"),
-    })
+    return list(
+        {
+            label,
+            label.lower(),
+            label.upper(),
+            sn,
+            sn.replace("_", "-"),
+            label.replace("-", "_"),
+        }
+    )
 
 
 class DjangoIdentityResolver(IdentityResolver):
@@ -137,11 +141,11 @@ class DjangoIdentityResolver(IdentityResolver):
 
     # ---- hook overrides ----
     def _resolve_namespace(
-            self,
-            cls: type,
-            namespace_arg: Optional[str],
-            namespace_attr: Optional[str],
-            decorator_default: Optional[str] = None,
+        self,
+        cls: type,
+        namespace_arg: str | None,
+        namespace_attr: str | None,
+        decorator_default: str | None = None,
     ) -> tuple[str, str]:
         # arg wins
         if isinstance(namespace_arg, str) and namespace_arg.strip():
@@ -161,12 +165,12 @@ class DjangoIdentityResolver(IdentityResolver):
         return root, "derived"
 
     def _resolve_group(
-            self,
-            cls: type,
-            group_arg: Optional[str],
-            group_attr: Optional[str],
-            legacy_kind_attr: Optional[str],
-            decorator_default: Optional[str] = None,
+        self,
+        cls: type,
+        group_arg: str | None,
+        group_attr: str | None,
+        legacy_kind_attr: str | None,
+        decorator_default: str | None = None,
     ) -> tuple[str, str]:
         """Return (value, source) without legacy `kind` fallbacks."""
         if isinstance(group_arg, str) and group_arg.strip():
@@ -196,7 +200,9 @@ class DjangoIdentityResolver(IdentityResolver):
             extra.extend(_app_label_variants(label))
 
         # Env override (ORCA preferred; SIMCORE accepted for back-compat)
-        env_val = os.getenv("ORCA_IDENTITY_STRIP_TOKENS") or os.getenv("SIMCORE_IDENTITY_STRIP_TOKENS", "")
+        env_val = os.getenv("ORCA_IDENTITY_STRIP_TOKENS") or os.getenv(
+            "SIMCORE_IDENTITY_STRIP_TOKENS", ""
+        )
         extra.extend(_as_list_from_maybe_csv(env_val))
 
         # Merge with core defaults + case-insensitive de-dupe
@@ -205,13 +211,13 @@ class DjangoIdentityResolver(IdentityResolver):
 
 # Convenience helper mirroring the core one
 def resolve_identity_django(
-        cls: type,
-        *,
-        domain: Optional[str] = None,
-        namespace: Optional[str] = None,
-        group: Optional[str] = None,
-        name: Optional[str] = None,
-        context: Optional[dict[str, Any]] = None,
+    cls: type,
+    *,
+    domain: str | None = None,
+    namespace: str | None = None,
+    group: str | None = None,
+    name: str | None = None,
+    context: dict[str, Any] | None = None,
 ) -> tuple["Identity", dict[str, Any]]:
     r = DjangoIdentityResolver()
     ident, meta = r.resolve(

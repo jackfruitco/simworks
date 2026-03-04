@@ -7,14 +7,14 @@ Provides shared prompt mixins for SimWorks AI services.
 
 from .mixins import (
     CharacterConsistencyMixin,
+    FeedbackEducatorMixin,
     MedicalAccuracyMixin,
     SMSStyleMixin,
-    FeedbackEducatorMixin,
 )
 
 __all__ = [
     "CharacterConsistencyMixin",
+    "FeedbackEducatorMixin",
     "MedicalAccuracyMixin",
     "SMSStyleMixin",
-    "FeedbackEducatorMixin",
 ]

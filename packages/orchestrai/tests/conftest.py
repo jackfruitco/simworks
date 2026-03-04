@@ -12,11 +12,13 @@ if "asgiref" not in sys.modules:
     def async_to_sync(func):
         def wrapper(*args, **kwargs):
             return asyncio.get_event_loop().run_until_complete(func(*args, **kwargs))
+
         return wrapper
 
     def sync_to_async(func):
         async def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
+
         return wrapper
 
     sync_mod.async_to_sync = async_to_sync
@@ -80,16 +82,19 @@ if "pydantic" not in sys.modules:
     def field_serializer(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
     def field_validator(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
     def model_validator(*args, **kwargs):
         def decorator(func):
             return func
+
         return decorator
 
     pydantic_mod.BaseModel = BaseModel

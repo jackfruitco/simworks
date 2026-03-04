@@ -44,17 +44,16 @@ async def _resolve_conversation_id(ctx: PersistContext) -> int | None:
     return conv
 
 
-async def persist_stitch_messages(
-    messages: list[ResultMessageItem], ctx: PersistContext
-) -> list:
+async def persist_stitch_messages(messages: list[ResultMessageItem], ctx: PersistContext) -> list:
     """Persist ResultMessageItem list → chatlab.Message instances for Stitch.
 
     Same pattern as ``persist_messages`` but uses the Stitch bot user and
     requires ``conversation_id`` in context (no fallback to patient conversation).
     """
+    from asgiref.sync import sync_to_async
+
     from apps.chatlab.models import Message, RoleChoices
     from apps.common.utils.accounts import get_system_user
-    from asgiref.sync import sync_to_async
 
     stitch_user = await sync_to_async(get_system_user)("Stitch")
 
@@ -77,6 +76,7 @@ async def persist_stitch_messages(
     if attempt_id:
         try:
             from orchestrai_django.models import ServiceCallAttempt
+
             attempt_obj = await ServiceCallAttempt.objects.aget(pk=attempt_id)
         except Exception as exc:
             logger.warning("Failed to load ServiceCallAttempt %s: %s", attempt_id, exc)
@@ -104,9 +104,7 @@ async def persist_stitch_messages(
     return created
 
 
-async def persist_messages(
-    messages: list[ResultMessageItem], ctx: PersistContext
-) -> list:
+async def persist_messages(messages: list[ResultMessageItem], ctx: PersistContext) -> list:
     """Persist ResultMessageItem list → chatlab.Message instances.
 
     This is an explicit persist function because ResultMessageItem has a
@@ -130,6 +128,7 @@ async def persist_messages(
     if attempt_id:
         try:
             from orchestrai_django.models import ServiceCallAttempt
+
             attempt_obj = await ServiceCallAttempt.objects.aget(pk=attempt_id)
         except Exception as exc:
             logger.warning("Failed to load ServiceCallAttempt %s: %s", attempt_id, exc)
@@ -154,5 +153,3 @@ async def persist_messages(
         created.append(m)
 
     return created
-
-

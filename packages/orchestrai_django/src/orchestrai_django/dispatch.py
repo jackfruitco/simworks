@@ -1,9 +1,8 @@
 # orchestrai/dispatch.py
 
 
-import logging
 from functools import partial
-from typing import Optional
+import logging
 from uuid import UUID
 
 from asgiref.sync import sync_to_async  # NEW
@@ -11,9 +10,9 @@ from django.db import transaction
 
 from .signals import (
     ai_request_sent,
-    ai_response_received,
-    ai_response_ready,
     ai_response_failed,
+    ai_response_ready,
+    ai_response_received,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 # --- helpers --------------------------------------------------------------
 
-def _ident_label(namespace: Optional[str], kind: Optional[str], name: Optional[str]) -> str:
+
+def _ident_label(namespace: str | None, kind: str | None, name: str | None) -> str:
     ns = namespace or "default"
     kd = kind or "default"
     nm = name or "default"
@@ -40,7 +40,7 @@ def _on_commit_send(signal, payload: dict) -> None:
 async def _a_on_commit_send(signal, payload: dict) -> None:
     """
     Async-safe variant: registers the same callback in a thread-sensitive
-    executor so Django’s sync DB connection is used safely.
+    executor so Django's sync DB connection is used safely.
     Must be awaited to ensure registration happens before the atomic
     block exits.
     """
@@ -50,33 +50,34 @@ async def _a_on_commit_send(signal, payload: dict) -> None:
 
 # --- Identity-first emitters (namespace, kind, name) --------------------
 
+
 def emit_request(
-        *,
-        request_dto,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        codec_name: Optional[str] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    request_dto,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    codec_name: str | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        request=request_dto,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-        codec_name=codec_name,
-    )
+    payload = {
+        "request": request_dto,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+        "codec_name": codec_name,
+    }
     logger.debug(
         "emit_request: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -88,32 +89,32 @@ def emit_request(
 
 
 async def aemit_request(  # NEW
-        *,
-        request_dto,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        codec_name: Optional[str] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    request_dto,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    codec_name: str | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        request=request_dto,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-        codec_name=codec_name,
-    )
+    payload = {
+        "request": request_dto,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+        "codec_name": codec_name,
+    }
     logger.debug(
         "aemit_request: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -125,34 +126,34 @@ async def aemit_request(  # NEW
 
 
 def emit_response_received(
-        *,
-        response_dto,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        codec_name: Optional[str] = None,
-        response_audit_pk: Optional[int] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    response_dto,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    codec_name: str | None = None,
+    response_audit_pk: int | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        response=response_dto,
-        response_audit_pk=response_audit_pk,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-        codec_name=codec_name,
-    )
+    payload = {
+        "response": response_dto,
+        "response_audit_pk": response_audit_pk,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+        "codec_name": codec_name,
+    }
     logger.debug(
         "emit_response_received: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -164,34 +165,34 @@ def emit_response_received(
 
 
 async def aemit_response_received(  # NEW
-        *,
-        response_dto,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        codec_name: Optional[str] = None,
-        response_audit_pk: Optional[int] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    response_dto,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    codec_name: str | None = None,
+    response_audit_pk: int | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        response=response_dto,
-        response_audit_pk=response_audit_pk,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-        codec_name=codec_name,
-    )
+    payload = {
+        "response": response_dto,
+        "response_audit_pk": response_audit_pk,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+        "codec_name": codec_name,
+    }
     logger.debug(
         "aemit_response_received: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -203,34 +204,34 @@ async def aemit_response_received(  # NEW
 
 
 def emit_response_ready(
-        *,
-        response_dto,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        codec_name: Optional[str] = None,
-        response_audit_pk: Optional[int] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    response_dto,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    codec_name: str | None = None,
+    response_audit_pk: int | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        response=response_dto,
-        response_audit_pk=response_audit_pk,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-        codec_name=codec_name,
-    )
+    payload = {
+        "response": response_dto,
+        "response_audit_pk": response_audit_pk,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+        "codec_name": codec_name,
+    }
     logger.debug(
         "emit_response_ready: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -242,34 +243,34 @@ def emit_response_ready(
 
 
 async def aemit_response_ready(  # NEW
-        *,
-        response_dto,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        codec_name: Optional[str] = None,
-        response_audit_pk: Optional[int] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    response_dto,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    codec_name: str | None = None,
+    response_audit_pk: int | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        response=response_dto,
-        response_audit_pk=response_audit_pk,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-        codec_name=codec_name,
-    )
+    payload = {
+        "response": response_dto,
+        "response_audit_pk": response_audit_pk,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+        "codec_name": codec_name,
+    }
     logger.debug(
         "aemit_response_ready: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -281,30 +282,30 @@ async def aemit_response_ready(  # NEW
 
 
 def emit_failure(
-        *,
-        error: str,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    error: str,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        error=error,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-    )
+    payload = {
+        "error": error,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+    }
     logger.debug(
         "emit_failure: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),
@@ -316,30 +317,30 @@ def emit_failure(
 
 
 async def aemit_failure(  # NEW
-        *,
-        error: str,
-        namespace: Optional[str] = None,
-        kind: Optional[str] = None,
-        name: Optional[str] = None,
-        client_name: Optional[str] = None,
-        provider_name: Optional[str] = None,
-        object_db_pk: Optional[int | UUID] = None,
-        context: Optional[dict] = None,
-        correlation_id: Optional[UUID] = None,
-        request_audit_pk: Optional[int] = None,
+    *,
+    error: str,
+    namespace: str | None = None,
+    kind: str | None = None,
+    name: str | None = None,
+    client_name: str | None = None,
+    provider_name: str | None = None,
+    object_db_pk: int | UUID | None = None,
+    context: dict | None = None,
+    correlation_id: UUID | None = None,
+    request_audit_pk: int | None = None,
 ) -> None:
-    payload = dict(
-        error=error,
-        request_audit_pk=request_audit_pk,
-        namespace=namespace,
-        kind=kind,
-        name=name,
-        client_name=client_name,
-        provider_name=provider_name,
-        object_db_pk=object_db_pk,
-        context=context,
-        correlation_id=correlation_id,
-    )
+    payload = {
+        "error": error,
+        "request_audit_pk": request_audit_pk,
+        "namespace": namespace,
+        "kind": kind,
+        "name": name,
+        "client_name": client_name,
+        "provider_name": provider_name,
+        "object_db_pk": object_db_pk,
+        "context": context,
+        "correlation_id": correlation_id,
+    }
     logger.debug(
         "aemit_failure: ident=%s client=%s backend=%s corr=%s",
         _ident_label(namespace, kind, name),

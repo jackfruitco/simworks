@@ -4,10 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from orchestrai.types.transport import Request
 from orchestrai.types.content import ContentRole
-from orchestrai.types.input import InputContent, InputTextContent
+from orchestrai.types.input import InputTextContent
 from orchestrai.types.messages import InputItem
+from orchestrai.types.transport import Request
 
 
 class DummySchema(BaseModel):

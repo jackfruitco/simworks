@@ -35,10 +35,10 @@ from apps.common.orca.prompts import (
     MedicalAccuracyMixin,
     SMSStyleMixin,
 )
+from apps.simcore.models import Simulation
 from orchestrai.prompts import system_prompt
 from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import service
-from apps.simcore.models import Simulation
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class GenerateInitialResponse(
     use_native_output = True
 
     from apps.chatlab.orca.schemas import PatientInitialOutputSchema as _Schema
+
     response_schema = _Schema
 
     @system_prompt(weight=100)
@@ -163,6 +164,7 @@ class GenerateReplyResponse(
     use_native_output = True
 
     from apps.chatlab.orca.schemas import PatientReplyOutputSchema as _Schema
+
     response_schema = _Schema
 
     async def _aprepare_context(self) -> None:
@@ -179,6 +181,7 @@ class GenerateReplyResponse(
 
         try:
             from apps.chatlab.models import Message
+
             msg = await Message.objects.aget(pk=user_msg_id)
         except Exception as exc:
             logger.warning("Unable to load user message %s: %s", user_msg_id, exc)

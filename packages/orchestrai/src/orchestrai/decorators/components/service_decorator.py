@@ -8,13 +8,12 @@ Core service decorator.
 """
 
 import logging
-from typing import Any, Type
+from typing import Any
 
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry import ComponentRegistry
-
 from orchestrai.registry.services import service_registry
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,7 @@ class ServiceDecorator(BaseDecorator):
     # Human-friendly log label
     log_category = "services"
 
-    def register(self, candidate: Type[Any]) -> None:
+    def register(self, candidate: type[Any]) -> None:
         # Guard: ensure we only register service classes
         if not issubclass(candidate, _VALID_SERVICE_BASES):
             raise TypeError(

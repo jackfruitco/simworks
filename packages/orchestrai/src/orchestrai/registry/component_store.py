@@ -1,5 +1,6 @@
 # orchestrai/registry/component_store.py
 """Identity-indexed component registries owned by each app."""
+
 from threading import RLock
 from typing import Any
 

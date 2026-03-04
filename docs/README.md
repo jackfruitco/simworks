@@ -5,10 +5,10 @@ SimWorks is a Django-based training platform that delivers chat-driven clinical 
 
 SimWorks ships several first-party Django apps:
 
-- `accounts` – custom user model, invitations, and role/resource authorizations.【F:PROJECT_OVERVIEW.md†L10-L18】【F:SimWorks/accounts/models.py†L15-L170】
-- `core` – shared middleware, views, and utilities that enforce platform-wide concerns such as health checks and GraphQL access controls.【F:PROJECT_OVERVIEW.md†L12-L13】【F:SimWorks/core/middleware.py†L4-L14】【F:SimWorks/core/views/views.py†L13-L48】
-- `simcore` – domain models for simulations, metadata, patient context, clinical results, media, and AI responses.【F:PROJECT_OVERVIEW.md†L14-L40】【F:SimWorks/simcore/models.py†L40-L721】
-- `chatlab` – chat-specific session models and message handling layered on simulations.【F:PROJECT_OVERVIEW.md†L16-L33】【F:SimWorks/chatlab/models.py†L20-L157】
+- `accounts` - custom user model, invitations, and role/resource authorizations.【F:PROJECT_OVERVIEW.md†L10-L18】【F:SimWorks/accounts/models.py†L15-L170】
+- `core` - shared middleware, views, and utilities that enforce platform-wide concerns such as health checks and GraphQL access controls.【F:PROJECT_OVERVIEW.md†L12-L13】【F:SimWorks/core/middleware.py†L4-L14】【F:SimWorks/core/views/views.py†L13-L48】
+- `simcore` - domain models for simulations, metadata, patient context, clinical results, media, and AI responses.【F:PROJECT_OVERVIEW.md†L14-L40】【F:SimWorks/simcore/models.py†L40-L721】
+- `chatlab` - chat-specific session models and message handling layered on simulations.【F:PROJECT_OVERVIEW.md†L16-L33】【F:SimWorks/chatlab/models.py†L20-L157】
 
 TrainerLab is present in the codebase but not yet covered by this documentation, per the current scope agreement.
 

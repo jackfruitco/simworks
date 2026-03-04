@@ -1,7 +1,9 @@
 # orchestrai_django/models/mixins.py
+from collections.abc import Iterable, Mapping
+import contextlib
+from typing import Any, Self
 import uuid
 import warnings
-from typing import Any, Iterable, Mapping, Self
 
 from channels.db import database_sync_to_async
 from django.db import models
@@ -56,10 +58,8 @@ class PersistModel(models.Model):
         if make_aware:
             for k, v in list(payload.items()):
                 if hasattr(v, "tzinfo") and getattr(v, "tzinfo", None) is None:
-                    try:
+                    with contextlib.suppress(Exception):
                         payload[k] = timezone.make_aware(v, timezone.get_current_timezone())
-                    except Exception:
-                        pass
 
         # set attributes (ignore unknowns, but log them)
         unknown: list[str] = []
@@ -72,6 +72,7 @@ class PersistModel(models.Model):
         if unknown:
             # keep this mild; unknown keys are common when schemas evolve
             from logging import getLogger
+
             getLogger(__name__).debug(
                 "Ignoring unknown fields for %s: %s", self.__class__.__name__, ", ".join(unknown)
             )
@@ -163,7 +164,12 @@ class OutboxEvent(models.Model):
     - idempotency_key ensures duplicate events are not created
     - Clients should deduplicate by event_id
     """
-    warnings.warn("`common.models.OutboxEvent` is deprecated. Use the `orchestrai-django` models instead.", DeprecationWarning, stacklevel=2)
+
+    warnings.warn(
+        "`common.models.OutboxEvent` is deprecated. Use the `orchestrai-django` models instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     class EventStatus(models.TextChoices):
         PENDING = "pending", "Pending"

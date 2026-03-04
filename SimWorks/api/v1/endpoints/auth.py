@@ -8,7 +8,6 @@ from django.http import HttpRequest
 from ninja import Router
 from ninja.errors import HttpError
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from api.v1.auth import InvalidTokenError, create_tokens, refresh_access_token
 
@@ -18,8 +17,8 @@ try:
 except Exception:  # pragma: no cover
     revoke_refresh_token = None
 
-from config.logging import get_logger
 from apps.common.ratelimit import auth_rate_limit
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -84,7 +83,7 @@ class RefreshResponse(BaseModel):
         ...,
         description="New JWT access token",
     )
-    refresh_token: Optional[str] = Field(
+    refresh_token: str | None = Field(
         default=None,
         description="(Optional) Rotated refresh token, if rotation is enabled.",
     )
@@ -158,7 +157,7 @@ def refresh_token(request: HttpRequest, body: RefreshRequest) -> RefreshResponse
     except InvalidTokenError as e:
         # Log full error but return generic message to prevent information leakage
         logger.warning("auth.token_refresh_failed", error=str(e))
-        raise HttpError(401, "Invalid or expired refresh token")
+        raise HttpError(401, "Invalid or expired refresh token") from None
 
 
 class LogoutRequest(BaseModel):

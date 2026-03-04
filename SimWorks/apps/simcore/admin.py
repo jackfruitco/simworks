@@ -1,7 +1,7 @@
-from apps.chatlab.models import Message
-from apps.chatlab.models import MessageMediaLink
 from django.contrib import admin
 from django.utils.html import format_html
+
+from apps.chatlab.models import Message, MessageMediaLink
 
 from .models import *
 
@@ -57,22 +57,14 @@ class SimulationAdmin(admin.ModelAdmin):
                 '<img src="/static/admin/img/icon-in-progress.svg" alt="In Progress">'
             )
 
-        val = (
-            obj.metadata.filter(key="correct diagnosis")
-            .values_list("value", flat=True)
-            .first()
-        )
+        val = obj.metadata.filter(key="correct diagnosis").values_list("value", flat=True).first()
         if val == "true":
             return format_html('<img src="/static/admin/img/icon-yes.svg" alt="True">')
         elif val == "false":
             return format_html('<img src="/static/admin/img/icon-no.svg" alt="False">')
         elif val == "partial":
-            return format_html(
-                '<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">'
-            )
-        return format_html(
-            '<img src="/static/admin/img/icon-unknown.svg" alt="Missing">'
-        )
+            return format_html('<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">')
+        return format_html('<img src="/static/admin/img/icon-unknown.svg" alt="Missing">')
 
     @admin.display(description="Correct Treatment Plan")
     def correct_treatment_plan(self, obj):
@@ -91,12 +83,8 @@ class SimulationAdmin(admin.ModelAdmin):
         elif val == "false":
             return format_html('<img src="/static/admin/img/icon-no.svg" alt="False">')
         elif val == "partial":
-            return format_html(
-                '<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">'
-            )
-        return format_html(
-            '<img src="/static/admin/img/icon-unknown.svg" alt="Missing">'
-        )
+            return format_html('<img src="/static/admin/img/icon-maybe.svg" alt="Maybe">')
+        return format_html('<img src="/static/admin/img/icon-unknown.svg" alt="Missing">')
 
     list_display = (
         "id",
@@ -140,21 +128,26 @@ class SimulationAdmin(admin.ModelAdmin):
 
 @admin.register(SimulationMetadata)
 class SimulationMetadataAdmin(admin.ModelAdmin):
-
     def has_change_permission(self, request, obj=None):
         return False
 
 
 @admin.register(SimulationImage)
 class SimulationImageAdmin(admin.ModelAdmin):
-
     def has_change_permission(self, request, obj=None):
         return False
 
 
 @admin.register(ConversationType)
 class ConversationTypeAdmin(admin.ModelAdmin):
-    list_display = ("slug", "display_name", "ai_persona", "locks_with_simulation", "is_active", "sort_order")
+    list_display = (
+        "slug",
+        "display_name",
+        "ai_persona",
+        "locks_with_simulation",
+        "is_active",
+        "sort_order",
+    )
     list_filter = ("locks_with_simulation", "is_active")
     search_fields = ("slug", "display_name")
     ordering = ("sort_order",)
@@ -162,7 +155,14 @@ class ConversationTypeAdmin(admin.ModelAdmin):
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
-    list_display = ("id", "simulation", "conversation_type", "display_name", "is_archived", "created_at")
+    list_display = (
+        "id",
+        "simulation",
+        "conversation_type",
+        "display_name",
+        "is_archived",
+        "created_at",
+    )
     list_filter = ("conversation_type", "is_archived")
     search_fields = ("display_name", "simulation__id")
     raw_id_fields = ("simulation",)

@@ -1,14 +1,14 @@
 # chatlab/orca/services/__init__.py
 from .patient import (
+    GenerateImageResponse,
     GenerateInitialResponse,
     GenerateReplyResponse,
-    GenerateImageResponse,
 )
 from .stitch import GenerateStitchReply
 
 __all__ = [
+    "GenerateImageResponse",
     "GenerateInitialResponse",
     "GenerateReplyResponse",
-    "GenerateImageResponse",
     "GenerateStitchReply",
 ]

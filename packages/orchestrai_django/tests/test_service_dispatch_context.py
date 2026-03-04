@@ -10,8 +10,8 @@ from orchestrai.identity import Identity
 
 @pytest.fixture()
 def minimal_django_settings():
-    from django.conf import settings
     import django
+    from django.conf import settings
 
     if not settings.configured:
         settings.configure(
@@ -60,7 +60,9 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
     from orchestrai_django.tasks import run_service_call
 
     autostart_calls: list[bool] = []
-    monkeypatch.setattr("orchestrai_django.apps.ensure_autostarted", lambda: autostart_calls.append(True))
+    monkeypatch.setattr(
+        "orchestrai_django.apps.ensure_autostarted", lambda: autostart_calls.append(True)
+    )
 
     service_identity = Identity("services", "demo", "ctx", "initial")
 
@@ -132,12 +134,14 @@ def test_run_service_call_triggers_autostart(monkeypatch, minimal_django_setting
 
     dummy_call = DummyCall("call-1")
 
-    monkeypatch.setattr("orchestrai_django.tasks.ensure_service_registry", lambda app=None: DummyRegistry())
+    monkeypatch.setattr(
+        "orchestrai_django.tasks.ensure_service_registry", lambda app=None: DummyRegistry()
+    )
     monkeypatch.setattr(
         "orchestrai_django.tasks.ServiceCallModel.objects.select_for_update",
         lambda: type("QS", (), {"get": lambda self, pk: dummy_call})(),
     )
 
-    result = run_service_call("call-1")
+    run_service_call("call-1")
 
     assert autostart_calls == [True]

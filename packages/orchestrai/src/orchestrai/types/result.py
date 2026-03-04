@@ -20,7 +20,6 @@ from pydantic import Field
 from .base import StrictBaseModel
 from .content import ContentRole
 from .result_content import ResultContent
-from .meta import Metafield
 
 __all__ = (
     "ResultMessageItem",
@@ -30,6 +29,7 @@ __all__ = (
 
 # ---- Result-side metadata ----
 
+
 class ResultMetafield(StrictBaseModel):
     """
     Metadata field for structured outputs - strict, no defaults.
@@ -37,16 +37,17 @@ class ResultMetafield(StrictBaseModel):
     OpenAI Structured Outputs requires all objects to have additionalProperties: false.
     Using list[ResultMetafield] instead of dict[str, Any] for metadata bags ensures compliance.
     """
+
     key: str = Field(..., min_length=1, description="Metadata key identifier")
     value: str | int | float | bool | None = Field(
-        ...,
-        description="Metadata value - JSON primitive types only"
+        ..., description="Metadata value - JSON primitive types only"
     )
 
     __orm_model__ = "simcore.SimulationMetadata"
 
 
 # ---- Result-side message item ----
+
 
 class ResultMessageItem(StrictBaseModel):
     """
@@ -59,9 +60,9 @@ class ResultMessageItem(StrictBaseModel):
 
     All fields are required. Use empty list [] for item_meta if no metadata needed.
     """
+
     role: ContentRole
     content: list[ResultContent] = Field(..., min_length=1)
     item_meta: list[ResultMetafield] = Field(
-        ...,
-        description="Metadata entries as key-value pairs (use empty list [] if none)"
+        ..., description="Metadata entries as key-value pairs (use empty list [] if none)"
     )

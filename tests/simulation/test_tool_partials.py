@@ -1,14 +1,10 @@
 """
 Tests for Django 6.0 template partials integration with simulation tools.
 """
-import pytest
+
 from django.template import Context, TemplateDoesNotExist
 from django.template.loader import get_template
-from django.test import RequestFactory
-
-from apps.simcore.models import Simulation
-from apps.simcore.tools.builtins.patient import PatientHistoryTool, PatientResultsTool
-from apps.simcore.tools.builtins.feedback import SimulationFeedbackTool
+import pytest
 
 
 @pytest.mark.django_db
@@ -19,7 +15,7 @@ class TestToolPartials:
         """Verify tool_wrapper partial can be loaded."""
         template = get_template("simcore/tools.html#tool_wrapper")
         assert template is not None
-        assert hasattr(template, 'template')
+        assert hasattr(template, "template")
 
     def test_tool_panel_partial_exists(self):
         """Verify tool_panel partial can be loaded."""

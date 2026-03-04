@@ -8,16 +8,16 @@ commits, ensuring database consistency.
 
 import logging
 import threading
-import uuid
+import traceback as _traceback
 from typing import Any
+import uuid
 
 from asgiref.sync import async_to_sync
 from django.db import transaction
 from django.tasks.backends.base import BaseTaskBackend
-from django.tasks.base import TaskResult, TaskResultStatus, TaskError
+from django.tasks.base import TaskError, TaskResult, TaskResultStatus
 from django.tasks.exceptions import TaskResultDoesNotExist
 from django.utils import timezone
-import traceback as _traceback
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,7 @@ class AsyncThreadBackend(BaseTaskBackend):
         parent_app = None
         try:
             from orchestrai import get_current_app
+
             parent_app = get_current_app()
         except Exception:
             logger.debug("No OrchestrAI app context to propagate to background thread")
@@ -90,12 +91,12 @@ class AsyncThreadBackend(BaseTaskBackend):
                         set_active_registry_app(parent_app)
                         logger.debug(
                             "AsyncThreadBackend: Restored OrchestrAI app context in background thread for task %s",
-                            result_id
+                            result_id,
                         )
                     except Exception:
                         logger.debug(
                             "AsyncThreadBackend: Failed to bind parent app into background thread",
-                            exc_info=True
+                            exc_info=True,
                         )
 
                 started_at = timezone.now()
@@ -142,23 +143,17 @@ class AsyncThreadBackend(BaseTaskBackend):
                 )
 
                 logger.exception(
-                    "AsyncThreadBackend: Task %s failed with error: %s",
-                    result_id,
-                    str(exc)
+                    "AsyncThreadBackend: Task %s failed with error: %s", result_id, str(exc)
                 )
 
         def _start_thread():
             """Start the daemon thread."""
             thread = threading.Thread(
-                target=_runner,
-                name=f"django-task-{result_id[:8]}",
-                daemon=True
+                target=_runner, name=f"django-task-{result_id[:8]}", daemon=True
             )
             thread.start()
             logger.debug(
-                "AsyncThreadBackend: Started daemon thread %s for task %s",
-                thread.name,
-                result_id
+                "AsyncThreadBackend: Started daemon thread %s for task %s", thread.name, result_id
             )
 
         # Schedule thread to start after transaction commits
@@ -166,15 +161,13 @@ class AsyncThreadBackend(BaseTaskBackend):
         try:
             transaction.on_commit(_start_thread)
             logger.debug(
-                "AsyncThreadBackend: Scheduled task %s to run after transaction commit",
-                result_id
+                "AsyncThreadBackend: Scheduled task %s to run after transaction commit", result_id
             )
         except Exception:
             # Not in a transaction context, start immediately
             _start_thread()
             logger.debug(
-                "AsyncThreadBackend: Started task %s immediately (no transaction)",
-                result_id
+                "AsyncThreadBackend: Started task %s immediately (no transaction)", result_id
             )
 
         # Return TaskResult immediately (fire-and-forget)
@@ -237,7 +230,9 @@ class AsyncThreadBackend(BaseTaskBackend):
             error_items = [
                 TaskError(
                     exception_class_path=f"{error.__class__.__module__}.{error.__class__.__qualname__}",
-                    traceback="".join(_traceback.format_exception(type(error), error, error.__traceback__)),
+                    traceback="".join(
+                        _traceback.format_exception(type(error), error, error.__traceback__)
+                    ),
                 )
             ]
 

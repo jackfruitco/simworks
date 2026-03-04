@@ -2,8 +2,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.test import Client
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -16,9 +15,7 @@ class InvitationTests(TestCase):
     def setUp(self):
         self.client = Client()
         # Create a user with invitation privileges
-        self.inviter = User.objects.create_user(
-            password="password", email="inviter@example.com"
-        )
+        self.inviter = User.objects.create_user(password="password", email="inviter@example.com")
         inviters_group, _ = Group.objects.get_or_create(name="Inviters")
         self.inviter.groups.add(inviters_group)
         self.inviter.save()

@@ -8,6 +8,7 @@ from django.http import HttpRequest
 def debug_flag(request):
     return {"debug": settings.DEBUG}
 
+
 def site_info(request: HttpRequest) -> dict[str, Any]:
     """
     Adds site metadata to every template.

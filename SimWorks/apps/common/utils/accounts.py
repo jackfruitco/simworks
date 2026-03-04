@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 def aget_or_create_system_user():
     return get_or_create_system_user()
 
+
 def get_or_create_system_user():
     """
     Returns the singleton System user for AI or system-generated actions.

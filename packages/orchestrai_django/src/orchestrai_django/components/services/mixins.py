@@ -51,7 +51,7 @@ class PreviousResponseMixin:
             return
 
         try:
-            from orchestrai_django.models import ServiceCall as ServiceCallModel, CallStatus
+            from orchestrai_django.models import CallStatus, ServiceCall as ServiceCallModel
 
             service_identity = getattr(getattr(self, "identity", None), "as_str", None)
             filters = {
@@ -62,17 +62,25 @@ class PreviousResponseMixin:
             if service_identity:
                 filters["service_identity"] = service_identity
 
-            prev_call = await ServiceCallModel.objects.filter(
-                **filters,
-            ).order_by("-finished_at").afirst()
+            prev_call = (
+                await ServiceCallModel.objects.filter(
+                    **filters,
+                )
+                .order_by("-finished_at")
+                .afirst()
+            )
 
             if not prev_call:
-                logger.debug("-- [context] no previous response for simulation_id=%s", simulation_id)
+                logger.debug(
+                    "-- [context] no previous response for simulation_id=%s", simulation_id
+                )
                 return
 
             prev_id = prev_call.provider_response_id
             if not prev_id:
-                logger.debug("-- [context] previous response ID missing for simulation_id=%s", simulation_id)
+                logger.debug(
+                    "-- [context] previous response ID missing for simulation_id=%s", simulation_id
+                )
                 return
 
             self.context["previous_response_id"] = prev_id

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import logging
-from typing import Iterable
 
 from orchestrai.components.codecs import BaseCodec
 from orchestrai.identity.domains import CODECS_DOMAIN
@@ -49,13 +49,13 @@ def _sort_candidates(candidates: list[type[BaseCodec]]) -> list[type[BaseCodec]]
 
 
 def resolve_codec(
-        *,
-        service,
-        override: type[BaseCodec] | None = None,
-        explicit: type[BaseCodec] | None = None,
-        configured: Iterable[type[BaseCodec]] | None = None,
-        constraints: dict[str, object] | None = None,
-        store=None,
+    *,
+    service,
+    override: type[BaseCodec] | None = None,
+    explicit: type[BaseCodec] | None = None,
+    configured: Iterable[type[BaseCodec]] | None = None,
+    constraints: dict[str, object] | None = None,
+    store=None,
 ) -> ResolutionResult[type[BaseCodec] | None]:
     """Resolve a codec class for a service call."""
 
@@ -74,7 +74,7 @@ def resolve_codec(
             identity=_codec_identity_label(override),
             reason="per-call codec override",
         )
-        return ResolutionResult(override, branch, branches + [branch])
+        return ResolutionResult(override, branch, [*branches, branch])
 
     if explicit is not None:
         branch = ResolutionBranch(
@@ -83,7 +83,7 @@ def resolve_codec(
             identity=_codec_identity_label(explicit),
             reason="codec_cls provided",
         )
-        return ResolutionResult(explicit, branch, branches + [branch])
+        return ResolutionResult(explicit, branch, [*branches, branch])
 
     candidates: list[type[BaseCodec]] = []
 
@@ -115,10 +115,10 @@ def resolve_codec(
                 "candidate_classes": tuple(candidates),
             },
         )
-        return ResolutionResult(selected, branch, _unique(branches + [branch]))
+        return ResolutionResult(selected, branch, _unique([*branches, branch]))
 
     branch = ResolutionBranch("none", None, reason="no codec resolved")
-    return ResolutionResult(None, branch, branches + [branch])
+    return ResolutionResult(None, branch, [*branches, branch])
 
 
 __all__ = ["resolve_codec"]

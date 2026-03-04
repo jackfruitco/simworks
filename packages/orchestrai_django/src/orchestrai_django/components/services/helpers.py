@@ -15,19 +15,18 @@ Notes
 • All output are normalized to lowercase for consistency in logs/metrics.
 """
 
-
-
 # Centralized identity primitives/utilities
 from orchestrai.identity import coerce_identity_key
 
-
 __all__ = [
-    "_parse_codec_identity",
     "_kind_name_from_codec_name",
+    "_parse_codec_identity",
 ]
 
 
-def _parse_codec_identity(codec_identity: str) -> tuple[str | None, str | None, str | None, str | None]:
+def _parse_codec_identity(
+    codec_identity: str,
+) -> tuple[str | None, str | None, str | None, str | None]:
     """Strictly parse a codec identity into (domain, namespace, group, name).
 
     Expected forms
@@ -72,7 +71,7 @@ def _kind_name_from_codec_name(
     Notes
     -----
     • This helper is intentionally narrow in scope; it does not support
-      "domain.namespace.group.name" (that’s a full identity and should be passed
+      "domain.namespace.group.name" (this is a full identity and should be passed
       through `_parse_codec_identity` / Identity utilities instead).
     """
     if not codec_name:

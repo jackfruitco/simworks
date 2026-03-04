@@ -3,8 +3,8 @@
 Tests the HTMX endpoints used for real-time message rendering.
 """
 
-import pytest
 from django.test import Client
+import pytest
 
 
 @pytest.fixture
@@ -228,9 +228,7 @@ class TestGetSingleMessage:
         """Test that the endpoint returns 404 for a non-existent message."""
         client.force_login(user)
 
-        response = client.get(
-            f"/chatlab/simulation/{simulation.id}/message/99999/"
-        )
+        response = client.get(f"/chatlab/simulation/{simulation.id}/message/99999/")
 
         assert response.status_code == 404
 
@@ -238,20 +236,18 @@ class TestGetSingleMessage:
         """Test that the endpoint returns 200 with HTML for an existing message."""
         client.force_login(user)
 
-        response = client.get(
-            f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/"
-        )
+        response = client.get(f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/")
 
         assert response.status_code == 200
         assert "text/html" in response["Content-Type"]
 
-    def test_returns_html_with_message_id_attribute(self, client: Client, user, simulation, ai_message):
+    def test_returns_html_with_message_id_attribute(
+        self, client: Client, user, simulation, ai_message
+    ):
         """Test that the returned HTML has the data-message-id attribute."""
         client.force_login(user)
 
-        response = client.get(
-            f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/"
-        )
+        response = client.get(f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/")
 
         content = response.content.decode()
         assert f'data-message-id="{ai_message.id}"' in content
@@ -260,18 +256,14 @@ class TestGetSingleMessage:
         """Test that the returned HTML contains the message content."""
         client.force_login(user)
 
-        response = client.get(
-            f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/"
-        )
+        response = client.get(f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/")
 
         content = response.content.decode()
         assert "Hello, I am your patient." in content
 
     def test_requires_authentication(self, client: Client, simulation, ai_message):
         """Test that the endpoint requires authentication."""
-        response = client.get(
-            f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/"
-        )
+        response = client.get(f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/")
 
         # Should redirect to login
         assert response.status_code == 302
@@ -281,9 +273,7 @@ class TestGetSingleMessage:
         """Test that AI messages are rendered with 'incoming' class (not outgoing)."""
         client.force_login(user)
 
-        response = client.get(
-            f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/"
-        )
+        response = client.get(f"/chatlab/simulation/{simulation.id}/message/{ai_message.id}/")
 
         assert response.status_code == 200
         content = response.content.decode()
@@ -307,9 +297,7 @@ class TestGetSingleMessage:
 
         client.force_login(user)
 
-        response = client.get(
-            f"/chatlab/simulation/{other_simulation.id}/message/{ai_message.id}/"
-        )
+        response = client.get(f"/chatlab/simulation/{other_simulation.id}/message/{ai_message.id}/")
 
         # Should return 404 because message doesn't belong to this simulation
         assert response.status_code == 404

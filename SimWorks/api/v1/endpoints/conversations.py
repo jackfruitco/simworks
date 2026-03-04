@@ -16,8 +16,8 @@ from api.v1.schemas.conversations import (
     conversation_to_out,
 )
 from api.v1.utils import get_simulation_for_user
-from config.logging import get_logger
 from apps.common.ratelimit import api_rate_limit
+from config.logging import get_logger
 
 logger = get_logger(__name__)
 

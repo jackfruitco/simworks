@@ -2,19 +2,29 @@
 
 
 from threading import RLock
-from typing import ClassVar, Optional, Any
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 if TYPE_CHECKING:  # avoid import cycles at import time
     from orchestrai.identity import Identity
 
+
 class _IdentityAccessor:
     """Descriptor that returns the resolved Identity for a class or instance."""
-    def __get__(self, obj, owner):
-        cls = owner if obj is not None else owner  # explicit for readability
-        # Late import to avoid cycles
-        # Call through to the mixin's resolver-backed method
+
+    def __get__(self, obj: Any, owner: type | None = None) -> "Identity":
+        """Return the resolved Identity for class or instance access.
+
+        - Accessed on the class: `obj` is None and `owner` is the class.
+        - Accessed on an instance: `obj` is the instance; `owner` may be None.
+        """
+        if obj is None:
+            assert owner is not None
+            return owner.resolve_identity()
+
+        # Instance access: normalize to the concrete class.
+        cls = owner or type(obj)
         return cls.resolve_identity()
+
 
 class IdentityMixin:
     """Centralized, resolver-driven class identity.
@@ -44,25 +54,24 @@ class IdentityMixin:
     """
 
     # ----- identity hints (optional) -----
-    domain: ClassVar[Optional[str]] = None
-    namespace: ClassVar[Optional[str]] = None
-    group: ClassVar[Optional[str]] = None
-    name: ClassVar[Optional[str]] = None
+    domain: ClassVar[str | None] = None
+    namespace: ClassVar[str | None] = None
+    group: ClassVar[str | None] = None
+    name: ClassVar[str | None] = None
     # Legacy compatibility (read by resolver fallback)
-    kind: ClassVar[Optional[str]] = None
+    kind: ClassVar[str | None] = None
 
     __identity_abstract__: ClassVar[bool] = False
 
     # ----- internal cache (per-class) -----
     __identity_cached: ClassVar[Optional["Identity"]] = None
-    __identity_meta_cached: ClassVar[Optional[dict[str, Any]]] = None
+    __identity_meta_cached: ClassVar[dict[str, Any] | None] = None
     __identity_lock: ClassVar[RLock] = RLock()
 
     # Expose a single, simple surface: ExampleCodec.identity -> Identity
     identity = _IdentityAccessor()
 
     # ------------------------- class utilities -------------------------
-
 
     @classmethod
     def resolve_identity(cls) -> "Identity":
@@ -72,7 +81,6 @@ class IdentityMixin:
             return cached
 
         # Late import to avoid cycles
-        from orchestrai.identity.identity import Identity as _Identity
 
         with cls.__identity_lock:
             if cls.__identity_cached is not None:
@@ -100,7 +108,6 @@ class IdentityMixin:
         """Return resolver meta for tracing/debugging (cached)."""
         _ = cls.resolve_identity()  # ensure resolved
         return dict(cls.__identity_meta_cached or {})
-
 
     @classmethod
     def pin_identity(

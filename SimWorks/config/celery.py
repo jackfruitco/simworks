@@ -2,7 +2,6 @@
 import os
 
 from celery import Celery
-from celery import signals
 from celery.schedules import crontab
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
@@ -46,6 +45,7 @@ app.conf.beat_schedule = {
 #     with service_span_sync("celery.beat_init.ai_setup"):
 #         # configure_ai_clients()
 #         autodiscover_all()
+
 
 @app.task(bind=True, ignore_result=True)
 def debug_task(self):

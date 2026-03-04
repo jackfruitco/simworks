@@ -6,12 +6,11 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import QuerySet
-from django.shortcuts import reverse
 from django.utils import timezone
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from imagekit.processors import ResizeToFill
+
 
 class CustomUserManager(UserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -44,29 +43,25 @@ class User(AbstractUser):
     role = models.ForeignKey("UserRole", on_delete=models.PROTECT)
 
     # Profile fields
-    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, help_text="User profile photo")
+    avatar = models.ImageField(
+        upload_to="avatars/", blank=True, null=True, help_text="User profile photo"
+    )
     avatar_thumbnail = ImageSpecField(
-        source='avatar',
-        processors=[ResizeToFill(150, 150)],
-        format='JPEG',
-        options={'quality': 90}
+        source="avatar", processors=[ResizeToFill(150, 150)], format="JPEG", options={"quality": 90}
     )
     avatar_medium = ImageSpecField(
-        source='avatar',
-        processors=[ResizeToFill(300, 300)],
-        format='JPEG',
-        options={'quality': 90}
+        source="avatar", processors=[ResizeToFill(300, 300)], format="JPEG", options={"quality": 90}
     )
     bio = models.TextField(blank=True, null=True, help_text="Short bio or description")
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['first_name', 'last_name']
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["first_name", "last_name"]
 
     def get_scenario_log(
-            self,
-            within_days: float | None = None,
-            within_weeks: float | None = None,
-            within_months: float | None = None,
+        self,
+        within_days: float | None = None,
+        within_weeks: float | None = None,
+        within_months: float | None = None,
     ) -> models.QuerySet:
         from apps.simcore.models import Simulation
 
@@ -80,7 +75,7 @@ class User(AbstractUser):
         qs = (
             Simulation.objects.filter(user=self)
             .exclude(diagnosis__isnull=True)
-            .order_by('-start_timestamp')
+            .order_by("-start_timestamp")
         )
         if within_days:
             cutoff = now() - timedelta(days=within_days)
@@ -90,10 +85,10 @@ class User(AbstractUser):
         return qs.values("id", "start_timestamp", "diagnosis", "chief_complaint")
 
     async def aget_scenario_log(
-            self,
-            within_days: float | None = None,
-            within_weeks: float | None = None,
-            within_months: float | None = None,
+        self,
+        within_days: float | None = None,
+        within_weeks: float | None = None,
+        within_months: float | None = None,
     ) -> list[dict]:
         """Async wrapper to get scenario log"""
 
@@ -141,9 +136,7 @@ class RoleResource(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
-    role = models.ForeignKey(
-        "UserRole", on_delete=models.PROTECT, related_name="resources"
-    )
+    role = models.ForeignKey("UserRole", on_delete=models.PROTECT, related_name="resources")
     resource = models.CharField(max_length=100, blank=False, null=False, default="")
 
     def __str__(self):
@@ -198,6 +191,7 @@ class Invitation(models.Model):
     def get_absolute_url(self):
         """Return allauth signup URL with invitation token as query parameter."""
         from django.urls import reverse as url_reverse
+
         return f"{url_reverse('account_signup')}?invitation={self.token}"
 
     @property
@@ -215,6 +209,4 @@ class Invitation(models.Model):
         self.save()
 
     def __str__(self):
-        return (
-            f"Invitation {self.token} ({'claimed' if self.is_claimed else 'unclaimed'})"
-        )
+        return f"Invitation {self.token} ({'claimed' if self.is_claimed else 'unclaimed'})"

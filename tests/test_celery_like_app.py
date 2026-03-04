@@ -1,8 +1,6 @@
 import sys
 from types import ModuleType
 
-import pytest
-
 from orchestrai import OrchestrAI, get_current_app
 from orchestrai.fixups.base import BaseFixup
 from orchestrai.shared import shared_service
@@ -27,6 +25,7 @@ def test_setup_is_idempotent():
     app.setup()
     assert app.client == {"name": "alpha"}
 
+
 def test_default_client_uses_full_configuration():
     app = OrchestrAI()
     app.conf.update_from_mapping(
@@ -40,6 +39,7 @@ def test_default_client_uses_full_configuration():
     app.setup()
 
     assert app.client == {"name": "alpha", "token": "secret"}
+
 
 def test_shared_service_attaches_on_finalize():
     @shared_service()
@@ -101,4 +101,3 @@ def test_fixup_hooks_called(monkeypatch):
     assert fixup.setup_calls == 1
     app.autodiscover_components()
     assert fixup.autodiscover_calls == 1
-

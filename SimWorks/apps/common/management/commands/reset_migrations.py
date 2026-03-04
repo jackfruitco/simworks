@@ -1,5 +1,3 @@
-import os
-import sys
 from pathlib import Path
 
 from django.core.management import call_command
@@ -31,9 +29,7 @@ class Command(BaseCommand):
 
         if deleted_files:
             self.stdout.write(
-                self.style.SUCCESS(
-                    "Deleted migration files:\n" + "\n".join(deleted_files)
-                )
+                self.style.SUCCESS("Deleted migration files:\n" + "\n".join(deleted_files))
             )
         else:
             self.stdout.write(self.style.WARNING("No migration files found to delete."))

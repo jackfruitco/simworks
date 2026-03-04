@@ -17,19 +17,18 @@ They are **not** ORM models and are safe to emit via signals. Persistence remain
 of codecs and listeners.
 """
 
-
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from pydantic import Field
 
 from orchestrai.types import (
-    StrictBaseModel,
+    BaseLLMTool,
+    LLMToolCall,
     Request,
     Response,
-    LLMToolCall,
-    BaseLLMTool,
+    StrictBaseModel,
 )
 from orchestrai.types.messages import InputItem, OutputItem, UsageContent
 
@@ -55,7 +54,7 @@ class DjangoDTOBase(StrictBaseModel):
     client_name: str | None = None  # registry name, e.g., "default", "openai-images"
 
     # Timestamps for auditing
-    created_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime | None = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 
 
@@ -65,6 +64,7 @@ class DjangoInputItem(InputItem, DjangoDTOBase):
 
     Includes `request_correlation_id` for end-to-end tracing.
     """
+
     # Optional linkage back to parent persisted request
     request_db_pk: int | UUID | None = None
     request_correlation_id: UUID | None = None
@@ -114,6 +114,7 @@ class DjangoUsageContent(UsageContent, DjangoDTOBase):
 
     Optional persisted usage row tied to a response; includes correlation links.
     """
+
     response_db_pk: int | UUID | None = None
     request_correlation_id: UUID | None = None
     response_correlation_id: UUID | None = None
@@ -134,7 +135,7 @@ class DjangoResponse(Response, DjangoDTOBase):
     context: dict[str, Any] | None = None
 
     # Timestamps
-    received_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
+    received_at: datetime | None = Field(default_factory=lambda: datetime.now(UTC))
 
     # Rich items/usage (if promoted by the glue layer)
     outputs_rich: list[DjangoOutputItem] | None = None
@@ -146,6 +147,7 @@ class DjangoResponse(Response, DjangoDTOBase):
 # ---------------------- Tooling overlays (optional) ---------------------------------
 class DjangoLLMToolCall(LLMToolCall, DjangoDTOBase):
     """Optional persisted tool-call record."""
+
     response_db_pk: int | UUID | None = None
     request_db_pk: int | UUID | None = None
     request_correlation_id: UUID | None = None
@@ -154,7 +156,6 @@ class DjangoLLMToolCall(LLMToolCall, DjangoDTOBase):
 
 class DjangoLLMBaseTool(BaseLLMTool, DjangoDTOBase):
     """Base tool class for Django-aware tooling."""
-    pass
 
 
 # Re-export commonly used core content parts for convenience
@@ -163,12 +164,12 @@ __all__ = [
     "DjangoDTOBase",
     # Request side
     "DjangoInputItem",
-    "DjangoRequest",
-    # Response side
-    "DjangoOutputItem",
-    "DjangoUsageContent",
-    "DjangoResponse",
     # Tools
     "DjangoLLMBaseTool",
     "DjangoLLMToolCall",
+    # Response side
+    "DjangoOutputItem",
+    "DjangoRequest",
+    "DjangoResponse",
+    "DjangoUsageContent",
 ]

@@ -1,6 +1,6 @@
 """Simulation schemas for API v1."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field

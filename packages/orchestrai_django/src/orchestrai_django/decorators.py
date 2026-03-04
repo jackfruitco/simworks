@@ -26,14 +26,14 @@ from orchestrai.identity.domains import DEFAULT_DOMAIN
 from orchestrai_django.identity.resolvers import DjangoIdentityResolver
 
 __all__ = [
-    "codec",
-    "service",
-    "schema",
-    "prompt_section",
     "DjangoCodecDecorator",
-    "DjangoServiceDecorator",
-    "DjangoSchemaDecorator",
     "DjangoPromptSectionDecorator",
+    "DjangoSchemaDecorator",
+    "DjangoServiceDecorator",
+    "codec",
+    "prompt_section",
+    "schema",
+    "service",
 ]
 
 
@@ -41,13 +41,13 @@ class DjangoBaseDecoratorMixin:
     """Mixin that overrides identity derivation to use the Django resolver."""
 
     def derive_identity(
-            self,
-            cls,  # type: ignore[no-untyped-def]
-            *,
-            domain: str | None,
-            namespace: str | None,
-            group: str | None,
-            name: str | None,
+        self,
+        cls,  # type: ignore[no-untyped-def]
+        *,
+        domain: str | None,
+        namespace: str | None,
+        group: str | None,
+        name: str | None,
     ):
         context = {
             "default_domain": getattr(self, "default_domain", DEFAULT_DOMAIN),

@@ -19,7 +19,7 @@ from pydantic import Field
 
 from .base import StrictBaseModel
 
-__all__ = ["Metafield", "HasItemMeta"]
+__all__ = ["HasItemMeta", "Metafield"]
 
 
 class Metafield(StrictBaseModel):
@@ -52,15 +52,10 @@ class Metafield(StrictBaseModel):
         - If complex nested values are needed, serialize to JSON string first
     """
 
-    key: str = Field(
-        ...,
-        description="Metadata key identifier",
-        min_length=1
-    )
+    key: str = Field(..., description="Metadata key identifier", min_length=1)
 
     value: str | int | float | bool | None = Field(
-        ...,
-        description="Metadata value - JSON primitive types only"
+        ..., description="Metadata value - JSON primitive types only"
     )
 
 
@@ -87,5 +82,5 @@ class HasItemMeta(StrictBaseModel):
 
     item_meta: list[Metafield] = Field(
         ...,  # Required - no default
-        description="Metadata entries as key-value pairs"
+        description="Metadata entries as key-value pairs",
     )

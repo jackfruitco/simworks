@@ -6,8 +6,8 @@ Validates:
 - OpenAI compatibility
 """
 
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from apps.simcore.orca.schemas.feedback import GenerateInitialSimulationFeedback
 from apps.simcore.orca.schemas.output_items import InitialFeedbackBlock
@@ -42,9 +42,7 @@ class TestHotwashInitialSchema:
     def test_round_trip_parse(self):
         """Verify schema can parse representative feedback output."""
         sample_output = {
-            "llm_conditions_check": [
-                {"key": "feedback_complete", "value": "true"}
-            ],
+            "llm_conditions_check": [{"key": "feedback_complete", "value": "true"}],
             "metadata": {
                 "correct_diagnosis": True,
                 "correct_treatment_plan": False,

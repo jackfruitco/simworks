@@ -7,7 +7,7 @@ from .task_proxy import (
 
 __all__ = [
     "DjangoServiceSpec",
-    "DjangoTaskProxy",
     "DjangoTaskDescriptor",
+    "DjangoTaskProxy",
     "use_django_task_proxy",
 ]

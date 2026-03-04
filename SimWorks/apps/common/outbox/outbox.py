@@ -25,10 +25,10 @@ Usage:
         await poke_drain()
 """
 
+from datetime import UTC, datetime
 import logging
-import uuid
-from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 from asgiref.sync import sync_to_async
 from django.db import IntegrityError, transaction
@@ -65,7 +65,8 @@ async def enqueue_event(
         )
     """
     from django.apps import apps
-    OutboxEvent = apps.get_model('common', 'OutboxEvent')
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -114,7 +115,8 @@ def enqueue_event_sync(
     Use this when calling from synchronous code (e.g., Django signals).
     """
     from django.apps import apps
-    OutboxEvent = apps.get_model('common', 'OutboxEvent')
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -165,7 +167,9 @@ def build_ws_envelope(event: "OutboxEvent") -> dict[str, Any]:
     return {
         "event_id": str(event.id),
         "event_type": event.event_type,
-        "created_at": event.created_at.isoformat() if event.created_at else datetime.now(timezone.utc).isoformat(),
+        "created_at": event.created_at.isoformat()
+        if event.created_at
+        else datetime.now(UTC).isoformat(),
         "correlation_id": event.correlation_id,
         "payload": event.payload,
     }
@@ -224,7 +228,8 @@ async def get_events_for_simulation(
         Tuple of (events, next_cursor, has_more)
     """
     from django.apps import apps
-    OutboxEvent = apps.get_model('common', 'OutboxEvent')
+
+    OutboxEvent = apps.get_model("common", "OutboxEvent")
 
     @sync_to_async
     def _query():

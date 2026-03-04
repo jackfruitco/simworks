@@ -1,5 +1,6 @@
 # chatlab/models.py
 import logging
+from typing import ClassVar
 
 from django.conf import settings
 from django.db import models
@@ -22,8 +23,6 @@ class ChatSession(BaseSession):
     Additional chat-specific behaviors or fields can be added here.
     """
 
-    pass
-
 
 class Message(PersistModel):
     class MessageType(models.TextChoices):
@@ -41,9 +40,7 @@ class Message(PersistModel):
 
     timestamp = models.DateTimeField(auto_now_add=True)
 
-    simulation = models.ForeignKey(
-        Simulation, on_delete=models.CASCADE, related_name="input"
-    )
+    simulation = models.ForeignKey(Simulation, on_delete=models.CASCADE, related_name="input")
     conversation = models.ForeignKey(
         "simcore.Conversation",
         on_delete=models.CASCADE,
@@ -74,7 +71,7 @@ class Message(PersistModel):
     is_read = models.BooleanField(default=False)
     image_requested = models.BooleanField(
         default=False,
-        help_text="Whether this message references images/scans that should be generated"
+        help_text="Whether this message references images/scans that should be generated",
     )
     delivery_status = models.CharField(
         max_length=16,
@@ -144,7 +141,7 @@ class Message(PersistModel):
         return self.media.exists()
 
     class Meta:
-        ordering = ["timestamp"]
+        ordering: ClassVar = ["timestamp"]
 
     def __str__(self):
         return f"ChatLab Sim#{self.simulation.pk} {self.get_message_type_display()} by {self.sender} at {self.timestamp:%H:%M:%S}"

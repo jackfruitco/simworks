@@ -4,12 +4,14 @@ These helpers intentionally avoid pulling in OpenTelemetry; they provide the
 same call surface with lightweight no-op spans that collect attributes for
 introspection in tests if needed.
 """
+
 from __future__ import annotations
 
-import logging
+from collections.abc import AsyncIterator, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Iterator, Mapping
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -34,17 +36,19 @@ class SpanPath:
         return ".".join(self.parts)
 
     @classmethod
-    def from_str(cls, name: str) -> "SpanPath":
+    def from_str(cls, name: str) -> SpanPath:
         name = (name or "").strip()
         return cls(tuple(p for p in name.split(".") if p)) if name else cls(())
 
-    def child(self, *segments: str) -> "SpanPath":
+    def child(self, *segments: str) -> SpanPath:
         cleaned = tuple(s for s in segments if s)
         return SpanPath(self.parts + cleaned)
 
 
 class _Tracer:
-    def start_as_current_span(self, name: str, kind: object | None = None):  # pragma: no cover - compat
+    def start_as_current_span(
+        self, name: str, kind: object | None = None
+    ):  # pragma: no cover - compat
         @contextmanager
         def ctx():
             yield Span(name)
@@ -73,7 +77,9 @@ def _record_exception(span: Span, err: BaseException) -> None:
 
 
 @contextmanager
-def service_span_sync(name: str | SpanPath, *, attributes: Mapping[str, Any] | None = None) -> Iterator[Span]:
+def service_span_sync(
+    name: str | SpanPath, *, attributes: Mapping[str, Any] | None = None
+) -> Iterator[Span]:
     span_name = str(name) if isinstance(name, SpanPath) else name
     span = Span(span_name)
     _apply_attributes(span, attributes)
@@ -87,7 +93,9 @@ def service_span_sync(name: str | SpanPath, *, attributes: Mapping[str, Any] | N
 
 
 @asynccontextmanager
-async def service_span(name: str | SpanPath, *, attributes: Mapping[str, Any] | None = None) -> AsyncIterator[Span]:
+async def service_span(
+    name: str | SpanPath, *, attributes: Mapping[str, Any] | None = None
+) -> AsyncIterator[Span]:
     with service_span_sync(name, attributes=attributes) as span:
         yield span
 

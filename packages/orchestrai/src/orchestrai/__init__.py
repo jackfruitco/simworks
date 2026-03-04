@@ -1,4 +1,5 @@
 """Minimal, import-safe OrchestrAI public API."""
+
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
@@ -11,4 +12,4 @@ try:  # pragma: no cover - metadata not available in tests
 except PackageNotFoundError:  # pragma: no cover - fallback for editable installs
     __version__ = "0.0.0"
 
-__all__ = ["OrchestrAI", "current_app", "get_current_app", "__version__"]
+__all__ = ["OrchestrAI", "__version__", "current_app", "get_current_app"]

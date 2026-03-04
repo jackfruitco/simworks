@@ -1,10 +1,10 @@
 # orchestrai_django/schemas/__init__.py
 
 
-from .types import DjangoBaseOutputSchema, DjangoBaseOutputItem, DjangoBaseOutputBlock
+from .types import DjangoBaseOutputBlock, DjangoBaseOutputItem, DjangoBaseOutputSchema
 
 __all__ = [
-    "DjangoBaseOutputSchema",
+    "DjangoBaseOutputBlock",  # use for schemas without identity
     "DjangoBaseOutputItem",
-    "DjangoBaseOutputBlock",      # use for schemas without identity
+    "DjangoBaseOutputSchema",
 ]

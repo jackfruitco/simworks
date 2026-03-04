@@ -7,16 +7,16 @@ OpenAI Structured Outputs requirements.
 """
 
 import pytest
+
+from orchestrai.schema_lint import format_violations, lint_schema
 from orchestrai.types import (
-    ResultMessageItem,
-    ResultTextContent,
     ResultImageContent,
+    ResultMessageItem,
+    ResultMetafield,
+    ResultTextContent,
     ResultToolCallContent,
     ResultToolResultContent,
-    ResultMetafield,
-    ContentRole,
 )
-from orchestrai.schema_lint import lint_schema, format_violations
 
 
 class TestResultContentSchemas:
@@ -149,7 +149,9 @@ class TestSchemaLintCompliance:
         schema = schema_cls.model_json_schema()
         violations = lint_schema(schema)
 
-        assert violations == [], f"{schema_cls.__name__} has violations: {format_violations(violations)}"
+        assert violations == [], (
+            f"{schema_cls.__name__} has violations: {format_violations(violations)}"
+        )
 
 
 class TestNestedStrictness:
@@ -182,9 +184,9 @@ class TestNestedStrictness:
         for def_name, def_schema in defs.items():
             if "Content" in def_name and def_schema.get("type") == "object":
                 # Each content type must be strict
-                assert (
-                    def_schema.get("additionalProperties") is False
-                ), f"{def_name} must have additionalProperties: false"
+                assert def_schema.get("additionalProperties") is False, (
+                    f"{def_name} must have additionalProperties: false"
+                )
 
 
 class TestSchemaStability:

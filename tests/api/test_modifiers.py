@@ -6,8 +6,8 @@ Tests:
 3. GraphQL endpoint returns 404
 """
 
-import pytest
 from django.test import Client
+import pytest
 
 
 @pytest.mark.django_db

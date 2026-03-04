@@ -20,28 +20,26 @@ Notes:
   This module intentionally no longer exposes `derive_identity_for_class`.
 """
 
-
-
+from collections.abc import Callable, Iterable
 import logging
 import os
 import re
-from collections.abc import Iterable, Callable
-from typing import Optional, Union, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any
 
 from .exceptions import IdentityError
 
 if TYPE_CHECKING:
-    from . import IdentityLike, Identity
+    from . import IdentityLike
 
 __all__ = [
     "DEFAULT_IDENTITY_STRIP_TOKENS",
-    "strip_tokens",
-    "snake",
-    "module_root",
-    "resolve_collision",
-    "parse_dot_identity",
-    "get_effective_strip_tokens",
     "coerce_identity_key",
+    "get_effective_strip_tokens",
+    "module_root",
+    "parse_dot_identity",
+    "resolve_collision",
+    "snake",
+    "strip_tokens",
 ]
 
 logger = logging.getLogger(__name__)
@@ -214,7 +212,8 @@ def strip_tokens(name: str, extra_tokens: Iterable[str] = ()) -> str:
 
 # ---------------- misc helpers ----------------
 
-def module_root(cls_or_module: Union[str, type]) -> Optional[str]:
+
+def module_root(cls_or_module: str | type) -> str | None:
     """Return the root module name for a class or module string (first segment before a dot)."""
     if isinstance(cls_or_module, str):
         module_name = cls_or_module
@@ -226,11 +225,11 @@ def module_root(cls_or_module: Union[str, type]) -> Optional[str]:
 
 
 def resolve_collision(
-        kind: str,
-        ident_tuple: tuple[str, str, str, str],
-        *,
-        debug: Optional[bool] = None,
-        exists: Callable[[tuple[str, str, str, str]], bool],
+    kind: str,
+    ident_tuple: tuple[str, str, str, str],
+    *,
+    debug: bool | None = None,
+    exists: Callable[[tuple[str, str, str, str]], bool],
 ) -> tuple[str, str, str, str]:
     """Resolve identity collisions.
 
@@ -261,7 +260,9 @@ def resolve_collision(
         if not exists(candidate):
             logger.warning(
                 "Collision detected for %s identity %s, renaming to %s.",
-                kind, ".".join(ident_tuple), ".".join(candidate)
+                kind,
+                ".".join(ident_tuple),
+                ".".join(candidate),
             )
             return candidate
         suffix += 1
@@ -285,9 +286,7 @@ def parse_dot_identity(key: str) -> tuple[str, str, str, str]:
         )
     parts = [p.strip() for p in key.split(".")]
     if len(parts) != 4 or not all(parts):
-        raise ValueError(
-            f"Invalid identity '{key}': expected exactly four dot-separated parts."
-        )
+        raise ValueError(f"Invalid identity '{key}': expected exactly four dot-separated parts.")
     return parts[0], parts[1], parts[2], parts[3]
 
 

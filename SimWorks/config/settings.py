@@ -4,6 +4,7 @@ from pathlib import Path
 
 from apps.common.utils.system import check_env
 
+from . import observability_settings
 from .auth_settings import (
     ACCOUNT_ADAPTER,
     ACCOUNT_EMAIL_VERIFICATION,
@@ -16,9 +17,7 @@ from .auth_settings import (
     SITE_ID,
     SOCIALACCOUNT_PROVIDERS,
 )
-from .settings_parsers import bool_from_env, int_from_env
 from .logging import LOGGING
-from . import observability_settings  # noqa: F401
 from .security_settings import (
     ALLOWED_HOSTS,
     CSRF_COOKIE_SECURE,
@@ -32,6 +31,7 @@ from .security_settings import (
     SESSION_COOKIE_SECURE,
     USE_X_FORWARDED_HOST,
 )
+from .settings_parsers import bool_from_env, int_from_env
 from .task_settings import (
     CELERY_ACCEPT_CONTENT,
     CELERY_BEAT_SCHEDULER,

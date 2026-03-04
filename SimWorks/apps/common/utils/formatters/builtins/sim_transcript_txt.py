@@ -32,6 +32,6 @@ def sim_transcript_as_text(self):
             timestamp = raw_timestamp  # fallback
 
         content = msg.get("content", "")
-        lines.append(f"##### {sender} – {timestamp}\n{content}")
+        lines.append(f"##### {sender} - {timestamp}\n{content}")
 
     return "\n\n---\n\n".join(lines)

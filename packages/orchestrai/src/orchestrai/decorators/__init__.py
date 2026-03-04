@@ -7,15 +7,13 @@ We avoid importing domain modules (services, codecs, promptkit, schemas)
 at import time to prevent circular imports during early Django startup.
 """
 
-
 from .base import BaseDecorator
 from .components import *
 
 __all__ = [
     "BaseDecorator",
     "codec",
-    "service",
-    "schema",
     "prompt_section",
+    "schema",
+    "service",
 ]
-

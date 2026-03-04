@@ -15,21 +15,22 @@ Classes:
     - StreamChunk: Represents a chunk of stream data for incremental processing.
 
 """
-import logging
+
 from datetime import datetime
-from typing import Any, Dict, TypeAlias
+import logging
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_serializer
 
 from .base import StrictBaseModel
-from .messages import InputItem, OutputItem, UsageContent
-from .tools import BaseLLMTool, LLMToolChoice, LLMToolCall, LLMToolCallDelta
 from .build import BuildMessageItem
+from .messages import InputItem, UsageContent
+from .tools import BaseLLMTool, LLMToolCall, LLMToolCallDelta, LLMToolChoice
 
 logger = logging.getLogger(__name__)
 
-ResponseSchemaType: TypeAlias = type[BaseModel]  # TODO: ResponseSchemaType Protocol
+type ResponseSchemaType = type[BaseModel]  # TODO: ResponseSchemaType Protocol
 
 
 # ---------- Request/Response (DTO) -------------------------------------------------
@@ -46,9 +47,7 @@ class Request(StrictBaseModel):
     correlation_id: UUID = Field(default_factory=uuid4)
 
     # Response format (backend-agnostic)
-    response_schema: ResponseSchemaType | None = Field(
-        default=None, repr=False
-    )  # Pydantic model
+    response_schema: ResponseSchemaType | None = Field(default=None, repr=False)  # Pydantic model
     response_schema_json: dict | None = None  # JSON schema from the model
     provider_response_format: dict | None = None  # Provider-specific response format
 
@@ -65,9 +64,7 @@ class Request(StrictBaseModel):
     use_native_output: bool = False
 
     @field_serializer("response_schema", when_used="json")
-    def _serialize_response_schema(
-            self, value: ResponseSchemaType | None
-    ) -> str | None:
+    def _serialize_response_schema(self, value: ResponseSchemaType | None) -> str | None:
         if value is None:
             return None
 
@@ -125,4 +122,4 @@ class StreamChunk(StrictBaseModel):
     is_final: bool = False
     delta: str = ""
     tool_call_delta: LLMToolCallDelta | None = None
-    usage_partial: Dict[str, int] | None = None
+    usage_partial: dict[str, int] | None = None
