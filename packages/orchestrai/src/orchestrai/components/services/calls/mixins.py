@@ -184,17 +184,4 @@ class ServiceCallMixin:
 
         return call
 
-    def _sync_run_call(self, **payload: Any) -> ServiceCall:
-        """Deprecated compatibility wrapper. Use :meth:`call` instead."""
-
-        return self.call(payload=payload)
-
-
-# Backwards compatibility
-ExecutionLifecycleMixin = ServiceCallMixin
-ExecutionLifecycleMixin.__doc__ = (
-    "Deprecated alias for ServiceCallMixin. Prefer ServiceCallMixin.call/acall."
-)
-
-
-__all__ = ["ExecutionLifecycleMixin", "ServiceCallMixin"]
+__all__ = ["ServiceCallMixin"]

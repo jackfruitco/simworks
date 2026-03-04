@@ -156,38 +156,6 @@ class TestRefreshMessages:
         assert "text/html" in response["Content-Type"]
         assert "Patient conversation message" in response.content.decode()
 
-    def test_refresh_messages_legacy_routes_return_200(
-        self, client: Client, user, simulation, patient_conversation_message
-    ):
-        client.force_login(user)
-
-        for route in ("refresh/", "refresh/input/"):
-            response = client.get(
-                f"/chatlab/simulation/{simulation.id}/{route}"
-                f"?conversation_id={patient_conversation_message.conversation_id}"
-            )
-            assert response.status_code == 200
-            assert "Patient conversation message" in response.content.decode()
-
-    def test_refresh_messages_legacy_routes_match_canonical_response(
-        self, client: Client, user, simulation, patient_conversation_message
-    ):
-        client.force_login(user)
-
-        conversation_id = patient_conversation_message.conversation_id
-        canonical = client.get(
-            f"/chatlab/simulation/{simulation.id}/refresh/messages/?conversation_id={conversation_id}"
-        )
-        assert canonical.status_code == 200
-        canonical_content = canonical.content.decode()
-
-        for route in ("refresh/", "refresh/input/"):
-            response = client.get(
-                f"/chatlab/simulation/{simulation.id}/{route}?conversation_id={conversation_id}"
-            )
-            assert response.status_code == 200
-            assert response.content.decode() == canonical_content
-
     def test_refresh_messages_filters_by_conversation_id(
         self,
         client: Client,
@@ -211,13 +179,12 @@ class TestRefreshMessages:
     def test_refresh_messages_requires_authentication(
         self, client: Client, simulation, patient_conversation_message
     ):
-        for route in ("refresh/messages/", "refresh/", "refresh/input/"):
-            response = client.get(
-                f"/chatlab/simulation/{simulation.id}/{route}"
-                f"?conversation_id={patient_conversation_message.conversation_id}"
-            )
-            assert response.status_code == 302
-            assert "/accounts/login/" in response["Location"]
+        response = client.get(
+            f"/chatlab/simulation/{simulation.id}/refresh/messages/"
+            f"?conversation_id={patient_conversation_message.conversation_id}"
+        )
+        assert response.status_code == 302
+        assert "/accounts/login/" in response["Location"]
 
 
 @pytest.mark.django_db

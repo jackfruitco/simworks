@@ -6,7 +6,6 @@ import mimetypes
 import os
 from typing import TYPE_CHECKING
 import uuid
-import warnings
 
 from asgiref.sync import async_to_sync, sync_to_async
 from autoslug import AutoSlugField
@@ -14,7 +13,6 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import models
-from django.db.models import QuerySet
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
@@ -667,38 +665,6 @@ class SimulationMetadata(PersistModel, PolymorphicModel):
             )
         ]
 
-    @classmethod
-    def format_patient_history(cls, history_metadata: QuerySet) -> list[dict]:
-        warnings.warn(
-            "`cls.format_patient_history` is deprecated. Use 'PatientHistory.to_dict()' instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from collections import defaultdict
-
-        grouped = defaultdict(dict)
-        for entry in history_metadata:
-            key = entry.key
-            value = entry.value
-            prefix, field = key.rsplit(" ", 1)
-            grouped[prefix][field] = value
-        logger.debug(f"grouped: {grouped}")
-
-        formatted = [
-            {
-                "key": prefix,
-                "value": "{diagnosis} ({is_resolved}, {duration})".format(
-                    diagnosis=data.get("diagnosis", "Unknown").title(),
-                    is_resolved=data.get("is_resolved", "Unknown"),
-                    duration=data.get("duration", "Unknown"),
-                ),
-            }
-            for prefix, data in grouped.items()
-        ]
-        logger.debug(f"formatted: {formatted}")
-
-        return formatted
-
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
 
@@ -840,16 +806,6 @@ class SimulationImage(models.Model):
         null=True,
         help_text="OpenAI image ID (if applicable)",
     )
-
-    def openai_id(self) -> str:
-        """Return the OpenAI image ID, if available.
-
-        For backwards compatibility, this method is deprecated and will be removed in the future.
-        """
-        logger.warning(
-            "`openai_id` is deprecated. Use `provider_id` instead.", PendingDeprecationWarning
-        )
-        return self.provider_id
 
     uuid = models.UUIDField(
         default=uuid.uuid4,

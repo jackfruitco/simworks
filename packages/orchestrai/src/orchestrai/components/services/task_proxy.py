@@ -2,8 +2,7 @@
 Task proxy utilities for service execution.
 
 This module provides the ServiceSpec dataclass for configuring service
-instantiation. CoreTaskProxy and TaskDescriptor are defined in service.py
-and re-exported here for backward compatibility.
+instantiation.
 """
 
 from __future__ import annotations
@@ -41,14 +40,4 @@ class ServiceSpec:
         return CoreTaskProxy(self)
 
 
-# Re-export from service.py for backward compatibility
-def __getattr__(name: str):
-    """Lazy import to avoid circular dependencies."""
-    if name in ("CoreTaskProxy", "TaskDescriptor"):
-        from orchestrai.components.services.service import CoreTaskProxy, TaskDescriptor
-
-        return CoreTaskProxy if name == "CoreTaskProxy" else TaskDescriptor
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-__all__ = ["CoreTaskProxy", "ServiceSpec", "TaskDescriptor"]
+__all__ = ["ServiceSpec"]

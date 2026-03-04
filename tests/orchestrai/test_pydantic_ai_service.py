@@ -223,9 +223,3 @@ class TestBaseServiceIntegration:
 
         assert service.context["initial"] == "value"
         assert service.context["added"] == "context"
-
-    def test_pydantic_ai_service_alias(self):
-        """Test that PydanticAIService is an alias for BaseService."""
-        from orchestrai.components.services import BaseService, PydanticAIService
-
-        assert PydanticAIService is BaseService

@@ -2,15 +2,13 @@
 """
 This module provides the DjangoBaseCodec façade.
 
-It subclasses the core BaseCodec and offers fan-out and persistence helpers
-that are deprecated and will be moved to the service layer.
+It subclasses the core BaseCodec and offers fan-out and persistence helpers.
 """
 
 import asyncio
 from collections.abc import Callable, Mapping
 import logging
 from typing import Any, ClassVar, TypeVar
-import warnings
 
 from asgiref.sync import async_to_sync
 
@@ -31,11 +29,7 @@ class DjangoBaseCodec(BaseCodec):
     DjangoBaseCodec is a Django-facing façade over the core BaseCodec.
 
     It provides asynchronous decoding and validation of payloads, along with
-    deprecated fan-out and persistence behavior for Django model instances.
-
-    The fan-out and persistence logic is **deprecated**. New code should prefer
-    handling persistence in service `finalize()` methods. This logic will be
-    removed in a later milestone.
+    fan-out and persistence behavior for Django model instances.
 
     Two patterns are supported:
 
@@ -121,15 +115,6 @@ class DjangoBaseCodec(BaseCodec):
         """
         return async_to_sync(self.adecode)(resp)
 
-    # Backwards-friendly aliases (arun/run) for callers that still use the old name.
-    async def arun(self, resp: Response) -> Any:
-        """Alias for `adecode` to support legacy call sites."""
-        return await self.adecode(resp)
-
-    def run(self, resp: Response) -> Any:
-        """Alias for `decode` to support legacy call sites."""
-        return self.decode(resp)
-
     # ---- internal helpers --------------------------------------------------
     def _normalize_validated_payload(self, validated: Any) -> Mapping[str, Any]:
         """
@@ -147,19 +132,9 @@ class DjangoBaseCodec(BaseCodec):
     # ---- core persistence --------------------------------------------------
     async def persist_sections(self, vdict: Mapping[str, Any]) -> list[PersistModel]:
         """
-        DEPRECATED: Fan-out and persistence should be handled at the service layer.
-
         This method persists sections of the validated payload into Django model
         instances according to the schema_model_map and related configuration.
-
-        Callers should prefer service-level persistence (e.g. in finalize() methods).
         """
-        warnings.warn(
-            "this method is deprecated; use service-level persistence instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
         coros: list[asyncio.Future] = []
         instances: list[PersistModel] = []
 
