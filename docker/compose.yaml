@@ -32,7 +32,7 @@ services:
         condition: service_started
 
   db:
-    image: postgres:${DB_IMAGE_TAG:-17.2-alpine}
+    image: postgres:${DB_IMAGE_TAG:-18.2-alpine}
     restart: always
     user: postgres
     volumes:
@@ -93,9 +93,9 @@ services:
       - stack.env
     environment:
       PYTHONPATH: /app/SimWorks
-      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
-      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
-      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
+      DJANGO_MIGRATE: "0"
+      DJANGO_CREATE_DEFAULT_ROLES: "0"
+      DJANGO_COLLECTSTATIC: "0"
     user: appuser
     command: ["celery", "-A", "config", "worker", "--pool=threads", "--loglevel=info"]
     depends_on:
@@ -127,9 +127,9 @@ services:
       - stack.env
     environment:
       PYTHONPATH: /app/SimWorks
-      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
-      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
-      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
+      DJANGO_MIGRATE: "0"
+      DJANGO_CREATE_DEFAULT_ROLES: "0"
+      DJANGO_COLLECTSTATIC: "0"
     command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
     user: appuser
     volumes:
