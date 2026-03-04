@@ -569,7 +569,7 @@ class Simulation(models.Model):
                 raise ValueError(
                     "`user` must be a User instance or an integer primary key"
                 ) from err
-            User = get_user_model()  # noqa: 8106
+            User = get_user_model()
             user = await User.objects.select_related("role").aget(pk=pk)
 
         create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
