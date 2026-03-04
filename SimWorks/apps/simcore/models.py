@@ -20,7 +20,6 @@ from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
 from apps.common.models import PersistModel
-from orchestrai_django.components.promptkit import Prompt
 from .utils import randomize_display_name
 
 logger = logging.getLogger(__name__)
@@ -533,7 +532,7 @@ class Simulation(models.Model):
             cls,
             *,
             user=None,
-            prompt: Prompt = None,
+            prompt=None,
             app_name=None,
             from_scenario=False,
             **kwargs

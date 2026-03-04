@@ -1,12 +1,12 @@
 # orchestrai/decorators/components/__init__.py
 from .codec_decorator import CodecDecorator
-from .prompt_section_decorator import PromptSectionDecorator
+from .instruction_decorator import InstructionDecorator
 from .schema_decorator import SchemaDecorator
 from .service_decorator import ServiceDecorator
 
 codec = CodecDecorator()
 service = ServiceDecorator()
 schema = SchemaDecorator()
-prompt_section = PromptSectionDecorator()
+instruction = InstructionDecorator()
 
-__all__ = ["codec", "service", "schema", "prompt_section"]
+__all__ = ["codec", "service", "schema", "instruction"]

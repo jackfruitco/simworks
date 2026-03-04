@@ -4,6 +4,7 @@ Tests:
 - Service attribute configuration (response_schema)
 - Required context keys
 - Schema validation at service boundary
+- Instruction classes in MRO
 """
 
 import pytest
@@ -17,6 +18,7 @@ from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
 )
+from orchestrai.instructions import BaseInstruction, collect_instructions
 
 
 class TestGenerateInitialResponseService:
@@ -32,10 +34,21 @@ class TestGenerateInitialResponseService:
         assert hasattr(GenerateInitialResponse, "required_context_keys")
         assert "simulation_id" in GenerateInitialResponse.required_context_keys
 
-    def test_service_has_prompt_plan(self):
-        """Verify prompt_plan is defined."""
-        assert hasattr(GenerateInitialResponse, "prompt_plan")
-        assert len(GenerateInitialResponse.prompt_plan) > 0
+    def test_service_has_instruction_classes(self):
+        """Verify instruction classes are in MRO."""
+        instructions = collect_instructions(GenerateInitialResponse)
+        assert len(instructions) > 0
+        # Verify expected instruction classes by name
+        names = [cls.__name__ for cls in instructions]
+        assert "PatientNameInstruction" in names
+        assert "PatientBaseInstruction" in names
+        assert "PatientInitialDetailInstruction" in names
+
+    def test_instruction_order(self):
+        """Verify instruction classes are sorted by order."""
+        instructions = collect_instructions(GenerateInitialResponse)
+        orders = [cls.order for cls in instructions]
+        assert orders == sorted(orders)
 
 
 class TestGenerateReplyResponseService:
@@ -59,6 +72,14 @@ class TestGenerateReplyResponseService:
         """Verify simulation_id is a required context key."""
         assert hasattr(GenerateReplyResponse, "required_context_keys")
         assert "simulation_id" in GenerateReplyResponse.required_context_keys
+
+    def test_service_has_instruction_classes(self):
+        """Verify instruction classes are in MRO."""
+        instructions = collect_instructions(GenerateReplyResponse)
+        assert len(instructions) > 0
+        names = [cls.__name__ for cls in instructions]
+        assert "PatientReplyContextInstruction" in names
+        assert "PatientReplyDetailInstruction" in names
 
 
 class TestGenerateImageResponseService:

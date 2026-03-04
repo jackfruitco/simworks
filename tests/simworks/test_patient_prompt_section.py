@@ -1,19 +1,9 @@
-import importlib
-import sys
-import types
+"""Tests for patient instruction classes."""
 
 import pytest
-from django.core.exceptions import ObjectDoesNotExist
+from unittest.mock import AsyncMock, MagicMock, patch
 
-
-class DummyManager:
-    def __init__(self, simulation):
-        self.simulation = simulation
-
-    async def aget(self, pk):
-        if pk == self.simulation.pk:
-            return self.simulation
-        raise ObjectDoesNotExist
+from apps.chatlab.orca.instructions.patient_name import PatientNameInstruction
 
 
 class DummySimulation:
@@ -22,45 +12,53 @@ class DummySimulation:
         self.sim_patient_full_name = full_name
 
 
-@pytest.fixture()
-def patient_module(monkeypatch):
-    simulation = DummySimulation(pk=101, full_name="Jamie Patient")
-    DummySimulation.objects = DummyManager(simulation)
+@pytest.mark.asyncio
+async def test_patient_name_instruction_with_simulation_object():
+    """Test rendering when simulation object is already in context."""
+    sim = DummySimulation(pk=101, full_name="Jamie Patient")
 
-    dummy_models = types.SimpleNamespace(Simulation=DummySimulation)
-    monkeypatch.setitem(sys.modules, "simulation.models", dummy_models)
-    sys.modules.pop("simulation.orca.prompts.sections.patient", None)
+    # Create a mock service instance with context
+    mock_service = MagicMock()
+    mock_service.context = {"simulation_id": 101, "simulation": sim}
 
-    module = importlib.import_module("simulation.orca.prompts.sections.patient")
-    return module, simulation
+    result = await PatientNameInstruction.render_instruction(mock_service)
+
+    assert "Jamie Patient" in result
 
 
 @pytest.mark.asyncio
-async def test_patient_section_requires_context(patient_module):
-    module, _ = patient_module
-    section = module.PatientNameSection()
+async def test_patient_name_instruction_fallback_no_context():
+    """Test rendering when no simulation context is available."""
+    mock_service = MagicMock()
+    mock_service.context = {}
 
-    with pytest.raises(ValueError) as exc_info:
-        await section.render_instruction()
+    result = await PatientNameInstruction.render_instruction(mock_service)
 
-    assert "Missing required context variable" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_patient_section_renders_from_simulation_object(patient_module):
-    module, simulation = patient_module
-    section = module.PatientNameSection()
-
-    rendered = await section.render_instruction(simulation=simulation)
-
-    assert simulation.sim_patient_full_name in rendered
+    assert result == "You are a standardized patient."
 
 
 @pytest.mark.asyncio
-async def test_patient_section_resolves_simulation_id(patient_module):
-    module, simulation = patient_module
-    section = module.PatientNameSection()
+async def test_patient_name_instruction_with_simulation_id():
+    """Test rendering when only simulation_id is in context."""
+    sim = DummySimulation(pk=101, full_name="Jamie Patient")
 
-    rendered = await section.render_instruction(simulation_id=simulation.pk)
+    mock_manager = AsyncMock()
+    mock_manager.aget = AsyncMock(return_value=sim)
 
-    assert simulation.sim_patient_full_name in rendered
+    mock_service = MagicMock()
+    mock_service.context = {"simulation_id": 101}
+
+    with patch("apps.simcore.models.Simulation.objects", mock_manager):
+        result = await PatientNameInstruction.render_instruction(mock_service)
+
+    assert "Jamie Patient" in result
+
+
+def test_patient_name_instruction_required_context_keys():
+    """Test that simulation_id is listed as required."""
+    assert "simulation_id" in PatientNameInstruction.required_context_keys
+
+
+def test_patient_name_instruction_order():
+    """Test that order is 0 (highest priority)."""
+    assert PatientNameInstruction.order == 0

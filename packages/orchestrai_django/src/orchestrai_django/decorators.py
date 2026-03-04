@@ -4,7 +4,7 @@
 Django-aware public decorators for OrchestrAI.
 
 This module mirrors the core OrchestrAI decorator surface (codec, service, schema,
-prompt_section) but derives identities using Django context.
+instruction) but derives identities using Django context.
 
 Identity behavior
 -----------------
@@ -19,7 +19,7 @@ This module is intentionally side-effect free (no autodiscovery/autostart).
 """
 
 from orchestrai.decorators.components.codec_decorator import CodecDecorator
-from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
+from orchestrai.decorators.components.instruction_decorator import InstructionDecorator
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
 from orchestrai.identity.domains import DEFAULT_DOMAIN
@@ -29,11 +29,12 @@ __all__ = [
     "codec",
     "service",
     "schema",
-    "prompt_section",
+    "instruction",
+    "orca",
     "DjangoCodecDecorator",
     "DjangoServiceDecorator",
     "DjangoSchemaDecorator",
-    "DjangoPromptSectionDecorator",
+    "DjangoInstructionDecorator",
 ]
 
 
@@ -77,8 +78,8 @@ class DjangoCodecDecorator(DjangoBaseDecoratorMixin, CodecDecorator):
     """Django-aware codec decorator (core behavior + Django identity)."""
 
 
-class DjangoPromptSectionDecorator(DjangoBaseDecoratorMixin, PromptSectionDecorator):
-    """Django-aware prompt section decorator (core behavior + Django identity)."""
+class DjangoInstructionDecorator(DjangoBaseDecoratorMixin, InstructionDecorator):
+    """Django-aware instruction decorator (core behavior + Django identity)."""
 
 
 class DjangoSchemaDecorator(DjangoBaseDecoratorMixin, SchemaDecorator):
@@ -92,4 +93,27 @@ class DjangoServiceDecorator(DjangoBaseDecoratorMixin, ServiceDecorator):
 codec = DjangoCodecDecorator()
 service = DjangoServiceDecorator()
 schema = DjangoSchemaDecorator()
-prompt_section = DjangoPromptSectionDecorator()
+instruction = DjangoInstructionDecorator()
+
+
+class _OrcaDecorators:
+    """Django-aware namespace providing convenient access to all OrchestrAI decorators."""
+
+    @property
+    def service(self):
+        return service
+
+    @property
+    def codec(self):
+        return codec
+
+    @property
+    def schema(self):
+        return schema
+
+    @property
+    def instruction(self):
+        return instruction
+
+
+orca = _OrcaDecorators()

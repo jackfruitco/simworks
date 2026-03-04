@@ -169,18 +169,28 @@ def _extract_agent_config(service) -> dict | None:
 
 def _build_request_json(service, payload, context, request_obj):
     """Construct a request JSON payload for debugging."""
-    from orchestrai.prompts.decorators import collect_prompts, render_prompt_methods
+    from orchestrai.instructions.base import BaseInstruction
+    from orchestrai.instructions.collector import collect_instructions
 
     prompt_text = ""
     try:
-        prompts = getattr(service, "_prompt_methods", None) or collect_prompts(type(service))
-
-        class _Ctx:
-            def __init__(self, deps):
-                self.deps = deps
-
-        ctx = _Ctx(getattr(service, "context", None) or context)
-        prompt_text = async_to_sync(render_prompt_methods)(service, prompts, ctx)
+        instruction_classes = (
+            getattr(service, "_instruction_classes", None)
+            or collect_instructions(type(service))
+        )
+        parts = []
+        for cls in instruction_classes:
+            _has_custom = (
+                hasattr(cls, "render_instruction")
+                and cls.render_instruction is not BaseInstruction.render_instruction
+            )
+            if _has_custom:
+                result = async_to_sync(cls.render_instruction)(service)
+                if result:
+                    parts.append(result)
+            elif cls.instruction:
+                parts.append(cls.instruction)
+        prompt_text = "\n\n".join(parts)
     except Exception:
         prompt_text = ""
 

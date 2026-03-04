@@ -11,7 +11,7 @@ This module hosts two groups of checks:
    - Surfaces type issues and missing links
    - Gentle guidance on defaults & timeouts
 
-2) Registry integrity checks (codecs/services/prompt sections/schemas).
+2) Registry integrity checks (codecs/services/instructions/schemas).
    - Detects identity **collisions** (same `(namespace, kind, name)` bound to different classes)
      * Error when `SIMCORE_COLLISIONS_STRICT` is True (default)
      * Warning when strict is False (dev mode)
@@ -36,7 +36,7 @@ from orchestrai.tracing import service_span_sync
 from orchestrai.registry import (
     codecs as codec_registry,
     services as service_registry,
-    prompt_sections as prompt_registry,
+    instructions as instructions_registry,
     schemas as schema_registry,
 )
 
@@ -379,7 +379,7 @@ def check_orchestrai_registries(app_configs: Optional[Iterable] = None, **kwargs
         registries = [
             ("codec", codec_registry),
             ("service", service_registry),
-            ("prompt_section", prompt_registry),
+            ("instruction", instructions_registry),
             ("schema", schema_registry),
         ]
 
@@ -458,11 +458,9 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
     For each registered Service:
       - Ensure a Codec can be resolved (ERROR on failure).
       - If the service declares `response_schema_identity`, ensure it resolves (WARNING if missing).
-      - If the service declares `required_prompt_sections` (tuple of IdentityLike), ensure each resolves (WARNING on misses).
+      - If the service has BaseInstruction subclasses in its MRO, ensure they are registered (WARNING on misses).
 
     Notes:
-      - We intentionally do NOT warn about prompts globally unless the service declares requirements,
-        to avoid noise for services that synthesize prompts or use engines that select dynamically.
       - Codec resolution mirrors runtime: try exact service.identity, then bucket default `(domain, namespace, group, "default")`,
         then an explicit `default_codec_identity` attribute if present.
     """
@@ -576,58 +574,44 @@ def check_orchestrai_service_pairings(app_configs: Optional[Iterable] = None, **
                             )
                         )
 
-            # ---- PROMPTS (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
-            with service_span_sync("orchestrai.services.pairing.prompts", attributes={"service": ident_str}):
-                required_prompts: Tuple[IdentityLike, ...] | None = getattr(svc_cls, "required_prompt_sections", None)
+            # ---- INSTRUCTIONS (via MRO) ----
+            with service_span_sync("orchestrai.services.pairing.instructions", attributes={"service": ident_str}):
+                from orchestrai.instructions.collector import collect_instructions
 
-                # Helper: auto resolve prompt by identity (exact or bucket default)
-                def _auto_prompt_resolved() -> bool:
-                    if prompt_registry.get((dm, ns, kd, nm)) is not None:
-                        return True
-                    if prompt_registry.get((dm, ns, kd, "default")) is not None:
-                        return True
-                    return False
-
-                if required_prompts:
-                    missing: list[str] = []
-                    for req in required_prompts:
-                        t4 = coerce_identity_key(req)
-                        if not t4 or prompt_registry.get(t4) is None:
-                            missing.append(".".join(t4) if t4 else repr(req))
-                    if missing:
-                        LOGGER.error(
-                            "service.prompts.missing (explicit) service=%s missing=%s",
-                            ident_str,
-                            ", ".join(missing),
+                instruction_classes = collect_instructions(svc_cls)
+                if not instruction_classes:
+                    LOGGER.warning(
+                        "service.instructions.none service=%s",
+                        ident_str,
+                    )
+                    messages.append(
+                        checks.Warning(
+                            "Service has no BaseInstruction classes in MRO.",
+                            hint=(
+                                "If this service should include instructions, add instruction classes "
+                                "to its inheritance chain."
+                            ),
+                            obj=svc_cls,
+                            id=f"{CHECK_ID_PREFIX}-020",
                         )
-                        messages.append(
-                            checks.Error(
-                                f"Service is missing required PromptSections: {', '.join(missing)}",
-                                hint="Register the sections or update `required_prompt_sections`.",
-                                obj=svc_cls,
-                                id=f"{CHECK_ID_PREFIX}-013",
-                            )
-                        )
+                    )
                 else:
-                    # No explicit requirements: warn only if none can be resolved by identity
-                    if not _auto_prompt_resolved():
-                        LOGGER.warning(
-                            "service.prompts.unresolved (implicit) service=%s tried=(%s, %s)",
-                            ident_str,
-                            ".".join((dm, ns, kd, nm)),
-                            ".".join((dm, ns, kd, "default")),
-                        )
-                        messages.append(
-                            checks.Warning(
-                                "Service has no resolvable PromptSection via identity.",
-                                hint=(
-                                    "If this service should include prompts, register a section at the service identity "
-                                    f"({dm}.{ns}.{kd}.{nm}) or bucket default ({dm}.{ns}.{kd}.default), "
-                                    "or declare `required_prompt_sections` on the service."
-                                ),
-                                obj=svc_cls,
-                                id=f"{CHECK_ID_PREFIX}-013A",
+                    # Verify each instruction class is registered (has identity)
+                    for instr_cls in instruction_classes:
+                        try:
+                            Identity.get_for(instr_cls)
+                        except Exception:
+                            messages.append(
+                                checks.Warning(
+                                    f"Instruction class {instr_cls.__name__} in service "
+                                    f"{nm} MRO is not registered.",
+                                    hint=(
+                                        "Use @instruction decorator to register "
+                                        "the instruction class."
+                                    ),
+                                    obj=svc_cls,
+                                    id=f"{CHECK_ID_PREFIX}-021",
+                                )
                             )
-                        )
 
         return messages

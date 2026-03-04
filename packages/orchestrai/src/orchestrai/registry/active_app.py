@@ -10,6 +10,7 @@ from typing import Any, Callable, Generator
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
+    INSTRUCTIONS_DOMAIN,
     PROMPT_SECTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
@@ -29,9 +30,18 @@ def _infer_domain_from_type(component_type: type[Any]) -> str | None:
         from orchestrai.components.services.service import BaseService as _BaseService
         from orchestrai.components.codecs.codec import BaseCodec as _BaseCodec
         from orchestrai.components.schemas import BaseOutputSchema as _BaseOutputSchema
-        from orchestrai.components.promptkit.base import PromptSection as _PromptSection
     except Exception:
         return None
+
+    # Check instructions first (before services, since instruction classes
+    # may also appear in service MRO)
+    try:
+        from orchestrai.instructions.base import BaseInstruction as _BaseInstruction
+    except Exception:
+        _BaseInstruction = None  # type: ignore[assignment,misc]
+
+    if _BaseInstruction is not None and issubclass(component_type, _BaseInstruction):
+        return INSTRUCTIONS_DOMAIN
 
     if issubclass(component_type, _BaseService):
         return SERVICES_DOMAIN
@@ -39,8 +49,7 @@ def _infer_domain_from_type(component_type: type[Any]) -> str | None:
         return CODECS_DOMAIN
     if issubclass(component_type, _BaseOutputSchema):
         return SCHEMAS_DOMAIN
-    if issubclass(component_type, _PromptSection):
-        return PROMPT_SECTIONS_DOMAIN
+
     return None
 
 
@@ -144,6 +153,7 @@ def registry_proxy(domain: str) -> Proxy:
 services = registry_proxy(SERVICES_DOMAIN)
 codecs = registry_proxy(CODECS_DOMAIN)
 schemas = registry_proxy(SCHEMAS_DOMAIN)
+instructions = registry_proxy(INSTRUCTIONS_DOMAIN)
 prompt_sections = registry_proxy(PROMPT_SECTIONS_DOMAIN)
 
 
@@ -153,6 +163,7 @@ __all__ = [
     "get_active_app",
     "get_component_store",
     "get_registry_for",
+    "instructions",
     "prompt_sections",
     "registry_proxy",
     "route_registration",

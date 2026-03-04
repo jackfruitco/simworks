@@ -8,6 +8,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import BaseModel
 
+from orchestrai.instructions import BaseInstruction
+
 
 class TestServiceCallModel:
     """Tests for the new ServiceCall model."""
@@ -123,19 +125,19 @@ class TestDjangoBaseService:
     def test_service_initialization(self):
         """Test that service initializes correctly."""
         from orchestrai_django.components.services import DjangoBaseService
-        from orchestrai.prompts import system_prompt
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(DjangoBaseService):
+        class TestInstr(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "Test instructions"
+
+        class TestService(TestInstr, DjangoBaseService):
             abstract = False
             response_schema = TestSchema
             model = "openai-responses:gpt-5-nano"
-
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "Test instructions"
 
         service = TestService(context={"test": "value"})
 
@@ -191,31 +193,32 @@ class TestBaseService:
         assert proxy is not None
         assert hasattr(proxy, 'using')
 
-    def test_prompt_methods_are_collected(self):
-        """Test that @system_prompt methods are collected."""
+    def test_instruction_classes_are_collected(self):
+        """Test that instruction classes from MRO are collected."""
         from orchestrai.components.services import BaseService
-        from orchestrai.prompts import system_prompt
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(BaseService):
+        class FirstInstr(BaseInstruction):
+            abstract = False
+            order = 0
+            instruction = "First"
+
+        class SecondInstr(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "Second"
+
+        class TestService(FirstInstr, SecondInstr, BaseService):
             abstract = False
             response_schema = TestSchema
             model = "test"
 
-            @system_prompt(weight=100)
-            def first(self) -> str:
-                return "First"
-
-            @system_prompt(weight=50)
-            def second(self) -> str:
-                return "Second"
-
         service = TestService()
-        assert len(service._prompt_methods) == 2
-        assert service._prompt_methods[0].name == "first"
-        assert service._prompt_methods[1].name == "second"
+        assert len(service._instruction_classes) == 2
+        assert service._instruction_classes[0] is FirstInstr
+        assert service._instruction_classes[1] is SecondInstr
 
     def test_backward_compatibility_alias(self):
         """Test that PydanticAIService is an alias for BaseService."""

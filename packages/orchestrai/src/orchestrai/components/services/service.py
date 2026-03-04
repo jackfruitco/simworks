@@ -8,7 +8,7 @@ Pydantic AI's Agent abstraction.
 
 Key features:
 - Cached Agent instance per service class
-- @system_prompt decorators for prompt composition
+- MRO-based instruction composition via BaseInstruction subclasses
 - Native Pydantic model validation with automatic LLM retry
 - Multi-provider support via Pydantic AI
 - Task descriptor for Django task execution
@@ -24,24 +24,21 @@ Identity
 Usage:
     from pydantic import BaseModel
     from orchestrai.components.services import BaseService
-    from orchestrai.prompts import system_prompt
+    from orchestrai.instructions import BaseInstruction
+    from orchestrai.decorators import orca
 
     class PatientResponse(BaseModel):
         messages: list[str]
 
-    class GenerateResponse(BaseService):
+    @orca.instruction(order=0)
+    class BaseInstructions(BaseInstruction):
+        instruction = "You are a helpful medical assistant..."
+
+    @orca.service
+    class GenerateResponse(BaseInstructions, BaseService):
         response_schema = PatientResponse
-        # model is optional - uses ORCA_DEFAULT_MODEL env var if not set
         model = "openai-responses:gpt-4o"
         use_native_output = True
-
-        @system_prompt(weight=100)
-        def base_instructions(self) -> str:
-            return "You are a helpful medical assistant..."
-
-        @system_prompt(weight=50)
-        async def patient_context(self, ctx) -> str:
-            return f"Patient: {ctx.deps['patient_name']}"
 """
 
 from __future__ import annotations
@@ -62,7 +59,7 @@ from orchestrai.components.services.calls import ServiceCall
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
 from orchestrai.identity import IdentityMixin
 from orchestrai.identity.domains import SERVICES_DOMAIN
-from orchestrai.prompts.decorators import collect_prompts
+from orchestrai.instructions.collector import collect_instructions
 from orchestrai.tracing import get_tracer, service_span, flatten_context as flatten_context_
 
 if TYPE_CHECKING:
@@ -166,7 +163,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
     - Native multi-provider support (OpenAI, Anthropic, Gemini, etc.)
     - Automatic validation retry on schema failures
     - Provider failover via FallbackModel
-    - Simplified prompt composition via @system_prompt decorators
+    - MRO-based instruction composition via BaseInstruction subclasses
 
     Class Attributes:
         model: Pydantic AI model identifier (e.g., "openai-responses:gpt-5-nano"). Optional -
@@ -182,14 +179,15 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         4. Hardcoded fallback: "openai-responses:gpt-4o-mini"
 
     Example:
-        class PatientService(BaseService):
+        @orca.instruction(order=0)
+        class PatientInstructions(BaseInstruction):
+            instruction = "You are a patient simulator..."
+
+        @orca.service
+        class PatientService(PatientInstructions, BaseService):
             model = "openai-responses:gpt-4o"  # Optional - uses config default if omitted
             response_schema = PatientResponse
             use_native_output = True
-
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "You are a patient simulator..."
     """
 
     abstract: ClassVar[bool] = True
@@ -240,8 +238,8 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         # Model override
         self._model_override: str | None = model
 
-        # Cached prompt methods (collected from class)
-        self._prompt_methods = collect_prompts(type(self))
+        # Instruction classes from MRO (collected from class hierarchy)
+        self._instruction_classes = collect_instructions(type(self))
 
         # Agent instance (lazily created)
         self._agent: Agent | None = None
@@ -452,9 +450,10 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         The agent is configured with:
         - Model (with optional fallbacks)
         - Result type (response_schema, potentially wrapped in NativeOutput)
-        - System prompts (collected from @system_prompt decorated methods)
+        - System prompts (from BaseInstruction classes in MRO)
         """
         from pydantic_ai import Agent, NativeOutput
+        from orchestrai.instructions.base import BaseInstruction
 
         # Build model with API key from OrchestrAI config
         model = self._build_model_with_api_key(self.effective_model)
@@ -481,26 +480,30 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
             output_type=output_type,
         )
 
-        # Register system prompt methods
-        for pm in self._prompt_methods:
-            # Get the bound method and create a wrapper
-            method_name = pm.name
+        # Register instruction classes as system_prompt callbacks.
+        for instr_cls in self._instruction_classes:
+            _has_custom_render = (
+                hasattr(instr_cls, "render_instruction")
+                and instr_cls.render_instruction is not BaseInstruction.render_instruction
+            )
 
-            # Create a closure to capture the method name
-            def make_prompt_fn(name: str, is_dynamic: bool):
-                async def prompt_fn(ctx=None):
-                    bound_method = getattr(self, name)
-                    if is_dynamic and ctx is not None:
-                        result = bound_method(ctx)
-                    else:
-                        result = bound_method()
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    return result or ""
-                return prompt_fn
+            def make_instruction_fn(cls, has_custom):
+                if has_custom:
+                    async def fn(ctx=None):
+                        result = cls.render_instruction(self)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+                        return result or ""
+                else:
+                    _text = cls.instruction or ""
+                    async def fn(ctx=None):
+                        return _text
+                return fn
 
-            prompt_fn = make_prompt_fn(method_name, pm.is_dynamic)
-            agent.system_prompt(prompt_fn, dynamic=pm.is_dynamic)
+            agent.system_prompt(
+                make_instruction_fn(instr_cls, _has_custom_render),
+                dynamic=_has_custom_render,
+            )
 
         return agent
 
@@ -532,7 +535,7 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
         Execute the service using Pydantic AI Agent.
 
         This is the main execution method. It:
-        1. Builds the system prompt from @system_prompt methods
+        1. Builds the system prompt from instruction classes in MRO
         2. Gets the user message from context
         3. Executes the agent with the prompts
         4. Returns the validated result
@@ -580,9 +583,9 @@ class BaseService(IdentityMixin, LifecycleMixin, ServiceCallMixin, BaseComponent
                         "openai_previous_response_id": previous_response_id,
                     }
 
-                # Execute agent - system prompts are registered on the agent via @system_prompt
-                # decorated methods (registered in the agent property). The prompts access
-                # self.context through closures, so they get the current context state.
+                # Execute agent - system prompts are registered on the agent via
+                # BaseInstruction classes in the MRO. Dynamic instructions access
+                # self.context through closures.
                 result = await self.agent.run(
                     user_message,
                     deps=self.context,

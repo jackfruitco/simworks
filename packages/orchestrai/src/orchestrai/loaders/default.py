@@ -17,8 +17,7 @@ class DefaultLoader(BaseLoader):
         "services",
         "codecs",
         "schemas",
-        "prompts",
-        "prompt_sections",
+        "instructions",
         "tools",
         "persist",
     )

@@ -1,153 +1,178 @@
 """
-Tests for BaseService (Pydantic AI-based service).
+Tests for BaseService (Pydantic AI-based service) and instruction system.
 
-These tests verify the BaseService class and related components.
+These tests verify the BaseService class, instruction decorator,
+collect_instructions, and related components.
 """
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from pydantic import BaseModel
 
-from orchestrai.prompts import system_prompt
-from orchestrai.prompts.decorators import (
-    collect_prompts,
-    is_system_prompt,
-    get_prompt_weight,
-    render_prompt_methods,
-)
+from orchestrai.instructions import BaseInstruction, collect_instructions
 
 
-class TestSystemPromptDecorator:
-    """Tests for the @system_prompt decorator."""
+class TestInstructionDecorator:
+    """Tests for the @instruction decorator and BaseInstruction."""
 
-    def test_decorator_marks_method(self):
-        """Test that decorator marks methods correctly."""
+    def test_static_instruction(self):
+        """Test that a static instruction class stores text."""
 
-        class TestClass:
-            @system_prompt
-            def my_prompt(self) -> str:
-                return "test"
+        class TestInstruction(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "Test instruction text"
 
-        assert is_system_prompt(TestClass.my_prompt)
-        assert get_prompt_weight(TestClass.my_prompt) == 100  # Default
+        assert TestInstruction.instruction == "Test instruction text"
+        assert TestInstruction.order == 50
 
-    def test_decorator_with_weight(self):
-        """Test that weight parameter is stored."""
+    def test_default_order(self):
+        """Test that default order is 50."""
 
-        class TestClass:
-            @system_prompt(weight=50)
-            def my_prompt(self) -> str:
-                return "test"
+        class TestInstruction(BaseInstruction):
+            abstract = False
+            instruction = "test"
 
-        assert is_system_prompt(TestClass.my_prompt)
-        assert get_prompt_weight(TestClass.my_prompt) == 50
+        assert TestInstruction.order == 50
 
-    def test_collect_prompts_ordering(self):
-        """Test that prompts are collected in weight order (descending)."""
+    def test_collect_instructions_ordering(self):
+        """Test that instructions are collected in order ascending."""
 
-        class TestClass:
-            @system_prompt(weight=10)
-            def low_priority(self) -> str:
-                return "low"
+        class LowPriority(BaseInstruction):
+            abstract = False
+            order = 90
+            instruction = "low"
 
-            @system_prompt(weight=100)
-            def high_priority(self) -> str:
-                return "high"
+        class HighPriority(BaseInstruction):
+            abstract = False
+            order = 0
+            instruction = "high"
 
-            @system_prompt(weight=50)
-            def medium_priority(self) -> str:
-                return "medium"
+        class MediumPriority(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "medium"
 
-        prompts = collect_prompts(TestClass)
+        class TestService(HighPriority, MediumPriority, LowPriority):
+            pass
 
-        assert len(prompts) == 3
-        assert prompts[0].weight == 100
-        assert prompts[0].name == "high_priority"
-        assert prompts[1].weight == 50
-        assert prompts[1].name == "medium_priority"
-        assert prompts[2].weight == 10
-        assert prompts[2].name == "low_priority"
+        instructions = collect_instructions(TestService)
 
-    def test_collect_prompts_inheritance(self):
-        """Test that prompts from parent classes are collected."""
+        assert len(instructions) == 3
+        assert instructions[0].order == 0
+        assert instructions[0] is HighPriority
+        assert instructions[1].order == 50
+        assert instructions[1] is MediumPriority
+        assert instructions[2].order == 90
+        assert instructions[2] is LowPriority
 
-        class BaseClass:
-            @system_prompt(weight=100)
-            def base_prompt(self) -> str:
-                return "base"
+    def test_collect_instructions_inheritance(self):
+        """Test that instructions from parent classes are collected."""
 
-        class DerivedClass(BaseClass):
-            @system_prompt(weight=50)
-            def derived_prompt(self) -> str:
-                return "derived"
+        class BaseInstr(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "base"
 
-        prompts = collect_prompts(DerivedClass)
+        class DerivedInstr(BaseInstruction):
+            abstract = False
+            order = 10
+            instruction = "derived"
 
-        assert len(prompts) == 2
-        names = [p.name for p in prompts]
-        assert "base_prompt" in names
-        assert "derived_prompt" in names
+        class DerivedService(DerivedInstr, BaseInstr):
+            pass
+
+        instructions = collect_instructions(DerivedService)
+
+        assert len(instructions) == 2
+        classes = [cls for cls in instructions]
+        assert DerivedInstr in classes
+        assert BaseInstr in classes
+
+    def test_collect_instructions_skips_abstract(self):
+        """Test that abstract instruction classes are skipped."""
+
+        class AbstractInstr(BaseInstruction):
+            abstract = True
+            instruction = "abstract"
+
+        class ConcreteInstr(BaseInstruction):
+            abstract = False
+            order = 10
+            instruction = "concrete"
+
+        class TestService(AbstractInstr, ConcreteInstr):
+            pass
+
+        instructions = collect_instructions(TestService)
+
+        assert len(instructions) == 1
+        assert instructions[0] is ConcreteInstr
+
+    def test_collect_instructions_tiebreak_by_name(self):
+        """Test that instructions with same order are sorted by class name."""
+
+        class BInstruction(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "b"
+
+        class AInstruction(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "a"
+
+        class TestService(BInstruction, AInstruction):
+            pass
+
+        instructions = collect_instructions(TestService)
+
+        assert len(instructions) == 2
+        assert instructions[0] is AInstruction
+        assert instructions[1] is BInstruction
 
 
-class TestRenderPromptMethods:
-    """Tests for rendering prompt methods."""
+class TestInstructionRendering:
+    """Tests for rendering instruction content."""
 
     @pytest.mark.asyncio
-    async def test_render_sync_methods(self):
-        """Test rendering synchronous prompt methods."""
+    async def test_render_static_instruction(self):
+        """Test rendering a static instruction."""
 
-        class TestClass:
-            @system_prompt(weight=100)
-            def first(self) -> str:
-                return "First prompt"
+        class StaticInstr(BaseInstruction):
+            abstract = False
+            instruction = "Static instruction text"
 
-            @system_prompt(weight=50)
-            def second(self) -> str:
-                return "Second prompt"
-
-        instance = TestClass()
-        prompts = collect_prompts(TestClass)
-        result = await render_prompt_methods(instance, prompts)
-
-        assert "First prompt" in result
-        assert "Second prompt" in result
-        # First should come before second due to weight
-        assert result.index("First prompt") < result.index("Second prompt")
+        result = await StaticInstr.render_instruction(StaticInstr)
+        assert result == "Static instruction text"
 
     @pytest.mark.asyncio
-    async def test_render_async_methods(self):
-        """Test rendering asynchronous prompt methods."""
+    async def test_render_dynamic_instruction(self):
+        """Test rendering a dynamic instruction with custom render_instruction."""
 
-        class TestClass:
-            @system_prompt(weight=100)
-            async def async_prompt(self) -> str:
-                return "Async result"
+        class DynamicInstr(BaseInstruction):
+            abstract = False
 
-        instance = TestClass()
-        prompts = collect_prompts(TestClass)
-        result = await render_prompt_methods(instance, prompts)
+            async def render_instruction(self) -> str:
+                return f"Dynamic: {self.context.get('name', 'unknown')}"
 
-        assert "Async result" in result
+        # Simulate calling with a service instance that has context
+        mock_service = MagicMock()
+        mock_service.context = {"name": "TestPatient"}
+
+        result = await DynamicInstr.render_instruction(mock_service)
+        assert result == "Dynamic: TestPatient"
 
     @pytest.mark.asyncio
-    async def test_render_with_none_result(self):
-        """Test that None results are skipped."""
+    async def test_render_none_instruction(self):
+        """Test that None instruction returns None."""
 
-        class TestClass:
-            @system_prompt(weight=100)
-            def returns_none(self) -> str | None:
-                return None
+        class EmptyInstr(BaseInstruction):
+            abstract = False
+            instruction = None
 
-            @system_prompt(weight=50)
-            def returns_value(self) -> str:
-                return "Has value"
-
-        instance = TestClass()
-        prompts = collect_prompts(TestClass)
-        result = await render_prompt_methods(instance, prompts)
-
-        assert "Has value" in result
-        assert result.strip() == "Has value"
+        result = await EmptyInstr.render_instruction(EmptyInstr)
+        assert result is None
 
 
 class TestBaseServiceIntegration:
@@ -160,20 +185,21 @@ class TestBaseServiceIntegration:
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(BaseService):
+        class TestInstr(BaseInstruction):
+            abstract = False
+            order = 50
+            instruction = "Test instructions"
+
+        class TestService(TestInstr, BaseService):
             abstract = False
             response_schema = TestSchema
             model = "openai-responses:gpt-5-nano"
-
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "Test instructions"
 
         service = TestService(context={"simulation_id": 123})
 
         assert service.context["simulation_id"] == 123
         assert service.effective_model == "openai-responses:gpt-5-nano"
-        assert len(service._prompt_methods) == 1
+        assert len(service._instruction_classes) == 1
 
     def test_service_model_override(self):
         """Test that model can be overridden at instance level."""

@@ -1,5 +1,5 @@
 # orchestrai/identity/protocols.py
-
+from __future__ import annotations
 
 from typing import Protocol, Any, runtime_checkable, ClassVar, TYPE_CHECKING
 
