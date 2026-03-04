@@ -1,6 +1,6 @@
 [project]
 name = "SimWorks"
-version = "0.6.0"
+version = "0.7.0"
 description = "Add your description here"
 requires-python = ">=3.14"
 dependencies = [
@@ -16,12 +16,12 @@ dependencies = [
     "django-imagekit>=6.1.0",
     "django-polymorphic>=4.11.0",
     "django-redis>=6.0.0",
-    "faker>=40.5.0",
+    "faker==40.8.0",
     "httpcore>=1.0.9",
     "logfire[django]==4.25.0",
     "openai==2.24.0",
     "opentelemetry-instrumentation-httpx>=0.58b0",
-    "pillow>=12.1.0",
+    "pillow==12.1.1",
     "pre-commit>=4.5.0",
     "psycopg>=3.3.3",
     "psycopg-binary>=3.3.3",
@@ -29,21 +29,22 @@ dependencies = [
     "pydantic==2.12.5",
     "pydantic-django>=0.1.1",
     "pytest>=9.0.2",
-    "pytest-django>=4.11.1",
+    "pytest-django==4.12.0",
     "redis>=7.2.0",
-    "ruff>=0.6",
+    "ruff==0.15.4",
     "typing-extensions>=4.15.0",
-    "zope-interface==8.1.1",
+    "zope-interface==8.2",
     "python-slugify>=8.0.4",
     "orchestrai",
     "orchestrai-django",
-    "django>=6.0.2",
+    "django==6.0.3",
     "twisted[http2,tls]>=25.5.0",
     "structlog>=25.5.0",
     "django-cors-headers>=4.9.0",
     "pytest-cov>=7.0.0",
     "pytest-xdist>=3.8.0",
     "urllib3>=2.6.3",
+    "pydantic-ai-slim>=1.65.0",
 ]
 
 [tool.uv.workspace]
