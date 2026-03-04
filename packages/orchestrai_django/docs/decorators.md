@@ -74,7 +74,7 @@ async def generate_initial(simulation, slim):
 
 ### Notes
 - The decorator **wraps a function** into a Django service class under the hood; you do not subclass a service directly in Django.
-- The service binds 
+- The service binds
   - identity: (origin, bucket, name)
   - codec_name: defaults to "default" (override via `codec=`)
   - prompt_plan: optional sequence of (section, stage) tuples.
@@ -172,12 +172,12 @@ class PatientFollowupSection(PromptSection, ChatlabMixin):
     from orchestrai_django.api.decorators import llm_service, codec, prompt_section
     from orchestrai_django.api.types import DjangoExecutableLLMService, DjangoBaseCodec, PromptSection, DjangoStrictSchema
     ```
-  - Always import decorators via the Django API facade: 
-    
+  - Always import decorators via the Django API facade:
+
     ```python
     from orchestrai_django.api.decorators import llm_service, codec, prompt_section
     ```
-    
+
 
 ---
 

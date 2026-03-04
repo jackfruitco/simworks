@@ -24,14 +24,15 @@ PERSISTENCE CONTRACT
 - Creates: SimulationFeedback rows
 - Idempotency: PersistedChunk with (call_id, schema_identity) unique constraint
 """
-
 import logging
 from typing import ClassVar
 
-from apps.common.orca.prompts import FeedbackEducatorMixin, MedicalAccuracyMixin
+from apps.common.orca.prompts import FeedbackEducatorMixin
+from apps.common.orca.prompts import MedicalAccuracyMixin
 from orchestrai.prompts import system_prompt
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import service
+
 from ..mixins import FeedbackMixin  # Identity mixin for component discovery
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ class GenerateInitialFeedback(
     use_native_output = True
 
     from apps.simcore.orca.schemas import GenerateInitialSimulationFeedback as _Schema
+
     response_schema = _Schema
 
     @system_prompt(weight=100)
@@ -68,7 +70,7 @@ class GenerateInitialFeedback(
         return (
             "You are an expert medical educator analyzing a student's performance "
             "in a simulated patient encounter.\n\n"
-            "Based on the conversation history, evaluate:\n"        
+            "Based on the conversation history, evaluate:\n"
             "1. Whether the student arrived at the correct diagnosis\n"
             "2. Whether the treatment plan was appropriate\n"
             "3. The quality of the patient experience (0-5 scale)\n"
