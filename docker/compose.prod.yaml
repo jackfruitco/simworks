@@ -5,6 +5,9 @@ services:
       dockerfile: docker/Dockerfile.prod
     env_file:
       - stack.env
+    environment:
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
     expose:
       - 8000
     read_only: true
