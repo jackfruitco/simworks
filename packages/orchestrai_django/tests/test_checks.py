@@ -34,7 +34,10 @@ def test_check_orchestrai_registries_reports_collisions_and_invalid_identity(set
 
     fake_with_collision = FakeRegistry(
         collisions=[("services", "demo", "group", "duplicate")],
-        identities=[("services", "demo", "group", "ok"), ("services", "demo", "group", "bad name!")],
+        identities=[
+            ("services", "demo", "group", "ok"),
+            ("services", "demo", "group", "bad name!"),
+        ],
     )
     fake_ok = FakeRegistry()
 
