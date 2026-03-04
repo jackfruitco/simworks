@@ -359,8 +359,7 @@ class BaseService[T: BaseModel](
         if not api_key and provider in supported_providers:
             configured_envvar = get_api_key_envvar(provider) or f"{provider.upper()}_API_KEY"
             raise ValueError(
-                f"No API key found for provider '{provider}'. "
-                f"Set {configured_envvar}."
+                f"No API key found for provider '{provider}'. Set {configured_envvar}."
             )
 
         # OpenAI

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
 
 if TYPE_CHECKING:
-    from orchestrai.components.services.service import CoreTaskProxy, TaskDescriptor
+    from orchestrai.components.services.service import CoreTaskProxy
 
 
 @dataclass(frozen=True)

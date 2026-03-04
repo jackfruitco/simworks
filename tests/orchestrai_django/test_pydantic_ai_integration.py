@@ -165,7 +165,6 @@ class TestDjangoBaseService:
         assert service.emitter is mock_emitter
 
 
-
 class TestBaseService:
     """Tests for BaseService (consolidated Pydantic AI-based service)."""
 

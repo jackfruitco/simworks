@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.common.models import PersistModel
 from apps.simcore.models import BaseSession, Simulation, SimulationImage
 
+
 class RoleChoices(models.TextChoices):
     USER = "U", _("user")
     ASSISTANT = "A", _("assistant")
