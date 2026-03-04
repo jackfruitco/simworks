@@ -8,6 +8,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 import pytest
 
+from tests.helpers.assertions import assert_schema_has_paths
+
 
 class TestOpenAPIExport:
     """Tests for the export_openapi management command."""
@@ -97,11 +99,14 @@ class TestOpenAPISchemaContent:
 
     def test_schema_has_health_endpoints(self, schema):
         """Test that health check endpoints are documented."""
-        paths = schema["paths"]
-
-        assert "/api/v1/health" in paths
-        assert "/api/v1/health/auth" in paths
-        assert "/api/v1/health/jwt" in paths
+        assert_schema_has_paths(
+            schema,
+            required_paths=[
+                "/api/v1/health",
+                "/api/v1/health/auth",
+                "/api/v1/health/jwt",
+            ],
+        )
 
     def test_schema_has_auth_endpoints(self, schema):
         """Test that authentication endpoints are documented."""

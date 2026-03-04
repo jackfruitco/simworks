@@ -42,6 +42,7 @@ dependencies = [
     "structlog>=25.5.0",
     "django-cors-headers>=4.9.0",
     "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.uv.workspace]
@@ -59,11 +60,42 @@ pythonpath = [
     "packages/orchestrai/src",
     "packages/orchestrai_django/src",
 ]
-python_files = ["tests/*.py", "tests/**/*.py"]
+python_files = ["test_*.py"]
+testpaths = [
+    "tests",
+    "packages/orchestrai/tests",
+    "packages/orchestrai_django/tests",
+]
 asyncio_mode = "auto"
+addopts = "-ra --maxfail=1 --strict-markers"
+markers = [
+    "unit: fast isolated tests with no DB/network requirements",
+    "component: boundary-level tests with fakes/stubs",
+    "integration: Django/ORM/request-cycle and cross-module integration tests",
+    "contract: package public API/schema compatibility tests",
+    "system: high-level system smoke tests",
+    "e2e: end-to-end tests across full stack boundaries",
+    "slow: intentionally slow tests excluded from fast lanes",
+]
 
 [dependency-groups]
 dev = [
     "pytest-asyncio>=1.3.0",
     "ruff>=0.14.10",
+]
+
+[tool.coverage.run]
+omit = [
+    "*/migrations/*.py",
+    "*/__init__.py",
+    "SimWorks/config/asgi.py",
+    "SimWorks/config/wsgi.py",
+]
+
+[tool.coverage.report]
+omit = [
+    "*/migrations/*.py",
+    "*/__init__.py",
+    "SimWorks/config/asgi.py",
+    "SimWorks/config/wsgi.py",
 ]

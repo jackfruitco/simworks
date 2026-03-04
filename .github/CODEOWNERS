@@ -1,0 +1,10 @@
+# Default owner
+* @tylerjohnson
+
+# Package ownership
+/packages/orchestrai/ @tylerjohnson
+/packages/orchestrai_django/ @tylerjohnson
+
+# App-level tests and CI
+/tests/ @tylerjohnson
+/.github/workflows/ @tylerjohnson

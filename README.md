@@ -15,14 +15,21 @@ SimWorks is a Django-based simulation platform with integrated AI orchestration 
 
 See deployment tag conventions and workflow details in `docs/DEPLOYMENT_TAGS.md`.
 
-## Reproduce CI Test Command Locally
+## Reproduce CI Lanes Locally
 
 ```bash
-DJANGO_SETTINGS_MODULE=config.settings uv run pytest -ra \
-  --cov=SimWorks \
-  --cov=packages/orchestrai/src/orchestrai \
-  --cov=packages/orchestrai_django/src/orchestrai_django \
-  --cov-report=term-missing \
-  --cov-report=xml \
-  --cov-fail-under=80
+# unit_fast
+uv run pytest -m "unit and not slow" -n auto --dist loadscope --durations=25
+
+# integration_core
+uv run pytest -m "integration and not slow" -n auto --dist loadscope --durations=25
+
+# package contracts
+uv run pytest packages/orchestrai/tests -m "contract and not slow"
+uv run pytest packages/orchestrai_django/tests -m "contract and not slow" --ds=orchestrai_django.tests.settings
+
+# package-scoped coverage gate inputs
+uv run pytest packages/orchestrai/tests -m "not slow" --cov=packages/orchestrai/src/orchestrai --cov-report=xml:coverage-orchestrai.xml
+uv run pytest packages/orchestrai_django/tests -m "not slow" --ds=orchestrai_django.tests.settings --cov=packages/orchestrai_django/src/orchestrai_django --cov-report=xml:coverage-orchestrai-django.xml
+uv run pytest tests -m "not slow" --cov=SimWorks --cov-report=xml:coverage-simworks.xml
 ```

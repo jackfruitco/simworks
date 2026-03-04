@@ -1,0 +1,22 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 2
+  round: nearest
+  range: "0...100"
+  status:
+    patch:
+      default:
+        target: 90%
+        threshold: 0%
+        informational: false
+    project:
+      default:
+        informational: true
+
+ignore:
+  - "**/migrations/*.py"
+  - "**/__init__.py"
+  - "**/config/asgi.py"
+  - "**/config/wsgi.py"

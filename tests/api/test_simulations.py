@@ -15,6 +15,7 @@ from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
+from tests.helpers.assertions import assert_payload_has_fields, assert_response_status
 
 
 @pytest.fixture
@@ -356,7 +357,7 @@ class TestEndSimulation:
 class TestSimulationOutputFormat:
     """Tests for simulation response format."""
 
-    def test_simulation_includes_all_fields(self, auth_client, test_user):
+    def test_simulation_includes_all_fields(self, auth_client, test_user, failure_artifacts):
         """Response includes all expected fields."""
         from datetime import timedelta
 
@@ -370,8 +371,11 @@ class TestSimulationOutputFormat:
             time_limit=timedelta(hours=1),
         )
 
+        failure_artifacts.capture_request(method="GET", url=f"/api/v1/simulations/{sim.pk}/")
         response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
+        assert_response_status(response, 200, failure_artifacts=failure_artifacts)
         data = response.json()
+        failure_artifacts.record("payload", data)
 
         # Verify all fields are present
         expected_fields = [
@@ -386,8 +390,7 @@ class TestSimulationOutputFormat:
             "patient_initials",
             "status",
         ]
-        for field in expected_fields:
-            assert field in data, f"Missing field: {field}"
+        assert_payload_has_fields(data, expected_fields, failure_artifacts=failure_artifacts)
 
     def test_simulation_status_values(self, auth_client, test_user):
         """Status field has correct values based on simulation state."""

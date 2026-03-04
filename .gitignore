@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 **/__pycache__/
+.pytest-failure-artifacts/
 
 # Distribution / packaging
 .Python

@@ -1,7 +1,12 @@
 import asyncio
+from pathlib import Path
 import sys
 import types
 from typing import ClassVar
+
+import pytest
+
+_PACKAGE_TEST_ROOT = Path(__file__).resolve().parent
 
 # Provide a minimal asgiref.sync stub when the dependency is unavailable in the
 # execution environment. This is sufficient for tests that rely on the sync
@@ -112,3 +117,14 @@ if "pydantic" not in sys.modules:
 
     sys.modules["pydantic"] = pydantic_mod
     sys.modules["pydantic.config"] = config_mod
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    for item in items:
+        path = Path(str(getattr(item, "path", getattr(item, "fspath", "")))).resolve()
+        if _PACKAGE_TEST_ROOT not in path.parents and path != _PACKAGE_TEST_ROOT:
+            continue
+        if item.get_closest_marker("slow"):
+            continue
+        if not item.get_closest_marker("contract"):
+            item.add_marker(pytest.mark.contract)
