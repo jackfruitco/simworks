@@ -11,11 +11,32 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
-  ci:
-    name: ci
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      package_contracts: ${{ steps.filter.outputs.package_contracts }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            package_contracts:
+              - 'packages/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+
+  lint_and_checks:
+    name: lint_and_checks
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -27,13 +48,13 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          python-version: "3.14"
+          python-version: '3.14'
 
       - name: Set up uv
         uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
@@ -57,16 +78,6 @@ jobs:
 
       - name: Run lint and formatting checks
         run: uv run pre-commit run --all-files
-
-      - name: Run tests with coverage
-        run: |
-          DJANGO_SETTINGS_MODULE=tests.settings_test uv run pytest -ra \
-            --cov=SimWorks \
-            --cov=packages/orchestrai/src/orchestrai \
-            --cov=packages/orchestrai_django/src/orchestrai_django \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            --cov-fail-under=80
 
       - name: Validate OpenAPI schema is up to date
         working-directory: SimWorks
@@ -117,75 +128,239 @@ jobs:
           print(f"Endpoints: {len(schema['paths'])}")
           PY
 
-      - name: Generate coverage summary
-        id: coverage-summary
+  unit_fast:
+    name: unit_fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTEST_FAILURE_ARTIFACT_DIR: .pytest-failure-artifacts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --locked --dev
+
+      - name: Run unit lane
+        run: |
+          start=$(date +%s)
+          uv run pytest -m "unit and not slow" -n auto --dist loadscope --durations=25
+          end=$(date +%s)
+          echo "## unit_fast" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime: $((end-start))s" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Command: \\`uv run pytest -m \"unit and not slow\" -n auto --dist loadscope --durations=25\\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload unit failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unit-failure-artifacts
+          path: .pytest-failure-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  integration_core:
+    name: integration_core
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PYTEST_FAILURE_ARTIFACT_DIR: .pytest-failure-artifacts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --locked --dev
+
+      - name: Run integration core lane
+        run: |
+          start=$(date +%s)
+          uv run pytest -m "integration and not slow" -n auto --dist loadscope --durations=25
+          end=$(date +%s)
+          echo "## integration_core" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime: $((end-start))s" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Command: \\`uv run pytest -m \"integration and not slow\" -n auto --dist loadscope --durations=25\\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload integration failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integration-failure-artifacts
+          path: .pytest-failure-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  package_contracts:
+    name: package_contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [prepare]
+    if: needs.prepare.outputs.package_contracts == 'true' || github.event_name == 'push'
+    env:
+      PYTEST_FAILURE_ARTIFACT_DIR: .pytest-failure-artifacts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --locked --dev
+
+      - name: Run package contracts
+        run: |
+          start=$(date +%s)
+          uv run pytest packages/orchestrai/tests -m "contract and not slow" -n auto --dist loadscope --durations=25
+          PYTHONPATH=.:SimWorks:packages/orchestrai/src:packages/orchestrai_django/src \
+          uv run pytest packages/orchestrai_django/tests \
+            -m "contract and not slow" \
+            --ds=orchestrai_django.tests.settings \
+            -n auto --dist loadscope --durations=25
+          end=$(date +%s)
+          echo "## package_contracts" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Runtime: $((end-start))s" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Command: \`uv run pytest packages/orchestrai/tests -m \"contract and not slow\"\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Command: \`uv run pytest packages/orchestrai_django/tests -m \"contract and not slow\" --ds=orchestrai_django.tests.settings\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload package contract failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-contract-failure-artifacts
+          path: .pytest-failure-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  coverage_gate:
+    name: coverage_gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [lint_and_checks, unit_fast, integration_core]
+    env:
+      ORCHESTRAI_MIN_COVERAGE: '57'
+      ORCHESTRAI_DJANGO_MIN_COVERAGE: '30'
+      SIMWORKS_MIN_COVERAGE: '54'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.14'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f
+        with:
+          enable-cache: true
+
+      - name: Install Python dependencies
+        run: uv sync --locked --dev
+
+      - name: Generate orchestrai coverage
+        run: |
+          COVERAGE_FILE=.coverage.orchestrai \
+          uv run pytest -q packages/orchestrai/tests -m "not slow" \
+            --cov=packages/orchestrai/src/orchestrai \
+            --cov-report=xml:coverage-orchestrai.xml \
+            --cov-report=term
+
+      - name: Generate orchestrai_django coverage
+        run: |
+          PYTHONPATH=.:SimWorks:packages/orchestrai/src:packages/orchestrai_django/src \
+          COVERAGE_FILE=.coverage.orchestrai_django \
+          uv run pytest -q packages/orchestrai_django/tests -m "not slow" \
+            --ds=orchestrai_django.tests.settings \
+            --cov=packages/orchestrai_django/src/orchestrai_django \
+            --cov-report=xml:coverage-orchestrai-django.xml \
+            --cov-report=term
+
+      - name: Generate SimWorks coverage
+        run: |
+          COVERAGE_FILE=.coverage.simworks \
+          uv run pytest -q tests -m "not slow" \
+            --cov=SimWorks \
+            --cov-report=xml:coverage-simworks.xml \
+            --cov-report=term
+
+      - name: Enforce coverage floors
         run: |
           python - <<'PY'
           import os
+          import sys
           import xml.etree.ElementTree as ET
 
-          tree = ET.parse("coverage.xml")
-          coverage = float(tree.getroot().get("line-rate", 0)) * 100
-          coverage = round(coverage, 2)
+          floors = {
+              "orchestrai": float(os.environ["ORCHESTRAI_MIN_COVERAGE"]),
+              "orchestrai_django": float(os.environ["ORCHESTRAI_DJANGO_MIN_COVERAGE"]),
+              "simworks": float(os.environ["SIMWORKS_MIN_COVERAGE"]),
+          }
+          files = {
+              "orchestrai": "coverage-orchestrai.xml",
+              "orchestrai_django": "coverage-orchestrai-django.xml",
+              "simworks": "coverage-simworks.xml",
+          }
+
+          observed = {}
+          failed = []
+          for key, path in files.items():
+              tree = ET.parse(path)
+              rate = float(tree.getroot().attrib.get("line-rate", 0)) * 100
+              observed[key] = round(rate, 2)
+              if rate < floors[key]:
+                  failed.append(f"{key}: {observed[key]}% < required {floors[key]}%")
 
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
-            with open(summary_path, "a", encoding="utf-8") as summary:
-              summary.write("## Coverage Summary\n\n")
-              summary.write(f"- Total coverage: {coverage}%\n")
+              with open(summary_path, "a", encoding="utf-8") as summary:
+                  summary.write("## Coverage Gate\\n\\n")
+                  for key in ("orchestrai", "orchestrai_django", "simworks"):
+                      summary.write(
+                          f"- {key}: {observed[key]}% (floor {floors[key]}%)\\n"
+                      )
 
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as outputs:
-            outputs.write(f"coverage={coverage}\n")
+          if failed:
+              for line in failed:
+                  print(f"::error::{line}")
+              sys.exit(1)
           PY
 
-      - name: Update sticky coverage comment
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const marker = '<!-- ci-coverage-comment -->';
-            const coverage = process.env.COVERAGE;
-            const body = `${marker}\n## CI Coverage\nTotal coverage: ${coverage}%`;
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
-
-            const existing = comments.find((comment) =>
-              comment.user.type === 'Bot' &&
-              comment.body &&
-              comment.body.includes(marker)
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
-            }
-        env:
-          COVERAGE: ${{ steps.coverage-summary.outputs.coverage }}
-
-      - name: Upload coverage artifact
+      - name: Upload coverage artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: coverage-xml
-          path: coverage.xml
+          name: package-coverage-xml
+          path: |
+            coverage-orchestrai.xml
+            coverage-orchestrai-django.xml
+            coverage-simworks.xml
           if-no-files-found: error
           retention-days: 7
 
@@ -193,6 +368,6 @@ jobs:
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de
         with:
-          files: coverage.xml
+          files: coverage-orchestrai.xml,coverage-orchestrai-django.xml,coverage-simworks.xml
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}

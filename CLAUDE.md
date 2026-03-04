@@ -628,8 +628,8 @@ AI responses are strictly ordered per simulation with unique sequence constraint
 
 Tests are organized in `/tests` directory:
 - `tests/test_*.py`: Main Django app tests
-- `tests/orchestrai/`: Tests for orchestrai package
-- `tests/orchestrai_django/`: Tests for orchestrai_django package
+- `packages/orchestrai/tests/`: Tests for orchestrai package
+- `packages/orchestrai_django/tests/`: Tests for orchestrai_django package
 
 Use `pytest.mark.django_db` for tests requiring database access:
 ```python

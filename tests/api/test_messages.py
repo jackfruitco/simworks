@@ -16,6 +16,7 @@ from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
+from tests.helpers.assertions import assert_payload_has_fields, assert_response_status
 
 
 @pytest.fixture
@@ -582,10 +583,16 @@ class TestGetMessage:
 class TestMessageOutputFormat:
     """Tests for message response format."""
 
-    def test_message_includes_all_fields(self, auth_client, simulation, message):
+    def test_message_includes_all_fields(self, auth_client, simulation, message, failure_artifacts):
         """Response includes all expected fields."""
+        failure_artifacts.capture_request(
+            method="GET",
+            url=f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/",
+        )
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/")
+        assert_response_status(response, 200, failure_artifacts=failure_artifacts)
         data = response.json()
+        failure_artifacts.record("payload", data)
 
         expected_fields = [
             "id",
@@ -600,8 +607,7 @@ class TestMessageOutputFormat:
             "is_from_ai",
             "display_name",
         ]
-        for field in expected_fields:
-            assert field in data, f"Missing field: {field}"
+        assert_payload_has_fields(data, expected_fields, failure_artifacts=failure_artifacts)
 
     def test_message_does_not_include_order_field(self, auth_client, simulation, message):
         """The 'order' field was removed — verify it's not in the response."""

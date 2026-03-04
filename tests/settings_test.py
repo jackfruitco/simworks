@@ -11,7 +11,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.admin",
     "django.contrib.sites",
-    "tests.orchestrai_django.fixtures.dummyapp",
     "orchestrai_django",  # core package under test
     # SimWorks apps for integration tests
     "apps.accounts",

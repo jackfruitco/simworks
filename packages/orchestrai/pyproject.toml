@@ -34,7 +34,7 @@ packages = ["src/orchestrai"]
 [tool.hatch.build.targets.sdist]
 include = [
     "src/orchestrai/**",
-    "tests/orchestrai/**",
+    "tests/**",
     "pyproject.toml",
     "README.md",
     "LICENSE*",
@@ -42,3 +42,15 @@ include = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-ra --maxfail=1 --strict-markers"
+markers = [
+  "unit: fast isolated tests with no DB/network requirements",
+  "component: boundary-level tests with fakes/stubs",
+  "integration: Django/ORM/request-cycle and cross-module integration tests",
+  "contract: package public API/schema compatibility tests",
+  "system: high-level system smoke tests",
+  "e2e: end-to-end tests across full stack boundaries",
+  "slow: intentionally slow tests excluded from fast lanes",
+]

@@ -1,7 +1,13 @@
 import asyncio
+from datetime import UTC, datetime
 import json
+import os
+from pathlib import Path
+import re
 import sys
 import types
+
+import pytest
 
 
 # ----------------------- pydantic stub -----------------------
@@ -250,3 +256,139 @@ sys.modules.setdefault("opentelemetry.trace.StatusCode", StatusCode)
 sys.modules.setdefault("opentelemetry.trace.SpanKind", SpanKind)
 sys.modules.setdefault("opentelemetry.trace.Span", Span)
 sys.modules.setdefault("opentelemetry.trace.Tracer", Tracer)
+
+
+_LANE_MARKERS = {"unit", "component", "integration", "contract", "system", "e2e"}
+
+
+class FailureArtifactCollector:
+    """Per-test artifact sink used to persist failure diagnostics."""
+
+    def __init__(self) -> None:
+        self.records: dict[str, object] = {}
+
+    def record(self, key: str, payload: object) -> None:
+        self.records[key] = payload
+
+    def capture_request(
+        self,
+        *,
+        method: str,
+        url: str,
+        body: object | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        self.record(
+            "request",
+            {
+                "method": method,
+                "url": url,
+                "body": body,
+                "headers": headers or {},
+            },
+        )
+
+    def capture_response(self, response: object) -> None:
+        payload: dict[str, object] = {}
+        status_code = getattr(response, "status_code", None)
+        if status_code is not None:
+            payload["status_code"] = int(status_code)
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            payload["headers"] = dict(headers)
+        data = None
+        if hasattr(response, "json"):
+            try:
+                data = response.json()
+            except Exception:
+                data = None
+        if data is None and hasattr(response, "content"):
+            try:
+                data = getattr(response, "content", b"")
+                if isinstance(data, (bytes, bytearray)):
+                    data = data.decode("utf-8", errors="replace")
+            except Exception:
+                data = None
+        if data is not None:
+            payload["body"] = data
+        self.record("response", payload)
+
+
+def _has_lane_marker(item: pytest.Item) -> bool:
+    return any(item.get_closest_marker(marker) for marker in _LANE_MARKERS)
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    for item in items:
+        path = str(getattr(item, "path", getattr(item, "fspath", "")))
+        if (
+            "packages/orchestrai/tests/" in path or "packages/orchestrai_django/tests/" in path
+        ) and not item.get_closest_marker("contract"):
+            item.add_marker(pytest.mark.contract)
+        if item.get_closest_marker("django_db"):
+            if not item.get_closest_marker("integration"):
+                item.add_marker(pytest.mark.integration)
+            continue
+        if not _has_lane_marker(item):
+            item.add_marker(pytest.mark.unit)
+
+
+@pytest.fixture
+def failure_artifacts(request: pytest.FixtureRequest) -> FailureArtifactCollector:
+    collector = FailureArtifactCollector()
+    request.node._failure_artifacts = collector
+    return collector
+
+
+def _collect_db_counts() -> dict[str, int]:
+    try:
+        from django.apps import apps
+    except Exception:
+        return {}
+    labels = (
+        "simcore.Simulation",
+        "chatlab.Message",
+        "common.OutboxEvent",
+        "orchestrai_django.ServiceCall",
+    )
+    counts: dict[str, int] = {}
+    for label in labels:
+        try:
+            model = apps.get_model(label)
+            if model is not None:
+                counts[label] = model.objects.count()
+        except Exception:
+            continue
+    return counts
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or report.passed:
+        return
+
+    collector = getattr(item, "_failure_artifacts", None)
+    if collector is None:
+        collector = FailureArtifactCollector()
+        item._failure_artifacts = collector
+
+    marker_names = sorted(mark.name for mark in item.iter_markers())
+    collector.record("markers", marker_names)
+    if item.get_closest_marker("django_db"):
+        db_counts = _collect_db_counts()
+        if db_counts:
+            collector.record("db_counts", db_counts)
+
+    artifact_dir = Path(os.environ.get("PYTEST_FAILURE_ARTIFACT_DIR", ".pytest-failure-artifacts"))
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    safe_nodeid = re.sub(r"[^A-Za-z0-9_.-]+", "_", item.nodeid)
+    artifact_path = artifact_dir / f"{safe_nodeid}.json"
+    payload = {
+        "nodeid": item.nodeid,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "artifacts": collector.records,
+    }
+    artifact_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    item.user_properties.append(("failure_artifact", str(artifact_path)))
