@@ -23,10 +23,9 @@ through that helper for full context support.
 from django import template
 from django.utils.safestring import mark_safe
 
-register = template.Library()
-
-# Optional integration hooks
 from orchestrai.registry import prompt_sections
+
+register = template.Library()
 
 try:
     # Prefer the Django renderer if available

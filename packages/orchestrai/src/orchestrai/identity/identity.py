@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 import logging
 import re
-from typing import Any, ClassVar, NamedTuple, Union, Self
+from typing import Any, ClassVar, NamedTuple, Self, Union
 
 from .exceptions import IdentityError, IdentityResolutionError, IdentityValidationError
 from .protocols import IdentityProtocol
@@ -226,7 +226,7 @@ class Identity:
 
     # ------------------- Coercion helpers -------------------
     @classmethod
-    def try_get(cls, value: IdentityLike) -> Identity | None:
+    def try_get(cls, value: IdentityLike) -> Self | None:
         """Best-effort coercion. Returns None instead of raising on failure."""
         try:
             return cls.get(value)

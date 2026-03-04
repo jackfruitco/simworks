@@ -1,6 +1,8 @@
+from typing import ClassVar
+
 from django.contrib import admin
 
-from .models import *
+from .models import Message, MessageMediaLink
 
 
 class MediaInLine(admin.TabularInline):
@@ -23,10 +25,10 @@ class MessageAdmin(admin.ModelAdmin):
     )
     list_filter = ("simulation", "role", "sender", "conversation__conversation_type")
 
-    fieldsets = [
+    fieldsets: ClassVar[tuple[tuple[str | None, dict[str, tuple[object, ...]]], ...]] = (
         (None, {"fields": (("simulation", "conversation", "order"), ("sender", "role"))}),
         ("Contents", {"fields": ("content",)}),
-    ]
+    )
 
     def has_change_permission(self, request, obj=None):
         return False

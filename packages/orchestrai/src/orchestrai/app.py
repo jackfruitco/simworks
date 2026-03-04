@@ -21,6 +21,18 @@ import sys
 from threading import RLock
 from typing import Any
 
+from ._state import set_current_app
+from .conf.settings import Settings
+from .finalize import consume_finalizers
+from .fixups.base import Fixup, FixupStage
+from .loaders.base import BaseLoader
+from .registry import ComponentStore
+from .registry.active_app import (
+    flush_pending,
+    push_active_registry_app,
+    set_active_registry_app,
+)
+
 ORCA_BANNER = r"""
 
         ██████╗                                                    ███╗  ████╗
@@ -34,18 +46,6 @@ ORCA_BANNER = r"""
                          Orchestrate intelligence.
 
 """
-
-from ._state import set_current_app
-from .conf.settings import Settings
-from .finalize import consume_finalizers
-from .fixups.base import Fixup, FixupStage
-from .loaders.base import BaseLoader
-from .registry import ComponentStore
-from .registry.active_app import (
-    flush_pending,
-    push_active_registry_app,
-    set_active_registry_app,
-)
 
 # ---------------------------------------------------------------------------
 # Helpers

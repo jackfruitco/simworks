@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import types
+from typing import ClassVar
 
 # Provide a minimal asgiref.sync stub when the dependency is unavailable in the
 # execution environment. This is sufficient for tests that rely on the sync
@@ -50,7 +51,7 @@ if "pydantic" not in sys.modules:
             super().__init__(**kwargs)
 
     class BaseModel:
-        model_config = {}
+        model_config: ClassVar[dict[str, object]] = {}
 
         def __init__(self, **data):
             for key, value in data.items():

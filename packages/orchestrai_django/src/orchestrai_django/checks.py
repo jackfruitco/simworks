@@ -562,10 +562,6 @@ def check_orchestrai_service_pairings(
                     (dm, ns, kd, "default"),
                 )
 
-                # Helper: attempt auto resolve by identity
-                def _auto_schema_resolved() -> bool:
-                    return any(schema_registry.get(cand) is not None for cand in auto_candidates)
-
                 if explicit_schema_hint is not None:
                     t4 = coerce_identity_key(explicit_schema_hint)
                     ok = bool(t4) and (schema_registry.get(t4) is not None)
@@ -586,7 +582,7 @@ def check_orchestrai_service_pairings(
                         )
                 else:
                     # Not explicitly explicit: warn if automatic resolution fails
-                    if not _auto_schema_resolved():
+                    if not any(schema_registry.get(cand) is not None for cand in auto_candidates):
                         LOGGER.warning(
                             "service.schema.unresolved (implicit) service=%s tried=(%s, %s)",
                             ident_str,
@@ -614,12 +610,6 @@ def check_orchestrai_service_pairings(
                     svc_cls, "required_prompt_sections", None
                 )
 
-                # Helper: auto resolve prompt by identity (exact or bucket default)
-                def _auto_prompt_resolved() -> bool:
-                    if prompt_registry.get((dm, ns, kd, nm)) is not None:
-                        return True
-                    return prompt_registry.get((dm, ns, kd, "default")) is not None
-
                 if required_prompts:
                     missing: list[str] = []
                     for req in required_prompts:
@@ -642,7 +632,10 @@ def check_orchestrai_service_pairings(
                         )
                 else:
                     # No explicit requirements: warn only if none can be resolved by identity
-                    if not _auto_prompt_resolved():
+                    if (
+                        prompt_registry.get((dm, ns, kd, nm)) is None
+                        and prompt_registry.get((dm, ns, kd, "default")) is None
+                    ):
                         LOGGER.warning(
                             "service.prompts.unresolved (implicit) service=%s tried=(%s, %s)",
                             ident_str,

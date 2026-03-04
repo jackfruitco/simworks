@@ -739,9 +739,8 @@ def run_service_call(call_id: str):
             update_fields = ["context"]
             if call.schema_fqn:
                 update_fields.append("schema_fqn")
-            if request_json is not None:
-                if call.request is None or call.request == request_json:
-                    call.request = request_json
+            if request_json is not None and (call.request is None or call.request == request_json):
+                call.request = request_json
             if call.request is not None:
                 update_fields.append("request")
             if call.context.get("previous_provider_response_id") or call.context.get(

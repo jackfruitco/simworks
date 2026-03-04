@@ -24,7 +24,8 @@ def is_generic(tool):
     if not isinstance(data, list):
         return False
     for item in data:
-        if not hasattr(item, "key") or not hasattr(item, "value"):
-            if not (isinstance(item, dict) and "key" in item and "value" in item):
-                return False
+        if (not hasattr(item, "key") or not hasattr(item, "value")) and not (
+            isinstance(item, dict) and "key" in item and "value" in item
+        ):
+            return False
     return True

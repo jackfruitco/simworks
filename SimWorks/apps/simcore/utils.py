@@ -48,11 +48,11 @@ def get_user_initials(user) -> str:
     """
 
     User = get_user_model()
-    if type(user) == str:
+    if isinstance(user, str):
         try:
             user = User.objects.get(email=user)
-        except User.DoesNotExist:
-            raise Exception(f"Error! get_user_initials: User {user} not found")
+        except User.DoesNotExist as err:
+            raise ValueError(f"Error! get_user_initials: User {user} not found") from err
 
     if (
         hasattr(user, "first_name")

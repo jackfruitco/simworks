@@ -1,6 +1,7 @@
 # common/utils/system.py
 import logging
 import os
+from typing import Any
 
 _SENTINEL = object()
 
@@ -39,9 +40,6 @@ def coerce_to_bool(value: str | bool | int) -> bool:
     if isinstance(value, str):
         return value.strip().lower() not in ("false", "0", "no", "")
     return bool(value)
-
-
-from typing import Any
 
 
 def remove_null_keys(dict_: Any) -> dict[Any, Any]:

@@ -151,18 +151,19 @@ def lint_schema(schema: dict[str, Any], path: str = "$") -> list[SchemaViolation
             )
 
     # Rule 6: All schema nodes should have type (warning, not always enforced)
-    if "type" not in schema and "$ref" not in schema:
-        # Check if this is a union with anyOf/oneOf (allowed in nested positions)
-        if not any(k in schema for k in ["anyOf", "oneOf", "allOf"]):
-            violations.append(
-                SchemaViolation(
-                    path=path,
-                    rule="type_missing",
-                    message="Schema node missing 'type' field (may cause issues)",
-                    suggestion="Add explicit 'type' field",
-                )
+    if (
+        "type" not in schema
+        and "$ref" not in schema
+        and not any(k in schema for k in ["anyOf", "oneOf", "allOf"])
+    ):
+        violations.append(
+            SchemaViolation(
+                path=path,
+                rule="type_missing",
+                message="Schema node missing 'type' field (may cause issues)",
+                suggestion="Add explicit 'type' field",
             )
-
+        )
     # Recurse into nested schemas (anyOf/oneOf/allOf if present in non-root)
     for union_key in ["anyOf", "oneOf", "allOf"]:
         if union_key in schema:

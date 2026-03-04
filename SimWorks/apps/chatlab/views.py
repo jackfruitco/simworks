@@ -7,7 +7,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.chatlab.utils import (
     create_new_simulation,
@@ -174,9 +174,6 @@ def load_older_messages(request, simulation_id):
     msg_list = qs.order_by("-timestamp")[:5]
     msg_list = reversed(msg_list)
     return render(request, "chatlab/partials/messages.html", {"messages": msg_list})
-
-
-from django.views.decorators.http import require_POST
 
 
 @require_GET

@@ -1,15 +1,17 @@
+from typing import ClassVar
+
 from django.contrib import admin
 from django.utils.html import format_html
 
 from apps.chatlab.models import Message, MessageMediaLink
 
-from .models import *
+from .models import Conversation, ConversationType, Simulation, SimulationImage, SimulationMetadata
 
 
 class MetadataInline(admin.TabularInline):
     model = SimulationMetadata
     extra = 0
-    fieldsets = [
+    fieldsets: ClassVar[tuple[tuple[str | None, dict[str, tuple[str, ...]]], ...]] = (
         (
             None,
             {
@@ -19,7 +21,7 @@ class MetadataInline(admin.TabularInline):
                 )
             },
         ),
-    ]
+    )
 
     def has_change_permission(self, request, obj=None):
         return False
@@ -37,9 +39,9 @@ class MediaMessageInLine(admin.TabularInline):
 class MessageInline(admin.TabularInline):
     model = Message
     extra = 0
-    fieldsets = [
+    fieldsets: ClassVar[tuple[tuple[str | None, dict[str, tuple[str, ...]]], ...]] = (
         (None, {"fields": ("sender", "role", "content")}),
-    ]
+    )
 
 
 @admin.register(Simulation)
@@ -94,7 +96,7 @@ class SimulationAdmin(admin.ModelAdmin):
         "correct_treatment_plan",
         "start_timestamp",
     )
-    fieldsets = [
+    fieldsets: ClassVar[tuple[tuple[str | None, dict[str, object]], ...]] = (
         (
             None,
             {
@@ -115,12 +117,12 @@ class SimulationAdmin(admin.ModelAdmin):
                 ),
             },
         ),
-    ]
+    )
     list_filter = ("user",)
     search_fields = ("user__username", "diagnosis", "chief_complaint")
     ordering = ("-id",)
 
-    inlines = [MetadataInline]
+    inlines: ClassVar[tuple[type[admin.TabularInline], ...]] = (MetadataInline,)
 
     def has_change_permission(self, request, obj=None):
         return False

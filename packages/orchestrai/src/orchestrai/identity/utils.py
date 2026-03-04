@@ -69,7 +69,7 @@ def _env_truthy(value: str | None) -> bool:
 
 
 # If no debug flag is provided to `resolve_collision`, we fall back to this env var.
-_DEBUG_FALLBACK = _env_truthy(os.getenv("orchestrai_DEBUG"))
+_DEBUG_FALLBACK = _env_truthy(os.getenv("ORCHESTRAI_DEBUG"))
 
 
 def snake(s: str) -> str:

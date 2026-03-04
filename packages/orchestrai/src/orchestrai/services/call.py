@@ -1,8 +1,8 @@
 """Compatibility layer for service dispatch helpers."""
 
-raise NotImplementedError("Service runners have been removed; inline task execution is required.")
-
 from orchestrai.components.services.calls import ServiceCall
+
+raise NotImplementedError("Service runners have been removed; inline task execution is required.")
 
 
 def _coerce_runner_name(*_args, **_kwargs):  # pragma: no cover - compatibility

@@ -22,7 +22,7 @@ def as_openai_sim_transcript(self) -> str:
     Render Simulation History as a plain-text OpenAI transcript string.
 
     Example output:
-        Patient: "I’m not feeling well."
+        Patient: "I'm not feeling well."
         User: "Can you tell me more?"
         Patient: "Yeah, I have a headache."
     """

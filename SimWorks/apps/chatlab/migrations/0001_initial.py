@@ -4,50 +4,88 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='ChatSession',
+            name="ChatSession",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('modified_at', models.DateTimeField(auto_now=True)),
-                ('notes', models.TextField(blank=True, null=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("modified_at", models.DateTimeField(auto_now=True)),
+                ("notes", models.TextField(blank=True, null=True)),
             ],
             options={
-                'abstract': False,
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Message',
+            name="Message",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('timestamp', models.DateTimeField(auto_now_add=True)),
-                ('content', models.TextField(blank=True, null=True)),
-                ('role', models.CharField(choices=[('U', 'user'), ('A', 'assistant')], default='U', max_length=2)),
-                ('message_type', models.CharField(choices=[('text', 'Text'), ('image', 'Image'), ('video', 'Video'), ('audio', 'Audio'), ('file', 'File'), ('system', 'System')], default='text', max_length=16)),
-                ('is_from_ai', models.BooleanField(default=False)),
-                ('is_deleted', models.BooleanField(default=False)),
-                ('is_read', models.BooleanField(default=False)),
-                ('image_requested', models.BooleanField(default=False, help_text='Whether this message references images/scans that should be generated')),
-                ('provider_response_id', models.CharField(blank=True, max_length=255, null=True)),
-                ('display_name', models.CharField(blank=True, max_length=100)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("timestamp", models.DateTimeField(auto_now_add=True)),
+                ("content", models.TextField(blank=True, null=True)),
+                (
+                    "role",
+                    models.CharField(
+                        choices=[("U", "user"), ("A", "assistant")], default="U", max_length=2
+                    ),
+                ),
+                (
+                    "message_type",
+                    models.CharField(
+                        choices=[
+                            ("text", "Text"),
+                            ("image", "Image"),
+                            ("video", "Video"),
+                            ("audio", "Audio"),
+                            ("file", "File"),
+                            ("system", "System"),
+                        ],
+                        default="text",
+                        max_length=16,
+                    ),
+                ),
+                ("is_from_ai", models.BooleanField(default=False)),
+                ("is_deleted", models.BooleanField(default=False)),
+                ("is_read", models.BooleanField(default=False)),
+                (
+                    "image_requested",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Whether this message references images/scans that should be generated",
+                    ),
+                ),
+                ("provider_response_id", models.CharField(blank=True, max_length=255, null=True)),
+                ("display_name", models.CharField(blank=True, max_length=100)),
             ],
             options={
-                'ordering': ['timestamp'],
+                "ordering": ["timestamp"],
             },
         ),
         migrations.CreateModel(
-            name='MessageMediaLink',
+            name="MessageMediaLink",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created', models.DateTimeField(auto_now_add=True)),
-                ('modified', models.DateTimeField(auto_now=True)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True, primary_key=True, serialize=False, verbose_name="ID"
+                    ),
+                ),
+                ("created", models.DateTimeField(auto_now_add=True)),
+                ("modified", models.DateTimeField(auto_now=True)),
             ],
         ),
     ]

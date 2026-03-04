@@ -20,7 +20,6 @@ from typing import (
     Any,
     Protocol,
     TypeVar,
-    Union,
     overload,
 )
 

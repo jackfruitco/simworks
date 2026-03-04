@@ -98,8 +98,8 @@ def _resolve_conversation(sim, conversation_id=None):
             return Conversation.objects.select_related("conversation_type", "simulation").get(
                 pk=conversation_id, simulation=sim
             )
-        except Conversation.DoesNotExist:
-            raise HttpError(404, "Conversation not found")
+        except Conversation.DoesNotExist as err:
+            raise HttpError(404, "Conversation not found") from err
 
     # Default: patient conversation for this simulation.
     # Backward compatibility: create it on demand for older simulations that
@@ -285,16 +285,16 @@ def list_messages(
             try:
                 cursor_pk = int(cursor)
                 queryset = queryset.filter(pk__lt=cursor_pk)
-            except (ValueError, TypeError):
-                raise HttpError(400, "Invalid cursor format")
+            except (ValueError, TypeError) as err:
+                raise HttpError(400, "Invalid cursor format") from err
     else:
         queryset = queryset.order_by("pk")
         if cursor:
             try:
                 cursor_pk = int(cursor)
                 queryset = queryset.filter(pk__gt=cursor_pk)
-            except (ValueError, TypeError):
-                raise HttpError(400, "Invalid cursor format")
+            except (ValueError, TypeError) as err:
+                raise HttpError(400, "Invalid cursor format") from err
 
     # Fetch one extra to check for more
     messages = list(queryset[: limit + 1])
@@ -417,8 +417,8 @@ def retry_message(
             is_deleted=False,
             is_from_ai=False,
         )
-    except Message.DoesNotExist:
-        raise HttpError(404, "Message not found")
+    except Message.DoesNotExist as err:
+        raise HttpError(404, "Message not found") from err
 
     if message.delivery_status != Message.DeliveryStatus.FAILED:
         raise HttpError(400, "Only failed messages can be retried")
@@ -483,7 +483,7 @@ def get_message(
 
     try:
         message = Message.objects.get(pk=message_id, simulation=sim, is_deleted=False)
-    except Message.DoesNotExist:
-        raise HttpError(404, "Message not found")
+    except Message.DoesNotExist as err:
+        raise HttpError(404, "Message not found") from err
 
     return message_to_out(message)

@@ -101,7 +101,6 @@ def backfill_conversations(apps, schema_editor):
     # Ensure every existing simulation has a default patient conversation,
     # even if it currently has zero messages.
     for sim in Simulation.objects.all().iterator():
-
         conv, _ = Conversation.objects.get_or_create(
             simulation_id=sim.id,
             conversation_type=patient_type,
@@ -136,7 +135,6 @@ def reverse_backfill(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("simcore", "0002_conversation_models"),
         ("chatlab", "0003_message_conversation"),

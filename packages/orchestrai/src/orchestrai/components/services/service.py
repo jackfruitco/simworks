@@ -68,6 +68,8 @@ if TYPE_CHECKING:
     from pydantic_ai import Agent
     from pydantic_ai.result import RunResult
 
+    from orchestrai.components.services.task_proxy import ServiceSpec
+
 logger = logging.getLogger(__name__)
 tracer = get_tracer("orchestrai.service")
 
@@ -491,21 +493,16 @@ class BaseService[T: BaseModel](
 
         # Register system prompt methods
         for pm in self._prompt_methods:
-            # Get the bound method and create a wrapper
             method_name = pm.name
+            is_dynamic = pm.is_dynamic
 
-            # Create a closure to capture the method name
-            def make_prompt_fn(name: str, is_dynamic: bool):
-                async def prompt_fn(ctx=None):
-                    bound_method = getattr(self, name)
-                    result = bound_method(ctx) if is_dynamic and ctx is not None else bound_method()
-                    if asyncio.iscoroutine(result):
-                        result = await result
-                    return result or ""
+            async def prompt_fn(ctx=None, _name: str = method_name, _is_dynamic: bool = is_dynamic):
+                bound_method = getattr(self, _name)
+                result = bound_method(ctx) if _is_dynamic and ctx is not None else bound_method()
+                if asyncio.iscoroutine(result):
+                    result = await result
+                return result or ""
 
-                return prompt_fn
-
-            prompt_fn = make_prompt_fn(method_name, pm.is_dynamic)
             agent.system_prompt(prompt_fn, dynamic=pm.is_dynamic)
 
         return agent

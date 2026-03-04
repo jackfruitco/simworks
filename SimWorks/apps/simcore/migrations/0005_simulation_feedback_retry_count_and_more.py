@@ -36,7 +36,9 @@ def _backfill_simulation_status(apps, schema_editor):
                     "terminal_at",
                 ]
             )
-        elif sim.time_limit and sim.start_timestamp and (sim.start_timestamp + sim.time_limit) < now:
+        elif (
+            sim.time_limit and sim.start_timestamp and (sim.start_timestamp + sim.time_limit) < now
+        ):
             timed_out_at = sim.start_timestamp + sim.time_limit
             sim.status = "timed_out"
             sim.end_timestamp = timed_out_at
@@ -62,41 +64,51 @@ def _noop_reverse(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('simcore', '0004_conversation_uniq_conversation_simulation_type'),
+        ("simcore", "0004_conversation_uniq_conversation_simulation_type"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='simulation',
-            name='feedback_retry_count',
+            model_name="simulation",
+            name="feedback_retry_count",
             field=models.PositiveSmallIntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='simulation',
-            name='initial_retry_count',
+            model_name="simulation",
+            name="initial_retry_count",
             field=models.PositiveSmallIntegerField(default=0),
         ),
         migrations.AddField(
-            model_name='simulation',
-            name='status',
-            field=models.CharField(choices=[('in_progress', 'In Progress'), ('completed', 'Completed'), ('timed_out', 'Timed Out'), ('failed', 'Failed'), ('canceled', 'Canceled')], db_index=True, default='in_progress', max_length=24),
+            model_name="simulation",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("in_progress", "In Progress"),
+                    ("completed", "Completed"),
+                    ("timed_out", "Timed Out"),
+                    ("failed", "Failed"),
+                    ("canceled", "Canceled"),
+                ],
+                db_index=True,
+                default="in_progress",
+                max_length=24,
+            ),
         ),
         migrations.AddField(
-            model_name='simulation',
-            name='terminal_at',
+            model_name="simulation",
+            name="terminal_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='simulation',
-            name='terminal_reason_code',
-            field=models.CharField(blank=True, default='', max_length=100),
+            model_name="simulation",
+            name="terminal_reason_code",
+            field=models.CharField(blank=True, default="", max_length=100),
         ),
         migrations.AddField(
-            model_name='simulation',
-            name='terminal_reason_text',
-            field=models.TextField(blank=True, default=''),
+            model_name="simulation",
+            name="terminal_reason_text",
+            field=models.TextField(blank=True, default=""),
         ),
         migrations.RunPython(_backfill_simulation_status, _noop_reverse),
     ]

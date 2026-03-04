@@ -2,6 +2,7 @@
 import logging
 from typing import ClassVar
 
+
 class AppColorFormatter(logging.Formatter):
     COLORS: ClassVar[dict[str, str]] = {
         "chatlab": "\033[34m",

@@ -1,11 +1,10 @@
 # Hand-written migration: make Message.conversation non-nullable
 # This runs AFTER the data migration has backfilled all existing messages.
-import django.db.models.deletion
 from django.db import migrations, models
+import django.db.models.deletion
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("chatlab", "0003_message_conversation"),
         ("simcore", "0003_seed_conversation_types"),

@@ -7,6 +7,7 @@ line-length = 100
 indent-width = 4
 target-version = "py313"
 cache-dir = ".ruff_cache"
+force-exclude = true
 
 # Treat these as "source roots" so Ruff (and import sorting) can classify first-party imports correctly.
 src = [

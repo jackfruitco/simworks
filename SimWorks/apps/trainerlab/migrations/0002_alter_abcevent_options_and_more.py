@@ -4,38 +4,37 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('trainerlab', '0001_initial'),
+        ("trainerlab", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='abcevent',
+            name="abcevent",
             options={},
         ),
         migrations.AlterModelOptions(
-            name='bloodglucoselevel',
+            name="bloodglucoselevel",
             options={},
         ),
         migrations.AlterModelOptions(
-            name='etco2',
+            name="etco2",
             options={},
         ),
         migrations.AlterModelOptions(
-            name='heartrate',
+            name="heartrate",
             options={},
         ),
         migrations.AlterModelOptions(
-            name='injury',
+            name="injury",
             options={},
         ),
         migrations.AlterModelOptions(
-            name='intervention',
+            name="intervention",
             options={},
         ),
         migrations.AlterModelOptions(
-            name='spo2',
+            name="spo2",
             options={},
         ),
     ]

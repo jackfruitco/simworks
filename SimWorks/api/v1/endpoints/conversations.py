@@ -122,8 +122,8 @@ def create_conversation(
     # Resolve conversation type
     try:
         conv_type = ConversationType.objects.get(slug=body.conversation_type, is_active=True)
-    except ConversationType.DoesNotExist:
-        raise HttpError(400, f"Unknown conversation type: {body.conversation_type}")
+    except ConversationType.DoesNotExist as err:
+        raise HttpError(400, f"Unknown conversation type: {body.conversation_type}") from err
 
     # Derive display name from conversation type
     if conv_type.ai_persona == "stitch":
@@ -184,7 +184,7 @@ def get_conversation(
             .select_related("conversation_type", "simulation")
             .get(uuid=conversation_uuid)
         )
-    except Conversation.DoesNotExist:
-        raise HttpError(404, "Conversation not found")
+    except Conversation.DoesNotExist as err:
+        raise HttpError(404, "Conversation not found") from err
 
     return conversation_to_out(conv)

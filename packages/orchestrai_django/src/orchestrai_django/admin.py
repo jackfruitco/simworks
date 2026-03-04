@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from django.contrib import admin
 from django.utils.html import format_html
@@ -101,7 +101,7 @@ class ServiceCallAdmin(admin.ModelAdmin):
     )
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
-    inlines = [ServiceCallAttemptInline]
+    inlines: ClassVar[tuple[type[admin.TabularInline], ...]] = (ServiceCallAttemptInline,)
     readonly_fields = (
         "id",
         "created_at",

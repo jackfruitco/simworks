@@ -7,6 +7,7 @@ Pydantic AI handles validation natively - no @schema decorator needed.
 """
 
 import logging
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -65,7 +66,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
         description="Patient demographics and initial metadata (polymorphic structure with 'kind' discriminator)",
     )
 
-    __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
+    __persist__: ClassVar[dict[str, None]] = {"metadata": None}  # auto-map via item.__orm_model__
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
@@ -212,7 +213,7 @@ class PatientResultsOutputSchema(BaseModel):
         ..., description="Completion and workflow flags"
     )
 
-    __persist__ = {"metadata": None}  # None = auto-map via item.__orm_model__
+    __persist__: ClassVar[dict[str, None]] = {"metadata": None}  # auto-map via item.__orm_model__
     __persist_primary__ = "metadata"
 
     async def post_persist(self, results, context):

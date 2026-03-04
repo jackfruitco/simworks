@@ -73,7 +73,7 @@ class BaseTool:
             data_string = json.dumps(raw_data, sort_keys=True, default=builtins.str)
             return hashlib.sha256(data_string.encode("utf-8")).hexdigest()
         except Exception as e:
-            raise ValueError(f"Failed to generate checksum for {self.tool_name}: {e}")
+            raise ValueError(f"Failed to generate checksum for {self.tool_name}: {e}") from e
 
     @sync_to_async
     def aget_checksum(self):
