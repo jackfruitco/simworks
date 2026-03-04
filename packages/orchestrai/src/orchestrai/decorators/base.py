@@ -201,7 +201,7 @@ class BaseDecorator:
         """Return the registry singleton for this decorator's domain, or **None** to skip.
 
         The core base returns **None** so core decorators do not attempt registration.
-        Domain decorators (codecs/services/prompt sections/schemas) should override
+        Domain decorators (codecs/services/instructions/schemas) should override
         this and return the appropriate registry singleton.
         """
         return None

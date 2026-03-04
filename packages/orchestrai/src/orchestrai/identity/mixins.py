@@ -20,7 +20,7 @@ class IdentityMixin:
     """Centralized, resolver-driven class identity.
 
     This mixin exposes a consistent identity surface for all identity-bearing
-    classes (codecs, prompt sections, services, response schemas).
+    classes (codecs, instructions, services, response schemas).
 
     Design:
       - Identity is *class-level* semantics: derive once per class and cache.

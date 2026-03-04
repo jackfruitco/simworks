@@ -11,7 +11,6 @@ from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
     INSTRUCTIONS_DOMAIN,
-    PROMPT_SECTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
 )
@@ -154,7 +153,6 @@ services = registry_proxy(SERVICES_DOMAIN)
 codecs = registry_proxy(CODECS_DOMAIN)
 schemas = registry_proxy(SCHEMAS_DOMAIN)
 instructions = registry_proxy(INSTRUCTIONS_DOMAIN)
-prompt_sections = registry_proxy(PROMPT_SECTIONS_DOMAIN)
 
 
 __all__ = [
@@ -164,7 +162,6 @@ __all__ = [
     "get_component_store",
     "get_registry_for",
     "instructions",
-    "prompt_sections",
     "registry_proxy",
     "route_registration",
     "schemas",
