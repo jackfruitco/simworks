@@ -9,7 +9,7 @@ Classes in this module extend the `StrictBaseModel` for validation purposes and
 use type hinting for stricter schema enforcement.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field
 
@@ -28,7 +28,7 @@ __all__ = (
 )
 
 
-class ContentRole(str, Enum):
+class ContentRole(StrEnum):
     SYSTEM = "system"
     USER = "user"
     DEVELOPER = "developer"

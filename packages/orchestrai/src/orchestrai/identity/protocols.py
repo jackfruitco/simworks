@@ -36,7 +36,6 @@ class IdentityProtocol(Protocol):
     # class-level identity (e.g., via descriptor)
     identity: ClassVar[Identity]  # ensures classes are compatible
     # instance-level identity (optional)
-    identity: "Identity"
 
     # Optional helpers to make type checkers happy with dynamic access
     @classmethod

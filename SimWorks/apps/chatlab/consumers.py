@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 import inspect
 import json
 import logging
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_USER = "system@medsim.local"
 
 
-class ContentMode(str, Enum):
+class ContentMode(StrEnum):
     HTML = "fullHtml"
     RAW = "rawOutput"
     TRIGGER = "trigger"

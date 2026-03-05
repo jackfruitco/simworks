@@ -46,6 +46,7 @@ dependencies = [
     "urllib3>=2.6.3",
     "pydantic-ai-slim>=1.65.0",
     "authlib>=1.6.7",
+    "cryptography>=46.0.5",
 ]
 
 [tool.uv.workspace]
