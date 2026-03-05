@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       rc_tag:
-        description: "RC tag to promote (e.g. v0.6.0-rc1)"
-        required: true
-        type: string
-      final_version:
-        description: "Final release version without leading v (e.g. 0.6.0)"
+        description: "RC tag to promote (must match current pyproject.toml version, e.g. v0.7.0-rc1)"
         required: true
         type: string
       trigger_webhook:
@@ -25,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write
 
@@ -40,7 +36,6 @@ jobs:
       - name: Validate dispatch ref and inputs
         env:
           RC_TAG: ${{ inputs.rc_tag }}
-          FINAL_VERSION: ${{ inputs.final_version }}
         run: |
           set -euo pipefail
 
@@ -54,11 +49,6 @@ jobs:
             exit 1
           fi
 
-          if ! [[ "${FINAL_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "final_version must match X.Y.Z (received: ${FINAL_VERSION})" >&2
-            exit 1
-          fi
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
@@ -67,7 +57,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
@@ -76,7 +66,6 @@ jobs:
         id: resolve
         env:
           RC_TAG: ${{ inputs.rc_tag }}
-          FINAL_VERSION: ${{ inputs.final_version }}
         run: |
           set -euo pipefail
 
@@ -92,11 +81,6 @@ jobs:
 
           if ! [[ "${DIGEST}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
             echo "Resolved digest is invalid: ${DIGEST}" >&2
-            exit 1
-          fi
-
-          if docker buildx imagetools inspect "${IMAGE}:v${FINAL_VERSION}" > /dev/null 2>&1; then
-            echo "Refusing to overwrite existing immutable release tag: ${IMAGE}:v${FINAL_VERSION}" >&2
             exit 1
           fi
 
@@ -123,16 +107,164 @@ jobs:
             --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-release.yml@refs/heads/main$" \
             "${IMAGE}@${DIGEST}" > /dev/null
 
+      - name: Extract source commit SHA from provenance
+        id: source_commit
+        env:
+          DIGEST: ${{ steps.resolve.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          # Decode the first verified attestation payload and try to locate the git commit digest.
+          # SLSA provenance commonly includes materials with a git+https URI and a digest (sha1/sha).
+          COMMIT_SHA="$(
+            cosign verify-attestation \
+              --type slsaprovenance \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-release.yml@refs/heads/main$" \
+              --output json \
+              "${IMAGE}@${DIGEST}" \
+            | jq -r '.[0].payload' \
+            | base64 -d \
+            | jq -r '
+                .predicate.materials[]?
+                | select((.uri // "") | test("^git\\+https://github.com/"))
+                | (.digest.sha1 // .digest.sha // .digest["sha1"] // .digest["sha"] // empty)
+              ' \
+            | head -n 1
+          )"
+
+          if [ -z "${COMMIT_SHA}" ]; then
+            echo "Failed to extract source commit SHA from SLSA provenance for ${IMAGE}@${DIGEST}." >&2
+            echo "This would risk tagging the wrong commit; aborting." >&2
+            exit 1
+          fi
+
+          if ! [[ "${COMMIT_SHA}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Extracted commit SHA is invalid: ${COMMIT_SHA}" >&2
+            exit 1
+          fi
+
+          echo "commit_sha=${COMMIT_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout source commit
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 1
+          ref: ${{ steps.source_commit.outputs.commit_sha }}
+
+      - name: Read project metadata from pyproject.toml
+        id: pyproject
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          out_path = os.environ.get("GITHUB_OUTPUT")
+          if not out_path:
+              raise SystemExit("GITHUB_OUTPUT is not set")
+
+          data = tomllib.loads(Path("pyproject.toml").read_text())
+          proj = data.get("project", {})
+
+          version = (proj.get("version") or "").strip()
+          name = (proj.get("name") or "").strip()
+          description = (proj.get("description") or "").strip()
+
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(
+                  f"pyproject.toml [project].version must match X.Y.Z (received: {version})"
+              )
+
+          if not name:
+              raise SystemExit("pyproject.toml [project].name must be set")
+
+          with open(out_path, "a", encoding="utf-8") as f:
+              f.write(f"version={version}\n")
+              f.write(f"name={name}\n")
+              f.write(f"description={description}\n")
+          PY
+
+      - name: Validate versions match pyproject.toml
+        env:
+          RC_TAG: ${{ inputs.rc_tag }}
+          PYPROJECT_VERSION: ${{ steps.pyproject.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          RC_VERSION="${RC_TAG%%-rc*}"
+          if [ "${RC_VERSION}" != "v${PYPROJECT_VERSION}" ]; then
+            echo "rc_tag (${RC_TAG}) must match pyproject.toml version (v${PYPROJECT_VERSION}-rcN)" >&2
+            exit 1
+          fi
+
+      - name: Ensure release tag does not already exist
+        env:
+          FINAL_VERSION: ${{ steps.pyproject.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if docker buildx imagetools inspect "${IMAGE}:v${FINAL_VERSION}" > /dev/null 2>&1; then
+            echo "Refusing to overwrite existing immutable release tag: ${IMAGE}:v${FINAL_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Create git tag v${{ steps.pyproject.outputs.version }}
+        uses: actions/github-script@60c92b5f1f7d6b6d2a7c32b6d3e6c4c8b4b5a3d6
+        env:
+          FINAL_VERSION: ${{ steps.pyproject.outputs.version }}
+          COMMIT_SHA: ${{ steps.source_commit.outputs.commit_sha }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tagName = `v${process.env.FINAL_VERSION}`;
+            const ref = `tags/${tagName}`;
+            const sha = process.env.COMMIT_SHA;
+
+            // Refuse to overwrite an existing tag.
+            try {
+              await github.rest.git.getRef({ owner, repo, ref });
+              core.setFailed(`Refusing to overwrite existing git tag: ${tagName}`);
+              return;
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+
+            await github.rest.git.createRef({
+              owner,
+              repo,
+              ref: `refs/${ref}`,
+              sha,
+            });
+
       - name: Promote digest to final and prod tags
         env:
           DIGEST: ${{ steps.resolve.outputs.digest }}
-          FINAL_VERSION: ${{ inputs.final_version }}
+          FINAL_VERSION: ${{ steps.pyproject.outputs.version }}
         run: |
           set -euo pipefail
           docker buildx imagetools create \
             -t "${IMAGE}:v${FINAL_VERSION}" \
             -t "${IMAGE}:prod" \
             "${IMAGE}@${DIGEST}"
+
+      - name: Create GitHub Release v${{ steps.pyproject.outputs.version }}
+        uses: softprops/action-gh-release@d99996cbe90c1c3f7c3c6f6e2c1d2f5a0b7d7a18
+        with:
+          tag_name: v${{ steps.pyproject.outputs.version }}
+          name: ${{ steps.pyproject.outputs.name }} v${{ steps.pyproject.outputs.version }}
+          generate_release_notes: true
+          body: |
+            Promoted from `${{ inputs.rc_tag }}`.
+
+            ${{ steps.pyproject.outputs.description }}
+
+            Image: `${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}`
+            Digest: `${{ steps.resolve.outputs.digest }}`
 
       - name: Trigger Portainer prod redeploy
         if: ${{ inputs.trigger_webhook }}
@@ -142,7 +274,7 @@ jobs:
           set -euo pipefail
 
           if [ -z "${PORTAINER_WEBHOOK:-}" ]; then
-            echo "PORTAINER_WEBHOOK secret is not set; skipping prod redeploy."
+            echo "PORTAINER_WEBHOOK secret is not set; skipping redeploy."
             exit 0
           fi
 

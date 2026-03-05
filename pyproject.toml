@@ -1,6 +1,6 @@
 [project]
-name = "SimWorks"
-version = "0.7.0"
+name = "MedSim"
+version = "0.7.1"
 description = "Add your description here"
 requires-python = ">=3.14"
 dependencies = [
