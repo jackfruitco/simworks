@@ -346,7 +346,7 @@ class BaseService[T: BaseModel](
         if "-" in provider:
             provider = provider.split("-")[0]
 
-        api_key, source_envvar = self._get_api_key_for_provider(provider)
+        api_key, _ = self._get_api_key_for_provider(provider)
 
         # Check if API key is required but missing
         # Supported providers are those configured in API_KEY_ENVVARS
