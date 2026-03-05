@@ -2,7 +2,6 @@
 .git
 .github
 
-docker/
 
 # Python caches
 __pycache__
