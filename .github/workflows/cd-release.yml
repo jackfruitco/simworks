@@ -3,10 +3,6 @@ name: cd-release
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Release version without leading v (e.g. 0.6.0)"
-        required: true
-        type: string
       rc:
         description: "RC number (e.g. 1)"
         required: true
@@ -41,20 +37,51 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
+      - name: Read project metadata from pyproject.toml
+        id: pyproject
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          out_path = os.environ.get("GITHUB_OUTPUT")
+          if not out_path:
+              raise SystemExit("GITHUB_OUTPUT is not set")
+
+          data = tomllib.loads(Path("pyproject.toml").read_text())
+          proj = data.get("project", {})
+
+          version = (proj.get("version") or "").strip()
+          name = (proj.get("name") or "").strip()
+          description = (proj.get("description") or "").strip()
+
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(
+                  f"pyproject.toml [project].version must match X.Y.Z (received: {version})"
+              )
+
+          if not name:
+              raise SystemExit("pyproject.toml [project].name must be set")
+
+          with open(out_path, "a", encoding="utf-8") as f:
+              f.write(f"version={version}\n")
+              f.write(f"name={name}\n")
+              f.write(f"description={description}\n")
+          PY
+
       - name: Validate dispatch ref and inputs
         env:
-          VERSION: ${{ inputs.version }}
           RC: ${{ inputs.rc }}
+          PYPROJECT_VERSION: ${{ steps.pyproject.outputs.version }}
         run: |
           set -euo pipefail
 
           if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
             echo "cd-release can only run from refs/heads/main. Current ref: ${GITHUB_REF}" >&2
-            exit 1
-          fi
-
-          if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "version must match X.Y.Z (received: ${VERSION})" >&2
             exit 1
           fi
 
@@ -71,11 +98,11 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Ensure RC tag does not already exist
         env:
-          RC_TAG: v${{ inputs.version }}-rc${{ inputs.rc }}
+          RC_TAG: v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
         run: |
           set -euo pipefail
 
@@ -94,19 +121,21 @@ jobs:
           cache-from: type=gha,mode=max,scope=runtime-image
           cache-to: type=gha,mode=max,scope=runtime-image
           tags: |
-            ${{ env.IMAGE }}:v${{ inputs.version }}-rc${{ inputs.rc }}
+            ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
             ${{ env.IMAGE }}:sha-${{ github.sha }}
             ${{ env.IMAGE }}:staging
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=v${{ inputs.version }}-rc${{ inputs.rc }}
+            org.opencontainers.image.version=v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
+            org.opencontainers.image.title=${{ steps.pyproject.outputs.name }}
+            org.opencontainers.image.description=${{ steps.pyproject.outputs.description }}
 
       - name: Scan pushed RC image
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
         with:
           scan-type: image
-          image-ref: ${{ env.IMAGE }}:v${{ inputs.version }}-rc${{ inputs.rc }}
+          image-ref: ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
@@ -115,7 +144,7 @@ jobs:
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
         with:
           scan-type: image
-          image-ref: ${{ env.IMAGE }}:v${{ inputs.version }}-rc${{ inputs.rc }}
+          image-ref: ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
           format: cyclonedx
           output: sbom.cdx.json
 
@@ -152,7 +181,7 @@ jobs:
           set -euo pipefail
 
           if [ -z "${PORTAINER_WEBHOOK:-}" ]; then
-            echo "PORTAINER_WEBHOOK secret is not set; skipping staging redeploy."
+            echo "PORTAINER_WEBHOOK secret is not set; skipping redeploy."
             exit 0
           fi
 
