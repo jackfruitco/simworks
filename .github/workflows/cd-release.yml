@@ -136,6 +136,8 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
+          version: v0.69.3
+          token-setup-trivy: ${{ github.token }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
@@ -145,6 +147,8 @@ jobs:
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
+          version: v0.69.3
+          token-setup-trivy: ${{ github.token }}
           format: cyclonedx
           output: sbom.cdx.json
 
