@@ -135,5 +135,15 @@ jobs:
             "${IMAGE}@${DIGEST}"
 
       - name: Trigger Portainer prod redeploy
-        if: ${{ inputs.trigger_webhook && secrets.PORTAINER_WEBHOOK_PROD != '' }}
-        run: curl -fsSL -X POST "${{ secrets.PORTAINER_WEBHOOK_PROD }}"
+        if: ${{ inputs.trigger_webhook }}
+        env:
+          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PORTAINER_WEBHOOK:-}" ]; then
+            echo "PORTAINER_WEBHOOK secret is not set; skipping prod redeploy."
+            exit 0
+          fi
+
+          curl -fsSL -X POST "${PORTAINER_WEBHOOK}"
