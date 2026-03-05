@@ -30,15 +30,18 @@ jobs:
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48
         with:
           fail-on-severity: high
+          show-openssf-scorecard: false
+          fail-on-scopes: runtime
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        uses: docker://aquasec/trivy:0.69.2
         with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+          args: >-
+            fs
+            --severity HIGH,CRITICAL
+            --ignore-unfixed
+            --exit-code 1
+            .
 
       - name: Run gitleaks scan
         uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
