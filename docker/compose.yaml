@@ -2,8 +2,8 @@ x-app-env: &app_env
   SITE_NAME: ${SITE_NAME}
   SITE_ADMIN_EMAIL: ${SITE_ADMIN_EMAIL}
 
-  DJANGO_DEBUG: ${DJANGO_DEBUG}
-  DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL}
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-"False"}
+  DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-"INFO"}
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
   CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS}
@@ -13,11 +13,9 @@ x-app-env: &app_env
   POSTGRES_DB: ${POSTGRES_DB}
   POSTGRES_USER: ${POSTGRES_USER}
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  POSTGRES_HOST: ${POSTGRES_HOST}
-  POSTGRES_PORT: ${POSTGRES_PORT}
+  POSTGRES_HOST: ${POSTGRES_HOST:-db}
 
-  REDIS_HOSTNAME: ${REDIS_HOSTNAME}
-  REDIS_PORT: ${REDIS_PORT}
+  REDIS_HOSTNAME: ${REDIS_HOSTNAME:-redis}
   REDIS_PASSWORD: ${REDIS_PASSWORD}
 
   ORCA_OPENAI_API_KEY: ${ORCA_OPENAI_API_KEY}
@@ -54,7 +52,7 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
   db:
     image: postgres:${DB_IMAGE_TAG:-18.2-alpine}
@@ -77,6 +75,11 @@ services:
 
   nginx:
     image: nginx:${PROXY_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
     volumes:
       - ${NGINX_CONF_DIR:-/opt/SimWorks/nginx}/default.conf:/etc/nginx/conf.d/default.conf:ro
       - static-vol:/app/static
@@ -96,9 +99,15 @@ services:
 
   redis:
     image: redis:${REDIS_IMAGE_TAG:-7.4.2-alpine}
+    restart: unless-stopped
     command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
     environment:
       - REDIS_PASSWORD
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
     networks:
       app:
         aliases:
@@ -115,7 +124,7 @@ services:
     command: ["sh", "-c", "PYTHONPATH=/app/SimWorks celery -A config worker --pool=threads --loglevel=info"]
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
     volumes:
@@ -150,7 +159,7 @@ services:
       - media-vol:/app/media
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
     networks:
