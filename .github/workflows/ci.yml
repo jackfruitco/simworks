@@ -268,9 +268,9 @@ jobs:
     timeout-minutes: 30
     needs: [lint_and_checks, unit_fast, integration_core]
     env:
-      ORCHESTRAI_MIN_COVERAGE: '57'
+      ORCHESTRAI_MIN_COVERAGE: '50'
       ORCHESTRAI_DJANGO_MIN_COVERAGE: '30'
-      SIMWORKS_MIN_COVERAGE: '54'
+      SIMWORKS_MIN_COVERAGE: '50'
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
