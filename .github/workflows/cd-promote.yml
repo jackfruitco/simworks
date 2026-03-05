@@ -24,6 +24,7 @@ permissions:
   contents: write
   packages: write
   id-token: write
+  deployments: write
 
 jobs:
   promote:
@@ -48,6 +49,31 @@ jobs:
             echo "rc_tag must match vX.Y.Z-rcN (received: ${RC_TAG})" >&2
             exit 1
           fi
+
+      - name: Create GitHub deployment record
+        id: deployment
+        uses: actions/github-script@v8
+        env:
+          DEPLOY_ENVIRONMENT: production
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const environment = process.env.DEPLOY_ENVIRONMENT;
+
+            const res = await github.rest.repos.createDeployment({
+              owner,
+              repo,
+              ref: context.sha,
+              environment,
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: false,
+              production_environment: true,
+              description: `cd-promote: ${environment}`,
+            });
+
+            core.setOutput('deployment_id', String(res.data.id));
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
@@ -213,7 +239,7 @@ jobs:
           fi
 
       - name: Create git tag v${{ steps.pyproject.outputs.version }}
-        uses: actions/github-script@60c92b5f1f7d6b6d2a7c32b6d3e6c4c8b4b5a3d6
+        uses: actions/github-script@v8
         env:
           FINAL_VERSION: ${{ steps.pyproject.outputs.version }}
           COMMIT_SHA: ${{ steps.source_commit.outputs.commit_sha }}
@@ -279,3 +305,53 @@ jobs:
           fi
 
           curl -fsSL -X POST "${PORTAINER_WEBHOOK}"
+
+      - name: Mark deployment success
+        if: ${{ success() }}
+        uses: actions/github-script@v8
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          DEPLOY_ENVIRONMENT: production
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const deployment_id = Number(process.env.DEPLOYMENT_ID);
+
+            if (!deployment_id) {
+              core.warning('No deployment_id found; skipping deployment status update.');
+              return;
+            }
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id,
+              state: 'success',
+              description: `cd-promote: ${process.env.DEPLOY_ENVIRONMENT} succeeded`,
+            });
+
+      - name: Mark deployment failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v8
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          DEPLOY_ENVIRONMENT: production
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const deployment_id = Number(process.env.DEPLOYMENT_ID);
+
+            if (!deployment_id) {
+              core.warning('No deployment_id found; skipping deployment status update.');
+              return;
+            }
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id,
+              state: 'failure',
+              description: `cd-promote: ${process.env.DEPLOY_ENVIRONMENT} failed`,
+            });
