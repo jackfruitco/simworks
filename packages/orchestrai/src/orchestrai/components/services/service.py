@@ -305,9 +305,8 @@ class BaseService[T: BaseModel](
 
         if api_key:
             logger.debug(
-                "API key for %s found (source=%s)",
+                "API key for %s found",
                 provider,
-                envvar,
             )
             return api_key, envvar
 
@@ -367,9 +366,8 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.openai import OpenAIProvider
 
             logger.info(
-                "Creating OpenAI model '%s' (credentials source=%s)",
+                "Creating OpenAI model '%s'",
                 model_name,
-                source_envvar,
             )
             return OpenAIResponsesModel(model_name, provider=OpenAIProvider(api_key=api_key))
 
@@ -379,9 +377,8 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.anthropic import AnthropicProvider
 
             logger.info(
-                "Creating Anthropic model '%s' (credentials source=%s)",
+                "Creating Anthropic model '%s'",
                 model_name,
-                source_envvar,
             )
             return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
 
@@ -391,9 +388,8 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.google import GoogleProvider
 
             logger.info(
-                "Creating Gemini model '%s' (credentials source=%s)",
+                "Creating Gemini model '%s'",
                 model_name,
-                source_envvar,
             )
             return GeminiModel(model_name, provider=GoogleProvider(api_key=api_key))
 
@@ -403,9 +399,8 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.groq import GroqProvider
 
             logger.info(
-                "Creating Groq model '%s' (credentials source=%s)",
+                "Creating Groq model '%s'",
                 model_name,
-                source_envvar,
             )
             return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
 
@@ -415,9 +410,8 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.mistral import MistralProvider
 
             logger.info(
-                "Creating Mistral model '%s' (credentials source=%s)",
+                "Creating Mistral model '%s'",
                 model_name,
-                source_envvar,
             )
             return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
 
@@ -427,9 +421,8 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.cohere import CohereProvider
 
             logger.info(
-                "Creating Cohere model '%s' (credentials source=%s)",
+                "Creating Cohere model '%s'",
                 model_name,
-                source_envvar,
             )
             return CohereModel(model_name, provider=CohereProvider(api_key=api_key))
 

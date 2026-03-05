@@ -19,5 +19,16 @@ coverage:
 ignore:
   - "**/migrations/*.py"
   - "**/__init__.py"
+
+  # Django project boilerplate
   - "**/config/asgi.py"
   - "**/config/wsgi.py"
+  - "**/manage.py"
+  - "**/apps.py"
+  - "**/admin.py"
+  - "**/urls.py"
+  - "**/settings/*.py"
+
+  # Tests
+  - "**/tests/*"
+  - "**/test_*.py"
