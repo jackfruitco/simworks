@@ -38,9 +38,11 @@ jobs:
         with:
           args: >-
             fs
+            --scanners vuln
             --severity HIGH,CRITICAL
             --ignore-unfixed
             --exit-code 1
+            --skip-dirs .venv,node_modules,.git
             .
 
       - name: Run gitleaks scan
