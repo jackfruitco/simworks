@@ -6,7 +6,7 @@ import os
 
 import logfire
 
-logfire_token = os.getenv("LOGFIRE_TOKEN")
+logfire_token = os.getenv("LOGFIRE_API_KEY")
 if logfire_token:
     logfire.configure(token=logfire_token)
 else:
