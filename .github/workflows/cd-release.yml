@@ -35,6 +35,7 @@ jobs:
     name: cd-release
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: staging
 
     steps:
       - name: Checkout repository
@@ -146,13 +147,13 @@ jobs:
       - name: Trigger Portainer staging redeploy
         if: ${{ inputs.trigger_webhook }}
         env:
-          PORTAINER_WEBHOOK_STAGING: ${{ secrets.PORTAINER_WEBHOOK_STAGING }}
+          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
         run: |
           set -euo pipefail
-          
-          if [ -z "${PORTAINER_WEBHOOK_STAGING}" ]; then
-            echo "PORTAINER_WEBHOOK_STAGING secret is not set; skipping staging redeploy."
+
+          if [ -z "${PORTAINER_WEBHOOK:-}" ]; then
+            echo "PORTAINER_WEBHOOK secret is not set; skipping staging redeploy."
             exit 0
           fi
 
-          curl -fsSL -X POST "${PORTAINER_WEBHOOK_STAGING}"
+          curl -fsSL -X POST "${PORTAINER_WEBHOOK}"
