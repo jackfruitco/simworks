@@ -59,7 +59,7 @@ services:
       - server
     networks:
       - internal
-      - tunnel
+      - _TunnelNet
     entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
   nginx-dev:
@@ -148,5 +148,5 @@ networks:
   internal:
     driver: bridge
     internal: true
-  tunnel:
+  _TunnelNet:
     external: True
