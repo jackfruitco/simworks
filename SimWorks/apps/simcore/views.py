@@ -24,7 +24,7 @@ def refresh_tool(request, tool_name, simulation_id):
 
     tool_class = get_tool(tool_name)
     if not tool_class:
-        return HttpResponseNotFound(f"Tool '{tool_name}' not found.")
+        return HttpResponseNotFound("Tool not found.")
 
     tool_instance = tool_class(simulation)
     tool = tool_instance.to_dict()

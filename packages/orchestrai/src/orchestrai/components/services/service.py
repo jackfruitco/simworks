@@ -305,7 +305,7 @@ class BaseService[T: BaseModel](
 
         if api_key:
             logger.debug(
-                "API key for %s found via %s",
+                "API key for %s found (source=%s)",
                 provider,
                 envvar,
             )
@@ -367,7 +367,7 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.openai import OpenAIProvider
 
             logger.info(
-                "Creating OpenAI model '%s' with API key from %s",
+                "Creating OpenAI model '%s' (credentials source=%s)",
                 model_name,
                 source_envvar,
             )
@@ -379,7 +379,7 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.anthropic import AnthropicProvider
 
             logger.info(
-                "Creating Anthropic model '%s' with API key from %s",
+                "Creating Anthropic model '%s' (credentials source=%s)",
                 model_name,
                 source_envvar,
             )
@@ -391,7 +391,7 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.google import GoogleProvider
 
             logger.info(
-                "Creating Gemini model '%s' with API key from %s",
+                "Creating Gemini model '%s' (credentials source=%s)",
                 model_name,
                 source_envvar,
             )
@@ -403,7 +403,7 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.groq import GroqProvider
 
             logger.info(
-                "Creating Groq model '%s' with API key from %s",
+                "Creating Groq model '%s' (credentials source=%s)",
                 model_name,
                 source_envvar,
             )
@@ -415,7 +415,7 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.mistral import MistralProvider
 
             logger.info(
-                "Creating Mistral model '%s' with API key from %s",
+                "Creating Mistral model '%s' (credentials source=%s)",
                 model_name,
                 source_envvar,
             )
@@ -427,7 +427,7 @@ class BaseService[T: BaseModel](
             from pydantic_ai.providers.cohere import CohereProvider
 
             logger.info(
-                "Creating Cohere model '%s' with API key from %s",
+                "Creating Cohere model '%s' (credentials source=%s)",
                 model_name,
                 source_envvar,
             )

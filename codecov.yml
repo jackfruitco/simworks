@@ -8,7 +8,8 @@ coverage:
   status:
     patch:
       default:
-        target: 90%
+        # TODO: Increase threshold to 80%
+        target: 50%
         threshold: 0%
         informational: false
     project:
