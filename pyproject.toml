@@ -45,9 +45,6 @@ dependencies = [
     "pytest-xdist>=3.8.0",
     "urllib3>=2.6.3",
     "pydantic-ai-slim>=1.65.0",
-    "authlib>=1.6.7",
-    "cryptography>=46.0.5",
-    "griffe>=2.0.0",
 ]
 
 [tool.uv.workspace]
