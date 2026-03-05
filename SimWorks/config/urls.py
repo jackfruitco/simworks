@@ -1,39 +1,31 @@
 # config/urls.py
-from strawberry.django.views import AsyncGraphQLView
 
-from core import views as CoreViews
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
-from django.urls import include
-from django.urls import path
+from django.urls import include, path
 
-from config.middleware import RequireApiPermissionMiddleware
-from config.schema import schema
+from api.v1.api import api as api_v1
+from apps.common import views as CommonViews
 
 sitemaps = {
-    # "products": ProductSitemap,
+    # "apps": ProductSitemap,
 }
 
 urlpatterns = [
-    path("", CoreViews.index, name="home"),
+    path("", CommonViews.index, name="home"),
     path("admin/", admin.site.urls),
-    path("", include("simcore.urls")),
-    path("simai/", include("simai.urls")),
-    path("accounts/", include("accounts.urls")),
-    path("chatlab/", include("chatlab.urls")),
-    path('graphql', AsyncGraphQLView.as_view(schema=schema), name='graphql'),
-    # path(
-    #     "graphql/",
-    #     CoreViews.PrivateGraphQLView.as_view(
-    #         schema=schema,
-    #         graphiql=True,
-    #         middleware=[RequireApiPermissionMiddleware()],
-    #     ),
-    #     name="graphql",
-    # ),
+    # REST API v1
+    path("api/v1/", api_v1.urls),
+    # App routes
+    path("", include("apps.simcore.urls")),
+    # Custom accounts URLs (must come before allauth to catch profile/invitations URLs)
+    path("accounts/", include("apps.accounts.urls")),
+    # Django-allauth URLs (login, signup, password reset, etc.)
+    path("accounts/", include("allauth.urls")),
+    path("chatlab/", include("apps.chatlab.urls")),
     path(
         "robots.txt",
-        CoreViews.RobotsView.as_view(content_type="text/plain"),
+        CommonViews.RobotsView.as_view(content_type="text/plain"),
         name="robots",
     ),
     path(

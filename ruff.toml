@@ -1,0 +1,115 @@
+# ruff.toml — SimWorks / OrchestrAI monorepo
+#
+# Ruff version target: works well with ruff-pre-commit v0.5.x.
+# If you're on Python 3.14, Ruff may not support "py314" yet—use "py313" until it does.
+
+line-length = 100
+indent-width = 4
+target-version = "py313"
+cache-dir = ".ruff_cache"
+force-exclude = true
+
+# Treat these as "source roots" so Ruff (and import sorting) can classify first-party imports correctly.
+src = [
+  "SimWorks",
+  "packages/orchestrai/src",
+  "packages/orchestrai_django/src",
+  "tests",
+]
+
+# Global excludes (Ruff won't even look here)
+exclude = [
+  ".git",
+  ".hg",
+  ".mypy_cache",
+  ".nox",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".tox",
+  ".venv",
+  "venv",
+  "node_modules",
+  "dist",
+  "build",
+  "__pypackages__",
+
+  # Django / generated / artifact-y stuff
+  "**/migrations/**",
+  "**/static/**",
+  "**/staticfiles/**",
+  "**/media/**",
+  "**/*.min.*",
+]
+
+[lint]
+# A pragmatic, high-signal ruleset for a Django + libraries monorepo:
+# - E/F/W: basic correctness
+# - I: import sorting
+# - UP: modernize syntax
+# - B: common footguns (bugbear)
+# - SIM/C4/PIE: simplifications, comprehensions, small style wins
+# - RUF: Ruff-specific high-value checks
+select = [
+  "E", "F", "W",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "C4",
+  "PIE",
+  "RUF",
+]
+
+# Keep noise low; let the formatter handle formatting-related concerns.
+ignore = [
+  "E501",  # line length handled by ruff-format
+  "E203",  # conflicts with formatter slicing
+  "SIM105",
+  "B008",
+]
+
+# Allow autofix for everything Ruff safely fixes (pre-commit already runs with --fix).
+fixable = ["ALL"]
+unfixable = []
+
+# Optional: if you commonly use underscore-prefixed unused vars (e.g. _unused)
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.isort]
+# Make import ordering stable across the monorepo.
+combine-as-imports = true
+force-sort-within-sections = true
+split-on-trailing-comma = true
+
+# Mark your own top-level packages as first-party.
+known-first-party = [
+  "SimWorks",
+  "orchestrai",
+  "orchestrai_django",
+]
+
+[lint.per-file-ignores]
+# Common patterns:
+"**/__init__.py" = ["F401", "F403", "F405"]             # re-export patterns
+"**/migrations/*.py" = ["E501", "F401", "F841"]  # generated code
+"**/settings*.py" = ["F401"]                # settings modules often import for side-effects
+"**/asgi.py" = ["F401"]
+"**/wsgi.py" = ["F401"]
+"**/models.py" = ["RUF012"]
+"**/forms.py" = ["RUF012"]
+"**/types/**.py" = ["RUF012"]
+
+# Tests: keep it practical (tests often intentionally do "weird" things).
+"tests/**/*.py" = [
+  "B018",  # "useless expression" sometimes used for doc/typing checks
+]
+
+[format]
+# Make formatting deterministic and readable in docstrings too.
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+docstring-code-format = true
+docstring-code-line-length = 100

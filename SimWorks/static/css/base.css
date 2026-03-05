@@ -2,8 +2,8 @@
 @import url("spinner.css");
 @import url("theme.css");
 @import url("button.css");
-@import url("header.css");
-@import url("footer.css");
+@import url("components/modern-buttons.css");
+@import url("components/modern-cards.css");
 
 [x-cloak] { display: none !important; }
 
@@ -14,16 +14,41 @@ html {
   box-sizing: inherit;
 }
 
-body, main {
+body {
     background-color: var(--jckfrt-olive);
     font-family: "Tahoma", system-ui, sans-serif;
-    height: 100%;
+    min-height: 100%;
+}
+
+main {
+    background-color: var(--jckfrt-olive);
 }
 
 a { color: inherit; }
 .iconify.fit { max-height: 100%; max-width: 100%; }
+.iconify,
+svg.iconify {
+  display: inline-block !important;
+  vertical-align: middle;
+}
 
-#main { padding-top: 35px !important; padding-bottom: var(--footer-height) !important;}
+#main {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  padding-top: 0 !important;
+  padding-bottom: calc(var(--footer-height) + 0.5rem) !important;
+}
+
+.htmx-indicator {
+  display: none !important;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  display: inline-flex !important;
+  align-items: center;
+}
 
 #parallax {
     background-attachment: scroll;
@@ -43,7 +68,7 @@ a { color: inherit; }
 /* ───────────────────────────────────────────────
    Utilities: Display & Positions
 ────────────────────────────────────────────────── */
-.flex { width: 100%; display: flex; flex-flow: row wrap; }
+.flex { display: flex; }
 .flex .col { flex-flow: column wrap; float: none; }
 .flex .nowrap { flex-wrap: nowrap; }
 .flex .left { justify-content: center; text-align: center; }
@@ -240,17 +265,43 @@ a { color: inherit; }
 .xxxlarge { font-size:48px !important }
 .jumbo { font-size: 64px !important }
 
+.sr-only {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.show-small {
+  display: inline-flex !important;
+  align-items: center;
+}
+
 .overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(128, 128, 128, 0.8);
   z-index: 9999;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
+  background-color: transparent;
+}
+
+.overlay.visible {
+  display: flex !important;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(128, 128, 128, 0.8);
 }
 
 .overlay-content {
@@ -262,12 +313,28 @@ a { color: inherit; }
   position: relative;
   max-width: 600px;
   width: 90%;
+  z-index: 1;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.modal-body {
+  display: grid;
+  gap: 1rem;
 }
 
 .close-button {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.75rem;
   background: transparent;
   border: none;
   font-size: 1.25rem;
@@ -295,6 +362,7 @@ a { color: inherit; }
 @media only screen and (min-device-width: 768px) {
     .hide-medium, .hide-large { display: none!important }
     .hide-small { display: block!important;}
+    .show-small { display: none!important; }
 }
 
 .section, .code {
@@ -343,10 +411,30 @@ a { color: inherit; }
   border-bottom: 2px solid var(--color-border);
 }
 
+.page-header__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .page-header h1 {
   font-size: 2rem;
   font-weight: bold;
   margin-bottom: 0.5rem;
+}
+
+.page-header__description {
+  margin: 0;
+  color: var(--color-text-muted, #505050);
+}
+
+.page-header__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 .simulation-history {
@@ -450,6 +538,37 @@ a { color: inherit; }
 }
 
 /* ───────────────────────────────────────────────
+   Shared Styles: Empty States
+────────────────────────────────────────────────── */
+
+.empty-state {
+  background-color: var(--color-bg-alt);
+  border: 1px dashed var(--color-border);
+  border-radius: 0.75rem;
+  color: var(--color-text-dark);
+  padding: 1rem;
+  text-align: center;
+}
+
+.empty-state__title {
+  margin: 0;
+}
+
+.empty-state__body {
+  color: var(--color-muted);
+  margin: 0.35rem 0 0;
+}
+
+.empty-state__cta {
+  margin-top: 0.75rem;
+}
+
+.list-style-none {
+  list-style: none;
+  padding-left: 0;
+}
+
+/* ───────────────────────────────────────────────
    Shared Styles: Error Messages
 ────────────────────────────────────────────────── */
 
@@ -547,7 +666,7 @@ a { color: inherit; }
 }
 
 /* ───────────────────────────────────────────────
-   Tooltip Feedback (e.g. "Copied!" messages)
+   Tooltip Feedback (e.g. "Copied!" input)
 ────────────────────────────────────────────────── */
 .copied-tooltip {
   display: inline-block;
@@ -559,15 +678,4 @@ a { color: inherit; }
   border: 1px solid #c3e6cb;
   border-radius: 4px;
   animation: fadeInUpAndOut 1.5s ease-out forwards;
-}
-
-/* ───────────────────────────────────────────────
-   Visibility Utilities: .visible and .hidden
-────────────────────────────────────────────────── */
-.hidden {
-  display: none !important;
-}
-
-.visible {
-  display: block !important;
 }

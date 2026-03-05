@@ -1,0 +1,56 @@
+{% comment %}
+  Generic modal partial for accessible dialogs using Alpine.js
+  Expected context variables:
+    - modal_id: unique id for the modal container
+    - modal_label_id: id for the modal title
+    - modal_body_id: id for the modal body/description
+    - modal_title: text for the modal heading
+    - modal_body_template: template path to render inside the modal body
+    - modal_close_id (optional): id for the close button
+    - modal_extra_attrs (optional): extra attributes to add to the modal root
+{% endcomment %}
+<div
+  id="{{ modal_id }}"
+  x-data="{ open: false }"
+  x-init="
+    const toggleBtn = document.getElementById('toggle-{{ modal_id }}');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => { open = true; $nextTick(() => $refs.firstInput?.focus()); });
+    }
+  "
+  x-show="open"
+  @keydown.escape.window="open = false"
+  @click.self="open = false"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 px-4"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="{{ modal_label_id }}"
+  aria-describedby="{{ modal_body_id }}"
+  :aria-hidden="!open"
+  x-cloak
+  style="display: none"
+  {% if modal_extra_attrs %}{{ modal_extra_attrs|safe }}{% endif %}
+>
+  <div
+    @click.stop
+    class="relative w-full max-w-lg bg-white rounded-lg shadow-xl transform transition-all"
+    role="document"
+  >
+    <header class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <h2 id="{{ modal_label_id }}" class="text-lg font-semibold text-gray-900">{{ modal_title }}</h2>
+      <button
+        type="button"
+        @click="open = false"
+        class="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+        aria-label="Close dialog"
+        data-modal-close
+        {% if modal_close_id %}id="{{ modal_close_id }}"{% endif %}
+      >
+        <span class="text-2xl">&times;</span>
+      </button>
+    </header>
+    <div id="{{ modal_body_id }}" class="px-6 py-4">
+      {% include modal_body_template %}
+    </div>
+  </div>
+</div>

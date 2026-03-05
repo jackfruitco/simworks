@@ -1,0 +1,13 @@
+{# Reusable empty state component #}
+<div class="empty-state {% if extra_classes %}{{ extra_classes }}{% endif %}">
+  <h3 class="empty-state__title">{{ title }}</h3>
+  <p class="empty-state__body">{{ body }}</p>
+  {% if cta_url and cta_text %}
+    <div class="empty-state__cta">
+      <a href="{{ cta_url }}" class="{{ cta_class|default:'btn sm accent' }}">{{ cta_text }}</a>
+    </div>
+  {% elif cta_content %}
+    <div class="empty-state__cta">{{ cta_content }}</div>
+  {% endif %}
+</div>
+

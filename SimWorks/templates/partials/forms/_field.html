@@ -1,0 +1,55 @@
+{# Reusable form field renderer for consistent spacing and accessibility #}
+<div class="form-field {% if field and field.errors %}has-error{% endif %}">
+    {% if field %}
+        {% if field.field.widget.input_type == "checkbox" %}
+            <label class="form-label inline" for="{{ field.id_for_label }}">
+                {{ field }}
+                <span>{{ field.label }}</span>
+            </label>
+        {% else %}
+            <label class="form-label" for="{{ field.id_for_label }}">
+                {{ field.label }}
+                {% if field.field.required %}<span class="required">*</span>{% endif %}
+            </label>
+            <div class="form-widget">
+                {{ widget|default:field|safe }}
+            </div>
+        {% endif %}
+        {% if field.help_text %}
+            <p class="form-help">{{ field.help_text }}</p>
+        {% endif %}
+        {% if field.errors %}
+            <ul class="form-errors">
+                {% for error in field.errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% else %}
+        {% if label %}
+            <label class="form-label {% if label_after_widget %}inline{% endif %}" {% if id %}for="{{ id }}"{% endif %}>
+                {% if label_after_widget %}
+                    {{ widget|safe }}
+                    <span>{{ label }}</span>
+                {% else %}
+                    {{ label }}
+                {% endif %}
+            </label>
+        {% endif %}
+        {% if not label_after_widget %}
+            <div class="form-widget">
+                {{ widget|safe }}
+            </div>
+        {% endif %}
+        {% if help_text %}
+            <p class="form-help">{{ help_text }}</p>
+        {% endif %}
+        {% if errors %}
+            <ul class="form-errors">
+                {% for error in errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endif %}
+</div>

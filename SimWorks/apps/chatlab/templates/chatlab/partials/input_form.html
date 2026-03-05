@@ -1,0 +1,53 @@
+<form id="chat-form"
+    @submit.prevent="send"
+    x-data="chatFormState({
+        isLocked: {{ simulation_locked|yesno:'true,false' }},
+    })"
+    class="mt-auto flex items-end gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm">
+  <button type="button"
+          id="emoji-button"
+          title="Emoji"
+          class="hidden h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-alt text-content-secondary transition-colors hover:bg-surface sm:inline-flex"
+          :aria-label="emojiAriaLabel()"
+          :aria-pressed="showEmojiPicker"
+          @click.prevent="toggleEmojiPicker">
+        <span class="iconify h-5 w-5" data-icon="fa6-regular:face-smile" data-inline="false"></span>
+  </button>
+
+  <label for="chat-message-input" class="sr-only">Message</label>
+  <textarea
+    x-model="messageText"
+    id="chat-message-input"
+    x-ref="messageInput"
+    @input="handleInput"
+    @keydown="handleKeyDown($event)"
+    :disabled="isLocked"
+    :placeholder="placeholderText()"
+    :aria-label="messageAriaLabel()"
+    rows="1"
+    style="resize: none"
+    autofocus
+    class="min-h-11 max-h-28 w-full rounded-2xl border border-border bg-surface-alt px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive"></textarea>
+
+    <button class="hidden h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-alt text-content-secondary transition-colors hover:bg-surface sm:inline-flex"
+            type="submit"
+            :disabled="isLocked"
+            :aria-label="sendAriaLabel()"
+            @click.prevent="send">
+      <span class="iconify h-6 w-6"
+          :class="{ 'text-jckfrt-olive': !isLocked, 'text-content-secondary': isLocked }"
+          data-icon="bi:arrow-up-circle-fill"
+          data-inline="false"></span>
+    </button>
+
+    <button class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-alt text-content-secondary transition-colors hover:bg-surface sm:hidden"
+            type="submit"
+            :disabled="isLocked"
+            :aria-label="sendAriaLabel()"
+            @click.prevent="sendFromMobile">
+      <span class="iconify h-6 w-6"
+          :class="{ 'text-jckfrt-olive': !isLocked, 'text-content-secondary': isLocked }"
+          data-icon="bi:arrow-up-circle-fill"
+          data-inline="false"></span>
+    </button>
+</form>

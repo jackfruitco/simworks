@@ -1,0 +1,94 @@
+{% load static %}
+{% with social_size=size|default:'md' %}
+    {% if provider == 'apple' %}
+        {% if auth_context == 'signup' %}
+            {% with social_label='Sign up with Apple' %}
+                <a href="{{ href }}"
+                   aria-label="{{ social_label }}"
+                   class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-black bg-black px-4 font-medium leading-5 text-white transition-colors duration-150 hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 py-2 text-sm md:w-auto{% else %}min-h-11 py-3 text-sm md:text-base{% endif %}">
+                    <img src="{% static 'icons/brands/apple-logo.svg' %}"
+                         alt=""
+                         class="h-5 w-5 shrink-0"
+                         width="20"
+                         height="20">
+                    <span>{{ social_label }}</span>
+                </a>
+            {% endwith %}
+        {% elif auth_context == 'connect' %}
+            {% with social_label='Continue with Apple' %}
+                <a href="{{ href }}"
+                   aria-label="{{ social_label }}"
+                   class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-black bg-black px-4 font-medium leading-5 text-white transition-colors duration-150 hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 py-2 text-sm md:w-auto{% else %}min-h-11 py-3 text-sm md:text-base{% endif %}">
+                    <img src="{% static 'icons/brands/apple-logo.svg' %}"
+                         alt=""
+                         class="h-5 w-5 shrink-0"
+                         width="20"
+                         height="20">
+                    <span>{{ social_label }}</span>
+                </a>
+            {% endwith %}
+        {% else %}
+            {% with social_label='Sign in with Apple' %}
+                <a href="{{ href }}"
+                   aria-label="{{ social_label }}"
+                   class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-black bg-black px-4 font-medium leading-5 text-white transition-colors duration-150 hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 py-2 text-sm md:w-auto{% else %}min-h-11 py-3 text-sm md:text-base{% endif %}">
+                    <img src="{% static 'icons/brands/apple-logo.svg' %}"
+                         alt=""
+                         class="h-5 w-5 shrink-0"
+                         width="20"
+                         height="20">
+                    <span>{{ social_label }}</span>
+                </a>
+            {% endwith %}
+        {% endif %}
+    {% elif provider == 'google' %}
+        {% if auth_context == 'signup' %}
+            {% with social_label='Sign up with Google' %}
+                <a href="{{ href }}"
+                   aria-label="{{ social_label }}"
+                   class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-brand-google-border bg-white px-4 font-medium leading-5 text-brand-google-text transition-colors duration-150 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jckfrt-olive focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 py-2 text-sm md:w-auto{% else %}min-h-11 py-3 text-sm md:text-base{% endif %}">
+                    <img src="{% static 'icons/brands/google-g.svg' %}"
+                         alt=""
+                         class="h-5 w-5 shrink-0"
+                         width="20"
+                         height="20">
+                    <span>{{ social_label }}</span>
+                </a>
+            {% endwith %}
+        {% elif auth_context == 'connect' %}
+            {% with social_label='Continue with Google' %}
+                <a href="{{ href }}"
+                   aria-label="{{ social_label }}"
+                   class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-brand-google-border bg-white px-4 font-medium leading-5 text-brand-google-text transition-colors duration-150 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jckfrt-olive focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 py-2 text-sm md:w-auto{% else %}min-h-11 py-3 text-sm md:text-base{% endif %}">
+                    <img src="{% static 'icons/brands/google-g.svg' %}"
+                         alt=""
+                         class="h-5 w-5 shrink-0"
+                         width="20"
+                         height="20">
+                    <span>{{ social_label }}</span>
+                </a>
+            {% endwith %}
+        {% else %}
+            {% with social_label='Sign in with Google' %}
+                <a href="{{ href }}"
+                   aria-label="{{ social_label }}"
+                   class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-brand-google-border bg-white px-4 font-medium leading-5 text-brand-google-text transition-colors duration-150 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jckfrt-olive focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 py-2 text-sm md:w-auto{% else %}min-h-11 py-3 text-sm md:text-base{% endif %}">
+                    <img src="{% static 'icons/brands/google-g.svg' %}"
+                         alt=""
+                         class="h-5 w-5 shrink-0"
+                         width="20"
+                         height="20">
+                    <span>{{ social_label }}</span>
+                </a>
+            {% endwith %}
+        {% endif %}
+    {% else %}
+        {% with social_label='Continue' %}
+            <a href="{{ href }}"
+               aria-label="{{ social_label }}"
+               class="inline-flex w-full items-center justify-center gap-3 rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-content transition-colors duration-150 hover:bg-surface-alt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jckfrt-olive focus-visible:ring-offset-2 {% if social_size == 'sm' %}min-h-10 md:w-auto{% else %}min-h-11 md:text-base{% endif %}">
+                <span>{{ social_label }}</span>
+            </a>
+        {% endwith %}
+    {% endif %}
+{% endwith %}

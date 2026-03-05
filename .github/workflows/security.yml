@@ -1,0 +1,52 @@
+name: security
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    # Monday 09:00 America/New_York during standard time (14:00 UTC)
+    - cron: "0 14 * * 1"
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+
+      - name: Run dependency review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48
+        with:
+          fail-on-severity: high
+          show-openssf-scorecard: false
+          fail-on-scopes: runtime
+
+      - name: Run Trivy filesystem scan
+        uses: docker://aquasec/trivy:0.69.2
+        with:
+          args: >-
+            fs
+            --scanners vuln
+            --severity HIGH,CRITICAL
+            --ignore-unfixed
+            --exit-code 1
+            --skip-dirs .venv,node_modules,.git
+            .
+
+      - name: Run gitleaks scan
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

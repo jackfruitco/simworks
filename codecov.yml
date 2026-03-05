@@ -1,0 +1,34 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 2
+  round: nearest
+  range: "0...100"
+  status:
+    patch:
+      default:
+        # TODO: Increase threshold to 80%
+        target: 50%
+        threshold: 0%
+        informational: false
+    project:
+      default:
+        informational: true
+
+ignore:
+  - "**/migrations/*.py"
+  - "**/__init__.py"
+
+  # Django project boilerplate
+  - "**/config/asgi.py"
+  - "**/config/wsgi.py"
+  - "**/manage.py"
+  - "**/apps.py"
+  - "**/admin.py"
+  - "**/urls.py"
+  - "**/settings/*.py"
+
+  # Tests
+  - "**/tests/*"
+  - "**/test_*.py"

@@ -1,0 +1,1847 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SimWorks API",
+    "version": "1.0.0",
+    "description": "REST API for SimWorks medical training platform"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "api_v1_api_health_check",
+        "summary": "Health check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the API health status and current timestamp.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/health/auth": {
+      "get": {
+        "operationId": "api_v1_api_health_check_auth",
+        "summary": "Authenticated health check (session)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Health check that requires session authentication (web clients).",
+        "tags": [
+          "system"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/health/jwt": {
+      "get": {
+        "operationId": "api_v1_api_health_check_jwt",
+        "summary": "Authenticated health check (JWT)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Health check that requires JWT authentication (mobile clients).",
+        "tags": [
+          "system"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/token/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_obtain_token",
+        "summary": "Obtain JWT tokens",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authenticate with email/password and receive JWT tokens.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/token/refresh/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_refresh_token",
+        "summary": "Refresh access token",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Use a refresh token to obtain a new access token.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/logout/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_logout",
+        "summary": "Logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Revoke a refresh token/session (server-side), then the client should delete tokens locally.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/simulations/": {
+      "get": {
+        "operationId": "api_v1_endpoints_simulations_list_simulations",
+        "summary": "List user's simulations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Max items to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max items to return"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor for pagination (simulation ID)",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor for pagination (simulation ID)"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status: in_progress, completed, timed_out, failed, canceled",
+              "title": "Status"
+            },
+            "required": false,
+            "description": "Filter by status: in_progress, completed, timed_out, failed, canceled"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_SimulationOut_"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns all simulations for the authenticated user, ordered by most recent first.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_create_simulation",
+        "summary": "Create a new simulation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new simulation for the authenticated user.",
+        "tags": [
+          "simulations"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_simulations_get_simulation",
+        "summary": "Get simulation details",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns details for a specific simulation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/end/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_end_simulation",
+        "summary": "End a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationEndResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Ends an in-progress simulation and triggers feedback generation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/retry-initial/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_retry_initial",
+        "summary": "Retry initial simulation generation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retries initial patient generation for a failed simulation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/retry-feedback/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_retry_feedback",
+        "summary": "Retry feedback generation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retries post-simulation feedback generation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/conversations/": {
+      "get": {
+        "operationId": "api_v1_endpoints_conversations_list_conversations",
+        "summary": "List conversations in a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns all conversations for a simulation, ordered by creation time.",
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_conversations_create_conversation",
+        "summary": "Create a conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new conversation in a simulation (e.g. start a Stitch feedback chat).",
+        "tags": [
+          "conversations"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/conversations/{conversation_uuid}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_conversations_get_conversation",
+        "summary": "Get a specific conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "conversation_uuid",
+            "schema": {
+              "title": "Conversation Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns a specific conversation by UUID.",
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/messages/": {
+      "get": {
+        "operationId": "api_v1_endpoints_messages_list_messages",
+        "summary": "List messages in a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Max messages to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max messages to return"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor for pagination (message ID)",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor for pagination (message ID)"
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "asc",
+              "description": "Sort order: asc (oldest first) or desc (newest first)",
+              "title": "Order",
+              "type": "string"
+            },
+            "required": false,
+            "description": "Sort order: asc (oldest first) or desc (newest first)"
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a specific conversation",
+              "title": "Conversation Id"
+            },
+            "required": false,
+            "description": "Filter to a specific conversation"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns messages for a simulation with cursor-based pagination. Optionally filter by conversation_id.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_messages_create_message",
+        "summary": "Create a message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new message in a simulation. Returns 201 for immediate response, 202 if AI response is pending.",
+        "tags": [
+          "messages"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/messages/{message_id}/retry/": {
+      "post": {
+        "operationId": "api_v1_endpoints_messages_retry_message",
+        "summary": "Retry a failed outgoing message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retries AI processing for a previously failed outgoing user message.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/messages/{message_id}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_messages_get_message",
+        "summary": "Get a specific message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns a specific message by ID.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/events/": {
+      "get": {
+        "operationId": "api_v1_endpoints_events_list_events",
+        "summary": "List events for catch-up",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor (event ID) to start after",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor (event ID) to start after"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Max events to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max events to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_EventEnvelope_"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns events for a simulation, enabling clients to catch up on missed WebSocket events after reconnection. Uses cursor-based pagination with UUID event IDs as cursors.",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/modifier-groups/": {
+      "get": {
+        "operationId": "api_v1_endpoints_modifiers_list_modifier_groups",
+        "summary": "List modifier groups",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "groups",
+            "schema": {
+              "description": "Filter by group names",
+              "items": {
+                "type": "string"
+              },
+              "title": "Groups",
+              "type": "array"
+            },
+            "required": false,
+            "description": "Filter by group names"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModifierGroupOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns available simulation modifier groups. Optionally filter by group names.",
+        "tags": [
+          "modifiers"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "description": "Health check response.",
+        "properties": {
+          "status": {
+            "default": "ok",
+            "description": "Service status",
+            "title": "Status",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Current server timestamp",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "description": "Response for successful token generation.",
+        "properties": {
+          "access_token": {
+            "description": "JWT access token for API authentication",
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "description": "JWT refresh token for obtaining new access tokens",
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Access token lifetime in seconds",
+            "examples": [
+              3600
+            ],
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "description": "Token type (always 'Bearer')",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "description": "Request body for token obtain endpoint.",
+        "properties": {
+          "email": {
+            "description": "User email address",
+            "examples": [
+              "user@example.com"
+            ],
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "description": "User password",
+            "examples": [
+              "secret123"
+            ],
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "RefreshResponse": {
+        "description": "Response for successful token refresh.",
+        "properties": {
+          "access_token": {
+            "description": "New JWT access token",
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(Optional) Rotated refresh token, if rotation is enabled.",
+            "title": "Refresh Token"
+          },
+          "expires_in": {
+            "description": "Access token lifetime in seconds",
+            "examples": [
+              3600
+            ],
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "description": "Token type (always 'Bearer')",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "RefreshResponse",
+        "type": "object"
+      },
+      "RefreshRequest": {
+        "description": "Request body for token refresh endpoint.",
+        "properties": {
+          "refresh_token": {
+            "description": "JWT refresh token",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest",
+        "type": "object"
+      },
+      "LogoutRequest": {
+        "description": "Request body for logout endpoint.",
+        "properties": {
+          "refresh_token": {
+            "description": "Refresh token to revoke",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "LogoutRequest",
+        "type": "object"
+      },
+      "PaginatedResponse_SimulationOut_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[SimulationOut]",
+        "type": "object"
+      },
+      "SimulationOut": {
+        "description": "Output schema for a simulation.",
+        "properties": {
+          "id": {
+            "description": "Simulation ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "user_id": {
+            "description": "Owner user ID",
+            "title": "User Id",
+            "type": "integer"
+          },
+          "start_timestamp": {
+            "description": "When the simulation started",
+            "format": "date-time",
+            "title": "Start Timestamp",
+            "type": "string"
+          },
+          "end_timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the simulation ended (null if in progress)",
+            "title": "End Timestamp"
+          },
+          "time_limit_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time limit in seconds (null if no limit)",
+            "title": "Time Limit Seconds"
+          },
+          "diagnosis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diagnosis for this simulation",
+            "title": "Diagnosis"
+          },
+          "chief_complaint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chief complaint for this simulation",
+            "title": "Chief Complaint"
+          },
+          "patient_display_name": {
+            "description": "Display name for the simulated patient",
+            "title": "Patient Display Name",
+            "type": "string"
+          },
+          "patient_initials": {
+            "description": "Initials for the simulated patient",
+            "title": "Patient Initials",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current status of the simulation",
+            "enum": [
+              "in_progress",
+              "completed",
+              "timed_out",
+              "failed",
+              "canceled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terminal_reason_code": {
+            "default": "",
+            "description": "Machine-readable terminal reason code",
+            "title": "Terminal Reason Code",
+            "type": "string"
+          },
+          "terminal_reason_text": {
+            "default": "",
+            "description": "User-safe terminal reason text",
+            "title": "Terminal Reason Text",
+            "type": "string"
+          },
+          "terminal_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp when simulation entered terminal state",
+            "title": "Terminal At"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "start_timestamp",
+          "patient_display_name",
+          "patient_initials",
+          "status"
+        ],
+        "title": "SimulationOut",
+        "type": "object"
+      },
+      "SimulationCreate": {
+        "description": "Input schema for creating a simulation.",
+        "properties": {
+          "diagnosis": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diagnosis for the simulation",
+            "title": "Diagnosis"
+          },
+          "chief_complaint": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chief complaint for the simulation",
+            "title": "Chief Complaint"
+          },
+          "patient_full_name": {
+            "description": "Full name for the simulated patient",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Patient Full Name",
+            "type": "string"
+          },
+          "time_limit_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400,
+                "minimum": 60,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time limit in seconds (null for no limit)",
+            "title": "Time Limit Seconds"
+          }
+        },
+        "required": [
+          "patient_full_name"
+        ],
+        "title": "SimulationCreate",
+        "type": "object"
+      },
+      "SimulationEndResponse": {
+        "description": "Response for ending a simulation.",
+        "properties": {
+          "id": {
+            "description": "Simulation ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "end_timestamp": {
+            "description": "When the simulation was ended",
+            "format": "date-time",
+            "title": "End Timestamp",
+            "type": "string"
+          },
+          "status": {
+            "const": "completed",
+            "default": "completed",
+            "description": "Final status",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "end_timestamp"
+        ],
+        "title": "SimulationEndResponse",
+        "type": "object"
+      },
+      "ConversationListResponse": {
+        "description": "Response for listing conversations.",
+        "properties": {
+          "items": {
+            "description": "List of conversations",
+            "items": {
+              "$ref": "#/components/schemas/ConversationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConversationListResponse",
+        "type": "object"
+      },
+      "ConversationOut": {
+        "description": "Output schema for a conversation.",
+        "properties": {
+          "id": {
+            "description": "Conversation ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "uuid": {
+            "description": "Conversation UUID",
+            "title": "Uuid",
+            "type": "string"
+          },
+          "simulation_id": {
+            "description": "Simulation this conversation belongs to",
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "conversation_type": {
+            "description": "Conversation type slug",
+            "title": "Conversation Type",
+            "type": "string"
+          },
+          "conversation_type_display": {
+            "description": "Human-readable type name",
+            "title": "Conversation Type Display",
+            "type": "string"
+          },
+          "icon": {
+            "default": "",
+            "description": "Iconify icon for this conversation type",
+            "title": "Icon",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "description": "Display name for the conversation partner",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "display_initials": {
+            "default": "",
+            "description": "Initials for avatar display",
+            "title": "Display Initials",
+            "type": "string"
+          },
+          "is_locked": {
+            "description": "Whether this conversation is read-only",
+            "title": "Is Locked",
+            "type": "boolean"
+          },
+          "created_at": {
+            "description": "When the conversation was created",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uuid",
+          "simulation_id",
+          "conversation_type",
+          "conversation_type_display",
+          "is_locked",
+          "created_at"
+        ],
+        "title": "ConversationOut",
+        "type": "object"
+      },
+      "ConversationCreate": {
+        "description": "Input schema for creating a conversation.",
+        "properties": {
+          "conversation_type": {
+            "description": "Conversation type slug (e.g. 'simulated_feedback')",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Conversation Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_type"
+        ],
+        "title": "ConversationCreate",
+        "type": "object"
+      },
+      "MessageListResponse": {
+        "description": "Response for listing messages with cursor pagination.",
+        "properties": {
+          "items": {
+            "description": "List of messages",
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page (message ID)",
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more messages exist",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "MessageListResponse",
+        "type": "object"
+      },
+      "MessageOut": {
+        "description": "Output schema for a chat message.",
+        "properties": {
+          "id": {
+            "description": "Message ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "simulation_id": {
+            "description": "Simulation ID this message belongs to",
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation ID this message belongs to",
+            "title": "Conversation Id"
+          },
+          "conversation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation type slug (e.g. 'simulated_patient', 'simulated_feedback')",
+            "title": "Conversation Type"
+          },
+          "sender_id": {
+            "description": "ID of the user who sent the message",
+            "title": "Sender Id",
+            "type": "integer"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Message content",
+            "title": "Content"
+          },
+          "role": {
+            "description": "Role of the message sender",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "message_type": {
+            "default": "text",
+            "description": "Type of message",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "file",
+              "system"
+            ],
+            "title": "Message Type",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "When the message was created",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "is_from_ai": {
+            "description": "Whether this message is from the AI",
+            "title": "Is From Ai",
+            "type": "boolean"
+          },
+          "display_name": {
+            "default": "",
+            "description": "Display name for the sender",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "delivery_status": {
+            "default": "sent",
+            "description": "Delivery status of outgoing messages",
+            "enum": [
+              "sent",
+              "delivered",
+              "failed"
+            ],
+            "title": "Delivery Status",
+            "type": "string"
+          },
+          "delivery_error_code": {
+            "default": "",
+            "description": "Machine-readable delivery error code",
+            "title": "Delivery Error Code",
+            "type": "string"
+          },
+          "delivery_error_text": {
+            "default": "",
+            "description": "User-safe delivery error text",
+            "title": "Delivery Error Text",
+            "type": "string"
+          },
+          "delivery_retryable": {
+            "default": true,
+            "description": "Whether the message can be retried by the user",
+            "title": "Delivery Retryable",
+            "type": "boolean"
+          },
+          "delivery_retry_count": {
+            "default": 0,
+            "description": "How many user retries have been attempted for this message",
+            "title": "Delivery Retry Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "simulation_id",
+          "sender_id",
+          "role",
+          "timestamp",
+          "is_from_ai"
+        ],
+        "title": "MessageOut",
+        "type": "object"
+      },
+      "MessageCreate": {
+        "description": "Input schema for creating a message.",
+        "properties": {
+          "content": {
+            "description": "Message content",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "message_type": {
+            "const": "text",
+            "default": "text",
+            "description": "Type of message (only 'text' supported via API)",
+            "title": "Message Type",
+            "type": "string"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Target conversation ID. Defaults to patient conversation if omitted.",
+            "title": "Conversation Id"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "MessageCreate",
+        "type": "object"
+      },
+      "EventEnvelope": {
+        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "properties": {
+          "event_id": {
+            "description": "Unique event identifier (UUID) for deduplication",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "Event type: chat.message_created, message_status_update, metadata.created, feedback.created, feedback.failed, feedback.retrying, typing.started, typing.stopped, simulation.ended, simulation.state_changed",
+            "examples": [
+              "chat.message_created",
+              "message_status_update",
+              "simulation.state_changed"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Event timestamp (ISO 8601)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request correlation ID for tracing",
+            "examples": [
+              "abc123-def456"
+            ],
+            "title": "Correlation Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "Event-specific payload data (structure varies by event_type)",
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at",
+          "payload"
+        ],
+        "title": "EventEnvelope",
+        "type": "object"
+      },
+      "PaginatedResponse_EventEnvelope_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/EventEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[EventEnvelope]",
+        "type": "object"
+      },
+      "ModifierGroupOut": {
+        "description": "Group of related modifiers.",
+        "properties": {
+          "group": {
+            "description": "Group name",
+            "title": "Group",
+            "type": "string"
+          },
+          "description": {
+            "description": "Group description",
+            "title": "Description",
+            "type": "string"
+          },
+          "modifiers": {
+            "description": "Available modifiers in this group",
+            "items": {
+              "$ref": "#/components/schemas/ModifierOut"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group",
+          "description",
+          "modifiers"
+        ],
+        "title": "ModifierGroupOut",
+        "type": "object"
+      },
+      "ModifierOut": {
+        "description": "Individual modifier option.",
+        "properties": {
+          "key": {
+            "description": "Unique modifier key",
+            "title": "Key",
+            "type": "string"
+          },
+          "description": {
+            "description": "Human-readable description",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "description"
+        ],
+        "title": "ModifierOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "SessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sessionid"
+      },
+      "JWTAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "DualAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": []
+}

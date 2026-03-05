@@ -1,19 +1,24 @@
 services:
   server:
+    profiles: ["core"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
-      target: web
+      target: runtime
+    user: appuser
     env_file:
       - .env
+    environment:
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-1}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-1}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-1}
     expose:
       - 8000
     hostname: 'server'
     volumes:
-      # - ..:/app
+      - ../SimWorks:/app/SimWorks
       - static-vol:/app/static
       - media-vol:/app/media
-    command: [ "bash", "/app/docker/entrypoint.dev.sh" ]
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -21,17 +26,44 @@ services:
         max-size: "10m"
         max-file: "3"
     networks:
-      - SimWorksNet
+      - MedSimNet
     depends_on:
       db:
         condition: service_healthy
+      tailwind-watch:
+        condition: service_started
+
+  tailwind-watch:
+    profiles: ["core"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+      target: runtime
+    entrypoint: []
+    user: appuser
+    env_file:
+      - .env
+    environment:
+      CHOKIDAR_USEPOLLING: "1"
+      CHOKIDAR_INTERVAL: "300"
+      DJANGO_MIGRATE: ${DJANGO_MIGRATE:-0}
+      DJANGO_CREATE_DEFAULT_ROLES: ${DJANGO_CREATE_DEFAULT_ROLES:-0}
+      DJANGO_COLLECTSTATIC: ${DJANGO_COLLECTSTATIC:-0}
+    command: ["npm", "run", "watch:css:docker"]
+    volumes:
+      - ../SimWorks:/app/SimWorks
+      - static-vol:/app/static
+    restart: unless-stopped
+    networks:
+      - MedSimNet
 
   db:
-    image: postgres:${DB_IMAGE_TAG:-17.2-alpine}
+    profiles: ["core"]
+    image: postgres:${DB_IMAGE_TAG:-18.2-alpine}
     restart: always
     user: postgres
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql
     env_file:
       - .env
     environment:
@@ -41,19 +73,19 @@ services:
       POSTGRES_HOST: ${DB_HOST:-db}
       POSTGRES_PORT: ${DB_PORT:-5432}
     networks:
-      - SimWorksNet
+      - MedSimNet
     expose:
       - '${DB_PORT:-5432}'
     hostname: 'db'
     healthcheck:
-      test: [ "CMD", "pg_isready" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-appuser} -d ${DB_NAME:-AppDatabase} -h 127.0.0.1 -p ${DB_PORT:-5432}" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
   nginx:
+    profiles: ["core"]
     image: nginx:${PROXY_IMAGE_TAG:-latest}
-    # user: "${DOCKER_UID:-10001}:${DOCKER_GID:-10001}"
     ports:
       - "80:80"
     env_file:
@@ -67,49 +99,56 @@ services:
     depends_on:
       - server
     networks:
-      - SimWorksNet
+      - MedSimNet
     entrypoint: ["/bin/sh", "/docker-entrypoint.d/nginx-entrypoint.sh"]
 
   redis:
+    profiles: ["core"]
     image: redis:${REDIS_IMAGE_TAG:-7.4.2-alpine}
     command: redis-server --requirepass ${REDIS_PASSWORD:?password not set!}
     entrypoint: []
     container_name: ${REDIS_HOSTNAME:-redis}
     hostname: ${REDIS_HOSTNAME:-redis}
     networks:
-      - SimWorksNet
+      - MedSimNet
     expose:
       - '${REDIS_PORT:-6379}'
 
   celery:
+    profiles: ["workers"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
-      target: celery
+      target: runtime
     env_file:
       - .env
     environment:
       - PYTHONPATH=/app/SimWorks
-    # user: appuser
-    user: root
-    # command: [ "celery", "-A", "config", "worker", "--loglevel=info" ]
+      - DJANGO_MIGRATE=0
+      - DJANGO_CREATE_DEFAULT_ROLES=0
+      - DJANGO_COLLECTSTATIC=0
+    user: appuser
+    command: ["celery", "-A", "config", "worker", "--pool=threads", "--loglevel=info"]
     depends_on:
       redis:
         condition: service_started
       db:
         condition: service_healthy
+      server:
+        condition: service_started
     volumes:
       - static-vol:/app/static
       - media-vol:/app/media
     restart: unless-stopped
     networks:
-      - SimWorksNet
+      - MedSimNet
     hostname: 'celery-worker'
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -117,16 +156,20 @@ services:
         max-file: "3"
 
   celerybeat:
+    profiles: ["beat"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
-      target: beat
+      target: runtime
     user: appuser
     env_file:
       - .env
     environment:
       - PYTHONPATH=/app/SimWorks
-    # command: [ "celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler" ]
+      - DJANGO_MIGRATE=0
+      - DJANGO_CREATE_DEFAULT_ROLES=0
+      - DJANGO_COLLECTSTATIC=0
+    command: ["celery", "-A", "config", "beat", "--loglevel=info", "--scheduler", "django_celery_beat.schedulers:DatabaseScheduler"]
     volumes:
       - static-vol:/app/static
       - media-vol:/app/media
@@ -135,14 +178,17 @@ services:
         condition: service_started
       db:
         condition: service_healthy
+      server:
+        condition: service_started
     networks:
-      - SimWorksNet
+      - MedSimNet
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "celery", "-A", "config", "status" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
@@ -154,5 +200,5 @@ volumes:
   static-vol:
   media-vol:
 networks:
-  SimWorksNet:
+  MedSimNet:
     driver: bridge

@@ -1,0 +1,86 @@
+{% extends 'accounts/accounts_base.html' %}
+{% load static %}
+
+{% block title %}{{ profile_user.first_name }}'s Profile - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+<div class="tw-root mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8" x-data="profileData()">
+    <section class="overflow-hidden rounded-2xl border border-border bg-surface-alt shadow-xl">
+        <header class="border-b border-border bg-gradient-to-r from-jckfrt-olive/10 to-jckfrt-yellow/10 px-4 py-6 sm:px-6">
+            <h1 class="text-2xl font-bold text-content sm:text-3xl">My Profile</h1>
+            <p class="mt-2 text-sm text-content-secondary sm:text-base">
+                Manage your account settings and view your simulation history.
+            </p>
+        </header>
+
+        <div class="border-b border-border bg-surface px-2 py-2 sm:px-4">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label="Profile sections">
+                <button
+                    @click="activeTab = 'profile'"
+                    :aria-selected="activeTab === 'profile'"
+                    :class="activeTab === 'profile' ? 'border-jckfrt-olive bg-jckfrt-olive/10 text-content' : 'border-transparent text-content-secondary hover:bg-surface-alt'"
+                    class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-b-2 px-4 py-3 text-sm font-semibold transition-colors sm:text-base"
+                    role="tab"
+                    type="button"
+                >
+                    <span class="iconify text-lg" data-icon="mdi:account"></span>
+                    Profile Info
+                </button>
+                <button
+                    @click="activeTab = 'history'"
+                    :aria-selected="activeTab === 'history'"
+                    :class="activeTab === 'history' ? 'border-jckfrt-olive bg-jckfrt-olive/10 text-content' : 'border-transparent text-content-secondary hover:bg-surface-alt'"
+                    class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-b-2 px-4 py-3 text-sm font-semibold transition-colors sm:text-base"
+                    role="tab"
+                    type="button"
+                >
+                    <span class="iconify text-lg" data-icon="mdi:history"></span>
+                    Simulation History
+                </button>
+                <button
+                    @click="activeTab = 'social'"
+                    :aria-selected="activeTab === 'social'"
+                    :class="activeTab === 'social' ? 'border-jckfrt-olive bg-jckfrt-olive/10 text-content' : 'border-transparent text-content-secondary hover:bg-surface-alt'"
+                    class="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border-b-2 px-4 py-3 text-sm font-semibold transition-colors sm:text-base"
+                    role="tab"
+                    type="button"
+                >
+                    <span class="iconify text-lg" data-icon="mdi:link-variant"></span>
+                    Connected Accounts
+                </button>
+            </div>
+        </div>
+
+        <div class="px-4 py-6 sm:px-6">
+            <div x-show="activeTab === 'profile'"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 role="tabpanel">
+                {% include 'accounts/partials/_profile_info_tab.html' %}
+            </div>
+
+            <div x-show="activeTab === 'history'"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 role="tabpanel">
+                {% include 'accounts/partials/_simulation_history_tab.html' %}
+            </div>
+
+            <div x-show="activeTab === 'social'"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 role="tabpanel">
+                {% include 'accounts/partials/_social_accounts_tab.html' %}
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock content %}
+
+{% block scripts %}
+    {{ block.super }}
+    <script src="{% static 'accounts/js/profile.js' %}"></script>
+{% endblock scripts %}

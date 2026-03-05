@@ -1,18 +1,14 @@
 repos:
--   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+  - repo: local
     hooks:
-    -   id: check-yaml
-    # -   id: end_timestamp-of-file-fixer
-    -   id: trailing-whitespace
-    -   id: detect-private-key
-    -   id: requirements-txt-fixer
-    -   id: check-docstring-first
--   repo: https://github.com/asottile/reorder-python-imports
-    rev: v3.15.0
-    hooks:
-    -   id: reorder-python-imports
--   repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-    -   id: black
+      - id: ruff
+        name: ruff (lint + autofix)
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-format
+        name: ruff (format)
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]

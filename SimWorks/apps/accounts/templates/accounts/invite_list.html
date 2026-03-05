@@ -1,0 +1,105 @@
+{% extends 'accounts/accounts_base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="invite-shell tw-root mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8" x-data="{
+    viewMode: 'list',
+    page: 1,
+    noMore: false,
+    claimedFilter: '',
+    expiredFilter: '',
+    invitedByFilter: [],
+    init() {
+        ['viewMode', 'claimedFilter', 'expiredFilter', 'invitedByFilter'].forEach((key) => {
+            this.$watch(key, () => this.refreshList());
+        });
+    },
+    htmxVals(pageNumber) {
+        return JSON.stringify({
+            page: pageNumber,
+            view_mode: this.viewMode,
+            claimed: this.claimedFilter,
+            expired: this.expiredFilter,
+            invited_by: this.invitedByFilter,
+        });
+    },
+    refreshList() {
+        this.page = 1;
+        this.noMore = false;
+        this.$dispatch('filters-changed');
+    },
+    clearFilters() {
+        this.claimedFilter = '';
+        this.expiredFilter = '';
+        this.invitedByFilter = [];
+    },
+    handleAfterSwap(event) {
+        if (event.detail.xhr && event.detail.xhr.responseText.trim() !== '') {
+            this.page++;
+        } else {
+            this.noMore = true;
+        }
+    }
+}" x-init="init()">
+    <section class="invite-panel rounded-2xl border border-border bg-surface-alt p-4 shadow-xl sm:p-6">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-content sm:text-3xl">All Invitations</h1>
+                <p class="mt-2 text-sm text-content-secondary">Review and manage invitations issued for MedSim access.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="{% url 'accounts:new-invite' %}" class="inline-flex min-h-11 items-center rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover">
+                    New Invitation
+                </a>
+                <button type="button" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-alt" @click="viewMode = viewMode === 'list' ? 'grid' : 'list'">
+                    Switch to <span class="ml-1" x-text="viewMode === 'list' ? 'Tile' : 'List'"></span> View
+                </button>
+                <button type="button" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-alt" @click="clearFilters()">
+                    Clear Filters
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-6 grid gap-3 md:grid-cols-3">
+            <select class="min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive" x-model="claimedFilter">
+                <option value="">All claim states</option>
+                <option value="true">Claimed</option>
+                <option value="false">Unclaimed</option>
+            </select>
+            <select class="min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive" x-model="expiredFilter">
+                <option value="">All expiration states</option>
+                <option value="true">Expired</option>
+                <option value="false">Active</option>
+            </select>
+            <select class="min-h-11 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive" multiple size="4" x-model="invitedByFilter">
+                <template x-for="inviter in {{ inviter_choices|safe }}">
+                    <option :value="inviter" x-text="inviter"></option>
+                </template>
+            </select>
+        </div>
+    </section>
+
+    <div id="invite-list"
+         class="mt-6"
+         hx-get="/accounts/invitations/list/"
+         hx-trigger="load, filters-changed from:closest .invite-shell"
+         hx-target="#invite-list"
+         hx-swap="innerHTML"
+         :hx-vals="htmxVals(1)">
+    </div>
+
+    <div id="pagination-loader"
+         class="mt-6 flex justify-center"
+         :hx-get="`/accounts/invitations/list/?page=${page + 1}&view_mode=${viewMode}&claimed=${claimedFilter}&expired=${expiredFilter}&${invitedByFilter.map(i => `invited_by=${i}`).join('&')}`"
+         hx-trigger="revealed"
+         hx-target="#invite-list"
+         hx-swap="beforeend"
+         hx-on:htmx:afterSwap="if ($event.detail.xhr && $event.detail.xhr.responseText.trim() !== '') { page++; } else { noMore = true; }"
+         x-show="!noMore">
+        <span class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm text-content-secondary">
+            <span class="iconify animate-spin" data-icon="mdi:loading"></span>
+            Loading more invitations...
+        </span>
+    </div>
+</div>
+{% endblock %}

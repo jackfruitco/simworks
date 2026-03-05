@@ -32,17 +32,17 @@
     position: relative;
 }
 
-/* Variation for success messages */
+/* Variation for success input */
 .toast-success {
     background-color: #38a169 !important; /* green */
 }
 
-/* Variation for error messages */
+/* Variation for error input */
 .toast-error {
     background-color: #e53e3e !important; /* red */
 }
 
-/* Variation for warning messages */
+/* Variation for warning input */
 .toast-warning {
     background-color: #dd6b20 !important; /* orange */
 }

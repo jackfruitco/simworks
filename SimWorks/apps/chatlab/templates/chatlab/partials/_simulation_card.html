@@ -1,0 +1,32 @@
+<article class="rounded-xl border border-border bg-surface p-4 shadow-sm transition-shadow hover:shadow-md" data-simulation-id="{{ simulation.id }}" data-status="{{ status|slugify }}">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0">
+            <a href="{% url 'chatlab:run_simulation' simulation.id %}" class="truncate text-base font-semibold text-content transition-colors hover:text-jckfrt-olive sm:text-lg">{{ simulation }}</a>
+            {% if simulation.chief_complaint %}
+                <p class="mt-1 text-sm text-content-secondary">{{ simulation.chief_complaint }}</p>
+            {% endif %}
+        </div>
+
+        {% if status %}
+            <span class="inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide {% if status == 'Complete' %}bg-emerald-100 text-emerald-700{% else %}bg-amber-100 text-amber-700{% endif %}">{{ status }}</span>
+        {% endif %}
+    </div>
+
+    <div class="mt-3 grid gap-2 text-sm text-content-secondary">
+        <span class="inline-flex items-center gap-2">
+            <span class="iconify" data-icon="mdi:calendar-start"></span>
+            Started {{ simulation.start_timestamp|date:"M j, Y, g:i A" }}
+        </span>
+        {% if simulation.end_timestamp %}
+            <span class="inline-flex items-center gap-2">
+                <span class="iconify" data-icon="mdi:calendar-check"></span>
+                Ended {{ simulation.end_timestamp|date:"M j, Y, g:i A" }}
+            </span>
+        {% elif simulation.time_limit %}
+            <span class="inline-flex items-center gap-2">
+                <span class="iconify" data-icon="mdi:clock-outline"></span>
+                Time limit {{ simulation.time_limit }}
+            </span>
+        {% endif %}
+    </div>
+</article>

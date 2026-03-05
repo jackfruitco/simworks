@@ -1,0 +1,165 @@
+<div class="space-y-6 lg:space-y-8">
+    <section class="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6">
+        <div class="flex flex-col items-center gap-4">
+            {% include 'accounts/partials/_avatar_display.html' %}
+            <form id="avatar-upload-form"
+                  hx-post="{% url 'accounts:upload-avatar' %}"
+                  hx-target="#avatar-display"
+                  hx-swap="outerHTML"
+                  hx-encoding="multipart/form-data">
+                {% csrf_token %}
+                <input type="file"
+                       name="avatar"
+                       id="avatar-input"
+                       accept="image/*"
+                       class="hidden"
+                       onchange="this.form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}))">
+                <button type="button"
+                        onclick="document.getElementById('avatar-input').click()"
+                        class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jckfrt-olive focus-visible:ring-offset-2">
+                    <span class="iconify" data-icon="mdi:camera"></span>
+                    Change Photo
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <section class="grid gap-4 sm:grid-cols-2">
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm" x-data="{ editing: false }">
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">First Name</label>
+            <div x-show="!editing" class="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-alt px-3 py-2">
+                <span x-text="$store.profile.first_name" id="first-name-display" class="font-medium text-content">{{ profile_user.first_name }}</span>
+                <button @click="editing = true" type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-md text-jckfrt-olive transition-colors hover:bg-jckfrt-olive/10">
+                    <span class="iconify" data-icon="mdi:pencil"></span>
+                </button>
+            </div>
+            <div x-show="editing" class="flex items-center gap-2">
+                <input type="text"
+                       x-model="$store.profile.first_name"
+                       @keydown.enter="updateField('first_name', $store.profile.first_name); editing = false"
+                       @keydown.escape="editing = false"
+                       class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive"
+                       x-init="$watch('editing', value => value && $nextTick(() => $el.focus()))">
+                <button @click="updateField('first_name', $store.profile.first_name); editing = false" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-100">
+                    <span class="iconify" data-icon="mdi:check"></span>
+                </button>
+                <button @click="editing = false" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-md text-content-secondary transition-colors hover:bg-surface-alt">
+                    <span class="iconify" data-icon="mdi:close"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm" x-data="{ editing: false }">
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">Last Name</label>
+            <div x-show="!editing" class="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface-alt px-3 py-2">
+                <span x-text="$store.profile.last_name" id="last-name-display" class="font-medium text-content">{{ profile_user.last_name }}</span>
+                <button @click="editing = true" type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-md text-jckfrt-olive transition-colors hover:bg-jckfrt-olive/10">
+                    <span class="iconify" data-icon="mdi:pencil"></span>
+                </button>
+            </div>
+            <div x-show="editing" class="flex items-center gap-2">
+                <input type="text"
+                       x-model="$store.profile.last_name"
+                       @keydown.enter="updateField('last_name', $store.profile.last_name); editing = false"
+                       @keydown.escape="editing = false"
+                       class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive"
+                       x-init="$watch('editing', value => value && $nextTick(() => $el.focus()))">
+                <button @click="updateField('last_name', $store.profile.last_name); editing = false" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-100">
+                    <span class="iconify" data-icon="mdi:check"></span>
+                </button>
+                <button @click="editing = false" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-md text-content-secondary transition-colors hover:bg-surface-alt">
+                    <span class="iconify" data-icon="mdi:close"></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">Email</label>
+            <div class="rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content">
+                <span>{{ profile_user.email }}</span>
+                <a href="{% url 'account_email' %}" class="ml-2 font-medium text-jckfrt-olive hover:underline">Manage emails</a>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">Role</label>
+            <div class="rounded-lg border border-border bg-surface-alt px-3 py-2">
+                <span class="inline-flex rounded-full bg-jckfrt-olive px-3 py-1 text-sm font-semibold text-white">{{ profile_user.role.title }}</span>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">Member Since</label>
+            <div class="rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content">
+                {{ profile_user.date_joined|date:"F d, Y" }}
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">Last Login</label>
+            <div class="rounded-lg border border-border bg-surface-alt px-3 py-2 text-sm text-content">
+                {{ profile_user.last_login|date:"F d, Y g:i A" }}
+            </div>
+        </div>
+    </section>
+
+    <section class="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6" x-data="{ editing: false }">
+        <label class="mb-2 block text-xs font-semibold uppercase tracking-wide text-content-secondary">Bio</label>
+        <div x-show="!editing" class="space-y-4 rounded-lg border border-border bg-surface-alt p-4">
+            <p x-text="$store.profile.bio || 'No bio yet. Click edit to add one.'" id="bio-display" class="text-sm leading-relaxed text-content">{{ profile_user.bio|default:'' }}</p>
+            <button @click="editing = true" type="button" class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover">
+                <span class="iconify" data-icon="mdi:pencil"></span>
+                Edit Bio
+            </button>
+        </div>
+        <div x-show="editing" class="space-y-3">
+            <textarea
+                x-model="$store.profile.bio"
+                rows="4"
+                class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive"
+                placeholder="Tell us about yourself..."
+                x-init="$watch('editing', value => value && $nextTick(() => $el.focus()))"></textarea>
+            <div class="flex flex-wrap gap-2">
+                <button @click="updateField('bio', $store.profile.bio); editing = false" type="button" class="inline-flex min-h-11 items-center rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover">
+                    Save
+                </button>
+                <button @click="editing = false" type="button" class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-alt">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid gap-4 lg:grid-cols-2">
+        <div class="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6">
+            <h3 class="text-lg font-semibold text-content">Security</h3>
+            <p class="mt-1 text-sm text-content-secondary">Keep your account secure by rotating credentials regularly.</p>
+            <a href="{% url 'account_change_password' %}" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-surface-alt px-4 py-2 text-sm font-semibold text-content transition-colors hover:border-jckfrt-olive hover:text-jckfrt-olive">
+                <span class="iconify" data-icon="mdi:lock-reset"></span>
+                Change Password
+            </a>
+        </div>
+
+        <div class="rounded-xl border border-border bg-gradient-to-br from-jckfrt-olive/10 to-jckfrt-yellow/10 p-4 shadow-sm sm:p-6">
+            <h3 class="text-lg font-semibold text-content">Activity Summary</h3>
+            <div class="mt-4 grid grid-cols-2 gap-3">
+                <div class="rounded-lg border border-border bg-surface px-3 py-3 text-center">
+                    <div class="text-2xl font-bold text-jckfrt-olive">{{ total_simulations }}</div>
+                    <div class="text-xs uppercase tracking-wide text-content-secondary">Total</div>
+                </div>
+                <div class="rounded-lg border border-border bg-surface px-3 py-3 text-center">
+                    <div class="text-2xl font-bold text-jckfrt-olive">{{ completed_simulations }}</div>
+                    <div class="text-xs uppercase tracking-wide text-content-secondary">Completed</div>
+                </div>
+                <div class="rounded-lg border border-border bg-surface px-3 py-3 text-center">
+                    <div class="text-2xl font-bold text-jckfrt-olive">{{ in_progress_simulations }}</div>
+                    <div class="text-xs uppercase tracking-wide text-content-secondary">In Progress</div>
+                </div>
+                <div class="rounded-lg border border-border bg-surface px-3 py-3 text-center">
+                    <div class="text-2xl font-bold text-jckfrt-olive">{{ completion_rate }}%</div>
+                    <div class="text-xs uppercase tracking-wide text-content-secondary">Completion</div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>

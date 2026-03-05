@@ -1,0 +1,134 @@
+<div
+  class="lab-order-form"
+  x-data="{
+    orderInput: '',
+    pendingOrders: [],
+    isSubmitting: false,
+
+    stageOrder() {
+      const trimmed = this.orderInput.trim();
+      if (trimmed && trimmed.length <= 30 && !this.pendingOrders.includes(trimmed)) {
+        this.pendingOrders.push(trimmed);
+        console.debug('Added', trimmed, 'to pending orders:', this.pendingOrders);
+      }
+      this.orderInput = '';
+    },
+
+    removeOrder(index) {
+      this.pendingOrders.splice(index, 1);
+    },
+
+    async signOrders() {
+      if (this.pendingOrders.length === 0) {
+        this.showToast('No orders staged for signature.', false);
+        return;
+      }
+
+      this.isSubmitting = true;
+
+      try {
+        const simulationId = document.getElementById('order-request-form').dataset.simulationId;
+        const res = await fetch(`/simulation/${simulationId}/orders/sign-orders/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'HX-Request': 'true',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+          },
+          body: JSON.stringify({ submitted_orders: this.pendingOrders })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Unknown error');
+
+        this.showToast('Orders signed.', true);
+        console.info('[Orders] Success! Orders successfully submitted:', data);
+        this.pendingOrders = [];
+
+        // Close modal via Alpine
+        const modal = document.getElementById('order-request-form');
+        if (modal && modal.__x) {
+          modal.__x.$data.open = false;
+        }
+      } catch (err) {
+        console.error('Failed to submit orders:', err);
+        this.showToast(`Error: ${err.message}`, false);
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+
+    showToast(message, isSuccess = true) {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `px-4 py-3 rounded-lg shadow-lg text-sm ${isSuccess ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+  }"
+>
+  <div class="space-y-2 mb-4">
+    <label for="lab-order-input" class="block text-sm font-medium text-gray-700">Lab order</label>
+    <div class="flex gap-2">
+      <input
+        type="text"
+        id="lab-order-input"
+        x-model="orderInput"
+        @keyup.enter="stageOrder"
+        placeholder="Enter lab order"
+        maxlength="30"
+        class="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        data-modal-initial-focus
+      />
+      <button
+        type="button"
+        @click="stageOrder"
+        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+        Add
+      </button>
+    </div>
+  </div>
+
+  <ul
+    class="space-y-2 mb-4 min-h-[60px]"
+    aria-live="polite"
+    aria-label="Orders staged for signature"
+    x-show="pendingOrders.length > 0"
+  >
+    <template x-for="(order, index) in pendingOrders" :key="index">
+      <li class="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
+        <span class="text-sm text-gray-800" x-text="order"></span>
+        <button
+          type="button"
+          @click="removeOrder(index)"
+          class="ml-2 text-gray-400 hover:text-red-600 focus:outline-none"
+          aria-label="Remove order"
+        >
+          <span class="text-lg">&times;</span>
+        </button>
+      </li>
+    </template>
+  </ul>
+
+  <form
+    @submit.prevent="signOrders"
+    aria-label="Sign staged orders"
+    class="relative"
+  >
+    {% csrf_token %}
+    <button
+      type="submit"
+      :disabled="pendingOrders.length === 0 || isSubmitting"
+      class="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <span x-show="!isSubmitting">Sign Orders</span>
+      <span x-show="isSubmitting" class="flex items-center justify-center gap-2">
+        <span class="iconify" data-icon="svg-spinners:blocks-shuffle-3"></span>
+        <span>Signing...</span>
+      </span>
+    </button>
+  </form>
+</div>

@@ -1,0 +1,20 @@
+{% extends 'trainerlab/trainerlab_base.html' %}
+{% load static %}
+
+{% block content %}
+<section id="content" class="mx-16">
+    <header class="page-header">
+        <h1>Welcome to TrainerLab</h1>
+
+        {% include "trainerlab/partials/_lab_about.html" %}
+
+
+    </header>
+
+    {% if user.is_authenticated %}
+        {% include 'trainerlab/partials/_session_history_base.html' %}
+    {% endif %}
+
+    {% endblock content %}
+</section>
+

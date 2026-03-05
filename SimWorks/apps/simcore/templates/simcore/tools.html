@@ -1,0 +1,364 @@
+{# simcore/templates/simcore/tools.html #}
+{% load core_tags %}
+{% load static %}
+{% load core_filters %}
+{% load chatlab_filters %}
+
+{# ============================================================================
+   TOOL WRAPPER - Main container for tool cards
+   ============================================================================ #}
+{% partialdef tool_wrapper %}
+<div class="tool-card" data-tool-name="{{ tool.name|lower }}">
+    <!-- Tool Header -->
+    {% partial tool_panel %}
+
+    <!-- Tool Body -->
+    <div id="{{ tool.name|lower }}_tool"
+         data-checksum="{{ tool.checksum }}"
+         class="tool-body"
+         x-show="isOpen('{{ tool.name|lower }}')"
+         x-collapse>
+        <div class="tool-body-inner">
+            {# Render tool-specific partial or fallback #}
+            {% if tool.name == "patient_history" %}
+                {% partial tool_patient_history %}
+            {% elif tool.name == "patient_results" %}
+                {% partial tool_patient_results %}
+            {% elif tool.name == "simulation_feedback" %}
+                {% partial tool_simulation_feedback %}
+            {% elif tool.is_generic %}
+                {% partial tool_generic %}
+            {% else %}
+                {% partial tool_fallback %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endpartialdef %}
+
+{# ============================================================================
+   TOOL PANEL - Header and actions for tool cards
+   ============================================================================ #}
+{% partialdef tool_panel %}
+<div id="{{ tool.name|lower }}-tool-header"
+     class="tool-panel-header"
+     :class="{'expanded': isOpen('{{ tool.name|lower }}')}"
+     @click="toggle('{{ tool.name|lower }}')"
+     role="button"
+     tabindex="0"
+     :aria-controls="'{{ tool.name|lower }}_tool'"
+     :aria-expanded="isOpen('{{ tool.name|lower }}') ? 'true' : 'false'"
+     @keydown.enter.prevent="toggle('{{ tool.name|lower }}')"
+     @keydown.space.prevent="toggle('{{ tool.name|lower }}')">
+
+    <div class="tool-panel-title">
+        <div class="tool-panel-icon">
+            <span class="iconify"
+                  data-icon="{% if tool.name|lower == 'patient_history' %}mdi:history{% elif tool.name|lower == 'patient_results' %}mdi:flask{% elif tool.name|lower == 'simulation_feedback' %}mdi:comment-text{% else %}mdi:information{% endif %}"
+                  data-inline="true"></span>
+        </div>
+        <span>{{ tool.display_name }}</span>
+
+        {# Tool badges #}
+        {% if tool.is_new %}
+            <span class="tool-badge tool-badge-new">New</span>
+        {% elif tool.has_updates %}
+            <span class="tool-badge tool-badge-updated">Updated</span>
+        {% endif %}
+        <span id="{{ tool.name|lower }}-tool-update-badge"
+              class="tool-badge tool-badge-updated hidden"
+              aria-live="polite">
+            Updated
+        </span>
+    </div>
+
+    <div class="tool-panel-actions">
+        {% if tool.name|lower == "simulation_feedback" %}
+        <button type="button"
+                x-show="{{ simulation_locked|default_if_none:False|yesno:'true,false' }}"
+                x-cloak
+                @click.stop="
+                    document.getElementById('chat-panel')?.dispatchEvent(
+                        new CustomEvent('stitch:create', { bubbles: false })
+                    );
+                "
+                class="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200">
+            <span class="iconify mr-1" data-icon="mdi:robot" data-inline="true"></span>
+            Continue with Stitch
+        </button>
+        {% endif %}
+
+        <button type="button"
+                @click.stop="toggle('{{ tool.name|lower }}')"
+                class="tool-toggle-btn"
+                :aria-controls="'{{ tool.name|lower }}_tool'"
+                :aria-expanded="isOpen('{{ tool.name|lower }}') ? 'true' : 'false'">
+            <span x-show="!isOpen('{{ tool.name|lower }}')">
+                <span class="iconify mr-1" data-icon="mdi:chevron-down" data-inline="true"></span>
+                Show
+            </span>
+            <span x-show="isOpen('{{ tool.name|lower }}')">
+                <span class="iconify mr-1" data-icon="mdi:chevron-up" data-inline="true"></span>
+                Hide
+            </span>
+        </button>
+    </div>
+</div>
+{% endpartialdef %}
+
+{# ============================================================================
+   TOOL GENERIC - Generic key-value display for simple metadata
+   ============================================================================ #}
+{% partialdef tool_generic %}
+{% if tool.data %}
+    <div class="tool-item-list">
+        {% for metafield in tool.data %}
+            <div class="tool-item">
+                <span class="tool-item-key">{{ metafield.key|title }}</span>
+                <span class="tool-item-value">{{ metafield.value|title }}</span>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="tool-empty-state">
+        <div class="tool-empty-icon">
+            <span class="iconify" data-icon="mdi:information-outline" style="font-size: 4rem;"></span>
+        </div>
+        <h4 class="tool-empty-title">No data available</h4>
+        <p class="tool-empty-description">
+            We'll display details here once they're ready.
+        </p>
+    </div>
+{% endif %}
+{% endpartialdef %}
+
+{# ============================================================================
+   TOOL PATIENT_HISTORY - Timeline display for patient medical history
+   ============================================================================ #}
+{% partialdef tool_patient_history %}
+{% if tool.data %}
+    <div class="history-timeline">
+        {% for item in tool.data %}
+            <div class="history-item">
+                <div class="history-item-header">
+                    <h5 class="history-item-title">
+                        {{ item.title|default:"Medical History" }}
+                    </h5>
+                    {% if item.date %}
+                        <span class="history-item-date">
+                            <span class="iconify" data-icon="mdi:calendar" data-inline="true"></span>
+                            {{ item.date }}
+                        </span>
+                    {% endif %}
+                </div>
+                <div class="history-item-content">
+                    {{ item.value }}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="tool-empty-state">
+        <div class="tool-empty-icon">
+            <span class="iconify" data-icon="mdi:history" style="font-size: 4rem;"></span>
+        </div>
+        <h4 class="tool-empty-title">No medical history yet</h4>
+        <p class="tool-empty-description">
+            We'll surface known history here once we have it from the patient.
+        </p>
+    </div>
+{% endif %}
+{% endpartialdef %}
+
+{# ============================================================================
+   TOOL PATIENT_RESULTS - Lab and imaging results display
+   ============================================================================ #}
+{% partialdef tool_patient_results %}
+<div x-data="resultsFilter()">
+    <!-- Actions Bar -->
+    <div class="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
+        <button id="toggle-order-request-form"
+                type="button"
+                :disabled="{{ simulation.is_complete|yesno:'true,false' }}"
+                class="px-4 py-2 text-sm font-semibold text-content-light bg-jckfrt-olive rounded-lg hover:bg-jckfrt-olive-hover focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                aria-label="Request lab orders">
+            <span class="iconify mr-1" data-icon="mdi:flask-plus" data-inline="true"></span>
+            Request Labs
+        </button>
+
+        {% if tool.data %}
+        <div class="flex items-center gap-2">
+            <button @click="activeTab = 'all'"
+                    :class="activeTab === 'all' ? 'bg-jckfrt-olive/10 text-jckfrt-olive border-jckfrt-olive' : 'bg-surface text-content-secondary border-border'"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors duration-200">
+                All
+            </button>
+            <button @click="activeTab = 'labs'"
+                    :class="activeTab === 'labs' ? 'bg-jckfrt-olive/10 text-jckfrt-olive border-jckfrt-olive' : 'bg-surface text-content-secondary border-border'"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors duration-200">
+                Labs
+            </button>
+            <button @click="activeTab = 'imaging'"
+                    :class="activeTab === 'imaging' ? 'bg-jckfrt-olive/10 text-jckfrt-olive border-jckfrt-olive' : 'bg-surface text-content-secondary border-border'"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors duration-200">
+                Imaging
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if tool.data %}
+        <div class="results-grid">
+            {% for result in tool.data %}
+                <div class="result-card"
+                     x-show="activeTab === 'all' || activeTab === '{{ result.result_type|default:'labs' }}'">
+                    <div class="result-card-header">
+                        <div>
+                            <div class="result-name">{{ result.result_name }}</div>
+                            <div class="text-xs text-content-secondary mt-0.5">{{ result.panel_name }}</div>
+                        </div>
+                        {% if result.flag|upper != 'NORMAL' %}
+                            <span class="px-2 py-0.5 text-xs font-semibold text-red-700 bg-red-100 rounded-full">
+                                Abnormal
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div class="result-value {% if result.flag|upper != 'NORMAL' %}abnormal{% else %}normal{% endif %}">
+                        {{ result.value }}
+                        <span class="text-sm font-normal text-content-secondary">{{ result.unit }}</span>
+                    </div>
+                    <div class="result-reference">
+                        Reference: {{ result.reference_range_low }} - {{ result.reference_range_high }} {{ result.unit }}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="tool-empty-state">
+            <div class="tool-empty-icon">
+                <span class="iconify" data-icon="mdi:flask-empty-outline" style="font-size: 4rem;"></span>
+            </div>
+            <h4 class="tool-empty-title">No results yet</h4>
+            <p class="tool-empty-description">
+                Order labs or imaging to see results populate here.
+            </p>
+            <button id="toggle-order-request-form-empty"
+                    type="button"
+                    :disabled="{{ simulation.is_complete|yesno:'true,false' }}"
+                    class="tool-empty-cta">
+                <span class="iconify mr-1" data-icon="mdi:flask-plus" data-inline="true"></span>
+                Request Labs Now
+            </button>
+        </div>
+    {% endif %}
+</div>
+{% endpartialdef %}
+
+{# Order form must be outside partialdef for includes to process correctly #}
+{% include "simcore/partials/order-request-form.html" %}
+
+{# ============================================================================
+   TOOL SIMULATION_FEEDBACK - Feedback display with categorized sections
+   ============================================================================ #}
+{% partialdef tool_simulation_feedback %}
+{% if tool.data %}
+    <div class="space-y-3" x-data="feedbackExpander()">
+        {% for metafield in tool.data %}
+            {% if metafield.key|lower == "overall_feedback" %}
+                <div class="feedback-card success">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:comment-check" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Overall Feedback</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value }}
+                    </div>
+                </div>
+
+            {% elif metafield.key|lower == "topics" %}
+                <div class="feedback-card warning">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:lightbulb-on" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Topics to Research</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        <ul class="ml-4 space-y-2 list-disc list-inside">
+                            {% for topic in metafield.value|as_list %}
+                                <li class="text-content">{{ topic }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+
+            {% elif metafield.key|lower == "strengths" %}
+                <div class="feedback-card success">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:check-circle" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Strengths</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value|feedback }}
+                    </div>
+                </div>
+
+            {% elif metafield.key|lower == "areas_for_improvement" or metafield.key|lower == "improvements" %}
+                <div class="feedback-card warning">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:alert-circle" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">Areas for Improvement</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value|feedback }}
+                    </div>
+                </div>
+
+            {% else %}
+                <div class="feedback-card">
+                    <div class="feedback-card-header">
+                        <span class="feedback-card-icon">
+                            <span class="iconify" data-icon="mdi:information" data-inline="true"></span>
+                        </span>
+                        <h5 class="feedback-card-title">{{ metafield.key|title }}</h5>
+                    </div>
+                    <div class="feedback-card-content">
+                        {{ metafield.value|feedback }}
+                    </div>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="tool-empty-state">
+        <div class="tool-empty-icon">
+            <span class="iconify" data-icon="mdi:comment-outline" style="font-size: 4rem;"></span>
+        </div>
+        <h4 class="tool-empty-title">No feedback yet</h4>
+        <p class="tool-empty-description">
+            Feedback will appear here after your conversation progresses and the simulation is complete.
+        </p>
+    </div>
+{% endif %}
+{% endpartialdef %}
+
+{# ============================================================================
+   TOOL FALLBACK - Default empty state for undefined tools
+   ============================================================================ #}
+{% partialdef tool_fallback %}
+<div class="tool-empty-state">
+    <div class="tool-empty-icon">
+        <span class="iconify" data-icon="mdi:wrench-outline" style="font-size: 4rem;"></span>
+    </div>
+    <h4 class="tool-empty-title">Tool not available</h4>
+    <p class="tool-empty-description">
+        This tool is still loading. Please check back soon.
+    </p>
+</div>
+{% endpartialdef %}

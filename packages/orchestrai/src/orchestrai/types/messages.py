@@ -1,0 +1,64 @@
+# orchestrai/types/messages.py
+"""
+Data models used for message content handling in the AI module.
+
+This module contains classes that define the structure of input and output messages,
+utility models for tracking usage statistics, and tools configuration for processing
+tasks in the AI module.
+
+The classes in this module ensure strict type validation using Pydantic and support
+dynamic addition of fields for extensibility.
+"""
+
+from typing import Any
+
+from pydantic import Field
+
+from .base import StrictBaseModel
+from .content import ContentRole
+from .input import InputContent
+from .meta import Metafield
+from .output import OutputContent
+
+
+class InputItem(StrictBaseModel):
+    """Single input message with a role and one or more content parts."""
+
+    role: ContentRole
+    content: list[InputContent]
+
+
+class OutputItem(StrictBaseModel):
+    """
+    Single output message with a role and one or more content parts.
+
+    OpenAI Structured Outputs Compliance:
+        - item_meta uses list[Metafield] instead of dict[str, Any]
+        - This ensures the schema has additionalProperties: false (required by OpenAI strict mode)
+        - Empty list is allowed and is the default
+    """
+
+    role: ContentRole
+    content: list[OutputContent]
+    item_meta: list[Metafield] = Field(
+        ..., description="Metadata entries as key-value pairs (OpenAI strict mode compliant)"
+    )
+
+
+class UsageContent(StrictBaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    prompt_tokens: int = 0
+    total_tokens: int = 0
+
+    # allow unknown fields from the backend
+    model_config = {
+        **StrictBaseModel.model_config,
+        "extra": "allow",
+    }
+
+
+class ToolItem(StrictBaseModel):
+    kind: str  # e.g., "image_generation"
+    function: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)

@@ -1,0 +1,97 @@
+{% load static socialaccount %}
+
+<div class="space-y-6">
+    <section class="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6">
+        <h3 class="text-lg font-semibold text-content">Connected Accounts</h3>
+        <p class="mt-1 text-sm text-content-secondary">Manage your linked social login providers.</p>
+
+        <div class="mt-4 space-y-3">
+            {% if social_accounts %}
+                {% for account in social_accounts %}
+                <article class="flex flex-col gap-4 rounded-lg border border-border bg-surface-alt p-4 md:flex-row md:items-center md:justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                            {% if account.provider == 'google' %}
+                                <img src="{% static 'icons/brands/google-g.svg' %}" alt="" class="h-6 w-6">
+                            {% elif account.provider == 'apple' %}
+                                <img src="{% static 'icons/brands/apple-logo.svg' %}" alt="" class="h-6 w-6">
+                            {% else %}
+                                <span class="iconify text-xl text-content-secondary" data-icon="mdi:link-variant"></span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <h4 class="text-base font-semibold text-content">{{ account.provider|title }}</h4>
+                            <p class="text-sm text-content-secondary">{{ account.extra_data.email|default:account.uid }}</p>
+                            <p class="text-xs text-content-secondary">Connected on {{ account.date_joined|date:"F d, Y" }}</p>
+                        </div>
+                    </div>
+                    <form method="post" action="{% url 'socialaccount_connections' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="account" value="{{ account.id }}">
+                        <button type="submit"
+                                name="disconnect"
+                                class="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+                                onclick="return confirm('Are you sure you want to disconnect this account?')">
+                            <span class="iconify" data-icon="mdi:link-variant-off"></span>
+                            Disconnect
+                        </button>
+                    </form>
+                </article>
+                {% endfor %}
+            {% else %}
+                <div class="rounded-lg border border-dashed border-border bg-surface-alt p-6 text-center text-content-secondary">
+                    <span class="iconify mx-auto text-4xl" data-icon="mdi:link-variant-off"></span>
+                    <p class="mt-2 text-sm">No connected accounts.</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-6">
+        <h3 class="text-lg font-semibold text-content">Connect New Account</h3>
+        <p class="mt-1 text-sm text-content-secondary">Add another sign-in method to keep account access flexible.</p>
+
+        <div class="mt-4 space-y-3">
+            {% get_providers as socialaccount_providers %}
+            {% for provider in socialaccount_providers %}
+                {% if provider.id not in connected_provider_ids %}
+                <article class="flex flex-col gap-4 rounded-lg border border-border bg-surface-alt p-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                            {% if provider.id == 'google' %}
+                                <img src="{% static 'icons/brands/google-g.svg' %}" alt="" class="h-6 w-6">
+                            {% elif provider.id == 'apple' %}
+                                <img src="{% static 'icons/brands/apple-logo.svg' %}" alt="" class="h-6 w-6">
+                            {% else %}
+                                <span class="iconify text-xl text-content-secondary" data-icon="mdi:link-variant"></span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <h4 class="text-base font-semibold text-content">{{ provider.name }}</h4>
+                            <p class="text-sm text-content-secondary">Continue with {{ provider.name }}</p>
+                        </div>
+                    </div>
+                    {% provider_login_url provider.id process='connect' as provider_connect_url %}
+                    <div class="w-full lg:w-auto lg:min-w-64">
+                        {% include "accounts/partials/_social_auth_buttons.html" with auth_context='connect' provider=provider.id href=provider_connect_url size='sm' %}
+                    </div>
+                </article>
+                {% endif %}
+            {% empty %}
+                <p class="text-sm text-content-secondary">No social login providers are currently configured.</p>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="rounded-xl border border-blue-200 bg-blue-50 p-4 text-blue-900 shadow-sm">
+        <div class="flex items-start gap-3">
+            <span class="iconify mt-0.5 text-lg text-blue-700" data-icon="mdi:information"></span>
+            <div>
+                <p class="font-semibold">Security Note</p>
+                <p class="mt-1 text-sm text-blue-800">
+                    You can disconnect social accounts any time, but keep at least one working sign-in method enabled.
+                </p>
+            </div>
+        </div>
+    </section>
+</div>

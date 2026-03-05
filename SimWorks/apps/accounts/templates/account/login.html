@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+
+{% block title %}Login - {{ SITE_NAME }}{% endblock %}
+
+{% block content %}
+    {% provider_login_url 'apple' as apple_login_url %}
+    {% provider_login_url 'google' as google_login_url %}
+    <div class="tw-root">
+    <div class="w-full max-w-md md:max-w-xl lg:max-w-2xl mx-auto mt-8 bg-surface-alt border border-border rounded-lg shadow-lg p-6 md:p-8">
+        <h1 class="text-3xl font-bold text-content mb-6 text-center">Login</h1>
+
+        {% if form.non_field_errors %}
+            <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4" role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        <!-- Social Authentication Buttons -->
+        <div class="flex flex-col gap-3 mb-6">
+            {% include "accounts/partials/_social_auth_buttons.html" with auth_context='login' provider='apple' href=apple_login_url size='md' %}
+            {% include "accounts/partials/_social_auth_buttons.html" with auth_context='login' provider='google' href=google_login_url size='md' %}
+        </div>
+
+        <!-- Divider -->
+        <div class="relative my-6">
+            <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-border"></div>
+            </div>
+            <div class="relative flex justify-center text-sm">
+                <span class="px-4 bg-surface-alt text-content-secondary">or</span>
+            </div>
+        </div>
+
+        <!-- Email/Password Login Form -->
+        <form method="post" action="{% url 'account_login' %}" class="space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ next }}">
+
+            <div>
+                <label for="id_login" class="block text-sm font-medium text-content mb-2">Email:</label>
+                {% if form.login.errors %}
+                    <div class="text-red-600 text-sm mb-2">
+                        {{ form.login.errors }}
+                    </div>
+                {% endif %}
+                <input type="email"
+                       name="login"
+                       id="id_login"
+                       required
+                       class="w-full px-4 py-2 border border-border rounded bg-surface text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:border-transparent">
+            </div>
+
+            <div>
+                <label for="id_password" class="block text-sm font-medium text-content mb-2">Password:</label>
+                {% if form.password.errors %}
+                    <div class="text-red-600 text-sm mb-2">
+                        {{ form.password.errors }}
+                    </div>
+                {% endif %}
+                <input type="password"
+                       name="password"
+                       id="id_password"
+                       required
+                       class="w-full px-4 py-2 border border-border rounded bg-surface text-content focus:outline-none focus:ring-2 focus:ring-jckfrt-olive focus:border-transparent">
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-jckfrt-olive hover:bg-jckfrt-olive-hover text-content-light font-medium py-2 px-4 rounded transition-colors">
+                Login
+            </button>
+        </form>
+
+        <!-- Links -->
+        <div class="mt-6 text-center text-sm space-y-2">
+            <p class="text-content-secondary">
+                Don't have an account? <a href="{% url 'account_signup' %}" class="text-jckfrt-olive hover:underline">Sign up</a>
+            </p>
+            <p>
+                <a href="{% url 'account_reset_password' %}" class="text-jckfrt-olive hover:underline">Forgot password?</a>
+            </p>
+        </div>
+    </div>
+    </div>
+{% endblock %}

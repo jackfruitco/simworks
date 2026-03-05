@@ -1,0 +1,65 @@
+<div id="simulation-history-list"
+     x-data="{ scroll: 0 }"
+     @htmx:before-request="scroll = $el.scrollTop"
+     @htmx:after-settle="
+         $nextTick(() => {
+             if ($event.detail.target.id === 'simulation-history-list') {
+                 $el.scrollTop = scroll;
+             }
+         })
+     ">
+    <ul hx-get="{% url 'chatlab:index' %}{% if search_query or search_messages %}?{% if search_query %}q={{ search_query|urlencode }}{% endif %}{% if search_messages %}{% if search_query %}&{% endif %}search_messages=1{% endif %}{% endif %}"
+        hx-trigger="every 10s"
+        hx-target="closest #simulation-history-list"
+        hx-swap="outerHTML"
+        hx-sync="closest #simulation-history-list:abort"
+        class="space-y-3">
+        {% for sim in simulations %}
+            <li>
+                {% with status=sim.is_complete|yesno:"Complete,In Progress" %}
+                    {% include 'chatlab/partials/_simulation_card.html' with simulation=sim status=status %}
+                {% endwith %}
+            </li>
+        {% empty %}
+            <li class="rounded-xl border border-dashed border-border bg-surface p-6 text-center text-sm text-content-secondary">
+                No simulations match this search.
+            </li>
+        {% endfor %}
+    </ul>
+
+    <div class="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm">
+        {% if simulations.has_previous %}
+            <a hx-get="?page={{ simulations.previous_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if search_messages %}&search_messages=1{% endif %}"
+               hx-target="closest #simulation-history-list"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               hx-indicator="#history-loading"
+               href="?page={{ simulations.previous_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if search_messages %}&search_messages=1{% endif %}"
+               class="inline-flex min-h-10 items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 font-semibold text-content transition-colors hover:bg-surface-alt">
+                <span class="iconify" data-icon="mdi:chevron-left"></span>
+                Previous
+            </a>
+        {% endif %}
+
+        <span class="font-medium text-content-secondary">
+            Page {{ simulations.number }} of {{ simulations.paginator.num_pages }}
+        </span>
+
+        <span id="history-loading" class="htmx-indicator" style="display: none;">
+            <span class="iconify animate-spin text-lg text-content-secondary" data-icon="svg-spinners:blocks-shuffle-3"></span>
+        </span>
+
+        {% if simulations.has_next %}
+            <a hx-get="?page={{ simulations.next_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if search_messages %}&search_messages=1{% endif %}"
+               hx-target="closest #simulation-history-list"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               hx-indicator="#history-loading"
+               href="?page={{ simulations.next_page_number }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if search_messages %}&search_messages=1{% endif %}"
+               class="inline-flex min-h-10 items-center gap-1 rounded-lg border border-border bg-surface px-3 py-2 font-semibold text-content transition-colors hover:bg-surface-alt">
+                Next
+                <span class="iconify" data-icon="mdi:chevron-right"></span>
+            </a>
+        {% endif %}
+    </div>
+</div>

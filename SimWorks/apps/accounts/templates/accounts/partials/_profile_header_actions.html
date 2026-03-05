@@ -1,0 +1,6 @@
+<form method="post" action="{% url 'chatlab:create_simulation' %}" class="inline-flex">
+    {% csrf_token %}
+    <button type="submit" class="inline-flex min-h-11 items-center rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover">
+        New ChatLab Sim
+    </button>
+</form>

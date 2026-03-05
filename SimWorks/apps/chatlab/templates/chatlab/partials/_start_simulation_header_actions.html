@@ -1,0 +1,33 @@
+{% if user.is_authenticated %}
+<div class="relative" x-data="{ modifierTrayOpen: false }" @click.outside="modifierTrayOpen = false">
+    <div class="flex items-stretch gap-2">
+        <form method="get" action="{% url 'chatlab:create_simulation' %}">
+            <button type="submit" class="inline-flex min-h-11 items-center gap-2 rounded-lg bg-jckfrt-olive px-4 py-2 text-sm font-semibold text-content-light transition-colors hover:bg-jckfrt-olive-hover">
+                <span class="iconify" data-icon="mdi:plus-circle"></span>
+                Begin New Simulation
+            </button>
+        </form>
+        <button type="button"
+                class="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-content transition-colors hover:bg-surface-alt"
+                @click="modifierTrayOpen = !modifierTrayOpen"
+                :aria-expanded="modifierTrayOpen"
+                aria-label="Toggle simulation modifiers">
+            <span class="iconify" :data-icon="modifierTrayOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'"></span>
+        </button>
+    </div>
+
+    <div x-show="modifierTrayOpen"
+         x-cloak
+         x-transition.origin.top.right
+         class="absolute right-0 z-20 mt-2 w-[min(26rem,90vw)] rounded-xl border border-border bg-surface p-3 shadow-xl"
+         hx-get="{% url 'chatlab:modifier_selector' %}"
+         hx-trigger="revealed"
+         hx-swap="innerHTML"
+         hx-indicator="#modifier-loading">
+        <div id="modifier-loading" class="htmx-indicator flex items-center justify-center gap-2 py-6 text-sm text-content-secondary" style="display: none;">
+            <span class="iconify animate-spin" data-icon="svg-spinners:blocks-shuffle-3"></span>
+            <span>Loading modifiers...</span>
+        </div>
+    </div>
+</div>
+{% endif %}

@@ -1,0 +1,9 @@
+{% include "partials/_modal.html" with
+  modal_id="order-request-form"
+  modal_label_id="order-request-form-label"
+  modal_body_id="order-request-form-body"
+  modal_title="Request labs"
+  modal_close_id="close-order-request-form"
+  modal_body_template="simcore/partials/order-request-form_content.html"
+  modal_extra_attrs="data-simulation-id=\"%s\""|add:simulation.id
+%}

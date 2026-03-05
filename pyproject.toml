@@ -1,35 +1,103 @@
 [project]
 name = "SimWorks"
-version = "0.5.21"
+version = "0.7.0"
 description = "Add your description here"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "celery>=5.5.2",
-    "channels>=4.2.2",
-    "channels-redis>=4.2.1",
-    "daphne>=4.2.0",
-    "django>=5.2.1",
+    "celery>=5.6.2",
+    "channels>=4.3.2",
+    "channels-redis>=4.3.0",
+    "daphne>=4.2.1",
+    "django-allauth[socialaccount]==65.14.3",
     "django-autoslug>=1.9.9",
-    "django-celery-beat>=2.8.1",
-    "django-htmx>=1.23.0",
-    "django-imagekit>=5.0.0",
-    "django-polymorphic>=4.1.0",
-    "django-redis>=5.4.0",
-    "faker>=37.3.0",
-    "strawberry-graphql-django==0.72.0",
+    # "django-celery-beat>=2.8.1",
+    "django-htmx>=1.27.0",
+    "django-ninja>=1.4.0",
+    "django-imagekit>=6.1.0",
+    "django-polymorphic>=4.11.0",
+    "django-redis>=6.0.0",
+    "faker==40.8.0",
     "httpcore>=1.0.9",
-    "logfire[django]>=3.24.0",
-    "openai>=1.82.0",
-    "opentelemetry-instrumentation-httpx>=0.55b1",
-    "pillow>=11.2.1",
-    "pre-commit>=4.2.0",
-    "psycopg>=3.2.9",
-    "psycopg-binary>=3.2.9",
-    "pydantic>=2.11.5",
+    "logfire[django]==4.25.0",
+    "openai==2.24.0",
+    "opentelemetry-instrumentation-httpx>=0.58b0",
+    "pillow==12.1.1",
+    "pre-commit>=4.5.0",
+    "psycopg>=3.3.3",
+    "psycopg-binary>=3.3.3",
+    "pyjwt>=2.11.0",
+    "pydantic==2.12.5",
     "pydantic-django>=0.1.1",
-    "pytest>=8.3.5",
-    "redis>=6.1.0",
-    "typing-extensions>=4.13.2",
-    "zope-interface>=7.2",
-    "strawberry-graphql==0.288.1",
+    "pytest>=9.0.2",
+    "pytest-django==4.12.0",
+    "redis>=7.2.0",
+    "ruff==0.15.4",
+    "typing-extensions>=4.15.0",
+    "zope-interface==8.2",
+    "python-slugify>=8.0.4",
+    "orchestrai",
+    "orchestrai-django",
+    "django==6.0.3",
+    "twisted[http2,tls]>=25.5.0",
+    "structlog>=25.5.0",
+    "django-cors-headers>=4.9.0",
+    "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
+    "urllib3>=2.6.3",
+    "pydantic-ai-slim>=1.65.0",
+]
+
+[tool.uv.workspace]
+members = ["packages/orchestrai", "packages/orchestrai_django"]
+
+[tool.uv.sources]
+orchestrai-django = { workspace = true }
+orchestrai = { workspace = true }
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings_test"
+pythonpath = [
+    ".",
+    "SimWorks",
+    "packages/orchestrai/src",
+    "packages/orchestrai_django/src",
+]
+python_files = ["test_*.py"]
+testpaths = [
+    "tests",
+    "packages/orchestrai/tests",
+    "packages/orchestrai_django/tests",
+]
+asyncio_mode = "auto"
+addopts = "-ra --maxfail=1 --strict-markers"
+markers = [
+    "unit: fast isolated tests with no DB/network requirements",
+    "component: boundary-level tests with fakes/stubs",
+    "integration: Django/ORM/request-cycle and cross-module integration tests",
+    "contract: package public API/schema compatibility tests",
+    "system: high-level system smoke tests",
+    "e2e: end-to-end tests across full stack boundaries",
+    "slow: intentionally slow tests excluded from fast lanes",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.14.10",
+]
+
+[tool.coverage.run]
+omit = [
+    "*/migrations/*.py",
+    "*/__init__.py",
+    "SimWorks/config/asgi.py",
+    "SimWorks/config/wsgi.py",
+]
+
+[tool.coverage.report]
+omit = [
+    "*/migrations/*.py",
+    "*/__init__.py",
+    "SimWorks/config/asgi.py",
+    "SimWorks/config/wsgi.py",
 ]

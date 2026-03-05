@@ -1,0 +1,189 @@
+.sim-metadata {
+  list-style: none;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem auto;
+  background-color: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  max-width: 90%;
+  display: block;
+  max-height: 50vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: 10px 10px 10px var(--color-border);
+}
+
+.sim-metadata li {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: fadeIn 0.4s ease-out forwards;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-dark);
+  font-size: 0.95rem;
+}
+
+/* Stagger animation for each li */
+.sim-metadata li:nth-child(1)  { animation-delay: 0.1s;  }
+.sim-metadata li:nth-child(2)  { animation-delay: 0.2s;  }
+.sim-metadata li:nth-child(3)  { animation-delay: 0.3s;  }
+.sim-metadata li:nth-child(4)  { animation-delay: 0.4s;  }
+.sim-metadata li:nth-child(5)  { animation-delay: 0.5s;  }
+.sim-metadata li:nth-child(6)  { animation-delay: 0.6s;  }
+.sim-metadata li:nth-child(7)  { animation-delay: 0.7s;  }
+.sim-metadata li:nth-child(8)  { animation-delay: 0.8s;  }
+.sim-metadata li:nth-child(9)  { animation-delay: 0.9s;  }
+.sim-metadata li:nth-child(10) { animation-delay: 0.10s; }
+.sim-metadata li:nth-child(11)  { animation-delay: 0.11s;  }
+.sim-metadata li:nth-child(12)  { animation-delay: 0.12s;  }
+.sim-metadata li:nth-child(13)  { animation-delay: 0.13s;  }
+.sim-metadata li:nth-child(14)  { animation-delay: 0.14s;  }
+.sim-metadata li:nth-child(15)  { animation-delay: 0.15s;  }
+.sim-metadata li:nth-child(16)  { animation-delay: 0.16s;  }
+.sim-metadata li:nth-child(17)  { animation-delay: 0.17s;  }
+.sim-metadata li:nth-child(18)  { animation-delay: 0.18s;  }
+.sim-metadata li:nth-child(19)  { animation-delay: 0.19s;  }
+.sim-metadata li:nth-child(20) { animation-delay: 0.20s; }
+/* You can add more or use JS if the count is dynamic */
+
+.sim-metadata li:last-child {
+  border-bottom: none;
+}
+
+.sim-metadata li::before {
+  content: "📋 ";
+  margin-right: 0.25rem;
+  opacity: 0.8;
+}
+
+.sim-metadata-empty {
+  font-style: italic;
+  color: var(--color-muted);
+  padding: 0.5rem 1rem;
+  text-align: center;
+}
+
+table.sim-metadata {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+table.sim-metadata th,
+table.sim-metadata td {
+  text-align: left;
+  padding: 0.35rem 0.65rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+  white-space: normal;
+  word-break: break-word;
+}
+
+table.sim-metadata th {
+  border-bottom-width: 2px;
+}
+
+.sim-metadata-table-wrapper {
+  margin: 0.5rem auto;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.staged-item {
+  display: inline-flex;
+  align-items: center;
+  margin: 0.2rem;
+}
+
+.staged-item .remove-order,
+.staged-item span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+/* Left half: the red “✕” pill edge */
+.staged-item .remove-order {
+  background: var(--jckfrt-red)!important;
+  color: white;
+  cursor: pointer;
+  border: 1px solid var(--color-text-dark);
+  border-right: none;
+  border-radius: 0.75rem 0 0 0.75rem;
+  /* IMPORTANT: use identical top/bottom padding to the span below */
+  padding: 0.25rem 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Right half: the label */
+.staged-item span {
+  background: var(--color-border);
+  color: var(--color-text-dark);
+  border: 1px solid var(--color-text-dark);
+  border-left: none;
+  border-radius: 0 0.75rem 0.75rem 0;
+  /* MATCH the same vertical padding as the button above */
+  padding: 0.25rem 0.5rem;
+  margin: 0;
+}
+
+/* ───────────────────────────────────────────────
+   Medium Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 48em) {
+    /* 768px; portrait tablet and larger */
+}
+
+
+/* ───────────────────────────────────────────────
+   Large Screens: Simulation Layouts
+────────────────────────────────────────────────── */
+@media (min-width: 64em) {
+    /* 1024px; landscape tablet and larger */
+}
+
+@media (max-width: 48em) {
+  .sim-metadata-table-wrapper {
+    padding: 0.5rem;
+  }
+
+  table.sim-metadata th,
+  table.sim-metadata td {
+    padding: 0.35rem 0.5rem;
+  }
+
+  table.sim-metadata thead {
+    display: none;
+  }
+
+  table.sim-metadata tbody tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem 0.75rem;
+    padding: 0.25rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  table.sim-metadata tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  table.sim-metadata td {
+    display: block;
+    padding: 0;
+  }
+
+  table.sim-metadata td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--color-muted);
+    margin-bottom: 0.15rem;
+  }
+}

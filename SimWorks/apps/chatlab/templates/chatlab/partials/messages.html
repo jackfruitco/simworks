@@ -1,0 +1,4 @@
+{% comment %} Renders a list of chat input {% endcomment %}
+{% for message in messages %}
+  {% include "chatlab/partials/_message.html" %}
+{% endfor %}
