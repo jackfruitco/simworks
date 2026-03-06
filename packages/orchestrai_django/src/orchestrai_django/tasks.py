@@ -176,9 +176,9 @@ def _build_request_json(service, payload, context, request_obj):
 
     prompt_text = ""
     try:
-        instruction_classes = getattr(service, "_instruction_classes", None) or collect_instructions(
-            type(service)
-        )
+        instruction_classes = getattr(
+            service, "_instruction_classes", None
+        ) or collect_instructions(type(service))
         parts: list[str] = []
         for instruction_cls in instruction_classes:
             has_custom_render = (
@@ -188,6 +188,7 @@ def _build_request_json(service, payload, context, request_obj):
             if has_custom_render:
                 result = instruction_cls.render_instruction(service)
                 if inspect.isawaitable(result):
+
                     async def _await_render(awaitable):
                         return await awaitable
 

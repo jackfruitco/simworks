@@ -34,4 +34,3 @@ class FeedbackContinuationInstruction(BaseInstruction):
         "Address any specific questions or areas they want to discuss. "
         "Maintain the same educational tone and provide constructive guidance."
     )
-

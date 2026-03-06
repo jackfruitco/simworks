@@ -14,4 +14,3 @@ class ImageGenerationInstruction(BaseInstruction):
         "The image should not show details that would not normally be seen "
         "in an image. Do not overexaggerate the look of a sign or symptom."
     )
-

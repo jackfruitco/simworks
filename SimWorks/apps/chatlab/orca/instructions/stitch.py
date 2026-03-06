@@ -68,4 +68,3 @@ class StitchReplyDetailInstruction(BaseInstruction):
         "- content: array of content blocks (at least one text block)\n"
         "- item_meta: array of metadata key-value pairs (use empty array [] if none)"
     )
-

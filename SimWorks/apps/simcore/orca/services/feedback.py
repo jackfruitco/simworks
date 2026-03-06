@@ -5,7 +5,10 @@ import logging
 from typing import ClassVar
 
 from apps.common.orca.instructions import FeedbackEducatorInstruction, MedicalAccuracyInstruction
-from apps.simcore.orca.instructions import FeedbackContinuationInstruction, FeedbackInitialInstruction
+from apps.simcore.orca.instructions import (
+    FeedbackContinuationInstruction,
+    FeedbackInitialInstruction,
+)
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
 

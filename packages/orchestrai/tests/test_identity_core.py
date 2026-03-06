@@ -10,7 +10,6 @@ from orchestrai.decorators.components.service_decorator import ServiceDecorator
 from orchestrai.identity import Identity, IdentityResolver
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
-    INSTRUCTIONS_DOMAIN,
     SERVICES_DOMAIN,
     normalize_domain,
 )

@@ -37,4 +37,3 @@ class SMSStyleInstruction(BaseInstruction):
         "- Keep messages concise and conversational.\n"
         "- Respond as a patient would via text message, not as a medical professional."
     )
-
