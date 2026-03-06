@@ -88,7 +88,7 @@ services:
       - server
     networks:
       - app
-      - tunnel
+      - _TunnelNet
 
   nginx-dev:
     extends:
@@ -183,6 +183,6 @@ volumes:
 networks:
   app:
     driver: bridge
-    # app: true
-  tunnel:
+    # internal: true
+  _TunnelNet:
     external: True
