@@ -24,6 +24,7 @@ All runtime services (server, celery worker, celery beat) deploy from that same 
 - **cd-release**
   - Triggered by `release.published` and optional `workflow_dispatch`
   - Rejects prerelease publication events
+  - For manual dispatch, requires an existing GitHub Release for the tag and rejects draft/prerelease releases
   - Requires release tag format `vX.Y.Z`
   - Validates release tag version matches `pyproject.toml` at the tagged commit
   - Promotes an already-built immutable digest (prefers `sha-<commit>`, falls back to existing `vX.Y.Z`) to: `vX.Y.Z`, `stable`
@@ -33,6 +34,9 @@ All runtime services (server, celery worker, celery beat) deploy from that same 
 
 ## Portainer and GitHub settings
 
+- Staging stacks **must** set `SERVER_IMAGE_TAG=staging`.
+- Production stacks should set `SERVER_IMAGE_TAG=stable`.
+- The compose default `SERVER_IMAGE_TAG=stable` is production-oriented; it is unsafe for staging unless explicitly overridden.
 - Configure staging stack image tag as `:staging`
 - Configure production stack image tag as `:stable`
 - Configure environment-scoped Action secret `PORTAINER_WEBHOOK`:
@@ -41,6 +45,7 @@ All runtime services (server, celery worker, celery beat) deploy from that same 
 
 ## Migration notes
 
+- For every staging Portainer stack, explicitly set `SERVER_IMAGE_TAG=staging`. Do not rely on compose defaults.
 - Replace any production stack use of `:prod` with `:stable`.
 - If your stack currently relies on `:latest`, switch to explicit tags (`:staging` or `:stable`).
 - `cd-promote` is removed; release publication now triggers production deployment.

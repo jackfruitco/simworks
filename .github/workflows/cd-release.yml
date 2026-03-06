@@ -46,35 +46,93 @@ jobs:
             exit 1
           fi
 
-      - name: Resolve target release tag
-        id: target
+      - name: Resolve and validate release metadata
+        id: release_meta
+        uses: actions/github-script@v8
         env:
-          EVENT_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ inputs.release_tag }}
-        run: |
-          set -euo pipefail
+        with:
+          script: |
+            const semverTag = /^v\d+\.\d+\.\d+$/;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            RELEASE_TAG="${INPUT_TAG}"
-          else
-            RELEASE_TAG="${EVENT_TAG}"
-          fi
+            const setOutputs = ({ tag, releaseId, isPrerelease, isDraft }) => {
+              core.setOutput('release_tag', tag);
+              core.setOutput('release_id', String(releaseId));
+              core.setOutput('is_prerelease', isPrerelease ? 'true' : 'false');
+              core.setOutput('is_draft', isDraft ? 'true' : 'false');
+              core.setOutput('version', tag.replace(/^v/, ''));
+            };
 
-          if [ -z "${RELEASE_TAG}" ]; then
-            echo "Unable to determine release tag from event/input." >&2
-            exit 1
-          fi
+            if (context.eventName === 'release') {
+              const release = context.payload.release || {};
+              const tag = String(release.tag_name || '').trim();
+              if (!tag) {
+                core.setFailed('Release event is missing tag_name.');
+                return;
+              }
+              if (!semverTag.test(tag)) {
+                core.setFailed(`release tag must match vX.Y.Z (received: ${tag})`);
+                return;
+              }
 
-          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "release_tag must match vX.Y.Z (received: ${RELEASE_TAG})" >&2
-            exit 1
-          fi
+              setOutputs({
+                tag,
+                releaseId: Number(release.id || 0),
+                isPrerelease: Boolean(release.prerelease),
+                isDraft: Boolean(release.draft),
+              });
+              return;
+            }
 
-          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
-          echo "version=${RELEASE_TAG#v}" >> "${GITHUB_OUTPUT}"
+            if (context.eventName === 'workflow_dispatch') {
+              const tag = String(process.env.INPUT_TAG || '').trim();
+              if (!tag) {
+                core.setFailed('workflow_dispatch input release_tag is required.');
+                return;
+              }
+              if (!semverTag.test(tag)) {
+                core.setFailed(`release_tag must match vX.Y.Z (received: ${tag})`);
+                return;
+              }
+
+              try {
+                const { data } = await github.rest.repos.getReleaseByTag({
+                  owner,
+                  repo,
+                  tag,
+                });
+
+                if (data.draft) {
+                  core.setFailed(`release_tag ${tag} maps to a draft release; only full published releases may deploy.`);
+                  return;
+                }
+                if (data.prerelease) {
+                  core.setFailed(`release_tag ${tag} maps to a prerelease; only full published releases may deploy.`);
+                  return;
+                }
+
+                setOutputs({
+                  tag,
+                  releaseId: Number(data.id || 0),
+                  isPrerelease: Boolean(data.prerelease),
+                  isDraft: Boolean(data.draft),
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  core.setFailed(`No GitHub Release exists for tag ${tag}.`);
+                  return;
+                }
+                throw error;
+              }
+              return;
+            }
+
+            core.setFailed(`Unsupported event type: ${context.eventName}`);
 
       - name: Reject prerelease publication events
-        if: ${{ github.event_name == 'release' && github.event.release.prerelease }}
+        if: ${{ github.event_name == 'release' && steps.release_meta.outputs.is_prerelease == 'true' }}
         run: |
           set -euo pipefail
           echo "cd-release only deploys full releases; prerelease publications are not allowed." >&2
@@ -88,7 +146,7 @@ jobs:
       - name: Resolve release commit from tag
         id: release_ref
         env:
-          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
         run: |
           set -euo pipefail
 
@@ -153,7 +211,7 @@ jobs:
 
       - name: Validate release tag matches pyproject.toml version
         env:
-          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           PYPROJECT_VERSION: ${{ steps.pyproject.outputs.version }}
         run: |
           set -euo pipefail
@@ -169,12 +227,14 @@ jobs:
         env:
           DEPLOY_ENVIRONMENT: production
           DEPLOY_REF: ${{ steps.release_ref.outputs.commit_sha }}
-          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          RELEASE_ID: ${{ steps.release_meta.outputs.release_id }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const environment = process.env.DEPLOY_ENVIRONMENT;
+            const releaseId = process.env.RELEASE_ID;
 
             const res = await github.rest.repos.createDeployment({
               owner,
@@ -185,7 +245,7 @@ jobs:
               required_contexts: [],
               transient_environment: false,
               production_environment: true,
-              description: `cd-release: ${process.env.RELEASE_TAG}`,
+              description: `cd-release: ${process.env.RELEASE_TAG} (release_id=${releaseId})`,
             });
 
             core.setOutput('deployment_id', String(res.data.id));
@@ -206,7 +266,7 @@ jobs:
       - name: Resolve source digest from immutable tags
         id: source
         env:
-          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           RELEASE_COMMIT: ${{ steps.release_ref.outputs.commit_sha }}
         run: |
           set -euo pipefail
@@ -312,7 +372,7 @@ jobs:
       - name: Promote digest to release and stable tags
         env:
           DIGEST: ${{ steps.source.outputs.digest }}
-          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
         run: |
           set -euo pipefail
 
