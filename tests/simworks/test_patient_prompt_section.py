@@ -18,28 +18,31 @@ class DummyManager:
 
 
 @pytest.mark.asyncio
-async def test_patient_name_instructions_defaults_when_no_context():
+async def test_patient_name_instruction_defaults_when_no_context():
+    from apps.chatlab.orca.instructions.patient import PatientNameInstruction
     from apps.chatlab.orca.services.patient import GenerateInitialResponse
 
     service = GenerateInitialResponse(context={})
 
-    rendered = await service.patient_name_instructions()
+    rendered = await PatientNameInstruction.render_instruction(service)
     assert rendered == "You are a standardized patient."
 
 
 @pytest.mark.asyncio
-async def test_patient_name_instructions_uses_simulation_from_context():
+async def test_patient_name_instruction_uses_simulation_from_context():
+    from apps.chatlab.orca.instructions.patient import PatientNameInstruction
     from apps.chatlab.orca.services.patient import GenerateInitialResponse
 
     simulation = DummySimulation(pk=101, full_name="Jamie Patient")
     service = GenerateInitialResponse(context={"simulation": simulation})
 
-    rendered = await service.patient_name_instructions()
+    rendered = await PatientNameInstruction.render_instruction(service)
     assert "Jamie Patient" in rendered
 
 
 @pytest.mark.asyncio
-async def test_patient_name_instructions_resolves_simulation_id(monkeypatch):
+async def test_patient_name_instruction_resolves_simulation_id(monkeypatch):
+    from apps.chatlab.orca.instructions.patient import PatientNameInstruction
     from apps.chatlab.orca.services.patient import GenerateInitialResponse
     from apps.simcore.models import Simulation
 
@@ -47,6 +50,6 @@ async def test_patient_name_instructions_resolves_simulation_id(monkeypatch):
     monkeypatch.setattr(Simulation, "objects", DummyManager(simulation))
 
     service = GenerateInitialResponse(context={"simulation_id": 101})
-    rendered = await service.patient_name_instructions()
+    rendered = await PatientNameInstruction.render_instruction(service)
 
     assert "Jamie Patient" in rendered

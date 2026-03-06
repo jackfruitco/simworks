@@ -15,10 +15,9 @@ from .base import BaseLoader
 class DefaultLoader(BaseLoader):
     COMPONENT_SUFFIXES: tuple[str, ...] = (
         "services",
+        "instructions",
         "codecs",
         "schemas",
-        "prompts",
-        "prompt_sections",
         "tools",
         "persist",
     )

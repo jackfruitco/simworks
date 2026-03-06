@@ -1,111 +1,30 @@
-# orchestrai_django Documentation
+# orchestrai_django Docs
 
-Welcome to the **orchestrai_django** documentation — the Django integration layer for the `orchestrai` AI framework.
+## Architecture
 
-This package extends the core `orchestrai` library so Django apps can register AI services, codecs, prompt sections, and response schemas that cooperate automatically via shared tuple³ identities.
+| Component | Role | Primary API |
+|---|---|---|
+| Service | Executable unit that runs a model | `@orca.service`, `DjangoBaseService` |
+| Instruction | System prompt fragment (static or dynamic) | `@orca.instruction`, `BaseInstruction` |
+| Schema | Structured output models | `DjangoBaseOutputSchema`, `DjangoBaseOutputItem` |
+| Registry | Identity-based component lookup | `orchestrai.registry` |
 
----
+## Core Docs
 
-## 📘 Overview
-
-`orchestrai_django` allows you to:
-
-- Define **LLM services** that can be executed synchronously or asynchronously through `.execute()` and `.enqueue()`.
-- Create **PromptSections** that render developer and user-facing messages.
-- Register **Codecs** that validate and persist LLM responses using Django models.
-- Build **Response Schemas** with strict Pydantic models (`DjangoBaseOutputSchema`).
-- Leverage the **Tuple³ Identity System** (`origin.bucket.name`) for automatic wiring.
-- Extend the **core AI identity system** with Django-aware defaults (app labels, mixins, strip tokens).
-
----
-
-## 🧩 Core Concepts
-
-### Identity-Driven Architecture
-
-Every major class (service, codec, prompt section, schema) has a tuple³ identity:
-
-```
-(origin, bucket, name)
-```
-
-Matching identities allow components to discover one another automatically. See [Identity System](identity.md) for full details.
-
-### Four Pillars
-
-| Component | Purpose | Decorator | Base Class |
-|-----------|---------|-----------|------------|
-| **Service** | Defines an executable AI workflow | `@llm_service` | `DjangoExecutableLLMService` |
-| **Codec** | Validates & persists AI responses | `@codec` | `DjangoBaseCodec` |
-| **Prompt Section** | Builds prompt content or messages | `@prompt_section` | `PromptSection` |
-| **Response Schema** | Defines structured output schema | *(decorator optional)* | `DjangoBaseOutputSchema` |
-
-Each component can autoderive its identity, keeping boilerplate minimal.
-
----
-
-## 📂 Documentation Index
-
-### Getting Started
-- [Quick Start Guide](quick-start.md)
-
-### Identity System
-- [Tuple³ Identities & Mixins](identity.md)
-
-### Building Blocks
+- [Quick Start](quick-start.md)
+- [Decorators](decorators.md)
 - [Services](services.md)
-- [Codecs](codecs.md)
-- [Response Schemas](schemas.md)
-- [Prompt Sections](prompt_sections.md)
-- [Prompts & Prompt Plans](prompts.md)
-- [Prompt Engine](prompt_engine.md)
-
-### Platform Integration
-- [Execution Backends](execution_backends.md)
+- [Instructions](instructions.md)
+- [Identity](identity.md)
 - [Registries](registries.md)
-- [Signals & Emitters](signals.md)
+- [Schemas](schemas.md)
+- [Codecs](codecs.md)
+- [Persistence](persistence.md)
+- [Execution Backends](execution_backends.md)
 - [Settings](settings.md)
+- [Signals](signals.md)
 
----
+## Migration Notes
 
-## 🧭 How It Fits Together
-
-A typical flow looks like:
-
-```text
-Service.execute()
-  → PromptSection.render_* builds messages
-  → LLM call via provider
-  → Codec.persist() validates & saves
-  → Schema enforces structured output
-```
-
-Each step is linked by **identity** so long as the `origin`, `bucket`, and `name` match.
-
----
-
-## ⚙️ Requirements
-
-- Python 3.11+
-- Django 5.0+
-- `orchestrai`
-
----
-
-## 🧩 Related Packages
-
-| Package | Description |
-|---------|-------------|
-| `orchestrai` | Core AI utilities and provider abstractions |
-| `orchestrai_django` | Django integration and execution layer |
-| `simworks` | Example Django project that consumes this package |
-
----
-
-## 🧠 Tip
-
-If you’re just starting, begin with the **[Quick Start Guide](quick-start.md)**. It walks through creating a complete chain (schema → prompt section → codec → service).
-
----
-
-© 2025 Jackfruit SimWorks • orchestrai_django
+- Prompt plans / PromptEngine / PromptSection are removed in v0.5.0.
+- Use class-based instruction MRO composition instead.

@@ -12,4 +12,13 @@ try:  # pragma: no cover - metadata not available in tests
 except PackageNotFoundError:  # pragma: no cover - fallback for editable installs
     __version__ = "0.0.0"
 
-__all__ = ["OrchestrAI", "__version__", "current_app", "get_current_app"]
+
+def __getattr__(name: str):
+    if name == "orca":
+        from orchestrai.decorators import orca
+
+        return orca
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = ["OrchestrAI", "__version__", "current_app", "get_current_app", "orca"]

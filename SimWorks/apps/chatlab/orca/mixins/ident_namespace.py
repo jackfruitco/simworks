@@ -1,5 +1,5 @@
 # simcore/ai/mixins/ident_namespace.py
-"""Base mixin for chatlab prompt sections."""
+"""Base mixin for chatlab instruction-scoped identities."""
 
 from orchestrai_django.identity import DjangoIdentityMixin
 

@@ -40,9 +40,9 @@ class ServiceDecorator(BaseDecorator):
             model = "openai-responses:gpt-5-nano"
             response_schema = MySchema
 
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "Instructions..."
+            @orca.instruction(order=10)
+            class MyInstruction(BaseInstruction):
+                instruction = "Instructions..."
 
         # or with explicit hints
         @service(namespace="orchestrai", name="json")
@@ -51,6 +51,25 @@ class ServiceDecorator(BaseDecorator):
     """
 
     default_domain = SERVICES_DOMAIN
+
+    def derive_identity(
+        self,
+        cls: type[Any],
+        *,
+        domain: str | None,
+        namespace: str | None,
+        group: str | None,
+        name: str | None,
+    ):
+        # Services should always resolve into the services domain unless explicitly overridden.
+        resolved_domain = domain or SERVICES_DOMAIN
+        return super().derive_identity(
+            cls,
+            domain=resolved_domain,
+            namespace=namespace,
+            group=group,
+            name=name,
+        )
 
     def get_registry(self) -> ComponentRegistry:
         # Always register into the service registry

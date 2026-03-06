@@ -49,9 +49,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_IDENTITY_STRIP_TOKENS: tuple[str, ...] = (
     "Codec",
     "Service",
-    "Prompt",
-    "PromptSection",
-    "Section",
+    "Instruction",
     "Response",
     "Generate",
     "Generation",

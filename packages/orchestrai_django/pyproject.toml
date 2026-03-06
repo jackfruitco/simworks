@@ -1,6 +1,6 @@
 [project]
 name = "orchestrai-django"
-version = "0.4.2"
+version = "0.5.0"
 description = "Django integration for OrchestrAI (signals, adapters, autodiscovery)"
 readme = "README.md"
 authors = [
@@ -9,7 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
   "django>=6.0",
-  "orchestrai>=0.4.2",
+  "orchestrai>=0.5.0",
 ]
 
 [project.optional-dependencies]

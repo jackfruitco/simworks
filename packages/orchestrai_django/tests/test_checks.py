@@ -43,7 +43,7 @@ def test_check_orchestrai_registries_reports_collisions_and_invalid_identity(set
 
     monkeypatch.setattr(orchestrai_checks, "codec_registry", fake_ok)
     monkeypatch.setattr(orchestrai_checks, "service_registry", fake_with_collision)
-    monkeypatch.setattr(orchestrai_checks, "prompt_registry", fake_ok)
+    monkeypatch.setattr(orchestrai_checks, "instruction_registry", fake_ok)
     monkeypatch.setattr(orchestrai_checks, "schema_registry", fake_ok)
 
     messages = orchestrai_checks.check_orchestrai_registries()
@@ -63,7 +63,7 @@ def test_check_orchestrai_service_pairings_reports_missing_codec(monkeypatch):
     monkeypatch.setattr(orchestrai_checks, "service_registry", fake_service_registry)
     monkeypatch.setattr(orchestrai_checks, "codec_registry", fake_empty_lookup)
     monkeypatch.setattr(orchestrai_checks, "schema_registry", fake_empty_lookup)
-    monkeypatch.setattr(orchestrai_checks, "prompt_registry", fake_empty_lookup)
+    monkeypatch.setattr(orchestrai_checks, "instruction_registry", fake_empty_lookup)
 
     messages = orchestrai_checks.check_orchestrai_service_pairings()
     ids = {message.id for message in messages}
