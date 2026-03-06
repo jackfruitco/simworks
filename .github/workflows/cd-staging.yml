@@ -1,0 +1,229 @@
+name: cd-staging
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+concurrency:
+  group: cd-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+  deployments: write
+
+jobs:
+  deploy:
+    name: cd-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Read project metadata from pyproject.toml
+        id: pyproject
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          out_path = os.environ.get("GITHUB_OUTPUT")
+          if not out_path:
+              raise SystemExit("GITHUB_OUTPUT is not set")
+
+          data = tomllib.loads(Path("pyproject.toml").read_text())
+          proj = data.get("project", {})
+
+          version = (proj.get("version") or "").strip()
+          name = (proj.get("name") or "").strip()
+          description = (proj.get("description") or "").strip()
+
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(
+                  f"pyproject.toml [project].version must match X.Y.Z (received: {version})"
+              )
+
+          if not name:
+              raise SystemExit("pyproject.toml [project].name must be set")
+
+          with open(out_path, "a", encoding="utf-8") as f:
+              f.write(f"version={version}\n")
+              f.write(f"name={name}\n")
+              f.write(f"description={description}\n")
+          PY
+
+      - name: Create GitHub deployment record
+        id: deployment
+        uses: actions/github-script@v8
+        env:
+          DEPLOY_ENVIRONMENT: staging
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const environment = process.env.DEPLOY_ENVIRONMENT;
+
+            const res = await github.rest.repos.createDeployment({
+              owner,
+              repo,
+              ref: context.sha,
+              environment,
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: false,
+              production_environment: false,
+              description: `cd-staging: ${environment}`,
+            });
+
+            core.setOutput('deployment_id', String(res.data.id));
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push staging image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: docker/Dockerfile.prod
+          push: true
+          cache-from: type=gha,mode=max,scope=runtime-image
+          cache-to: type=gha,mode=max,scope=runtime-image
+          tags: |
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+            ${{ env.IMAGE }}:staging
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=v${{ steps.pyproject.outputs.version }}
+            org.opencontainers.image.title=${{ steps.pyproject.outputs.name }}
+            org.opencontainers.image.description=${{ steps.pyproject.outputs.description }}
+
+      - name: Scan pushed image
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          version: v0.69.3
+          token-setup-trivy: ${{ github.token }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Generate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}:sha-${{ github.sha }}
+          version: v0.69.3
+          token-setup-trivy: ${{ github.token }}
+          format: cyclonedx
+          output: sbom.cdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sbom-cdx
+          path: sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
+
+      - name: Sign image digest with keyless OIDC
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Trigger Portainer staging redeploy
+        env:
+          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PORTAINER_WEBHOOK:-}" ]; then
+            echo "PORTAINER_WEBHOOK secret is not set; skipping redeploy."
+            exit 0
+          fi
+
+          curl -fsSL -X POST "${PORTAINER_WEBHOOK}"
+
+      - name: Mark deployment success
+        if: ${{ success() }}
+        uses: actions/github-script@v8
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          DEPLOY_ENVIRONMENT: staging
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const deployment_id = Number(process.env.DEPLOYMENT_ID);
+
+            if (!deployment_id) {
+              core.warning('No deployment_id found; skipping deployment status update.');
+              return;
+            }
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id,
+              state: 'success',
+              description: `cd-staging: ${process.env.DEPLOY_ENVIRONMENT} succeeded`,
+            });
+
+      - name: Mark deployment failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v8
+        env:
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
+          DEPLOY_ENVIRONMENT: staging
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const deployment_id = Number(process.env.DEPLOYMENT_ID);
+
+            if (!deployment_id) {
+              core.warning('No deployment_id found; skipping deployment status update.');
+              return;
+            }
+
+            await github.rest.repos.createDeploymentStatus({
+              owner,
+              repo,
+              deployment_id,
+              state: 'failure',
+              description: `cd-staging: ${process.env.DEPLOY_ENVIRONMENT} failed`,
+            });

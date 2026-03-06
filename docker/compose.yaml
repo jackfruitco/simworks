@@ -29,7 +29,7 @@ x-app-env: &app_env
 
 services:
   server:
-    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-stable}
     environment:
       <<: *app_env
       DJANGO_MIGRATE: ${DJANGO_MIGRATE:-0}
@@ -117,7 +117,7 @@ services:
           - "${REDIS_HOSTNAME:-redis}"
 
   celery:
-    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-stable}
     environment:
       <<: *app_env
       DJANGO_MIGRATE: 0
@@ -149,7 +149,7 @@ services:
         max-file: "3"
 
   celerybeat:
-    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-latest}
+    image: ghcr.io/jackfruitco/simworks:${SERVER_IMAGE_TAG:-stable}
     environment:
       <<: *app_env
       DJANGO_MIGRATE: 0
