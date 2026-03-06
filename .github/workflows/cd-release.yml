@@ -1,14 +1,16 @@
 name: cd-release
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
-      rc:
-        description: "RC number (e.g. 1)"
+      release_tag:
+        description: "Release tag to deploy (e.g. v0.8.1)"
         required: true
         type: string
       trigger_webhook:
-        description: "Trigger staging Portainer webhook when configured"
+        description: "Trigger production Portainer webhook when configured"
         required: false
         default: true
         type: boolean
@@ -17,13 +19,12 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 concurrency:
-  group: cd-release
+  group: cd-release-production
   cancel-in-progress: false
 
 permissions:
   contents: read
   packages: write
-  attestations: write
   id-token: write
   deployments: write
 
@@ -32,28 +33,104 @@ jobs:
     name: cd-release
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: staging
+    environment: production
 
     steps:
+      - name: Validate dispatch ref
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "cd-release workflow_dispatch can only run from refs/heads/main. Current ref: ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: Resolve target release tag
+        id: target
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            RELEASE_TAG="${INPUT_TAG}"
+          else
+            RELEASE_TAG="${EVENT_TAG}"
+          fi
+
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "Unable to determine release tag from event/input." >&2
+            exit 1
+          fi
+
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release_tag must match vX.Y.Z (received: ${RELEASE_TAG})" >&2
+            exit 1
+          fi
+
+          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${RELEASE_TAG#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Reject prerelease publication events
+        if: ${{ github.event_name == 'release' && github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+          echo "cd-release only deploys full releases; prerelease publications are not allowed." >&2
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release commit from tag
+        id: release_ref
+        env:
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          if ! git rev-parse "${RELEASE_TAG}^{commit}" >/dev/null 2>&1; then
+            echo "Release tag does not resolve to a commit in this repository: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          RELEASE_COMMIT="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          echo "commit_sha=${RELEASE_COMMIT}" >> "${GITHUB_OUTPUT}"
 
       - name: Read project metadata from pyproject.toml
         id: pyproject
+        env:
+          RELEASE_COMMIT: ${{ steps.release_ref.outputs.commit_sha }}
         run: |
           set -euo pipefail
 
           python - <<'PY'
+          import subprocess
           import os
           import re
           import tomllib
-          from pathlib import Path
 
           out_path = os.environ.get("GITHUB_OUTPUT")
           if not out_path:
               raise SystemExit("GITHUB_OUTPUT is not set")
 
-          data = tomllib.loads(Path("pyproject.toml").read_text())
+          release_commit = os.environ.get("RELEASE_COMMIT", "").strip()
+          if not release_commit:
+              raise SystemExit("RELEASE_COMMIT is not set")
+
+          pyproject_raw = subprocess.run(
+              ["git", "show", f"{release_commit}:pyproject.toml"],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+
+          data = tomllib.loads(pyproject_raw)
           proj = data.get("project", {})
 
           version = (proj.get("version") or "").strip()
@@ -74,20 +151,15 @@ jobs:
               f.write(f"description={description}\n")
           PY
 
-      - name: Validate dispatch ref and inputs
+      - name: Validate release tag matches pyproject.toml version
         env:
-          RC: ${{ inputs.rc }}
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
           PYPROJECT_VERSION: ${{ steps.pyproject.outputs.version }}
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
-            echo "cd-release can only run from refs/heads/main. Current ref: ${GITHUB_REF}" >&2
-            exit 1
-          fi
-
-          if ! [[ "${RC}" =~ ^[0-9]+$ ]]; then
-            echo "rc must be numeric (received: ${RC})" >&2
+          if [ "${RELEASE_TAG}" != "v${PYPROJECT_VERSION}" ]; then
+            echo "release_tag (${RELEASE_TAG}) must match pyproject.toml version (v${PYPROJECT_VERSION})" >&2
             exit 1
           fi
 
@@ -95,7 +167,9 @@ jobs:
         id: deployment
         uses: actions/github-script@v8
         env:
-          DEPLOY_ENVIRONMENT: staging
+          DEPLOY_ENVIRONMENT: production
+          DEPLOY_REF: ${{ steps.release_ref.outputs.commit_sha }}
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
         with:
           script: |
             const owner = context.repo.owner;
@@ -105,13 +179,13 @@ jobs:
             const res = await github.rest.repos.createDeployment({
               owner,
               repo,
-              ref: context.sha,
+              ref: process.env.DEPLOY_REF,
               environment,
               auto_merge: false,
               required_contexts: [],
               transient_environment: false,
-              production_environment: false,
-              description: `cd-release: ${environment}`,
+              production_environment: true,
+              description: `cd-release: ${process.env.RELEASE_TAG}`,
             });
 
             core.setOutput('deployment_id', String(res.data.id));
@@ -126,85 +200,145 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Ensure RC tag does not already exist
-        env:
-          RC_TAG: v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
-        run: |
-          set -euo pipefail
-
-          if docker buildx imagetools inspect "${IMAGE}:${RC_TAG}" > /dev/null 2>&1; then
-            echo "Refusing to overwrite existing immutable RC tag: ${IMAGE}:${RC_TAG}" >&2
-            exit 1
-          fi
-
-      - name: Build and push RC image
-        id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
-        with:
-          context: .
-          file: docker/Dockerfile.prod
-          push: true
-          cache-from: type=gha,mode=max,scope=runtime-image
-          cache-to: type=gha,mode=max,scope=runtime-image
-          tags: |
-            ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
-            ${{ env.IMAGE }}:sha-${{ github.sha }}
-            ${{ env.IMAGE }}:staging
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
-            org.opencontainers.image.title=${{ steps.pyproject.outputs.name }}
-            org.opencontainers.image.description=${{ steps.pyproject.outputs.description }}
-
-      - name: Scan pushed RC image
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
-        with:
-          scan-type: image
-          image-ref: ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
-          version: v0.69.3
-          token-setup-trivy: ${{ github.token }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-
-      - name: Generate CycloneDX SBOM
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
-        with:
-          scan-type: image
-          image-ref: ${{ env.IMAGE }}:v${{ steps.pyproject.outputs.version }}-rc${{ inputs.rc }}
-          version: v0.69.3
-          token-setup-trivy: ${{ github.token }}
-          format: cyclonedx
-          output: sbom.cdx.json
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: sbom-cdx
-          path: sbom.cdx.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
-        with:
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
-
       - name: Install Cosign
         uses: sigstore/cosign-installer@f713795cb21599bc4e5c4b58cbad1da852d7eeb9
 
-      - name: Sign image digest with keyless OIDC
+      - name: Resolve source digest from immutable tags
+        id: source
         env:
-          DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+          RELEASE_COMMIT: ${{ steps.release_ref.outputs.commit_sha }}
         run: |
           set -euo pipefail
-          cosign sign --yes "${IMAGE}@${DIGEST}"
 
-      - name: Trigger Portainer staging redeploy
-        if: ${{ inputs.trigger_webhook }}
+          sha_tag="sha-${RELEASE_COMMIT}"
+          source_ref=""
+          source_type=""
+          digest=""
+
+          digest="$(
+            docker buildx imagetools inspect "${IMAGE}:${sha_tag}" 2>/dev/null \
+              | awk '/^Digest:[[:space:]]+/ { print $2; exit }'
+          )"
+
+          if [ -n "${digest}" ]; then
+            source_ref="${IMAGE}:${sha_tag}"
+            source_type="sha"
+          else
+            digest="$(
+              docker buildx imagetools inspect "${IMAGE}:${RELEASE_TAG}" 2>/dev/null \
+                | awk '/^Digest:[[:space:]]+/ { print $2; exit }'
+            )"
+            if [ -n "${digest}" ]; then
+              source_ref="${IMAGE}:${RELEASE_TAG}"
+              source_type="release-tag"
+            fi
+          fi
+
+          if [ -z "${digest}" ]; then
+            echo "Unable to resolve source image for ${IMAGE}:sha-${RELEASE_COMMIT} or ${IMAGE}:${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${digest}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Resolved digest is invalid: ${digest}" >&2
+            exit 1
+          fi
+
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
+          echo "source_type=${source_type}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify source image signature
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-staging.yml@refs/heads/main$" \
+            "${IMAGE}@${DIGEST}" > /dev/null
+
+      - name: Verify source provenance attestation
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign verify-attestation \
+            --type slsaprovenance \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-staging.yml@refs/heads/main$" \
+            "${IMAGE}@${DIGEST}" > /dev/null
+
+      - name: Validate provenance source commit matches release tag commit
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+          RELEASE_COMMIT: ${{ steps.release_ref.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          commit_sha="$(
+            cosign verify-attestation \
+              --type slsaprovenance \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/cd-staging.yml@refs/heads/main$" \
+              --output json \
+              "${IMAGE}@${DIGEST}" \
+            | jq -r '.[0].payload' \
+            | base64 -d \
+            | jq -r '
+                .predicate.materials[]?
+                | select((.uri // "") | test("^git\\+https://github.com/"))
+                | (.digest.sha1 // .digest.sha // .digest["sha1"] // .digest["sha"] // empty)
+              ' \
+            | head -n 1
+          )"
+
+          if [ -z "${commit_sha}" ]; then
+            echo "Unable to extract source commit SHA from provenance for ${IMAGE}@${DIGEST}" >&2
+            exit 1
+          fi
+
+          if ! [[ "${commit_sha}" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "Extracted commit SHA is invalid: ${commit_sha}" >&2
+            exit 1
+          fi
+
+          if [ "${commit_sha}" != "${RELEASE_COMMIT}" ]; then
+            echo "Provenance commit ${commit_sha} does not match release tag commit ${RELEASE_COMMIT}" >&2
+            exit 1
+          fi
+
+      - name: Promote digest to release and stable tags
+        env:
+          DIGEST: ${{ steps.source.outputs.digest }}
+          RELEASE_TAG: ${{ steps.target.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          existing_digest="$(
+            docker buildx imagetools inspect "${IMAGE}:${RELEASE_TAG}" 2>/dev/null \
+              | awk '/^Digest:[[:space:]]+/ { print $2; exit }'
+          )"
+
+          if [ -n "${existing_digest}" ] && [ "${existing_digest}" != "${DIGEST}" ]; then
+            echo "Refusing to overwrite immutable release tag ${IMAGE}:${RELEASE_TAG} (existing digest ${existing_digest}, expected ${DIGEST})" >&2
+            exit 1
+          fi
+
+          if [ -n "${existing_digest}" ]; then
+            docker buildx imagetools create \
+              -t "${IMAGE}:stable" \
+              "${IMAGE}@${DIGEST}"
+          else
+            docker buildx imagetools create \
+              -t "${IMAGE}:${RELEASE_TAG}" \
+              -t "${IMAGE}:stable" \
+              "${IMAGE}@${DIGEST}"
+          fi
+
+      - name: Trigger Portainer production redeploy
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.trigger_webhook }}
         env:
           PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
         run: |
@@ -222,7 +356,7 @@ jobs:
         uses: actions/github-script@v8
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
-          DEPLOY_ENVIRONMENT: staging
+          DEPLOY_ENVIRONMENT: production
         with:
           script: |
             const owner = context.repo.owner;
@@ -247,7 +381,7 @@ jobs:
         uses: actions/github-script@v8
         env:
           DEPLOYMENT_ID: ${{ steps.deployment.outputs.deployment_id }}
-          DEPLOY_ENVIRONMENT: staging
+          DEPLOY_ENVIRONMENT: production
         with:
           script: |
             const owner = context.repo.owner;

@@ -10,8 +10,8 @@ SimWorks is a Django-based simulation platform with integrated AI orchestration 
 
 - `ci` runs on every pull request and on pushes to `main`.
 - `security` runs for pull requests targeting `main` and on a weekly schedule.
-- `cd-release` builds and tags release-candidate and staging images.
-- `cd-promote` promotes a verified release candidate digest to production tags.
+- `cd-staging` runs on every push to `main`, builds the runtime image once, publishes `sha-<gitsha>` and `staging`, and triggers staging Portainer redeploy when configured.
+- `cd-release` runs when a GitHub Release is published (and optional manual dispatch by `release_tag`), verifies and promotes an existing immutable image digest to `vX.Y.Z` and `stable`, and optionally triggers production Portainer redeploy.
 
 See deployment tag conventions and workflow details in `docs/DEPLOYMENT_TAGS.md`.
 
