@@ -16,8 +16,7 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
-    UV_PROJECT_ENVIRONMENT=/usr/local \
-    UV_NO_EDITABLE=1
+    UV_PROJECT_ENVIRONMENT=/usr/local
 
 COPY packages ./packages
 
@@ -63,4 +62,4 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 CMD /app
 
 WORKDIR /app/SimWorks
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "--access-log", "/dev/null", "config.asgi:application"]
+CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/SimWorks", "--reload-dir", "/app/packages"]
