@@ -30,7 +30,7 @@ class IdentityMixin:
     """Centralized, resolver-driven class identity.
 
     This mixin exposes a consistent identity surface for all identity-bearing
-    classes (codecs, prompt sections, services, response schemas).
+    classes (prompt sections, services, response schemas).
 
     Design:
       - Identity is *class-level* semantics: derive once per class and cache.
@@ -68,7 +68,7 @@ class IdentityMixin:
     __identity_meta_cached: ClassVar[dict[str, Any] | None] = None
     __identity_lock: ClassVar[RLock] = RLock()
 
-    # Expose a single, simple surface: ExampleCodec.identity -> Identity
+    # Expose a single, simple surface: ExampleService.identity -> Identity
     identity = _IdentityAccessor()
 
     # ------------------------- class utilities -------------------------

@@ -16,7 +16,6 @@ class DefaultLoader(BaseLoader):
     COMPONENT_SUFFIXES: tuple[str, ...] = (
         "services",
         "instructions",
-        "codecs",
         "schemas",
         "tools",
         "persist",

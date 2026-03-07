@@ -1,7 +1,6 @@
 """App-scoped component registries."""
 
 from .active_app import (
-    codecs,
     flush_pending,
     get_active_app,
     get_component_store,
@@ -25,7 +24,6 @@ __all__ = [
     "ComponentStore",
     "PendingRegistrations",
     "RegistrationRecord",
-    "codecs",
     "flush_pending",
     "get_active_app",
     "get_component_store",

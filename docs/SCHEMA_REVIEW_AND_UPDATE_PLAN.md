@@ -124,7 +124,7 @@ class PatientInitialOutputSchema(ChatlabMixin, StandardizedPatientMixin, DjangoB
 
 ### 3.1 Current Request Shape
 
-**Location:** `orchestrai/contrib/provider_codecs/openai/responses_json.py`
+**Location:** `orchestrai/contrib/provider_formats/openai/responses_json.py`
 
 **Request format:**
 ```python
@@ -482,12 +482,12 @@ def test_patient_initial_schema_generates_valid_json_schema():
 
 ### 7.2 OpenAI Request Construction Tests
 
-**Test:** `test_codec_builds_openai_request_format()`
+**Test:** `test_response_processor_builds_openai_request_format()`
 ```python
 @pytest.mark.asyncio
-async def test_codec_builds_openai_request_format():
-    """Verify codec wraps schema in OpenAI format envelope."""
-    from orchestrai.contrib.provider_codecs.openai.responses_json import OpenAIResponsesJsonCodec
+async def test_response_processor_builds_openai_request_format():
+    """Verify response processor wraps schema in OpenAI format envelope."""
+    from orchestrai.contrib.provider_formats.openai.responses_json import OpenAIResponsesJsonCodec
     from orchestrai.types import Request
 
     req = Request(
@@ -495,8 +495,8 @@ async def test_codec_builds_openai_request_format():
         response_schema=PatientInitialOutputSchema
     )
 
-    codec = OpenAIResponsesJsonCodec()
-    await codec.aencode(req)
+    response processor = OpenAIResponsesJsonCodec()
+    await response processor.aencode(req)
 
     # Verify format envelope
     provider_format = req.provider_response_format
@@ -718,7 +718,7 @@ DjangoBaseOutputItem (no identity)
 
 ## Appendix C: Code Path Map
 
-### Schema → Service → Codec → OpenAI
+### Schema → Service → Response processor → OpenAI
 
 ```
 1. Schema Definition
@@ -732,8 +732,8 @@ DjangoBaseOutputItem (no identity)
      class GenerateInitialResponse(...):
          response_schema = PatientInitialOutputSchema
 
-3. Codec Encoding
-   orchestrai/contrib/provider_codecs/openai/responses_json.py:
+3. Response processor Encoding
+   orchestrai/contrib/provider_formats/openai/responses_json.py:
      class OpenAIResponsesJsonCodec:
          async def aencode(req):
              schema = req.response_schema._validated_schema
@@ -747,7 +747,7 @@ DjangoBaseOutputItem (no identity)
      }
 
 5. Response Decoding
-   orchestrai/contrib/provider_codecs/openai/responses_json.py:
+   orchestrai/contrib/provider_formats/openai/responses_json.py:
      async def adecode(resp):
          return PatientInitialOutputSchema.model_validate(resp.data)
 

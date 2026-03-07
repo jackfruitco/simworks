@@ -101,11 +101,8 @@ class Response(StrictBaseModel):
     tool_calls: list[LLMToolCall] = Field(default_factory=list)
     provider_meta: dict[str, Any] = Field(default_factory=dict)
 
-    # Structured output (validated Pydantic model from codec)
+    # Structured output (validated Pydantic model)
     structured_data: Any | None = None
-
-    # Codec identity (for decode/persistence)
-    codec_identity: str | None = None
 
     # Execution metadata for audit trail / persistence / websocket
     execution_metadata: dict[str, Any] = Field(default_factory=dict)

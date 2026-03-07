@@ -1,10 +1,9 @@
 # Persistence
 
-Persistence behavior is usually implemented in custom codecs or post-run service hooks.
+Persistence behavior is usually implemented in custom response processors or post-run service hooks.
 
 ## Common Patterns
 
-- Persist decoded model output in a codec subclass.
 - Persist domain events in `finalize(...)` on service classes.
 - Keep persistence idempotent for retry-safe task execution.
 

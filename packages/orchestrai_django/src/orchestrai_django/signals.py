@@ -88,9 +88,8 @@ class RequestSentPayload(TypedDict, total=False):
     provider_name: str | None
     # DB linkage
     object_db_pk: int | UUID | None
-    # Correlation / codec
+    # Correlation
     correlation_id: UUID | None
-    codec_name: str | None
     # Context-first
     context: dict[str, Any] | None
 
@@ -107,9 +106,8 @@ class ResponseReceivedPayload(TypedDict, total=False):
     provider_name: str | None
     # Optional generic DB linkage
     object_db_pk: int | UUID | None
-    # Correlation / codec
+    # Correlation
     correlation_id: UUID | None
-    codec_name: str | None
     # Context-first
     context: dict[str, Any] | None
 
@@ -126,9 +124,8 @@ class ResponseReadyPayload(TypedDict, total=False):
     provider_name: str | None
     # Generic DB linkage (preferred) + legacy name for back-compat
     object_db_pk: int | UUID | None
-    # Correlation / codec
+    # Correlation
     correlation_id: UUID | None
-    codec_name: str | None
     # Context-first
     context: dict[str, Any] | None
 
@@ -213,7 +210,6 @@ class DjangoSignalEmitter:
             "kind": kind,
             "service_name": service_name,
             "correlation_id": getattr(request_dto, "correlation_id", None),
-            "codec_name": getattr(request_dto, "codec_identity", None),
             "object_db_pk": ctx.get("object_db_pk"),
             "context": ctx,
         }
@@ -230,7 +226,6 @@ class DjangoSignalEmitter:
             "kind": kind,
             "service_name": service_name,
             "correlation_id": getattr(response_dto, "request_correlation_id", None),
-            "codec_name": getattr(response_dto, "codec_identity", None),
             "object_db_pk": ctx.get("object_db_pk"),
             "context": ctx,
         }

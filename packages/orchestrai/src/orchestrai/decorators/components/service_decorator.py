@@ -29,7 +29,7 @@ class ServiceDecorator(BaseDecorator):
     Service decorator specialized for BaseService subclasses.
 
     BaseService now uses Pydantic AI for LLM execution, replacing the legacy
-    client/codec/provider stack.
+    client/provider stack.
 
     Usage
     -----

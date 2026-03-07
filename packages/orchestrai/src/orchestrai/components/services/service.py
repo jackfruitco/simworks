@@ -3,7 +3,7 @@
 BaseService: Pydantic AI-based service class for LLM-backed operations.
 
 This module provides a simplified service base class that uses Pydantic AI
-for LLM execution. It replaces the complex client/codec/provider stack with
+for LLM execution. It replaces the complex client/provider stack with
 Pydantic AI's Agent abstraction.
 
 Key features:
@@ -24,7 +24,7 @@ Identity
 Usage:
     from pydantic import BaseModel
     from orchestrai.components.services import BaseService
-    from orchestrai.instructions import BaseInstruction
+    from orchestrai.components.instructions import BaseInstruction
     from orchestrai_django.decorators import orca
 
     class PatientResponse(BaseModel):
@@ -54,12 +54,12 @@ from pydantic import BaseModel
 from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from orchestrai.components.base import BaseComponent
+from orchestrai.components.instructions.base import BaseInstruction
+from orchestrai.components.instructions.collector import collect_instructions
 from orchestrai.components.mixins import LifecycleMixin
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
 from orchestrai.identity import IdentityMixin
 from orchestrai.identity.domains import SERVICES_DOMAIN
-from orchestrai.instructions.base import BaseInstruction
-from orchestrai.instructions.collector import collect_instructions
 from orchestrai.tracing import flatten_context as flatten_context_, get_tracer, service_span
 
 if TYPE_CHECKING:

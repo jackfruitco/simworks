@@ -3,8 +3,8 @@
 from pydantic import BaseModel
 import pytest
 
+from orchestrai.components.instructions import BaseInstruction, collect_instructions
 from orchestrai.decorators import orca
-from orchestrai.instructions import BaseInstruction, collect_instructions
 
 
 class TestInstructionDecorator:

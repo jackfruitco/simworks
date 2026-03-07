@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SimWorks is a Django-based medical training platform that delivers chat-driven clinical simulations. It uses the **OrchestrAI framework** (a custom-built, provider-agnostic AI orchestration layer) to manage AI services, prompts, codecs, and response schemas across the application.
+SimWorks is a Django-based medical training platform that delivers chat-driven clinical simulations. It uses the **OrchestrAI framework** (a custom-built, provider-agnostic AI orchestration layer) to manage AI services, prompts, response processors, and response schemas across the application.
 
 This is a **uv-managed monorepo workspace** with three main components:
 - Main Django project at `/SimWorks`
@@ -145,7 +145,7 @@ SimWorks uses a custom AI orchestration framework that provides:
 **Key concepts:**
 
 1. **Identity System (Tuple⁴)**: Every component has a 4-tuple identity `(domain, namespace, group, name)`
-   - `domain`: Component type (services, codecs, prompts, schemas)
+   - `domain`: Component type (services, response processors, prompts, schemas)
    - `namespace`: Django app or logical grouping (e.g., "simcore", "chatlab")
    - `group`: Sub-grouping within namespace (e.g., "feedback", "patient")
    - `name`: Component class name
@@ -155,7 +155,7 @@ SimWorks uses a custom AI orchestration framework that provides:
    app_name/
      orca/
        services/       # @service decorated classes
-       codecs/         # @codec decorated classes
+       response processors/         # @response processor decorated classes
        prompts/
          sections/     # @prompt_section decorated classes
        schemas/        # @schema decorated classes
@@ -193,7 +193,7 @@ SimWorks uses a custom AI orchestration framework that provides:
 **trainerlab**: Trainer/instructor features and management
 
 **AI Components** (in `{app}/orca/` subdirectories):
-- Each app can define services, codecs, prompt sections, and schemas
+- Each app can define services, response processors, prompt sections, and schemas
 - Components use mixins to declare their namespace/group for identity derivation
 
 ### Creating AI Services
@@ -360,14 +360,14 @@ class MySchema(DjangoBaseOutputSchema):
     """
 ```
 
-### Creating Codecs
+### Creating Response processors
 
-Codecs validate and persist AI responses:
+Response processors validate and persist AI responses:
 
 ```python
-from orchestrai_django.decorators import codec
+from orchestrai_django.decorators import response processor
 
-@codec
+@response processor
 class HotwashInitialCodec(SimcoreMixin, FeedbackMixin):
     """Validates and persists feedback response."""
 
@@ -543,7 +543,7 @@ Two audit models track AI activity:
 Signals emitted:
 - `ai_request_sent`: After request audit created
 - `ai_response_received`: After response audit created
-- `ai_response_ready`: After codec persists
+- `ai_response_ready`: After response processor persists
 - `ai_response_failed`: On error
 
 ## Key Configuration

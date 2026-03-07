@@ -10,7 +10,7 @@ Common domains:
 
 - `services`
 - `instructions`
-- `codecs`
+- `response processors`
 - `schemas`
 
 ## Django Resolver Behavior

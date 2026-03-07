@@ -1,6 +1,6 @@
+from orchestrai.components.instructions import BaseInstruction
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN, SERVICES_DOMAIN
-from orchestrai.instructions import BaseInstruction
 from orchestrai.registry import ComponentStore
 from orchestrai.registry.active_app import get_registry_for, push_active_registry_app
 from orchestrai.registry.records import RegistrationRecord
