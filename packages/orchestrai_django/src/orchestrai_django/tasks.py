@@ -421,16 +421,22 @@ def run_service_call(call_id: str):
     After max retries, marks call as failed and emits ai_response_failed signal.
     """
 
+    autostarted_app = None
     try:
         from orchestrai_django.apps import ensure_autostarted
 
-        ensure_autostarted()
+        autostarted_app = ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed inside run_service_call", exc_info=True)
 
     _debug_app_context("run_service_call")
 
-    app = get_current_app()
+    app = autostarted_app or get_current_app()
+    if autostarted_app is not None:
+        logger.debug(
+            "run_service_call resolved autostart app app_id=%s",
+            hex(id(autostarted_app)),
+        )
     registry = ensure_service_registry(app)
 
     max_attempts = _get_max_attempts()
@@ -940,12 +946,18 @@ def process_pending_persistence():
     Returns:
         dict with processing stats
     """
+    autostarted_app = None
     try:
         from orchestrai_django.apps import ensure_autostarted
 
-        ensure_autostarted()
+        autostarted_app = ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
+    if autostarted_app is not None:
+        logger.debug(
+            "process_pending_persistence resolved autostart app app_id=%s",
+            hex(id(autostarted_app)),
+        )
 
     max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
     batch_size = getattr(settings, "DOMAIN_PERSIST_BATCH_SIZE", 100)
