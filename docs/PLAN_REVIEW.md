@@ -22,7 +22,7 @@ This review walks through the complete schema modernization plan from start to f
 - Flattening loses type safety (discriminated unions become bags of properties)
 
 **Problem 2: Late Error Detection**
-- Schema validation happens at codec encode time (request time)
+- Schema validation happens at response processor encode time (request time)
 - Invalid schemas don't fail until user hits endpoint
 - Errors hard to trace back to schema definition
 
@@ -81,7 +81,7 @@ This review walks through the complete schema modernization plan from start to f
 ┌────────────────────────────────────────────┐
 │ Request Time (Service Call)                │
 │                                            │
-│   1. Codec checks compatibility tag        │
+│   1. Response processor checks compatibility tag        │
 │   2. Uses cached schema                    │
 │   3. Applies format adapter                │
 │   4. Attaches to request                   │
@@ -182,10 +182,10 @@ PatientSchema._validated_schema = {...}  # Cached JSON Schema
 PatientSchema._validated_at = "decoration"
 ```
 
-### How Codec Uses Metadata
+### How Response processor Uses Metadata
 
 ```python
-# In codec.aencode():
+# In response processor.aencode():
 schema_cls = req.response_schema
 
 # Check compatibility
@@ -357,14 +357,14 @@ class ResultSchema(BaseModel):
 
 ---
 
-### Phase 3: Update Codec (1 day)
+### Phase 3: Update Response processor (1 day)
 
 **What:** Check compatibility, use cached schema
 **Risk:** Low (simple changes)
-**Deliverable:** Codec uses new validation workflow
+**Deliverable:** Response processor uses new validation workflow
 
 **Files modified:**
-- `orchestrai/contrib/provider_codecs/openai/responses_json.py`
+- `orchestrai/contrib/provider_formats/openai/responses_json.py`
 
 **Changes:**
 1. Check `_provider_compatibility` before encode
@@ -441,7 +441,7 @@ class PatientOutputSchema(BaseModel):
 | `schema/validate.py` | 100% | All validation rules |
 | `schema/adapt.py` | 100% | Format wrapping |
 | `decorators/schema.py` | 95% | Validation + tagging |
-| `codecs/openai/responses_json.py` | 95% | Check compatibility, cache |
+| `response processors/openai/responses_json.py` | 95% | Check compatibility, cache |
 
 ### Test Matrix
 
@@ -457,7 +457,7 @@ class PatientOutputSchema(BaseModel):
 - ❌ Invalid schema decorated → ValueError at import
 - ✅ Multiple providers (future) → compatibility dict
 
-**Codec:**
+**Response processor:**
 - ✅ Compatible schema → encodes
 - ❌ Incompatible schema → CodecSchemaError
 - ✅ Cached schema used → no regeneration
@@ -498,7 +498,7 @@ class PatientOutputSchema(BaseModel):
 **Metrics to watch:**
 - Import errors: expect 0
 - API 400 errors: expect same or lower
-- Codec encode time: expect same or faster
+- Response processor encode time: expect same or faster
 - Parsing errors: expect same
 
 **Rollback trigger:**
@@ -657,7 +657,7 @@ _SCHEMA_CACHE[cls] = schema
 - Comprehensive tests
 - Easy to rollback
 
-**Updating codec:**
+**Updating response processor:**
 - Simple changes
 - Existing tests cover behavior
 - Performance improvement (caching)
@@ -692,7 +692,7 @@ All risks have clear mitigation strategies.
 ```
 Request arrives
   → Service builds request
-  → Codec.encode()
+  → Response processor.encode()
     → Generate schema (5-10ms)     ← EVERY REQUEST
     → Flatten unions (2-5ms)        ← EVERY REQUEST
     → Wrap in format (0.5ms)
@@ -712,7 +712,7 @@ App startup
 
 Request arrives
   → Service builds request
-  → Codec.encode()
+  → Response processor.encode()
     → Check compatibility (0.1ms)
     → Use cached schema (0.1ms)     ← FAST
     → Wrap in format (0.5ms)
@@ -736,7 +736,7 @@ Request arrives
 - ✅ No API 400 error increase
 
 **Nice to have:**
-- ✅ Codec encode time reduced by >5ms
+- ✅ Response processor encode time reduced by >5ms
 - ✅ Schema validation errors have helpful messages
 - ✅ Team understands new pattern
 
@@ -745,7 +745,7 @@ Request arrives
 **Must achieve:**
 - ✅ 100% test coverage for validators
 - ✅ 95%+ test coverage for decorator changes
-- ✅ 95%+ test coverage for codec changes
+- ✅ 95%+ test coverage for response processor changes
 - ✅ All regression tests pass
 
 **Nice to have:**
@@ -761,7 +761,7 @@ Request arrives
 Week 1: Implementation
 ├─ Mon-Tue: Phase 1 (validators + adapter)
 ├─ Wed-Thu: Phase 2 (decorator)
-└─ Fri:     Phase 3 (codec)
+└─ Fri:     Phase 3 (response processor)
 
 Week 2: Testing & Staging
 ├─ Mon-Tue: Phase 4 (schema audit)
@@ -842,7 +842,7 @@ A: Import errors are breaking changes. Fix in staging before production deploy.
 ### Week 1 (Implementation)
 1. **Phase 1:** Implement validators + adapter
 2. **Phase 2:** Update decorator
-3. **Phase 3:** Update codec
+3. **Phase 3:** Update response processor
 4. **Daily:** Review progress, adjust timeline
 
 ### Week 2 (Testing)

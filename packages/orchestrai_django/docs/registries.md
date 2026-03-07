@@ -1,6 +1,6 @@
 # Registries in orchestrai_django
 
-> Identity-aware registries connect Services, Instructions, Codecs, and Schemas.
+> Identity-aware registries connect Services, Instructions, Response processors, and Schemas.
 
 ---
 
@@ -10,7 +10,7 @@
 
 - `services`
 - `instructions`
-- `codecs`
+- `response processors`
 - `schemas`
 
 Decorators register classes into these registries, and runtime resolution uses identity/domain routing.
@@ -49,8 +49,8 @@ all_service_identities = [item.identity for item in services.list()]
 
 `manage.py check` validates:
 
-- collision state in service/codec/instruction/schema registries
-- required service pairing rules (codec required, schema resolution behavior)
+- collision state in service/instruction/schema registries
+- required service pairing rules (schema resolution behavior)
 - instruction presence warnings for services with no instruction classes in MRO
 
 ---

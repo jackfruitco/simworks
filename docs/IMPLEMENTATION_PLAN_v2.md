@@ -23,7 +23,7 @@ This plan modernizes the structured-output schema workflow to:
 
 ## Updated Architecture
 
-### Core Concept: Validate in Decorator, Adapt in Codec
+### Core Concept: Validate in Decorator, Adapt in Response processor
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -44,7 +44,7 @@ This plan modernizes the structured-output schema workflow to:
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. REQUEST TIME (Service Call)                              │
-│    - Codec checks compatibility tag                         │
+│    - Response processor checks compatibility tag                         │
 │    - Uses cached validated schema                           │
 │    - Applies format adapter (wraps in OpenAI envelope)      │
 │    - Attaches to request                                    │
@@ -72,7 +72,7 @@ packages/orchestrai_django/src/orchestrai_django/decorators/schema.py
   - Tag schemas with compatibility metadata
   - Cache validated schemas
 
-packages/orchestrai/src/orchestrai/contrib/provider_codecs/openai/responses_json.py
+packages/orchestrai/src/orchestrai/contrib/provider_formats/openai/responses_json.py
   - Check schema compatibility
   - Use cached validated schema
   - Call _apply_adapters helper
@@ -310,12 +310,12 @@ def schema(cls):
 
 ---
 
-### 4. Updated Codec
+### 4. Updated Response processor
 
-**File:** `packages/orchestrai/src/orchestrai/contrib/provider_codecs/openai/responses_json.py`
+**File:** `packages/orchestrai/src/orchestrai/contrib/provider_formats/openai/responses_json.py`
 
 ```python
-"""OpenAI Responses JSON codec."""
+"""OpenAI Responses JSON response processor."""
 
 import logging
 from typing import Any, ClassVar, Sequence
@@ -323,19 +323,19 @@ from typing import Any, ClassVar, Sequence
 from pydantic import ValidationError
 
 from orchestrai.contrib.provider_backends.openai.schema.adapt import OpenaiFormatAdapter
-from orchestrai.components.codecs import BaseCodec
-from orchestrai.components.codecs.exceptions import CodecDecodeError, CodecSchemaError
+from orchestrai.components.response processors import BaseCodec
+from orchestrai.components.response processors.exceptions import CodecDecodeError, CodecSchemaError
 from orchestrai.components.schemas import BaseSchemaAdapter
-from orchestrai.decorators import codec
+from orchestrai.decorators import response processor
 from orchestrai.tracing import service_span_sync
 from orchestrai.types import Request, Response
 
 logger = logging.getLogger(__name__)
 
 
-@codec(name="json")
+@response processor(name="json")
 class OpenAIResponsesJsonCodec(BaseCodec):
-    """Codec for OpenAI Responses JSON structured output.
+    """Response processor for OpenAI Responses JSON structured output.
 
     Encode:
       - Checks schema was validated for OpenAI (during decoration)
@@ -361,9 +361,9 @@ class OpenAIResponsesJsonCodec(BaseCodec):
         Uses cached validated schema for performance.
         """
         with service_span_sync(
-            "orchestrai.codec.encode",
+            "orchestrai.response processor.encode",
             attributes={
-                "orchestrai.codec": self.__class__.__name__,
+                "orchestrai.response processor": self.__class__.__name__,
                 "orchestrai.provider_name": "openai",
             },
         ):
@@ -413,9 +413,9 @@ class OpenAIResponsesJsonCodec(BaseCodec):
         Extracts JSON from response, validates into original schema.
         """
         with service_span_sync(
-            "orchestrai.codec.decode",
+            "orchestrai.response processor.decode",
             attributes={
-                "orchestrai.codec": self.__class__.__name__,
+                "orchestrai.response processor": self.__class__.__name__,
                 "orchestrai.provider_name": "openai",
             },
         ):
@@ -434,7 +434,7 @@ class OpenAIResponsesJsonCodec(BaseCodec):
             if schema_cls is None:
                 schema_cls = self._get_schema_from_service()
 
-            # Fallback to codec's class-level schema
+            # Fallback to response processor's class-level schema
             if schema_cls is None:
                 schema_cls = self.response_schema
 
@@ -478,8 +478,8 @@ class OpenAIResponsesJsonCodec(BaseCodec):
 ### 🔄 Modify
 
 1. **`@schema` decorator** - Add validation + tagging
-2. **Codec encode** - Check compatibility, use cached schema
-3. **Codec decode** - No changes (already works)
+2. **Response processor encode** - Check compatibility, use cached schema
+3. **Response processor decode** - No changes (already works)
 
 ---
 
@@ -532,19 +532,19 @@ class OpenAIResponsesJsonCodec(BaseCodec):
 
 ---
 
-### Phase 3: Update Codec (1 day)
+### Phase 3: Update Response processor (1 day)
 **Risk:** Low (simple changes)
 
 **Tasks:**
-1. Update codec to check compatibility
+1. Update response processor to check compatibility
 2. Use cached validated schema
 3. Add `_apply_adapters()` helper
 4. Remove `FlattenUnions` from adapter list
-5. Run existing codec tests
+5. Run existing response processor tests
 
 **Deliverables:**
-- [ ] Codec checks `_provider_compatibility`
-- [ ] Codec uses `_validated_schema`
+- [ ] Response processor checks `_provider_compatibility`
+- [ ] Response processor uses `_validated_schema`
 - [ ] `_apply_adapters()` helper method
 - [ ] All existing tests pass
 - [ ] No FlattenUnions references
@@ -651,7 +651,7 @@ class OpenAIResponsesJsonCodec(BaseCodec):
 - ❌ Invalid schema fails at decoration
 - ✅ Multiple providers supported (future)
 
-**Codec (`test_responses_json_codec.py`):**
+**Response processor (`test_responses_json_response_processor.py`):**
 - ✅ Checks compatibility before encode
 - ✅ Uses cached schema
 - ✅ Applies format adapter
@@ -664,9 +664,9 @@ class OpenAIResponsesJsonCodec(BaseCodec):
 1. Define schema with `@schema`
 2. Schema validated at import
 3. Service uses schema
-4. Codec encodes with format adapter
+4. Response processor encodes with format adapter
 5. Mock API call
-6. Codec decodes response
+6. Response processor decodes response
 7. Assert typed output
 
 **Regression:**
@@ -689,7 +689,7 @@ class OpenAIResponsesJsonCodec(BaseCodec):
 - ✅ 100% coverage for validators
 - ✅ 100% coverage for format adapter
 - ✅ 95%+ coverage for decorator changes
-- ✅ 95%+ coverage for codec changes
+- ✅ 95%+ coverage for response processor changes
 - ✅ All regression tests pass
 
 ### Performance
@@ -777,20 +777,20 @@ Nested unions ARE supported. Redesign with discriminated union in a field:
 
 **Pre-Deploy (Baseline):**
 - Schema validation time: N/A (new metric)
-- Codec encode time: 5-10ms average
+- Response processor encode time: 5-10ms average
 - API error rate: <0.1% (400 errors)
 - Parsing error rate: <0.5%
 
 **Post-Deploy (Expected):**
 - Schema validation time: One-time at import (negligible)
-- Codec encode time: 3-8ms (faster - uses cache)
+- Response processor encode time: 3-8ms (faster - uses cache)
 - API error rate: Same or lower (better validation)
 - Parsing error rate: Same or lower
 
 **Alerts:**
 - Import failures (schema validation errors)
 - API 400 errors increase >5%
-- Codec encode time increase >50%
+- Response processor encode time increase >50%
 - Parsing errors increase >10%
 
 ---
@@ -829,7 +829,7 @@ Nested unions ARE supported. Redesign with discriminated union in a field:
 Week 1:
   Mon-Tue: Phase 1 (validators + adapter)
   Wed-Thu: Phase 2 (decorator)
-  Fri:     Phase 3 (codec)
+  Fri:     Phase 3 (response processor)
 
 Week 2:
   Mon-Tue: Phase 4 (schema audit + fixes)
@@ -856,7 +856,7 @@ Week 4:
 
 ### Low Risk ✅
 - Adding validators (new code, parallel)
-- Updating codec (simple changes, well-tested)
+- Updating response processor (simple changes, well-tested)
 - Section composition (opt-in feature)
 
 ### Medium Risk ⚠️

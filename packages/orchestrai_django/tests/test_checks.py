@@ -41,7 +41,6 @@ def test_check_orchestrai_registries_reports_collisions_and_invalid_identity(set
     )
     fake_ok = FakeRegistry()
 
-    monkeypatch.setattr(orchestrai_checks, "codec_registry", fake_ok)
     monkeypatch.setattr(orchestrai_checks, "service_registry", fake_with_collision)
     monkeypatch.setattr(orchestrai_checks, "instruction_registry", fake_ok)
     monkeypatch.setattr(orchestrai_checks, "schema_registry", fake_ok)
@@ -53,19 +52,18 @@ def test_check_orchestrai_registries_reports_collisions_and_invalid_identity(set
     assert "SIMCORE-ID-002" in ids
 
 
-def test_check_orchestrai_service_pairings_reports_missing_codec(monkeypatch):
+def test_check_orchestrai_service_pairings_reports_missing_schema(monkeypatch):
     class DemoService:
-        identity = Identity("services", "demo", "group", "missing_codec")
+        identity = Identity("services", "demo", "group", "missing_schema")
 
     fake_service_registry = types.SimpleNamespace(all=lambda: [DemoService])
     fake_empty_lookup = types.SimpleNamespace(get=lambda ident: None)
 
     monkeypatch.setattr(orchestrai_checks, "service_registry", fake_service_registry)
-    monkeypatch.setattr(orchestrai_checks, "codec_registry", fake_empty_lookup)
     monkeypatch.setattr(orchestrai_checks, "schema_registry", fake_empty_lookup)
     monkeypatch.setattr(orchestrai_checks, "instruction_registry", fake_empty_lookup)
 
     messages = orchestrai_checks.check_orchestrai_service_pairings()
     ids = {message.id for message in messages}
 
-    assert "SIMCORE-ID-011" in ids
+    assert "SIMCORE-ID-012A" in ids

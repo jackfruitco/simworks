@@ -11,7 +11,7 @@ This module hosts two groups of checks:
    - Surfaces type issues and missing links
    - Gentle guidance on defaults & timeouts
 
-2) Registry integrity checks (codecs/services/instructions/schemas).
+2) Registry integrity checks (services/instructions/schemas).
    - Detects identity **collisions** (same `(namespace, kind, name)` bound to different classes)
      * Error when `SIMCORE_COLLISIONS_STRICT` is True (default)
      * Warning when strict is False (dev mode)
@@ -32,7 +32,6 @@ from django.conf import settings
 from django.core import checks
 
 from orchestrai.registry import (
-    codecs as codec_registry,
     instructions as instruction_registry,
     schemas as schema_registry,
     services as service_registry,
@@ -394,7 +393,6 @@ def check_orchestrai_registries(
         strict = bool(getattr(settings, "SIMCORE_COLLISIONS_STRICT", True))
 
         registries = [
-            ("codec", codec_registry),
             ("service", service_registry),
             ("instruction", instruction_registry),
             ("schema", schema_registry),
@@ -467,7 +465,7 @@ def check_orchestrai_registries(
 
 
 # ---------------------------------------------------------------------------
-# Pairing checks: Service → (Codec required, Schema optional, Instruction optional)
+# Pairing checks: Service → (Schema optional, Instruction optional)
 # ---------------------------------------------------------------------------
 
 
@@ -477,7 +475,6 @@ def check_orchestrai_service_pairings(
 ) -> list[checks.CheckMessage]:
     """
     For each registered Service:
-      - Ensure a Codec can be resolved (ERROR on failure).
       - If the service declares `response_schema_identity`, ensure it resolves (WARNING if missing).
       - Warn if the service has no instruction classes in its MRO.
     """
@@ -510,39 +507,6 @@ def check_orchestrai_service_pairings(
                     )
                 )
                 continue
-
-            # ---- CODEC (required) ----
-            with service_span_sync(
-                "orchestrai.services.pairing.codec", attributes={"service": ident_str}
-            ):
-                codec_ok = False
-
-                # 1) exact service.identity
-                if (
-                    codec_registry.get((dm, ns, kd, nm)) is not None
-                    or codec_registry.get((dm, ns, kd, "default")) is not None
-                ):
-                    codec_ok = True
-                else:
-                    # 3) explicit hint on the class (optional)
-                    hinted = getattr(svc_cls, "default_codec_identity", None)
-                    if hinted is not None:
-                        t4 = coerce_identity_key(hinted)
-                        if t4 and codec_registry.get(t4) is not None:
-                            codec_ok = True
-
-                if not codec_ok:
-                    messages.append(
-                        checks.Error(
-                            f"Service has no resolvable codec: {ident_str}",
-                            hint=(
-                                "Register a codec at the same identity, or a bucket default "
-                                f"({dm}.{ns}.{kd}.default), or set `default_codec_identity` on the service."
-                            ),
-                            obj=svc_cls,
-                            id=f"{CHECK_ID_PREFIX}-011",
-                        )
-                    )
 
             # ---- SCHEMA (optional → ERROR if explicit & missing; WARNING if undeclared & no auto match) ----
             with service_span_sync(
@@ -601,7 +565,7 @@ def check_orchestrai_service_pairings(
                 "orchestrai.services.pairing.instructions", attributes={"service": ident_str}
             ):
                 try:
-                    from orchestrai.instructions.collector import collect_instructions
+                    from orchestrai.components.instructions.collector import collect_instructions
 
                     instruction_classes = collect_instructions(svc_cls)
                 except Exception:

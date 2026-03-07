@@ -26,7 +26,7 @@ resolves to something usable.
 - **Finalize callbacks**: callbacks registered via `connect_on_app_finalize`
   run during `app.finalize()`.
 - **Registries**: `Registry` objects live on the app (`services`, `clients`,
-  `providers`, `codecs`, `instructions`) and are frozen on finalize.
+  `providers`, `response processors`, `instructions`) and are frozen on finalize.
 
 ## Lifecycle expectations
 

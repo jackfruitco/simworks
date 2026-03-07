@@ -5,7 +5,6 @@ from __future__ import annotations
 from importlib import import_module
 
 __all__ = [
-    "DjangoBaseCodec",
     "DjangoBaseOutputBlock",
     "DjangoBaseOutputItem",
     "DjangoBaseOutputSchema",
@@ -14,7 +13,6 @@ __all__ = [
 
 
 _EXPORTS = {
-    "DjangoBaseCodec": ("orchestrai_django.components.codecs", "DjangoBaseCodec"),
     "DjangoBaseOutputBlock": ("orchestrai_django.components.schemas", "DjangoBaseOutputBlock"),
     "DjangoBaseOutputItem": ("orchestrai_django.components.schemas", "DjangoBaseOutputItem"),
     "DjangoBaseOutputSchema": ("orchestrai_django.components.schemas", "DjangoBaseOutputSchema"),

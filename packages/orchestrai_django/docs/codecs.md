@@ -1,11 +1,11 @@
-# Codecs
+# Response processors
 
 `DjangoBaseCodec` is available for response decoding/persistence compatibility flows.
 
 ## Base Import
 
 ```python
-from orchestrai_django.components.codecs import DjangoBaseCodec
+from orchestrai_django.components.response processors import DjangoBaseCodec
 ```
 
 ## Typical Use
@@ -18,5 +18,3 @@ class MyCodec(DjangoBaseCodec):
 ## Notes
 
 - Modern v0.5.0 service execution is instruction-first and schema-driven.
-- Use codecs only when you need custom decode/persist behavior.
-- Registry checks still validate codec/service pairing expectations.

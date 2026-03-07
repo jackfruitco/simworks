@@ -28,7 +28,7 @@ class BaseLLMTool(StrictBaseModel):
     description: str | None = None
     input_schema: dict[str, Any] = Field(
         default_factory=dict,
-        description="JSON Schema for tool arguments; interpreted by backend codecs.",
+        description="JSON Schema for tool arguments; interpreted by provider runtimes.",
     )
     strict: bool | None = None
     examples: list[dict[str, Any]] = Field(default_factory=list)

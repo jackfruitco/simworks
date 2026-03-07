@@ -18,7 +18,7 @@
 - [Identity](identity.md)
 - [Registries](registries.md)
 - [Schemas](schemas.md)
-- [Codecs](codecs.md)
+- [Response processors](response processors.md)
 - [Persistence](persistence.md)
 - [Execution Backends](execution_backends.md)
 - [Settings](settings.md)

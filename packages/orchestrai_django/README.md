@@ -8,7 +8,6 @@ Django integration for OrchestrAI with class-based services and instruction comp
 - `@orca.instruction(order=...)` for deterministic system prompt composition.
 - Django-aware identity derivation and registry checks.
 - Task dispatch helpers via `Service.task` for immediate/async backends.
-- Django schema and codec compatibility components.
 
 ## Core Imports
 

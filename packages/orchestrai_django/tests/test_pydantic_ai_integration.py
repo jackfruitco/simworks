@@ -118,7 +118,7 @@ class TestDjangoBaseService:
     """Tests for DjangoBaseService."""
 
     def test_service_initialization(self):
-        from orchestrai.instructions import BaseInstruction
+        from orchestrai.components.instructions import BaseInstruction
         from orchestrai_django.components.services import DjangoBaseService
         from orchestrai_django.decorators import orca
 
@@ -176,8 +176,8 @@ class TestBaseService:
         assert hasattr(proxy, "using")
 
     def test_instruction_classes_are_collected(self):
+        from orchestrai.components.instructions import BaseInstruction
         from orchestrai.components.services import BaseService
-        from orchestrai.instructions import BaseInstruction
         from orchestrai_django.decorators import orca
 
         class TestSchema(BaseModel):
