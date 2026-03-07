@@ -42,8 +42,6 @@ class PatientInitialDetailInstruction(BaseInstruction):
         "### Instructions\n"
         "- Begin each scenario by outputting a concise checklist (3-10 conceptual bullets) of intended actions for the "
         "session, formatted as a key:value pairs under the key 'llm_conditions_check', before any SMS message content.\n"
-        "- This conditions check should ensure the output content meets the intent of the instructions, is in character, "
-        "does not over-share, and is medically accurate within the original scenario.\n"
         "- Include a brief description of the patient's symptoms and background information that may be relevant to "
         "the scenario. Include any relevant clinical details that would be relevant to the scenario.\n"
         "- Select a plausible, low-to-moderate urgency everyday diagnosis. Do not choose clear emergencies or dramatic "
@@ -71,13 +69,6 @@ class PatientInitialDetailInstruction(BaseInstruction):
         "- Return metadata as a list. Each element must include a type field with one of: patient_demographics, "
         "lab_result, rad_result, patient_history, simulation_metadata, scenario, simulation_feedback. Include all "
         "required fields for that type; omit fields that don't apply.\n"
-        "Each response MUST include at least one message item.\n"
-        "\n"
-        "### Schema Requirements\n"
-        "Each message item MUST include all required fields: role, content, and item_meta.\n"
-        "- role: 'patient' for patient messages\n"
-        "- content: array of content blocks (at least one text block)\n"
-        "- item_meta: array of metadata key-value pairs (use empty array [] if none)\n"
     )
 
 
@@ -94,7 +85,7 @@ class PatientReplyContextInstruction(BaseInstruction):
                 return ""
 
         if simulation:
-            return f"You are {simulation.sim_patient_full_name}, continuing the conversation."
+            return f"As standardized patient, your name is {simulation.sim_patient_full_name}."
 
         return ""
 
