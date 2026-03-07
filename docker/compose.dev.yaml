@@ -140,6 +140,8 @@ services:
       db:
         condition: service_healthy
     volumes:
+      - ../SimWorks:/app/SimWorks
+      - ../packages:/app/packages
       - static-vol:/app/static
       - media-vol:/app/media
     restart: unless-stopped
@@ -172,6 +174,8 @@ services:
       DJANGO_COLLECTSTATIC: 0
     command: ["sh", "-c", "PYTHONPATH=/app/SimWorks celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler"]
     volumes:
+      - ../SimWorks:/app/SimWorks
+      - ../packages:/app/packages
       - static-vol:/app/static
       - media-vol:/app/media
     depends_on:
