@@ -14,7 +14,7 @@ These classes extend the core `orchestrai.types` models with optional Django-fac
 - uses `context` for service/app context
 
 They are **not** ORM models and are safe to emit via signals. Persistence remains the responsibility
-of codecs and listeners.
+of listeners.
 """
 
 from datetime import UTC, datetime

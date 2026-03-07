@@ -50,7 +50,6 @@ class MyService(DjangoBaseService):
     "namespace": "namespace",
     "kind": "kind",
     "name": "name",
-    "codec": "namespace.kind.codec_name",
     "input": [ { "role": "developer", "content": [...] }, ... ],
     "response_schema_json": {...} | None,
     "response_schema": "Qualified.Class.Name" | None,
@@ -74,7 +73,7 @@ Useful for logging, auditing, and correlating with subsequent events.
   "identity": "domain.namespace.group.name",
   "response": {
     "request_correlation_id": "uuid4",
-    "codec": "namespace.kind.codec_name",
+    "response processor": "namespace.kind.response_processor_name",
     "namespace": "namespace",
     "kind": "kind",
     "name": "name",

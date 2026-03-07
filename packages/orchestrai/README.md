@@ -66,7 +66,7 @@ client_settings: ClientSettings = load_client_settings(settings)
 ## Lifecycle overview
 
 1. **configure** - apply settings from mappings, objects, or environment variables.
-2. **setup** - prepare the loader and populate registries for clients, providers, codecs, and services.
+2. **setup** - prepare the loader and populate registries for clients, providers, response processors, and services.
 3. **discover** - import configured discovery modules via the loader.
 4. **finalize** - run shared decorators/finalizers and freeze registries.
 5. **start** / **run** - convenience method that prints the banner, runs discovery, and finalizes the app.

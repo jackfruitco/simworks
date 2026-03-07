@@ -8,7 +8,7 @@ that integrates with Django signals, models, and task execution.
 Usage:
     from pydantic import BaseModel
     from orchestrai_django.components.services import DjangoBaseService
-    from orchestrai.instructions import BaseInstruction
+    from orchestrai.components.instructions import BaseInstruction
     from orchestrai_django.decorators import orca
 
     class PatientResponse(BaseModel):

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from orchestrai.components.instructions.base import BaseInstruction
 from orchestrai.decorators.base import BaseDecorator
 from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN
-from orchestrai.instructions.base import BaseInstruction
 from orchestrai.registry import ComponentRegistry, instructions as instructions_registry
 
 __all__ = ("InstructionDecorator",)

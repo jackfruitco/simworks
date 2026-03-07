@@ -47,7 +47,6 @@ logger = logging.getLogger(__name__)
 # Default tokens to strip from class names when deriving a *name*.
 # These are *segments* (e.g., CamelCase parts or underscore/hyphen tokens).
 DEFAULT_IDENTITY_STRIP_TOKENS: tuple[str, ...] = (
-    "Codec",
     "Service",
     "Instruction",
     "Response",
@@ -86,7 +85,7 @@ def _split_segments(name: str) -> list[str]:
     """Split a class name into segments by CamelCase boundaries and `_`/`-`/non-alnum.
 
     Examples:
-        "CodecStrippedResponse" -> ["Codec", "Stripped", "Response"]
+        "ServiceStrippedResponse" -> ["Service", "Stripped", "Response"]
         "Special_Response-Custom" -> ["Special", "Response", "Custom"]
     """
     if not name:
@@ -236,7 +235,7 @@ def resolve_collision(
       - In non-debug → append "-2", "-3", … to the **name** until unique.
 
     Args:
-        kind: Human label for error/warn input ("codec", "service", "prompt", etc.).
+        kind: Human label for error/warn input ("service", "instruction", etc.).
         ident_tuple: (domain, namespace, group, name)
         debug: If None, falls back to orchestrai_DEBUG env var.
         exists: Callable that returns True if the identity already exists.

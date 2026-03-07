@@ -171,8 +171,8 @@ def _extract_agent_config(service) -> dict | None:
 
 def _build_request_json(service, payload, context, request_obj):
     """Construct a request JSON payload for debugging."""
-    from orchestrai.instructions.base import BaseInstruction
-    from orchestrai.instructions.collector import collect_instructions
+    from orchestrai.components.instructions.base import BaseInstruction
+    from orchestrai.components.instructions.collector import collect_instructions
 
     prompt_text = ""
     try:

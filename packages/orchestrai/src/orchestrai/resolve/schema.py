@@ -54,8 +54,8 @@ def resolve_schema(
 ) -> ResolutionResult[type[BaseOutputSchema] | None]:
     """Resolve a response schema with simple precedence.
 
-    NOTE: Schema adapters are NOT applied here. Codecs are responsible for
-    schema adaptation via codec.aencode(). This prevents double-adaptation bugs.
+    NOTE: Schema adapters are NOT applied here. Request builders are responsible for
+    schema adaptation at encode time. This prevents double-adaptation bugs.
     The 'adapters' parameter is kept for API compatibility but ignored.
     """
 
@@ -74,7 +74,7 @@ def resolve_schema(
             else None,
             reason="response_schema override provided",
         )
-        # Schema adaptation is codec's responsibility; don't apply here
+        # Schema adaptation happens later in request construction; don't apply here.
         branch.meta["schema_json"] = None
         return ResolutionResult(override, branch, [*branches, branch])
 
@@ -87,7 +87,7 @@ def resolve_schema(
             else None,
             reason="class-level response_schema",
         )
-        # Schema adaptation is codec's responsibility; don't apply here
+        # Schema adaptation happens later in request construction; don't apply here.
         branch.meta["schema_json"] = None
         return ResolutionResult(default, branch, [*branches, branch])
 
@@ -115,7 +115,7 @@ def resolve_schema(
             else None,
             reason="matched schema in ComponentStore",
         )
-        # Schema adaptation is codec's responsibility; don't apply here
+        # Schema adaptation happens later in request construction; don't apply here.
         branch.meta["schema_json"] = None
         return ResolutionResult(candidate, branch, [*branches, branch])
 

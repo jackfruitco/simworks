@@ -10,7 +10,6 @@ def test_default_discovery_paths_include_patterns():
         "*.orca.services",
         "*.orca.instructions",
         "*.orca.output_schemas",
-        "*.orca.codecs",
         "*.ai.services",
     ]
 

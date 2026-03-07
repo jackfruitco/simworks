@@ -1,6 +1,5 @@
-"""Instruction components for class-based system prompt composition."""
+"""Compatibility re-exports for instruction components."""
 
-from .base import BaseInstruction
-from .collector import collect_instructions
+from orchestrai.components.instructions import BaseInstruction, collect_instructions
 
 __all__ = ["BaseInstruction", "collect_instructions"]

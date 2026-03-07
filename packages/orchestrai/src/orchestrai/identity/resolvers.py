@@ -62,7 +62,7 @@ def _is_nonempty_str(value: str | None) -> bool:
 def _split_camel_and_separators(name: str) -> list[str]:
     """Split a class name into segments by CamelCase boundaries and `_`/`-`.
 
-    Example: "CodecStrippedResponse" → ["Codec", "Stripped", "Response"]
+    Example: "ServiceStrippedResponse" → ["Service", "Stripped", "Response"]
              "Special_Response-Custom" → ["Special", "Response", "Custom"]
     """
     if not name:

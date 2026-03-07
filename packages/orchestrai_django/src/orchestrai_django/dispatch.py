@@ -62,7 +62,6 @@ def emit_request(
     object_db_pk: int | UUID | None = None,
     context: dict | None = None,
     correlation_id: UUID | None = None,
-    codec_name: str | None = None,
     request_audit_pk: int | None = None,
 ) -> None:
     payload = {
@@ -76,7 +75,6 @@ def emit_request(
         "object_db_pk": object_db_pk,
         "context": context,
         "correlation_id": correlation_id,
-        "codec_name": codec_name,
     }
     logger.debug(
         "emit_request: ident=%s client=%s backend=%s corr=%s",
@@ -99,7 +97,6 @@ async def aemit_request(  # NEW
     object_db_pk: int | UUID | None = None,
     context: dict | None = None,
     correlation_id: UUID | None = None,
-    codec_name: str | None = None,
     request_audit_pk: int | None = None,
 ) -> None:
     payload = {
@@ -113,7 +110,6 @@ async def aemit_request(  # NEW
         "object_db_pk": object_db_pk,
         "context": context,
         "correlation_id": correlation_id,
-        "codec_name": codec_name,
     }
     logger.debug(
         "aemit_request: ident=%s client=%s backend=%s corr=%s",
@@ -136,7 +132,6 @@ def emit_response_received(
     object_db_pk: int | UUID | None = None,
     context: dict | None = None,
     correlation_id: UUID | None = None,
-    codec_name: str | None = None,
     response_audit_pk: int | None = None,
     request_audit_pk: int | None = None,
 ) -> None:
@@ -152,7 +147,6 @@ def emit_response_received(
         "object_db_pk": object_db_pk,
         "context": context,
         "correlation_id": correlation_id,
-        "codec_name": codec_name,
     }
     logger.debug(
         "emit_response_received: ident=%s client=%s backend=%s corr=%s",
@@ -175,7 +169,6 @@ async def aemit_response_received(  # NEW
     object_db_pk: int | UUID | None = None,
     context: dict | None = None,
     correlation_id: UUID | None = None,
-    codec_name: str | None = None,
     response_audit_pk: int | None = None,
     request_audit_pk: int | None = None,
 ) -> None:
@@ -191,7 +184,6 @@ async def aemit_response_received(  # NEW
         "object_db_pk": object_db_pk,
         "context": context,
         "correlation_id": correlation_id,
-        "codec_name": codec_name,
     }
     logger.debug(
         "aemit_response_received: ident=%s client=%s backend=%s corr=%s",
@@ -214,7 +206,6 @@ def emit_response_ready(
     object_db_pk: int | UUID | None = None,
     context: dict | None = None,
     correlation_id: UUID | None = None,
-    codec_name: str | None = None,
     response_audit_pk: int | None = None,
     request_audit_pk: int | None = None,
 ) -> None:
@@ -230,7 +221,6 @@ def emit_response_ready(
         "object_db_pk": object_db_pk,
         "context": context,
         "correlation_id": correlation_id,
-        "codec_name": codec_name,
     }
     logger.debug(
         "emit_response_ready: ident=%s client=%s backend=%s corr=%s",
@@ -253,7 +243,6 @@ async def aemit_response_ready(  # NEW
     object_db_pk: int | UUID | None = None,
     context: dict | None = None,
     correlation_id: UUID | None = None,
-    codec_name: str | None = None,
     response_audit_pk: int | None = None,
     request_audit_pk: int | None = None,
 ) -> None:
@@ -269,7 +258,6 @@ async def aemit_response_ready(  # NEW
         "object_db_pk": object_db_pk,
         "context": context,
         "correlation_id": correlation_id,
-        "codec_name": codec_name,
     }
     logger.debug(
         "aemit_response_ready: ident=%s client=%s backend=%s corr=%s",
