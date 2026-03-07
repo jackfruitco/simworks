@@ -53,7 +53,7 @@ AI_EXECUTION_BACKENDS = {
 
 ### Prompt/Tracing Utilities
 
-The prompt engine and service base classes emit OpenTelemetry spans automatically. No extra settings are required, but you can configure OpenTelemetry exporters as usual in Django settings.
+The instruction engine and service base classes emit OpenTelemetry spans automatically. No extra settings are required, but you can configure OpenTelemetry exporters as usual in Django settings.
 
 ---
 

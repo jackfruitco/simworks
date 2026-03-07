@@ -1,59 +1,50 @@
-from typing import ClassVar
-
-from orchestrai.components.promptkit import PromptSection
 from orchestrai.identity import Identity
-from orchestrai.identity.domains import PROMPT_SECTIONS_DOMAIN, SERVICES_DOMAIN
+from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN, SERVICES_DOMAIN
+from orchestrai.instructions import BaseInstruction
 from orchestrai.registry import ComponentStore
 from orchestrai.registry.active_app import get_registry_for, push_active_registry_app
 from orchestrai.registry.records import RegistrationRecord
 
 
-class DemoPromptSection(PromptSection):
+class DemoInstruction(BaseInstruction):
     abstract = False
-    identity: ClassVar[Identity] = Identity(
-        domain=PROMPT_SECTIONS_DOMAIN,
-        namespace="demo",
-        group="prompt",
-        name="section",
-    )
+    namespace = "demo"
+    group = "instruction"
+    name = "section"
     instruction = "demo"
 
 
-def test_get_registry_for_prompt_sections_prefers_prompt_domain():
+def test_get_registry_for_instructions_prefers_instruction_domain():
     store = ComponentStore()
     app = type("App", (), {"component_store": store})()
 
     with push_active_registry_app(app):
-        registry = get_registry_for(PromptSection)
+        registry = get_registry_for(BaseInstruction)
 
-    assert registry is store.registry(PROMPT_SECTIONS_DOMAIN)
-    assert store.domains() == (PROMPT_SECTIONS_DOMAIN,)
+    assert registry is store.registry(INSTRUCTIONS_DOMAIN)
+    assert store.domains() == (INSTRUCTIONS_DOMAIN,)
 
 
-def test_prompt_section_get_uses_prompt_section_registry():
+def test_instruction_get_uses_instruction_registry():
     store = ComponentStore()
-    store.register(
-        RegistrationRecord(component=DemoPromptSection, identity=DemoPromptSection.identity)
-    )
+    store.register(RegistrationRecord(component=DemoInstruction, identity=DemoInstruction.identity))
     app = type("App", (), {"component_store": store})()
 
     with push_active_registry_app(app):
-        resolved = store.get(PROMPT_SECTIONS_DOMAIN, DemoPromptSection.identity)
+        resolved = store.get(INSTRUCTIONS_DOMAIN, DemoInstruction.identity)
 
-    assert resolved is DemoPromptSection
-    assert PROMPT_SECTIONS_DOMAIN in store.domains()
+    assert resolved is DemoInstruction
+    assert INSTRUCTIONS_DOMAIN in store.domains()
     assert SERVICES_DOMAIN not in store.domains()
 
 
-def test_prompt_section_identity_resolver_prefers_prompt_domain():
+def test_instruction_identity_resolver_prefers_instruction_domain():
     store = ComponentStore()
-    store.register(
-        RegistrationRecord(component=DemoPromptSection, identity=DemoPromptSection.identity)
-    )
+    store.register(RegistrationRecord(component=DemoInstruction, identity=DemoInstruction.identity))
     app = type("App", (), {"component_store": store})()
 
     with push_active_registry_app(app):
-        resolved = Identity.resolve.try_for_(PromptSection, DemoPromptSection.identity.as_str)
+        resolved = Identity.resolve.try_for_(BaseInstruction, DemoInstruction.identity.as_str)
 
-    assert resolved is DemoPromptSection
-    assert store.domains() == (PROMPT_SECTIONS_DOMAIN,)
+    assert resolved is DemoInstruction
+    assert store.domains() == (INSTRUCTIONS_DOMAIN,)

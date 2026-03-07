@@ -23,7 +23,7 @@ from apps.common.models import PersistModel
 from .utils import randomize_display_name
 
 if TYPE_CHECKING:
-    from orchestrai_django.components.promptkit import Prompt
+    from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +256,7 @@ class Simulation(models.Model):
     openai_model = models.CharField(blank=True, null=True, max_length=128)
     metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
 
-    # used for new simulations that use prompt_v3 (simcore.ai_v1.promptkit)
+    # used for new simulations that use prompt_v3 instruction payloads
     prompt_instruction = models.TextField(
         help_text="The prompt to use as AI instructions",
         default="",
@@ -536,7 +536,7 @@ class Simulation(models.Model):
 
     @classmethod
     async def abuild(
-        cls, *, user=None, prompt: "Prompt" = None, app_name=None, from_scenario=False, **kwargs
+        cls, *, user=None, prompt: "Any" = None, app_name=None, from_scenario=False, **kwargs
     ):
         """Class method factory for creating simulations"""
 

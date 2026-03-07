@@ -10,10 +10,6 @@ __all__ = [
     "DjangoBaseOutputItem",
     "DjangoBaseOutputSchema",
     "DjangoBaseService",
-    "Prompt",
-    "PromptEngine",
-    "PromptScenario",
-    "PromptSection",
 ]
 
 
@@ -23,10 +19,6 @@ _EXPORTS = {
     "DjangoBaseOutputItem": ("orchestrai_django.components.schemas", "DjangoBaseOutputItem"),
     "DjangoBaseOutputSchema": ("orchestrai_django.components.schemas", "DjangoBaseOutputSchema"),
     "DjangoBaseService": ("orchestrai_django.components.services", "DjangoBaseService"),
-    "Prompt": ("orchestrai_django.components.promptkit", "Prompt"),
-    "PromptEngine": ("orchestrai_django.components.promptkit", "PromptEngine"),
-    "PromptScenario": ("orchestrai_django.components.promptkit", "PromptScenario"),
-    "PromptSection": ("orchestrai_django.components.promptkit", "PromptSection"),
 }
 
 

@@ -11,10 +11,9 @@ from orchestrai.conf.settings import Settings
 
 COMPONENT_MODULES: tuple[str, ...] = (
     "services",
+    "instructions",
     "codecs",
     "schemas",
-    "prompts",
-    "prompt_sections",
     "tools",
     "persist",
     "types",

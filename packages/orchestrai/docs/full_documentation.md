@@ -5,7 +5,7 @@
 ## Architecture overview
 
 - **OrchestrAI app** - owns configuration, loader, registries, and lifecycle hooks.
-- **Registries** - lightweight, frozen after `finalize()`, storing services, codecs, providers, clients, and prompt sections.
+- **Registries** - lightweight, frozen after `finalize()`, storing services, codecs, providers, clients, and instructions.
 - **Shared decorators** - allow registering components before an app exists; callbacks run during `finalize()` for every app.
 - **Loader** - optional autodiscovery helper that imports modules declared in `DISCOVERY_PATHS`.
 
@@ -76,7 +76,7 @@ Registries are simple, thread-safe mappings with three phases:
 2. **get(name)** - retrieve a registered object.
 3. **freeze()** - prevent further mutation; invoked automatically during `finalize()`.
 
-The app exposes `services`, `codecs`, `providers`, `clients`, and `prompt_sections` registries. Use `app.clients.register(...)` or decorators to populate them.
+The app exposes `services`, `codecs`, `providers`, `clients`, and `instructions` registries. Use `app.clients.register(...)` or decorators to populate them.
 
 ## Finalize callbacks
 

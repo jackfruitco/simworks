@@ -11,7 +11,7 @@ from typing import Any
 from orchestrai.identity import Identity
 from orchestrai.identity.domains import (
     CODECS_DOMAIN,
-    PROMPT_SECTIONS_DOMAIN,
+    INSTRUCTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
 )
@@ -51,10 +51,10 @@ def _infer_domain_from_type(component_type: type[Any]) -> str | None:
         pass
 
     try:
-        from orchestrai.components.promptkit.base import PromptSection as _PromptSection
+        from orchestrai.instructions.base import BaseInstruction as _BaseInstruction
 
-        if issubclass(component_type, _PromptSection):
-            return PROMPT_SECTIONS_DOMAIN
+        if issubclass(component_type, _BaseInstruction):
+            return INSTRUCTIONS_DOMAIN
     except Exception:
         pass
 
@@ -161,7 +161,7 @@ def registry_proxy(domain: str) -> Proxy:
 services = registry_proxy(SERVICES_DOMAIN)
 codecs = registry_proxy(CODECS_DOMAIN)
 schemas = registry_proxy(SCHEMAS_DOMAIN)
-prompt_sections = registry_proxy(PROMPT_SECTIONS_DOMAIN)
+instructions = registry_proxy(INSTRUCTIONS_DOMAIN)
 
 
 __all__ = [
@@ -170,7 +170,7 @@ __all__ = [
     "get_active_app",
     "get_component_store",
     "get_registry_for",
-    "prompt_sections",
+    "instructions",
     "push_active_registry_app",
     "registry_proxy",
     "route_registration",

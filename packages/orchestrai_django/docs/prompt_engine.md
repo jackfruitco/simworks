@@ -1,132 +1,64 @@
-# Prompt Engine — orchestrai_django
+# Instruction Rendering in orchestrai_django
 
-> Compose PromptSections into a single prompt payload for LLM services.
-
----
-
-## Overview
-
-The **Prompt Engine** takes one or more `PromptSection` classes/instances and produces a `Prompt` object containing:
-
-- `instruction` (developer/system message)
-- `message` (user message)
-- `extra_messages` (additional role/text pairs)
-- `meta` (metadata captured during rendering)
-
-`orchestrai_django` re-exports the core engine from `orchestrai.promptkit`, so the API is identical across both packages.
+> PromptEngine and prompt plans were removed in v0.5.0.
 
 ---
 
-## Core Usage
+## Current Model
 
-### Build from sections
+Instruction rendering is part of service execution:
 
-```python
-from orchestrai_django.components.promptkit import PromptEngine
-from apps.chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
+- Instruction classes are declared with `@orca.instruction(order=...)`.
+- Services compose instructions via inheritance.
+- `BaseService.agent` registers one `agent.system_prompt()` callback per instruction class.
+- Static and dynamic instructions are both supported.
 
-prompt = await PromptEngine.abuild_from(
-    PatientInitialSection,
-    PatientFollowupSection,
-    simulation=my_sim,
-    service=my_service,
-)
-```
+No `PromptEngine`, `Prompt`, or `PromptSection` API exists in this version.
 
-- Pass section **classes** or **instances** as positional arguments.
-- Context is supplied via keyword arguments (`simulation=...`, `service=...`, etc.).
-- The engine instantiates sections, orders them by `weight`, and calls `render_instruction` / `render_message`.
+---
 
-### Incremental composition
+## Ordering Rules
 
-```python
-engine = PromptEngine()
-engine._add_section(PatientInitialSection)
-engine._add_section(PatientFollowupSection(weight=50))
-prompt = await engine.abuild(simulation=my_sim, service=my_service)
-```
+Instruction classes are collected with `collect_instructions(...)` and ordered by:
 
-- `add()` accepts classes or instances; duplicates are ignored by label.
-- Use `.build(...)` for synchronous execution in test scripts (outside event loops).
+1. `order` ascending (0 first, 100 last)
+2. class name (tie-break for deterministic output)
 
-### Raw prompt
+---
 
-The resulting prompt is a dataclass:
+## Dynamic vs Static
+
+- Static: define class attribute `instruction = "..."`
+- Dynamic: override `render_instruction(self) -> str | None` (sync or async)
+
+Returned empty/`None` values are ignored in task prompt materialization and normalize to empty text for agent callbacks.
+
+---
+
+## Example
 
 ```python
-from orchestrai_django.components.promptkit import Prompt
+from orchestrai.instructions import BaseInstruction
+from orchestrai_django.components.services import DjangoBaseService
+from orchestrai_django.decorators import orca
 
-print(prompt.instruction)
-print(prompt.message)
-print(prompt.extra_messages)
-print(prompt.meta.get("sections"))  # labels rendered in order
+@orca.instruction(order=0)
+class ContextInstruction(BaseInstruction):
+    async def render_instruction(self) -> str:
+        uid = self.context.get("user_id")
+        return f"Current user id: {uid}" if uid else ""
+
+@orca.instruction(order=50)
+class SafetyInstruction(BaseInstruction):
+    instruction = "Never provide diagnosis outside simulation context."
+
+@orca.service
+class GenerateResponse(ContextInstruction, SafetyInstruction, DjangoBaseService):
+    pass
 ```
 
 ---
 
-## Context Contract
+## Migration Note
 
-Each section’s `render_instruction` / `render_message` receives the keyword arguments you supply. Common keys:
-
-| Key | Description |
-|-----|-------------|
-| `simulation` | Active simulation / domain object |
-| `service` | Service instance building the prompt |
-| `ctx` | Optional additional data you pass |
-
-Sections can opt into any subset of these by signature. The engine never mutates the context you supply.
-
----
-
-## Error Handling & Tracing
-
-- Rendering happens inside OpenTelemetry spans (`ai.prompt.section`, `ai.prompt.render_instruction`, etc.).
-- Exceptions during rendering are caught and logged; the section simply contributes nothing to the prompt.
-- Metadata on the returned `Prompt.meta` includes `sections` (labels rendered) and `errors` (render failures).
-
----
-
-## Integration with Services
-
-`BaseService.ensure_prompt()` (and therefore `DjangoBaseService`) uses `PromptEngine` under the hood:
-
-1. Resolve the service’s `prompt_plan` (list of section specs).
-2. Call `PromptEngine.abuild_from(...)` with the resolved classes.
-3. Cache the resulting prompt for the lifetime of the service instance.
-
-If a section spec cannot be resolved, the service falls back to Django template rendering via `orchestrai_django.prompts.render_section`.
-
----
-
-## Custom Engines
-
-`PromptEngine` is a regular class, so you can subclass it for advanced behavior:
-
-```python
-from orchestrai_django.components.promptkit import PromptEngine
-
-
-class CustomPromptEngine(PromptEngine):
-    async def abuild(self, **ctx):
-        ctx.setdefault("feature_flag", True)
-        return await super().abuild(**ctx)
-```
-
-Inject your custom engine into a service by overriding `prompt_engine`:
-
-```python
-class MyService(DjangoBaseService):
-    prompt_engine = CustomPromptEngine
-```
-
----
-
-## Debugging Tips
-
-- Inspect `prompt.meta["errors"]` to see sections that failed to render.
-- Use `PromptEngine.add_many()` to bulk load sections from iterables.
-- Set `weight` on sections to control ordering (lower weight renders first).
-
----
-
-© 2025 Jackfruit SimWorks • orchestrai_django
+Any references to `PromptEngine`, `prompt_plan`, or `PromptSection` should be replaced with instruction classes and service MRO composition.

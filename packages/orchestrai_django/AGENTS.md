@@ -11,7 +11,7 @@ Applies to the Django integration package in `packages/orchestrai_django/`, incl
 
 ## Coding guidance
 - Validate tuple³ identities (`origin.bucket.name`) before registry insertion; raise clear errors on collisions.
-- Prefer decorators (`@llm_service`, `@codec`, `@prompt_section`) for registrations and keep them idempotent.
+- Prefer decorators (`@orca.service`, `@codec`, `@orca.instruction`) for registrations and keep them idempotent.
 - When adding execution helpers, ensure synchronous and asynchronous paths stay consistent.
 
 ## Documentation

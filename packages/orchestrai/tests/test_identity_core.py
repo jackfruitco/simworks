@@ -1,11 +1,10 @@
 import pytest
 
 from orchestrai.components.codecs import BaseCodec
-from orchestrai.components.promptkit import PromptSection
 from orchestrai.components.schemas import BaseOutputSchema
 from orchestrai.components.services.service import BaseService
 from orchestrai.decorators.components.codec_decorator import CodecDecorator
-from orchestrai.decorators.components.prompt_section_decorator import PromptSectionDecorator
+from orchestrai.decorators.components.instruction_decorator import InstructionDecorator
 from orchestrai.decorators.components.schema_decorator import SchemaDecorator
 from orchestrai.decorators.components.service_decorator import ServiceDecorator
 from orchestrai.identity import Identity, IdentityResolver
@@ -14,6 +13,7 @@ from orchestrai.identity.domains import (
     SERVICES_DOMAIN,
     normalize_domain,
 )
+from orchestrai.instructions import BaseInstruction
 from orchestrai.registry.base import ComponentRegistry
 from orchestrai.registry.exceptions import RegistryCollisionError
 
@@ -54,7 +54,7 @@ def test_domain_arg_overrides_and_attr_precedence(domain_arg, domain_attr, expec
 
 
 def test_normalize_domain_supported_and_rejected():
-    assert normalize_domain("prompt_sections") == "prompt-sections"
+    assert normalize_domain("instructions") == "instructions"
     assert normalize_domain("schemas") == "schemas"
 
     with pytest.raises(ValueError):
@@ -108,7 +108,7 @@ def test_decorators_apply_domain_defaults_per_component_type():
         def register(self, candidate):  # type: ignore[override]
             return None
 
-    class NoopPromptDecorator(PromptSectionDecorator):
+    class NoopInstructionDecorator(InstructionDecorator):
         def register(self, candidate):  # type: ignore[override]
             return None
 
@@ -124,14 +124,14 @@ def test_decorators_apply_domain_defaults_per_component_type():
     class DemoSchema(BaseOutputSchema):
         val: str
 
-    @NoopPromptDecorator()(namespace="demo", group="prompt", name="section")
-    class DemoPrompt(PromptSection):
+    @NoopInstructionDecorator()(namespace="demo", group="instruction", name="section")
+    class DemoInstruction(BaseInstruction):
         abstract = False
         instruction = "hi"
 
     assert DemoService.identity.as_str == "services.demo.svc.svc"
-    # Compatibility shims (BaseCodec/BaseOutputSchema/PromptSection) intentionally
+    assert DemoInstruction.identity.as_str == "instructions.demo.instruction.section"
+    # Compatibility shims (BaseCodec/BaseOutputSchema) intentionally
     # don't expose identity descriptors anymore.
     assert DemoCodec.__name__ == "DemoCodec"
     assert DemoSchema.__name__ == "DemoSchema"
-    assert DemoPrompt.__name__ == "DemoPrompt"
