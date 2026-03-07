@@ -120,3 +120,28 @@ class TestBaseServiceIntegration:
 
         with pytest.raises(ValueError, match="Missing required context keys"):
             service.check_required_context()
+
+    def test_dynamic_instruction_registration_uses_decorator_style(self, monkeypatch):
+        from orchestrai.components.services import BaseService
+
+        @orca.instruction(order=10)
+        class DynamicInstruction(BaseInstruction):
+            async def render_instruction(self) -> str:
+                return "dynamic"
+
+        class TestService(DynamicInstruction, BaseService):
+            abstract = False
+            model = "openai-responses:gpt-5-nano"
+
+        monkeypatch.setattr(
+            TestService,
+            "_build_model_with_api_key",
+            lambda self, _model: "test",
+            raising=False,
+        )
+
+        service = TestService()
+        agent = service.agent
+
+        assert len(agent._system_prompt_functions) == 1
+        assert agent._system_prompt_dynamic_functions

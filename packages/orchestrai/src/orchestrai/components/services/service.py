@@ -492,9 +492,9 @@ class BaseService[T: BaseModel](
 
                 return instruction_fn
 
-            agent.system_prompt(
-                make_instruction_fn(instruction_cls, has_custom_render),
-                dynamic=has_custom_render,
+            # pydantic_ai requires decorator style when dynamic=True.
+            agent.system_prompt(dynamic=has_custom_render)(
+                make_instruction_fn(instruction_cls, has_custom_render)
             )
 
         return agent
