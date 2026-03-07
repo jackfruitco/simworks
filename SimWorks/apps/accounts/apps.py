@@ -7,12 +7,21 @@ class AccountsConfig(AppConfig):
     label = "accounts"
 
     def ready(self):
+        from django.db.models.signals import post_migrate
+
+        post_migrate.connect(_seed_roles, sender=self)
+
         from config.settings_parsers import bool_from_env
 
         if bool_from_env("DJANGO_DEBUG") and bool_from_env("DJANGO_CREATE_DEV_USER"):
-            from django.db.models.signals import post_migrate
-
             post_migrate.connect(_auto_create_dev_user, sender=self)
+
+
+def _seed_roles(sender, **kwargs):
+    """Seed default roles and system users after migrations."""
+    from django.core.management import call_command
+
+    call_command("seed_roles", verbosity=0)
 
 
 def _auto_create_dev_user(sender, **kwargs):

@@ -26,18 +26,8 @@ fi
 
 if [ "${DJANGO_CREATE_DEFAULT_ROLES:-0}" = "1" ]; then
   echo
-  echo "Creating default user roles if not already exists..."
-  python manage.py shell -c "\
-from apps.accounts.models import UserRole; \
-UserRole.objects.exists() or UserRole.objects.bulk_create([ \
-    UserRole(title='EMT (NREMT-B)'), \
-    UserRole(title='Paramedic (NRP)'), \
-    UserRole(title='Military Medic'), \
-    UserRole(title='SOF Medic'), \
-    UserRole(title='RN'), \
-    UserRole(title='RN, BSN'), \
-    UserRole(title='Physician') \
-])"
+  echo "Seeding default roles..."
+  python manage.py seed_roles
 else
   echo
   echo "Skipping default role creation."
