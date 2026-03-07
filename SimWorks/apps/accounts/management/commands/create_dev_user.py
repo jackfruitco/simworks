@@ -52,8 +52,6 @@ class Command(BaseCommand):
         if created:
             user.set_password(password)
             user.save(update_fields=["password"])
-            self.stdout.write(
-                self.style.SUCCESS(f"Created dev user: {DEV_EMAIL} (role: {role})")
-            )
+            self.stdout.write(self.style.SUCCESS(f"Created dev user: {DEV_EMAIL} (role: {role})"))
         else:
             self.stdout.write(self.style.WARNING(f"Dev user already exists: {DEV_EMAIL}"))
