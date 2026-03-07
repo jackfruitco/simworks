@@ -16,6 +16,7 @@ services:
       - 8000
     volumes:
       - ../SimWorks:/app/SimWorks
+      - ../packages:/app/packages
       - static-vol:/app/static
       - media-vol:/app/media
     restart: unless-stopped
@@ -53,6 +54,11 @@ services:
     command: ["npm", "run", "watch:css:docker"]
     volumes:
       - ../SimWorks:/app/SimWorks
+      - ../packages:/app/packages
+      - ../package.json:/app/package.json
+      - ../package-lock.json:/app/package-lock.json
+      - ../postcss.config.js:/app/postcss.config.js
+      - ../tailwind.config.js:/app/tailwind.config.js
       - static-vol:/app/static
     restart: unless-stopped
     networks:
