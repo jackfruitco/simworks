@@ -1,3 +1,8 @@
+from __future__ import annotations
+
+import uuid
+
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from polymorphic.models import PolymorphicModel
@@ -5,32 +10,144 @@ from polymorphic.models import PolymorphicModel
 from apps.simcore.models import BaseSession
 
 
+class SessionStatus(models.TextChoices):
+    SEEDED = "seeded", _("Seeded")
+    RUNNING = "running", _("Running")
+    PAUSED = "paused", _("Paused")
+    COMPLETED = "completed", _("Completed")
+    FAILED = "failed", _("Failed")
+
+
+class EventSource(models.TextChoices):
+    AI = "ai", _("AI")
+    INSTRUCTOR = "instructor", _("Instructor")
+    SYSTEM = "system", _("System")
+
+
 class TrainerSession(BaseSession):
-    """
-    Represents a session within TrainerLab that extends a shared Simulation instance.
-    Additional training-specific behaviors or fields can be added here.
-    """
+    """TrainerLab runtime session attached to a Simulation."""
+
+    status = models.CharField(max_length=16, choices=SessionStatus.choices, default=SessionStatus.SEEDED)
+    scenario_spec_json = models.JSONField(default=dict, blank=True)
+    runtime_state_json = models.JSONField(default=dict, blank=True)
+    initial_directives = models.TextField(blank=True, default="")
+    tick_interval_seconds = models.PositiveSmallIntegerField(default=15)
+    tick_nonce = models.PositiveIntegerField(default=0)
+
+    run_started_at = models.DateTimeField(blank=True, null=True)
+    run_paused_at = models.DateTimeField(blank=True, null=True)
+    run_completed_at = models.DateTimeField(blank=True, null=True)
+    last_ai_tick_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status"], name="idx_trainer_session_status"),
+            models.Index(fields=["run_started_at"], name="idx_trainer_session_started"),
+        ]
 
 
-# class EventType(models.Model):
-#
-#     name = models.CharField(max_length=100, unique=True)
-#     description = models.TextField(blank=True)
-#
-#     def __str__(self):
-#         return self.name
+class TrainerCommand(models.Model):
+    """Audit-safe command log for all mutable TrainerLab actions."""
+
+    class CommandType(models.TextChoices):
+        CREATE_SESSION = "create_session", _("Create Session")
+        START = "start", _("Start")
+        PAUSE = "pause", _("Pause")
+        RESUME = "resume", _("Resume")
+        STOP = "stop", _("Stop")
+        STEER_PROMPT = "steer_prompt", _("Steer Prompt")
+        INJECT_EVENT = "inject_event", _("Inject Event")
+
+    class CommandStatus(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        PROCESSED = "processed", _("Processed")
+        FAILED = "failed", _("Failed")
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey("trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="commands")
+    command_type = models.CharField(max_length=32, choices=CommandType.choices)
+    payload_json = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=16, choices=CommandStatus.choices, default=CommandStatus.PENDING)
+
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trainerlab_commands",
+    )
+    issued_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(blank=True, null=True)
+    error = models.TextField(blank=True, default="")
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["session", "issued_at"], name="idx_trainer_cmd_session"),
+            models.Index(fields=["status"], name="idx_trainer_cmd_status"),
+        ]
+
+
+class TrainerRuntimeEvent(models.Model):
+    """Append-only TrainerLab event stream feeding outbox + SSE."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session = models.ForeignKey("trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="runtime_events")
+    simulation = models.ForeignKey(
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="trainer_runtime_events",
+    )
+    event_type = models.CharField(max_length=120)
+    payload = models.JSONField(default=dict, blank=True)
+    correlation_id = models.CharField(max_length=100, blank=True, null=True)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trainer_runtime_events",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["simulation", "created_at"], name="idx_trainer_evt_sim"),
+            models.Index(fields=["session", "created_at"], name="idx_trainer_evt_session"),
+        ]
+
+
+class TrainerRunSummary(models.Model):
+    session = models.OneToOneField("trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="summary")
+    summary_json = models.JSONField(default=dict)
+    generated_at = models.DateTimeField(auto_now_add=True)
+    generator_version = models.CharField(max_length=32, default="v1")
 
 
 class ABCEvent(PolymorphicModel):
-    """Abstract class for Events"""
+    """Abstract class for mutable TrainerLab domain events."""
 
     timestamp = models.DateTimeField(auto_now_add=True)
-
-    # event_type = models.ForeignKey(EventType, on_delete=models.CASCADE, related_name="events")
-
     simulation = models.ForeignKey(
         "simcore.Simulation", on_delete=models.CASCADE, related_name="events"
     )
+    source = models.CharField(max_length=16, choices=EventSource.choices, default=EventSource.SYSTEM)
+    supersedes_event = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_domain_events",
+    )
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.__class__.__name__} at {self.timestamp:%H:%M:%S}"
@@ -97,19 +214,19 @@ class Injury(ABCEvent):
 
     injury_category = models.CharField(
         max_length=2,
-        choices=InjuryCategory.choices,  # type: ignore[attr-defined]
+        choices=InjuryCategory.choices,
         db_index=True,
         help_text="The category of the injury",
     )
     injury_location = models.CharField(
         max_length=4,
-        choices=InjuryLocation.choices,  # type: ignore[attr-defined]
+        choices=InjuryLocation.choices,
         db_index=True,
         help_text="The location of the injury",
     )
     injury_kind = models.CharField(
         max_length=4,
-        choices=InjuryKind.choices,  # type: ignore[attr-defined]
+        choices=InjuryKind.choices,
         db_index=True,
         help_text="The kind of injury",
     )
@@ -142,32 +259,23 @@ class Injury(ABCEvent):
         )
 
 
+class Illness(ABCEvent):
+    class Severity(models.TextChoices):
+        LOW = "low", _("Low")
+        MODERATE = "moderate", _("Moderate")
+        HIGH = "high", _("High")
+        CRITICAL = "critical", _("Critical")
+
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    severity = models.CharField(max_length=16, choices=Severity.choices, default=Severity.MODERATE)
+    is_resolved = models.BooleanField(default=False)
+
+
 class Intervention(ABCEvent):
-    class InterventionGroups:
-        class TOURNIQUET(models.TextChoices):
-            HASTY = "M-TQ-H", _("Hasty Tourniquet")
-            DELIBERATE = "M-TQ-D", _("Deliberate Tourniquet")
-
-        class GAUZE(models.TextChoices):
-            PACKED = "M-GZ-PK", _("Non-Hemostatic Gauze Packed")
-            PACKED_HEMOSTATIC = "M-GZ-PK-H", _("Hemostatic Gauze Packed")
-            WRAPPED = "M-GZ-WP", _("Non-Hemostatic Gauze Wrapped")
-            WRAPPED_HEMOSTATIC = "M-GZ-WP-H", _("Hemostatic Gauze Wrapped")
-            ZFOLDED = "M-GZ-ZF", _("Z-Folded Gauze")
-            ZFOLDED_HEMOSTATIC = "M-GZ-ZF-H", _("Hemostatic Z-Folded Gauze")
-
-        class AIRWAY(models.TextChoices):
-            POSITION_RECOVERY = "A-P-R", _("Recovery Position")
-            POSITION_OF_COMFORT = "A-P-C", _("Position of Comfort")
-            POSITION_OTHER = "A-P-O", _("Other Position")
-            HEAD_TILT_CHIN_LIFT = "A-HTCL", _("Head-Tilt-Chin-Lift")
-            JAW_THRUST = "A-JT", _("Jaw-Thrust")
-            NPA = "A-NPA", _("NPA")
-            OPA = "A-OPA", _("OPA")
-            SGA = "A-SGA", _("SGA")
-            INTUBATION = "A-INT", _("Intubation")
-            SURGICAL_OPEN = "A-SURG-O", _("Surgical Airway (Open Technique)")
-            SURGICAL_BOUGIE = "A-SURG-B", _("Surgical Airway (Bougie-aided)")
+    code = models.CharField(max_length=64, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    target = models.CharField(max_length=120, blank=True, default="")
 
 
 class VitalMeasurement(ABCEvent):
