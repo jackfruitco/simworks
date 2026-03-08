@@ -8,19 +8,20 @@ that integrates with Django signals, models, and task execution.
 Usage:
     from pydantic import BaseModel
     from orchestrai_django.components.services import DjangoBaseService
-    from orchestrai.prompts import system_prompt
+    from orchestrai.components.instructions import BaseInstruction
+    from orchestrai_django.decorators import orca
 
     class PatientResponse(BaseModel):
         messages: list[str]
 
-    class GenerateResponse(DjangoBaseService):
+    @orca.instruction(order=10)
+    class BaseInstructions(BaseInstruction):
+        instruction = "You are a helpful medical assistant..."
+
+    class GenerateResponse(BaseInstructions, DjangoBaseService):
         response_schema = PatientResponse
         model = "openai-responses:gpt-5-nano"
         use_native_output = True
-
-        @system_prompt(weight=100)
-        def base_instructions(self) -> str:
-            return "You are a helpful medical assistant..."
 """
 
 from __future__ import annotations
@@ -58,9 +59,7 @@ class DjangoBaseService(BaseService, ABC):
             response_schema = PatientResponse
             use_native_output = True
 
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "You are a patient simulator..."
+            # Compose instruction mixins on service MRO.
     """
 
     abstract: ClassVar[bool] = True

@@ -4,8 +4,8 @@ DEFAULTS: dict[str, object] = {
     "MODE": "single",
     "DISCOVERY_PATHS": (
         "*.orca.services",
+        "*.orca.instructions",
         "*.orca.output_schemas",
-        "*.orca.codecs",
         "*.orca.persist",
         "*.orca.persistence",
         "*.ai.services",

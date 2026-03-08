@@ -1,12 +1,11 @@
 """App-scoped component registries."""
 
 from .active_app import (
-    codecs,
     flush_pending,
     get_active_app,
     get_component_store,
     get_registry_for,
-    prompt_sections,
+    instructions,
     push_active_registry_app,
     registry_proxy,
     route_registration,
@@ -25,12 +24,11 @@ __all__ = [
     "ComponentStore",
     "PendingRegistrations",
     "RegistrationRecord",
-    "codecs",
     "flush_pending",
     "get_active_app",
     "get_component_store",
     "get_registry_for",
-    "prompt_sections",
+    "instructions",
     "push_active_registry_app",
     "registry_proxy",
     "route_registration",

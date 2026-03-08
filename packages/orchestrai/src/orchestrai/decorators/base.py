@@ -13,7 +13,7 @@ Usage
     @decorator
     class Foo: ...
 
-    @decorator(name="bar", kind="codec", namespace="chatlab")
+    @decorator(name="bar", group="baz", namespace="chatlab")
     class Foo: ...
 
 Key behaviors
@@ -217,7 +217,7 @@ class BaseDecorator:
         """Return the registry singleton for this decorator's domain, or **None** to skip.
 
         The core base returns **None** so core decorators do not attempt registration.
-        Domain decorators (codecs/services/prompt sections/schemas) should override
+        Domain decorators (services/prompt sections/schemas) should override
         this and return the appropriate registry singleton.
         """
         return None

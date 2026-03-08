@@ -9,10 +9,9 @@ Exports intentionally avoid wildcard imports to keep the surface explicit.
 """
 
 from .domains import (
-    CODECS_DOMAIN,
     DEFAULT_DOMAIN,
+    INSTRUCTIONS_DOMAIN,
     PERSIST_DOMAIN,
-    PROMPT_SECTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
     SERVICES_DOMAIN,
     SUPPORTED_DOMAINS,
@@ -28,12 +27,11 @@ from .utils import DEFAULT_IDENTITY_STRIP_TOKENS, coerce_identity_key
 Identity.resolve = _Resolve  # type: ignore[attr-defined]
 
 __all__ = [
-    "CODECS_DOMAIN",
     "DEFAULT_DOMAIN",
     # Constants
     "DEFAULT_IDENTITY_STRIP_TOKENS",
+    "INSTRUCTIONS_DOMAIN",
     "PERSIST_DOMAIN",
-    "PROMPT_SECTIONS_DOMAIN",
     "SCHEMAS_DOMAIN",
     "SERVICES_DOMAIN",
     "SUPPORTED_DOMAINS",

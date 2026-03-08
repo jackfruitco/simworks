@@ -91,7 +91,7 @@ def demote_request_for_service(dj: DjangoRequest) -> Request:
     Demote a DjangoRequest into a core Request.
 
     This is a thin wrapper over `orchestrai_django.types.demote.demote_request` that
-    preserves identity, backend/client, and returns a core Request with unchanged correlation id and codec hints.
+    preserves identity, backend/client, and returns a core Request with unchanged correlation id
     """
     with service_span_sync(
         "svc.demote_request_for_service",

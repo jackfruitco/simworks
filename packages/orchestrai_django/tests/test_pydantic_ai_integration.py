@@ -1,8 +1,4 @@
-"""
-Tests for Django Pydantic AI integration.
-
-These tests verify the DjangoBaseService and related Django components.
-"""
+"""Tests for Django Pydantic AI integration."""
 
 from unittest.mock import MagicMock
 
@@ -11,11 +7,10 @@ import pytest
 
 
 class TestServiceCallModel:
-    """Tests for the new ServiceCall model."""
+    """Tests for the ServiceCall model."""
 
     @pytest.mark.django_db
     def test_service_call_creation(self):
-        """Test creating a ServiceCall record."""
         import uuid
 
         from orchestrai_django.models import CallStatus, ServiceCall
@@ -35,7 +30,6 @@ class TestServiceCallModel:
 
     @pytest.mark.django_db
     def test_mark_running(self):
-        """Test marking a call as running."""
         import uuid
 
         from orchestrai_django.models import CallStatus, ServiceCall
@@ -53,7 +47,6 @@ class TestServiceCallModel:
 
     @pytest.mark.django_db
     def test_mark_completed(self):
-        """Test marking a call as completed with result data."""
         import uuid
 
         from orchestrai_django.models import CallStatus, ServiceCall
@@ -84,7 +77,6 @@ class TestServiceCallModel:
 
     @pytest.mark.django_db
     def test_mark_failed(self):
-        """Test marking a call as failed."""
         import uuid
 
         from orchestrai_django.models import CallStatus, ServiceCall
@@ -103,7 +95,6 @@ class TestServiceCallModel:
 
     @pytest.mark.django_db
     def test_to_jsonable(self):
-        """Test converting call to JSON-serializable dict."""
         import uuid
 
         from orchestrai_django.models import CallStatus, ServiceCall
@@ -127,21 +118,21 @@ class TestDjangoBaseService:
     """Tests for DjangoBaseService."""
 
     def test_service_initialization(self):
-        """Test that service initializes correctly."""
-        from orchestrai.prompts import system_prompt
+        from orchestrai.components.instructions import BaseInstruction
         from orchestrai_django.components.services import DjangoBaseService
+        from orchestrai_django.decorators import orca
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(DjangoBaseService):
+        @orca.instruction(order=10)
+        class TestInstruction(BaseInstruction):
+            instruction = "Test instructions"
+
+        class TestService(TestInstruction, DjangoBaseService):
             abstract = False
             response_schema = TestSchema
             model = "openai-responses:gpt-5-nano"
-
-            @system_prompt(weight=100)
-            def instructions(self) -> str:
-                return "Test instructions"
 
         service = TestService(context={"test": "value"})
 
@@ -149,7 +140,6 @@ class TestDjangoBaseService:
         assert service.emitter is not None
 
     def test_service_with_custom_emitter(self):
-        """Test that custom emitter is used."""
         from orchestrai_django.components.services import DjangoBaseService
 
         class TestSchema(BaseModel):
@@ -169,10 +159,8 @@ class TestBaseService:
     """Tests for BaseService (consolidated Pydantic AI-based service)."""
 
     def test_service_has_task_descriptor(self):
-        """Test that BaseService has a task descriptor."""
         from orchestrai.components.services import BaseService
 
-        # task should be a descriptor that returns a proxy
         assert hasattr(BaseService, "task")
 
         class TestSchema(BaseModel):
@@ -183,33 +171,44 @@ class TestBaseService:
             response_schema = TestSchema
             model = "test"
 
-        # Accessing task on the class should return a proxy
         proxy = TestService.task
         assert proxy is not None
         assert hasattr(proxy, "using")
 
-    def test_prompt_methods_are_collected(self):
-        """Test that @system_prompt methods are collected."""
+    def test_instruction_classes_are_collected(self):
+        from orchestrai.components.instructions import BaseInstruction
         from orchestrai.components.services import BaseService
-        from orchestrai.prompts import system_prompt
+        from orchestrai_django.decorators import orca
 
         class TestSchema(BaseModel):
             message: str
 
-        class TestService(BaseService):
+        @orca.instruction(order=10)
+        class FirstInstruction(BaseInstruction):
+            instruction = "First"
+
+        @orca.instruction(order=50)
+        class SecondInstruction(BaseInstruction):
+            instruction = "Second"
+
+        class TestService(FirstInstruction, SecondInstruction, BaseService):
             abstract = False
             response_schema = TestSchema
             model = "test"
 
-            @system_prompt(weight=100)
-            def first(self) -> str:
-                return "First"
-
-            @system_prompt(weight=50)
-            def second(self) -> str:
-                return "Second"
-
         service = TestService()
-        assert len(service._prompt_methods) == 2
-        assert service._prompt_methods[0].name == "first"
-        assert service._prompt_methods[1].name == "second"
+        assert len(service._instruction_classes) == 2
+        assert service._instruction_classes[0] is FirstInstruction
+        assert service._instruction_classes[1] is SecondInstruction
+
+
+def test_orca_namespace_available_on_all_import_paths():
+    from orchestrai import orca as orchestrai_orca
+    from orchestrai.decorators import orca as decorators_orca
+    from orchestrai_django import orca as orchestrai_django_orca
+    from orchestrai_django.decorators import orca as django_decorators_orca
+
+    assert orchestrai_orca.service is decorators_orca.service
+    assert orchestrai_orca.instruction is decorators_orca.instruction
+    assert orchestrai_django_orca.service is django_decorators_orca.service
+    assert orchestrai_django_orca.instruction is django_decorators_orca.instruction

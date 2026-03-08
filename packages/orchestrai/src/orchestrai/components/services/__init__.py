@@ -7,7 +7,6 @@ from .discovery import discover_services, list_services
 from .exceptions import (
     MissingRequiredContextKeys,
     ServiceBuildRequestError,
-    ServiceCodecResolutionError,
     ServiceConfigError,
     ServiceDiscoveryError,
     ServiceDispatchError,
@@ -25,7 +24,6 @@ __all__ = (
     "ServiceBuildRequestError",
     "ServiceCall",
     "ServiceCallMixin",
-    "ServiceCodecResolutionError",
     "ServiceConfigError",
     "ServiceDiscoveryError",
     "ServiceDispatchError",

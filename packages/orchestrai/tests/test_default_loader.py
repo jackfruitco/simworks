@@ -8,8 +8,8 @@ def test_default_discovery_paths_include_patterns():
     discovery_paths = DEFAULTS["DISCOVERY_PATHS"]
     expected = [
         "*.orca.services",
+        "*.orca.instructions",
         "*.orca.output_schemas",
-        "*.orca.codecs",
         "*.ai.services",
     ]
 

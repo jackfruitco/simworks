@@ -171,18 +171,33 @@ def _extract_agent_config(service) -> dict | None:
 
 def _build_request_json(service, payload, context, request_obj):
     """Construct a request JSON payload for debugging."""
-    from orchestrai.prompts.decorators import collect_prompts, render_prompt_methods
+    from orchestrai.components.instructions.base import BaseInstruction
+    from orchestrai.components.instructions.collector import collect_instructions
 
     prompt_text = ""
     try:
-        prompts = getattr(service, "_prompt_methods", None) or collect_prompts(type(service))
+        instruction_classes = getattr(
+            service, "_instruction_classes", None
+        ) or collect_instructions(type(service))
+        parts: list[str] = []
+        for instruction_cls in instruction_classes:
+            has_custom_render = (
+                hasattr(instruction_cls, "render_instruction")
+                and instruction_cls.render_instruction is not BaseInstruction.render_instruction
+            )
+            if has_custom_render:
+                result = instruction_cls.render_instruction(service)
+                if inspect.isawaitable(result):
 
-        class _Ctx:
-            def __init__(self, deps):
-                self.deps = deps
+                    async def _await_render(awaitable):
+                        return await awaitable
 
-        ctx = _Ctx(getattr(service, "context", None) or context)
-        prompt_text = async_to_sync(render_prompt_methods)(service, prompts, ctx)
+                    result = async_to_sync(_await_render)(result)
+                if result:
+                    parts.append(str(result))
+            elif instruction_cls.instruction:
+                parts.append(instruction_cls.instruction)
+        prompt_text = "\n\n".join(parts)
     except Exception:
         prompt_text = ""
 
@@ -406,16 +421,22 @@ def run_service_call(call_id: str):
     After max retries, marks call as failed and emits ai_response_failed signal.
     """
 
+    autostarted_app = None
     try:
         from orchestrai_django.apps import ensure_autostarted
 
-        ensure_autostarted()
+        autostarted_app = ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed inside run_service_call", exc_info=True)
 
     _debug_app_context("run_service_call")
 
-    app = get_current_app()
+    app = autostarted_app or get_current_app()
+    if autostarted_app is not None:
+        logger.debug(
+            "run_service_call resolved autostart app app_id=%s",
+            hex(id(autostarted_app)),
+        )
     registry = ensure_service_registry(app)
 
     max_attempts = _get_max_attempts()
@@ -925,12 +946,18 @@ def process_pending_persistence():
     Returns:
         dict with processing stats
     """
+    autostarted_app = None
     try:
         from orchestrai_django.apps import ensure_autostarted
 
-        ensure_autostarted()
+        autostarted_app = ensure_autostarted()
     except Exception:
         logger.debug("ensure_autostarted failed in process_pending_persistence", exc_info=True)
+    if autostarted_app is not None:
+        logger.debug(
+            "process_pending_persistence resolved autostart app app_id=%s",
+            hex(id(autostarted_app)),
+        )
 
     max_attempts = getattr(settings, "DOMAIN_PERSIST_MAX_ATTEMPTS", 10)
     batch_size = getattr(settings, "DOMAIN_PERSIST_BATCH_SIZE", 100)

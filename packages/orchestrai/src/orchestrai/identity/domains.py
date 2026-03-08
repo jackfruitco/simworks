@@ -6,10 +6,9 @@ from collections.abc import Iterable, Sequence
 import re
 
 __all__ = [
-    "CODECS_DOMAIN",
     "DEFAULT_DOMAIN",
+    "INSTRUCTIONS_DOMAIN",
     "PERSIST_DOMAIN",
-    "PROMPT_SECTIONS_DOMAIN",
     "SCHEMAS_DOMAIN",
     "SERVICES_DOMAIN",
     "SUPPORTED_DOMAINS",
@@ -17,8 +16,7 @@ __all__ = [
 ]
 
 SERVICES_DOMAIN = "services"
-CODECS_DOMAIN = "codecs"
-PROMPT_SECTIONS_DOMAIN = "prompt-sections"
+INSTRUCTIONS_DOMAIN = "instructions"
 SCHEMAS_DOMAIN = "schemas"
 PERSIST_DOMAIN = "persist"
 
@@ -26,8 +24,7 @@ PERSIST_DOMAIN = "persist"
 DEFAULT_DOMAIN = SERVICES_DOMAIN
 SUPPORTED_DOMAINS: tuple[str, ...] = (
     SERVICES_DOMAIN,
-    CODECS_DOMAIN,
-    PROMPT_SECTIONS_DOMAIN,
+    INSTRUCTIONS_DOMAIN,
     SCHEMAS_DOMAIN,
     PERSIST_DOMAIN,
 )

@@ -26,13 +26,6 @@ Configuration precedence:
 | `AI_IDENTITY_STRIP_TOKENS` | list[str] | `[]` | Legacy alias consumed by identity utils. |
 
 Each app may also define `identity_strip_tokens` **or** `AI_IDENTITY_STRIP_TOKENS` on its `AppConfig`. Both forms are honored.
-
-### Codec Registration
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER` | bool | `False` | When true, codec registration instantiates the class once to surface import-time errors. |
-
 ### Execution Backends
 
 `AI_EXECUTION_BACKENDS` is a dictionary that configures dispatch defaults and backend metadata:
@@ -53,7 +46,7 @@ AI_EXECUTION_BACKENDS = {
 
 ### Prompt/Tracing Utilities
 
-The prompt engine and service base classes emit OpenTelemetry spans automatically. No extra settings are required, but you can configure OpenTelemetry exporters as usual in Django settings.
+The instruction engine and service base classes emit OpenTelemetry spans automatically. No extra settings are required, but you can configure OpenTelemetry exporters as usual in Django settings.
 
 ---
 
@@ -66,7 +59,7 @@ While most configuration lives in Django settings, a few environment variables a
 | `SIMCORE_AI_IDENTITY_STRIP_TOKENS` | CSV string parsed into the setting of the same name (useful for twelve-factor deployments). |
 | Provider-specific keys (e.g., `OPENAI_API_KEY`) | Consumed by your chosen `orchestrai` provider implementation. |
 
-Everything else—including execution mode, codecs, registries, and signals—is controlled via Django settings or service-level overrides.
+Everything else—including execution mode, response processors, registries, and signals—is controlled via Django settings or service-level overrides.
 
 ---
 
@@ -90,7 +83,6 @@ print(derive_django_identity_for_class(PatientInitialSection))
 - Prefer structured Django settings over ad-hoc environment variables.
 - Use `AI_EXECUTION_BACKENDS` to control default mode/backend/queue.
 - Identity stripping tokens can be declared globally or per-app.
-- Enable `SIMCORE_AI_VALIDATE_CODECS_ON_REGISTER` to surface codec errors early.
 
 ---
 

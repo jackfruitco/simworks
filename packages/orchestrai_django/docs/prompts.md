@@ -1,147 +1,76 @@
-# Prompts and Prompt Plans in orchestrai_django
+# Prompt Assembly in orchestrai_django
 
-> Prompts assemble PromptSections into the final input for an LLM service.
+> Services build system prompts from class-based instructions collected through MRO.
 
 ---
 
 ## Overview
 
-A **Prompt** represents the final set of messages sent to the LLM. Services build prompts dynamically from one or more `PromptSection`s resolved by identity or declared in a `prompt_plan`.
+`orchestrai_django` no longer uses prompt plans or a prompt engine. Prompt text is assembled from `BaseInstruction` subclasses mixed into a service class.
 
-When components share the same **tuple³ identity** (`origin.bucket.name`), the system links them automatically — no manual wiring required.
+At runtime:
 
----
-
-## Prompt Composition
-
-1. The **Service** asks `PromptEngine` to build a prompt.
-2. The engine instantiates each `PromptSection` in the service’s `prompt_plan` (or the section matching the service identity).
-3. Sections emit instructions/messages; the engine merges them into a single `Prompt` dataclass.
-4. The service converts that prompt into structured `InputItem` objects.
+1. `collect_instructions(type(service))` gathers instruction classes from the service MRO.
+2. Classes are ordered by `(order, class_name)` with lower `order` first.
+3. Each instruction contributes text via static `instruction` or dynamic `render_instruction`.
+4. The service registers each contribution as `agent.system_prompt(...)` callbacks.
 
 ---
 
-## Default Prompt Resolution
-
-If a service does not define `prompt_plan`, the engine looks up a section whose identity matches the service’s own tuple.
-
-Example chain:
-
-```
-chatlab.standardized_patient.initial
-├── GenerateInitialResponseService
-├── PatientInitialSection
-├── PatientInitialCodec
-└── PatientInitialOutputSchema
-```
-
-The service automatically uses `PatientInitialSection` as its prompt source.
-
----
-
-## Manual Prompt Plans
-
-A service can override the default by providing explicit specs:
+## Defining Instructions
 
 ```python
-prompt_plan = [
-    "chatlab.standardized_patient.initial",
-    "chatlab.standardized_patient.followup",
-]
+from orchestrai.instructions import BaseInstruction
+from orchestrai_django.decorators import orca
+
+@orca.instruction(order=10)
+class PersonaInstruction(BaseInstruction):
+    instruction = "You are a standardized patient in a training simulation."
 ```
 
-You can also provide classes directly:
+Dynamic instruction:
 
 ```python
-from apps.chatlab.ai.prompts.sections import PatientInitialSection, PatientFollowupSection
-
-prompt_plan = [PatientInitialSection, PatientFollowupSection]
+@orca.instruction(order=0)
+class PatientNameInstruction(BaseInstruction):
+    async def render_instruction(self) -> str:
+        simulation = self.context.get("simulation")
+        if simulation:
+            return f"Your name is {simulation.sim_patient_full_name}."
+        return "You are a standardized patient."
 ```
-
-Each spec is resolved via `orchestrai.promptkit.resolvers.resolve_section`, so canonical strings or classes both work.
 
 ---
 
-## Inspecting Prompts at Runtime
+## Attaching Instructions to a Service
 
 ```python
-svc = GenerateInitialResponse(simulation_id=1)
-prompt = await svc.ensure_prompt(simulation=my_sim)
+from orchestrai_django.components.services import DjangoBaseService
+from orchestrai_django.decorators import orca
 
-print(prompt.instruction)
-print(prompt.message)
-print(prompt.extra_messages)
-print(prompt.meta["sections"])  # labels rendered in order
-```
-
-`ensure_prompt` caches the prompt on the service instance for reuse during the request lifecycle.
-
----
-
-## Working with PromptRegistry
-
-```python
-from orchestrai_django.components.promptkit import PromptRegistry
-
-sections = [cls.__name__ for cls in PromptRegistry.all()]
-print(sections)
-```
-
-Use `PromptRegistry.require_str("origin.bucket.name")` to fetch a specific section class by identity.
-
----
-
-## Rendering Hooks
-
-Each `PromptSection` can define `instruction`, `message`, or override `render_instruction` / `render_message` for dynamic content:
-
-```python
-@prompt_section
-class PatientFollowupSection(PromptSection):
-    async def render_message(self, simulation, **ctx):
-        last_symptom = getattr(simulation, "chief_complaint", "none")
-        return f"Patient reports continued {last_symptom}."
-```
-
-The engine passes keyword arguments such as `simulation` and `service` to these methods.
-
----
-
-## Debugging Tips
-
-- Print `PromptRegistry.all()` to verify sections were registered during startup.
-- Check `prompt.meta["errors"]` for sections that failed to render.
-- Weight sections via the `weight` attribute to control ordering (lower renders first).
-
----
-
-## Example: Full Prompt Chain
-
-```python
-@prompt_section
-class PatientInitialSection(PromptSection):
-    instruction = "You are a standardized patient in a remote telemed chat."
-    message = "Begin naturally and describe your symptoms."
-
-
-@llm_service
-class GenerateInitialResponse(DjangoExecutableLLMService, ChatlabMixin, StandardizedPatientMixin):
+@orca.service
+class GenerateReply(PatientNameInstruction, PersonaInstruction, DjangoBaseService):
     pass
 ```
 
-This service will automatically render `PatientInitialSection` without specifying a `prompt_plan` because the identities align.
+This service receives both instructions automatically, in deterministic order.
+
+---
+
+## Runtime Introspection
+
+```python
+service = GenerateReply(context={"simulation_id": 1})
+print([cls.__name__ for cls in service._instruction_classes])
+```
+
+Task serialization also renders the same instruction chain into request JSON for observability.
 
 ---
 
 ## Related Docs
 
-- [Prompt Sections](prompt_sections.md)
-- [Prompt Engine](prompt_engine.md)
+- [Instructions](instructions.md)
 - [Services](services.md)
-- [Codecs](codecs.md)
-- [Schemas](schemas.md)
-- [Identity System](identity.md)
-
----
-
-© 2025 Jackfruit SimWorks • orchestrai_django
+- [Registries](registries.md)
+- [Identity](identity.md)

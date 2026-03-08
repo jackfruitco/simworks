@@ -5,7 +5,7 @@
 ## Architecture overview
 
 - **OrchestrAI app** - owns configuration, loader, registries, and lifecycle hooks.
-- **Registries** - lightweight, frozen after `finalize()`, storing services, codecs, providers, clients, and prompt sections.
+- **Registries** - lightweight, frozen after `finalize()`, storing services, response processors, providers, clients, and instructions.
 - **Shared decorators** - allow registering components before an app exists; callbacks run during `finalize()` for every app.
 - **Loader** - optional autodiscovery helper that imports modules declared in `DISCOVERY_PATHS`.
 
@@ -37,8 +37,8 @@ Each method is idempotent and avoids network calls; nothing heavy happens during
 - `CLIENTS` - mapping of client definitions.
 - `PROVIDERS` - mapping of provider definitions.
 - `DISCOVERY_PATHS` - iterable of dotted module paths to import during discovery. The defaults
-  import OrchestrAI’s contrib provider backends/codecs and include glob patterns for common
-  project layouts (`*.orca.services`, `*.orca.output_schemas`, `*.orca.codecs`, `*.ai.services`).
+  import OrchestrAI’s contrib provider backends/response processors and include glob patterns for common
+  project layouts (`*.orca.services`, `*.orca.output_schemas`, `*.orca.response processors`, `*.ai.services`).
   Patterns resolve to real modules before import; unmatched patterns are skipped safely.
 - `LOADER` - dotted path to a loader class; defaults to the lightweight base loader.
 - `MODE` - optional runtime mode flag.
@@ -76,7 +76,7 @@ Registries are simple, thread-safe mappings with three phases:
 2. **get(name)** - retrieve a registered object.
 3. **freeze()** - prevent further mutation; invoked automatically during `finalize()`.
 
-The app exposes `services`, `codecs`, `providers`, `clients`, and `prompt_sections` registries. Use `app.clients.register(...)` or decorators to populate them.
+The app exposes `services`, `response processors`, `providers`, `clients`, and `instructions` registries. Use `app.clients.register(...)` or decorators to populate them.
 
 ## Finalize callbacks
 
@@ -114,13 +114,13 @@ Provide your own `DISCOVERY_PATHS` tuple to extend or override that list, or set
 tuple to disable all automatic discovery.
 
 ```python
-app.configure({"DISCOVERY_PATHS": ["myapp.services", "myapp.codecs"]})
+app.configure({"DISCOVERY_PATHS": ["myapp.services", "myapp.response processors"]})
 app.discover()
 ```
 
 The defaults already scan `orchestrai.contrib.provider_backends` and
-`orchestrai.contrib.provider_codecs`, and attempt to import modules matching `*.orca.services`,
-`*.orca.output_schemas`, `*.orca.codecs`, and `*.ai.services` when they exist on `sys.path`.
+`orchestrai.contrib.provider_formats`, and attempt to import modules matching `*.orca.services`,
+`*.orca.output_schemas`, `*.orca.response processors`, and `*.ai.services` when they exist on `sys.path`.
 
 If you need custom behavior, point `LOADER` to your own loader class implementing `autodiscover(app, modules)`.
 
@@ -129,7 +129,7 @@ If you need custom behavior, point `LOADER` to your own loader class implementin
 OrchestrAI core ships with a small, validated set of identity domains exported from `orchestrai.identity.domains`:
 
 - `services`
-- `codecs`
+- `response processors`
 - `prompt-sections`
 - `schemas`
 - `provider-backends`

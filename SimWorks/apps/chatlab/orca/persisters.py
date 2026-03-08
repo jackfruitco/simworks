@@ -8,6 +8,7 @@ requires text extraction and FK lookups).
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from orchestrai.types import ResultMessageItem
 from orchestrai_django.persistence import PersistContext
@@ -153,3 +154,76 @@ async def persist_messages(messages: list[ResultMessageItem], ctx: PersistContex
         created.append(m)
 
     return created
+
+
+def _coerce_orm_value(value: Any) -> Any:
+    """Coerce Pydantic values into Django-friendly primitives."""
+    if hasattr(value, "value"):  # Enum
+        return value.value
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+async def persist_metadata_upsert(metadata_items: list[Any], ctx: PersistContext) -> list:
+    """Upsert metadata items by (simulation_id, key).
+
+    Reply turns can emit incremental metadata updates. Since SimulationMetadata
+    enforces unique (simulation, key), repeated keys are updated in-place.
+    If an existing key belongs to a different polymorphic subtype, it is replaced.
+    """
+    from django.apps import apps as django_apps
+
+    from apps.simcore.models import SimulationMetadata
+
+    persisted = []
+    for item in metadata_items:
+        model_ref = getattr(type(item), "__orm_model__", None)
+        if not model_ref:
+            raise ValueError(f"No __orm_model__ on metadata item type: {type(item).__name__}")
+        model_cls = django_apps.get_model(*model_ref.split(".", 1))
+
+        model_field_names = {f.name for f in model_cls._meta.get_fields() if hasattr(f, "column")}
+        kwargs = {"simulation_id": ctx.simulation_id}
+        for field_name in type(item).model_fields:
+            if field_name == "kind":
+                continue
+            if field_name in model_field_names:
+                kwargs[field_name] = _coerce_orm_value(getattr(item, field_name))
+
+        key = kwargs.get("key")
+        if not key:
+            raise ValueError(f"Metadata item missing key: {type(item).__name__}")
+
+        existing = await SimulationMetadata.objects.filter(
+            simulation_id=ctx.simulation_id,
+            key=key,
+        ).afirst()
+
+        if existing is None:
+            obj = await model_cls.objects.acreate(**kwargs)
+            persisted.append(obj)
+            continue
+
+        existing_model_name = getattr(getattr(existing, "_meta", None), "model_name", None)
+        target_model_name = getattr(getattr(model_cls, "_meta", None), "model_name", None)
+        same_subtype = isinstance(existing, model_cls) or existing_model_name == target_model_name
+
+        if same_subtype:
+            update_fields = []
+            for field_name, value in kwargs.items():
+                if field_name == "simulation_id":
+                    continue
+                setattr(existing, field_name, value)
+                update_fields.append(field_name)
+            if update_fields:
+                await existing.asave(update_fields=update_fields)
+            persisted.append(existing)
+            continue
+
+        # Subtype changed for same key: replace row to keep polymorphic data aligned.
+        await existing.adelete()
+        obj = await model_cls.objects.acreate(**kwargs)
+        persisted.append(obj)
+
+    return persisted
