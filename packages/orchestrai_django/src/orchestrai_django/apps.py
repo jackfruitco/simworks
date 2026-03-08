@@ -227,10 +227,24 @@ def ensure_autostarted(
     with _startup_lock:
         global _started
         if _started:
-            return getattr(dj_settings, "_ORCHESTRAI_APP", None) or get_current_app()
+            cached_app = getattr(dj_settings, "_ORCHESTRAI_APP", None)
+            if cached_app is not None:
+                try:
+                    set_current_app(cached_app)
+                except Exception:
+                    logger.debug("Failed to rebind cached OrchestrAI app context", exc_info=True)
+                return cached_app
+            # Self-heal: if startup was marked complete but app cache is missing,
+            # permit a fresh autostart attempt.
+            _started = False
         _started = True
 
-    return _autostart(entrypoint)
+    try:
+        return _autostart(entrypoint)
+    except Exception:
+        with _startup_lock:
+            _started = False
+        raise
 
 
 class OrchestrAIDjangoConfig(AppConfig):

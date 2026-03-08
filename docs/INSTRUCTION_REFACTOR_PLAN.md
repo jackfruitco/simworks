@@ -31,3 +31,7 @@
 - Alias policy is intentional: `service` remains supported while `orca.service` and `orca.instruction` become the documented primary API.
 - Instruction ordering semantics are fixed to lower `order` first, with class-name tiebreak for determinism.
 - Dynamic instruction methods may be sync or async; runtime must normalize both consistently in service execution and task serialization.
+
+## Prompt Parity Follow-up
+- Prompt/instruction text parity with pre-refactor behavior should now be maintained in `apps/*/orca/instructions/*.py` classes, not in `@system_prompt` methods.
+- For chat patient prompts, update `PatientInitialDetailInstruction` and `PatientReplyContextInstruction` when reverting or auditing wording against historical prompt sections.

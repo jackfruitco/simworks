@@ -46,3 +46,7 @@ class GenerateFeedbackContinuationReply(
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
+
+    from apps.simcore.orca.schemas import GenerateFeedbackContinuationResponse as _Schema
+
+    response_schema = _Schema

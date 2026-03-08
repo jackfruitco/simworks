@@ -2,7 +2,11 @@
 
 from apps.chatlab.orca.instructions import (
     PatientBaseInstruction,
+    PatientInitialDetailInstruction,
     PatientNameInstruction,
+    PatientReplyDetailInstruction,
+    PatientSafetyBoundariesInstruction,
+    PatientSchemaContractInstruction,
 )
 from apps.chatlab.orca.schemas import (
     PatientInitialOutputSchema,
@@ -28,6 +32,46 @@ class TestGenerateInitialResponseService:
         service = GenerateInitialResponse(context={"simulation_id": 1})
         assert PatientNameInstruction in service._instruction_classes
         assert PatientBaseInstruction in service._instruction_classes
+        assert PatientSafetyBoundariesInstruction in service._instruction_classes
+        assert PatientSchemaContractInstruction in service._instruction_classes
+
+    def test_instruction_ordering_layers(self):
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        names = [cls.__name__ for cls in service._instruction_classes]
+
+        assert names.index("PatientNameInstruction") < names.index(
+            "PatientSafetyBoundariesInstruction"
+        )
+        assert names.index("PatientSafetyBoundariesInstruction") < names.index(
+            "PatientConversationBehaviorInstruction"
+        )
+        assert names.index("PatientConversationBehaviorInstruction") < names.index(
+            "PatientSchemaContractInstruction"
+        )
+        assert names.index("PatientSchemaContractInstruction") < names.index(
+            "PatientInitialDetailInstruction"
+        )
+
+    def test_instruction_classes_are_unique(self):
+        service = GenerateInitialResponse(context={"simulation_id": 1})
+        names = [cls.__name__ for cls in service._instruction_classes]
+        assert len(names) == len(set(names))
+
+    def test_safety_instruction_blocks_out_of_character_admission(self):
+        text = PatientSafetyBoundariesInstruction.instruction or ""
+        assert "Never acknowledge being an AI" in text
+        assert "are you acting?" in text
+
+    def test_initial_instruction_requires_baseline_metadata(self):
+        text = PatientInitialDetailInstruction.instruction or ""
+        assert "patient_name" in text
+        assert "age" in text
+        assert "gender" in text
+        assert "1-2 `patient_history` items" in text
+
+    def test_reply_instruction_marks_metadata_optional(self):
+        text = PatientReplyDetailInstruction.instruction or ""
+        assert "optional after the initial turn" in text
 
 
 class TestGenerateReplyResponseService:
@@ -85,6 +129,7 @@ class TestSchemaSerializability:
                     "item_meta": [],
                 }
             ],
+            "metadata": [],
             "llm_conditions_check": [],
         }
 

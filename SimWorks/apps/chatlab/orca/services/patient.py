@@ -9,14 +9,11 @@ from apps.chatlab.orca.instructions import (
     PatientBaseInstruction,
     PatientInitialDetailInstruction,
     PatientNameInstruction,
-    PatientReplyContextInstruction,
     PatientReplyDetailInstruction,
+    PatientSafetyBoundariesInstruction,
+    PatientSchemaContractInstruction,
 )
-from apps.common.orca.instructions import (
-    CharacterConsistencyInstruction,
-    MedicalAccuracyInstruction,
-    SMSStyleInstruction,
-)
+from apps.common.orca.instructions import CharacterConsistencyInstruction
 from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import orca
 
@@ -27,9 +24,9 @@ logger = logging.getLogger(__name__)
 class GenerateInitialResponse(
     PatientNameInstruction,
     CharacterConsistencyInstruction,
-    MedicalAccuracyInstruction,
-    SMSStyleInstruction,
+    PatientSafetyBoundariesInstruction,
     PatientBaseInstruction,
+    PatientSchemaContractInstruction,
     PatientInitialDetailInstruction,
     DjangoBaseService,
 ):
@@ -46,9 +43,11 @@ class GenerateInitialResponse(
 @orca.service
 class GenerateReplyResponse(
     PreviousResponseMixin,
-    PatientReplyContextInstruction,
+    PatientNameInstruction,
     CharacterConsistencyInstruction,
-    SMSStyleInstruction,
+    PatientSafetyBoundariesInstruction,
+    PatientBaseInstruction,
+    PatientSchemaContractInstruction,
     PatientReplyDetailInstruction,
     DjangoBaseService,
 ):

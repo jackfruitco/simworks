@@ -9,7 +9,11 @@ Validates:
 from pydantic import ValidationError
 import pytest
 
-from apps.simcore.orca.schemas.feedback import GenerateInitialSimulationFeedback
+from apps.simcore.orca.schemas.feedback import (
+    FeedbackContinuationBlock,
+    GenerateFeedbackContinuationResponse,
+    GenerateInitialSimulationFeedback,
+)
 from apps.simcore.orca.schemas.output_items import InitialFeedbackBlock
 
 
@@ -142,4 +146,42 @@ class TestHotwashInitialBlock:
                 correct_treatment_plan=True,
                 patient_experience=4,
                 overall_feedback="",
+            )
+
+
+class TestContinuationFeedbackSchema:
+    """Tests for GenerateFeedbackContinuationResponse."""
+
+    def test_schema_has_expected_fields(self):
+        schema_json = GenerateFeedbackContinuationResponse.model_json_schema()
+        assert schema_json["type"] == "object"
+        assert "llm_conditions_check" in schema_json["properties"]
+        assert "metadata" in schema_json["properties"]
+
+    def test_round_trip_parse(self):
+        parsed = GenerateFeedbackContinuationResponse.model_validate(
+            {
+                "llm_conditions_check": [{"key": "answered", "value": "true"}],
+                "metadata": {"direct_answer": "Prioritize red-flag questions first."},
+            }
+        )
+        assert parsed.metadata.direct_answer == "Prioritize red-flag questions first."
+        assert len(parsed.llm_conditions_check) == 1
+
+    def test_direct_answer_required(self):
+        with pytest.raises(ValidationError):
+            GenerateFeedbackContinuationResponse.model_validate(
+                {
+                    "llm_conditions_check": [],
+                    "metadata": {"direct_answer": ""},
+                }
+            )
+
+    def test_continuation_block_strict_mode(self):
+        with pytest.raises(ValidationError):
+            FeedbackContinuationBlock.model_validate(
+                {
+                    "direct_answer": "Test",
+                    "extra": "not allowed",
+                }
             )

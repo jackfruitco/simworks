@@ -19,7 +19,10 @@ from apps.chatlab.orca.schemas import (
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
-from apps.simcore.orca.schemas.feedback import GenerateInitialSimulationFeedback
+from apps.simcore.orca.schemas.feedback import (
+    GenerateFeedbackContinuationResponse,
+    GenerateInitialSimulationFeedback,
+)
 from orchestrai_django.persistence import PersistContext, persist_schema
 
 
@@ -221,6 +224,7 @@ class TestPatientReplyPersistence:
                         "item_meta": [],
                     }
                 ],
+                "metadata": [],
                 "llm_conditions_check": [],
             }
         )
@@ -242,6 +246,7 @@ class TestPatientReplyPersistence:
                         "item_meta": [],
                     }
                 ],
+                "metadata": [],
                 "llm_conditions_check": [],
             }
         )
@@ -265,6 +270,7 @@ class TestPatientReplyPersistence:
                         "item_meta": [],
                     }
                 ],
+                "metadata": [],
                 "llm_conditions_check": [],
             }
         )
@@ -288,6 +294,58 @@ class TestPatientReplyPersistence:
         assert "content" in msg_event.payload
         assert "image_requested" in msg_event.payload
         assert msg_event.payload["image_requested"] is True
+
+    async def test_reply_metadata_upsert_updates_existing_key(self, context):
+        """Reply metadata should upsert by key instead of creating duplicates."""
+        from apps.simcore.models import PatientDemographics
+
+        initial = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": False,
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "I am 45 years old."}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [
+                    {"kind": "patient_demographics", "key": "age", "value": "45"},
+                ],
+                "llm_conditions_check": [],
+            }
+        )
+        await persist_schema(initial, context)
+
+        update = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": False,
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Actually I just turned 46."}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [
+                    {"kind": "patient_demographics", "key": "age", "value": "46"},
+                ],
+                "llm_conditions_check": [],
+            }
+        )
+        await persist_schema(update, context)
+
+        count = await PatientDemographics.objects.filter(
+            simulation_id=context.simulation_id,
+            key="age",
+        ).acount()
+        assert count == 1
+
+        age = await PatientDemographics.objects.aget(
+            simulation_id=context.simulation_id,
+            key="age",
+        )
+        assert age.value == "46"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -444,6 +502,44 @@ class TestHotwashPersistence:
             assert key.startswith("feedback.created:"), (
                 f"Idempotency key should start with event type: {key}"
             )
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+class TestFeedbackContinuationPersistence:
+    async def test_continuation_feedback_upserts_single_key(self, context):
+        """Continuation feedback should upsert direct-answer key."""
+        from apps.simcore.models import SimulationFeedback
+
+        first = GenerateFeedbackContinuationResponse.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {"direct_answer": "Start with a concise summary of your differential."},
+            }
+        )
+        await persist_schema(first, context)
+
+        second = GenerateFeedbackContinuationResponse.model_validate(
+            {
+                "llm_conditions_check": [],
+                "metadata": {
+                    "direct_answer": "Prioritize time-course and red-flag questions first."
+                },
+            }
+        )
+        await persist_schema(second, context)
+
+        count = await SimulationFeedback.objects.filter(
+            simulation_id=context.simulation_id,
+            key="hotwash_continuation_direct_answer",
+        ).acount()
+        assert count == 1
+
+        row = await SimulationFeedback.objects.aget(
+            simulation_id=context.simulation_id,
+            key="hotwash_continuation_direct_answer",
+        )
+        assert row.value == "Prioritize time-course and red-flag questions first."
 
 
 class TestMROMerging:

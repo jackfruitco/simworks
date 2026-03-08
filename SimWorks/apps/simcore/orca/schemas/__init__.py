@@ -6,7 +6,11 @@ These are plain Pydantic models used as result_type for Pydantic AI agents.
 Pydantic AI handles validation natively - no @schema decorator needed.
 """
 
-from .feedback import GenerateInitialSimulationFeedback
+from .feedback import (
+    FeedbackContinuationBlock,
+    GenerateFeedbackContinuationResponse,
+    GenerateInitialSimulationFeedback,
+)
 from .metadata_items import (
     LabResultItem,
     MetadataItem,
@@ -18,6 +22,8 @@ from .metadata_items import (
 from .output_items import InitialFeedbackBlock, LLMConditionsCheckItem
 
 __all__ = [
+    "FeedbackContinuationBlock",
+    "GenerateFeedbackContinuationResponse",
     "GenerateInitialSimulationFeedback",
     "InitialFeedbackBlock",
     "LLMConditionsCheckItem",
