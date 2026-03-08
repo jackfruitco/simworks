@@ -29,7 +29,10 @@ def require_instructor_membership(user, *, lab_slug: str = LAB_SLUG) -> LabMembe
     if membership is None:
         raise HttpError(403, "TrainerLab membership required")
 
-    if ACCESS_RANK.get(membership.access_level, 0) < ACCESS_RANK[LabMembership.AccessLevel.INSTRUCTOR]:
+    if (
+        ACCESS_RANK.get(membership.access_level, 0)
+        < ACCESS_RANK[LabMembership.AccessLevel.INSTRUCTOR]
+    ):
         raise HttpError(403, "Instructor access required")
 
     return membership

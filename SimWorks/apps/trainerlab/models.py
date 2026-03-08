@@ -27,7 +27,9 @@ class EventSource(models.TextChoices):
 class TrainerSession(BaseSession):
     """TrainerLab runtime session attached to a Simulation."""
 
-    status = models.CharField(max_length=16, choices=SessionStatus.choices, default=SessionStatus.SEEDED)
+    status = models.CharField(
+        max_length=16, choices=SessionStatus.choices, default=SessionStatus.SEEDED
+    )
     scenario_spec_json = models.JSONField(default=dict, blank=True)
     runtime_state_json = models.JSONField(default=dict, blank=True)
     initial_directives = models.TextField(blank=True, default="")
@@ -64,10 +66,14 @@ class TrainerCommand(models.Model):
         FAILED = "failed", _("Failed")
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    session = models.ForeignKey("trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="commands")
+    session = models.ForeignKey(
+        "trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="commands"
+    )
     command_type = models.CharField(max_length=32, choices=CommandType.choices)
     payload_json = models.JSONField(default=dict, blank=True)
-    status = models.CharField(max_length=16, choices=CommandStatus.choices, default=CommandStatus.PENDING)
+    status = models.CharField(
+        max_length=16, choices=CommandStatus.choices, default=CommandStatus.PENDING
+    )
 
     idempotency_key = models.CharField(max_length=255, unique=True)
     issued_by = models.ForeignKey(
@@ -92,7 +98,9 @@ class TrainerRuntimeEvent(models.Model):
     """Append-only TrainerLab event stream feeding outbox + SSE."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    session = models.ForeignKey("trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="runtime_events")
+    session = models.ForeignKey(
+        "trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="runtime_events"
+    )
     simulation = models.ForeignKey(
         "simcore.Simulation",
         on_delete=models.CASCADE,
@@ -126,7 +134,9 @@ class TrainerRuntimeEvent(models.Model):
 
 
 class TrainerRunSummary(models.Model):
-    session = models.OneToOneField("trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="summary")
+    session = models.OneToOneField(
+        "trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="summary"
+    )
     summary_json = models.JSONField(default=dict)
     generated_at = models.DateTimeField(auto_now_add=True)
     generator_version = models.CharField(max_length=32, default="v1")
@@ -139,7 +149,9 @@ class ABCEvent(PolymorphicModel):
     simulation = models.ForeignKey(
         "simcore.Simulation", on_delete=models.CASCADE, related_name="events"
     )
-    source = models.CharField(max_length=16, choices=EventSource.choices, default=EventSource.SYSTEM)
+    source = models.CharField(
+        max_length=16, choices=EventSource.choices, default=EventSource.SYSTEM
+    )
     supersedes_event = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,

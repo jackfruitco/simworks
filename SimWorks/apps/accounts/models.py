@@ -201,7 +201,9 @@ class LabMembership(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["lab", "is_active", "access_level"], name="idx_lab_membership_acl"),
+            models.Index(
+                fields=["lab", "is_active", "access_level"], name="idx_lab_membership_acl"
+            ),
             models.Index(fields=["user", "is_active"], name="idx_lab_membership_user"),
         ]
 

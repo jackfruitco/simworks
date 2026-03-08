@@ -115,7 +115,9 @@ def trainerlab_access_me(request: HttpRequest) -> LabAccessOut:
     summary="Create TrainerLab session",
 )
 @api_rate_limit
-def create_trainer_session(request: HttpRequest, body: TrainerSessionCreateIn) -> tuple[int, TrainerSessionOut]:
+def create_trainer_session(
+    request: HttpRequest, body: TrainerSessionCreateIn
+) -> tuple[int, TrainerSessionOut]:
     user = request.auth
     require_instructor_membership(user)
 
@@ -169,7 +171,11 @@ def list_trainer_sessions(
     user = request.auth
     require_instructor_membership(user)
 
-    queryset = TrainerSession.objects.select_related("simulation").filter(simulation__user=user).order_by("-id")
+    queryset = (
+        TrainerSession.objects.select_related("simulation")
+        .filter(simulation__user=user)
+        .order_by("-id")
+    )
 
     if status:
         queryset = queryset.filter(status=status)
@@ -215,7 +221,9 @@ def _mark_command_failed(command: TrainerCommand, error: str) -> None:
     command.save(update_fields=["status", "error", "processed_at"])
 
 
-def _process_run_command(request: HttpRequest, session_id: int, command_type: str) -> TrainerSessionOut:
+def _process_run_command(
+    request: HttpRequest, session_id: int, command_type: str
+) -> TrainerSessionOut:
     user = request.auth
     require_instructor_membership(user)
     idempotency_key = _get_idempotency_key(request)
@@ -258,25 +266,35 @@ def _process_run_command(request: HttpRequest, session_id: int, command_type: st
     return trainer_session_to_out(session)
 
 
-@router.post("/sessions/{session_id}/run/start/", response=TrainerSessionOut, summary="Start TrainerLab run")
+@router.post(
+    "/sessions/{session_id}/run/start/", response=TrainerSessionOut, summary="Start TrainerLab run"
+)
 @api_rate_limit
 def start_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
     return _process_run_command(request, session_id, TrainerCommand.CommandType.START)
 
 
-@router.post("/sessions/{session_id}/run/pause/", response=TrainerSessionOut, summary="Pause TrainerLab run")
+@router.post(
+    "/sessions/{session_id}/run/pause/", response=TrainerSessionOut, summary="Pause TrainerLab run"
+)
 @api_rate_limit
 def pause_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
     return _process_run_command(request, session_id, TrainerCommand.CommandType.PAUSE)
 
 
-@router.post("/sessions/{session_id}/run/resume/", response=TrainerSessionOut, summary="Resume TrainerLab run")
+@router.post(
+    "/sessions/{session_id}/run/resume/",
+    response=TrainerSessionOut,
+    summary="Resume TrainerLab run",
+)
 @api_rate_limit
 def resume_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
     return _process_run_command(request, session_id, TrainerCommand.CommandType.RESUME)
 
 
-@router.post("/sessions/{session_id}/run/stop/", response=TrainerSessionOut, summary="Stop TrainerLab run")
+@router.post(
+    "/sessions/{session_id}/run/stop/", response=TrainerSessionOut, summary="Stop TrainerLab run"
+)
 @api_rate_limit
 def stop_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
     return _process_run_command(request, session_id, TrainerCommand.CommandType.STOP)

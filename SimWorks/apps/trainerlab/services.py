@@ -152,7 +152,9 @@ def _schedule_tick(session: TrainerSession) -> None:
         )
 
 
-def start_session(*, session: TrainerSession, user, correlation_id: str | None = None) -> TrainerSession:
+def start_session(
+    *, session: TrainerSession, user, correlation_id: str | None = None
+) -> TrainerSession:
     if session.status != SessionStatus.SEEDED:
         raise ValidationError("Session can only be started from seeded state")
 
@@ -160,7 +162,9 @@ def start_session(*, session: TrainerSession, user, correlation_id: str | None =
     session.run_started_at = session.run_started_at or timezone.now()
     session.run_paused_at = None
     session.tick_nonce += 1
-    session.save(update_fields=["status", "run_started_at", "run_paused_at", "tick_nonce", "modified_at"])
+    session.save(
+        update_fields=["status", "run_started_at", "run_paused_at", "tick_nonce", "modified_at"]
+    )
 
     emit_runtime_event(
         session=session,
@@ -173,7 +177,9 @@ def start_session(*, session: TrainerSession, user, correlation_id: str | None =
     return session
 
 
-def pause_session(*, session: TrainerSession, user, correlation_id: str | None = None) -> TrainerSession:
+def pause_session(
+    *, session: TrainerSession, user, correlation_id: str | None = None
+) -> TrainerSession:
     if session.status != SessionStatus.RUNNING:
         raise ValidationError("Session can only be paused from running state")
 
@@ -191,7 +197,9 @@ def pause_session(*, session: TrainerSession, user, correlation_id: str | None =
     return session
 
 
-def resume_session(*, session: TrainerSession, user, correlation_id: str | None = None) -> TrainerSession:
+def resume_session(
+    *, session: TrainerSession, user, correlation_id: str | None = None
+) -> TrainerSession:
     if session.status != SessionStatus.PAUSED:
         raise ValidationError("Session can only be resumed from paused state")
 
@@ -211,7 +219,9 @@ def resume_session(*, session: TrainerSession, user, correlation_id: str | None 
     return session
 
 
-def stop_session(*, session: TrainerSession, user, correlation_id: str | None = None) -> TrainerSession:
+def stop_session(
+    *, session: TrainerSession, user, correlation_id: str | None = None
+) -> TrainerSession:
     if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED, SessionStatus.SEEDED}:
         raise ValidationError("Session is already terminal")
 
