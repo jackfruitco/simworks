@@ -25,7 +25,7 @@ async def test_patient_name_instruction_defaults_when_no_context():
     service = GenerateInitialResponse(context={})
 
     rendered = await PatientNameInstruction.render_instruction(service)
-    assert rendered == "You are a standardized patient."
+    assert rendered.startswith("You are the patient in this chat.")
 
 
 @pytest.mark.asyncio

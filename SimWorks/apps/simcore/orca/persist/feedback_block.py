@@ -40,3 +40,20 @@ async def persist_initial_feedback_block(block, ctx: PersistContext) -> list:
             logger.warning("Failed to persist feedback item: %s", exc, exc_info=True)
 
     return created
+
+
+async def persist_continuation_feedback_block(block, ctx: PersistContext) -> list:
+    """Persist continuation feedback block for learner follow-up Q&A."""
+    from apps.simcore.models import SimulationFeedback
+
+    try:
+        obj, _ = await SimulationFeedback.objects.aupdate_or_create(
+            simulation_id=ctx.simulation_id,
+            key="hotwash_continuation_direct_answer",
+            defaults={"value": block.direct_answer},
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist continuation feedback item: %s", exc, exc_info=True)
+        return []
+
+    return [obj]

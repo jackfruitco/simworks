@@ -122,16 +122,25 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
     **Persistence** (declarative):
     - messages → chatlab.Message via ``persist_messages`` (inherited from mixin)
+    - metadata → simcore.SimulationMetadata polymorphic models via key-based upsert
     - image_requested → Persisted to Message.image_requested field via context
     - llm_conditions_check → NOT PERSISTED
 
     **WebSocket Broadcasting**:
     - Broadcasts ``chat.message_created`` events for patient reply messages
+    - Broadcasts ``metadata.created`` events for metadata updates
     - Enables real-time UI updates when patient responds
     """
 
     image_requested: bool = Field(..., description="Whether the response references images/scans")
+    metadata: list[MetadataItem] = Field(
+        ...,
+        description="Incremental metadata updates emitted during follow-up turns",
+    )
 
+    from apps.chatlab.orca.persisters import persist_metadata_upsert as _persist_metadata_upsert
+
+    __persist__: ClassVar[dict[str, None]] = {"metadata": _persist_metadata_upsert}
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
@@ -140,6 +149,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
         Handles:
         1. Update Message.image_requested flag if images referenced
         2. Broadcast chat.message_created events for real-time delivery
+        3. Broadcast metadata.created events for metadata upserts
 
         Args:
             results: Dict of persisted objects from __persist__ declarations
@@ -177,6 +187,20 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
                     "image_requested": msg.image_requested,
                     "conversation_id": msg.conversation_id,
                     "conversation_type": "simulated_patient",
+                },
+            )
+
+        metadata = results.get("metadata", [])
+        if metadata:
+            await broadcast_domain_objects(
+                event_type="metadata.created",
+                objects=metadata,
+                context=context,
+                payload_builder=lambda meta: {
+                    "metadata_id": meta.id,
+                    "kind": _metadata_kind(meta),
+                    "key": meta.key,
+                    "value": meta.value,
                 },
             )
 

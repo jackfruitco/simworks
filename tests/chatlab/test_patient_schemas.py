@@ -327,7 +327,7 @@ class TestPatientReplySchema:
         """Verify reply schema has expected fields."""
         schema_json = PatientReplyOutputSchema.model_json_schema()
 
-        required_fields = {"image_requested", "messages", "llm_conditions_check"}
+        required_fields = {"image_requested", "messages", "metadata", "llm_conditions_check"}
         actual_fields = set(schema_json["properties"].keys())
 
         assert required_fields.issubset(actual_fields)
@@ -348,6 +348,7 @@ class TestPatientReplySchema:
                     "item_meta": [],
                 }
             ],
+            "metadata": [],
             "llm_conditions_check": [],
         }
 
