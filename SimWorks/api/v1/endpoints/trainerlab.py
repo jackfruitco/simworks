@@ -6,7 +6,9 @@ import json
 import time
 import uuid
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.http import HttpRequest, StreamingHttpResponse
 from django.utils import timezone
 from ninja import Query, Router
@@ -16,16 +18,27 @@ from api.v1.auth import JWTAuth
 from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.schemas.trainerlab import (
+    DictionaryItemOut,
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
+    InterventionGroupOut,
     LabAccessOut,
     RunSummaryOut,
+    ScenarioInstructionApplyIn,
+    ScenarioInstructionCreateIn,
+    ScenarioInstructionOut,
+    ScenarioInstructionPermissionIn,
+    ScenarioInstructionPermissionOut,
+    ScenarioInstructionUnshareIn,
+    ScenarioInstructionUpdateIn,
     SteerPromptIn,
     TrainerCommandAck,
     TrainerSessionCreateIn,
     TrainerSessionOut,
     VitalCreateIn,
+    scenario_instruction_to_out,
+    scenario_permission_to_out,
     trainer_session_to_out,
 )
 from apps.common.models import OutboxEvent
@@ -42,6 +55,8 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     Intervention,
+    ScenarioInstruction,
+    ScenarioInstructionPermission,
     TrainerCommand,
     TrainerSession,
 )
@@ -56,6 +71,44 @@ from apps.trainerlab.services import (
 )
 
 router = Router(tags=["trainerlab"], auth=JWTAuth())
+UserModel = get_user_model()
+
+INTERVENTION_DICTIONARY: list[InterventionGroupOut] = [
+    InterventionGroupOut(
+        group="Tourniquet",
+        items=[
+            DictionaryItemOut(code="M-TQ-H", label="Hasty Tourniquet"),
+            DictionaryItemOut(code="M-TQ-D", label="Deliberate Tourniquet"),
+        ],
+    ),
+    InterventionGroupOut(
+        group="Gauze",
+        items=[
+            DictionaryItemOut(code="M-GZ-PK", label="Non-Hemostatic Gauze Packed"),
+            DictionaryItemOut(code="M-GZ-PK-H", label="Hemostatic Gauze Packed"),
+            DictionaryItemOut(code="M-GZ-WP", label="Non-Hemostatic Gauze Wrapped"),
+            DictionaryItemOut(code="M-GZ-WP-H", label="Hemostatic Gauze Wrapped"),
+            DictionaryItemOut(code="M-GZ-ZF", label="Z-Folded Gauze"),
+            DictionaryItemOut(code="M-GZ-ZF-H", label="Hemostatic Z-Folded Gauze"),
+        ],
+    ),
+    InterventionGroupOut(
+        group="Airway",
+        items=[
+            DictionaryItemOut(code="A-P-R", label="Recovery Position"),
+            DictionaryItemOut(code="A-P-C", label="Position of Comfort"),
+            DictionaryItemOut(code="A-P-O", label="Other Position"),
+            DictionaryItemOut(code="A-HTCL", label="Head-Tilt-Chin-Lift"),
+            DictionaryItemOut(code="A-JT", label="Jaw-Thrust"),
+            DictionaryItemOut(code="A-NPA", label="NPA"),
+            DictionaryItemOut(code="A-OPA", label="OPA"),
+            DictionaryItemOut(code="A-SGA", label="SGA"),
+            DictionaryItemOut(code="A-INT", label="Intubation"),
+            DictionaryItemOut(code="A-SURG-O", label="Surgical Airway (Open Technique)"),
+            DictionaryItemOut(code="A-SURG-B", label="Surgical Airway (Bougie-aided)"),
+        ],
+    ),
+]
 
 
 def _get_idempotency_key(request: HttpRequest) -> str:
@@ -84,6 +137,10 @@ def _accepted(command: TrainerCommand) -> TrainerCommandAck:
     return TrainerCommandAck(command_id=str(command.id), status="accepted")
 
 
+def _build_dict_items(choices) -> list[DictionaryItemOut]:
+    return [DictionaryItemOut(code=code, label=str(label)) for code, label in choices]
+
+
 def _ensure_command_compatible(
     command: TrainerCommand,
     *,
@@ -97,6 +154,54 @@ def _ensure_command_compatible(
         raise HttpError(409, command.error or "Command previously failed")
 
 
+def _instruction_queryset_for_user(user):
+    return (
+        ScenarioInstruction.objects.filter(
+            Q(owner=user) | Q(permissions__user=user, permissions__can_read=True)
+        )
+        .prefetch_related("permissions")
+        .distinct()
+        .order_by("-id")
+    )
+
+
+def _get_instruction_for_user(
+    preset_id: int,
+    user,
+    *,
+    require_edit: bool = False,
+    require_delete: bool = False,
+    require_share: bool = False,
+    require_duplicate: bool = False,
+) -> ScenarioInstruction:
+    instruction = (
+        ScenarioInstruction.objects.filter(pk=preset_id).prefetch_related("permissions").first()
+    )
+    if instruction is None:
+        raise HttpError(404, "Scenario preset not found")
+
+    if instruction.owner_id == user.id:
+        return instruction
+
+    permission = ScenarioInstructionPermission.objects.filter(
+        scenario_instruction=instruction,
+        user=user,
+    ).first()
+    if permission is None or not permission.can_read:
+        raise HttpError(404, "Scenario preset not found")
+
+    if require_edit and not permission.can_edit:
+        raise HttpError(403, "Edit access required")
+    if require_delete and not permission.can_delete:
+        raise HttpError(403, "Delete access required")
+    if require_share and not permission.can_share:
+        raise HttpError(403, "Share access required")
+    if require_duplicate and not permission.can_duplicate:
+        raise HttpError(403, "Duplicate access required")
+
+    return instruction
+
+
 @router.get(
     "/access/me/",
     response=LabAccessOut,
@@ -107,6 +212,293 @@ def trainerlab_access_me(request: HttpRequest) -> LabAccessOut:
     user = request.auth
     membership = require_instructor_membership(user)
     return LabAccessOut(lab_slug="trainerlab", access_level=membership.access_level)
+
+
+@router.get(
+    "/dictionaries/injuries/",
+    response=dict[str, list[DictionaryItemOut]],
+    summary="List injury dictionary mappings",
+)
+@api_rate_limit
+def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]]:
+    user = request.auth
+    require_instructor_membership(user)
+    return {
+        "categories": _build_dict_items(Injury.InjuryCategory.choices),
+        "regions": _build_dict_items(Injury.InjuryLocation.choices),
+        "kinds": _build_dict_items(Injury.InjuryKind.choices),
+    }
+
+
+@router.get(
+    "/dictionaries/interventions/",
+    response=list[InterventionGroupOut],
+    summary="List intervention dictionary mappings",
+)
+@api_rate_limit
+def intervention_dictionary(request: HttpRequest) -> list[InterventionGroupOut]:
+    user = request.auth
+    require_instructor_membership(user)
+    return INTERVENTION_DICTIONARY
+
+
+@router.get(
+    "/presets/",
+    response=PaginatedResponse[ScenarioInstructionOut],
+    summary="List accessible TrainerLab scenario presets",
+)
+@api_rate_limit
+def list_presets(
+    request: HttpRequest,
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None),
+) -> PaginatedResponse[ScenarioInstructionOut]:
+    user = request.auth
+    require_instructor_membership(user)
+    queryset = _instruction_queryset_for_user(user)
+
+    if cursor:
+        try:
+            cursor_id = int(cursor)
+        except ValueError:
+            raise HttpError(400, "Invalid cursor format") from None
+        queryset = queryset.filter(pk__lt=cursor_id)
+
+    rows = list(queryset[: limit + 1])
+    has_more = len(rows) > limit
+    if has_more:
+        rows = rows[:limit]
+
+    next_cursor = str(rows[-1].id) if has_more and rows else None
+    return PaginatedResponse(
+        items=[scenario_instruction_to_out(item) for item in rows],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+@router.post(
+    "/presets/",
+    response={201: ScenarioInstructionOut},
+    summary="Create TrainerLab scenario preset",
+)
+@api_rate_limit
+def create_preset(
+    request: HttpRequest, body: ScenarioInstructionCreateIn
+) -> tuple[int, ScenarioInstructionOut]:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = ScenarioInstruction.objects.create(
+        owner=user,
+        title=body.title,
+        description=body.description,
+        instruction_text=body.instruction_text,
+        injuries_json=body.injuries,
+        severity=body.severity,
+        metadata_json=body.metadata,
+    )
+    return 201, scenario_instruction_to_out(instruction)
+
+
+@router.get(
+    "/presets/{preset_id}/",
+    response=ScenarioInstructionOut,
+    summary="Get TrainerLab scenario preset",
+)
+@api_rate_limit
+def get_preset(request: HttpRequest, preset_id: int) -> ScenarioInstructionOut:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = _get_instruction_for_user(preset_id, user)
+    return scenario_instruction_to_out(instruction)
+
+
+@router.patch(
+    "/presets/{preset_id}/",
+    response=ScenarioInstructionOut,
+    summary="Update TrainerLab scenario preset",
+)
+@api_rate_limit
+def update_preset(
+    request: HttpRequest, preset_id: int, body: ScenarioInstructionUpdateIn
+) -> ScenarioInstructionOut:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = _get_instruction_for_user(preset_id, user, require_edit=True)
+    updates = body.model_dump(exclude_none=True)
+    if "injuries" in updates:
+        updates["injuries_json"] = updates.pop("injuries")
+    if "metadata" in updates:
+        updates["metadata_json"] = updates.pop("metadata")
+    for key, value in updates.items():
+        setattr(instruction, key, value)
+    if updates:
+        instruction.save(update_fields=[*updates.keys(), "modified_at"])
+    instruction.refresh_from_db()
+    return scenario_instruction_to_out(instruction)
+
+
+@router.delete(
+    "/presets/{preset_id}/",
+    response={204: None},
+    summary="Delete TrainerLab scenario preset",
+)
+@api_rate_limit
+def delete_preset(request: HttpRequest, preset_id: int) -> tuple[int, None]:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = _get_instruction_for_user(preset_id, user, require_delete=True)
+    instruction.delete()
+    return 204, None
+
+
+@router.post(
+    "/presets/{preset_id}/duplicate/",
+    response={201: ScenarioInstructionOut},
+    summary="Duplicate TrainerLab scenario preset",
+)
+@api_rate_limit
+def duplicate_preset(request: HttpRequest, preset_id: int) -> tuple[int, ScenarioInstructionOut]:
+    user = request.auth
+    require_instructor_membership(user)
+    source = _get_instruction_for_user(preset_id, user, require_duplicate=True)
+    metadata = dict(source.metadata_json or {})
+    metadata["source_preset_id"] = source.id
+    duplicate = ScenarioInstruction.objects.create(
+        owner=user,
+        title=f"{source.title} (Copy)",
+        description=source.description,
+        instruction_text=source.instruction_text,
+        injuries_json=list(source.injuries_json or []),
+        severity=source.severity,
+        metadata_json=metadata,
+    )
+    return 201, scenario_instruction_to_out(duplicate)
+
+
+@router.post(
+    "/presets/{preset_id}/share/",
+    response=ScenarioInstructionPermissionOut,
+    summary="Share TrainerLab scenario preset with a user",
+)
+@api_rate_limit
+def share_preset(
+    request: HttpRequest, preset_id: int, body: ScenarioInstructionPermissionIn
+) -> ScenarioInstructionPermissionOut:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = _get_instruction_for_user(preset_id, user, require_share=True)
+    target = UserModel.objects.filter(pk=body.user_id, is_active=True).first()
+    if target is None:
+        raise HttpError(404, "Target user not found")
+    if target.id == instruction.owner_id:
+        raise HttpError(400, "Owner already has full preset access")
+
+    permission, _ = ScenarioInstructionPermission.objects.update_or_create(
+        scenario_instruction=instruction,
+        user=target,
+        defaults={
+            "can_read": body.can_read,
+            "can_edit": body.can_edit,
+            "can_delete": body.can_delete,
+            "can_share": body.can_share,
+            "can_duplicate": body.can_duplicate,
+            "granted_by": user,
+        },
+    )
+    return scenario_permission_to_out(permission)
+
+
+@router.post(
+    "/presets/{preset_id}/unshare/",
+    response={204: None},
+    summary="Remove shared access for a TrainerLab scenario preset",
+)
+@api_rate_limit
+def unshare_preset(
+    request: HttpRequest,
+    preset_id: int,
+    body: ScenarioInstructionUnshareIn,
+) -> tuple[int, None]:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = _get_instruction_for_user(preset_id, user, require_share=True)
+    if body.user_id == instruction.owner_id:
+        raise HttpError(400, "Owner permissions cannot be removed")
+    ScenarioInstructionPermission.objects.filter(
+        scenario_instruction=instruction,
+        user_id=body.user_id,
+    ).delete()
+    return 204, None
+
+
+@router.post(
+    "/presets/{preset_id}/apply/",
+    response=TrainerCommandAck,
+    summary="Apply preset instructions to a TrainerLab session",
+)
+@api_rate_limit
+def apply_preset(
+    request: HttpRequest,
+    preset_id: int,
+    body: ScenarioInstructionApplyIn,
+) -> TrainerCommandAck:
+    user = request.auth
+    require_instructor_membership(user)
+    instruction = _get_instruction_for_user(preset_id, user)
+    session = _get_session_for_user(body.session_id, user)
+    idempotency_key = _get_idempotency_key(request)
+    correlation_id = _get_correlation_id(request)
+
+    payload = {"preset_id": instruction.id, "session_id": session.id}
+    command, created = get_or_create_command(
+        session=session,
+        command_type=TrainerCommand.CommandType.APPLY_PRESET,
+        idempotency_key=idempotency_key,
+        issued_by=user,
+        payload_json=payload,
+    )
+    if not created:
+        _ensure_command_compatible(
+            command,
+            session=session,
+            command_type=TrainerCommand.CommandType.APPLY_PRESET,
+        )
+        if command.status == TrainerCommand.CommandStatus.PROCESSED:
+            return _accepted(command)
+
+    state = dict(session.runtime_state_json or {})
+    applied_presets = list(state.get("applied_presets", []))
+    applied_presets.append(
+        {
+            "preset_id": instruction.id,
+            "title": instruction.title,
+            "applied_at": timezone.now().astimezone(UTC).isoformat(),
+        }
+    )
+    state["applied_presets"] = applied_presets
+    if instruction.instruction_text:
+        state["last_instruction"] = instruction.instruction_text
+        session.initial_directives = instruction.instruction_text
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "initial_directives", "modified_at"])
+
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.preset.applied",
+        payload={
+            "preset_id": instruction.id,
+            "title": instruction.title,
+        },
+        created_by=user,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.preset.applied:{session.id}:{instruction.id}",
+    )
+
+    command.status = TrainerCommand.CommandStatus.PROCESSED
+    command.processed_at = timezone.now()
+    command.save(update_fields=["status", "processed_at"])
+    return _accepted(command)
 
 
 @router.post(

@@ -41,6 +41,15 @@ def non_member_user(django_user_model, user_role):
 
 
 @pytest.fixture
+def other_instructor_user(django_user_model, user_role):
+    return django_user_model.objects.create_user(
+        password="testpass123",
+        email="trainer-other@example.com",
+        role=user_role,
+    )
+
+
+@pytest.fixture
 def trainerlab_lab(db):
     from apps.accounts.models import Lab
 
@@ -57,6 +66,17 @@ def instructor_membership(instructor_user, trainerlab_lab):
 
     return LabMembership.objects.create(
         user=instructor_user,
+        lab=trainerlab_lab,
+        access_level=LabMembership.AccessLevel.INSTRUCTOR,
+    )
+
+
+@pytest.fixture
+def other_instructor_membership(other_instructor_user, trainerlab_lab):
+    from apps.accounts.models import LabMembership
+
+    return LabMembership.objects.create(
+        user=other_instructor_user,
         lab=trainerlab_lab,
         access_level=LabMembership.AccessLevel.INSTRUCTOR,
     )
@@ -369,3 +389,133 @@ class TestTrainerLabEvents:
         if isinstance(first_chunk, bytes):
             first_chunk = first_chunk.decode("utf-8")
         assert first_chunk
+
+
+@pytest.mark.django_db
+class TestTrainerLabDictionaries:
+    def test_injury_dictionary_contains_curated_regions(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        response = client.get("/api/v1/trainerlab/dictionaries/injuries/")
+        assert response.status_code == 200
+        data = response.json()
+        region_codes = {item["code"] for item in data["regions"]}
+        assert "LHA" in region_codes
+        assert "RFT" in region_codes
+
+    def test_intervention_dictionary_contains_airway_group(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
+        assert response.status_code == 200
+        data = response.json()
+        group_names = {group["group"] for group in data}
+        assert "Airway" in group_names
+        airway_group = next(group for group in data if group["group"] == "Airway")
+        airway_codes = {item["code"] for item in airway_group["items"]}
+        assert "A-NPA" in airway_codes
+
+
+@pytest.mark.django_db
+class TestTrainerLabPresets:
+    def test_preset_crud_share_duplicate_and_apply(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        other_instructor_user,
+        other_instructor_membership,
+    ):
+        from apps.trainerlab.models import TrainerSession
+
+        owner_client = auth_client_factory(instructor_user)
+        other_client = auth_client_factory(other_instructor_user)
+
+        created = owner_client.post(
+            "/api/v1/trainerlab/presets/",
+            data={
+                "title": "Massive bleed baseline",
+                "description": "Initial preset",
+                "instruction_text": "Start with moderate hemorrhage",
+                "injuries": ["LUA"],
+                "severity": "high",
+                "metadata": {"source": "test"},
+            },
+            content_type="application/json",
+        )
+        assert created.status_code == 201
+        preset = created.json()
+        preset_id = preset["id"]
+
+        listed = owner_client.get("/api/v1/trainerlab/presets/")
+        assert listed.status_code == 200
+        assert any(item["id"] == preset_id for item in listed.json()["items"])
+
+        shared = owner_client.post(
+            f"/api/v1/trainerlab/presets/{preset_id}/share/",
+            data={"user_id": other_instructor_user.id, "can_read": True, "can_duplicate": True},
+            content_type="application/json",
+        )
+        assert shared.status_code == 200
+        assert shared.json()["user_id"] == other_instructor_user.id
+
+        accessible = other_client.get(f"/api/v1/trainerlab/presets/{preset_id}/")
+        assert accessible.status_code == 200
+
+        duplicate = other_client.post(f"/api/v1/trainerlab/presets/{preset_id}/duplicate/")
+        assert duplicate.status_code == 201
+        assert duplicate.json()["owner_id"] == other_instructor_user.id
+
+        session = _create_session(owner_client, idempotency_key="preset-apply-session")
+        applied = owner_client.post(
+            f"/api/v1/trainerlab/presets/{preset_id}/apply/",
+            data={"session_id": session["id"]},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="preset-apply-1",
+        )
+        assert applied.status_code == 200
+
+        trainer_session = TrainerSession.objects.get(pk=session["id"])
+        applied_presets = trainer_session.runtime_state_json.get("applied_presets", [])
+        assert any(item["preset_id"] == preset_id for item in applied_presets)
+
+    def test_unshare_removes_access(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        other_instructor_user,
+        other_instructor_membership,
+    ):
+        owner_client = auth_client_factory(instructor_user)
+        other_client = auth_client_factory(other_instructor_user)
+
+        created = owner_client.post(
+            "/api/v1/trainerlab/presets/",
+            data={"title": "Share test"},
+            content_type="application/json",
+        )
+        preset_id = created.json()["id"]
+
+        owner_client.post(
+            f"/api/v1/trainerlab/presets/{preset_id}/share/",
+            data={"user_id": other_instructor_user.id, "can_read": True},
+            content_type="application/json",
+        )
+        assert other_client.get(f"/api/v1/trainerlab/presets/{preset_id}/").status_code == 200
+
+        unshared = owner_client.post(
+            f"/api/v1/trainerlab/presets/{preset_id}/unshare/",
+            data={"user_id": other_instructor_user.id},
+            content_type="application/json",
+        )
+        assert unshared.status_code == 204
+        assert other_client.get(f"/api/v1/trainerlab/presets/{preset_id}/").status_code == 404

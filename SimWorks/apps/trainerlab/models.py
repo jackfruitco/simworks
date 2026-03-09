@@ -59,6 +59,8 @@ class TrainerCommand(models.Model):
         STOP = "stop", _("Stop")
         STEER_PROMPT = "steer_prompt", _("Steer Prompt")
         INJECT_EVENT = "inject_event", _("Inject Event")
+        ADJUST_SCENARIO = "adjust_scenario", _("Adjust Scenario")
+        APPLY_PRESET = "apply_preset", _("Apply Preset")
 
     class CommandStatus(models.TextChoices):
         PENDING = "pending", _("Pending")
@@ -142,6 +144,92 @@ class TrainerRunSummary(models.Model):
     generator_version = models.CharField(max_length=32, default="v1")
 
 
+class ScenarioInstruction(models.Model):
+    """Reusable trainer scenario presets with explicit sharing metadata."""
+
+    class Severity(models.TextChoices):
+        LOW = "low", _("Low")
+        MODERATE = "moderate", _("Moderate")
+        HIGH = "high", _("High")
+        CRITICAL = "critical", _("Critical")
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="trainer_scenario_instructions",
+    )
+    title = models.CharField(max_length=150)
+    description = models.TextField(blank=True, default="")
+    instruction_text = models.TextField(blank=True, default="")
+    injuries_json = models.JSONField(default=list, blank=True)
+    severity = models.CharField(
+        max_length=16,
+        choices=Severity.choices,
+        default=Severity.MODERATE,
+    )
+    metadata_json = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("-modified_at", "-id")
+        indexes = [
+            models.Index(fields=["owner", "is_active"], name="idx_scenario_owner_active"),
+            models.Index(fields=["severity"], name="idx_scenario_severity"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.owner_id})"
+
+
+class ScenarioInstructionPermission(models.Model):
+    """Per-user ACL for scenario presets."""
+
+    scenario_instruction = models.ForeignKey(
+        "trainerlab.ScenarioInstruction",
+        on_delete=models.CASCADE,
+        related_name="permissions",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="trainer_scenario_instruction_permissions",
+    )
+    can_read = models.BooleanField(default=True)
+    can_edit = models.BooleanField(default=False)
+    can_delete = models.BooleanField(default=False)
+    can_share = models.BooleanField(default=False)
+    can_duplicate = models.BooleanField(default=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="granted_trainer_scenario_permissions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scenario_instruction", "user"],
+                name="uniq_trainer_scenario_permission",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "can_read"], name="idx_scenario_perm_user_read"),
+            models.Index(
+                fields=["scenario_instruction", "can_share"],
+                name="idx_scenario_perm_share",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.scenario_instruction_id}:{self.user_id}"
+
+
 class ABCEvent(PolymorphicModel):
     """Abstract class for mutable TrainerLab domain events."""
 
@@ -188,8 +276,10 @@ class Injury(ABCEvent):
 
         ARM_LEFT_UPPER = "LUA", _("Left Upper Arm")
         ARM_LEFT_LOWER = "LLA", _("Left Lower Arm")
+        ARM_LEFT_HAND = "LHA", _("Left Hand")
         ARM_RIGHT_UPPER = "RUA", _("Right Upper Arm")
         ARM_RIGHT_LOWER = "RLA", _("Right Lower Arm")
+        ARM_RIGHT_HAND = "RHA", _("Right Hand")
 
         THORAX_LEFT_ANTERIOR = "TLA", _("Left Anterior Chest")
         THORAX_RIGHT_ANTERIOR = "TRA", _("Right Anterior Chest")
@@ -203,8 +293,10 @@ class Injury(ABCEvent):
 
         LEG_LEFT_UPPER = "LUL", _("Left Upper Leg")
         LEG_LEFT_LOWER = "LLL", _("Left Lower Leg")
+        LEG_LEFT_FOOT = "LFT", _("Left Foot")
         LEG_RIGHT_UPPER = "RUL", _("Right Upper Leg")
         LEG_RIGHT_LOWER = "RLL", _("Right Lower Leg")
+        LEG_RIGHT_FOOT = "RFT", _("Right Foot")
 
         JUNCTIONAL_LEFT_AXILLARY = "JLX", _("Left Junctional Axilla")
         JUNCTIONAL_RIGHT_AXILLARY = "JRX", _("Right Junctional Axilla")

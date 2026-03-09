@@ -5,7 +5,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from apps.trainerlab.models import TrainerSession
+from apps.trainerlab.models import (
+    ScenarioInstruction,
+    ScenarioInstructionPermission,
+    TrainerSession,
+)
 
 
 class LabAccessOut(BaseModel):
@@ -38,6 +42,24 @@ class TrainerSessionOut(BaseModel):
 class TrainerCommandAck(BaseModel):
     command_id: str
     status: str = "accepted"
+
+
+class SimulationAdjustIn(BaseModel):
+    target: Literal["trend", "injury", "avpu", "intervention", "note"]
+    direction: Literal["up", "down", "same", "worsen", "improve", "set", "add"] | None = None
+    magnitude: int | None = Field(default=None, ge=1, le=10)
+    injury_event_id: int | None = None
+    injury_region: str | None = None
+    avpu_state: Literal["alert", "verbal", "pain", "unalert"] | None = None
+    intervention_code: str | None = None
+    note: str | None = Field(default=None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SimulationAdjustAck(BaseModel):
+    command_id: str
+    status: str = "accepted"
+    simulation_id: int
 
 
 class SteerPromptIn(BaseModel):
@@ -107,6 +129,76 @@ class SSEEnvelope(BaseModel):
     payload: dict[str, Any]
 
 
+class ScenarioInstructionCreateIn(BaseModel):
+    title: str = Field(min_length=1, max_length=150)
+    description: str = ""
+    instruction_text: str = ""
+    injuries: list[str] = Field(default_factory=list)
+    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ScenarioInstructionUpdateIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=150)
+    description: str | None = None
+    instruction_text: str | None = None
+    injuries: list[str] | None = None
+    severity: Literal["low", "moderate", "high", "critical"] | None = None
+    metadata: dict[str, Any] | None = None
+    is_active: bool | None = None
+
+
+class ScenarioInstructionPermissionIn(BaseModel):
+    user_id: int
+    can_read: bool = True
+    can_edit: bool = False
+    can_delete: bool = False
+    can_share: bool = False
+    can_duplicate: bool = True
+
+
+class ScenarioInstructionUnshareIn(BaseModel):
+    user_id: int
+
+
+class ScenarioInstructionApplyIn(BaseModel):
+    session_id: int
+
+
+class ScenarioInstructionPermissionOut(BaseModel):
+    user_id: int
+    can_read: bool
+    can_edit: bool
+    can_delete: bool
+    can_share: bool
+    can_duplicate: bool
+
+
+class ScenarioInstructionOut(BaseModel):
+    id: int
+    owner_id: int
+    title: str
+    description: str
+    instruction_text: str
+    injuries: list[str]
+    severity: str
+    metadata: dict[str, Any]
+    is_active: bool
+    permissions: list[ScenarioInstructionPermissionOut]
+    created_at: datetime
+    modified_at: datetime
+
+
+class DictionaryItemOut(BaseModel):
+    code: str
+    label: str
+
+
+class InterventionGroupOut(BaseModel):
+    group: str
+    items: list[DictionaryItemOut]
+
+
 def trainer_session_to_out(session: TrainerSession) -> TrainerSessionOut:
     return TrainerSessionOut(
         id=session.id,
@@ -122,4 +214,37 @@ def trainer_session_to_out(session: TrainerSession) -> TrainerSessionOut:
         last_ai_tick_at=session.last_ai_tick_at,
         created_at=session.created_at,
         modified_at=session.modified_at,
+    )
+
+
+def scenario_permission_to_out(
+    permission: ScenarioInstructionPermission,
+) -> ScenarioInstructionPermissionOut:
+    return ScenarioInstructionPermissionOut(
+        user_id=permission.user_id,
+        can_read=permission.can_read,
+        can_edit=permission.can_edit,
+        can_delete=permission.can_delete,
+        can_share=permission.can_share,
+        can_duplicate=permission.can_duplicate,
+    )
+
+
+def scenario_instruction_to_out(
+    instruction: ScenarioInstruction,
+) -> ScenarioInstructionOut:
+    permissions = list(instruction.permissions.all())
+    return ScenarioInstructionOut(
+        id=instruction.id,
+        owner_id=instruction.owner_id,
+        title=instruction.title,
+        description=instruction.description,
+        instruction_text=instruction.instruction_text,
+        injuries=list(instruction.injuries_json or []),
+        severity=instruction.severity,
+        metadata=dict(instruction.metadata_json or {}),
+        is_active=instruction.is_active,
+        permissions=[scenario_permission_to_out(item) for item in permissions],
+        created_at=instruction.created_at,
+        modified_at=instruction.modified_at,
     )

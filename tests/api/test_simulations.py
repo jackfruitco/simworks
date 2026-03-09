@@ -47,6 +47,28 @@ def other_user(django_user_model, user_role):
 
 
 @pytest.fixture
+def trainerlab_lab(db):
+    from apps.accounts.models import Lab
+
+    lab, _ = Lab.objects.get_or_create(
+        slug="trainerlab",
+        defaults={"display_name": "TrainerLab", "is_active": True},
+    )
+    return lab
+
+
+@pytest.fixture
+def instructor_membership(test_user, trainerlab_lab):
+    from apps.accounts.models import LabMembership
+
+    return LabMembership.objects.create(
+        user=test_user,
+        lab=trainerlab_lab,
+        access_level=LabMembership.AccessLevel.INSTRUCTOR,
+    )
+
+
+@pytest.fixture
 def auth_client(test_user):
     """Create a client with JWT authentication."""
     token = create_access_token(test_user)
@@ -351,6 +373,78 @@ class TestEndSimulation:
         response = auth_client.post(f"/api/v1/simulations/{other_sim.pk}/end/")
 
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestAdjustSimulation:
+    def test_adjust_requires_idempotency_key(
+        self,
+        auth_client,
+        simulation,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import TrainerSession
+
+        TrainerSession.objects.create(simulation=simulation)
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            data={"target": "trend", "direction": "up"},
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_adjust_is_idempotent_and_emits_to_runtime_state(
+        self,
+        auth_client,
+        simulation,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import TrainerCommand, TrainerSession
+
+        session = TrainerSession.objects.create(simulation=simulation)
+        first = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            data={
+                "target": "avpu",
+                "direction": "set",
+                "avpu_state": "verbal",
+                "note": "Downgrade responsiveness",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-1",
+        )
+        assert first.status_code == 200
+
+        second = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            data={
+                "target": "avpu",
+                "direction": "set",
+                "avpu_state": "pain",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-1",
+        )
+        assert second.status_code == 200
+        assert second.json()["command_id"] == first.json()["command_id"]
+        assert TrainerCommand.objects.filter(idempotency_key="adjust-1").count() == 1
+
+        session.refresh_from_db()
+        adjustments = session.runtime_state_json.get("adjustments", [])
+        assert len(adjustments) == 1
+        assert adjustments[0]["target"] == "avpu"
+
+    def test_adjust_requires_membership(self, auth_client, simulation):
+        from apps.trainerlab.models import TrainerSession
+
+        TrainerSession.objects.create(simulation=simulation)
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            data={"target": "trend", "direction": "up"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-no-membership",
+        )
+        assert response.status_code == 403
 
 
 @pytest.mark.django_db

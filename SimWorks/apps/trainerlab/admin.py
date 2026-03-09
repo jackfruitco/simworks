@@ -9,6 +9,8 @@ from .models import (
     Illness,
     Injury,
     Intervention,
+    ScenarioInstruction,
+    ScenarioInstructionPermission,
     TrainerCommand,
     TrainerRunSummary,
     TrainerRuntimeEvent,
@@ -53,3 +55,5 @@ admin.site.register(SPO2)
 admin.site.register(ETCO2)
 admin.site.register(BloodGlucoseLevel)
 admin.site.register(BloodPressure)
+admin.site.register(ScenarioInstruction)
+admin.site.register(ScenarioInstructionPermission)
