@@ -7,7 +7,7 @@ ARG PYTHON_VERSION=3.14
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # === Frontend Assets Stage ===
-FROM node:20-bookworm-slim AS assets
+FROM node:25-bookworm-slim AS assets
 
 WORKDIR /app
 
