@@ -17,6 +17,8 @@
       <sourceFolder url="file://$MODULE_DIR$/SimWorks" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai_django/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/orchestrai_django" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
     </content>
     <orderEntry type="jdk" jdkName="uv (SimWorks)" jdkType="Python SDK" />
