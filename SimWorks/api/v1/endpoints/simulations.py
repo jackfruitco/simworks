@@ -8,7 +8,6 @@ from datetime import timedelta
 from asgiref.sync import async_to_sync
 from django.db.models import Q
 from django.http import HttpRequest
-from django.utils import timezone
 from ninja import Query, Router
 from ninja.errors import HttpError
 
@@ -20,37 +19,13 @@ from api.v1.schemas.simulations import (
     SimulationOut,
     simulation_to_out,
 )
-from api.v1.schemas.trainerlab import SimulationAdjustAck, SimulationAdjustIn
 from apps.common.ratelimit import api_rate_limit
-from apps.trainerlab.access import require_instructor_membership
-from apps.trainerlab.models import TrainerCommand, TrainerSession
-from apps.trainerlab.services import emit_runtime_event, get_or_create_command
 from config.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = Router(tags=["simulations"], auth=DualAuth())
 USER_RETRY_LIMIT = 2
-
-
-def _get_idempotency_key(request: HttpRequest) -> str:
-    key = request.headers.get("Idempotency-Key")
-    if not key:
-        raise HttpError(400, "Idempotency-Key header is required")
-    return key
-
-
-def _ensure_command_compatible(
-    command: TrainerCommand,
-    *,
-    session: TrainerSession,
-) -> None:
-    if command.session_id != session.id:
-        raise HttpError(409, "Idempotency-Key already used for a different command")
-    if command.command_type != TrainerCommand.CommandType.ADJUST_SCENARIO:
-        raise HttpError(409, "Idempotency-Key already used for a different command")
-    if command.status == TrainerCommand.CommandStatus.FAILED:
-        raise HttpError(409, command.error or "Command previously failed")
 
 
 def _emit_feedback_event(simulation_id: int, event_type: str, payload: dict) -> None:
@@ -366,99 +341,3 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
 
     return 202, simulation_to_out(sim)
 
-
-@router.post(
-    "/{simulation_id}/adjust/",
-    response=SimulationAdjustAck,
-    summary="Adjust a TrainerLab simulation scenario",
-)
-@api_rate_limit
-def adjust_simulation(
-    request: HttpRequest,
-    simulation_id: int,
-    body: SimulationAdjustIn,
-) -> SimulationAdjustAck:
-    from apps.simcore.models import Simulation
-
-    user = request.auth
-    require_instructor_membership(user)
-    idempotency_key = _get_idempotency_key(request)
-    correlation_id = getattr(request, "correlation_id", None)
-
-    simulation = Simulation.objects.filter(pk=simulation_id, user=user).first()
-    if simulation is None:
-        raise HttpError(404, "Simulation not found")
-
-    session = (
-        TrainerSession.objects.filter(simulation=simulation)
-        .select_related("simulation")
-        .order_by("-id")
-        .first()
-    )
-    if session is None:
-        raise HttpError(404, "Trainer session not found for simulation")
-
-    payload = body.model_dump()
-    command, created = get_or_create_command(
-        session=session,
-        command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
-        idempotency_key=idempotency_key,
-        issued_by=user,
-        payload_json=payload,
-    )
-    if not created:
-        _ensure_command_compatible(command, session=session)
-        if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return SimulationAdjustAck(
-                command_id=str(command.id),
-                status="accepted",
-                simulation_id=simulation.id,
-            )
-
-    adjustment_entry = {
-        "command_id": str(command.id),
-        "target": body.target,
-        "direction": body.direction,
-        "magnitude": body.magnitude,
-        "injury_event_id": body.injury_event_id,
-        "injury_region": body.injury_region,
-        "avpu_state": body.avpu_state,
-        "intervention_code": body.intervention_code,
-        "note": body.note,
-        "metadata": body.metadata,
-        "issued_at": timezone.now().isoformat(),
-    }
-    state = dict(session.runtime_state_json or {})
-    adjustments = list(state.get("adjustments", []))
-    adjustments.append(adjustment_entry)
-    state["adjustments"] = adjustments
-    if body.note:
-        state["last_instruction"] = body.note
-    session.runtime_state_json = state
-    session.save(update_fields=["runtime_state_json", "modified_at"])
-
-    emit_runtime_event(
-        session=session,
-        event_type="trainerlab.adjustment.accepted",
-        payload=adjustment_entry,
-        created_by=user,
-        correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.adjustment.accepted:{command.id}",
-    )
-    emit_runtime_event(
-        session=session,
-        event_type="trainerlab.adjustment.applied",
-        payload=adjustment_entry,
-        created_by=user,
-        correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.adjustment.applied:{command.id}",
-    )
-
-    command.status = TrainerCommand.CommandStatus.PROCESSED
-    command.processed_at = timezone.now()
-    command.save(update_fields=["status", "processed_at"])
-    return SimulationAdjustAck(
-        command_id=str(command.id),
-        status="accepted",
-        simulation_id=simulation.id,
-    )

@@ -28,8 +28,7 @@ class TrainerSessionCreateIn(BaseModel):
     modifiers: list[str] = Field(default_factory=list)
 
 
-class TrainerSessionOut(BaseModel):
-    id: int
+class TrainerRunOut(BaseModel):
     simulation_id: int
     status: str
     scenario_spec: dict[str, Any]
@@ -138,7 +137,6 @@ class RuntimeEventOut(BaseModel):
 
 
 class RunSummaryOut(BaseModel):
-    session_id: int
     simulation_id: int
     status: str
     run_started_at: str | None
@@ -191,7 +189,7 @@ class ScenarioInstructionUnshareIn(BaseModel):
 
 
 class ScenarioInstructionApplyIn(BaseModel):
-    session_id: int
+    simulation_id: int
 
 
 class ScenarioInstructionPermissionOut(BaseModel):
@@ -228,9 +226,8 @@ class InterventionGroupOut(BaseModel):
     items: list[DictionaryItemOut]
 
 
-def trainer_session_to_out(session: TrainerSession) -> TrainerSessionOut:
-    return TrainerSessionOut(
-        id=session.id,
+def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
+    return TrainerRunOut(
         simulation_id=session.simulation_id,
         status=session.status,
         scenario_spec=session.scenario_spec_json or {},
