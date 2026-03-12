@@ -1,11 +1,14 @@
 # trainerlab/orca/instructions/initial.py
 
+from apps.trainerlab.injury_dictionary import build_injury_codebook_instruction
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
 
 from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 __all__ = [
+    "InitialResponseMixin",
+    "InjuryCodebookMixin",
     "TrainerLabMixin",
 ]
 
@@ -39,3 +42,9 @@ class InitialResponseMixin(NsMixin, BaseInstruction):
         "ETCO2, "
         "blood glucose level."
     )
+
+
+@orca.instruction(order=15)
+class InjuryCodebookMixin(NsMixin, BaseInstruction):
+    def render_instruction(self) -> str:
+        return build_injury_codebook_instruction()

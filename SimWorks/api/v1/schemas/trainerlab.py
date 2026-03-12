@@ -3,8 +3,13 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from apps.trainerlab.injury_dictionary import (
+    normalize_injury_category,
+    normalize_injury_kind,
+    normalize_injury_location,
+)
 from apps.trainerlab.models import (
     ScenarioInstruction,
     ScenarioInstructionPermission,
@@ -67,12 +72,36 @@ class SteerPromptIn(BaseModel):
 
 
 class InjuryCreateIn(BaseModel):
-    injury_category: str
-    injury_location: str
-    injury_kind: str
+    injury_category: str = Field(
+        ...,
+        description="Injury category code or friendly label (normalized to canonical code)",
+    )
+    injury_location: str = Field(
+        ...,
+        description="Injury location code or friendly label (normalized to canonical code)",
+    )
+    injury_kind: str = Field(
+        ...,
+        description="Injury kind code or friendly label (normalized to canonical code)",
+    )
     injury_description: str
     parent_injury_id: int | None = None
     supersedes_event_id: int | None = None
+
+    @field_validator("injury_category")
+    @classmethod
+    def _normalize_injury_category(cls, value: str) -> str:
+        return normalize_injury_category(value)
+
+    @field_validator("injury_location")
+    @classmethod
+    def _normalize_injury_location(cls, value: str) -> str:
+        return normalize_injury_location(value)
+
+    @field_validator("injury_kind")
+    @classmethod
+    def _normalize_injury_kind(cls, value: str) -> str:
+        return normalize_injury_kind(value)
 
 
 class IllnessCreateIn(BaseModel):

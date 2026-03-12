@@ -395,6 +395,60 @@ class TestTrainerLabEvents:
 
         assert TrainerCommand.objects.filter(idempotency_key="steer-1").count() == 1
 
+    def test_injury_event_accepts_friendly_labels(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import Injury
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="event-friendly-label-session")
+        session_id = session["id"]
+
+        response = client.post(
+            f"/api/v1/trainerlab/sessions/{session_id}/events/injuries/",
+            data={
+                "injury_category": "massive hemorrhage",
+                "injury_location": "left upper arm",
+                "injury_kind": "laceration",
+                "injury_description": "Friendly label injury",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="injury-friendly-1",
+        )
+        assert response.status_code == 200
+
+        injury = Injury.objects.get(injury_description="Friendly label injury")
+        assert injury.injury_category == "M"
+        assert injury.injury_location == "LUA"
+        assert injury.injury_kind == "LAC"
+
+    def test_injury_event_rejects_unknown_label(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="event-invalid-label-session")
+        session_id = session["id"]
+
+        response = client.post(
+            f"/api/v1/trainerlab/sessions/{session_id}/events/injuries/",
+            data={
+                "injury_category": "massive hemorrhage",
+                "injury_location": "not-a-real-location",
+                "injury_kind": "laceration",
+                "injury_description": "Should fail",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="injury-invalid-1",
+        )
+        assert response.status_code == 422
+        assert "injury_location" in response.content.decode("utf-8")
+
     def test_sse_stream_endpoint_responds(
         self,
         auth_client_factory,
@@ -445,6 +499,25 @@ class TestTrainerLabDictionaries:
         airway_group = next(group for group in data if group["group"] == "Airway")
         airway_codes = {item["code"] for item in airway_group["items"]}
         assert "A-NPA" in airway_codes
+
+    def test_injury_dictionary_matches_shared_mapping(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
+
+        client = auth_client_factory(instructor_user)
+        response = client.get("/api/v1/trainerlab/dictionaries/injuries/")
+        assert response.status_code == 200
+        data = response.json()
+        expected = get_injury_dictionary_choices()
+
+        for key in ("categories", "regions", "kinds"):
+            expected_pairs = {(code, label) for code, label in expected[key]}
+            actual_pairs = {(item["code"], item["label"]) for item in data[key]}
+            assert actual_pairs == expected_pairs
 
 
 @pytest.mark.django_db
