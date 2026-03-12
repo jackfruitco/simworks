@@ -5,6 +5,7 @@ import inspect
 import logging
 
 from asgiref.sync import async_to_sync
+from celery import shared_task
 from django.conf import settings
 from django.db import transaction
 from django.tasks import task
@@ -411,13 +412,44 @@ def run_service_call_task(call_id: str):
     return run_service_call(call_id)
 
 
+@shared_task(ignore_result=True, name="orchestrai_django.run_service_call_celery")
+def run_service_call_celery(call_id: str):
+    """
+    Celery task wrapper for run_service_call with retry logic.
+
+    This is the entry point used when dispatch backend is Celery.
+    """
+    return run_service_call(call_id)
+
+
+def _redispatch_service_call(call: ServiceCallModel) -> None:
+    """Re-dispatch a service call based on its configured backend."""
+    backend = call.backend or (call.dispatch or {}).get("backend") or "immediate"
+    queue = call.queue
+
+    if backend == "celery":
+        if queue:
+            run_service_call_celery.apply_async(args=[str(call.id)], queue=queue)
+        else:
+            run_service_call_celery.delay(str(call.id))
+        return
+
+    if backend in {"immediate", "django_tasks"}:
+        run_service_call_task.enqueue(call_id=str(call.id))
+        return
+
+    raise ValueError(
+        f"Unsupported backend {backend!r} for retry dispatch of call {call.id}"
+    )
+
+
 def run_service_call(call_id: str):
     """
     Execute a stored :class:`ServiceCall` with automatic retry logic.
 
     Uses ServiceCallAttempt to track individual execution attempts.
     Retries on failure up to ORCA_MAX_ATTEMPTS times (default: 4).
-    Retries are immediate.
+    Retries are re-dispatched via the call's configured backend.
     After max retries, marks call as failed and emits ai_response_failed signal.
     """
 
@@ -824,7 +856,7 @@ def run_service_call(call_id: str):
                 max_attempts,
             )
 
-            run_service_call_task.enqueue(call_id=call_id)
+            _redispatch_service_call(call)
 
             return call.to_jsonable()
 
@@ -1083,5 +1115,6 @@ def _inline_persist_service_call(call: ServiceCallModel):
 __all__ = [
     "process_pending_persistence",
     "run_service_call",
+    "run_service_call_celery",
     "run_service_call_task",
 ]

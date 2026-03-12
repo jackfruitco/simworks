@@ -121,7 +121,7 @@ services:
           - "${REDIS_HOSTNAME:-redis}"
 
   celery:
-    profiles: ["workers"]
+    profiles: ["core"]
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev

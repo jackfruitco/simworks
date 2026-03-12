@@ -327,3 +327,72 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
     assert enqueued_retry_call_ids == [call.id]
     # No failure signal should be emitted until retries are exhausted.
     assert observed_failures == []
+
+
+def test_run_service_call_retry_uses_celery_backend(monkeypatch):
+    class RetryAttempt:
+        def __init__(self):
+            self.attempt = 1
+            self.is_retryable = True
+
+        def mark_dispatched(self):
+            return None
+
+        def mark_error(self, error, is_retryable=True):
+            self.is_retryable = is_retryable
+
+    class RetryAttempts:
+        @staticmethod
+        def count():
+            return 0
+
+    class RetryCall(DummyCall):
+        def __init__(self):
+            super().__init__()
+            self.backend = "celery"
+            self.queue = "priority"
+            self.attempts = RetryAttempts()
+            self._attempt = RetryAttempt()
+
+        def allocate_attempt(self):
+            return self._attempt
+
+    class AlwaysFailService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def arun(self, **payload):
+            raise RuntimeError("temporarily unavailable")
+
+    call = RetryCall()
+    celery_dispatches: list[tuple[list[str], str | None]] = []
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _capture_apply_async(*, args=None, queue=None, **kwargs):
+        celery_dispatches.append((list(args or []), queue))
+
+    monkeypatch.setattr(tasks, "ensure_service_registry", lambda app=None: DummyRegistry(AlwaysFailService))
+    monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+    monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+    monkeypatch.setattr(
+        tasks,
+        "run_service_call_celery",
+        types.SimpleNamespace(
+            apply_async=_capture_apply_async,
+            delay=lambda call_id: celery_dispatches.append(([call_id], None)),
+        ),
+    )
+
+    result = tasks.run_service_call(call.id)
+
+    assert result["status"] == "in_progress"
+    assert celery_dispatches == [([call.id], "priority")]

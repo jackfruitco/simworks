@@ -28,6 +28,14 @@ def registered_service(db):
     return DemoService
 
 
+@pytest.fixture(autouse=True)
+def stub_celery_dispatch(monkeypatch):
+    def _capture_dispatch(self: DjangoTaskProxy, call_id: str, *, queue: str | None = None) -> str:
+        return f"celery-{call_id}"
+
+    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_celery", _capture_dispatch)
+
+
 def test_queue_override_persists_dispatch(registered_service):
     from orchestrai_django.models import ServiceCall
 
@@ -37,6 +45,27 @@ def test_queue_override_persists_dispatch(registered_service):
     assert record.queue == "priority"
     assert record.dispatch.get("queue") == "priority"
     assert record.status == "queued"
+
+
+def test_default_backend_dispatches_to_celery(monkeypatch, registered_service):
+    from orchestrai_django.models import ServiceCall
+
+    dispatched: list[str] = []
+
+    def _capture_dispatch(
+        self: DjangoTaskProxy, call_id: str, *, queue: str | None = None
+    ) -> str:
+        dispatched.append(call_id)
+        return f"celery-{call_id}"
+
+    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_celery", _capture_dispatch)
+
+    task_id = registered_service.task.enqueue(foo="bar")
+
+    assert dispatched == [task_id]
+    record = ServiceCall.objects.get(pk=task_id)
+    assert record.status == "queued"
+    assert record.backend == "celery"
 
 
 def test_immediate_backend_dispatches_fire_and_forget(monkeypatch, registered_service):
@@ -49,11 +78,12 @@ def test_immediate_backend_dispatches_fire_and_forget(monkeypatch, registered_se
 
     monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate", _capture_dispatch)
 
-    task_id = registered_service.task.enqueue(foo="bar")
+    task_id = registered_service.task.using(backend="immediate").enqueue(foo="bar")
 
     assert dispatched == [task_id]
     record = ServiceCall.objects.get(pk=task_id)
     assert record.status == "pending"
+    assert record.backend == "immediate"
 
 
 def test_service_call_jsonable(registered_service):
@@ -91,11 +121,14 @@ async def test_aenqueue_shielded_from_cancellation(monkeypatch, registered_servi
     dispatched: list[str] = []
     dispatched_event = asyncio.Event()
 
-    def _capture_dispatch(self: DjangoTaskProxy, call_id: str) -> None:
+    def _capture_dispatch(
+        self: DjangoTaskProxy, call_id: str, *, queue: str | None = None
+    ) -> str:
         dispatched.append(call_id)
         dispatched_event.set()
+        return f"celery-{call_id}"
 
-    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_immediate", _capture_dispatch)
+    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_celery", _capture_dispatch)
 
     task = asyncio.create_task(registered_service.task.aenqueue())
     await asyncio.sleep(0)
@@ -105,4 +138,23 @@ async def test_aenqueue_shielded_from_cancellation(monkeypatch, registered_servi
 
     await asyncio.wait_for(dispatched_event.wait(), timeout=1)
     saved = await ServiceCall.objects.aget(id=dispatched[0])
-    assert saved.status == "pending"
+    assert saved.status == "queued"
+
+
+def test_queue_override_passes_through_to_celery(monkeypatch, registered_service):
+    captured: list[tuple[str, str | None]] = []
+
+    def _capture_dispatch(self: DjangoTaskProxy, call_id: str, *, queue: str | None = None) -> str:
+        captured.append((call_id, queue))
+        return "celery-task-123"
+
+    monkeypatch.setattr(DjangoTaskProxy, "_dispatch_celery", _capture_dispatch)
+
+    call_id = registered_service.task.using(queue="priority").enqueue(value=1)
+
+    assert captured == [(call_id, "priority")]
+
+
+def test_unknown_backend_fails_fast(registered_service):
+    with pytest.raises(ValueError, match="Unsupported backend"):
+        registered_service.task.using(backend="bogus").enqueue(value=1)

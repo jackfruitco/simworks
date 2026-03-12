@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from orchestrai.components.services.calls import ServiceCall, assert_jsonable
 from orchestrai.components.services.calls.mixins import ServiceCallMixin
@@ -42,6 +42,10 @@ class DjangoServiceSpec(ServiceSpec):
 class DjangoTaskProxy:
     """Django-aware task proxy that persists :class:`ServiceCall` records."""
 
+    _DEFAULT_BACKEND = "celery"
+    _IMMEDIATE_BACKENDS: ClassVar[set[str]] = {"immediate", "django_tasks"}
+    _SUPPORTED_BACKENDS: ClassVar[set[str]] = _IMMEDIATE_BACKENDS | {"celery"}
+
     def __init__(self, spec: DjangoServiceSpec):
         self._spec = spec
 
@@ -61,7 +65,7 @@ class DjangoTaskProxy:
         dispatch = {"service": getattr(getattr(service, "identity", None), "as_str", None)}
         if self._spec.dispatch_kwargs:
             dispatch.update(self._spec.dispatch_kwargs)
-        dispatch.setdefault("backend", "immediate")
+        dispatch.setdefault("backend", self._DEFAULT_BACKEND)
         return dispatch
 
     def _build_record(self, call: ServiceCall, dispatch: dict[str, Any]):
@@ -69,7 +73,7 @@ class DjangoTaskProxy:
 
         from orchestrai_django.models import ServiceCall as ServiceCallModel
 
-        backend = dispatch.get("backend") or "immediate"
+        backend = dispatch.get("backend") or self._DEFAULT_BACKEND
         queue = dispatch.get("queue")
         task_id = dispatch.get("task_id")
 
@@ -134,6 +138,31 @@ class DjangoTaskProxy:
 
         return task_result.id
 
+    def _dispatch_celery(self, call_id: str, *, queue: str | None = None) -> Any:
+        """Dispatch a service call to Celery workers."""
+        from orchestrai_django.tasks import run_service_call_celery
+
+        if queue:
+            task_result = run_service_call_celery.apply_async(args=[call_id], queue=queue)
+        else:
+            task_result = run_service_call_celery.delay(call_id)
+
+        logger.debug(
+            "DjangoTaskProxy: Enqueued service call %s as Celery task %s (queue=%s)",
+            call_id,
+            task_result.id,
+            queue,
+        )
+        return task_result.id
+
+    def _resolve_backend(self, dispatch: dict[str, Any]) -> str:
+        backend = dispatch.get("backend") or self._DEFAULT_BACKEND
+        if backend not in self._SUPPORTED_BACKENDS:
+            raise ValueError(
+                f"Unsupported backend {backend!r}; expected one of {sorted(self._SUPPORTED_BACKENDS)}"
+            )
+        return backend
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -141,21 +170,25 @@ class DjangoTaskProxy:
         must_be_sync()
         service = self._build()
         dispatch = self._build_dispatch(service)
+        backend = self._resolve_backend(dispatch)
         call = service._create_call(
             payload=payload,
             context=getattr(service, "context", None),
             dispatch=dispatch,
         )
 
-        if dispatch.get("backend") not in {None, "immediate"}:
+        if backend not in self._IMMEDIATE_BACKENDS:
             call.status = "queued"
 
         record = self._persist_call_sync(call, dispatch)
 
-        backend = dispatch.get("backend") or "immediate"
-        if backend == "immediate":
+        if backend in self._IMMEDIATE_BACKENDS:
             task_id = self._dispatch_immediate(record.id)
-            # Store Django task ID in the record
+            # Store task ID in the record
+            record.task_id = task_id
+            record.save(update_fields=["task_id"])
+        elif backend == "celery":
+            task_id = self._dispatch_celery(record.id, queue=dispatch.get("queue"))
             record.task_id = task_id
             record.save(update_fields=["task_id"])
 
@@ -167,22 +200,26 @@ class DjangoTaskProxy:
         async def _run() -> str:
             service = self._build()
             dispatch = self._build_dispatch(service)
+            backend = self._resolve_backend(dispatch)
             call = service._create_call(
                 payload=payload,
                 context=getattr(service, "context", None),
                 dispatch=dispatch,
             )
 
-            if dispatch.get("backend") not in {None, "immediate"}:
+            if backend not in self._IMMEDIATE_BACKENDS:
                 call.status = "queued"
 
             record = await self._persist_call_async(call, dispatch)
 
-            backend = dispatch.get("backend") or "immediate"
-            if backend == "immediate":
-                # Use Django Tasks for async dispatch (sync call is safe here)
+            if backend in self._IMMEDIATE_BACKENDS:
+                # Use Django Tasks for async dispatch (sync call is safe here).
                 task_id = self._dispatch_immediate(record.id)
-                # Store Django task ID in the record
+                # Store task ID in the record.
+                record.task_id = task_id
+                await record.asave(update_fields=["task_id"])
+            elif backend == "celery":
+                task_id = self._dispatch_celery(record.id, queue=dispatch.get("queue"))
                 record.task_id = task_id
                 await record.asave(update_fields=["task_id"])
 
