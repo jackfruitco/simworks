@@ -444,53 +444,6 @@
         ]
       }
     },
-    "/api/v1/simulations/{simulation_id}/adjust/": {
-      "post": {
-        "operationId": "api_v1_endpoints_simulations_adjust_simulation",
-        "summary": "Adjust a TrainerLab simulation scenario",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "simulation_id",
-            "schema": {
-              "title": "Simulation Id",
-              "type": "integer"
-            },
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SimulationAdjustAck"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "simulations"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SimulationAdjustIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "security": [
-          {
-            "DualAuth": []
-          }
-        ]
-      }
-    },
     "/api/v1/simulations/{simulation_id}/conversations/": {
       "get": {
         "operationId": "api_v1_endpoints_conversations_list_conversations",
@@ -1481,7 +1434,7 @@
     "/api/v1/trainerlab/presets/{preset_id}/apply/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_apply_preset",
-        "summary": "Apply preset instructions to a TrainerLab session",
+        "summary": "Apply preset instructions to a TrainerLab simulation",
         "parameters": [
           {
             "in": "path",
@@ -1525,10 +1478,10 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/": {
+    "/api/v1/trainerlab/simulations/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_trainer_session",
-        "summary": "Create TrainerLab session",
+        "summary": "Create TrainerLab simulation",
         "parameters": [],
         "responses": {
           "201": {
@@ -1536,7 +1489,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1546,7 +1499,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1573,7 +1526,7 @@
       },
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_list_trainer_sessions",
-        "summary": "List TrainerLab sessions for user",
+        "summary": "List TrainerLab simulations for user",
         "parameters": [
           {
             "in": "query",
@@ -1626,7 +1579,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaginatedResponse_TrainerSessionOut_"
+                  "$ref": "#/components/schemas/PaginatedResponse_TrainerRunOut_"
                 }
               }
             }
@@ -1642,16 +1595,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_get_trainer_session",
-        "summary": "Get TrainerLab session",
+        "summary": "Get TrainerLab simulation",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1663,7 +1616,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1679,16 +1632,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/run/start/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/start/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_start_trainer_run",
         "summary": "Start TrainerLab run",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1700,7 +1653,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1716,16 +1669,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/run/pause/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/pause/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_pause_trainer_run",
         "summary": "Pause TrainerLab run",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1737,7 +1690,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1753,16 +1706,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/run/resume/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/resume/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_resume_trainer_run",
         "summary": "Resume TrainerLab run",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1774,7 +1727,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1790,16 +1743,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/run/stop/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/stop/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_stop_trainer_run",
         "summary": "Stop TrainerLab run",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1811,7 +1764,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerSessionOut"
+                  "$ref": "#/components/schemas/TrainerRunOut"
                 }
               }
             }
@@ -1827,16 +1780,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/steer/prompt/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/steer/prompt/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_steer_prompt",
         "summary": "Apply instructor steering prompt",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1874,16 +1827,63 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/events/injuries/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/adjust/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_adjust_simulation",
+        "summary": "Adjust a TrainerLab simulation scenario",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationAdjustAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationAdjustIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_injury_event",
         "summary": "Inject injury event",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1921,16 +1921,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/events/illnesses/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/illnesses/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_illness_event",
         "summary": "Inject illness event",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -1968,16 +1968,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/events/interventions/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_intervention_event",
         "summary": "Inject intervention event",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -2015,16 +2015,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/events/vitals/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/vitals/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_vital_event",
         "summary": "Inject vital event",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -2062,16 +2062,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/events/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_list_trainer_events",
         "summary": "List TrainerLab runtime events",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -2129,16 +2129,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/summary/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/summary/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_get_run_summary",
         "summary": "Get run summary",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -2166,16 +2166,16 @@
         ]
       }
     },
-    "/api/v1/trainerlab/sessions/{session_id}/events/stream/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/stream/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_stream_trainer_events",
         "summary": "SSE stream for TrainerLab events",
         "parameters": [
           {
             "in": "path",
-            "name": "session_id",
+            "name": "simulation_id",
             "schema": {
-              "title": "Session Id",
+              "title": "Simulation Id",
               "type": "integer"
             },
             "required": true
@@ -2626,149 +2626,6 @@
           "end_timestamp"
         ],
         "title": "SimulationEndResponse",
-        "type": "object"
-      },
-      "SimulationAdjustAck": {
-        "properties": {
-          "command_id": {
-            "title": "Command Id",
-            "type": "string"
-          },
-          "status": {
-            "default": "accepted",
-            "title": "Status",
-            "type": "string"
-          },
-          "simulation_id": {
-            "title": "Simulation Id",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "command_id",
-          "simulation_id"
-        ],
-        "title": "SimulationAdjustAck",
-        "type": "object"
-      },
-      "SimulationAdjustIn": {
-        "properties": {
-          "target": {
-            "enum": [
-              "trend",
-              "injury",
-              "avpu",
-              "intervention",
-              "note"
-            ],
-            "title": "Target",
-            "type": "string"
-          },
-          "direction": {
-            "anyOf": [
-              {
-                "enum": [
-                  "up",
-                  "down",
-                  "same",
-                  "worsen",
-                  "improve",
-                  "set",
-                  "add"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Direction"
-          },
-          "magnitude": {
-            "anyOf": [
-              {
-                "maximum": 10,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Magnitude"
-          },
-          "injury_event_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Injury Event Id"
-          },
-          "injury_region": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Injury Region"
-          },
-          "avpu_state": {
-            "anyOf": [
-              {
-                "enum": [
-                  "alert",
-                  "verbal",
-                  "pain",
-                  "unalert"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Avpu State"
-          },
-          "intervention_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Intervention Code"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          }
-        },
-        "required": [
-          "target"
-        ],
-        "title": "SimulationAdjustIn",
         "type": "object"
       },
       "ConversationListResponse": {
@@ -3665,23 +3522,19 @@
       },
       "ScenarioInstructionApplyIn": {
         "properties": {
-          "session_id": {
-            "title": "Session Id",
+          "simulation_id": {
+            "title": "Simulation Id",
             "type": "integer"
           }
         },
         "required": [
-          "session_id"
+          "simulation_id"
         ],
         "title": "ScenarioInstructionApplyIn",
         "type": "object"
       },
-      "TrainerSessionOut": {
+      "TrainerRunOut": {
         "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
           "simulation_id": {
             "title": "Simulation Id",
             "type": "integer"
@@ -3775,7 +3628,6 @@
           }
         },
         "required": [
-          "id",
           "simulation_id",
           "status",
           "scenario_spec",
@@ -3789,7 +3641,7 @@
           "created_at",
           "modified_at"
         ],
-        "title": "TrainerSessionOut",
+        "title": "TrainerRunOut",
         "type": "object"
       },
       "TrainerSessionCreateIn": {
@@ -3821,12 +3673,12 @@
         "title": "TrainerSessionCreateIn",
         "type": "object"
       },
-      "PaginatedResponse_TrainerSessionOut_": {
+      "PaginatedResponse_TrainerRunOut_": {
         "properties": {
           "items": {
             "description": "List of items in this page",
             "items": {
-              "$ref": "#/components/schemas/TrainerSessionOut"
+              "$ref": "#/components/schemas/TrainerRunOut"
             },
             "title": "Items",
             "type": "array"
@@ -3856,7 +3708,7 @@
           "items",
           "has_more"
         ],
-        "title": "PaginatedResponse[TrainerSessionOut]",
+        "title": "PaginatedResponse[TrainerRunOut]",
         "type": "object"
       },
       "SteerPromptIn": {
@@ -3872,6 +3724,149 @@
           "prompt"
         ],
         "title": "SteerPromptIn",
+        "type": "object"
+      },
+      "SimulationAdjustAck": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          },
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command_id",
+          "simulation_id"
+        ],
+        "title": "SimulationAdjustAck",
+        "type": "object"
+      },
+      "SimulationAdjustIn": {
+        "properties": {
+          "target": {
+            "enum": [
+              "trend",
+              "injury",
+              "avpu",
+              "intervention",
+              "note"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down",
+                  "same",
+                  "worsen",
+                  "improve",
+                  "set",
+                  "add"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "magnitude": {
+            "anyOf": [
+              {
+                "maximum": 10,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Magnitude"
+          },
+          "injury_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Event Id"
+          },
+          "injury_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Region"
+          },
+          "avpu_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alert",
+                  "verbal",
+                  "pain",
+                  "unalert"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avpu State"
+          },
+          "intervention_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention Code"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "SimulationAdjustIn",
         "type": "object"
       },
       "InjuryCreateIn": {
@@ -4071,10 +4066,6 @@
       },
       "RunSummaryOut": {
         "properties": {
-          "session_id": {
-            "title": "Session Id",
-            "type": "integer"
-          },
           "simulation_id": {
             "title": "Simulation Id",
             "type": "integer"
@@ -4140,7 +4131,6 @@
           }
         },
         "required": [
-          "session_id",
           "simulation_id",
           "status",
           "run_started_at",

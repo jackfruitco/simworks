@@ -23,6 +23,8 @@ from api.v1.schemas.trainerlab import (
     InterventionGroupOut,
     LabAccessOut,
     RunSummaryOut,
+    SimulationAdjustAck,
+    SimulationAdjustIn,
     ScenarioInstructionApplyIn,
     ScenarioInstructionCreateIn,
     ScenarioInstructionOut,
@@ -32,16 +34,17 @@ from api.v1.schemas.trainerlab import (
     ScenarioInstructionUpdateIn,
     SteerPromptIn,
     TrainerCommandAck,
+    TrainerRunOut,
     TrainerSessionCreateIn,
-    TrainerSessionOut,
     VitalCreateIn,
     scenario_instruction_to_out,
     scenario_permission_to_out,
-    trainer_session_to_out,
+    trainer_run_to_out,
 )
 from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
 from apps.common.ratelimit import api_rate_limit
+from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
 from apps.trainerlab.models import (
     ETCO2,
@@ -117,10 +120,10 @@ def _get_idempotency_key(request: HttpRequest) -> str:
     return key
 
 
-def _get_session_for_user(session_id: int, user) -> TrainerSession:
+def _get_session_for_simulation(simulation_id: int, user) -> TrainerSession:
     session = (
         TrainerSession.objects.select_related("simulation")
-        .filter(pk=session_id, simulation__user=user)
+        .filter(simulation_id=simulation_id, simulation__user=user)
         .first()
     )
     if session is None:
@@ -434,7 +437,7 @@ def unshare_preset(
 @router.post(
     "/presets/{preset_id}/apply/",
     response=TrainerCommandAck,
-    summary="Apply preset instructions to a TrainerLab session",
+    summary="Apply preset instructions to a TrainerLab simulation",
 )
 @api_rate_limit
 def apply_preset(
@@ -445,11 +448,11 @@ def apply_preset(
     user = request.auth
     require_instructor_membership(user)
     instruction = _get_instruction_for_user(preset_id, user)
-    session = _get_session_for_user(body.session_id, user)
+    session = _get_session_for_simulation(body.simulation_id, user)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
-    payload = {"preset_id": instruction.id, "session_id": session.id}
+    payload = {"preset_id": instruction.id, "simulation_id": session.simulation_id}
     command, created = get_or_create_command(
         session=session,
         command_type=TrainerCommand.CommandType.APPLY_PRESET,
@@ -501,14 +504,14 @@ def apply_preset(
 
 
 @router.post(
-    "/sessions/",
-    response={201: TrainerSessionOut, 200: TrainerSessionOut},
-    summary="Create TrainerLab session",
+    "/simulations/",
+    response={201: TrainerRunOut, 200: TrainerRunOut},
+    summary="Create TrainerLab simulation",
 )
 @api_rate_limit
 def create_trainer_session(
     request: HttpRequest, body: TrainerSessionCreateIn
-) -> tuple[int, TrainerSessionOut]:
+) -> tuple[int, TrainerRunOut]:
     user = request.auth
     require_instructor_membership(user)
 
@@ -525,7 +528,7 @@ def create_trainer_session(
             raise HttpError(409, "Idempotency-Key already used for a different command")
         if existing.session.simulation.user_id != user.id:
             raise HttpError(409, "Idempotency-Key already used")
-        return 200, trainer_session_to_out(existing.session)
+        return 200, trainer_run_to_out(existing.session)
 
     session, _call_id = create_session_with_initial_generation(
         user=user,
@@ -544,13 +547,13 @@ def create_trainer_session(
         processed_at=session.created_at,
     )
 
-    return 201, trainer_session_to_out(session)
+    return 201, trainer_run_to_out(session)
 
 
 @router.get(
-    "/sessions/",
-    response=PaginatedResponse[TrainerSessionOut],
-    summary="List TrainerLab sessions for user",
+    "/simulations/",
+    response=PaginatedResponse[TrainerRunOut],
+    summary="List TrainerLab simulations for user",
 )
 @api_rate_limit
 def list_trainer_sessions(
@@ -558,7 +561,7 @@ def list_trainer_sessions(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
     status: str | None = Query(default=None),
-) -> PaginatedResponse[TrainerSessionOut]:
+) -> PaginatedResponse[TrainerRunOut]:
     user = request.auth
     require_instructor_membership(user)
 
@@ -586,23 +589,23 @@ def list_trainer_sessions(
     next_cursor = str(rows[-1].id) if has_more and rows else None
 
     return PaginatedResponse(
-        items=[trainer_session_to_out(row) for row in rows],
+        items=[trainer_run_to_out(row) for row in rows],
         next_cursor=next_cursor,
         has_more=has_more,
     )
 
 
 @router.get(
-    "/sessions/{session_id}/",
-    response=TrainerSessionOut,
-    summary="Get TrainerLab session",
+    "/simulations/{simulation_id}/",
+    response=TrainerRunOut,
+    summary="Get TrainerLab simulation",
 )
 @api_rate_limit
-def get_trainer_session(request: HttpRequest, session_id: int) -> TrainerSessionOut:
+def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
     user = request.auth
     require_instructor_membership(user)
-    session = _get_session_for_user(session_id, user)
-    return trainer_session_to_out(session)
+    session = _get_session_for_simulation(simulation_id, user)
+    return trainer_run_to_out(session)
 
 
 def _mark_command_failed(command: TrainerCommand, error: str) -> None:
@@ -613,14 +616,14 @@ def _mark_command_failed(command: TrainerCommand, error: str) -> None:
 
 
 def _process_run_command(
-    request: HttpRequest, session_id: int, command_type: str
-) -> TrainerSessionOut:
+    request: HttpRequest, simulation_id: int, command_type: str
+) -> TrainerRunOut:
     user = request.auth
     require_instructor_membership(user)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
-    session = _get_session_for_user(session_id, user)
+    session = _get_session_for_simulation(simulation_id, user)
 
     command, created = get_or_create_command(
         session=session,
@@ -633,7 +636,7 @@ def _process_run_command(
     if not created:
         _ensure_command_compatible(command, session=session, command_type=command_type)
         if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return trainer_session_to_out(session)
+            return trainer_run_to_out(session)
 
     try:
         if command_type == TrainerCommand.CommandType.START:
@@ -654,56 +657,62 @@ def _process_run_command(
     command.processed_at = timezone.now()
     command.save(update_fields=["status", "processed_at"])
 
-    return trainer_session_to_out(session)
+    return trainer_run_to_out(session)
 
 
 @router.post(
-    "/sessions/{session_id}/run/start/", response=TrainerSessionOut, summary="Start TrainerLab run"
+    "/simulations/{simulation_id}/run/start/",
+    response=TrainerRunOut,
+    summary="Start TrainerLab run",
 )
 @api_rate_limit
-def start_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
-    return _process_run_command(request, session_id, TrainerCommand.CommandType.START)
+def start_trainer_run(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
+    return _process_run_command(request, simulation_id, TrainerCommand.CommandType.START)
 
 
 @router.post(
-    "/sessions/{session_id}/run/pause/", response=TrainerSessionOut, summary="Pause TrainerLab run"
+    "/simulations/{simulation_id}/run/pause/",
+    response=TrainerRunOut,
+    summary="Pause TrainerLab run",
 )
 @api_rate_limit
-def pause_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
-    return _process_run_command(request, session_id, TrainerCommand.CommandType.PAUSE)
+def pause_trainer_run(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
+    return _process_run_command(request, simulation_id, TrainerCommand.CommandType.PAUSE)
 
 
 @router.post(
-    "/sessions/{session_id}/run/resume/",
-    response=TrainerSessionOut,
+    "/simulations/{simulation_id}/run/resume/",
+    response=TrainerRunOut,
     summary="Resume TrainerLab run",
 )
 @api_rate_limit
-def resume_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
-    return _process_run_command(request, session_id, TrainerCommand.CommandType.RESUME)
+def resume_trainer_run(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
+    return _process_run_command(request, simulation_id, TrainerCommand.CommandType.RESUME)
 
 
 @router.post(
-    "/sessions/{session_id}/run/stop/", response=TrainerSessionOut, summary="Stop TrainerLab run"
+    "/simulations/{simulation_id}/run/stop/",
+    response=TrainerRunOut,
+    summary="Stop TrainerLab run",
 )
 @api_rate_limit
-def stop_trainer_run(request: HttpRequest, session_id: int) -> TrainerSessionOut:
-    return _process_run_command(request, session_id, TrainerCommand.CommandType.STOP)
+def stop_trainer_run(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
+    return _process_run_command(request, simulation_id, TrainerCommand.CommandType.STOP)
 
 
 @router.post(
-    "/sessions/{session_id}/steer/prompt/",
+    "/simulations/{simulation_id}/steer/prompt/",
     response=TrainerCommandAck,
     summary="Apply instructor steering prompt",
 )
 @api_rate_limit
-def steer_prompt(request: HttpRequest, session_id: int, body: SteerPromptIn) -> TrainerCommandAck:
+def steer_prompt(request: HttpRequest, simulation_id: int, body: SteerPromptIn) -> TrainerCommandAck:
     user = request.auth
     require_instructor_membership(user)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
-    session = _get_session_for_user(session_id, user)
+    session = _get_session_for_simulation(simulation_id, user)
 
     command, created = get_or_create_command(
         session=session,
@@ -745,6 +754,96 @@ def steer_prompt(request: HttpRequest, session_id: int, body: SteerPromptIn) -> 
     command.processed_at = timezone.now()
     command.save(update_fields=["status", "processed_at"])
     return _accepted(command)
+
+
+@router.post(
+    "/simulations/{simulation_id}/adjust/",
+    response=SimulationAdjustAck,
+    summary="Adjust a TrainerLab simulation scenario",
+)
+@api_rate_limit
+def adjust_simulation(
+    request: HttpRequest,
+    simulation_id: int,
+    body: SimulationAdjustIn,
+) -> SimulationAdjustAck:
+    user = request.auth
+    require_instructor_membership(user)
+    idempotency_key = _get_idempotency_key(request)
+    correlation_id = _get_correlation_id(request)
+
+    simulation = Simulation.objects.filter(pk=simulation_id, user=user).first()
+    if simulation is None:
+        raise HttpError(404, "Simulation not found")
+
+    session = _get_session_for_simulation(simulation_id, user)
+
+    payload = body.model_dump()
+    command, created = get_or_create_command(
+        session=session,
+        command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
+        idempotency_key=idempotency_key,
+        issued_by=user,
+        payload_json=payload,
+    )
+    if not created:
+        _ensure_command_compatible(
+            command, session=session, command_type=TrainerCommand.CommandType.ADJUST_SCENARIO
+        )
+        if command.status == TrainerCommand.CommandStatus.PROCESSED:
+            return SimulationAdjustAck(
+                command_id=str(command.id),
+                status="accepted",
+                simulation_id=simulation.id,
+            )
+
+    adjustment_entry = {
+        "command_id": str(command.id),
+        "target": body.target,
+        "direction": body.direction,
+        "magnitude": body.magnitude,
+        "injury_event_id": body.injury_event_id,
+        "injury_region": body.injury_region,
+        "avpu_state": body.avpu_state,
+        "intervention_code": body.intervention_code,
+        "note": body.note,
+        "metadata": body.metadata,
+        "issued_at": timezone.now().isoformat(),
+    }
+    state = dict(session.runtime_state_json or {})
+    adjustments = list(state.get("adjustments", []))
+    adjustments.append(adjustment_entry)
+    state["adjustments"] = adjustments
+    if body.note:
+        state["last_instruction"] = body.note
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.adjustment.accepted",
+        payload=adjustment_entry,
+        created_by=user,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.adjustment.accepted:{command.id}",
+    )
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.adjustment.applied",
+        payload=adjustment_entry,
+        created_by=user,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.adjustment.applied:{command.id}",
+    )
+
+    command.status = TrainerCommand.CommandStatus.PROCESSED
+    command.processed_at = timezone.now()
+    command.save(update_fields=["status", "processed_at"])
+    return SimulationAdjustAck(
+        command_id=str(command.id),
+        status="accepted",
+        simulation_id=simulation.id,
+    )
 
 
 def _resolve_superseded_domain_event(
@@ -864,7 +963,7 @@ def _create_vital(session: TrainerSession, body: VitalCreateIn) -> ABCEvent:
 def _inject_event_core(
     *,
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     command_type: str,
     payload_json: dict,
     create_fn: Callable[[TrainerSession], ABCEvent],
@@ -874,7 +973,7 @@ def _inject_event_core(
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
-    session = _get_session_for_user(session_id, user)
+    session = _get_session_for_simulation(simulation_id, user)
 
     command, created = get_or_create_command(
         session=session,
@@ -915,19 +1014,19 @@ def _inject_event_core(
 
 
 @router.post(
-    "/sessions/{session_id}/events/injuries/",
+    "/simulations/{simulation_id}/events/injuries/",
     response=TrainerCommandAck,
     summary="Inject injury event",
 )
 @api_rate_limit
 def create_injury_event(
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     body: InjuryCreateIn,
 ) -> TrainerCommandAck:
     return _inject_event_core(
         request=request,
-        session_id=session_id,
+        simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "injury", **body.model_dump()},
         create_fn=lambda session: _create_injury(session, body),
@@ -935,19 +1034,19 @@ def create_injury_event(
 
 
 @router.post(
-    "/sessions/{session_id}/events/illnesses/",
+    "/simulations/{simulation_id}/events/illnesses/",
     response=TrainerCommandAck,
     summary="Inject illness event",
 )
 @api_rate_limit
 def create_illness_event(
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     body: IllnessCreateIn,
 ) -> TrainerCommandAck:
     return _inject_event_core(
         request=request,
-        session_id=session_id,
+        simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "illness", **body.model_dump()},
         create_fn=lambda session: _create_illness(session, body),
@@ -955,19 +1054,19 @@ def create_illness_event(
 
 
 @router.post(
-    "/sessions/{session_id}/events/interventions/",
+    "/simulations/{simulation_id}/events/interventions/",
     response=TrainerCommandAck,
     summary="Inject intervention event",
 )
 @api_rate_limit
 def create_intervention_event(
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     body: InterventionCreateIn,
 ) -> TrainerCommandAck:
     return _inject_event_core(
         request=request,
-        session_id=session_id,
+        simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "intervention", **body.model_dump()},
         create_fn=lambda session: _create_intervention(session, body),
@@ -975,19 +1074,19 @@ def create_intervention_event(
 
 
 @router.post(
-    "/sessions/{session_id}/events/vitals/",
+    "/simulations/{simulation_id}/events/vitals/",
     response=TrainerCommandAck,
     summary="Inject vital event",
 )
 @api_rate_limit
 def create_vital_event(
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     body: VitalCreateIn,
 ) -> TrainerCommandAck:
     return _inject_event_core(
         request=request,
-        session_id=session_id,
+        simulation_id=simulation_id,
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "vital", **body.model_dump()},
         create_fn=lambda session: _create_vital(session, body),
@@ -995,20 +1094,20 @@ def create_vital_event(
 
 
 @router.get(
-    "/sessions/{session_id}/events/",
+    "/simulations/{simulation_id}/events/",
     response=PaginatedResponse[EventEnvelope],
     summary="List TrainerLab runtime events",
 )
 @api_rate_limit
 def list_trainer_events(
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> PaginatedResponse[EventEnvelope]:
     user = request.auth
     require_instructor_membership(user)
-    session = _get_session_for_user(session_id, user)
+    session = _get_session_for_simulation(simulation_id, user)
 
     queryset = OutboxEvent.objects.filter(
         simulation_id=session.simulation_id,
@@ -1053,15 +1152,15 @@ def list_trainer_events(
 
 
 @router.get(
-    "/sessions/{session_id}/summary/",
+    "/simulations/{simulation_id}/summary/",
     response=RunSummaryOut,
     summary="Get run summary",
 )
 @api_rate_limit
-def get_run_summary(request: HttpRequest, session_id: int) -> RunSummaryOut:
+def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
     user = request.auth
     require_instructor_membership(user)
-    session = _get_session_for_user(session_id, user)
+    session = _get_session_for_simulation(simulation_id, user)
 
     summary = getattr(session, "summary", None)
     if summary is None:
@@ -1071,17 +1170,17 @@ def get_run_summary(request: HttpRequest, session_id: int) -> RunSummaryOut:
 
 
 @router.get(
-    "/sessions/{session_id}/events/stream/",
+    "/simulations/{simulation_id}/events/stream/",
     summary="SSE stream for TrainerLab events",
 )
 def stream_trainer_events(
     request: HttpRequest,
-    session_id: int,
+    simulation_id: int,
     cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
 ) -> StreamingHttpResponse:
     user = request.auth
     require_instructor_membership(user)
-    session = _get_session_for_user(session_id, user)
+    session = _get_session_for_simulation(simulation_id, user)
 
     return stream_outbox_events(
         simulation_id=session.simulation_id,

@@ -387,7 +387,7 @@ class TestAdjustSimulation:
 
         TrainerSession.objects.create(simulation=simulation)
         response = auth_client.post(
-            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
             data={"target": "trend", "direction": "up"},
             content_type="application/json",
         )
@@ -403,7 +403,7 @@ class TestAdjustSimulation:
 
         session = TrainerSession.objects.create(simulation=simulation)
         first = auth_client.post(
-            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
             data={
                 "target": "avpu",
                 "direction": "set",
@@ -416,7 +416,7 @@ class TestAdjustSimulation:
         assert first.status_code == 200
 
         second = auth_client.post(
-            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
             data={
                 "target": "avpu",
                 "direction": "set",
@@ -439,7 +439,7 @@ class TestAdjustSimulation:
 
         TrainerSession.objects.create(simulation=simulation)
         response = auth_client.post(
-            f"/api/v1/simulations/{simulation.pk}/adjust/",
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
             data={"target": "trend", "direction": "up"},
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="adjust-no-membership",

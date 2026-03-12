@@ -106,7 +106,7 @@ def auth_client_factory():
 
 def _create_session(client: Client, *, idempotency_key: str = "sess-create-1") -> dict:
     response = client.post(
-        "/api/v1/trainerlab/sessions/",
+        "/api/v1/trainerlab/simulations/",
         data={
             "scenario_spec": {
                 "diagnosis": "Heat stroke",
@@ -172,7 +172,7 @@ class TestTrainerLabSessionLifecycle:
         client = auth_client_factory(instructor_user)
 
         response = client.post(
-            "/api/v1/trainerlab/sessions/",
+            "/api/v1/trainerlab/simulations/",
             data={"scenario_spec": {}, "directives": "", "modifiers": []},
             content_type="application/json",
         )
@@ -192,7 +192,7 @@ class TestTrainerLabSessionLifecycle:
         assert first["status"] == "seeded"
 
         second_response = client.post(
-            "/api/v1/trainerlab/sessions/",
+            "/api/v1/trainerlab/simulations/",
             data={"scenario_spec": {}, "directives": "", "modifiers": []},
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="session-create-a",
@@ -200,7 +200,7 @@ class TestTrainerLabSessionLifecycle:
 
         assert second_response.status_code == 200
         second = second_response.json()
-        assert second["id"] == first["id"]
+        assert second["simulation_id"] == first["simulation_id"]
 
         assert TrainerSession.objects.count() == 1
         assert TrainerCommand.objects.filter(idempotency_key="session-create-a").count() == 1
@@ -236,10 +236,10 @@ class TestTrainerLabSessionLifecycle:
     ):
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="session-state-machine")
-        session_id = session["id"]
+        simulation_id = session["simulation_id"]
 
         start = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/run/start/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="run-start-1",
         )
@@ -247,7 +247,7 @@ class TestTrainerLabSessionLifecycle:
         assert start.json()["status"] == "running"
 
         pause = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/run/pause/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/pause/",
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="run-pause-1",
         )
@@ -255,7 +255,7 @@ class TestTrainerLabSessionLifecycle:
         assert pause.json()["status"] == "paused"
 
         resume = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/run/resume/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/resume/",
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="run-resume-1",
         )
@@ -263,18 +263,17 @@ class TestTrainerLabSessionLifecycle:
         assert resume.json()["status"] == "running"
 
         stop = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/run/stop/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/stop/",
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="run-stop-1",
         )
         assert stop.status_code == 200
         assert stop.json()["status"] == "completed"
 
-        summary = client.get(f"/api/v1/trainerlab/sessions/{session_id}/summary/")
+        summary = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/summary/")
         assert summary.status_code == 200
         body = summary.json()
-        assert body["session_id"] == session_id
-        assert body["simulation_id"] == session["simulation_id"]
+        assert body["simulation_id"] == simulation_id
         assert body["status"] == "completed"
 
     def test_invalid_transition_returns_409(
@@ -287,7 +286,7 @@ class TestTrainerLabSessionLifecycle:
         session = _create_session(client, idempotency_key="session-invalid-transition")
 
         response = client.post(
-            f"/api/v1/trainerlab/sessions/{session['id']}/run/pause/",
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/run/pause/",
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="invalid-pause-before-start",
         )
@@ -306,17 +305,17 @@ class TestTrainerLabEvents:
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="event-session-1")
-        session_id = session["id"]
+        simulation_id = session["simulation_id"]
 
         start = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/run/start/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="event-run-start",
         )
         assert start.status_code == 200
 
         first_event = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/events/injuries/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
                 "injury_category": "M",
                 "injury_location": "LUA",
@@ -332,7 +331,7 @@ class TestTrainerLabEvents:
         assert first_injury.is_active is True
 
         second_event = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/events/injuries/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
                 "injury_category": "M",
                 "injury_location": "LUA",
@@ -350,14 +349,14 @@ class TestTrainerLabEvents:
         assert first_injury.is_active is False
         assert corrected.supersedes_event_id == first_injury.id
 
-        page_one = client.get(f"/api/v1/trainerlab/sessions/{session_id}/events/?limit=1")
+        page_one = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/?limit=1")
         assert page_one.status_code == 200
         page_one_data = page_one.json()
         assert len(page_one_data["items"]) == 1
         assert page_one_data["has_more"] is True
 
         cursor = page_one_data["next_cursor"]
-        page_two = client.get(f"/api/v1/trainerlab/sessions/{session_id}/events/?cursor={cursor}")
+        page_two = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/?cursor={cursor}")
         assert page_two.status_code == 200
         page_two_data = page_two.json()
 
@@ -377,7 +376,7 @@ class TestTrainerLabEvents:
         session = _create_session(client, idempotency_key="steer-session")
 
         first = client.post(
-            f"/api/v1/trainerlab/sessions/{session['id']}/steer/prompt/",
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/steer/prompt/",
             data={"prompt": "Worsen airway patency over next 3 ticks"},
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="steer-1",
@@ -385,7 +384,7 @@ class TestTrainerLabEvents:
         assert first.status_code == 200
 
         second = client.post(
-            f"/api/v1/trainerlab/sessions/{session['id']}/steer/prompt/",
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/steer/prompt/",
             data={"prompt": "This value should be ignored due to idempotency"},
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="steer-1",
@@ -404,7 +403,9 @@ class TestTrainerLabEvents:
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="sse-session")
 
-        response = client.get(f"/api/v1/trainerlab/sessions/{session['id']}/events/stream/")
+        response = client.get(
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/events/stream/"
+        )
         assert response.status_code == 200
         assert response["Content-Type"].startswith("text/event-stream")
 
@@ -500,13 +501,13 @@ class TestTrainerLabPresets:
         session = _create_session(owner_client, idempotency_key="preset-apply-session")
         applied = owner_client.post(
             f"/api/v1/trainerlab/presets/{preset_id}/apply/",
-            data={"session_id": session["id"]},
+            data={"simulation_id": session["simulation_id"]},
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="preset-apply-1",
         )
         assert applied.status_code == 200
 
-        trainer_session = TrainerSession.objects.get(pk=session["id"])
+        trainer_session = TrainerSession.objects.get(simulation_id=session["simulation_id"])
         applied_presets = trainer_session.runtime_state_json.get("applied_presets", [])
         assert any(item["preset_id"] == preset_id for item in applied_presets)
 
