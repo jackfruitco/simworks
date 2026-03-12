@@ -96,7 +96,9 @@ class TestToolEndpoints:
         assert response.status_code == 200
 
         data = response.json()
-        metadata_tool = next(item for item in data["items"] if item["name"] == "simulation_metadata")
+        metadata_tool = next(
+            item for item in data["items"] if item["name"] == "simulation_metadata"
+        )
         assert metadata_tool["data"] == [
             {
                 "kind": "patient_demographics",
