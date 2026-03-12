@@ -84,4 +84,3 @@ class TestToolEndpoints:
         data = response.json()
         assert data["status"] == "ok"
         assert data["orders"] == ["CBC", "CMP"]
-

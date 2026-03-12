@@ -107,4 +107,3 @@ def sign_lab_orders(
 
     async_to_sync(_enqueue)()
     return SignOrdersOut(status="ok", orders=body.submitted_orders)
-

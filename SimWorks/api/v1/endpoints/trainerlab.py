@@ -23,8 +23,6 @@ from api.v1.schemas.trainerlab import (
     InterventionGroupOut,
     LabAccessOut,
     RunSummaryOut,
-    SimulationAdjustAck,
-    SimulationAdjustIn,
     ScenarioInstructionApplyIn,
     ScenarioInstructionCreateIn,
     ScenarioInstructionOut,
@@ -32,6 +30,8 @@ from api.v1.schemas.trainerlab import (
     ScenarioInstructionPermissionOut,
     ScenarioInstructionUnshareIn,
     ScenarioInstructionUpdateIn,
+    SimulationAdjustAck,
+    SimulationAdjustIn,
     SteerPromptIn,
     TrainerCommandAck,
     TrainerRunOut,
@@ -227,8 +227,7 @@ def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]
     user = request.auth
     require_instructor_membership(user)
     return {
-        key: _build_dict_items(choices)
-        for key, choices in get_injury_dictionary_choices().items()
+        key: _build_dict_items(choices) for key, choices in get_injury_dictionary_choices().items()
     }
 
 
@@ -706,7 +705,9 @@ def stop_trainer_run(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
     summary="Apply instructor steering prompt",
 )
 @api_rate_limit
-def steer_prompt(request: HttpRequest, simulation_id: int, body: SteerPromptIn) -> TrainerCommandAck:
+def steer_prompt(
+    request: HttpRequest, simulation_id: int, body: SteerPromptIn
+) -> TrainerCommandAck:
     user = request.auth
     require_instructor_membership(user)
     idempotency_key = _get_idempotency_key(request)

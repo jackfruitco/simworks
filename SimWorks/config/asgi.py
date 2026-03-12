@@ -18,8 +18,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django_asgi_app = get_asgi_application()
 
 from apps.chatlab.routing import websocket_urlpatterns as chatlab_ws  # noqa: E402
-from apps.common.ws_auth import SessionOrJWTAuthMiddlewareStack  # noqa: E402
 from apps.common.routing import websocket_urlpatterns as core_ws  # noqa: E402
+from apps.common.ws_auth import SessionOrJWTAuthMiddlewareStack  # noqa: E402
 
 application = ProtocolTypeRouter(
     {

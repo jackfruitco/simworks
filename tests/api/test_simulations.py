@@ -245,7 +245,9 @@ class TestListSimulations:
             is_from_ai=False,
         )
 
-        response = auth_client.get("/api/v1/simulations/?q=unique%20chest%20pain&search_messages=true")
+        response = auth_client.get(
+            "/api/v1/simulations/?q=unique%20chest%20pain&search_messages=true"
+        )
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == 1

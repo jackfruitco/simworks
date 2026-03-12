@@ -71,4 +71,3 @@ class JWTAuthMiddleware(BaseMiddleware):
 def SessionOrJWTAuthMiddlewareStack(inner):
     """Auth stack supporting Django sessions and JWT bearer tokens."""
     return JWTAuthMiddleware(AuthMiddlewareStack(inner))
-

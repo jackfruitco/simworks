@@ -356,7 +356,9 @@ class TestTrainerLabEvents:
         assert page_one_data["has_more"] is True
 
         cursor = page_one_data["next_cursor"]
-        page_two = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/?cursor={cursor}")
+        page_two = client.get(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/?cursor={cursor}"
+        )
         assert page_two.status_code == 200
         page_two_data = page_two.json()
 

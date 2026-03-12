@@ -16,8 +16,8 @@ from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.simulations import (
     SimulationCreate,
     SimulationEndResponse,
-    SimulationQuickCreate,
     SimulationOut,
+    SimulationQuickCreate,
     simulation_to_out,
 )
 from apps.common.ratelimit import api_rate_limit
@@ -382,4 +382,3 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
         raise HttpError(500, "Failed to enqueue feedback retry")
 
     return 202, simulation_to_out(sim)
-

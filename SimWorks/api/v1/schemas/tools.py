@@ -35,4 +35,3 @@ class SignOrdersOut(BaseModel):
 
     status: Literal["ok"] = Field(default="ok", description="Request status")
     orders: list[str] = Field(default_factory=list, description="Orders accepted for processing")
-

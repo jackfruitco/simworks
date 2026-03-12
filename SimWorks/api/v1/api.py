@@ -193,6 +193,8 @@ api.add_router("/simulations", simulations_router)
 api.add_router("/simulations", conversations_router)  # Conversations nested under simulations
 api.add_router("/simulations", messages_router)  # Messages are nested under simulations
 api.add_router("/simulations", events_router)  # Events (catch-up) are nested under simulations
-api.add_router("/simulations", tools_router)  # Tools (JSON payloads/actions) nested under simulations
+api.add_router(
+    "/simulations", tools_router
+)  # Tools (JSON payloads/actions) nested under simulations
 api.add_router("/config", modifiers_router)  # Configuration endpoints (modifiers, etc.)
 api.add_router("/trainerlab", trainerlab_router)
