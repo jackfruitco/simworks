@@ -1,0 +1,178 @@
+from uuid import uuid4
+
+from pydantic import ValidationError
+import pytest
+
+from apps.trainerlab.models import (
+    ETCO2,
+    SPO2,
+    BloodGlucoseLevel,
+    BloodPressure,
+    HeartRate,
+    Illness,
+    Injury,
+)
+from apps.trainerlab.orca.schemas import InitialScenarioSchema
+from orchestrai_django.persistence import PersistContext, persist_schema
+
+
+@pytest.fixture
+def user_role(db):
+    from apps.accounts.models import UserRole
+
+    return UserRole.objects.create(title="TrainerLab Persist")
+
+
+@pytest.fixture
+def user(db, user_role):
+    from apps.accounts.models import User
+
+    return User.objects.create_user(
+        email=f"trainerlab_{uuid4().hex[:8]}@test.com",
+        password="testpass123",
+        role=user_role,
+    )
+
+
+@pytest.fixture
+def simulation(db, user):
+    from apps.simcore.models import Simulation
+
+    return Simulation.objects.create(user=user)
+
+
+@pytest.fixture
+def context(simulation):
+    return PersistContext(
+        simulation_id=simulation.id,
+        call_id=str(uuid4()),
+    )
+
+
+def _initial_payload(*, etco2_key: str = "etco2") -> dict:
+    base_measurement = {
+        "kind": "vital",
+        "key": "measurement",
+        "timestamp": 1_704_067_200,
+        "min_value": 10,
+        "max_value": 20,
+        "lock_value": False,
+    }
+
+    payload = {
+        "conditions": [
+            {
+                "kind": "injury",
+                "injury_category": "M",
+                "injury_location": "HLA",
+                "injury_kind": "LAC",
+                "injury_description": "Scalp laceration",
+            },
+            {
+                "kind": "illness",
+                "name": "Heat illness",
+                "description": "Heat stress signs present",
+                "severity": "high",
+            },
+        ],
+        "measurements": {
+            "heart_rate": {
+                **base_measurement,
+                "key": "heart_rate",
+                "min_value": 110,
+                "max_value": 130,
+            },
+            "spo2": {**base_measurement, "key": "spo2", "min_value": 90, "max_value": 95},
+            "blood_glucose_level": {
+                **base_measurement,
+                "key": "blood_glucose",
+                "min_value": 95,
+                "max_value": 120,
+            },
+            "blood_pressure": {
+                **base_measurement,
+                "key": "blood_pressure",
+                "min_value": 110,
+                "max_value": 130,
+                "min_value_diastolic": 70,
+                "max_value_diastolic": 90,
+            },
+        },
+    }
+    payload["measurements"][etco2_key] = {
+        **base_measurement,
+        "key": "etco2",
+        "min_value": 30,
+        "max_value": 40,
+    }
+    return payload
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+class TestTrainerLabInitialPersistence:
+    async def test_persists_conditions_and_nested_measurements(self, context):
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+
+        result = await persist_schema(schema, context)
+
+        assert isinstance(result, Injury)
+        assert await Injury.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert await Illness.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert await HeartRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert await SPO2.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert await ETCO2.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert (
+            await BloodGlucoseLevel.objects.filter(simulation_id=context.simulation_id).acount()
+            == 1
+        )
+        assert await BloodPressure.objects.filter(simulation_id=context.simulation_id).acount() == 1
+
+    async def test_accepts_legacy_etc02_alias(self, context):
+        schema = InitialScenarioSchema.model_validate(_initial_payload(etco2_key="etc02"))
+
+        await persist_schema(schema, context)
+
+        assert await ETCO2.objects.filter(simulation_id=context.simulation_id).acount() == 1
+
+    async def test_emits_outbox_events_for_sse(self, context):
+        from apps.common.models import OutboxEvent
+
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+        await persist_schema(schema, context)
+
+        condition_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="trainerlab.condition.created",
+        )
+        vital_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="trainerlab.vital.created",
+        )
+
+        assert await condition_events.acount() == 2
+        assert await vital_events.acount() == 5
+
+        example_vital = await vital_events.afirst()
+        assert example_vital is not None
+        assert example_vital.payload["origin"] == "initial_scenario"
+        assert "vital_type" in example_vital.payload
+        assert "domain_event_id" in example_vital.payload
+
+
+def test_validates_base_vital_min_max_range():
+    payload = _initial_payload()
+    payload["measurements"]["heart_rate"]["min_value"] = 150
+    payload["measurements"]["heart_rate"]["max_value"] = 120
+
+    with pytest.raises(ValidationError):
+        InitialScenarioSchema.model_validate(payload)
+
+
+def test_validates_blood_pressure_logic():
+    payload = _initial_payload()
+    payload["measurements"]["blood_pressure"]["min_value_diastolic"] = 95
+    payload["measurements"]["blood_pressure"]["max_value_diastolic"] = 80
+
+    with pytest.raises(ValidationError):
+        InitialScenarioSchema.model_validate(payload)

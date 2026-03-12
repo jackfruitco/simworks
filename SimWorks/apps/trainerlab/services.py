@@ -119,6 +119,42 @@ def create_session(
     return session
 
 
+def enqueue_initial_scenario_generation(*, simulation: Simulation) -> str | None:
+    """Enqueue initial TrainerLab AI scenario generation for a simulation."""
+    from .orca.services import GenerateInitialScenario
+
+    try:
+        return GenerateInitialScenario.task.using(
+            context={"simulation_id": simulation.id},
+        ).enqueue()
+    except Exception:
+        logger.exception("Initial generation enqueue failed for simulation %s", simulation.id)
+        simulation.mark_failed(
+            reason_code="initial_generation_enqueue_failed",
+            reason_text="We could not start this simulation. Please try again.",
+            retryable=True,
+        )
+        return None
+
+
+def create_session_with_initial_generation(
+    *,
+    user,
+    scenario_spec: dict[str, Any] | None,
+    directives: str | None,
+    modifiers: list[str] | None,
+) -> tuple[TrainerSession, str | None]:
+    """Create a TrainerSession and enqueue initial AI scenario generation."""
+    session = create_session(
+        user=user,
+        scenario_spec=scenario_spec,
+        directives=directives,
+        modifiers=modifiers,
+    )
+    call_id = enqueue_initial_scenario_generation(simulation=session.simulation)
+    return session, call_id
+
+
 def get_or_create_command(
     *,
     session: TrainerSession,

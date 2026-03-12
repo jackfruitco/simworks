@@ -2,8 +2,6 @@
 
 from collections.abc import Callable
 from datetime import UTC
-import json
-import time
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -41,6 +39,7 @@ from api.v1.schemas.trainerlab import (
     scenario_permission_to_out,
     trainer_session_to_out,
 )
+from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
 from apps.common.ratelimit import api_rate_limit
 from apps.trainerlab.access import require_instructor_membership
@@ -61,7 +60,7 @@ from apps.trainerlab.models import (
     TrainerSession,
 )
 from apps.trainerlab.services import (
-    create_session,
+    create_session_with_initial_generation,
     emit_runtime_event,
     get_or_create_command,
     pause_session,
@@ -528,7 +527,7 @@ def create_trainer_session(
             raise HttpError(409, "Idempotency-Key already used")
         return 200, trainer_session_to_out(existing.session)
 
-    session = create_session(
+    session, _call_id = create_session_with_initial_generation(
         user=user,
         scenario_spec=body.scenario_spec,
         directives=body.directives,
@@ -1084,52 +1083,9 @@ def stream_trainer_events(
     require_instructor_membership(user)
     session = _get_session_for_user(session_id, user)
 
-    initial_created_at = None
-    if cursor:
-        try:
-            cursor_uuid = uuid.UUID(cursor)
-        except ValueError:
-            raise HttpError(400, "Invalid cursor format") from None
-
-        cursor_event = OutboxEvent.objects.filter(
-            id=cursor_uuid,
-            simulation_id=session.simulation_id,
-            event_type__startswith="trainerlab.",
-        ).first()
-        if cursor_event is None:
-            raise HttpError(400, "Invalid cursor")
-        initial_created_at = cursor_event.created_at
-
-    def event_stream():
-        last_created_at = initial_created_at
-
-        while True:
-            queryset = OutboxEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type__startswith="trainerlab.",
-            ).order_by("created_at")
-
-            if last_created_at is not None:
-                queryset = queryset.filter(created_at__gt=last_created_at)
-
-            events = list(queryset[:100])
-            for event in events:
-                data = {
-                    "event_id": str(event.id),
-                    "event_type": event.event_type,
-                    "created_at": event.created_at.astimezone(UTC).isoformat(),
-                    "correlation_id": event.correlation_id,
-                    "payload": event.payload,
-                }
-                yield f"id: {event.id}\n"
-                yield "event: trainerlab\n"
-                yield f"data: {json.dumps(data)}\n\n"
-                last_created_at = event.created_at
-
-            yield ": keepalive\n\n"
-            time.sleep(1)
-
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    return stream_outbox_events(
+        simulation_id=session.simulation_id,
+        cursor=cursor,
+        event_type_prefix="trainerlab.",
+        sse_event_name="trainerlab",
+    )

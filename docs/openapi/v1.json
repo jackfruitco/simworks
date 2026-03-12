@@ -952,6 +952,73 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/events/stream/": {
+      "get": {
+        "operationId": "api_v1_endpoints_events_stream_events",
+        "summary": "SSE stream for simulation events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Outbox event cursor UUID",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "event_prefix",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional event_type prefix filter (e.g. trainerlab.)",
+              "title": "Event Prefix"
+            },
+            "required": false,
+            "description": "Optional event_type prefix filter (e.g. trainerlab.)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Streams outbox events for a simulation using a common transport envelope. Optionally filter by event type prefix.",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/config/modifier-groups/": {
       "get": {
         "operationId": "api_v1_endpoints_modifiers_list_modifier_groups",

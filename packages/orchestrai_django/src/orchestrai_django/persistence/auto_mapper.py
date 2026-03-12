@@ -12,6 +12,7 @@ Public API:
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field
+from datetime import UTC, datetime
 import logging
 from typing import Any
 
@@ -116,8 +117,11 @@ async def _create_orm_instance(
     Context injection:
         ``simulation_id`` is always injected from context if the model has the field.
     """
+    from django.db import models
+
     kwargs: dict[str, Any] = {}
-    model_field_names = {f.name for f in model_cls._meta.get_fields() if hasattr(f, "column")}
+    model_fields = {f.name: f for f in model_cls._meta.get_fields() if hasattr(f, "column")}
+    model_field_names = set(model_fields.keys())
 
     for pydantic_field in type(item).model_fields:
         # 1. Check explicit field map
@@ -137,6 +141,16 @@ async def _create_orm_instance(
             continue
 
         value = getattr(item, pydantic_field)
+        model_field = model_fields.get(orm_field)
+        if (
+            model_field is not None
+            and isinstance(model_field, models.DateTimeField)
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        ):
+            # Accept epoch-style schema timestamps for DateTimeField mappings.
+            value = datetime.fromtimestamp(value, tz=UTC)
+
         if isinstance(value, (str, int, float, bool)) or value is None:
             kwargs[orm_field] = value
         elif hasattr(value, "value"):  # Enum

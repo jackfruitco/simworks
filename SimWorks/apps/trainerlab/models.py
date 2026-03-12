@@ -399,7 +399,7 @@ class VitalMeasurement(ABCEvent):
 
     lock_value = models.BooleanField(
         default=False,
-        help_text=("Lock the value to the minimum (instead of a range between min and max)"),
+        help_text="Lock the value to the minimum (instead of a range between min and max)",
     )
 
     @property

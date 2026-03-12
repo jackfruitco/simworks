@@ -205,6 +205,29 @@ class TestTrainerLabSessionLifecycle:
         assert TrainerSession.objects.count() == 1
         assert TrainerCommand.objects.filter(idempotency_key="session-create-a").count() == 1
 
+    def test_create_session_enqueues_initial_generation(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        captured: dict[str, int] = {}
+
+        def _fake_enqueue(*, simulation):
+            captured["simulation_id"] = simulation.id
+            return "call-test-123"
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            _fake_enqueue,
+        )
+
+        client = auth_client_factory(instructor_user)
+        created = _create_session(client, idempotency_key="session-create-enqueue")
+
+        assert captured["simulation_id"] == created["simulation_id"]
+
     def test_run_state_machine_and_summary(
         self,
         auth_client_factory,

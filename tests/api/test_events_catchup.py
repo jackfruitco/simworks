@@ -290,3 +290,61 @@ class TestSimulationNotFound:
         response = auth_client.get("/api/v1/simulations/99999/events/")
 
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestStreamEvents:
+    """Tests for shared simulation SSE stream endpoint."""
+
+    def test_stream_events_returns_sse_envelope(self, auth_client, simulation, outbox_events):
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/stream/")
+
+        assert response.status_code == 200
+        assert response["Content-Type"].startswith("text/event-stream")
+
+        stream_iter = iter(response.streaming_content)
+        chunks = []
+        for _ in range(3):
+            chunk = next(stream_iter)
+            if isinstance(chunk, bytes):
+                chunk = chunk.decode("utf-8")
+            chunks.append(chunk)
+        payload = "".join(chunks)
+
+        assert "event: simulation" in payload
+        assert "data: " in payload
+        assert "event_type" in payload
+        assert "test.event_" in payload
+
+    def test_stream_events_supports_prefix_filter(self, auth_client, simulation):
+        from apps.common.models import OutboxEvent
+
+        OutboxEvent.objects.create(
+            event_type="trainerlab.session.seeded",
+            simulation_id=simulation.pk,
+            payload={"status": "seeded"},
+            idempotency_key=f"trainerlab.seeded:{simulation.pk}:{uuid.uuid4()}",
+        )
+        OutboxEvent.objects.create(
+            event_type="chat.message_created",
+            simulation_id=simulation.pk,
+            payload={"content": "hello"},
+            idempotency_key=f"chat.message:{simulation.pk}:{uuid.uuid4()}",
+        )
+
+        response = auth_client.get(
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=trainerlab."
+        )
+
+        assert response.status_code == 200
+        stream_iter = iter(response.streaming_content)
+        chunks = []
+        for _ in range(3):
+            chunk = next(stream_iter)
+            if isinstance(chunk, bytes):
+                chunk = chunk.decode("utf-8")
+            chunks.append(chunk)
+        payload = "".join(chunks)
+
+        assert "trainerlab.session.seeded" in payload
+        assert "chat.message_created" not in payload

@@ -52,6 +52,29 @@ def _get_primary_from_mro(cls: type) -> str | None:
     return None
 
 
+async def _persist_field_auto(
+    *,
+    field_name: str,
+    value: Any,
+    schema: BaseModel,
+    context: PersistContext,
+) -> Any:
+    """Persist a mapped field without an explicit handler.
+
+    Supports nested declarative schemas by recursing when a field value is
+    itself a BaseModel with ``__persist__`` declarations.
+    """
+    if isinstance(value, BaseModel):
+        nested_map = _merge_persist_from_mro(type(value))
+        if nested_map:
+            return await persist_schema(value, context)
+
+    # Auto-map via __orm_model__ on the item type.
+    from orchestrai_django.persistence.auto_mapper import auto_persist_field
+
+    return await auto_persist_field(field_name, value, schema, context)
+
+
 async def persist_schema(schema: BaseModel, context: PersistContext) -> Any:
     """Walk MRO, merge ``__persist__`` declarations, run each persister.
 
@@ -83,10 +106,12 @@ async def persist_schema(schema: BaseModel, context: PersistContext) -> Any:
             # Explicit persist function
             results[field_name] = await fn_or_none(value, context)
         else:
-            # Auto-map via __orm_model__ on the item type
-            from orchestrai_django.persistence.auto_mapper import auto_persist_field
-
-            results[field_name] = await auto_persist_field(field_name, value, schema, context)
+            results[field_name] = await _persist_field_auto(
+                field_name=field_name,
+                value=value,
+                schema=schema,
+                context=context,
+            )
 
     # Post-persist hook
     if hasattr(schema, "post_persist"):
