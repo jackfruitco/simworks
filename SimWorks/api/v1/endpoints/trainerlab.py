@@ -43,6 +43,7 @@ from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
 from apps.common.ratelimit import api_rate_limit
 from apps.trainerlab.access import require_instructor_membership
+from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
@@ -223,9 +224,8 @@ def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]
     user = request.auth
     require_instructor_membership(user)
     return {
-        "categories": _build_dict_items(Injury.InjuryCategory.choices),
-        "regions": _build_dict_items(Injury.InjuryLocation.choices),
-        "kinds": _build_dict_items(Injury.InjuryKind.choices),
+        key: _build_dict_items(choices)
+        for key, choices in get_injury_dictionary_choices().items()
     }
 
 

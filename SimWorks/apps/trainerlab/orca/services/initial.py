@@ -10,6 +10,7 @@ from orchestrai_django.decorators import orca
 from ..instructions import (
     CombatMixin,
     InitialResponseMixin,
+    InjuryCodebookMixin,
     MilitaryMedicMixin,
     TrainerLabMixin,
     TraumaMixin,
@@ -25,6 +26,7 @@ class GenerateInitialScenario(
     BaseStitchPersona,
     TrainerLabMixin,
     InitialResponseMixin,
+    InjuryCodebookMixin,
     MilitaryMedicMixin,
     TraumaMixin,
     CombatMixin,

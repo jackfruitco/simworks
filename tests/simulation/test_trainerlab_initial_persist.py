@@ -131,6 +131,11 @@ class TestTrainerLabInitialPersistence:
 
         assert isinstance(result, Injury)
         assert await Injury.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        persisted_injury = await Injury.objects.filter(simulation_id=context.simulation_id).afirst()
+        assert persisted_injury is not None
+        assert persisted_injury.injury_category == "M"
+        assert persisted_injury.injury_location == "HLA"
+        assert persisted_injury.injury_kind == "LAC"
         assert await Illness.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert await HeartRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert (
@@ -205,6 +210,21 @@ class TestTrainerLabInitialPersistence:
         assert example_vital is not None
         assert example_vital.payload["call_id"] == str(context.call_id)
 
+    async def test_accepts_friendly_injury_labels_and_normalizes_to_codes(self, context):
+        payload = _initial_payload()
+        payload["conditions"][0]["injury_category"] = "massive hemorrhage"
+        payload["conditions"][0]["injury_location"] = "  left anterior head "
+        payload["conditions"][0]["injury_kind"] = "laceration"
+
+        schema = InitialScenarioSchema.model_validate(payload)
+        await persist_schema(schema, context)
+
+        injury = await Injury.objects.filter(simulation_id=context.simulation_id).afirst()
+        assert injury is not None
+        assert injury.injury_category == "M"
+        assert injury.injury_location == "HLA"
+        assert injury.injury_kind == "LAC"
+
 
 def test_validates_base_vital_min_max_range():
     payload = _initial_payload()
@@ -232,3 +252,11 @@ def test_measurement_schema_omits_legacy_fields():
     assert "timestamp" not in heart_rate_props
     assert "kind" not in heart_rate_props
     assert "key" not in heart_rate_props
+
+
+def test_rejects_unknown_injury_labels():
+    payload = _initial_payload()
+    payload["conditions"][0]["injury_location"] = "unknown body part"
+
+    with pytest.raises(ValidationError):
+        InitialScenarioSchema.model_validate(payload)
