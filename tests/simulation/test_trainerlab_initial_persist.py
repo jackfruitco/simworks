@@ -187,6 +187,24 @@ class TestTrainerLabInitialPersistence:
         assert "vital_type" in example_vital.payload
         assert "domain_event_id" in example_vital.payload
 
+    async def test_emits_outbox_events_when_context_call_id_is_uuid(self, simulation):
+        from apps.common.models import OutboxEvent
+
+        context = PersistContext(
+            simulation_id=simulation.id,
+            call_id=uuid4(),
+        )
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+
+        await persist_schema(schema, context)
+
+        example_vital = await OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="trainerlab.vital.created",
+        ).afirst()
+        assert example_vital is not None
+        assert example_vital.payload["call_id"] == str(context.call_id)
+
 
 def test_validates_base_vital_min_max_range():
     payload = _initial_payload()

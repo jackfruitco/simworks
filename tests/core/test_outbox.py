@@ -10,6 +10,7 @@ Tests that:
 
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 from django.db import IntegrityError
 from django.utils import timezone
@@ -163,6 +164,20 @@ class TestEnqueueEvent:
 
         assert result is None
 
+    def test_enqueue_event_sync_serializes_uuid_payload(self):
+        """UUID values in payload are normalized to strings."""
+        call_id = uuid4()
+        event = enqueue_event_sync(
+            event_type="trainerlab.vital.created",
+            simulation_id=1,
+            payload={"call_id": call_id, "nested": {"ids": [call_id]}},
+            idempotency_key="uuid-sync:1",
+        )
+
+        assert event is not None
+        assert event.payload["call_id"] == str(call_id)
+        assert event.payload["nested"]["ids"] == [str(call_id)]
+
     @pytest.mark.asyncio
     async def test_enqueue_event_async_creates_event(self):
         """Async enqueue_event creates an event."""
@@ -195,6 +210,21 @@ class TestEnqueueEvent:
         )
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_enqueue_event_async_serializes_uuid_payload(self):
+        """Async enqueue_event also normalizes UUID payload values."""
+        call_id = uuid4()
+        event = await enqueue_event(
+            event_type="trainerlab.condition.created",
+            simulation_id=1,
+            payload={"call_id": call_id, "nested": {"ids": [call_id]}},
+            idempotency_key="uuid-async:1",
+        )
+
+        assert event is not None
+        assert event.payload["call_id"] == str(call_id)
+        assert event.payload["nested"]["ids"] == [str(call_id)]
 
 
 @pytest.mark.django_db
