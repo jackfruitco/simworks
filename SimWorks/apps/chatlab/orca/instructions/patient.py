@@ -73,7 +73,8 @@ class PatientSchemaContractInstruction(BaseInstruction):
         "  - `{'kind': 'patient_demographics', 'key': 'gender', 'value': '<gender>'}`\n"
         "  - `{'kind': 'patient_history', 'key': '<condition>', 'value': '<brief summary>', 'is_resolved': false, 'duration': '<duration>'}`\n"
         "- Keep patient-facing `messages` natural; do not dump structured metadata into visible chat text.\n"
-        "- If an image or scan is requested in a reply, set `image_requested=true` and keep the visible reply textual.\n"
+        "- If the user explicitly requests an image/scan, set `image_request` with `requested=true`, a clinically grounded `prompt`, optional `caption`, and optional `clinical_focus`; keep the visible reply textual.\n"
+        "- Keep `image_requested` aligned with `image_request.requested` for backward compatibility.\n"
     )
 
 

@@ -428,7 +428,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Check if 'content' or `media` exists in the event
         content = event.get("content")
-        media = event.get("media")
+        media = event.get("media") or event.get("media_list") or event.get("mediaList")
         if content is None and media is None:
             ChatConsumer.log(
                 func_name,
@@ -492,6 +492,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 level=logging.WARNING,
             )
             return
+
+        if envelope.get("event_type") == "chat.message_created":
+            from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
+
+            payload = dict(envelope.get("payload") or {})
+            msg_id = payload_message_id(payload)
+            if msg_id is not None:
+                try:
+                    message = await Message.objects.prefetch_related("media").aget(
+                        id=msg_id,
+                        simulation_id=self.simulation_id,
+                    )
+                    headers = dict(self.scope.get("headers", []))
+                    host = headers.get(b"host", b"").decode() or None
+                    scheme = self.scope.get("scheme", "http")
+                    payload.update(
+                        build_message_media_payload(
+                            message,
+                            scheme=scheme,
+                            host=host,
+                        )
+                    )
+                except Message.DoesNotExist:
+                    payload.setdefault("media_list", [])
+                    payload.setdefault("mediaList", [])
+            envelope = {**envelope, "payload": payload}
 
         # Forward the envelope to the client
         await self.send(text_data=json.dumps(envelope, default=json_default))

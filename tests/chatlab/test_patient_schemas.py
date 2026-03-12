@@ -331,11 +331,18 @@ class TestPatientReplySchema:
         actual_fields = set(schema_json["properties"].keys())
 
         assert required_fields.issubset(actual_fields)
+        assert "image_request" in actual_fields
 
     def test_image_requested_field(self):
         """Verify image_requested is boolean."""
         schema_json = PatientReplyOutputSchema.model_json_schema()
         assert schema_json["properties"]["image_requested"]["type"] == "boolean"
+
+    def test_image_request_field(self):
+        """Verify image_request structured contract exists."""
+        schema_json = PatientReplyOutputSchema.model_json_schema()
+        image_request = schema_json["properties"]["image_request"]
+        assert image_request["anyOf"][0]["$ref"].endswith("ImageRequest")
 
     def test_round_trip_with_image_requested(self):
         """Verify parsing with image_requested=True."""
@@ -354,6 +361,31 @@ class TestPatientReplySchema:
 
         parsed = PatientReplyOutputSchema.model_validate(sample_output)
         assert parsed.image_requested is True
+
+    def test_round_trip_with_structured_image_request(self):
+        sample_output = {
+            "image_requested": True,
+            "image_request": {
+                "requested": True,
+                "prompt": "close-up smartphone photo of unilateral ankle swelling",
+                "caption": "Here is what it looks like right now.",
+                "clinical_focus": "left ankle edema",
+            },
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "I can send a photo."}],
+                    "item_meta": [],
+                }
+            ],
+            "metadata": [],
+            "llm_conditions_check": [],
+        }
+
+        parsed = PatientReplyOutputSchema.model_validate(sample_output)
+        assert parsed.image_request is not None
+        assert parsed.image_request.requested is True
+        assert parsed.image_request.prompt.startswith("close-up")
 
 
 class TestPatientResultsSchema:

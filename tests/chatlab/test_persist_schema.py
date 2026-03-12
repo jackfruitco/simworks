@@ -10,6 +10,7 @@ Tests:
 """
 
 from uuid import uuid4
+from unittest.mock import patch
 
 import pytest
 
@@ -253,7 +254,10 @@ class TestPatientReplyPersistence:
 
         import logging
 
-        with caplog.at_level(logging.INFO):
+        with (
+            caplog.at_level(logging.INFO),
+            patch("apps.chatlab.tasks.enqueue_generate_patient_image_task"),
+        ):
             await persist_schema(schema, context)
 
         assert any("Image requested" in r.message for r in caplog.records)
@@ -275,7 +279,8 @@ class TestPatientReplyPersistence:
             }
         )
 
-        await persist_schema(schema, context)
+        with patch("apps.chatlab.tasks.enqueue_generate_patient_image_task"):
+            await persist_schema(schema, context)
 
         # Check message outbox events
         from apps.common.models import OutboxEvent
@@ -294,6 +299,63 @@ class TestPatientReplyPersistence:
         assert "content" in msg_event.payload
         assert "image_requested" in msg_event.payload
         assert msg_event.payload["image_requested"] is True
+
+    async def test_post_persist_enqueues_image_task_for_structured_intent(self, context):
+        schema = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": True,
+                "image_request": {
+                    "requested": True,
+                    "prompt": "smartphone photo of red swollen wrist",
+                    "caption": "This is how it looks now.",
+                    "clinical_focus": "left wrist swelling",
+                },
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "I can send a photo now."}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [],
+                "llm_conditions_check": [],
+            }
+        )
+
+        with patch("apps.chatlab.tasks.enqueue_generate_patient_image_task") as mock_enqueue:
+            await persist_schema(schema, context)
+
+        mock_enqueue.assert_called_once()
+        kwargs = mock_enqueue.call_args.kwargs
+        assert kwargs["simulation_id"] == context.simulation_id
+        assert kwargs["prompt"] == "smartphone photo of red swollen wrist"
+
+    async def test_post_persist_skips_enqueue_when_not_requested(self, context):
+        schema = PatientReplyOutputSchema.model_validate(
+            {
+                "image_requested": False,
+                "image_request": {
+                    "requested": False,
+                    "prompt": "",
+                    "caption": None,
+                    "clinical_focus": None,
+                },
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "No image needed."}],
+                        "item_meta": [],
+                    }
+                ],
+                "metadata": [],
+                "llm_conditions_check": [],
+            }
+        )
+
+        with patch("apps.chatlab.tasks.enqueue_generate_patient_image_task") as mock_enqueue:
+            await persist_schema(schema, context)
+
+        mock_enqueue.assert_not_called()
 
     async def test_reply_metadata_upsert_updates_existing_key(self, context):
         """Reply metadata should upsert by key instead of creating duplicates."""
