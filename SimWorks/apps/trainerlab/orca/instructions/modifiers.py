@@ -10,8 +10,8 @@ from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 class ModifierGroupMixin(DjangoIdentityMixin):
     group = "modifier"
-    
-    
+
+
 @orca.instruction
 class MilitaryMedicMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
     instruction = "The trainee is a U.S. Military Medic. "
@@ -20,12 +20,12 @@ class MilitaryMedicMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
 @orca.instruction
 class SpecOpsMedicMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
     instruction = "The trainee is a U.S. Military Special Operations Medic. "
-    
-    
+
+
 @orca.instruction
 class TraumaMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
     instruction = "Scenario Rule: must be a trauma scenario. "
-    
+
 
 @orca.instruction
 class MedicalMixin(NsMixin, ModifierGroupMixin, BaseInstruction):

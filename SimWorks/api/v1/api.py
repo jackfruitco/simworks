@@ -17,6 +17,7 @@ from api.v1.endpoints.events import router as events_router
 from api.v1.endpoints.messages import router as messages_router
 from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
+from api.v1.endpoints.tools import router as tools_router
 from api.v1.endpoints.trainerlab import router as trainerlab_router
 from api.v1.schemas.common import ErrorResponse, HealthResponse
 from apps.common.ratelimit import RateLimitExceeded
@@ -192,5 +193,6 @@ api.add_router("/simulations", simulations_router)
 api.add_router("/simulations", conversations_router)  # Conversations nested under simulations
 api.add_router("/simulations", messages_router)  # Messages are nested under simulations
 api.add_router("/simulations", events_router)  # Events (catch-up) are nested under simulations
+api.add_router("/simulations", tools_router)  # Tools (JSON payloads/actions) nested under simulations
 api.add_router("/config", modifiers_router)  # Configuration endpoints (modifiers, etc.)
 api.add_router("/trainerlab", trainerlab_router)

@@ -9,7 +9,7 @@ Tests that:
 6. Pagination works correctly
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from django.test import Client
 import pytest
@@ -195,6 +195,62 @@ class TestListSimulations:
         assert data["has_more"] is False
         assert data["next_cursor"] is None
 
+    def test_list_simulations_supports_search_query(self, auth_client, test_user):
+        from apps.simcore.models import Simulation
+
+        Simulation.objects.create(
+            user=test_user,
+            diagnosis="Pulmonary Embolism",
+            sim_patient_full_name="Patient A",
+        )
+        Simulation.objects.create(
+            user=test_user,
+            diagnosis="Appendicitis",
+            sim_patient_full_name="Patient B",
+        )
+
+        response = auth_client.get("/api/v1/simulations/?q=Pulmonary")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["diagnosis"] == "Pulmonary Embolism"
+
+    def test_list_simulations_supports_message_search(self, auth_client, test_user):
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.simcore.models import Conversation, ConversationType, Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Patient M",
+        )
+        conversation_type, _ = ConversationType.objects.get_or_create(
+            slug="simulated_patient",
+            defaults={
+                "display_name": "Patient",
+                "ai_persona": "patient",
+            },
+        )
+        conversation = Conversation.objects.create(
+            simulation=sim,
+            conversation_type=conversation_type,
+            display_name="Patient",
+            display_initials="Pt",
+        )
+        Message.objects.create(
+            simulation=sim,
+            conversation=conversation,
+            sender=test_user,
+            content="unique chest pain phrase",
+            role=RoleChoices.USER,
+            is_from_ai=False,
+        )
+
+        response = auth_client.get("/api/v1/simulations/?q=unique%20chest%20pain&search_messages=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == sim.id
+
 
 @pytest.mark.django_db
 class TestGetSimulation:
@@ -313,6 +369,36 @@ class TestCreateSimulation:
         )
 
         assert response.status_code == 422
+
+
+@pytest.mark.django_db
+class TestQuickCreateSimulation:
+    @patch("apps.chatlab.utils.create_new_simulation", new_callable=AsyncMock)
+    def test_quick_create_simulation_success(self, mock_create, auth_client, test_user):
+        from apps.simcore.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Quick Patient",
+        )
+        mock_create.return_value = sim
+
+        response = auth_client.post(
+            "/api/v1/simulations/quick-create/",
+            data={
+                "modifiers": ["night_shift", "limited_resources"],
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["id"] == sim.pk
+        assert data["user_id"] == test_user.pk
+        mock_create.assert_awaited_once_with(
+            user=test_user,
+            modifiers=["night_shift", "limited_resources"],
+        )
 
 
 @pytest.mark.django_db

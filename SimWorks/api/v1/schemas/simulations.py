@@ -80,6 +80,15 @@ class SimulationCreate(BaseModel):
     )
 
 
+class SimulationQuickCreate(BaseModel):
+    """Input schema for one-tap ChatLab simulation creation."""
+
+    modifiers: list[str] = Field(
+        default_factory=list,
+        description="Optional simulation modifier keys to apply.",
+    )
+
+
 class SimulationEndResponse(BaseModel):
     """Response for ending a simulation."""
 
