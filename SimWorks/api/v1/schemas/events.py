@@ -35,6 +35,8 @@ class EventEnvelope(BaseModel):
     - ``display_name`` (str): Display name for sender
     - ``timestamp`` (str): ISO timestamp
     - ``image_requested`` (bool, optional): Whether images were requested
+    - ``media_list`` (list, optional): Canonical media metadata with absolute URLs
+    - ``mediaList`` (list, optional): Compatibility alias for web clients
 
     ``metadata.created``:
     - ``metadata_id`` (int): Metadata database ID

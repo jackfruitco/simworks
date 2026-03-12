@@ -6,6 +6,18 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class MessageMediaOut(BaseModel):
+    """Media attachment metadata for a message."""
+
+    id: int = Field(..., description="SimulationImage ID")
+    uuid: str = Field(..., description="SimulationImage UUID")
+    original_url: str = Field(..., description="Absolute URL to original image")
+    thumbnail_url: str = Field(..., description="Absolute URL to thumbnail image")
+    url: str = Field(..., description="Compatibility alias for thumbnail_url")
+    mime_type: str = Field(default="", description="Media MIME type")
+    description: str = Field(default="", description="Short media description")
+
+
 class MessageOut(BaseModel):
     """Output schema for a chat message."""
 
@@ -53,6 +65,14 @@ class MessageOut(BaseModel):
         default=0,
         description="How many user retries have been attempted for this message",
     )
+    media_list: list[MessageMediaOut] = Field(
+        default_factory=list,
+        description="Message media metadata (snake_case canonical API shape)",
+    )
+    mediaList: list[MessageMediaOut] = Field(
+        default_factory=list,
+        description="Compatibility alias for media_list",
+    )
 
 
 class MessageCreate(BaseModel):
@@ -98,7 +118,7 @@ ROLE_MAP = {
 }
 
 
-def message_to_out(msg) -> MessageOut:
+def message_to_out(msg, request=None) -> MessageOut:
     """Convert a Message model instance to MessageOut schema.
 
     Handles both messages with and without conversation (backward compat).
@@ -112,6 +132,10 @@ def message_to_out(msg) -> MessageOut:
             conversation_type = msg.conversation.conversation_type.slug
         except AttributeError:
             pass
+
+    from apps.chatlab.media_payloads import build_message_media_payload
+
+    media_payload = build_message_media_payload(msg, request=request)
 
     return MessageOut(
         id=msg.pk,
@@ -130,4 +154,6 @@ def message_to_out(msg) -> MessageOut:
         delivery_error_text=getattr(msg, "delivery_error_text", ""),
         delivery_retryable=getattr(msg, "delivery_retryable", True),
         delivery_retry_count=getattr(msg, "delivery_retry_count", 0),
+        media_list=media_payload.get("media_list", []),
+        mediaList=media_payload.get("mediaList", []),
     )

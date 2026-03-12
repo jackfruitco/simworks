@@ -81,17 +81,49 @@ def list_events(
     # Determine next cursor
     next_cursor = str(events[-1].id) if has_more and events else None
 
+    # Enrich chat.message_created payloads with canonical media metadata
+    from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
+    from apps.chatlab.models import Message
+
+    message_ids = []
+    for event in events:
+        if event.event_type != "chat.message_created":
+            continue
+        payload = event.payload or {}
+        msg_id = payload_message_id(payload)
+        if msg_id is not None:
+            message_ids.append(msg_id)
+
+    messages_by_id = {}
+    if message_ids:
+        for msg in Message.objects.filter(
+            simulation_id=simulation_id,
+            id__in=message_ids,
+        ).prefetch_related("media"):
+            messages_by_id[msg.id] = msg
+
     # Convert to envelope format
-    items = [
-        EventEnvelope(
-            event_id=str(event.id),
-            event_type=event.event_type,
-            created_at=event.created_at,
-            correlation_id=event.correlation_id,
-            payload=event.payload,
+    items = []
+    for event in events:
+        payload = dict(event.payload or {})
+        if event.event_type == "chat.message_created":
+            msg_id = payload_message_id(payload)
+            msg = messages_by_id.get(msg_id) if msg_id is not None else None
+            if msg is not None:
+                payload.update(build_message_media_payload(msg, request=request))
+            else:
+                payload.setdefault("media_list", [])
+                payload.setdefault("mediaList", [])
+
+        items.append(
+            EventEnvelope(
+                event_id=str(event.id),
+                event_type=event.event_type,
+                created_at=event.created_at,
+                correlation_id=event.correlation_id,
+                payload=payload,
+            )
         )
-        for event in events
-    ]
 
     logger.debug(
         "events.catch_up",

@@ -109,6 +109,8 @@ def broadcast_new_message(sender, instance, created, **kwargs):
 
     if created and not instance.is_from_ai:
         try:
+            from apps.chatlab.media_payloads import build_message_media_payload
+
             # Resolve conversation type slug (avoid N+1 via cached FK)
             conversation_type = None
             if instance.conversation_id:
@@ -137,6 +139,8 @@ def broadcast_new_message(sender, instance, created, **kwargs):
                 "sender_id": instance.sender_id,  # Snake_case alias
                 "conversation_id": instance.conversation_id,
                 "conversation_type": conversation_type,
+                "source_message_id": instance.source_message_id,
+                **build_message_media_payload(instance),
             }
 
             # Create outbox event with idempotency key based on message ID

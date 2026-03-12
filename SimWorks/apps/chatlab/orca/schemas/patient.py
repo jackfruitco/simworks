@@ -9,7 +9,7 @@ Pydantic AI handles validation natively - no @schema decorator needed.
 import logging
 from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from apps.simcore.orca.schemas.metadata_items import MetadataItem
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
@@ -80,6 +80,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
+        from apps.chatlab.media_payloads import build_message_media_payload
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         # Broadcast messages
@@ -91,13 +92,23 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
                 context=context,
                 payload_builder=lambda msg: {
                     "message_id": msg.id,
+                    "id": msg.id,
                     "content": msg.content or "",
                     "role": msg.role,
                     "is_from_ai": msg.is_from_ai,
+                    "isFromAi": msg.is_from_ai,
+                    "isFromAI": msg.is_from_ai,
                     "display_name": msg.display_name or "",
+                    "displayName": msg.display_name or "",
                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
                     "conversation_id": msg.conversation_id,
                     "conversation_type": "simulated_patient",
+                    "messageType": msg.message_type,
+                    "sender_id": msg.sender_id,
+                    "senderId": msg.sender_id,
+                    "status": "completed",
+                    "source_message_id": msg.source_message_id,
+                    **build_message_media_payload(msg),
                 },
             )
 
@@ -132,7 +143,30 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     - Enables real-time UI updates when patient responds
     """
 
-    image_requested: bool = Field(..., description="Whether the response references images/scans")
+    class ImageRequest(BaseModel):
+        """Structured image-generation intent emitted by the patient reply model."""
+
+        model_config = ConfigDict(extra="forbid")
+
+        requested: bool = Field(..., description="Whether an image should be generated")
+        prompt: str = Field(
+            default="",
+            description="Clinically grounded prompt for image generation",
+        )
+        caption: str | None = Field(
+            default=None,
+            description="Optional user-facing caption shown with the image",
+        )
+        clinical_focus: str | None = Field(
+            default=None,
+            description="Short descriptor of the clinical finding to emphasize",
+        )
+
+    image_requested: bool = Field(..., description="Legacy image request flag")
+    image_request: ImageRequest | None = Field(
+        default=None,
+        description="Structured image generation intent (preferred over image_requested)",
+    )
     metadata: list[MetadataItem] = Field(
         ...,
         description="Incremental metadata updates emitted during follow-up turns",
@@ -142,6 +176,24 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
     __persist__: ClassVar[dict[str, None]] = {"metadata": _persist_metadata_upsert}
     __persist_primary__ = "messages"
+
+    @model_validator(mode="after")
+    def _validate_image_request_prompt(self):
+        if (
+            self.image_request
+            and self.image_request.requested
+            and not self.image_request.prompt.strip()
+        ):
+            raise ValueError(
+                "image_request.prompt is required when image_request.requested is true"
+            )
+        return self
+
+    @property
+    def should_generate_image(self) -> bool:
+        if self.image_request is not None:
+            return bool(self.image_request.requested)
+        return bool(self.image_requested)
 
     async def post_persist(self, results, context):
         """Update Message records and broadcast to WebSocket clients.
@@ -155,13 +207,14 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
+        from apps.chatlab.media_payloads import build_message_media_payload
         from apps.chatlab.models import Message
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         messages = results.get("messages", [])
 
         # Update image_requested flag if needed
-        if self.image_requested and messages:
+        if self.should_generate_image and messages:
             logger.info(
                 "Image requested for simulation %s - flag set on Message records",
                 context.simulation_id,
@@ -179,16 +232,62 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
                 context=context,
                 payload_builder=lambda msg: {
                     "message_id": msg.id,
+                    "id": msg.id,
                     "content": msg.content or "",
                     "role": msg.role,
                     "is_from_ai": msg.is_from_ai,
+                    "isFromAi": msg.is_from_ai,
+                    "isFromAI": msg.is_from_ai,
                     "display_name": msg.display_name or "",
+                    "displayName": msg.display_name or "",
                     "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
                     "image_requested": msg.image_requested,
                     "conversation_id": msg.conversation_id,
                     "conversation_type": "simulated_patient",
+                    "messageType": msg.message_type,
+                    "sender_id": msg.sender_id,
+                    "senderId": msg.sender_id,
+                    "status": "completed",
+                    "source_message_id": msg.source_message_id,
+                    **build_message_media_payload(msg),
                 },
             )
+
+        if self.should_generate_image and messages:
+            source_msg = next(
+                (msg for msg in messages if getattr(msg, "is_from_ai", False)),
+                messages[0],
+            )
+            prompt = ""
+            caption = None
+            clinical_focus = None
+            if self.image_request is not None:
+                prompt = self.image_request.prompt.strip()
+                caption = self.image_request.caption
+                clinical_focus = self.image_request.clinical_focus
+
+            # Backward compatibility: if only legacy bool is present, derive prompt from reply text.
+            if not prompt:
+                prompt = source_msg.content or "Generate a clinically realistic image."
+
+            try:
+                from apps.chatlab.tasks import enqueue_generate_patient_image_task
+
+                enqueue_generate_patient_image_task(
+                    simulation_id=context.simulation_id,
+                    conversation_id=source_msg.conversation_id,
+                    source_message_id=source_msg.id,
+                    prompt=prompt,
+                    caption=caption,
+                    clinical_focus=clinical_focus,
+                    correlation_id=context.correlation_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to enqueue image generation for source message %s: %s",
+                    getattr(source_msg, "id", None),
+                    exc,
+                )
 
         metadata = results.get("metadata", [])
         if metadata:

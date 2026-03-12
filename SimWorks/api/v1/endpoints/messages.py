@@ -270,8 +270,10 @@ def list_messages(
     sim = get_simulation_for_user(simulation_id, user)
 
     # Base queryset with select_related to avoid N+1 on conversation_type
-    queryset = Message.objects.filter(simulation=sim, is_deleted=False).select_related(
-        "conversation__conversation_type"
+    queryset = (
+        Message.objects.filter(simulation=sim, is_deleted=False)
+        .select_related("conversation__conversation_type")
+        .prefetch_related("media")
     )
 
     # Filter by conversation if specified
@@ -309,7 +311,7 @@ def list_messages(
         next_cursor = str(last_message.pk)
 
     return MessageListResponse(
-        items=[message_to_out(msg) for msg in messages],
+        items=[message_to_out(msg, request=request) for msg in messages],
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -389,7 +391,7 @@ def create_message(
         )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
-    return 202, message_to_out(message)
+    return 202, message_to_out(message, request=request)
 
 
 @router.post(
@@ -460,7 +462,7 @@ def retry_message(
             )
         )
 
-    return 202, message_to_out(message)
+    return 202, message_to_out(message, request=request)
 
 
 @router.get(
@@ -482,8 +484,12 @@ def get_message(
     sim = get_simulation_for_user(simulation_id, user)
 
     try:
-        message = Message.objects.get(pk=message_id, simulation=sim, is_deleted=False)
+        message = (
+            Message.objects.select_related("conversation__conversation_type")
+            .prefetch_related("media")
+            .get(pk=message_id, simulation=sim, is_deleted=False)
+        )
     except Message.DoesNotExist as err:
         raise HttpError(404, "Message not found") from err
 
-    return message_to_out(message)
+    return message_to_out(message, request=request)

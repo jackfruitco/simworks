@@ -22,7 +22,9 @@
     </div>
   {% endif %}
 
-  <div class="break-words">{{ message.content|linebreaksbr }}</div>
+  {% if message.content %}
+    <div class="break-words">{{ message.content|linebreaksbr }}</div>
+  {% endif %}
 
   <div class="timestamp mt-1 flex items-center justify-end gap-1 text-[10px] opacity-80 sm:text-xs">
     <time class="bubble-time"
