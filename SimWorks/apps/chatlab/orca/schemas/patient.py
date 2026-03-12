@@ -179,8 +179,14 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
     @model_validator(mode="after")
     def _validate_image_request_prompt(self):
-        if self.image_request and self.image_request.requested and not self.image_request.prompt.strip():
-            raise ValueError("image_request.prompt is required when image_request.requested is true")
+        if (
+            self.image_request
+            and self.image_request.requested
+            and not self.image_request.prompt.strip()
+        ):
+            raise ValueError(
+                "image_request.prompt is required when image_request.requested is true"
+            )
         return self
 
     @property

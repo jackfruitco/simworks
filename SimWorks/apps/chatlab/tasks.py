@@ -141,7 +141,7 @@ def generate_patient_image_task(
     caption: str | None = None,
     clinical_focus: str | None = None,
     correlation_id: str | None = None,
-    ) -> int | None:
+) -> int | None:
     """Task wrapper for generating/persisting patient images."""
     return run_generate_patient_image(
         simulation_id=simulation_id,
@@ -286,7 +286,9 @@ def run_generate_patient_image(
         _emit_chat_message_created(image_message, correlation_id=ctx.correlation_id)
         return image_message.id
     except Exception:
-        logger.exception("Failed persisting generated image for source message %s", source_message_id)
+        logger.exception(
+            "Failed persisting generated image for source message %s", source_message_id
+        )
         return _create_fallback_message(
             source_message=source_message,
             correlation_id=ctx.correlation_id,

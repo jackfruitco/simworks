@@ -60,7 +60,9 @@ def conversation(simulation):
 
 
 @pytest.mark.django_db
-def test_events_catchup_enriches_chat_media_payload(auth_client, simulation, conversation, test_user):
+def test_events_catchup_enriches_chat_media_payload(
+    auth_client, simulation, conversation, test_user
+):
     from apps.chatlab.models import Message, RoleChoices
     from apps.common.models import OutboxEvent
     from apps.simcore.models import SimulationImage

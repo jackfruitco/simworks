@@ -60,7 +60,9 @@ def serialize_media_item(
     original_url = ""
     thumbnail_url = ""
     if getattr(media, "original", None):
-        original_url = to_absolute_url(media.original.url, request=request, scheme=scheme, host=host)
+        original_url = to_absolute_url(
+            media.original.url, request=request, scheme=scheme, host=host
+        )
     if getattr(media, "thumbnail", None):
         thumbnail_url = to_absolute_url(
             media.thumbnail.url,

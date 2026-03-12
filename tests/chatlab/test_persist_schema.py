@@ -9,8 +9,8 @@ Tests:
 - Schema without __persist__ returns None
 """
 
-from uuid import uuid4
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
