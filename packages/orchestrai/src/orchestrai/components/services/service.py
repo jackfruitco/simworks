@@ -210,6 +210,7 @@ class BaseService[T: BaseModel](
 
     # Use native structured output (e.g. OpenAI Response Format) instead of tool calls
     use_native_output: ClassVar[bool] = False
+    native_output_strict: ClassVar[bool] = True
 
     # Required context keys
     required_context_keys: ClassVar[tuple[str, ...]] = ()
@@ -460,7 +461,7 @@ class BaseService[T: BaseModel](
         # Configure output type
         output_type = self.response_schema
         if self.use_native_output and output_type is not None:
-            output_type = NativeOutput(output_type)
+            output_type = NativeOutput(output_type, strict=self.native_output_strict)
 
         # Create agent
         agent = Agent(

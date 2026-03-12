@@ -1,5 +1,5 @@
 from .injury import Illness, Injury
-from .measurement import ETCO2, SPO2, BloodGlucoseLevel, BloodPressure, HeartRate
+from .measurement import ETCO2, SPO2, BloodGlucoseLevel, BloodPressure, HeartRate, RespiratoryRate
 
 __all__ = [
     "ETCO2",
@@ -9,4 +9,5 @@ __all__ = [
     "HeartRate",
     "Illness",
     "Injury",
+    "RespiratoryRate",
 ]

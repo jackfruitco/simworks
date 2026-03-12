@@ -145,3 +145,54 @@ class TestBaseServiceIntegration:
 
         assert len(agent._system_prompt_functions) == 1
         assert agent._system_prompt_dynamic_functions
+
+    def test_native_output_is_strict_by_default(self, monkeypatch):
+        from orchestrai.components.services import BaseService
+
+        class TestSchema(BaseModel):
+            message: str
+
+        class TestService(BaseService):
+            abstract = False
+            response_schema = TestSchema
+            use_native_output = True
+            model = "openai-responses:gpt-5-nano"
+
+        monkeypatch.setattr(
+            TestService,
+            "_build_model_with_api_key",
+            lambda self, _model: "test",
+            raising=False,
+        )
+
+        service = TestService()
+        output_def = service.agent._output_schema.object_def
+
+        assert output_def is not None
+        assert output_def.strict is True
+
+    def test_native_output_strict_can_be_overridden(self, monkeypatch):
+        from orchestrai.components.services import BaseService
+
+        class TestSchema(BaseModel):
+            message: str
+
+        class TestService(BaseService):
+            abstract = False
+            response_schema = TestSchema
+            use_native_output = True
+            native_output_strict = False
+            model = "openai-responses:gpt-5-nano"
+
+        monkeypatch.setattr(
+            TestService,
+            "_build_model_with_api_key",
+            lambda self, _model: "test",
+            raising=False,
+        )
+
+        service = TestService()
+        output_def = service.agent._output_schema.object_def
+
+        assert output_def is not None
+        assert output_def.strict is False

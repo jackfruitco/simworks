@@ -2,20 +2,12 @@
 """
 Base classes for TrainerLab events and vital measurements.
 
-This module defines the foundational classes for handling events and vital
-measurements in TrainerLab. These classes are designed to provide essential
-data structures for event and measurement handling while leveraging the
-validation capabilities of Pydantic.
-
-Classes:
-    BaseEvent: Defines the schema for events, including essential attributes
-    like kind, key, and timestamp.
-
-    BaseVitalMeasurement: Extends BaseEvent and includes additional attributes
-    for vital measurements, such as min_value, max_value, and lock_value.
+This module defines foundational schema types used for TrainerLab provider outputs.
+Vital measurements intentionally exclude transport/debug-only fields from their
+provider-facing schema.
 """
 
-from typing import Annotated, Self
+from typing import Any, Self
 
 from pydantic import Field, model_validator
 
@@ -25,22 +17,32 @@ __all__ = ["BaseEvent", "BaseVitalMeasurement"]
 
 
 class BaseEvent(StrictBaseModel):
-    """Base event schema for the TrainerLab Events."""
+    """Base event schema carrying a kind discriminator."""
 
     kind: str
-    key: str = Field(..., max_length=255)
-    timestamp: Annotated[int, Field(ge=0)] = Field(...)
-
-    db_pk: int | None = None
 
 
-class BaseVitalMeasurement(BaseEvent):
+class BaseVitalMeasurement(StrictBaseModel):
+    """Base schema for vital measurements used by InitialScenarioSchema."""
+
     min_value: int = Field(..., gt=0)
     max_value: int = Field(..., gt=0)
 
     lock_value: bool = Field(
         ..., description="Lock the value to the minimum (instead of a range between min and max)"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_measurement_fields(cls, value: Any) -> Any:
+        """Accept and discard legacy keys from older provider responses."""
+        if not isinstance(value, dict):
+            return value
+
+        cleaned = dict(value)
+        for legacy_key in ("db_pk", "timestamp", "kind", "key"):
+            cleaned.pop(legacy_key, None)
+        return cleaned
 
     @model_validator(mode="after")
     def validate_min_max_range(self) -> Self:

@@ -11,6 +11,7 @@ from apps.trainerlab.models import (
     HeartRate,
     Illness,
     Injury,
+    RespiratoryRate,
 )
 from apps.trainerlab.orca.schemas import InitialScenarioSchema
 from orchestrai_django.persistence import PersistContext, persist_schema
@@ -49,11 +50,10 @@ def context(simulation):
     )
 
 
-def _initial_payload(*, etco2_key: str = "etco2") -> dict:
+def _initial_payload(
+    *, etco2_key: str = "etco2", include_legacy_measurement_fields: bool = False
+) -> dict:
     base_measurement = {
-        "kind": "vital",
-        "key": "measurement",
-        "timestamp": 1_704_067_200,
         "min_value": 10,
         "max_value": 20,
         "lock_value": False,
@@ -78,20 +78,22 @@ def _initial_payload(*, etco2_key: str = "etco2") -> dict:
         "measurements": {
             "heart_rate": {
                 **base_measurement,
-                "key": "heart_rate",
                 "min_value": 110,
                 "max_value": 130,
             },
-            "spo2": {**base_measurement, "key": "spo2", "min_value": 90, "max_value": 95},
+            "respiratory_rate": {
+                **base_measurement,
+                "min_value": 18,
+                "max_value": 24,
+            },
+            "spo2": {**base_measurement, "min_value": 90, "max_value": 95},
             "blood_glucose_level": {
                 **base_measurement,
-                "key": "blood_glucose",
                 "min_value": 95,
                 "max_value": 120,
             },
             "blood_pressure": {
                 **base_measurement,
-                "key": "blood_pressure",
                 "min_value": 110,
                 "max_value": 130,
                 "min_value_diastolic": 70,
@@ -101,10 +103,21 @@ def _initial_payload(*, etco2_key: str = "etco2") -> dict:
     }
     payload["measurements"][etco2_key] = {
         **base_measurement,
-        "key": "etco2",
         "min_value": 30,
         "max_value": 40,
     }
+
+    if include_legacy_measurement_fields:
+        for measurement in payload["measurements"].values():
+            measurement.update(
+                {
+                    "kind": "vital",
+                    "key": "legacy_measurement",
+                    "timestamp": 1_704_067_200,
+                    "db_pk": 123,
+                }
+            )
+
     return payload
 
 
@@ -120,6 +133,9 @@ class TestTrainerLabInitialPersistence:
         assert await Injury.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert await Illness.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert await HeartRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert (
+            await RespiratoryRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        )
         assert await SPO2.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert await ETCO2.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert (
@@ -134,6 +150,18 @@ class TestTrainerLabInitialPersistence:
         await persist_schema(schema, context)
 
         assert await ETCO2.objects.filter(simulation_id=context.simulation_id).acount() == 1
+
+    async def test_accepts_legacy_measurement_fields_and_discards_them(self, context):
+        schema = InitialScenarioSchema.model_validate(
+            _initial_payload(include_legacy_measurement_fields=True)
+        )
+
+        dumped = schema.model_dump(mode="json", by_alias=True)
+        heart_rate = dumped["measurements"]["heart_rate"]
+        assert "db_pk" not in heart_rate
+        assert "timestamp" not in heart_rate
+        assert "kind" not in heart_rate
+        assert "key" not in heart_rate
 
     async def test_emits_outbox_events_for_sse(self, context):
         from apps.common.models import OutboxEvent
@@ -151,7 +179,7 @@ class TestTrainerLabInitialPersistence:
         )
 
         assert await condition_events.acount() == 2
-        assert await vital_events.acount() == 5
+        assert await vital_events.acount() == 6
 
         example_vital = await vital_events.afirst()
         assert example_vital is not None
@@ -176,3 +204,13 @@ def test_validates_blood_pressure_logic():
 
     with pytest.raises(ValidationError):
         InitialScenarioSchema.model_validate(payload)
+
+
+def test_measurement_schema_omits_legacy_fields():
+    schema = InitialScenarioSchema.model_json_schema(by_alias=True)
+    heart_rate_props = schema["$defs"]["HeartRate"]["properties"]
+
+    assert "db_pk" not in heart_rate_props
+    assert "timestamp" not in heart_rate_props
+    assert "kind" not in heart_rate_props
+    assert "key" not in heart_rate_props

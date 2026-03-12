@@ -24,13 +24,26 @@ from pydantic import Field, model_validator
 
 from .base import BaseVitalMeasurement
 
-__all__ = ["ETCO2", "SPO2", "BloodGlucoseLevel", "BloodPressure", "HeartRate"]
+__all__ = [
+    "ETCO2",
+    "SPO2",
+    "BloodGlucoseLevel",
+    "BloodPressure",
+    "HeartRate",
+    "RespiratoryRate",
+]
 
 
 class HeartRate(BaseVitalMeasurement):
     """OpenAI-compatible Pydantic model for a HeartRate measurement range."""
 
     __orm_model__ = "trainerlab.HeartRate"
+
+
+class RespiratoryRate(BaseVitalMeasurement):
+    """OpenAI-compatible Pydantic model for a RespiratoryRate measurement range."""
+
+    __orm_model__ = "trainerlab.RespiratoryRate"
 
 
 class SPO2(BaseVitalMeasurement):

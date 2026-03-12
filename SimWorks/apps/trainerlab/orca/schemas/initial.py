@@ -14,10 +14,20 @@ from apps.trainerlab.models import (
     HeartRate as ORMHeartRate,
     Illness as ORMIllness,
     Injury as ORMInjury,
+    RespiratoryRate as ORMRespiratoryRate,
 )
 from orchestrai.types import StrictBaseModel
 
-from .types import ETCO2, SPO2, BloodGlucoseLevel, BloodPressure, HeartRate, Illness, Injury
+from .types import (
+    ETCO2,
+    SPO2,
+    BloodGlucoseLevel,
+    BloodPressure,
+    HeartRate,
+    Illness,
+    Injury,
+    RespiratoryRate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +87,8 @@ def _condition_event_payload(obj: Any, *, context: "PersistContext") -> dict[str
 def _vital_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, Any]:
     if isinstance(obj, ORMHeartRate):
         vital_type = "heart_rate"
+    elif isinstance(obj, ORMRespiratoryRate):
+        vital_type = "respiratory_rate"
     elif isinstance(obj, ORMSPO2):
         vital_type = "spo2"
     elif isinstance(obj, ORMETCO2):
@@ -112,6 +124,7 @@ def _vital_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, An
 
 class MeasurementSchemaBlock(StrictBaseModel):
     heart_rate: HeartRate
+    respiratory_rate: RespiratoryRate
     spo2: SPO2
     blood_glucose_level: BloodGlucoseLevel
     blood_pressure: BloodPressure
@@ -123,6 +136,7 @@ class MeasurementSchemaBlock(StrictBaseModel):
 
     __persist__: ClassVar[dict[str, None]] = {
         "heart_rate": None,
+        "respiratory_rate": None,
         "spo2": None,
         "blood_glucose_level": None,
         "blood_pressure": None,
@@ -156,6 +170,7 @@ class InitialScenarioSchema(StrictBaseModel):
         if isinstance(measurements, dict):
             for key in (
                 "heart_rate",
+                "respiratory_rate",
                 "spo2",
                 "blood_glucose_level",
                 "blood_pressure",

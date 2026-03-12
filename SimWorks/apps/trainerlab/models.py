@@ -443,6 +443,20 @@ class HeartRate(VitalMeasurement):
         return "HR"
 
 
+class RespiratoryRate(VitalMeasurement):
+    @property
+    def unit(self):
+        return "breaths/min"
+
+    @property
+    def friendly_name(self):
+        return "Respiratory Rate"
+
+    @property
+    def abbreviated_name(self):
+        return "RR"
+
+
 class SPO2(VitalMeasurement):
     @property
     def unit(self):

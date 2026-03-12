@@ -5,6 +5,7 @@ schemas, reducing duplication and ensuring consistency.
 
 These are plain Pydantic models for use with Pydantic AI.
 """
+
 from typing import ClassVar
 
 from pydantic import ConfigDict, Field

@@ -3,8 +3,11 @@
 import logging
 from typing import ClassVar
 
+from apps.simcore.orca.instructions import BaseStitchPersona
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
+
+from ..instructions import InitialResponseMixin, TrainerLabMixin
 
 __all__ = ["GenerateInitialScenario"]
 
@@ -12,7 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 @orca.service
-class GenerateInitialScenario(DjangoBaseService):
+class GenerateInitialScenario(
+    BaseStitchPersona,
+    TrainerLabMixin,
+    InitialResponseMixin,
+    DjangoBaseService,
+):
     """Generate an initial AI-generated Scenario for TrainerLab."""
 
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
