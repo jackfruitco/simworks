@@ -12,6 +12,7 @@ Tests that:
 
 from unittest.mock import patch
 
+from django.core.files.base import ContentFile
 from django.test import Client
 import pytest
 
@@ -244,6 +245,50 @@ class TestListMessages:
         assert data["items"][0]["conversation_type"] == "simulated_patient"
         assert data["items"][0]["conversation_id"] == conversation.pk
 
+    def test_list_messages_includes_media_list_with_absolute_urls(
+        self, auth_client, simulation, conversation, test_user
+    ):
+        """List responses expose canonical media metadata with absolute URLs."""
+        from io import BytesIO
+
+        from PIL import Image
+
+        from apps.chatlab.models import Message, MessageMediaLink, RoleChoices
+        from apps.simcore.models import SimulationImage
+
+        msg = Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="See attached image",
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+            message_type=Message.MessageType.IMAGE,
+            display_name="Patient",
+        )
+
+        buffer = BytesIO()
+        Image.new("RGB", (24, 24), color=(10, 120, 200)).save(buffer, format="PNG")
+        media = SimulationImage(
+            simulation=simulation,
+            description="wrist image",
+            mime_type="image/png",
+        )
+        media.original.save("wrist-list.png", ContentFile(buffer.getvalue()), save=False)
+        media.save()
+        MessageMediaLink.objects.create(message=msg, media=media)
+
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/")
+        assert response.status_code == 200
+        data = response.json()
+
+        item = data["items"][0]
+        assert "media_list" in item
+        assert "mediaList" in item
+        assert len(item["media_list"]) == 1
+        assert item["media_list"][0]["original_url"].startswith("http://testserver/")
+        assert item["media_list"][0]["thumbnail_url"].startswith("http://testserver/")
+
     def test_list_messages_filter_by_conversation(
         self, auth_client, simulation, conversation, feedback_conversation, test_user
     ):
@@ -422,6 +467,8 @@ class TestCreateMessage:
         assert data["is_from_ai"] is False
         assert data["conversation_id"] == conversation.pk
         assert data["conversation_type"] == "simulated_patient"
+        assert data["media_list"] == []
+        assert data["mediaList"] == []
 
     def test_create_message_simulation_not_found_returns_404(self, auth_client):
         """Non-existent simulation returns 404."""
@@ -580,6 +627,43 @@ class TestGetMessage:
 
 
 @pytest.mark.django_db
+class TestRetryMessage:
+    """Tests for POST /simulations/{id}/messages/{message_id}/retry/."""
+
+    @patch("api.v1.endpoints.messages._enqueue_ai_reply")
+    def test_retry_message_returns_media_fields(
+        self, mock_enqueue, auth_client, simulation, conversation, test_user
+    ):
+        """Retry responses keep the same canonical message payload shape."""
+        from apps.chatlab.models import Message, RoleChoices
+
+        mock_enqueue.return_value = "retry-call-id"
+        message = Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="Retry me",
+            role=RoleChoices.USER,
+            message_type=Message.MessageType.TEXT,
+            is_from_ai=False,
+            delivery_status=Message.DeliveryStatus.FAILED,
+            delivery_retryable=True,
+            delivery_retry_count=0,
+        )
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/retry/",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["id"] == message.pk
+        assert data["media_list"] == []
+        assert data["mediaList"] == []
+
+
+@pytest.mark.django_db
 class TestMessageOutputFormat:
     """Tests for message response format."""
 
@@ -643,3 +727,46 @@ class TestMessageOutputFormat:
             f"/api/v1/simulations/{simulation.pk}/messages/{assistant_msg.pk}/"
         )
         assert response.json()["role"] == "assistant"
+
+    def test_message_includes_media_list_with_absolute_urls(
+        self, auth_client, simulation, conversation, test_user
+    ):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from apps.chatlab.models import Message, MessageMediaLink, RoleChoices
+        from apps.simcore.models import SimulationImage
+
+        msg = Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="See attached image",
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+            message_type=Message.MessageType.IMAGE,
+            display_name="Patient",
+        )
+
+        buffer = BytesIO()
+        Image.new("RGB", (24, 24), color=(10, 120, 200)).save(buffer, format="PNG")
+        media = SimulationImage(
+            simulation=simulation,
+            description="wrist image",
+            mime_type="image/png",
+        )
+        media.original.save("wrist.png", ContentFile(buffer.getvalue()), save=False)
+        media.save()
+        MessageMediaLink.objects.create(message=msg, media=media)
+
+        response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/messages/{msg.pk}/")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "media_list" in data
+        assert "mediaList" in data
+        assert len(data["media_list"]) == 1
+        item = data["media_list"][0]
+        assert item["original_url"].startswith("http://testserver/")
+        assert item["thumbnail_url"].startswith("http://testserver/")

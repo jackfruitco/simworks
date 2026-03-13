@@ -3,6 +3,7 @@ from typing import ClassVar
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import PersistModel
@@ -91,6 +92,14 @@ class Message(PersistModel):
     )
     provider_response_id = models.CharField(null=True, blank=True, max_length=255)
     display_name = models.CharField(max_length=100, blank=True)
+    source_message = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_messages",
+        help_text="Source message this message was derived from (e.g., generated image).",
+    )
 
     def set_provider_resp_id(self, id_):
         self.provider_response_id = id_
@@ -117,6 +126,17 @@ class Message(PersistModel):
 
     class Meta:
         ordering: ClassVar = ["timestamp"]
+        constraints: ClassVar = [
+            models.UniqueConstraint(
+                fields=["source_message"],
+                condition=Q(
+                    source_message__isnull=False,
+                    message_type="image",
+                    is_from_ai=True,
+                ),
+                name="chatlab_unique_ai_image_per_source_message",
+            )
+        ]
 
     def __str__(self):
         return f"ChatLab Sim#{self.simulation.pk} {self.get_message_type_display()} by {self.sender} at {self.timestamp:%H:%M:%S}"

@@ -42,6 +42,33 @@ def simulation(test_user):
     )
 
 
+@pytest.fixture
+def simulation_with_metadata(simulation):
+    from apps.simcore.models import PatientDemographics, SimulationFeedback
+
+    PatientDemographics.objects.create(
+        simulation=simulation,
+        key="patient_name",
+        value="John Smith",
+    )
+    PatientDemographics.objects.create(
+        simulation=simulation,
+        key="age",
+        value="45",
+    )
+    SimulationFeedback.objects.create(
+        simulation=simulation,
+        key="hotwash_correct_diagnosis",
+        value="True",
+    )
+    SimulationFeedback.objects.create(
+        simulation=simulation,
+        key="hotwash_patient_experience",
+        value="4",
+    )
+    return simulation
+
+
 @pytest.mark.django_db
 class TestToolEndpoints:
     def test_list_tools_returns_items(self, auth_client, simulation):
@@ -59,6 +86,79 @@ class TestToolEndpoints:
         data = response.json()
         assert data["name"] == "patient_history"
         assert "data" in data
+
+    def test_list_tools_returns_typed_simulation_metadata_items(
+        self,
+        auth_client,
+        simulation_with_metadata,
+    ):
+        response = auth_client.get(f"/api/v1/simulations/{simulation_with_metadata.pk}/tools/")
+        assert response.status_code == 200
+
+        data = response.json()
+        metadata_tool = next(
+            item for item in data["items"] if item["name"] == "simulation_metadata"
+        )
+        assert metadata_tool["data"] == [
+            {
+                "kind": "patient_demographics",
+                "key": "patient_name",
+                "value": "John Smith",
+                "db_pk": metadata_tool["data"][0]["db_pk"],
+            },
+            {
+                "kind": "patient_demographics",
+                "key": "age",
+                "value": "45",
+                "db_pk": metadata_tool["data"][1]["db_pk"],
+            },
+        ]
+        assert all(isinstance(item["db_pk"], int) for item in metadata_tool["data"])
+
+    def test_get_simulation_metadata_returns_typed_payload(
+        self,
+        auth_client,
+        simulation_with_metadata,
+    ):
+        response = auth_client.get(
+            f"/api/v1/simulations/{simulation_with_metadata.pk}/tools/simulation_metadata/"
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["name"] == "simulation_metadata"
+        assert data["data"][0]["kind"] == "patient_demographics"
+        assert data["data"][0]["key"] == "patient_name"
+        assert data["data"][0]["value"] == "John Smith"
+        assert isinstance(data["data"][0]["db_pk"], int)
+
+    def test_get_simulation_feedback_returns_typed_payload(
+        self,
+        auth_client,
+        simulation_with_metadata,
+    ):
+        response = auth_client.get(
+            f"/api/v1/simulations/{simulation_with_metadata.pk}/tools/simulation_feedback/"
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["name"] == "simulation_feedback"
+        assert data["data"] == [
+            {
+                "kind": "simulation_feedback",
+                "key": "hotwash_correct_diagnosis",
+                "value": True,
+                "db_pk": data["data"][0]["db_pk"],
+            },
+            {
+                "kind": "simulation_feedback",
+                "key": "hotwash_patient_experience",
+                "value": 4,
+                "db_pk": data["data"][1]["db_pk"],
+            },
+        ]
+        assert all(isinstance(item["db_pk"], int) for item in data["data"])
 
     def test_get_unknown_tool_returns_404(self, auth_client, simulation):
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/tools/unknown_tool/")

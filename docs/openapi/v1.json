@@ -2769,6 +2769,57 @@
         "title": "MessageListResponse",
         "type": "object"
       },
+      "MessageMediaOut": {
+        "description": "Media attachment metadata for a message.",
+        "properties": {
+          "id": {
+            "description": "SimulationImage ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "uuid": {
+            "description": "SimulationImage UUID",
+            "title": "Uuid",
+            "type": "string"
+          },
+          "original_url": {
+            "description": "Absolute URL to original image",
+            "title": "Original Url",
+            "type": "string"
+          },
+          "thumbnail_url": {
+            "description": "Absolute URL to thumbnail image",
+            "title": "Thumbnail Url",
+            "type": "string"
+          },
+          "url": {
+            "description": "Compatibility alias for thumbnail_url",
+            "title": "Url",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "",
+            "description": "Media MIME type",
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "Short media description",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uuid",
+          "original_url",
+          "thumbnail_url",
+          "url"
+        ],
+        "title": "MessageMediaOut",
+        "type": "object"
+      },
       "MessageOut": {
         "description": "Output schema for a chat message.",
         "properties": {
@@ -2897,6 +2948,22 @@
             "description": "How many user retries have been attempted for this message",
             "title": "Delivery Retry Count",
             "type": "integer"
+          },
+          "media_list": {
+            "description": "Message media metadata (snake_case canonical API shape)",
+            "items": {
+              "$ref": "#/components/schemas/MessageMediaOut"
+            },
+            "title": "Media List",
+            "type": "array"
+          },
+          "mediaList": {
+            "description": "Compatibility alias for media_list",
+            "items": {
+              "$ref": "#/components/schemas/MessageMediaOut"
+            },
+            "title": "Medialist",
+            "type": "array"
           }
         },
         "required": [
@@ -2947,7 +3014,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",

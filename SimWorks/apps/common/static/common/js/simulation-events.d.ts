@@ -102,6 +102,7 @@ export interface ErrorEvent extends BaseEvent {
 export interface ChatMessageCreatedEvent extends BaseEvent {
     type: 'chat.message_created';
     id: number;
+    message_id?: number;
     content: string;
     role: 'user' | 'assistant';
     senderId: string;
@@ -113,6 +114,7 @@ export interface ChatMessageCreatedEvent extends BaseEvent {
     status?: 'sent' | 'delivered' | 'read';
     conversation_id?: number;
     conversation_type?: string;
+    media_list?: MediaItem[];
     mediaList?: MediaItem[];
 }
 
