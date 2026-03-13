@@ -36,7 +36,7 @@ class StitchReplyOutputSchema(BaseModel):
 
     async def post_persist(self, results, context):
         """Broadcast Stitch message creation to WebSocket clients."""
-        from apps.chatlab.media_payloads import build_message_media_payload
+        from apps.chatlab.media_payloads import build_chat_message_event_payload
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         messages = results.get("messages", [])
@@ -45,24 +45,9 @@ class StitchReplyOutputSchema(BaseModel):
                 event_type="chat.message_created",
                 objects=messages,
                 context=context,
-                payload_builder=lambda msg: {
-                    "message_id": msg.id,
-                    "id": msg.id,
-                    "content": msg.content or "",
-                    "role": msg.role,
-                    "is_from_ai": msg.is_from_ai,
-                    "isFromAi": msg.is_from_ai,
-                    "isFromAI": msg.is_from_ai,
-                    "display_name": msg.display_name or "",
-                    "displayName": msg.display_name or "",
-                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
-                    "conversation_id": msg.conversation_id,
-                    "conversation_type": "simulated_feedback",
-                    "messageType": msg.message_type,
-                    "sender_id": msg.sender_id,
-                    "senderId": msg.sender_id,
-                    "status": "completed",
-                    "source_message_id": msg.source_message_id,
-                    **build_message_media_payload(msg),
-                },
+                payload_builder=lambda msg: build_chat_message_event_payload(
+                    msg,
+                    fallback_conversation_type="simulated_feedback",
+                    status="completed",
+                ),
             )

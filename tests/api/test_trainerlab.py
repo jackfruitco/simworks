@@ -193,7 +193,15 @@ class TestTrainerLabSessionLifecycle:
 
         second_response = client.post(
             "/api/v1/trainerlab/simulations/",
-            data={"scenario_spec": {}, "directives": "", "modifiers": []},
+            data={
+                "scenario_spec": {
+                    "diagnosis": "Heat stroke",
+                    "chief_complaint": "Altered mental status",
+                    "tick_interval_seconds": 10,
+                },
+                "directives": "Initial directives",
+                "modifiers": ["altitude", "dehydration"],
+            },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="session-create-a",
         )
@@ -204,6 +212,31 @@ class TestTrainerLabSessionLifecycle:
 
         assert TrainerSession.objects.count() == 1
         assert TrainerCommand.objects.filter(idempotency_key="session-create-a").count() == 1
+
+    def test_create_session_conflicting_retry_returns_409(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        _create_session(client, idempotency_key="session-create-conflict")
+
+        response = client.post(
+            "/api/v1/trainerlab/simulations/",
+            data={
+                "scenario_spec": {
+                    "diagnosis": "Anaphylaxis",
+                    "chief_complaint": "Shortness of breath",
+                },
+                "directives": "Different directives",
+                "modifiers": ["rain"],
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="session-create-conflict",
+        )
+
+        assert response.status_code == 409
 
     def test_create_session_enqueues_initial_generation(
         self,
@@ -291,6 +324,30 @@ class TestTrainerLabSessionLifecycle:
             HTTP_IDEMPOTENCY_KEY="invalid-pause-before-start",
         )
         assert response.status_code == 409
+
+    def test_run_command_rejects_same_key_for_different_session(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        first_session = _create_session(client, idempotency_key="session-run-target-a")
+        second_session = _create_session(client, idempotency_key="session-run-target-b")
+
+        first = client.post(
+            f"/api/v1/trainerlab/simulations/{first_session['simulation_id']}/run/start/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="run-start-conflict",
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{second_session['simulation_id']}/run/start/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="run-start-conflict",
+        )
+        assert second.status_code == 409
 
 
 @pytest.mark.django_db
@@ -387,7 +444,7 @@ class TestTrainerLabEvents:
 
         second = client.post(
             f"/api/v1/trainerlab/simulations/{session['simulation_id']}/steer/prompt/",
-            data={"prompt": "This value should be ignored due to idempotency"},
+            data={"prompt": "Worsen airway patency over next 3 ticks"},
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="steer-1",
         )
@@ -395,6 +452,103 @@ class TestTrainerLabEvents:
         assert second.json()["command_id"] == first.json()["command_id"]
 
         assert TrainerCommand.objects.filter(idempotency_key="steer-1").count() == 1
+
+    def test_steer_prompt_conflicting_retry_returns_409(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="steer-session-conflict")
+
+        first = client.post(
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/steer/prompt/",
+            data={"prompt": "Worsen airway patency over next 3 ticks"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="steer-conflict",
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/steer/prompt/",
+            data={"prompt": "Use a different instruction"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="steer-conflict",
+        )
+        assert second.status_code == 409
+
+    def test_event_injection_conflicting_retry_returns_409(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="event-conflict-session")
+        simulation_id = session["simulation_id"]
+
+        first = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
+            data={
+                "injury_category": "M",
+                "injury_location": "LUA",
+                "injury_kind": "LAC",
+                "injury_description": "Initial laceration",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="injury-conflict",
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
+            data={
+                "injury_category": "M",
+                "injury_location": "RUA",
+                "injury_kind": "LAC",
+                "injury_description": "Different injury",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="injury-conflict",
+        )
+        assert second.status_code == 409
+
+    def test_adjust_simulation_conflicting_retry_returns_409(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="adjust-conflict-session")
+        simulation_id = session["simulation_id"]
+
+        first = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/adjust/",
+            data={
+                "target": "note",
+                "direction": "add",
+                "note": "Increase confusion over the next minute",
+                "metadata": {"severity": "moderate"},
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-conflict",
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/adjust/",
+            data={
+                "target": "note",
+                "direction": "add",
+                "note": "Use a different adjustment",
+                "metadata": {"severity": "high"},
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-conflict",
+        )
+        assert second.status_code == 409
 
     def test_injury_event_accepts_friendly_labels(
         self,
@@ -618,3 +772,40 @@ class TestTrainerLabPresets:
         )
         assert unshared.status_code == 204
         assert other_client.get(f"/api/v1/trainerlab/presets/{preset_id}/").status_code == 404
+
+    def test_apply_preset_conflicting_retry_returns_409(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        owner_client = auth_client_factory(instructor_user)
+
+        first_preset = owner_client.post(
+            "/api/v1/trainerlab/presets/",
+            data={"title": "Preset A"},
+            content_type="application/json",
+        ).json()
+        second_preset = owner_client.post(
+            "/api/v1/trainerlab/presets/",
+            data={"title": "Preset B"},
+            content_type="application/json",
+        ).json()
+
+        session = _create_session(owner_client, idempotency_key="preset-apply-conflict-session")
+
+        first = owner_client.post(
+            f"/api/v1/trainerlab/presets/{first_preset['id']}/apply/",
+            data={"simulation_id": session["simulation_id"]},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="preset-apply-conflict",
+        )
+        assert first.status_code == 200
+
+        second = owner_client.post(
+            f"/api/v1/trainerlab/presets/{second_preset['id']}/apply/",
+            data={"simulation_id": session["simulation_id"]},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="preset-apply-conflict",
+        )
+        assert second.status_code == 409

@@ -38,10 +38,12 @@ Usage:
 """
 
 from .outbox import (
+    apply_outbox_cursor,
     build_ws_envelope,
     enqueue_event,
     enqueue_event_sync,
     get_events_for_simulation,
+    order_outbox_queryset,
     poke_drain,
     poke_drain_sync,
 )
@@ -52,11 +54,13 @@ from .outbox import (
 # Import directly from apps.common.outbox.helpers where needed (in schema post_persist hooks).
 
 __all__ = [
+    "apply_outbox_cursor",
     "build_ws_envelope",
     # common outbox functions
     "enqueue_event",
     "enqueue_event_sync",
     "get_events_for_simulation",
+    "order_outbox_queryset",
     "poke_drain",
     "poke_drain_sync",
 ]
