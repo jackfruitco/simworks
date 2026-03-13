@@ -55,10 +55,10 @@ from apps.trainerlab.models import (
     BloodPressure,
     EventSource,
     HeartRate,
-    RespiratoryRate,
     Illness,
     Injury,
     Intervention,
+    RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
     TrainerCommand,
@@ -494,9 +494,7 @@ def apply_preset(
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=(
-            f"trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}"
-        ),
+        idempotency_key=(f"trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}"),
     )
 
     command.status = TrainerCommand.CommandStatus.PROCESSED

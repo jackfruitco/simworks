@@ -1,4 +1,5 @@
-<<<<<<< ours
+from pathlib import Path
+
 from django.test import SimpleTestCase
 from pydantic import ValidationError
 
@@ -28,12 +29,9 @@ class VitalCreateInSchemaTests(SimpleTestCase):
 
         with self.assertRaises(ValidationError):
             VitalCreateIn.model_validate(payload)
-=======
-from pathlib import Path
 
 
 def test_apply_preset_outbox_idempotency_key_includes_command_id():
     source = Path("SimWorks/api/v1/endpoints/trainerlab.py").read_text()
 
     assert "trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}" in source
->>>>>>> theirs

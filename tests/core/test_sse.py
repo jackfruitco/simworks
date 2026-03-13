@@ -5,8 +5,8 @@ from itertools import islice
 import uuid
 
 from django.utils import timezone
-import pytest
 from ninja.errors import HttpError
+import pytest
 
 from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
@@ -36,12 +36,17 @@ class TestStreamOutboxEvents:
             payload={"message_id": 2},
             idempotency_key="same-ts:2",
         )
-        OutboxEvent.objects.filter(id__in=[first.id, second.id]).update(created_at=shared_created_at)
+        OutboxEvent.objects.filter(id__in=[first.id, second.id]).update(
+            created_at=shared_created_at
+        )
 
         monkeypatch.setattr("api.v1.sse.time.sleep", lambda _: None)
 
         response = stream_outbox_events(simulation_id=7, cursor=str(first.id))
-        chunks = [chunk.decode() if isinstance(chunk, bytes) else chunk for chunk in islice(response.streaming_content, 4)]
+        chunks = [
+            chunk.decode() if isinstance(chunk, bytes) else chunk
+            for chunk in islice(response.streaming_content, 4)
+        ]
 
         assert chunks[0] == f"id: {second.id}\n"
         assert chunks[1] == "event: simulation\n"
