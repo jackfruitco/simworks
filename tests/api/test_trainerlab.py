@@ -1,9 +1,25 @@
 """Tests for TrainerLab API v1 endpoints."""
 
+from itertools import islice
 from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
+
+
+class FakeClock:
+    def __init__(self):
+        self.current = 0.0
+
+    def monotonic(self) -> float:
+        return self.current
+
+    def sleep(self, seconds: float) -> None:
+        self.current += seconds
+
+
+def decode_chunk(chunk) -> str:
+    return chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
 
 
 @pytest.fixture
@@ -610,19 +626,93 @@ class TestTrainerLabEvents:
         instructor_user,
         instructor_membership,
     ):
+        from apps.common.models import OutboxEvent
+
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="sse-session")
+        simulation_id = session["simulation_id"]
+
+        anchor = (
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+                event_type__startswith="trainerlab.",
+            )
+            .order_by("created_at", "id")
+            .last()
+        )
+        if anchor is None:
+            anchor = OutboxEvent.objects.create(
+                event_type="trainerlab.stream.anchor",
+                simulation_id=simulation_id,
+                payload={"status": "anchored"},
+                idempotency_key=f"trainerlab.anchor:{simulation_id}",
+            )
+
+        streamed = OutboxEvent.objects.create(
+            event_type="trainerlab.session.seeded",
+            simulation_id=simulation_id,
+            payload={"status": "seeded"},
+            idempotency_key=f"trainerlab.seeded:{simulation_id}",
+        )
 
         response = client.get(
-            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/events/stream/"
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
         assert response.status_code == 200
         assert response["Content-Type"].startswith("text/event-stream")
+        assert response["Cache-Control"] == "no-cache, no-transform"
+        assert response["X-Accel-Buffering"] == "no"
 
-        first_chunk = next(response.streaming_content)
-        if isinstance(first_chunk, bytes):
-            first_chunk = first_chunk.decode("utf-8")
-        assert first_chunk
+        chunks = [decode_chunk(chunk) for chunk in islice(response.streaming_content, 3)]
+        payload = "".join(chunks)
+
+        assert chunks[0] == f"id: {streamed.id}\n"
+        assert chunks[1] == "event: trainerlab\n"
+        assert "trainerlab.session.seeded" in payload
+        assert '"status": "seeded"' in payload
+
+    def test_sse_stream_endpoint_emits_idle_keep_alive(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.common.models import OutboxEvent
+
+        clock = FakeClock()
+        monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
+        monkeypatch.setattr("api.v1.sse.time.sleep", clock.sleep)
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="sse-idle-session")
+        simulation_id = session["simulation_id"]
+
+        anchor = (
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+                event_type__startswith="trainerlab.",
+            )
+            .order_by("created_at", "id")
+            .last()
+        )
+        if anchor is None:
+            anchor = OutboxEvent.objects.create(
+                event_type="trainerlab.stream.anchor",
+                simulation_id=simulation_id,
+                payload={"status": "anchored"},
+                idempotency_key=f"trainerlab.idle.anchor:{simulation_id}",
+            )
+
+        response = client.get(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
+        )
+
+        first_chunk = decode_chunk(next(response.streaming_content))
+
+        assert first_chunk == ": keep-alive\n\n"
+        assert "event:" not in first_chunk
+        assert clock.current == pytest.approx(10.0)
 
 
 @pytest.mark.django_db

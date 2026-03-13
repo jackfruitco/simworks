@@ -1234,4 +1234,7 @@ def stream_trainer_events(
         cursor=cursor,
         event_type_prefix="trainerlab.",
         sse_event_name="trainerlab",
+        heartbeat_interval_seconds=10.0,
+        poll_interval_seconds=1.0,
+        heartbeat_comment=": keep-alive\n\n",
     )

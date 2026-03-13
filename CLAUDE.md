@@ -728,6 +728,13 @@ All WebSocket events must use this envelope format:
 
 **WS events are hints**: Clients must fetch full data via API endpoints for catch-up after reconnect.
 
+### TrainerLab SSE (v1)
+
+- Endpoint: `GET /api/v1/trainerlab/simulations/{id}/events/stream/`
+- Transport envelope and cursor semantics match the shared outbox SSE stream.
+- While idle, TrainerLab emits SSE comment heartbeats in the exact wire form `: keep-alive` at least every 10 seconds.
+- SSE responses must remain unbuffered through nginx and any upstream proxy/CDN path so heartbeats are not batched.
+
 ### Correlation ID (`X-Correlation-ID`)
 
 **Purpose**: Trace requests across services, logs, and async tasks
