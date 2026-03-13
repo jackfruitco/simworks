@@ -43,22 +43,22 @@ class LabResultItem(ResultMetafield):
         ..., description="Discriminator field (must be 'lab_result')"
     )
     panel_name: str | None = Field(
-        None, max_length=100, description="Lab panel name (e.g., 'Complete Blood Count')"
+        ..., max_length=100, description="Lab panel name (e.g., 'Complete Blood Count')"
     )
     result_unit: str | None = Field(
-        None, max_length=20, description="Unit of measurement (e.g., 'mg/dL')"
+        ..., max_length=20, description="Unit of measurement (e.g., 'mg/dL')"
     )
     reference_range_low: str | None = Field(
-        None, max_length=50, description="Lower bound of reference range"
+        ..., max_length=50, description="Lower bound of reference range"
     )
     reference_range_high: str | None = Field(
-        None, max_length=50, description="Upper bound of reference range"
+        ..., max_length=50, description="Upper bound of reference range"
     )
     result_flag: Literal["normal", "abnormal"] = Field(
         ..., description="Result flag indicating normal or abnormal"
     )
     result_comment: str | None = Field(
-        None, max_length=500, description="Optional clinical comment or interpretation"
+        ..., max_length=500, description="Optional clinical comment or interpretation"
     )
 
     __orm_model__ = "simcore.LabResult"

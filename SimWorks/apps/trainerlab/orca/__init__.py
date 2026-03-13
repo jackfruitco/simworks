@@ -8,5 +8,5 @@ pattern established in chatlab and simulation:
 
 - Services: Use DjangoBaseService with instruction mixins (@orca.instruction)
 - Schemas: Plain Pydantic models with ConfigDict(extra="forbid")
-- Persistence: Use BasePersistenceHandler for domain object creation
+- Persistence: Use declarative ``__persist__`` mappings on schemas
 """

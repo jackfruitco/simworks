@@ -1,20 +1,15 @@
 # trainerlab/utils.py
 import logging
 
-from django.apps import apps
+from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 
 from apps.simcore.models import Simulation
-from apps.simcore.utils import generate_fake_name
 from apps.trainerlab.models import TrainerSession
+from apps.trainerlab.services import create_session_with_initial_generation
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
-
-
-def get_app_config():
-    """Lazy access to the trainerlab AppConfig; avoids touching the app registry at import time."""
-    return apps.get_app_config(app_label="trainerlab")
 
 
 async def create_new_simulation(
@@ -24,19 +19,17 @@ async def create_new_simulation(
     request_session: bool = False,
 ) -> Simulation | TrainerSession:
     """Create a new Simulation and TrainerSession, and trigger a celery task."""
-    sim_patient_full_name = await generate_fake_name()
-    app_config = get_app_config()
-
     if isinstance(user, int):
         user = await User.objects.aget(id=user)
 
-    simulation = await Simulation.abuild(
+    session, call_id = await sync_to_async(create_session_with_initial_generation)(
         user=user,
-        lab=app_config.name,
-        sim_patient_full_name=sim_patient_full_name,
+        scenario_spec={},
+        directives=None,
         modifiers=modifiers,
     )
 
-    session = await TrainerSession.objects.acreate(simulation=simulation)
+    if call_id is None:
+        logger.warning("Initial generation enqueue failed for simulation %s", session.simulation_id)
 
-    return simulation if not request_session else session
+    return session if request_session else session.simulation

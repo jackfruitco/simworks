@@ -28,17 +28,32 @@ Usage:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 import uuid
 
 from asgiref.sync import sync_to_async
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from apps.common.models import OutboxEvent
+
+
+def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert payload values to JSON-serializable primitives.
+
+    This ensures Django JSONField inserts don't fail on values like UUID,
+    datetime, or Decimal that may appear in nested payload structures.
+    """
+    normalized = json.loads(json.dumps(payload, cls=DjangoJSONEncoder))
+    if not isinstance(normalized, dict):
+        msg = "Outbox payload must serialize to a JSON object"
+        raise TypeError(msg)
+    return normalized
 
 
 async def enqueue_event(
@@ -72,6 +87,7 @@ async def enqueue_event(
     from django.apps import apps
 
     OutboxEvent = apps.get_model("common", "OutboxEvent")
+    payload = _normalize_payload(payload)
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"
@@ -122,6 +138,7 @@ def enqueue_event_sync(
     from django.apps import apps
 
     OutboxEvent = apps.get_model("common", "OutboxEvent")
+    payload = _normalize_payload(payload)
 
     if idempotency_key is None:
         idempotency_key = f"{event_type}:{uuid.uuid4()}"

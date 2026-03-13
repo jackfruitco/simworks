@@ -76,6 +76,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4004)
             return
 
+        scope_user = self.scope.get("user")
+        is_authenticated = bool(scope_user and getattr(scope_user, "is_authenticated", False))
+        is_owner = bool(is_authenticated and self.simulation.user_id == scope_user.id)
+        if not is_owner:
+            await self.accept()
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "error",
+                        "message": "You do not have access to this simulation.",
+                        "redirect": reverse("chatlab:index"),
+                    },
+                    default=json_default,
+                )
+            )
+            await self.close(code=4403)
+            return
+
         self.room_name = f"simulation_{self.simulation_id}"
         self.room_group_name = self.room_name
 
@@ -132,11 +150,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
-        ChatConsumer.log(
-            func_name=func_name,
-            msg=f"User {func_name}ed to room {self.room_group_name} (channel: {self.channel_name})",
-        )
+        if self.room_group_name:
+            await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+            ChatConsumer.log(
+                func_name=func_name,
+                msg=f"User {func_name}ed to room {self.room_group_name} (channel: {self.channel_name})",
+            )
 
     async def receive(self, text_data: str | None = None, bytes_data=None) -> None:
         """

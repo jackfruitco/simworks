@@ -62,6 +62,34 @@ class TestChatConsumerConnection:
 
         await communicator.disconnect()
 
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_connect_rejects_non_owner(self):
+        from apps.accounts.models import User, UserRole
+
+        simulation, _owner = await create_simulation_and_user()
+        role, _ = await UserRole.objects.aget_or_create(title="Test Non Owner")
+        other_user = await User.objects.acreate(
+            email=f"other_{uuid4().hex[:8]}@test.com",
+            role=role,
+        )
+
+        communicator = WebsocketCommunicator(
+            ChatConsumer.as_asgi(),
+            f"/ws/simulation/{simulation.id}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
+        communicator.scope["user"] = other_user
+
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        response = await communicator.receive_json_from()
+        assert response["type"] == "error"
+        assert "do not have access" in response["message"]
+
+        await communicator.disconnect()
+
 
 class TestChatMessageCreatedHandler:
     """Tests for chat_message_created handler behavior."""

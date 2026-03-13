@@ -22,6 +22,7 @@ from apps.simcore.orca.schemas.metadata_items import (
     RadResultItem,
     SimulationMetadataItem,
 )
+from orchestrai.schema_lint import validate_pydantic_schema
 
 
 class TestPatientInitialSchema:
@@ -267,6 +268,7 @@ class TestPatientInitialSchema:
                     "kind": "lab_result",
                     "key": "Glucose",
                     "value": "110",
+                    "panel_name": None,
                     "result_unit": "mg/dL",
                     "reference_range_low": "70",
                     "reference_range_high": "100",
@@ -420,3 +422,9 @@ class TestPatientResultsSchema:
         assert isinstance(parsed.metadata[0], SimulationMetadataItem)
         assert parsed.metadata[0].key == "final_diagnosis"
         assert parsed.metadata[0].value == "Community-acquired pneumonia"
+
+
+class TestStrictSchemaCompliance:
+    def test_patient_initial_schema_passes_strict_lint(self):
+        violations = validate_pydantic_schema(PatientInitialOutputSchema, strict=False)
+        assert violations == []

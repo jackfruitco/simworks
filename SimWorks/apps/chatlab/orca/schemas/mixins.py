@@ -6,14 +6,16 @@ schemas, reducing duplication and ensuring consistency.
 These are plain Pydantic models for use with Pydantic AI.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import ClassVar
+
+from pydantic import ConfigDict, Field
 
 from apps.chatlab.orca.persisters import persist_messages
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
-from orchestrai.types import ResultMessageItem
+from orchestrai.types import ResultMessageItem, StrictBaseModel
 
 
-class PatientResponseBaseMixin(BaseModel):
+class PatientResponseBaseMixin(StrictBaseModel):
     """Base mixin with strict mode for Pydantic AI schemas.
 
     Common fields for all patient response schemas.
@@ -39,4 +41,4 @@ class PatientResponseBaseMixin(BaseModel):
         ..., description="Internal workflow conditions"
     )
 
-    __persist__ = {"messages": persist_messages}
+    __persist__: ClassVar = {"messages": persist_messages}

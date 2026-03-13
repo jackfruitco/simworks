@@ -9,7 +9,7 @@ Tests that:
 6. Pagination works correctly
 """
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from django.test import Client
 import pytest
@@ -43,6 +43,28 @@ def other_user(django_user_model, user_role):
         password="testpass123",
         email="other@example.com",
         role=user_role,
+    )
+
+
+@pytest.fixture
+def trainerlab_lab(db):
+    from apps.accounts.models import Lab
+
+    lab, _ = Lab.objects.get_or_create(
+        slug="trainerlab",
+        defaults={"display_name": "TrainerLab", "is_active": True},
+    )
+    return lab
+
+
+@pytest.fixture
+def instructor_membership(test_user, trainerlab_lab):
+    from apps.accounts.models import LabMembership
+
+    return LabMembership.objects.create(
+        user=test_user,
+        lab=trainerlab_lab,
+        access_level=LabMembership.AccessLevel.INSTRUCTOR,
     )
 
 
@@ -173,6 +195,64 @@ class TestListSimulations:
         assert data["has_more"] is False
         assert data["next_cursor"] is None
 
+    def test_list_simulations_supports_search_query(self, auth_client, test_user):
+        from apps.simcore.models import Simulation
+
+        Simulation.objects.create(
+            user=test_user,
+            diagnosis="Pulmonary Embolism",
+            sim_patient_full_name="Patient A",
+        )
+        Simulation.objects.create(
+            user=test_user,
+            diagnosis="Appendicitis",
+            sim_patient_full_name="Patient B",
+        )
+
+        response = auth_client.get("/api/v1/simulations/?q=Pulmonary")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["diagnosis"] == "Pulmonary Embolism"
+
+    def test_list_simulations_supports_message_search(self, auth_client, test_user):
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.simcore.models import Conversation, ConversationType, Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Patient M",
+        )
+        conversation_type, _ = ConversationType.objects.get_or_create(
+            slug="simulated_patient",
+            defaults={
+                "display_name": "Patient",
+                "ai_persona": "patient",
+            },
+        )
+        conversation = Conversation.objects.create(
+            simulation=sim,
+            conversation_type=conversation_type,
+            display_name="Patient",
+            display_initials="Pt",
+        )
+        Message.objects.create(
+            simulation=sim,
+            conversation=conversation,
+            sender=test_user,
+            content="unique chest pain phrase",
+            role=RoleChoices.USER,
+            is_from_ai=False,
+        )
+
+        response = auth_client.get(
+            "/api/v1/simulations/?q=unique%20chest%20pain&search_messages=true"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == sim.id
+
 
 @pytest.mark.django_db
 class TestGetSimulation:
@@ -294,6 +374,36 @@ class TestCreateSimulation:
 
 
 @pytest.mark.django_db
+class TestQuickCreateSimulation:
+    @patch("apps.chatlab.utils.create_new_simulation", new_callable=AsyncMock)
+    def test_quick_create_simulation_success(self, mock_create, auth_client, test_user):
+        from apps.simcore.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Quick Patient",
+        )
+        mock_create.return_value = sim
+
+        response = auth_client.post(
+            "/api/v1/simulations/quick-create/",
+            data={
+                "modifiers": ["night_shift", "limited_resources"],
+            },
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["id"] == sim.pk
+        assert data["user_id"] == test_user.pk
+        mock_create.assert_awaited_once_with(
+            user=test_user,
+            modifiers=["night_shift", "limited_resources"],
+        )
+
+
+@pytest.mark.django_db
 class TestEndSimulation:
     """Tests for POST /simulations/{id}/end/."""
 
@@ -351,6 +461,78 @@ class TestEndSimulation:
         response = auth_client.post(f"/api/v1/simulations/{other_sim.pk}/end/")
 
         assert response.status_code == 404
+
+
+@pytest.mark.django_db
+class TestAdjustSimulation:
+    def test_adjust_requires_idempotency_key(
+        self,
+        auth_client,
+        simulation,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import TrainerSession
+
+        TrainerSession.objects.create(simulation=simulation)
+        response = auth_client.post(
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
+            data={"target": "trend", "direction": "up"},
+            content_type="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_adjust_is_idempotent_and_emits_to_runtime_state(
+        self,
+        auth_client,
+        simulation,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import TrainerCommand, TrainerSession
+
+        session = TrainerSession.objects.create(simulation=simulation)
+        first = auth_client.post(
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
+            data={
+                "target": "avpu",
+                "direction": "set",
+                "avpu_state": "verbal",
+                "note": "Downgrade responsiveness",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-1",
+        )
+        assert first.status_code == 200
+
+        second = auth_client.post(
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
+            data={
+                "target": "avpu",
+                "direction": "set",
+                "avpu_state": "pain",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-1",
+        )
+        assert second.status_code == 200
+        assert second.json()["command_id"] == first.json()["command_id"]
+        assert TrainerCommand.objects.filter(idempotency_key="adjust-1").count() == 1
+
+        session.refresh_from_db()
+        adjustments = session.runtime_state_json.get("adjustments", [])
+        assert len(adjustments) == 1
+        assert adjustments[0]["target"] == "avpu"
+
+    def test_adjust_requires_membership(self, auth_client, simulation):
+        from apps.trainerlab.models import TrainerSession
+
+        TrainerSession.objects.create(simulation=simulation)
+        response = auth_client.post(
+            f"/api/v1/trainerlab/simulations/{simulation.pk}/adjust/",
+            data={"target": "trend", "direction": "up"},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="adjust-no-membership",
+        )
+        assert response.status_code == 403
 
 
 @pytest.mark.django_db

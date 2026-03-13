@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 from api.v1.auth import JWTAuth
 from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
+from api.v1.sse import stream_outbox_events
 from api.v1.utils import get_simulation_for_user
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
@@ -137,4 +138,32 @@ def list_events(
         items=items,
         next_cursor=next_cursor,
         has_more=has_more,
+    )
+
+
+@router.get(
+    "/{simulation_id}/events/stream/",
+    summary="SSE stream for simulation events",
+    description=(
+        "Streams outbox events for a simulation using a common transport envelope. "
+        "Optionally filter by event type prefix."
+    ),
+)
+@api_rate_limit
+def stream_events(
+    request: HttpRequest,
+    simulation_id: int,
+    cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
+    event_prefix: str | None = Query(
+        default=None,
+        description="Optional event_type prefix filter (e.g. trainerlab.)",
+    ),
+):
+    user = request.auth
+    get_simulation_for_user(simulation_id, user)
+    return stream_outbox_events(
+        simulation_id=simulation_id,
+        cursor=cursor,
+        event_type_prefix=event_prefix,
+        sse_event_name="simulation",
     )

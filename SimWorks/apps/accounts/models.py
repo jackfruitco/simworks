@@ -143,6 +143,74 @@ class RoleResource(models.Model):
         return self.resource
 
 
+class Lab(models.Model):
+    """Lab entitlement target (e.g., chatlab, trainerlab)."""
+
+    slug = models.SlugField(max_length=50, unique=True)
+    display_name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("slug",)
+
+    def __str__(self):
+        return self.display_name
+
+
+class LabMembership(models.Model):
+    """User access grant for a specific lab."""
+
+    class AccessLevel(models.TextChoices):
+        VIEWER = "viewer", "Viewer"
+        INSTRUCTOR = "instructor", "Instructor"
+        ADMIN = "admin", "Admin"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="lab_memberships",
+    )
+    lab = models.ForeignKey(
+        "accounts.Lab",
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    access_level = models.CharField(
+        max_length=20,
+        choices=AccessLevel.choices,
+        default=AccessLevel.INSTRUCTOR,
+    )
+    is_active = models.BooleanField(default=True)
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="granted_lab_memberships",
+    )
+    granted_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "lab"],
+                name="uniq_lab_membership_user_lab",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["lab", "is_active", "access_level"], name="idx_lab_membership_acl"
+            ),
+            models.Index(fields=["user", "is_active"], name="idx_lab_membership_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.lab.slug}:{self.access_level}"
+
+
 class Invitation(models.Model):
     token = models.CharField(max_length=64, unique=True, editable=False)
     email = models.EmailField(

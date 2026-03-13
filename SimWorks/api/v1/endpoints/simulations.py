@@ -17,6 +17,7 @@ from api.v1.schemas.simulations import (
     SimulationCreate,
     SimulationEndResponse,
     SimulationOut,
+    SimulationQuickCreate,
     simulation_to_out,
 )
 from apps.common.ratelimit import api_rate_limit
@@ -97,6 +98,11 @@ def list_simulations(
         default=None,
         description="Filter by status: in_progress, completed, timed_out, failed, canceled",
     ),
+    q: str | None = Query(default=None, description="Search query"),
+    search_messages: bool = Query(
+        default=False,
+        description="When true, include chat message content in search",
+    ),
 ) -> PaginatedResponse[SimulationOut]:
     """List all simulations for the authenticated user."""
     from apps.simcore.models import Simulation
@@ -115,6 +121,18 @@ def list_simulations(
         queryset = queryset.filter(status=status)
     elif status == "timed_out":
         queryset = queryset.filter(status="timed_out")
+
+    search = (q or "").strip()
+    if search:
+        search_filter = (
+            Q(diagnosis__icontains=search)
+            | Q(chief_complaint__icontains=search)
+            | Q(prompt_instruction__icontains=search)
+            | Q(prompt_message__icontains=search)
+        )
+        if search_messages:
+            search_filter |= Q(input__content__icontains=search)
+        queryset = queryset.filter(search_filter).distinct()
 
     # Apply cursor-based pagination (using ID for simplicity)
     if cursor:
@@ -137,27 +155,6 @@ def list_simulations(
         next_cursor=next_cursor,
         has_more=has_more,
     )
-
-
-@router.get(
-    "/{simulation_id}/",
-    response=SimulationOut,
-    summary="Get simulation details",
-    description="Returns details for a specific simulation.",
-)
-@api_rate_limit
-def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
-    """Get a specific simulation by ID."""
-    from apps.simcore.models import Simulation
-
-    user = request.auth
-
-    try:
-        sim = Simulation.objects.get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found") from None
-
-    return simulation_to_out(sim)
 
 
 @router.post(
@@ -191,6 +188,51 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
         diagnosis=body.diagnosis,
         patient_name=body.patient_full_name,
     )
+    return simulation_to_out(sim)
+
+
+@router.post(
+    "/quick-create/",
+    response={201: SimulationOut},
+    summary="Quick-create ChatLab simulation",
+    description=(
+        "Creates a ChatLab simulation with server-generated patient identity and "
+        "optional modifiers, and enqueues initial response generation."
+    ),
+)
+@api_rate_limit
+def quick_create_simulation(
+    request: HttpRequest,
+    body: SimulationQuickCreate,
+) -> tuple[int, SimulationOut]:
+    from apps.chatlab.utils import create_new_simulation
+
+    user = request.auth
+    simulation = async_to_sync(create_new_simulation)(
+        user=user,
+        modifiers=body.modifiers,
+    )
+    return 201, simulation_to_out(simulation)
+
+
+@router.get(
+    "/{simulation_id}/",
+    response=SimulationOut,
+    summary="Get simulation details",
+    description="Returns details for a specific simulation.",
+)
+@api_rate_limit
+def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
+    """Get a specific simulation by ID."""
+    from apps.simcore.models import Simulation
+
+    user = request.auth
+
+    try:
+        sim = Simulation.objects.get(pk=simulation_id, user=user)
+    except Simulation.DoesNotExist:
+        raise HttpError(404, "Simulation not found") from None
+
     return simulation_to_out(sim)
 
 
