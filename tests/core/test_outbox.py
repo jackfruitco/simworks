@@ -12,6 +12,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from asgiref.sync import sync_to_async
 from django.db import IntegrityError
 from django.utils import timezone
 import pytest
@@ -305,6 +306,23 @@ class TestGetEventsForSimulation:
         ids1 = {e.id for e in events1}
         ids2 = {e.id for e in events2}
         assert not ids1 & ids2
+
+    @pytest.mark.asyncio
+    async def test_cursor_pagination_handles_same_created_at(self):
+        """Timestamp ties should still page deterministically."""
+        for i in range(3):
+            await enqueue_event(f"event{i}", 103, {"n": i}, f"e{i}:103")
+
+        shared_timestamp = timezone.now()
+        await sync_to_async(OutboxEvent.objects.filter(simulation_id=103).update)(
+            created_at=shared_timestamp
+        )
+
+        events1, cursor, _ = await get_events_for_simulation(103, limit=2)
+        events2, _, _ = await get_events_for_simulation(103, cursor=cursor, limit=2)
+
+        seen_ids = [event.id for event in events1] + [event.id for event in events2]
+        assert len(seen_ids) == len(set(seen_ids)) == 3
 
     @pytest.mark.asyncio
     async def test_returns_empty_for_no_events(self):

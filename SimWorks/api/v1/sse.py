@@ -8,11 +8,11 @@ import time
 from typing import Any
 import uuid
 
-from django.db.models import Q
 from django.http import StreamingHttpResponse
 from ninja.errors import HttpError
 
 from api.v1.schemas.events import EventEnvelope
+from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 
 
 def build_transport_envelope(event) -> dict[str, Any]:
@@ -40,9 +40,8 @@ def stream_outbox_events(
     base_queryset = OutboxEvent.objects.filter(simulation_id=simulation_id)
     if event_type_prefix:
         base_queryset = base_queryset.filter(event_type__startswith=event_type_prefix)
+    base_queryset = order_outbox_queryset(base_queryset)
 
-    initial_created_at = None
-    initial_event_id = None
     if cursor:
         try:
             cursor_uuid = uuid.UUID(cursor)
@@ -52,24 +51,18 @@ def stream_outbox_events(
         cursor_event = base_queryset.filter(id=cursor_uuid).first()
         if cursor_event is None:
             raise HttpError(400, "Invalid cursor")
-        initial_created_at = cursor_event.created_at
-        initial_event_id = cursor_event.id
 
     def event_stream():
-        last_created_at = initial_created_at
-        last_event_id = initial_event_id
+        last_event = cursor_event if cursor else None
 
         while True:
             queryset = OutboxEvent.objects.filter(simulation_id=simulation_id)
             if event_type_prefix:
                 queryset = queryset.filter(event_type__startswith=event_type_prefix)
-            queryset = queryset.order_by("created_at", "id")
+            queryset = order_outbox_queryset(queryset)
 
-            if last_created_at is not None and last_event_id is not None:
-                queryset = queryset.filter(
-                    Q(created_at__gt=last_created_at)
-                    | Q(created_at=last_created_at, id__gt=last_event_id)
-                )
+            if last_event is not None:
+                queryset = apply_outbox_cursor(queryset, last_event)
 
             events = list(queryset[:100])
             for event in events:
@@ -79,8 +72,7 @@ def stream_outbox_events(
                 yield f"id: {event.id}\n"
                 yield f"event: {sse_event_name}\n"
                 yield f"data: {json.dumps(data)}\n\n"
-                last_created_at = event.created_at
-                last_event_id = event.id
+                last_event = event
 
             yield ": keepalive\n\n"
             time.sleep(1)

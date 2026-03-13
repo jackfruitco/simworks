@@ -31,7 +31,7 @@ STITCH_GREETING_MESSAGE = (
 
 def _create_feedback_starter_message(sim, conversation):
     """Create the initial Stitch greeting message for new feedback conversations."""
-    from apps.chatlab.media_payloads import build_message_media_payload
+    from apps.chatlab.media_payloads import build_chat_message_event_payload
     from apps.chatlab.models import Message, RoleChoices
     from apps.common.outbox import enqueue_event_sync, poke_drain_sync
     from apps.common.utils.accounts import get_system_user
@@ -48,24 +48,11 @@ def _create_feedback_starter_message(sim, conversation):
         display_name="Stitch",
     )
 
-    payload = {
-        "id": message.id,
-        "message_id": message.id,
-        "role": message.role,
-        "content": message.content or "",
-        "timestamp": message.timestamp.isoformat() if message.timestamp else None,
-        "status": "completed",
-        "messageType": message.message_type,
-        "isFromAi": message.is_from_ai,
-        "isFromAI": message.is_from_ai,
-        "displayName": message.display_name or "",
-        "senderId": message.sender_id,
-        "sender_id": message.sender_id,
-        "conversation_id": conversation.id,
-        "conversation_type": conversation.conversation_type.slug,
-        "source_message_id": message.source_message_id,
-        **build_message_media_payload(message),
-    }
+    payload = build_chat_message_event_payload(
+        message,
+        conversation_type=conversation.conversation_type.slug,
+        status="completed",
+    )
     event = enqueue_event_sync(
         event_type="chat.message_created",
         simulation_id=sim.id,

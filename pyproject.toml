@@ -8,6 +8,7 @@ dependencies = [
     "channels>=4.3.2",
     "channels-redis>=4.3.0",
     "daphne>=4.2.1",
+    "uvicorn>=0.38.0",
     "django-allauth[socialaccount]==65.15.0",
     "django-autoslug>=1.9.9",
     # "django-celery-beat>=2.8.1",

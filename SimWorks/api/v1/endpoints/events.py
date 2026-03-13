@@ -12,6 +12,7 @@ from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.sse import stream_outbox_events
 from api.v1.utils import get_simulation_for_user
+from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
 
@@ -55,9 +56,11 @@ def list_events(
     get_simulation_for_user(simulation_id, user)
 
     # Build queryset
-    queryset = OutboxEvent.objects.filter(
-        simulation_id=simulation_id,
-    ).order_by("created_at")
+    queryset = order_outbox_queryset(
+        OutboxEvent.objects.filter(
+            simulation_id=simulation_id,
+        )
+    )
 
     # Apply cursor-based pagination
     if cursor:
@@ -68,8 +71,8 @@ def list_events(
 
         # Get the created_at of the cursor event
         try:
-            cursor_event = OutboxEvent.objects.get(id=cursor_uuid)
-            queryset = queryset.filter(created_at__gt=cursor_event.created_at)
+            cursor_event = OutboxEvent.objects.get(id=cursor_uuid, simulation_id=simulation_id)
+            queryset = apply_outbox_cursor(queryset, cursor_event)
         except OutboxEvent.DoesNotExist:
             raise HttpError(400, "Invalid cursor: event not found") from None
 
