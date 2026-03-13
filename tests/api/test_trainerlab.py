@@ -406,10 +406,10 @@ class TestTrainerLabEvents:
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="event-friendly-label-session")
-        session_id = session["id"]
+        simulation_id = session["simulation_id"]
 
         response = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/events/injuries/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
                 "injury_category": "massive hemorrhage",
                 "injury_location": "left upper arm",
@@ -434,10 +434,10 @@ class TestTrainerLabEvents:
     ):
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="event-invalid-label-session")
-        session_id = session["id"]
+        simulation_id = session["simulation_id"]
 
         response = client.post(
-            f"/api/v1/trainerlab/sessions/{session_id}/events/injuries/",
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
                 "injury_category": "massive hemorrhage",
                 "injury_location": "not-a-real-location",

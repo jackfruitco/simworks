@@ -58,6 +58,7 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     Intervention,
+    RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
     TrainerCommand,
@@ -493,7 +494,7 @@ def apply_preset(
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.preset.applied:{session.id}:{instruction.id}",
+        idempotency_key=(f"trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}"),
     )
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
@@ -944,6 +945,8 @@ def _create_vital(session: TrainerSession, body: VitalCreateIn) -> ABCEvent:
 
     if body.vital_type == "heart_rate":
         return HeartRate.objects.create(**common)
+    if body.vital_type == "respiratory_rate":
+        return RespiratoryRate.objects.create(**common)
     if body.vital_type == "spo2":
         return SPO2.objects.create(**common)
     if body.vital_type == "etco2":
