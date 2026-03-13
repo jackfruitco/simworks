@@ -12,6 +12,7 @@ Tests that:
 from unittest.mock import AsyncMock, patch
 
 from django.test import Client
+from django.utils import timezone
 import pytest
 
 from api.v1.auth import create_access_token
@@ -194,6 +195,40 @@ class TestListSimulations:
         assert len(data["items"]) == 1
         assert data["has_more"] is False
         assert data["next_cursor"] is None
+
+    def test_list_simulations_pagination_stays_stable_for_same_timestamp(
+        self,
+        auth_client,
+        test_user,
+    ):
+        from apps.simcore.models import Simulation
+
+        simulations = [
+            Simulation.objects.create(user=test_user, sim_patient_full_name=f"Patient {i}")
+            for i in range(3)
+        ]
+        shared_timestamp = timezone.now()
+        Simulation.objects.filter(pk__in=[sim.pk for sim in simulations]).update(
+            start_timestamp=shared_timestamp
+        )
+
+        first_page = auth_client.get("/api/v1/simulations/?limit=2")
+        assert first_page.status_code == 200
+        first_data = first_page.json()
+        assert len(first_data["items"]) == 2
+        assert first_data["has_more"] is True
+
+        second_page = auth_client.get(
+            f"/api/v1/simulations/?limit=2&cursor={first_data['next_cursor']}"
+        )
+        assert second_page.status_code == 200
+        second_data = second_page.json()
+        assert len(second_data["items"]) == 1
+
+        seen_ids = [item["id"] for item in first_data["items"]] + [
+            item["id"] for item in second_data["items"]
+        ]
+        assert len(seen_ids) == len(set(seen_ids)) == 3
 
     def test_list_simulations_supports_search_query(self, auth_client, test_user):
         from apps.simcore.models import Simulation
@@ -508,7 +543,8 @@ class TestAdjustSimulation:
             data={
                 "target": "avpu",
                 "direction": "set",
-                "avpu_state": "pain",
+                "avpu_state": "verbal",
+                "note": "Downgrade responsiveness",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="adjust-1",

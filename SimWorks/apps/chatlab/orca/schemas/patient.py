@@ -80,7 +80,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
-        from apps.chatlab.media_payloads import build_message_media_payload
+        from apps.chatlab.media_payloads import build_chat_message_event_payload
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         # Broadcast messages
@@ -90,26 +90,11 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
                 event_type="chat.message_created",
                 objects=messages,
                 context=context,
-                payload_builder=lambda msg: {
-                    "message_id": msg.id,
-                    "id": msg.id,
-                    "content": msg.content or "",
-                    "role": msg.role,
-                    "is_from_ai": msg.is_from_ai,
-                    "isFromAi": msg.is_from_ai,
-                    "isFromAI": msg.is_from_ai,
-                    "display_name": msg.display_name or "",
-                    "displayName": msg.display_name or "",
-                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
-                    "conversation_id": msg.conversation_id,
-                    "conversation_type": "simulated_patient",
-                    "messageType": msg.message_type,
-                    "sender_id": msg.sender_id,
-                    "senderId": msg.sender_id,
-                    "status": "completed",
-                    "source_message_id": msg.source_message_id,
-                    **build_message_media_payload(msg),
-                },
+                payload_builder=lambda msg: build_chat_message_event_payload(
+                    msg,
+                    fallback_conversation_type="simulated_patient",
+                    status="completed",
+                ),
             )
 
         # Broadcast metadata
@@ -207,7 +192,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
-        from apps.chatlab.media_payloads import build_message_media_payload
+        from apps.chatlab.media_payloads import build_chat_message_event_payload
         from apps.chatlab.models import Message
         from apps.common.outbox.helpers import broadcast_domain_objects
 
@@ -230,27 +215,11 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
                 event_type="chat.message_created",
                 objects=messages,
                 context=context,
-                payload_builder=lambda msg: {
-                    "message_id": msg.id,
-                    "id": msg.id,
-                    "content": msg.content or "",
-                    "role": msg.role,
-                    "is_from_ai": msg.is_from_ai,
-                    "isFromAi": msg.is_from_ai,
-                    "isFromAI": msg.is_from_ai,
-                    "display_name": msg.display_name or "",
-                    "displayName": msg.display_name or "",
-                    "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
-                    "image_requested": msg.image_requested,
-                    "conversation_id": msg.conversation_id,
-                    "conversation_type": "simulated_patient",
-                    "messageType": msg.message_type,
-                    "sender_id": msg.sender_id,
-                    "senderId": msg.sender_id,
-                    "status": "completed",
-                    "source_message_id": msg.source_message_id,
-                    **build_message_media_payload(msg),
-                },
+                payload_builder=lambda msg: build_chat_message_event_payload(
+                    msg,
+                    fallback_conversation_type="simulated_patient",
+                    status="completed",
+                ),
             )
 
         if self.should_generate_image and messages:

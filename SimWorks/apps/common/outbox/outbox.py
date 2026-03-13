@@ -36,6 +36,7 @@ import uuid
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +197,18 @@ def build_ws_envelope(event: OutboxEvent) -> dict[str, Any]:
         "payload": event.payload,
     }
 
+def order_outbox_queryset(queryset):
+    """Apply the canonical deterministic ordering for outbox pagination."""
+    return queryset.order_by("created_at", "id")
+
+
+def apply_outbox_cursor(queryset, cursor_event):
+    """Return rows strictly after ``cursor_event`` using a stable tie-breaker."""
+    return queryset.filter(
+        Q(created_at__gt=cursor_event.created_at)
+        | Q(created_at=cursor_event.created_at, id__gt=cursor_event.id)
+    )
+
 
 async def poke_drain() -> None:
     """Trigger immediate drain for low-latency delivery.
@@ -255,17 +268,22 @@ async def get_events_for_simulation(
 
     @sync_to_async
     def _query():
-        queryset = OutboxEvent.objects.filter(
-            simulation_id=simulation_id,
-        ).order_by("created_at")
+        queryset = order_outbox_queryset(
+            OutboxEvent.objects.filter(
+                simulation_id=simulation_id,
+            )
+        )
 
         if cursor:
             try:
                 cursor_uuid = uuid.UUID(cursor)
                 # Get the created_at of the cursor event
                 try:
-                    cursor_event = OutboxEvent.objects.get(id=cursor_uuid)
-                    queryset = queryset.filter(created_at__gt=cursor_event.created_at)
+                    cursor_event = OutboxEvent.objects.get(
+                        id=cursor_uuid,
+                        simulation_id=simulation_id,
+                    )
+                    queryset = apply_outbox_cursor(queryset, cursor_event)
                 except OutboxEvent.DoesNotExist:
                     pass  # Invalid cursor, return from beginning
             except ValueError:

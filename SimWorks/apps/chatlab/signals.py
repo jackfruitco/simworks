@@ -109,39 +109,10 @@ def broadcast_new_message(sender, instance, created, **kwargs):
 
     if created and not instance.is_from_ai:
         try:
-            from apps.chatlab.media_payloads import build_message_media_payload
+            from apps.chatlab.media_payloads import build_chat_message_event_payload
 
             # Resolve conversation type slug (avoid N+1 via cached FK)
-            conversation_type = None
-            if instance.conversation_id:
-                try:
-                    conversation_type = instance.conversation.conversation_type.slug
-                except Exception:
-                    pass  # FK not prefetched; leave as None
-
-            # Build payload matching the existing broadcast_message format
-            payload = {
-                "id": instance.id,
-                "message_id": instance.id,  # Explicit message_id for deduplication
-                "role": instance.role,
-                "content": instance.content or "",
-                "timestamp": instance.timestamp.isoformat() if instance.timestamp else None,
-                "status": instance.delivery_status,
-                "delivery_status": instance.delivery_status,
-                "delivery_retryable": instance.delivery_retryable,
-                "delivery_error_code": instance.delivery_error_code or "",
-                "delivery_error_text": instance.delivery_error_text or "",
-                "messageType": instance.message_type,
-                "isFromAi": instance.is_from_ai,
-                "isFromAI": instance.is_from_ai,  # Alias for compatibility
-                "displayName": instance.display_name or "",
-                "senderId": instance.sender_id,
-                "sender_id": instance.sender_id,  # Snake_case alias
-                "conversation_id": instance.conversation_id,
-                "conversation_type": conversation_type,
-                "source_message_id": instance.source_message_id,
-                **build_message_media_payload(instance),
-            }
+            payload = build_chat_message_event_payload(instance, status=instance.delivery_status)
 
             # Create outbox event with idempotency key based on message ID
             event = enqueue_event_sync(

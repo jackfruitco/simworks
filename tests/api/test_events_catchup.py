@@ -11,6 +11,7 @@ Tests that:
 import uuid
 
 from django.test import Client
+from django.utils import timezone
 import pytest
 
 from api.v1.auth import create_access_token
@@ -210,6 +211,41 @@ class TestListEventsPagination:
         assert len(data["items"]) == 1
         assert data["has_more"] is False
         assert data["next_cursor"] is None
+
+    def test_cursor_pagination_handles_same_created_at(self, auth_client, simulation):
+        """Rows sharing a timestamp should still paginate without overlap or skips."""
+        from apps.common.models import OutboxEvent
+
+        events = [
+            OutboxEvent.objects.create(
+                event_type=f"test.same_ts_{i}",
+                simulation_id=simulation.pk,
+                payload={"index": i},
+                idempotency_key=f"same-ts:{simulation.pk}:{uuid.uuid4()}",
+            )
+            for i in range(3)
+        ]
+        shared_timestamp = timezone.now()
+        OutboxEvent.objects.filter(id__in=[event.id for event in events]).update(
+            created_at=shared_timestamp
+        )
+
+        first_page = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/?limit=2")
+        assert first_page.status_code == 200
+        first_data = first_page.json()
+        assert len(first_data["items"]) == 2
+
+        second_page = auth_client.get(
+            f"/api/v1/simulations/{simulation.pk}/events/?cursor={first_data['next_cursor']}&limit=2"
+        )
+        assert second_page.status_code == 200
+        second_data = second_page.json()
+        assert len(second_data["items"]) == 1
+
+        seen_ids = [item["event_id"] for item in first_data["items"]] + [
+            item["event_id"] for item in second_data["items"]
+        ]
+        assert len(seen_ids) == len(set(seen_ids)) == 3
 
     def test_invalid_cursor_returns_400(self, auth_client, simulation, outbox_events):
         """Invalid cursor returns 400 Bad Request."""

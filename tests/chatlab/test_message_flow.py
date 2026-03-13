@@ -292,3 +292,31 @@ class TestMessagePayloadFormat:
 
         # Empty content should be empty string, not None
         assert payload["content"] == ""
+
+    def test_shared_payload_builder_matches_signal_payload(
+        self,
+        simulation,
+        user,
+        conversation,
+    ):
+        """The canonical payload builder should match the signal-produced event payload."""
+        from apps.chatlab.media_payloads import build_chat_message_event_payload
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
+
+        with patch("apps.common.outbox.poke_drain_sync"):
+            message = Message.objects.create(
+                simulation=simulation,
+                conversation=conversation,
+                sender=user,
+                content="Signal payload parity",
+                role=RoleChoices.USER,
+                is_from_ai=False,
+                message_type="text",
+                display_name="Dr. Patient",
+            )
+
+        event = OutboxEvent.objects.latest("created_at")
+        expected = build_chat_message_event_payload(message, status=message.delivery_status)
+
+        assert event.payload == expected

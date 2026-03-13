@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC
+from typing import Any
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -43,6 +44,7 @@ from api.v1.schemas.trainerlab import (
 )
 from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
+from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
@@ -140,8 +142,40 @@ def _accepted(command: TrainerCommand) -> TrainerCommandAck:
     return TrainerCommandAck(command_id=str(command.id), status="accepted")
 
 
+def _normalize_command_payload(payload_json: dict[str, Any] | None) -> dict[str, Any]:
+    return payload_json or {}
+
+
 def _build_dict_items(choices) -> list[DictionaryItemOut]:
     return [DictionaryItemOut(code=code, label=str(label)) for code, label in choices]
+
+
+def _claim_command(
+    *,
+    session: TrainerSession,
+    command_type: str,
+    idempotency_key: str,
+    issued_by,
+    payload_json: dict[str, Any] | None = None,
+) -> tuple[TrainerCommand, bool]:
+    normalized_payload = _normalize_command_payload(payload_json)
+    command, created = get_or_create_command(
+        session=session,
+        command_type=command_type,
+        idempotency_key=idempotency_key,
+        issued_by=issued_by,
+        payload_json=normalized_payload,
+    )
+    if created:
+        return command, True
+
+    _ensure_command_compatible(
+        command,
+        session=session,
+        command_type=command_type,
+        payload_json=normalized_payload,
+    )
+    return command, False
 
 
 def _ensure_command_compatible(
@@ -149,12 +183,40 @@ def _ensure_command_compatible(
     *,
     session: TrainerSession,
     command_type: str,
+    payload_json: dict[str, Any] | None = None,
 ) -> None:
     if command.session_id != session.id or command.command_type != command_type:
         raise HttpError(409, "Idempotency-Key already used for a different command")
+    if (command.payload_json or {}) != _normalize_command_payload(payload_json):
+        raise HttpError(409, "Idempotency-Key already used for a different request payload")
 
     if command.status == TrainerCommand.CommandStatus.FAILED:
         raise HttpError(409, command.error or "Command previously failed")
+
+
+def _replay_create_session(
+    *,
+    user,
+    idempotency_key: str,
+    payload_json: dict[str, Any],
+) -> TrainerSession | None:
+    existing = (
+        TrainerCommand.objects.select_related("session__simulation")
+        .filter(idempotency_key=idempotency_key)
+        .first()
+    )
+    if existing is None:
+        return None
+
+    if existing.command_type != TrainerCommand.CommandType.CREATE_SESSION:
+        raise HttpError(409, "Idempotency-Key already used for a different command")
+    if not existing.session_id or existing.session is None:
+        raise HttpError(409, "Idempotency-Key already used for a different command")
+    if existing.session.simulation.user_id != user.id:
+        raise HttpError(409, "Idempotency-Key already used")
+    if (existing.payload_json or {}) != payload_json:
+        raise HttpError(409, "Idempotency-Key already used for a different request payload")
+    return existing.session
 
 
 def _instruction_queryset_for_user(user):
@@ -452,21 +514,15 @@ def apply_preset(
     correlation_id = _get_correlation_id(request)
 
     payload = {"preset_id": instruction.id, "simulation_id": session.simulation_id}
-    command, created = get_or_create_command(
+    command, created = _claim_command(
         session=session,
         command_type=TrainerCommand.CommandType.APPLY_PRESET,
         idempotency_key=idempotency_key,
         issued_by=user,
         payload_json=payload,
     )
-    if not created:
-        _ensure_command_compatible(
-            command,
-            session=session,
-            command_type=TrainerCommand.CommandType.APPLY_PRESET,
-        )
-        if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return _accepted(command)
+    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+        return _accepted(command)
 
     state = dict(session.runtime_state_json or {})
     applied_presets = list(state.get("applied_presets", []))
@@ -515,19 +571,19 @@ def create_trainer_session(
     require_instructor_membership(user)
 
     idempotency_key = _get_idempotency_key(request)
-    existing = (
-        TrainerCommand.objects.select_related("session__simulation")
-        .filter(idempotency_key=idempotency_key)
-        .first()
+    payload = {
+        "action": "create_session",
+        "scenario_spec": body.scenario_spec,
+        "directives": body.directives,
+        "modifiers": body.modifiers,
+    }
+    existing = _replay_create_session(
+        user=user,
+        idempotency_key=idempotency_key,
+        payload_json=payload,
     )
-    if existing:
-        if existing.command_type != TrainerCommand.CommandType.CREATE_SESSION:
-            raise HttpError(409, "Idempotency-Key already used for a different command")
-        if existing.payload_json.get("action") != "create_session" or not existing.session_id:
-            raise HttpError(409, "Idempotency-Key already used for a different command")
-        if existing.session.simulation.user_id != user.id:
-            raise HttpError(409, "Idempotency-Key already used")
-        return 200, trainer_run_to_out(existing.session)
+    if existing is not None:
+        return 200, trainer_run_to_out(existing)
 
     session, _call_id = create_session_with_initial_generation(
         user=user,
@@ -539,7 +595,7 @@ def create_trainer_session(
     TrainerCommand.objects.create(
         session=session,
         command_type=TrainerCommand.CommandType.CREATE_SESSION,
-        payload_json={"action": "create_session"},
+        payload_json=payload,
         status=TrainerCommand.CommandStatus.PROCESSED,
         idempotency_key=idempotency_key,
         issued_by=user,
@@ -624,18 +680,15 @@ def _process_run_command(
 
     session = _get_session_for_simulation(simulation_id, user)
 
-    command, created = get_or_create_command(
+    command, created = _claim_command(
         session=session,
         command_type=command_type,
         idempotency_key=idempotency_key,
         issued_by=user,
         payload_json={},
     )
-
-    if not created:
-        _ensure_command_compatible(command, session=session, command_type=command_type)
-        if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return trainer_run_to_out(session)
+    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+        return trainer_run_to_out(session)
 
     try:
         if command_type == TrainerCommand.CommandType.START:
@@ -715,21 +768,15 @@ def steer_prompt(
 
     session = _get_session_for_simulation(simulation_id, user)
 
-    command, created = get_or_create_command(
+    command, created = _claim_command(
         session=session,
         command_type=TrainerCommand.CommandType.STEER_PROMPT,
         idempotency_key=idempotency_key,
         issued_by=user,
         payload_json={"prompt": body.prompt},
     )
-    if not created:
-        _ensure_command_compatible(
-            command,
-            session=session,
-            command_type=TrainerCommand.CommandType.STEER_PROMPT,
-        )
-        if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return _accepted(command)
+    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+        return _accepted(command)
 
     state = dict(session.runtime_state_json or {})
     prompts = list(state.get("steering_prompts", []))
@@ -780,23 +827,19 @@ def adjust_simulation(
     session = _get_session_for_simulation(simulation_id, user)
 
     payload = body.model_dump()
-    command, created = get_or_create_command(
+    command, created = _claim_command(
         session=session,
         command_type=TrainerCommand.CommandType.ADJUST_SCENARIO,
         idempotency_key=idempotency_key,
         issued_by=user,
         payload_json=payload,
     )
-    if not created:
-        _ensure_command_compatible(
-            command, session=session, command_type=TrainerCommand.CommandType.ADJUST_SCENARIO
+    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+        return SimulationAdjustAck(
+            command_id=str(command.id),
+            status="accepted",
+            simulation_id=simulation.id,
         )
-        if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return SimulationAdjustAck(
-                command_id=str(command.id),
-                status="accepted",
-                simulation_id=simulation.id,
-            )
 
     adjustment_entry = {
         "command_id": str(command.id),
@@ -976,17 +1019,15 @@ def _inject_event_core(
 
     session = _get_session_for_simulation(simulation_id, user)
 
-    command, created = get_or_create_command(
+    command, created = _claim_command(
         session=session,
         command_type=command_type,
         idempotency_key=idempotency_key,
         issued_by=user,
         payload_json=payload_json,
     )
-    if not created:
-        _ensure_command_compatible(command, session=session, command_type=command_type)
-        if command.status == TrainerCommand.CommandStatus.PROCESSED:
-            return _accepted(command)
+    if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
+        return _accepted(command)
 
     try:
         domain_event = create_fn(session)
@@ -1110,10 +1151,12 @@ def list_trainer_events(
     require_instructor_membership(user)
     session = _get_session_for_simulation(simulation_id, user)
 
-    queryset = OutboxEvent.objects.filter(
-        simulation_id=session.simulation_id,
-        event_type__startswith="trainerlab.",
-    ).order_by("created_at")
+    queryset = order_outbox_queryset(
+        OutboxEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type__startswith="trainerlab.",
+        )
+    )
 
     if cursor:
         try:
@@ -1129,7 +1172,7 @@ def list_trainer_events(
         if cursor_event is None:
             raise HttpError(400, "Invalid cursor")
 
-        queryset = queryset.filter(created_at__gt=cursor_event.created_at)
+        queryset = apply_outbox_cursor(queryset, cursor_event)
 
     events = list(queryset[: limit + 1])
     has_more = len(events) > limit

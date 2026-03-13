@@ -9,6 +9,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.utils.timezone import now
 
+from apps.chatlab.media_payloads import build_chat_message_event_payload
 from apps.chatlab.models import ChatSession, Message, MessageMediaLink
 from apps.common.orm_mode import must_be_async
 from apps.common.utils import remove_null_keys
@@ -18,7 +19,7 @@ from apps.simcore.models import (
     Simulation,
     SimulationMetadata,
 )
-from apps.simcore.utils import generate_fake_name, get_user_initials
+from apps.simcore.utils import generate_fake_name
 
 from .apps import ChatLabConfig
 
@@ -133,7 +134,7 @@ async def socket_send(
     **kwargs,
 ) -> None:
     """
-    Sends an arbitrary payload to the specified WebSocket group.
+    Legacy direct WebSocket sender for transient hints only.
 
     :param __payload: Dict payload to send over the socket.
     :param __group: The socket group name (typically tied to the simulation ID).
@@ -142,6 +143,12 @@ async def socket_send(
     :param __simulation_id: Optional simulation ID to use for group generation
     :param kwargs: Additional keyword arguments to pass to the `group_send` method.
     """
+    durable_event_types = {"chat.message_created", "message_status_update", "simulation.state_changed"}
+    if __type in durable_event_types:
+        logger.warning(
+            "socket_send called for durable event %s; prefer outbox delivery instead",
+            __type,
+        )
 
     # Build group name from apps.simcore ID if group not provided
     if __group is None:
@@ -288,30 +295,9 @@ async def broadcast_message(
     status: str | None = None,
     **kwargs,
 ) -> None:
-    """Broadcasts a message event to the specified group layer.
+    """Legacy compatibility wrapper that now routes durable message events via outbox."""
+    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
-    Uses `socket_send` to send the event payload to the specified group.
-
-    The message can originate either from a system or a user.
-
-    If a message ID is provided instead of a Message instance, the function retrieves the corresponding Message object
-    from the database. Similarly, the associated Simulation object is retrieved to enrich the payload with additional
-    details like sender information and simulation-specific identifiers.
-
-    Optionally, include display_name in kwargs to override the sender's display name, which defaults to the simulated
-    patient's display name per the Simulation object, or the user's full name if the sender is a user.
-
-    The payload generated contains relevant metadata about the message, such as the sender's
-    information, display details, media attachments, and the message type. The data is then
-    cleaned of null values before being broadcast to the specified group.
-
-    :param message: Message instance or ID of the message to be broadcast.
-    :type message: Message or int
-    :param status: Status associated with the message being broadcast, optional.
-    :type status: str, optional
-    :return: None
-    :rtype: None
-    """
     # Get Message instance if provided ID
     if not isinstance(message, Message):
         try:
@@ -324,51 +310,18 @@ async def broadcast_message(
             logger.error(msg=f"Message ID {message} not found. Skipping broadcast.")
             return None
 
-    # Get Simulation instance from Message FK
-    try:
-        simulation = await Simulation.objects.aget(id=message.simulation_id)
-    except Simulation.DoesNotExist:
-        logger.error(msg=f"Simulation ID {message.simulation_id} not found. Skipping broadcast.")
-        return None
-
-    # Set channel and group layers to broadcast to
-    get_channel_layer()
-    group = f"simulation_{message.simulation_id}"
-
-    has_sender = message.sender is not None
-    if has_sender:
-        # `sender` was loaded via select_related; safe to access directly without extra queries
-        sender_username = message.sender.username
-        display_name = message.display_name or message.sender.username
-        display_initials = get_user_initials(message.sender)
-    else:
-        sender_username = "System"
-        display_name = kwargs.get("display_name", simulation.sim_patient_display_name)
-        display_initials = kwargs.get("display_name", "")[:1] or simulation.sim_patient_initials
-
-    media_list = message.media.all()
-    _media = [
-        {
-            "id": media.id,
-            "url": media.thumbnail.url,
-        }
-        for media in media_list
-    ]
-
-    payload = {
-        "id": message.id,
-        "role": message.role,
-        "content": message.content or None,
-        "media": [m["id"] for m in _media] or None,
-        "mediaList": _media or None,
-        "timestamp": message.timestamp.isoformat(),
-        "status": status or None,
-        "messageType": message.message_type,
-        "senderId": sender_username or None,
-        "displayName": display_name or None,
-        "displayInitials": display_initials or None,
-        "isFromAi": message.is_from_ai or None,
-    }
+    payload = build_chat_message_event_payload(
+        message,
+        status=status,
+        fallback_conversation_type="simulated_patient",
+    )
     payload = await sync_to_async(remove_null_keys)(payload)
-
-    return await socket_send(__payload=payload, __group=group, __type="chat.message_created")
+    event = await sync_to_async(enqueue_event_sync)(
+        event_type="chat.message_created",
+        simulation_id=message.simulation_id,
+        payload=payload,
+        idempotency_key=f"chat.message_created:{message.id}",
+    )
+    if event:
+        await sync_to_async(poke_drain_sync)()
+    return None

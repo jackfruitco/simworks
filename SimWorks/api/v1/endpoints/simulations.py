@@ -108,7 +108,7 @@ def list_simulations(
     from apps.simcore.models import Simulation
 
     user = request.auth
-    queryset = Simulation.objects.filter(user=user).order_by("-start_timestamp")
+    queryset = Simulation.objects.filter(user=user).order_by("-start_timestamp", "-pk")
 
     # Apply status filter
     if status == "in_progress":
@@ -138,9 +138,20 @@ def list_simulations(
     if cursor:
         try:
             cursor_id = int(cursor)
-            queryset = queryset.filter(pk__lt=cursor_id)
         except (ValueError, TypeError):
             raise HttpError(400, "Invalid cursor format") from None
+
+        cursor_simulation = queryset.filter(pk=cursor_id).first()
+        if cursor_simulation is None:
+            raise HttpError(400, "Invalid cursor") from None
+
+        queryset = queryset.filter(
+            Q(start_timestamp__lt=cursor_simulation.start_timestamp)
+            | Q(
+                start_timestamp=cursor_simulation.start_timestamp,
+                pk__lt=cursor_simulation.pk,
+            )
+        )
 
     simulations = list(queryset[: limit + 1])
     has_more = len(simulations) > limit
