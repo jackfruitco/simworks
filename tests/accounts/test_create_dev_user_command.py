@@ -6,7 +6,6 @@ import pytest
 from apps.accounts.management.commands.create_dev_user import DEV_EMAIL, DEV_PASSWORD
 from apps.accounts.models import User, UserRole
 
-
 pytestmark = pytest.mark.django_db
 
 
