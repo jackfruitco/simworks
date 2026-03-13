@@ -119,7 +119,14 @@ class InterventionCreateIn(BaseModel):
 
 
 class VitalCreateIn(BaseModel):
-    vital_type: Literal["heart_rate", "spo2", "etco2", "blood_glucose", "blood_pressure"]
+    vital_type: Literal[
+        "heart_rate",
+        "respiratory_rate",
+        "spo2",
+        "etco2",
+        "blood_glucose",
+        "blood_pressure",
+    ]
     min_value: int
     max_value: int
     lock_value: bool = False
