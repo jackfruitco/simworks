@@ -11,15 +11,11 @@ DEV_PASSWORD = "dev"
 class Command(BaseCommand):
     help = (
         "Create a dev user (dev@medsim.local) if it does not exist. "
-        "Only runs when DJANGO_CREATE_DEV_USER=true and DJANGO_DEBUG=true."
+        "Only runs when DJANGO_CREATE_DEV_USER=true."
     )
 
     def handle(self, *args, **options):
         from apps.accounts.models import User, UserRole
-
-        if not bool_from_env("DJANGO_DEBUG"):
-            self.stdout.write(self.style.WARNING("Skipped: DJANGO_DEBUG is not enabled."))
-            return
 
         if not bool_from_env("DJANGO_CREATE_DEV_USER"):
             self.stdout.write(self.style.WARNING("Skipped: DJANGO_CREATE_DEV_USER is not enabled."))
