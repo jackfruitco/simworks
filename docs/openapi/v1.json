@@ -231,6 +231,36 @@
             },
             "required": false,
             "description": "Filter by status: in_progress, completed, timed_out, failed, canceled"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search query",
+              "title": "Q"
+            },
+            "required": false,
+            "description": "Search query"
+          },
+          {
+            "in": "query",
+            "name": "search_messages",
+            "schema": {
+              "default": false,
+              "description": "When true, include chat message content in search",
+              "title": "Search Messages",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "When true, include chat message content in search"
           }
         ],
         "responses": {
@@ -280,6 +310,44 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/SimulationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/quick-create/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_quick_create_simulation",
+        "summary": "Quick-create ChatLab simulation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a ChatLab simulation with server-generated patient identity and optional modifiers, and enqueues initial response generation.",
+        "tags": [
+          "simulations"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationQuickCreate"
               }
             }
           },
@@ -968,6 +1036,160 @@
         "security": [
           {
             "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/tools/": {
+      "get": {
+        "operationId": "api_v1_endpoints_tools_list_simulation_tools",
+        "summary": "List simulation tools",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "names",
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional repeated tool names filter (e.g., ?names=patient_history&names=patient_results)",
+              "title": "Names"
+            },
+            "required": false,
+            "description": "Optional repeated tool names filter (e.g., ?names=patient_history&names=patient_results)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns JSON payloads for simulation tools.",
+        "tags": [
+          "tools"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/tools/{tool_name}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_tools_get_simulation_tool",
+        "summary": "Get a simulation tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "tool_name",
+            "schema": {
+              "title": "Tool Name",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns JSON payload for a specific simulation tool.",
+        "tags": [
+          "tools"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/tools/patient_results/orders/": {
+      "post": {
+        "operationId": "api_v1_endpoints_tools_sign_lab_orders",
+        "summary": "Sign lab orders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignOrdersOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Signs requested lab orders and enqueues feedback generation.",
+        "tags": [
+          "tools"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignOrdersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
           }
         ]
       }
@@ -2599,6 +2821,21 @@
         "title": "SimulationCreate",
         "type": "object"
       },
+      "SimulationQuickCreate": {
+        "description": "Input schema for one-tap ChatLab simulation creation.",
+        "properties": {
+          "modifiers": {
+            "description": "Optional simulation modifier keys to apply.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          }
+        },
+        "title": "SimulationQuickCreate",
+        "type": "object"
+      },
       "SimulationEndResponse": {
         "description": "Response for ending a simulation.",
         "properties": {
@@ -3107,6 +3344,383 @@
           "has_more"
         ],
         "title": "PaginatedResponse[EventEnvelope]",
+        "type": "object"
+      },
+      "LabResultItem": {
+        "properties": {
+          "kind": {
+            "const": "lab_result",
+            "default": "lab_result",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Lab result key",
+            "title": "Key",
+            "type": "string"
+          },
+          "result_name": {
+            "description": "Lab result name",
+            "title": "Result Name",
+            "type": "string"
+          },
+          "panel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lab panel name",
+            "title": "Panel Name"
+          },
+          "value": {
+            "description": "Lab result value",
+            "title": "Value",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lab result unit",
+            "title": "Unit"
+          },
+          "reference_range_high": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper reference range",
+            "title": "Reference Range High"
+          },
+          "reference_range_low": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower reference range",
+            "title": "Reference Range Low"
+          },
+          "flag": {
+            "description": "Result flag",
+            "title": "Flag",
+            "type": "string"
+          },
+          "attribute": {
+            "description": "Model attribute label",
+            "title": "Attribute",
+            "type": "string"
+          },
+          "type": {
+            "description": "Result type",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "result_name",
+          "value",
+          "flag",
+          "attribute",
+          "type"
+        ],
+        "title": "LabResultItem",
+        "type": "object"
+      },
+      "PatientHistoryItem": {
+        "properties": {
+          "kind": {
+            "const": "patient_history",
+            "default": "patient_history",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Diagnosis key",
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "description": "Diagnosis details",
+            "title": "Value",
+            "type": "string"
+          },
+          "diagnosis": {
+            "description": "Diagnosis name",
+            "title": "Diagnosis",
+            "type": "string"
+          },
+          "is_resolved": {
+            "description": "Whether the condition is resolved",
+            "title": "Is Resolved",
+            "type": "boolean"
+          },
+          "duration": {
+            "description": "How long the history item has been present",
+            "title": "Duration",
+            "type": "string"
+          },
+          "summary": {
+            "description": "Human-readable history summary",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "diagnosis",
+          "is_resolved",
+          "duration",
+          "summary"
+        ],
+        "title": "PatientHistoryItem",
+        "type": "object"
+      },
+      "SimulationFeedbackItem": {
+        "properties": {
+          "kind": {
+            "const": "simulation_feedback",
+            "default": "simulation_feedback",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Feedback key",
+            "enum": [
+              "hotwash_correct_diagnosis",
+              "hotwash_correct_treatment_plan",
+              "hotwash_patient_experience",
+              "hotwash_overall_feedback",
+              "hotwash_continuation_direct_answer"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Typed feedback value",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "SimulationFeedbackItem",
+        "type": "object"
+      },
+      "SimulationMetadataItem": {
+        "properties": {
+          "kind": {
+            "const": "patient_demographics",
+            "default": "patient_demographics",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Metadata field key",
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "description": "Metadata field value",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "SimulationMetadataItem",
+        "type": "object"
+      },
+      "ToolDataItem": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SimulationMetadataItem"
+          },
+          {
+            "$ref": "#/components/schemas/SimulationFeedbackItem"
+          },
+          {
+            "$ref": "#/components/schemas/PatientHistoryItem"
+          },
+          {
+            "$ref": "#/components/schemas/LabResultItem"
+          }
+        ]
+      },
+      "ToolListResponse": {
+        "description": "Response for listing tool payloads.",
+        "properties": {
+          "items": {
+            "description": "Tool payloads",
+            "items": {
+              "$ref": "#/components/schemas/ToolOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ToolListResponse",
+        "type": "object"
+      },
+      "ToolOut": {
+        "description": "Output schema for a simulation tool payload.",
+        "properties": {
+          "name": {
+            "description": "Tool slug",
+            "title": "Name",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Human-readable tool name",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "data": {
+            "description": "Tool-specific data",
+            "items": {
+              "$ref": "#/components/schemas/ToolDataItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "is_generic": {
+            "default": false,
+            "description": "Whether this is a generic key-value tool",
+            "title": "Is Generic",
+            "type": "boolean"
+          },
+          "checksum": {
+            "description": "Checksum for client cache validation",
+            "title": "Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "checksum"
+        ],
+        "title": "ToolOut",
+        "type": "object"
+      },
+      "SignOrdersOut": {
+        "description": "Response for lab order signing.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "description": "Request status",
+            "title": "Status",
+            "type": "string"
+          },
+          "orders": {
+            "description": "Orders accepted for processing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "title": "SignOrdersOut",
+        "type": "object"
+      },
+      "SignOrdersIn": {
+        "description": "Input schema for lab order signing.",
+        "properties": {
+          "submitted_orders": {
+            "description": "Lab orders to sign and enqueue",
+            "items": {
+              "type": "string"
+            },
+            "title": "Submitted Orders",
+            "type": "array"
+          }
+        },
+        "title": "SignOrdersIn",
         "type": "object"
       },
       "ModifierGroupOut": {
@@ -3939,14 +4553,17 @@
       "InjuryCreateIn": {
         "properties": {
           "injury_category": {
+            "description": "Injury category code or friendly label (normalized to canonical code)",
             "title": "Injury Category",
             "type": "string"
           },
           "injury_location": {
+            "description": "Injury location code or friendly label (normalized to canonical code)",
             "title": "Injury Location",
             "type": "string"
           },
           "injury_kind": {
+            "description": "Injury kind code or friendly label (normalized to canonical code)",
             "title": "Injury Kind",
             "type": "string"
           },
@@ -4068,6 +4685,7 @@
           "vital_type": {
             "enum": [
               "heart_rate",
+              "respiratory_rate",
               "spo2",
               "etco2",
               "blood_glucose",

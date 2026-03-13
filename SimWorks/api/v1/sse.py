@@ -8,6 +8,7 @@ import time
 from typing import Any
 import uuid
 
+from django.db.models import Q
 from django.http import StreamingHttpResponse
 from ninja.errors import HttpError
 
@@ -41,6 +42,7 @@ def stream_outbox_events(
         base_queryset = base_queryset.filter(event_type__startswith=event_type_prefix)
 
     initial_created_at = None
+    initial_event_id = None
     if cursor:
         try:
             cursor_uuid = uuid.UUID(cursor)
@@ -51,18 +53,23 @@ def stream_outbox_events(
         if cursor_event is None:
             raise HttpError(400, "Invalid cursor")
         initial_created_at = cursor_event.created_at
+        initial_event_id = cursor_event.id
 
     def event_stream():
         last_created_at = initial_created_at
+        last_event_id = initial_event_id
 
         while True:
             queryset = OutboxEvent.objects.filter(simulation_id=simulation_id)
             if event_type_prefix:
                 queryset = queryset.filter(event_type__startswith=event_type_prefix)
-            queryset = queryset.order_by("created_at")
+            queryset = queryset.order_by("created_at", "id")
 
-            if last_created_at is not None:
-                queryset = queryset.filter(created_at__gt=last_created_at)
+            if last_created_at is not None and last_event_id is not None:
+                queryset = queryset.filter(
+                    Q(created_at__gt=last_created_at)
+                    | Q(created_at=last_created_at, id__gt=last_event_id)
+                )
 
             events = list(queryset[:100])
             for event in events:
@@ -73,6 +80,7 @@ def stream_outbox_events(
                 yield f"event: {sse_event_name}\n"
                 yield f"data: {json.dumps(data)}\n\n"
                 last_created_at = event.created_at
+                last_event_id = event.id
 
             yield ": keepalive\n\n"
             time.sleep(1)
