@@ -197,6 +197,7 @@ def build_ws_envelope(event: OutboxEvent) -> dict[str, Any]:
         "payload": event.payload,
     }
 
+
 def order_outbox_queryset(queryset):
     """Apply the canonical deterministic ordering for outbox pagination."""
     return queryset.order_by("created_at", "id")

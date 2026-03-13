@@ -143,7 +143,11 @@ async def socket_send(
     :param __simulation_id: Optional simulation ID to use for group generation
     :param kwargs: Additional keyword arguments to pass to the `group_send` method.
     """
-    durable_event_types = {"chat.message_created", "message_status_update", "simulation.state_changed"}
+    durable_event_types = {
+        "chat.message_created",
+        "message_status_update",
+        "simulation.state_changed",
+    }
     if __type in durable_event_types:
         logger.warning(
             "socket_send called for durable event %s; prefer outbox delivery instead",
