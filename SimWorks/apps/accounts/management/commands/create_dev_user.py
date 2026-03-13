@@ -11,7 +11,6 @@ DEV_PASSWORD = "dev"
 class Command(BaseCommand):
     help = (
         "Create a dev user (dev@medsim.local) if it does not exist. "
-      
         "Only runs when DJANGO_CREATE_DEV_USER=true and DJANGO_DEBUG=true, "
         "unless --force is provided."
     )
