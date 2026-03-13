@@ -16,7 +16,7 @@ classifiers = [
 
 dependencies = [
   "pydantic>=2.12.5",
-  "pydantic-ai>=0.1.0",
+  "pydantic-ai-slim[openai,anthropic,google,groq,mistral,cohere]>=1.65.0",
   "typing-extensions>=4.12",
   "opentelemetry-api>=1.31",
 ]
