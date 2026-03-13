@@ -11,17 +11,28 @@ DEV_PASSWORD = "dev"
 class Command(BaseCommand):
     help = (
         "Create a dev user (dev@medsim.local) if it does not exist. "
-        "Only runs when DJANGO_CREATE_DEV_USER=true and DJANGO_DEBUG=true."
+        "Only runs when DJANGO_CREATE_DEV_USER=true and DJANGO_DEBUG=true, "
+        "unless --force is provided."
     )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "-f",
+            "--force",
+            action="store_true",
+            help="Bypass DJANGO_DEBUG and DJANGO_CREATE_DEV_USER checks.",
+        )
 
     def handle(self, *args, **options):
         from apps.accounts.models import User, UserRole
 
-        if not bool_from_env("DJANGO_DEBUG"):
+        force = options.get("force", False)
+
+        if not force and not bool_from_env("DJANGO_DEBUG"):
             self.stdout.write(self.style.WARNING("Skipped: DJANGO_DEBUG is not enabled."))
             return
 
-        if not bool_from_env("DJANGO_CREATE_DEV_USER"):
+        if not force and not bool_from_env("DJANGO_CREATE_DEV_USER"):
             self.stdout.write(self.style.WARNING("Skipped: DJANGO_CREATE_DEV_USER is not enabled."))
             return
 
