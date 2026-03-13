@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
 from polymorphic.admin import (
     PolymorphicChildModelAdmin,
     PolymorphicParentModelAdmin,
@@ -23,6 +24,37 @@ from .models import (
     TrainerSession,
     VitalMeasurement,
 )
+
+
+class VitalAbbreviatedNameFilter(admin.SimpleListFilter):
+    title = _("vital")
+    parameter_name = "vital_abbrev"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("HR", "HR"),
+            ("RR", "RR"),
+            ("SPO2", "SPO2"),
+            ("ETCO2", "ETCO2"),
+            ("BGL", "BGL"),
+            ("BP", "BP"),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "HR":
+            return queryset.instance_of(HeartRate)
+        if value == "RR":
+            return queryset.instance_of(RespiratoryRate)
+        if value == "SPO2":
+            return queryset.instance_of(SPO2)
+        if value == "ETCO2":
+            return queryset.instance_of(ETCO2)
+        if value == "BGL":
+            return queryset.instance_of(BloodGlucoseLevel)
+        if value == "BP":
+            return queryset.instance_of(BloodPressure)
+        return queryset
 
 
 @admin.register(TrainerSession)
@@ -68,18 +100,44 @@ class ABCEventAdmin(PolymorphicParentModelAdmin):
         BloodGlucoseLevel,
         BloodPressure,
     )
-    list_display = ("id", "timestamp", "simulation", "source", "is_active")
-    list_filter = ("source", "is_active")
+    list_display = (
+        "id",
+        "timestamp",
+        "simulation",
+        "source",
+        "vital_abbreviated_name",
+        "is_active",
+    )
+    list_filter = ("source", VitalAbbreviatedNameFilter, "is_active")
     search_fields = ("simulation__id",)
     ordering = ("-timestamp",)
+
+    @admin.display(description="Vital")
+    def vital_abbreviated_name(self, obj):
+        if isinstance(obj, VitalMeasurement):
+            return obj.abbreviated_name
+        return ""
 
 
 class ABCEventChildAdmin(PolymorphicChildModelAdmin):
     base_model = ABCEvent
-    list_display = ("id", "timestamp", "simulation", "source", "is_active")
-    list_filter = ("source", "is_active")
+    list_display = (
+        "id",
+        "timestamp",
+        "simulation",
+        "source",
+        "vital_abbreviated_name",
+        "is_active",
+    )
+    list_filter = ("source", VitalAbbreviatedNameFilter, "is_active")
     search_fields = ("simulation__id",)
     ordering = ("-timestamp",)
+
+    @admin.display(description="Vital")
+    def vital_abbreviated_name(self, obj):
+        if isinstance(obj, VitalMeasurement):
+            return obj.abbreviated_name
+        return ""
 
 
 @admin.register(Injury)
