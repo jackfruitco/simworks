@@ -130,9 +130,21 @@ def resolve_message_conversation_type(
     fallback: str | None = None,
 ) -> str | None:
     """Resolve conversation type slug without forcing lazy DB access in async contexts."""
-    conversation = getattr(message, "conversation", None)
+    conversation = None
+    state = getattr(message, "_state", None)
+    fields_cache = getattr(state, "fields_cache", None)
+    if isinstance(fields_cache, dict):
+        conversation = fields_cache.get("conversation")
+
+    if conversation is None:
+        try:
+            conversation = getattr(message, "conversation", None)
+        except SynchronousOnlyOperation:
+            return fallback
+
     if conversation is None:
         return fallback
+
     try:
         return getattr(conversation.conversation_type, "slug", fallback)
     except (AttributeError, SynchronousOnlyOperation):
