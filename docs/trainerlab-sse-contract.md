@@ -33,4 +33,4 @@ TrainerLab runtime SSE uses `GET /api/v1/trainerlab/simulations/{id}/events/stre
 
   ```
 
-  That fallback is not enabled by default and would require a coordinated client update.
+  The current iOS transport can treat that explicit `heartbeat` event as a keep-alive, but the backend should still prefer comment heartbeats by default.
