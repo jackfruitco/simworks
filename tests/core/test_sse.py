@@ -1,7 +1,7 @@
 """Tests for SSE streaming helper behavior."""
 
 from datetime import timedelta
-from itertools import islice
+from itertools import islice, pairwise
 import uuid
 
 from django.utils import timezone
@@ -58,9 +58,7 @@ class TestStreamOutboxEvents:
         monkeypatch.setattr("api.v1.sse.time.sleep", lambda _: None)
 
         response = stream_outbox_events(simulation_id=7, cursor=str(first.id))
-        chunks = [
-            decode_chunk(chunk) for chunk in islice(response.streaming_content, 4)
-        ]
+        chunks = [decode_chunk(chunk) for chunk in islice(response.streaming_content, 4)]
 
         assert chunks[0] == f"id: {second.id}\n"
         assert chunks[1] == "event: simulation\n"
@@ -95,7 +93,7 @@ class TestStreamOutboxEvents:
 
         assert chunks == [": keep-alive\n\n", ": keep-alive\n\n", ": keep-alive\n\n"]
         assert emission_times == pytest.approx([10.0, 20.0, 30.0])
-        assert max(b - a for a, b in zip(emission_times, emission_times[1:])) <= 10.0
+        assert max(b - a for a, b in pairwise(emission_times)) <= 10.0
 
     def test_events_reset_idle_heartbeat_timer(self, monkeypatch):
         clock = FakeClock()

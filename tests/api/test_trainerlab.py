@@ -1,6 +1,7 @@
 """Tests for TrainerLab API v1 endpoints."""
 
 from itertools import islice
+
 from django.test import Client
 import pytest
 
