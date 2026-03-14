@@ -204,7 +204,9 @@ class TestPatientRecentScenarioHistoryInstruction:
             context={"simulation_id": current_simulation.id, "user_id": history_user.id}
         )
 
-        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(service)
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
 
         assert rendered == ""
 
@@ -246,12 +248,17 @@ class TestPatientRecentScenarioHistoryInstruction:
             context={"simulation_id": current_simulation.id, "user_id": history_user.id}
         )
 
-        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(service)
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
 
         assert "### Recent Simulation History" in rendered
         assert '("Throbbing headache", "Migraine")' in rendered
         assert "Avoid repeating the same patient scenario" in rendered
-        assert "Do not generate a new case whose `(chief complaint, diagnosis)` pair matches" in rendered
+        assert (
+            "Do not generate a new case whose `(chief complaint, diagnosis)` pair matches"
+            in rendered
+        )
         assert '("Crushing chest pain", "Acute Coronary Syndrome")' not in rendered
         assert "Persistent cough" not in rendered
         assert '("Fever and body aches", "Influenza")' not in rendered
@@ -285,7 +292,9 @@ class TestPatientRecentScenarioHistoryInstruction:
 
         service = GenerateInitialResponse(context={"simulation_id": current_simulation.id})
 
-        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(service)
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
 
         assert '("Right lower quadrant pain", "Appendicitis")' in rendered
         assert '("Flank pain and fever", "Pyelonephritis")' not in rendered
