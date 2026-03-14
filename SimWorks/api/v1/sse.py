@@ -33,9 +33,17 @@ def stream_outbox_events(
     cursor: str | None = None,
     event_type_prefix: str | None = None,
     sse_event_name: str = "simulation",
+    heartbeat_interval_seconds: float | None = None,
+    poll_interval_seconds: float = 1.0,
+    heartbeat_comment: str = ": keep-alive\n\n",
 ) -> StreamingHttpResponse:
     """Create a StreamingHttpResponse for simulation outbox events."""
     from apps.common.models import OutboxEvent
+
+    if poll_interval_seconds <= 0:
+        raise ValueError("poll_interval_seconds must be positive")
+    if heartbeat_interval_seconds is not None and heartbeat_interval_seconds <= 0:
+        raise ValueError("heartbeat_interval_seconds must be positive")
 
     base_queryset = OutboxEvent.objects.filter(simulation_id=simulation_id)
     if event_type_prefix:
@@ -54,6 +62,7 @@ def stream_outbox_events(
 
     def event_stream():
         last_event = cursor_event if cursor else None
+        last_signal_at = time.monotonic()
 
         while True:
             queryset = OutboxEvent.objects.filter(simulation_id=simulation_id)
@@ -73,11 +82,18 @@ def stream_outbox_events(
                 yield f"event: {sse_event_name}\n"
                 yield f"data: {json.dumps(data)}\n\n"
                 last_event = event
+                last_signal_at = time.monotonic()
 
-            yield ": keepalive\n\n"
-            time.sleep(1)
+            now = time.monotonic()
+            if heartbeat_interval_seconds is None or (
+                now - last_signal_at >= heartbeat_interval_seconds
+            ):
+                yield heartbeat_comment
+                last_signal_at = now
+
+            time.sleep(poll_interval_seconds)
 
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
+    response["Cache-Control"] = "no-cache, no-transform"
     response["X-Accel-Buffering"] = "no"
     return response
