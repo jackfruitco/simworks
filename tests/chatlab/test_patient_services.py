@@ -1,9 +1,16 @@
 """Integration tests for chatlab patient services."""
 
+from datetime import timedelta
+
+from asgiref.sync import async_to_sync
+from django.utils import timezone
+import pytest
+
 from apps.chatlab.orca.instructions import (
     PatientBaseInstruction,
     PatientInitialDetailInstruction,
     PatientNameInstruction,
+    PatientRecentScenarioHistoryInstruction,
     PatientReplyDetailInstruction,
     PatientSafetyBoundariesInstruction,
     PatientSchemaContractInstruction,
@@ -17,6 +24,27 @@ from apps.chatlab.orca.services.patient import (
     GenerateInitialResponse,
     GenerateReplyResponse,
 )
+
+
+@pytest.fixture
+def user_role(db):
+    from apps.accounts.models import UserRole
+
+    return UserRole.objects.create(title="Test Role Patient Services")
+
+
+@pytest.fixture
+def history_user(django_user_model, user_role):
+    return django_user_model.objects.create_user(
+        email="history@example.com",
+        password="testpass123",
+        role=user_role,
+    )
+
+
+def _set_start_timestamp(simulation, *, days_ago: int) -> None:
+    timestamp = timezone.now() - timedelta(days=days_ago)
+    type(simulation).objects.filter(pk=simulation.pk).update(start_timestamp=timestamp)
 
 
 class TestGenerateInitialResponseService:
@@ -34,6 +62,7 @@ class TestGenerateInitialResponseService:
         assert PatientBaseInstruction in service._instruction_classes
         assert PatientSafetyBoundariesInstruction in service._instruction_classes
         assert PatientSchemaContractInstruction in service._instruction_classes
+        assert PatientRecentScenarioHistoryInstruction in service._instruction_classes
 
     def test_instruction_ordering_layers(self):
         service = GenerateInitialResponse(context={"simulation_id": 1})
@@ -49,6 +78,9 @@ class TestGenerateInitialResponseService:
             "PatientSchemaContractInstruction"
         )
         assert names.index("PatientSchemaContractInstruction") < names.index(
+            "PatientRecentScenarioHistoryInstruction"
+        )
+        assert names.index("PatientRecentScenarioHistoryInstruction") < names.index(
             "PatientInitialDetailInstruction"
         )
 
@@ -140,3 +172,129 @@ class TestSchemaSerializability:
         assert json_str is not None
         assert "Reply text" in json_str
         assert "image_requested" in json_str
+
+
+@pytest.mark.django_db
+class TestPatientRecentScenarioHistoryInstruction:
+    def test_render_instruction_returns_empty_when_no_usable_recent_history(self, history_user):
+        from apps.simcore.models import Simulation
+
+        current_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Current Diagnosis",
+            chief_complaint="Current Complaint",
+            sim_patient_full_name="Current Patient",
+        )
+        stale_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Remote Diagnosis",
+            chief_complaint="Remote Complaint",
+            sim_patient_full_name="Remote Patient",
+        )
+        invalid_recent_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Missing Complaint Diagnosis",
+            chief_complaint="",
+            sim_patient_full_name="Incomplete Patient",
+        )
+        _set_start_timestamp(stale_simulation, days_ago=120)
+        _set_start_timestamp(invalid_recent_simulation, days_ago=7)
+
+        service = GenerateInitialResponse(
+            context={"simulation_id": current_simulation.id, "user_id": history_user.id}
+        )
+
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
+
+        assert rendered == ""
+
+    def test_render_instruction_includes_recent_pairs_and_anti_repeat_guidance(
+        self,
+        history_user,
+    ):
+        from apps.simcore.models import Simulation
+
+        current_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Acute Coronary Syndrome",
+            chief_complaint="Crushing chest pain",
+            sim_patient_full_name="Current Patient",
+        )
+        recent_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Migraine",
+            chief_complaint="Throbbing headache",
+            sim_patient_full_name="Recent Patient",
+        )
+        invalid_recent_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="",
+            chief_complaint="Persistent cough",
+            sim_patient_full_name="Incomplete Patient",
+        )
+        stale_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Influenza",
+            chief_complaint="Fever and body aches",
+            sim_patient_full_name="Stale Patient",
+        )
+        _set_start_timestamp(recent_simulation, days_ago=10)
+        _set_start_timestamp(invalid_recent_simulation, days_ago=5)
+        _set_start_timestamp(stale_simulation, days_ago=120)
+
+        service = GenerateInitialResponse(
+            context={"simulation_id": current_simulation.id, "user_id": history_user.id}
+        )
+
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
+
+        assert "### Recent Simulation History" in rendered
+        assert '("Throbbing headache", "Migraine")' in rendered
+        assert "Avoid repeating the same patient scenario" in rendered
+        assert (
+            "Do not generate a new case whose `(chief complaint, diagnosis)` pair matches"
+            in rendered
+        )
+        assert '("Crushing chest pain", "Acute Coronary Syndrome")' not in rendered
+        assert "Persistent cough" not in rendered
+        assert '("Fever and body aches", "Influenza")' not in rendered
+
+    def test_render_instruction_falls_back_to_simulation_user_and_excludes_stale_entries(
+        self,
+        history_user,
+    ):
+        from apps.simcore.models import Simulation
+
+        current_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Current Diagnosis",
+            chief_complaint="Current Complaint",
+            sim_patient_full_name="Current Patient",
+        )
+        recent_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Appendicitis",
+            chief_complaint="Right lower quadrant pain",
+            sim_patient_full_name="Recent Patient",
+        )
+        stale_simulation = Simulation.objects.create(
+            user=history_user,
+            diagnosis="Pyelonephritis",
+            chief_complaint="Flank pain and fever",
+            sim_patient_full_name="Stale Patient",
+        )
+        _set_start_timestamp(recent_simulation, days_ago=20)
+        _set_start_timestamp(stale_simulation, days_ago=100)
+
+        service = GenerateInitialResponse(context={"simulation_id": current_simulation.id})
+
+        rendered = async_to_sync(PatientRecentScenarioHistoryInstruction.render_instruction)(
+            service
+        )
+
+        assert '("Right lower quadrant pain", "Appendicitis")' in rendered
+        assert '("Flank pain and fever", "Pyelonephritis")' not in rendered

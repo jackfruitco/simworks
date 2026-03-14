@@ -1,7 +1,9 @@
 """Instruction classes for patient chat services."""
 
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 
+from apps.common.utils import Formatter
 from apps.simcore.models import Simulation
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
@@ -76,6 +78,100 @@ class PatientSchemaContractInstruction(BaseInstruction):
         "- If the user explicitly requests an image/scan, set `image_request` with `requested=true`, a clinically grounded `prompt`, optional `caption`, and optional `clinical_focus`; keep the visible reply textual.\n"
         "- Keep `image_requested` aligned with `image_request.requested` for backward compatibility.\n"
     )
+
+
+@orca.instruction(order=80)
+class PatientRecentScenarioHistoryInstruction(BaseInstruction):
+    async def _aget_simulation(self):
+        simulation = self.context.get("simulation")
+        if simulation is not None:
+            return simulation
+
+        simulation_id = self.context.get("simulation_id")
+        if not simulation_id:
+            return None
+
+        try:
+            simulation = await Simulation.objects.aget(pk=simulation_id)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            return None
+
+        self.context["simulation"] = simulation
+        return simulation
+
+    async def _aget_user(self):
+        user = self.context.get("user")
+        if user is not None:
+            return user
+
+        user_id = self.context.get("user_id")
+        user_model = get_user_model()
+
+        if user_id:
+            try:
+                user = await user_model.objects.aget(pk=user_id)
+            except (TypeError, ValueError, ObjectDoesNotExist):
+                user = None
+            else:
+                self.context["user"] = user
+                return user
+
+        simulation = await self._aget_simulation()
+        if simulation is None:
+            return None
+
+        simulation_user_id = getattr(simulation, "user_id", None)
+        if not simulation_user_id:
+            return None
+
+        try:
+            user = await user_model.objects.aget(pk=simulation_user_id)
+        except (TypeError, ValueError, ObjectDoesNotExist):
+            return None
+
+        self.context["user"] = user
+        return user
+
+    async def render_instruction(self) -> str:
+        user = await self._aget_user()
+        if user is None or not hasattr(user, "aget_scenario_log"):
+            return ""
+
+        try:
+            scenario_log = await user.aget_scenario_log(within_months=3)
+        except Exception:
+            return ""
+
+        current_simulation_id = self.context.get("simulation_id")
+        recent_pairs = []
+        for entry in scenario_log:
+            if entry.get("id") == current_simulation_id:
+                continue
+
+            chief_complaint = entry.get("chief_complaint")
+            diagnosis = entry.get("diagnosis")
+            if not chief_complaint or not diagnosis:
+                continue
+
+            recent_pairs.append(
+                {
+                    "chief_complaint": chief_complaint,
+                    "diagnosis": diagnosis,
+                }
+            )
+
+        if not recent_pairs:
+            return ""
+
+        history_prompt = Formatter(recent_pairs).render("openai_prompt").strip()
+        return (
+            "### Recent Simulation History\n"
+            f"{history_prompt}\n"
+            "- Avoid repeating the same patient scenario from the recent history above.\n"
+            "- Do not generate a new case whose `(chief complaint, diagnosis)` pair matches any pair above.\n"
+            "- A shared diagnosis is acceptable only when the new chief complaint and patient framing are clearly different.\n"
+            "- Make the new patient scenario materially different in presentation, context, and symptom framing.\n"
+        )
 
 
 @orca.instruction(order=90)
