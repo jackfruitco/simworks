@@ -33,14 +33,17 @@ from api.v1.schemas.trainerlab import (
     ScenarioInstructionUpdateIn,
     SimulationAdjustAck,
     SimulationAdjustIn,
+    SimulationNoteCreateIn,
     SteerPromptIn,
     TrainerCommandAck,
     TrainerRunOut,
+    TrainerRuntimeStateOut,
     TrainerSessionCreateIn,
     VitalCreateIn,
     scenario_instruction_to_out,
     scenario_permission_to_out,
     trainer_run_to_out,
+    trainer_state_to_out,
 )
 from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
@@ -63,14 +66,18 @@ from apps.trainerlab.models import (
     RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
+    SessionStatus,
+    SimulationNote,
     TrainerCommand,
     TrainerSession,
 )
 from apps.trainerlab.services import (
+    append_pending_runtime_reason,
     create_session_with_initial_generation,
     emit_runtime_event,
     get_or_create_command,
     pause_session,
+    refresh_completed_run_review,
     resume_session,
     start_session,
     stop_session,
@@ -141,6 +148,29 @@ def _get_correlation_id(request: HttpRequest) -> str | None:
 
 def _accepted(command: TrainerCommand) -> TrainerCommandAck:
     return TrainerCommandAck(command_id=str(command.id), status="accepted")
+
+
+def _reject_terminal_mutation(
+    *,
+    command: TrainerCommand,
+    session: TrainerSession,
+    allow_post_stop_note: bool = False,
+) -> None:
+    if session.status == SessionStatus.COMPLETED and allow_post_stop_note:
+        return
+
+    if session.status == SessionStatus.COMPLETED:
+        error = "Simulation is completed; only notes may be added."
+    elif session.status == SessionStatus.FAILED:
+        error = "Simulation has failed; no further changes are allowed."
+    else:
+        return
+
+    command.status = TrainerCommand.CommandStatus.FAILED
+    command.error = error
+    command.processed_at = timezone.now()
+    command.save(update_fields=["status", "error", "processed_at"])
+    raise HttpError(409, error)
 
 
 def _normalize_command_payload(payload_json: dict[str, Any] | None) -> dict[str, Any]:
@@ -524,6 +554,7 @@ def apply_preset(
     )
     if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
         return _accepted(command)
+    _reject_terminal_mutation(command=command, session=session)
 
     state = dict(session.runtime_state_json or {})
     applied_presets = list(state.get("applied_presets", []))
@@ -551,6 +582,16 @@ def apply_preset(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=(f"trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}"),
+    )
+    append_pending_runtime_reason(
+        session=session,
+        reason_kind="preset_applied",
+        payload={
+            "preset_id": instruction.id,
+            "title": instruction.title,
+            "command_id": str(command.id),
+        },
+        correlation_id=correlation_id,
     )
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
@@ -662,6 +703,19 @@ def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunO
     require_instructor_membership(user)
     session = _get_session_for_simulation(simulation_id, user)
     return trainer_run_to_out(session)
+
+
+@router.get(
+    "/simulations/{simulation_id}/state/",
+    response=TrainerRuntimeStateOut,
+    summary="Get authoritative TrainerLab runtime state snapshot",
+)
+@api_rate_limit
+def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRuntimeStateOut:
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    return trainer_state_to_out(session)
 
 
 def _mark_command_failed(command: TrainerCommand, error: str) -> None:
@@ -778,6 +832,7 @@ def steer_prompt(
     )
     if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
         return _accepted(command)
+    _reject_terminal_mutation(command=command, session=session)
 
     state = dict(session.runtime_state_json or {})
     prompts = list(state.get("steering_prompts", []))
@@ -797,6 +852,15 @@ def steer_prompt(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=f"trainerlab.command.accepted:{command.id}",
+    )
+    append_pending_runtime_reason(
+        session=session,
+        reason_kind="steer_prompt",
+        payload={
+            "command_id": str(command.id),
+            "prompt": body.prompt,
+        },
+        correlation_id=correlation_id,
     )
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
@@ -841,6 +905,7 @@ def adjust_simulation(
             status="accepted",
             simulation_id=simulation.id,
         )
+    _reject_terminal_mutation(command=command, session=session)
 
     adjustment_entry = {
         "command_id": str(command.id),
@@ -879,6 +944,12 @@ def adjust_simulation(
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=f"trainerlab.adjustment.applied:{command.id}",
+    )
+    append_pending_runtime_reason(
+        session=session,
+        reason_kind="adjustment",
+        payload=adjustment_entry,
+        correlation_id=correlation_id,
     )
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
@@ -967,6 +1038,17 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         code=body.code,
         description=body.description,
         target=body.target,
+        anatomic_location=body.anatomic_location,
+        effective=body.effective,
+        performed_by_role=body.performed_by_role,
+    )
+
+
+def _create_note(session: TrainerSession, body: SimulationNoteCreateIn) -> SimulationNote:
+    return SimulationNote.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        content=body.content,
     )
 
 
@@ -1031,6 +1113,12 @@ def _inject_event_core(
     )
     if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
         return _accepted(command)
+    event_kind = payload_json.get("event_kind")
+    _reject_terminal_mutation(
+        command=command,
+        session=session,
+        allow_post_stop_note=event_kind == "note",
+    )
 
     try:
         domain_event = create_fn(session)
@@ -1038,23 +1126,82 @@ def _inject_event_core(
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
 
+    if event_kind in {"injury", "illness"}:
+        event_type = "trainerlab.condition.created"
+    elif event_kind == "vital":
+        event_type = "trainerlab.vital.updated"
+    elif event_kind == "intervention":
+        event_type = "trainerlab.intervention.recorded"
+    elif event_kind == "note":
+        event_type = "trainerlab.note.recorded"
+    else:
+        event_type = "trainerlab.event.created"
+
+    send_to_ai = bool(payload_json.get("send_to_ai", False))
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.event.created",
+        event_type=event_type,
         payload={
             "domain_event_id": domain_event.id,
             "domain_event_type": domain_event.__class__.__name__,
             "source": domain_event.source,
+            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
             "supersedes_event_id": domain_event.supersedes_event_id,
+            **(
+                {
+                    "code": getattr(domain_event, "code", ""),
+                    "description": getattr(domain_event, "description", ""),
+                    "target": getattr(domain_event, "target", ""),
+                    "anatomic_location": getattr(domain_event, "anatomic_location", ""),
+                    "effective": getattr(domain_event, "effective", None),
+                    "performed_by_role": getattr(domain_event, "performed_by_role", ""),
+                }
+                if event_kind == "intervention"
+                else {}
+            ),
+            **(
+                {
+                    "content": getattr(domain_event, "content", ""),
+                    "send_to_ai": send_to_ai,
+                }
+                if event_kind == "note"
+                else {}
+            ),
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.event.created:{domain_event.id}",
+        idempotency_key=f"{event_type}:{domain_event.id}",
     )
+    should_queue_runtime = session.status != SessionStatus.COMPLETED and (
+        event_kind != "note" or send_to_ai
+    )
+    if should_queue_runtime:
+        runtime_reason_payload = {
+            "command_id": str(command.id),
+            "domain_event_id": domain_event.id,
+            "domain_event_type": domain_event.__class__.__name__,
+            "event_kind": event_kind,
+        }
+        if event_kind == "note":
+            runtime_reason_payload.update(
+                {
+                    "note_id": domain_event.id,
+                    "content": getattr(domain_event, "content", ""),
+                    "send_to_ai": send_to_ai,
+                }
+            )
+        append_pending_runtime_reason(
+            session=session,
+            reason_kind=f"{event_kind}_recorded",
+            payload=runtime_reason_payload,
+            correlation_id=correlation_id,
+        )
 
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
     command.save(update_fields=["status", "processed_at"])
+    if event_kind == "note" and session.status == SessionStatus.COMPLETED:
+        refresh_completed_run_review(session=session, generated_by=user)
     return _accepted(command)
 
 
@@ -1115,6 +1262,26 @@ def create_intervention_event(
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "intervention", **body.model_dump()},
         create_fn=lambda session: _create_intervention(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/notes/",
+    response=TrainerCommandAck,
+    summary="Inject simulation note event",
+)
+@api_rate_limit
+def create_note_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: SimulationNoteCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "note", **body.model_dump()},
+        create_fn=lambda session: _create_note(session, body),
     )
 
 

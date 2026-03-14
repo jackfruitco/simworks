@@ -377,9 +377,25 @@ class Illness(ABCEvent):
 
 
 class Intervention(ABCEvent):
+    class PerformedByRole(models.TextChoices):
+        TRAINEE = "trainee", _("Trainee")
+        INSTRUCTOR = "instructor", _("Instructor")
+        AI = "ai", _("AI")
+
     code = models.CharField(max_length=64, blank=True, default="")
     description = models.TextField(blank=True, default="")
     target = models.CharField(max_length=120, blank=True, default="")
+    anatomic_location = models.CharField(max_length=120, blank=True, default="")
+    effective = models.BooleanField(null=True, blank=True, default=None)
+    performed_by_role = models.CharField(
+        max_length=16,
+        choices=PerformedByRole.choices,
+        default=PerformedByRole.TRAINEE,
+    )
+
+
+class SimulationNote(ABCEvent):
+    content = models.TextField(max_length=2000)
 
 
 class VitalMeasurement(ABCEvent):

@@ -4,6 +4,7 @@ from datetime import UTC
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from asgiref.sync import sync_to_async
 from pydantic import AliasChoices, Field
 
 from apps.trainerlab.models import (
@@ -162,6 +163,7 @@ class InitialScenarioSchema(StrictBaseModel):
 
     async def post_persist(self, results: dict[str, Any], context: "PersistContext") -> None:
         from apps.common.outbox.helpers import broadcast_domain_objects
+        from apps.trainerlab.services import refresh_projection_from_domain_state
 
         conditions = results.get("conditions", [])
         measurements = results.get("measurements", {})
@@ -195,3 +197,8 @@ class InitialScenarioSchema(StrictBaseModel):
                 context=context,
                 payload_builder=lambda obj: _vital_event_payload(obj, context=context),
             )
+
+        await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(
+            simulation_id=context.simulation_id,
+            correlation_id=context.correlation_id,
+        )

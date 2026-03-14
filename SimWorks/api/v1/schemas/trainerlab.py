@@ -115,7 +115,23 @@ class InterventionCreateIn(BaseModel):
     code: str = ""
     description: str = ""
     target: str = ""
+    anatomic_location: str = ""
+    effective: bool | None = None
+    performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
     supersedes_event_id: int | None = None
+
+
+class SimulationNoteCreateIn(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+    send_to_ai: bool = False
+
+    @field_validator("content")
+    @classmethod
+    def _normalize_content(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("content must not be blank")
+        return stripped
 
 
 class VitalCreateIn(BaseModel):
@@ -151,8 +167,101 @@ class RunSummaryOut(BaseModel):
     final_state: dict[str, Any]
     event_type_counts: dict[str, int]
     timeline_highlights: list[dict[str, Any]]
+    notes: list[dict[str, Any]] = Field(default_factory=list)
     command_log: list[dict[str, Any]]
     ai_rationale_notes: list[Any]
+    ai_debrief: dict[str, Any] | None = None
+
+
+class RuntimeConditionStateOut(BaseModel):
+    domain_event_id: int | None = None
+    kind: Literal["injury", "illness"]
+    label: str
+    status: str
+    source: str | None = None
+    timestamp: str | None = None
+    injury_category: str | None = None
+    injury_location: str | None = None
+    injury_kind: str | None = None
+    description: str | None = None
+    severity: str | None = None
+
+
+class RuntimeInterventionStateOut(BaseModel):
+    domain_event_id: int | None = None
+    code: str = ""
+    description: str = ""
+    target: str = ""
+    anatomic_location: str = ""
+    effective: bool | None = None
+    performed_by_role: str = "trainee"
+    status: str = "active"
+    clinical_effect: str = ""
+    notes: str = ""
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeVitalStateOut(BaseModel):
+    domain_event_id: int | None = None
+    vital_type: Literal[
+        "heart_rate",
+        "respiratory_rate",
+        "spo2",
+        "etco2",
+        "blood_glucose",
+        "blood_pressure",
+    ]
+    min_value: int
+    max_value: int
+    lock_value: bool = False
+    min_value_diastolic: int | None = None
+    max_value_diastolic: int | None = None
+    trend: str = "stable"
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimePatientStatusOut(BaseModel):
+    avpu: Literal["alert", "verbal", "pain", "unalert"] | None = None
+    respiratory_distress: bool = False
+    hemodynamic_instability: bool = False
+    impending_pneumothorax: bool = False
+    tension_pneumothorax: bool = False
+    narrative: str = ""
+    teaching_flags: list[str] = Field(default_factory=list)
+
+
+class TrainerRuntimeSnapshotOut(BaseModel):
+    conditions: list[RuntimeConditionStateOut] = Field(default_factory=list)
+    interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
+    vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
+    patient_status: RuntimePatientStatusOut = Field(default_factory=RuntimePatientStatusOut)
+
+
+class RuntimeIntentOut(BaseModel):
+    summary: str = ""
+    rationale: str = ""
+    trigger: str = ""
+    eta_seconds: int | None = None
+    confidence: float = 0.0
+    upcoming_changes: list[str] = Field(default_factory=list)
+    monitoring_focus: list[str] = Field(default_factory=list)
+
+
+class TrainerRuntimeStateOut(BaseModel):
+    simulation_id: int
+    session_id: int
+    status: str
+    state_revision: int
+    active_elapsed_seconds: int
+    current_snapshot: TrainerRuntimeSnapshotOut
+    ai_plan: RuntimeIntentOut
+    ai_rationale_notes: list[str] = Field(default_factory=list)
+    pending_runtime_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    last_runtime_error: str = ""
+    last_ai_tick_at: datetime | None = None
 
 
 class SSEEnvelope(BaseModel):
@@ -247,6 +356,26 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         last_ai_tick_at=session.last_ai_tick_at,
         created_at=session.created_at,
         modified_at=session.modified_at,
+    )
+
+
+def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
+    runtime_state = dict(session.runtime_state_json or {})
+    return TrainerRuntimeStateOut(
+        simulation_id=session.simulation_id,
+        session_id=session.id,
+        status=session.status,
+        state_revision=int(runtime_state.get("state_revision", 0) or 0),
+        active_elapsed_seconds=int(runtime_state.get("active_elapsed_seconds", 0) or 0),
+        current_snapshot=TrainerRuntimeSnapshotOut.model_validate(
+            runtime_state.get("current_snapshot") or {}
+        ),
+        ai_plan=RuntimeIntentOut.model_validate(runtime_state.get("ai_plan") or {}),
+        ai_rationale_notes=list(runtime_state.get("ai_rationale_notes") or []),
+        pending_runtime_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
+        currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),
+        last_runtime_error=str(runtime_state.get("last_runtime_error") or ""),
+        last_ai_tick_at=session.last_ai_tick_at,
     )
 
 
