@@ -231,6 +231,18 @@ def _enqueue_ai_reply_and_handle_failure(
 ) -> None:
     call_id = _enqueue_ai_reply(conversation, simulation_id, user_msg_pk)
     if call_id:
+        from apps.chatlab.models import Message
+
+        try:
+            message = Message.objects.get(pk=user_msg_pk)
+        except Message.DoesNotExist:
+            return
+        _emit_message_status(
+            simulation_id=simulation_id,
+            message_id=user_msg_pk,
+            status=Message.DeliveryStatus.SENT,
+            retryable=message.delivery_retryable,
+        )
         return
     _mark_message_failed(
         message_id=user_msg_pk,
@@ -381,14 +393,6 @@ def create_message(
         transaction.on_commit(
             lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
         )
-        transaction.on_commit(
-            lambda: _emit_message_status(
-                simulation_id=simulation_id,
-                message_id=message.pk,
-                status=Message.DeliveryStatus.SENT,
-                retryable=True,
-            )
-        )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
     return 202, message_to_out(message, request=request)
@@ -452,14 +456,6 @@ def retry_message(
 
         transaction.on_commit(
             lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
-        )
-        transaction.on_commit(
-            lambda: _emit_message_status(
-                simulation_id=simulation_id,
-                message_id=message.pk,
-                status=Message.DeliveryStatus.SENT,
-                retryable=message.delivery_retryable,
-            )
         )
 
     return 202, message_to_out(message, request=request)

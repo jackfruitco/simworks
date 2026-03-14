@@ -437,6 +437,38 @@ class TestQuickCreateSimulation:
             modifiers=["night_shift", "limited_resources"],
         )
 
+    @patch("apps.chatlab.utils.create_new_simulation", new_callable=AsyncMock)
+    def test_quick_create_enqueue_failure_returns_failed_retryable_payload(
+        self, mock_create, auth_client, test_user
+    ):
+        from apps.simcore.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Quick Patient",
+        )
+        sim.mark_failed(
+            reason_code="initial_generation_enqueue_failed",
+            reason_text="We could not start this simulation. Please try again.",
+            retryable=True,
+        )
+        mock_create.return_value = sim
+
+        response = auth_client.post(
+            "/api/v1/simulations/quick-create/",
+            data={"modifiers": []},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "failed"
+        assert data["terminal_reason_code"] == "initial_generation_enqueue_failed"
+        assert (
+            data["terminal_reason_text"] == "We could not start this simulation. Please try again."
+        )
+        assert data["retryable"] is True
+
 
 @pytest.mark.django_db
 class TestEndSimulation:
@@ -607,6 +639,7 @@ class TestSimulationOutputFormat:
             "patient_display_name",
             "patient_initials",
             "status",
+            "retryable",
         ]
         assert_payload_has_fields(data, expected_fields, failure_artifacts=failure_artifacts)
 
@@ -629,3 +662,108 @@ class TestSimulationOutputFormat:
         sim.save()
         response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
         assert response.json()["status"] == "completed"
+
+    def test_failed_initial_generation_detail_payload_includes_retryable(
+        self, auth_client, test_user
+    ):
+        from apps.simcore.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Retryable Patient",
+            initial_retry_count=0,
+        )
+        sim.mark_failed(
+            reason_code="initial_generation_enqueue_failed",
+            reason_text="Initial patient generation failed.",
+            retryable=True,
+        )
+
+        response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "failed"
+        assert data["retryable"] is True
+
+    def test_failed_initial_generation_list_payload_includes_non_retryable_after_limit(
+        self, auth_client, test_user
+    ):
+        from apps.simcore.models import Simulation
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Exhausted Patient",
+            initial_retry_count=2,
+        )
+        sim.mark_failed(
+            reason_code="initial_generation_provider_timeout",
+            reason_text="Initial patient generation failed.",
+            retryable=False,
+        )
+
+        response = auth_client.get("/api/v1/simulations/")
+
+        assert response.status_code == 200
+        item = next(entry for entry in response.json()["items"] if entry["id"] == sim.pk)
+        assert item["status"] == "failed"
+        assert item["retryable"] is False
+
+
+@pytest.mark.django_db
+class TestRetryInitialSimulation:
+    @patch("api.v1.endpoints.simulations._enqueue_initial_response")
+    def test_retry_initial_success_returns_in_progress_with_null_retryable(
+        self, mock_enqueue, auth_client, test_user
+    ):
+        from apps.simcore.models import ConversationType, Simulation
+
+        mock_enqueue.return_value = "call-123"
+        ConversationType.objects.get(slug="simulated_patient")
+
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Retry Me",
+            status=Simulation.SimulationStatus.FAILED,
+            initial_retry_count=0,
+            terminal_reason_code="initial_generation_enqueue_failed",
+            terminal_reason_text="Initial patient generation failed.",
+            terminal_at=timezone.now(),
+            end_timestamp=timezone.now(),
+        )
+
+        response = auth_client.post(f"/api/v1/simulations/{sim.pk}/retry-initial/")
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "in_progress"
+        assert data["retryable"] is None
+
+    @patch("api.v1.endpoints.simulations._enqueue_initial_response")
+    def test_retry_initial_enqueue_failure_exhausts_retries_and_sets_retryable_false(
+        self, mock_enqueue, auth_client, test_user
+    ):
+        from apps.simcore.models import Simulation
+
+        mock_enqueue.return_value = None
+        sim = Simulation.objects.create(
+            user=test_user,
+            sim_patient_full_name="Retry Me",
+            status=Simulation.SimulationStatus.FAILED,
+            initial_retry_count=1,
+            terminal_reason_code="initial_generation_provider_timeout",
+            terminal_reason_text="Initial patient generation failed.",
+            terminal_at=timezone.now(),
+            end_timestamp=timezone.now(),
+        )
+
+        response = auth_client.post(f"/api/v1/simulations/{sim.pk}/retry-initial/")
+
+        assert response.status_code == 500
+
+        detail_response = auth_client.get(f"/api/v1/simulations/{sim.pk}/")
+        assert detail_response.status_code == 200
+        data = detail_response.json()
+        assert data["status"] == "failed"
+        assert data["terminal_reason_code"] == "initial_generation_enqueue_failed"
+        assert data["retryable"] is False

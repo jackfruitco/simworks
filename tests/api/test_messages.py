@@ -555,12 +555,14 @@ class TestCreateMessage:
 
         assert response.status_code == 404
 
+    @pytest.mark.django_db(transaction=True)
     @patch("api.v1.endpoints.messages._enqueue_ai_reply")
-    def test_create_message_enqueue_failure_still_returns_202(
+    def test_create_message_enqueue_failure_still_returns_202_and_marks_message_failed(
         self, mock_enqueue, auth_client, simulation, conversation
     ):
-        """When AI enqueue fails (returns None), API still accepts the user message."""
+        """Immediate enqueue failure still returns 202, but the message is failed durably."""
         from apps.chatlab.models import Message
+        from apps.common.models import OutboxEvent
 
         mock_enqueue.return_value = None
 
@@ -572,9 +574,20 @@ class TestCreateMessage:
 
         assert response.status_code == 202
         msg = Message.objects.get(pk=response.json()["id"])
-        assert msg.delivery_status == Message.DeliveryStatus.SENT
-        assert msg.delivery_error_code == ""
+        assert msg.delivery_status == Message.DeliveryStatus.FAILED
+        assert msg.delivery_error_code == "enqueue_failed"
         assert msg.delivery_retryable is True
+
+        status_events = list(
+            OutboxEvent.objects.filter(
+                event_type="message_status_update",
+                simulation_id=simulation.pk,
+            ).order_by("created_at")
+        )
+        assert len(status_events) == 1
+        assert status_events[0].payload["id"] == msg.id
+        assert status_events[0].payload["status"] == Message.DeliveryStatus.FAILED
+        assert status_events[0].payload["retryable"] is True
 
 
 @pytest.mark.django_db

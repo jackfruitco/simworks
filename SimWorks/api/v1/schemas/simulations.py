@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+USER_RETRY_LIMIT = 2
+
 
 class SimulationOut(BaseModel):
     """Output schema for a simulation."""
@@ -50,6 +52,10 @@ class SimulationOut(BaseModel):
     terminal_at: datetime | None = Field(
         default=None,
         description="Timestamp when simulation entered terminal state",
+    )
+    retryable: bool | None = Field(
+        default=None,
+        description="Whether the failed simulation can be retried by the user",
     )
 
 
@@ -119,6 +125,16 @@ def simulation_to_out(sim) -> SimulationOut:
     else:
         status = "in_progress"
 
+    terminal_reason_code = getattr(sim, "terminal_reason_code", "") or ""
+    retryable: bool | None = None
+    if status == "failed":
+        is_initial_generation_retryable_failure = terminal_reason_code.startswith(
+            "initial_generation"
+        ) or terminal_reason_code in {"provider_timeout", "provider_transient_error"}
+        retryable = is_initial_generation_retryable_failure and (
+            getattr(sim, "initial_retry_count", 0) < USER_RETRY_LIMIT
+        )
+
     return SimulationOut(
         id=sim.pk,
         user_id=sim.user_id,
@@ -130,7 +146,8 @@ def simulation_to_out(sim) -> SimulationOut:
         patient_display_name=sim.sim_patient_display_name,
         patient_initials=sim.sim_patient_initials,
         status=status,
-        terminal_reason_code=getattr(sim, "terminal_reason_code", "") or "",
+        terminal_reason_code=terminal_reason_code,
         terminal_reason_text=getattr(sim, "terminal_reason_text", "") or "",
         terminal_at=getattr(sim, "terminal_at", None),
+        retryable=retryable,
     )
