@@ -9,6 +9,7 @@ from apps.chatlab.orca.instructions import (
     PatientBaseInstruction,
     PatientInitialDetailInstruction,
     PatientNameInstruction,
+    PatientRecentScenarioHistoryInstruction,
     PatientReplyDetailInstruction,
     PatientSafetyBoundariesInstruction,
     PatientSchemaContractInstruction,
@@ -27,6 +28,7 @@ class GenerateInitialResponse(
     PatientSafetyBoundariesInstruction,
     PatientBaseInstruction,
     PatientSchemaContractInstruction,
+    PatientRecentScenarioHistoryInstruction,
     PatientInitialDetailInstruction,
     DjangoBaseService,
 ):
