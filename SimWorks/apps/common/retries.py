@@ -40,7 +40,7 @@ def is_simulation_initial_generation_retryable(sim) -> bool:
     - legacy initial_generation_* (unprefixed) → True only if ChatLab-backed
     - anything else → False
     """
-    reason_code = (getattr(sim, "terminal_reason_code", "") or "")
+    reason_code = getattr(sim, "terminal_reason_code", "") or ""
 
     if reason_code.startswith("trainerlab_initial_generation"):
         return False

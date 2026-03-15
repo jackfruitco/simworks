@@ -22,6 +22,7 @@ from api.v1.schemas.simulations import (
 )
 from apps.common.ratelimit import api_rate_limit
 from apps.common.retries import (
+    _sim_has_chatlab_session,
     has_user_retries_remaining,
     is_simulation_initial_generation_retryable,
 )
@@ -247,11 +248,7 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     user = request.auth
 
     try:
-        sim = (
-            Simulation.objects.select_related("chatlab_session").get(
-                pk=simulation_id, user=user
-            )
-        )
+        sim = Simulation.objects.select_related("chatlab_session").get(pk=simulation_id, user=user)
     except Simulation.DoesNotExist:
         raise HttpError(404, "Simulation not found") from None
 
@@ -303,15 +300,11 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
 
     user = request.auth
     try:
-        sim = Simulation.objects.select_related("chatlab_session").get(
-            pk=simulation_id, user=user
-        )
+        sim = Simulation.objects.select_related("chatlab_session").get(pk=simulation_id, user=user)
     except Simulation.DoesNotExist:
         raise HttpError(404, "Simulation not found") from None
 
-    try:
-        sim.chatlab_session
-    except Exception:
+    if not _sim_has_chatlab_session(sim):
         raise HttpError(400, "Initial generation retry is only available for ChatLab simulations")
 
     if sim.status != Simulation.SimulationStatus.FAILED:
