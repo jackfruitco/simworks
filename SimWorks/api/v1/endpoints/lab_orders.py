@@ -9,7 +9,7 @@ from ninja import Router
 from ninja.errors import HttpError
 
 from api.v1.auth import DualAuth
-from api.v1.schemas.lab_orders import LabOrderSubmit, LabOrdersOut
+from api.v1.schemas.lab_orders import LabOrdersOut, LabOrderSubmit
 from api.v1.utils import get_simulation_for_user
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
@@ -69,12 +69,12 @@ def submit_lab_orders(
             order_count=len(orders),
             call_id=call_id,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "lab_orders.enqueue_failed",
             simulation_id=simulation_id,
             order_count=len(orders),
         )
-        raise HttpError(500, "Failed to enqueue lab order processing. Please try again.")
+        raise HttpError(500, "Failed to enqueue lab order processing. Please try again.") from exc
 
     return 202, LabOrdersOut(status="accepted", call_id=call_id, orders=orders)

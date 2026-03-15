@@ -1,7 +1,7 @@
 """Lab order results output schema for the GenerateLabResults service."""
 
 import logging
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
