@@ -108,6 +108,12 @@ class DjangoBaseService(BaseService, ABC):
         if ctx:
             self.context.update(ctx)
 
+        logger.debug(
+            "service.arun.start identity=%s context_keys=%s",
+            self.identity.as_str,
+            sorted(self.context.keys()),
+        )
+
         try:
             # Emit request signal
             if self.emitter:
@@ -129,6 +135,7 @@ class DjangoBaseService(BaseService, ABC):
                     result,
                 )
 
+            logger.debug("service.arun.complete identity=%s", self.identity.as_str)
             return result
 
         except Exception as e:
