@@ -1156,11 +1156,14 @@ def _inject_event_core(
             "supersedes_event_id": domain_event.supersedes_event_id,
             **(
                 {
+                    "intervention_type": getattr(domain_event, "intervention_type", "") or None,
+                    "site_code": getattr(domain_event, "site_code", "") or None,
                     "code": getattr(domain_event, "code", ""),
                     "description": getattr(domain_event, "description", ""),
                     "target": getattr(domain_event, "target", ""),
                     "anatomic_location": getattr(domain_event, "anatomic_location", ""),
-                    "effective": getattr(domain_event, "effective", None),
+                    "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
+                    "notes": getattr(domain_event, "notes", ""),
                     "performed_by_role": getattr(domain_event, "performed_by_role", ""),
                 }
                 if event_kind == "intervention"

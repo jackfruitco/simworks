@@ -1150,6 +1150,7 @@ class TestTrainerLabDictionaries:
         instructor_user,
         instructor_membership,
     ):
+        from apps.common.models import OutboxEvent
         from apps.trainerlab.models import Intervention, TrainerSession
 
         client = auth_client_factory(instructor_user)
@@ -1186,6 +1187,17 @@ class TestTrainerLabDictionaries:
 
         state = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
         assert state["pending_runtime_reasons"][-1]["reason_kind"] == "intervention_recorded"
+
+        # Verify the outbox event payload from _inject_event_core has structured fields
+        outbox_event = OutboxEvent.objects.filter(
+            simulation_id=simulation_id,
+            event_type="trainerlab.intervention.recorded",
+        ).first()
+        assert outbox_event is not None
+        assert outbox_event.payload["intervention_type"] == "tourniquet"
+        assert outbox_event.payload["site_code"] == "TQ-L-ARM"
+        assert outbox_event.payload["effectiveness"] == "unknown"
+        assert "effective" not in outbox_event.payload
 
     def test_intervention_dictionary_endpoint_returns_structured_definitions(
         self,
@@ -1306,6 +1318,16 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id,
             event_type="trainerlab.state.updated",
         ).exists()
+
+        intervention_recorded = OutboxEvent.objects.filter(
+            simulation_id=simulation_id,
+            event_type="trainerlab.intervention.recorded",
+        ).first()
+        assert intervention_recorded is not None
+        assert "effectiveness" in intervention_recorded.payload
+        assert "effective" not in intervention_recorded.payload
+        assert intervention_recorded.payload["intervention_type"] == "tourniquet"
+        assert intervention_recorded.payload["site_code"] == "TQ-L-ARM"
 
     def test_active_elapsed_seconds_freeze_while_paused(
         self,
