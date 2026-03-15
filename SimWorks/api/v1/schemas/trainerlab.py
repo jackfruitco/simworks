@@ -115,7 +115,9 @@ class IllnessCreateIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(validation_alias=AliasChoices("illness_name", "name"))
-    description: str = Field(default="", validation_alias=AliasChoices("illness_description", "description"))
+    description: str = Field(
+        default="", validation_alias=AliasChoices("illness_description", "description")
+    )
     severity: Literal["low", "moderate", "high", "critical"] = "moderate"
     is_resolved: bool = False
     supersedes_event_id: int | None = None
