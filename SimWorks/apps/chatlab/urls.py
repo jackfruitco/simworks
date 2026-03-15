@@ -40,4 +40,20 @@ urlpatterns = [
         views.get_single_message,
         name="get_single_message",
     ),
+    # Admin watch views
+    path(
+        "simulation/<int:simulation_id>/watch/",
+        views.watch_simulation,
+        name="watch_simulation",
+    ),
+    path(
+        "simulation/<int:simulation_id>/watch/stream/",
+        views.watch_stream,
+        name="watch_stream",
+    ),
+    path(
+        "simulation/<int:simulation_id>/watch/service-calls/",
+        views.watch_service_calls,
+        name="watch_service_calls",
+    ),
 ]

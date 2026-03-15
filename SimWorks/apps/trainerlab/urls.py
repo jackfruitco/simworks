@@ -13,10 +13,20 @@ urlpatterns = [
         views.run_simulation,
         name="run_simulation",
     ),
-    # HTMX endpoints
-    # path(
-    #     "simulation/<int:simulation_id>/end_timestamp/",
-    #     views.end_simulation,
-    #     name="end_simulation",
-    # ),
+    # Admin watch views
+    path(
+        "simulation/<int:simulation_id>/watch/",
+        views.watch_simulation,
+        name="watch_simulation",
+    ),
+    path(
+        "simulation/<int:simulation_id>/watch/stream/",
+        views.watch_stream,
+        name="watch_stream",
+    ),
+    path(
+        "simulation/<int:simulation_id>/watch/service-calls/",
+        views.watch_service_calls,
+        name="watch_service_calls",
+    ),
 ]
