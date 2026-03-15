@@ -1,6 +1,19 @@
 # trainerlab/orca/services/runtime.py
+"""
+Service class to generate runtime turns for the TrainerLab application.
 
-from __future__ import annotations
+This service handles the logic for generating runtime turns within the TrainerLab
+environment by utilizing various mixins and runtime-related instructions. It manages
+the process of processing runtime outputs on success and clearing runtime state on
+failure. The service is integrated with orchestration through the `orca.service` decorator.
+
+Attributes:
+    required_context_keys (tuple[str]): The keys required in the context for the service
+        to operate correctly. Includes `simulation_id` and `session_id`.
+    use_native_output (bool): Indicates if the service will use native output processing.
+    response_schema (TrainerRuntimeTurnOutput): The schema used for validating the
+        response structure of the service.
+"""
 
 from asgiref.sync import sync_to_async
 

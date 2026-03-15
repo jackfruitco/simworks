@@ -2,14 +2,13 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+from orchestrai.types import StrictBaseModel
 
 
-class RuntimeConditionChange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeConditionChange(StrictBaseModel):
     action: Literal["create", "update", "resolve"]
     condition_kind: Literal["injury", "illness"]
     target_event_id: int | None = None
@@ -43,9 +42,7 @@ class RuntimeConditionChange(BaseModel):
         return self
 
 
-class RuntimeVitalChange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeVitalChange(StrictBaseModel):
     action: Literal["update"] = "update"
     vital_type: Literal[
         "heart_rate",
@@ -74,9 +71,7 @@ class RuntimeVitalChange(BaseModel):
         return self
 
 
-class RuntimeInterventionEffectChange(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeInterventionEffectChange(StrictBaseModel):
     action: Literal["record"] = "record"
     intervention_event_id: int
     status: Literal["active", "effective", "ineffective", "resolved"] = "active"
@@ -84,17 +79,13 @@ class RuntimeInterventionEffectChange(BaseModel):
     notes: str = ""
 
 
-class RuntimeStateChanges(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeStateChanges(StrictBaseModel):
     conditions: list[RuntimeConditionChange] = Field(default_factory=list)
     vitals: list[RuntimeVitalChange] = Field(default_factory=list)
     interventions: list[RuntimeInterventionEffectChange] = Field(default_factory=list)
 
 
-class RuntimeSnapshotCondition(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeSnapshotCondition(StrictBaseModel):
     domain_event_id: int | None = None
     kind: Literal["injury", "illness"]
     label: str
@@ -106,9 +97,7 @@ class RuntimeSnapshotCondition(BaseModel):
     severity: str | None = None
 
 
-class RuntimeSnapshotIntervention(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeSnapshotIntervention(StrictBaseModel):
     domain_event_id: int | None = None
     code: str = ""
     description: str = ""
@@ -120,9 +109,7 @@ class RuntimeSnapshotIntervention(BaseModel):
     clinical_effect: str = ""
 
 
-class RuntimeSnapshotVital(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeSnapshotVital(StrictBaseModel):
     vital_type: Literal[
         "heart_rate",
         "respiratory_rate",
@@ -139,9 +126,7 @@ class RuntimeSnapshotVital(BaseModel):
     trend: Literal["up", "down", "stable", "variable"] = "stable"
 
 
-class RuntimeSnapshotPatientStatus(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class RuntimeSnapshotPatientStatus(StrictBaseModel):
     avpu: Literal["alert", "verbal", "pain", "unalert"] | None = None
     respiratory_distress: bool = False
     hemodynamic_instability: bool = False
@@ -151,9 +136,7 @@ class RuntimeSnapshotPatientStatus(BaseModel):
     teaching_flags: list[str] = Field(default_factory=list)
 
 
-class TrainerRuntimeSnapshot(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TrainerRuntimeSnapshot(StrictBaseModel):
     conditions: list[RuntimeSnapshotCondition] = Field(default_factory=list)
     interventions: list[RuntimeSnapshotIntervention] = Field(default_factory=list)
     vitals: list[RuntimeSnapshotVital] = Field(default_factory=list)
@@ -162,9 +145,7 @@ class TrainerRuntimeSnapshot(BaseModel):
     )
 
 
-class TrainerInstructorIntent(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TrainerInstructorIntent(StrictBaseModel):
     summary: str = ""
     rationale: str = ""
     trigger: str = ""
@@ -174,9 +155,7 @@ class TrainerInstructorIntent(BaseModel):
     monitoring_focus: list[str] = Field(default_factory=list)
 
 
-class TrainerRuntimeTurnOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TrainerRuntimeTurnOutput(StrictBaseModel):
     state_changes: RuntimeStateChanges = Field(default_factory=RuntimeStateChanges)
     snapshot: TrainerRuntimeSnapshot
     instructor_intent: TrainerInstructorIntent = Field(default_factory=TrainerInstructorIntent)
