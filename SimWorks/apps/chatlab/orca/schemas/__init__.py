@@ -1,3 +1,4 @@
+from .lab_orders import LabOrderResultsOutputSchema
 from .patient import (
     PatientInitialOutputSchema,
     PatientReplyOutputSchema,
@@ -6,6 +7,7 @@ from .patient import (
 from .stitch import StitchReplyOutputSchema
 
 __all__ = [
+    "LabOrderResultsOutputSchema",
     "PatientInitialOutputSchema",
     "PatientReplyOutputSchema",
     "PatientResultsOutputSchema",
