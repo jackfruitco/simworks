@@ -1,0 +1,172 @@
+{% load core_filters %}
+{#
+  HTMX partial — refreshed every 10s on the simulation watch page.
+  Expects context: service_calls queryset, service_calls_url string.
+#}
+<div
+  id="service-calls-table"
+  {% if service_calls_url %}
+  hx-get="{{ service_calls_url }}"
+  hx-trigger="every 10s"
+  hx-swap="outerHTML"
+  {% endif %}
+>
+
+{% if not service_calls %}
+  <p class="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
+    No AI service calls recorded yet.
+  </p>
+{% else %}
+  <div x-data="{ expanded: {} }" class="space-y-1">
+    {% for sc in service_calls %}
+    <div
+      class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+    >
+      {# Row header #}
+      <button
+        @click="expanded['{{ sc.id }}'] = !expanded['{{ sc.id }}']"
+        class="w-full flex flex-wrap items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+      >
+        {# Status dot #}
+        <span class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5
+          {% if sc.status == 'completed' %}bg-emerald-500
+          {% elif sc.status == 'failed' %}bg-red-500
+          {% elif sc.status == 'in_progress' %}bg-blue-500 animate-pulse
+          {% else %}bg-yellow-400{% endif %}">
+        </span>
+
+        {# Started time #}
+        <span class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20">
+          {% if sc.started_at %}{{ sc.started_at|date:"H:i:s" }}{% else %}—{% endif %}
+        </span>
+
+        {# Status badge #}
+        <span class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded
+          {% if sc.status == 'completed' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
+          {% elif sc.status == 'failed' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
+          {% elif sc.status == 'in_progress' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
+          {% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300{% endif %}">
+          {{ sc.get_status_display }}
+        </span>
+
+        {# Service identity #}
+        <span class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate">
+          {{ sc.service_identity }}
+        </span>
+
+        {# Model #}
+        {% if sc.model_name %}
+        <span class="hidden sm:block flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">
+          {{ sc.model_name }}
+        </span>
+        {% endif %}
+
+        {# Tokens #}
+        {% if sc.total_tokens %}
+        <span class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden md:block">
+          ↑{{ sc.input_tokens }} ↓{{ sc.output_tokens }}
+        </span>
+        {% endif %}
+
+        {# Cost #}
+        {% if sc.total_cost_usd %}
+        <span class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden md:block">
+          ${{ sc.total_cost_usd }}
+        </span>
+        {% endif %}
+
+        {# Chevron #}
+        <iconify-icon
+          icon="mdi:chevron-down"
+          width="16"
+          class="flex-shrink-0 text-gray-400 transition-transform duration-200"
+          :class="expanded['{{ sc.id }}'] ? 'rotate-180' : ''"
+        ></iconify-icon>
+      </button>
+
+      {# Expanded detail #}
+      <div x-show="expanded['{{ sc.id }}']" x-collapse>
+        <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
+
+          {# Meta #}
+          <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+            <div class="flex gap-1.5">
+              <dt class="font-medium">ID:</dt>
+              <dd class="font-mono">{{ sc.id }}</dd>
+            </div>
+            {% if sc.correlation_id %}
+            <div class="flex gap-1.5">
+              <dt class="font-medium">Correlation:</dt>
+              <dd class="font-mono">{{ sc.correlation_id }}</dd>
+            </div>
+            {% endif %}
+            {% if sc.started_at %}
+            <div class="flex gap-1.5">
+              <dt class="font-medium">Started:</dt>
+              <dd>{{ sc.started_at|date:"H:i:s" }}</dd>
+            </div>
+            {% endif %}
+            {% if sc.finished_at %}
+            <div class="flex gap-1.5">
+              <dt class="font-medium">Finished:</dt>
+              <dd>{{ sc.finished_at|date:"H:i:s" }}</dd>
+            </div>
+            {% endif %}
+            {% if sc.total_tokens %}
+            <div class="flex gap-1.5">
+              <dt class="font-medium">Tokens:</dt>
+              <dd>{{ sc.input_tokens }} in / {{ sc.output_tokens }} out / {{ sc.reasoning_tokens }} reasoning</dd>
+            </div>
+            {% endif %}
+            <div class="flex gap-1.5">
+              <dt class="font-medium">Domain persisted:</dt>
+              <dd>{{ sc.domain_persisted|yesno:"yes,no" }}</dd>
+            </div>
+            {% if sc.domain_persist_attempts %}
+            <div class="flex gap-1.5">
+              <dt class="font-medium">Persist attempts:</dt>
+              <dd>{{ sc.domain_persist_attempts }}</dd>
+            </div>
+            {% endif %}
+          </dl>
+
+          {# Error #}
+          {% if sc.error %}
+          <div>
+            <p class="text-xs font-medium text-red-600 mb-1">Error</p>
+            <pre class="text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded p-2 overflow-x-auto text-red-700 dark:text-red-400 whitespace-pre-wrap">{{ sc.error }}</pre>
+          </div>
+          {% endif %}
+
+          {# Domain persist error #}
+          {% if sc.domain_persist_error %}
+          <div>
+            <p class="text-xs font-medium text-orange-600 mb-1">Domain Persist Error</p>
+            <pre class="text-xs bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900 rounded p-2 overflow-x-auto text-orange-700 dark:text-orange-400 whitespace-pre-wrap">{{ sc.domain_persist_error }}</pre>
+          </div>
+          {% endif %}
+
+          {# Input JSON #}
+          {% if sc.input %}
+          <div>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Input</p>
+            <pre class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.input|json_pretty }}</pre>
+          </div>
+          {% endif %}
+
+          {# Output JSON #}
+          {% if sc.output_data %}
+          <div>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Output</p>
+            <pre class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.output_data|json_pretty }}</pre>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+</div>

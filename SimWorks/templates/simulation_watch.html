@@ -1,0 +1,489 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Watch · Sim #{{ simulation.id }} · {{ lab_name }}{% endblock %}
+
+{% block content %}
+<div
+  x-data="watchView()"
+  x-init="init()"
+  class="tw-root min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col"
+>
+
+  {# ── Header ────────────────────────────────────────────────────────────── #}
+  <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-wrap items-center gap-3">
+    <div class="flex items-center gap-3 flex-1 min-w-0">
+      <a
+        href="{{ back_url }}"
+        class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
+        title="Back to simulation"
+      >
+        <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
+      </a>
+      <div class="min-w-0">
+        <h1 class="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
+          {{ lab_name }} · Watch · Sim #{{ simulation.id }}
+        </h1>
+        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+          {{ simulation.sim_patient_full_name }}
+          {% if simulation.chief_complaint %}· {{ simulation.chief_complaint }}{% endif %}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4 flex-shrink-0">
+      {# Status badge #}
+      <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full
+        {% if simulation.status == 'in_progress' %}bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300
+        {% elif simulation.status == 'completed' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
+        {% else %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300{% endif %}">
+        {{ simulation.get_status_display }}
+      </span>
+      {# Started #}
+      <span class="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
+        Started {{ simulation.start_timestamp|date:"H:i:s" }}
+      </span>
+      {# Live indicator #}
+      <span
+        class="inline-flex items-center gap-1.5 text-xs font-medium"
+        :class="connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'"
+      >
+        <span
+          class="w-2 h-2 rounded-full"
+          :class="connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"
+        ></span>
+        <span x-text="connected ? 'LIVE' : 'DISCONNECTED'"></span>
+      </span>
+    </div>
+  </header>
+
+  {# ── Toolbar ────────────────────────────────────────────────────────────── #}
+  <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex flex-wrap items-center gap-2">
+
+    {# Category filter tabs #}
+    <div class="flex items-center gap-1 flex-wrap">
+      <template x-for="cat in categories" :key="cat.key">
+        <button
+          @click="filter = cat.key"
+          :class="[
+            'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+            filter === cat.key
+              ? cat.activeClass
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+          ]"
+          x-text="cat.label + ' (' + countForCategory(cat.key) + ')'"
+        ></button>
+      </template>
+    </div>
+
+    <div class="flex-1"></div>
+
+    {# Search box #}
+    <input
+      type="text"
+      x-model="searchText"
+      placeholder="Search events…"
+      class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
+    >
+
+    {# Sort #}
+    <select
+      x-model="sortOrder"
+      class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none"
+    >
+      <option value="desc">Newest first</option>
+      <option value="asc">Oldest first</option>
+    </select>
+
+    {# Auto-scroll #}
+    <label class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+      <input type="checkbox" x-model="autoScroll" class="rounded">
+      Auto-scroll
+    </label>
+
+    {# Event count #}
+    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
+      <span x-text="filteredEvents.length"></span>/<span x-text="events.length"></span> events
+    </span>
+  </div>
+
+  {# ── Main content ───────────────────────────────────────────────────────── #}
+  <div class="flex-1 overflow-auto p-4 space-y-6">
+
+    {# Event timeline #}
+    <section>
+      <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+        Outbox Events
+      </h2>
+
+      <div
+        x-ref="eventList"
+        class="space-y-1"
+      >
+        {# Empty state #}
+        <div
+          x-show="events.length === 0"
+          class="text-center py-10 text-gray-400 dark:text-gray-500 text-sm"
+        >
+          No events yet. Waiting for activity…
+        </div>
+
+        <div
+          x-show="filteredEvents.length === 0 && events.length > 0"
+          class="text-center py-6 text-gray-400 dark:text-gray-500 text-sm"
+        >
+          No events match the current filter.
+        </div>
+
+        <template x-for="ev in filteredEvents" :key="ev.event_id">
+          <div
+            class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+          >
+            {# Row header (clickable) #}
+            <button
+              @click="ev.expanded = !ev.expanded"
+              class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+            >
+              {# Status dot #}
+              <span
+                class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
+                :class="{
+                  'bg-yellow-400': ev.status === 'pending',
+                  'bg-emerald-500': ev.status === 'delivered',
+                  'bg-red-500': ev.status === 'failed',
+                  'bg-gray-400': !ev.status
+                }"
+              ></span>
+
+              {# Timestamp #}
+              <span
+                class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20"
+                x-text="formatTime(ev.created_at)"
+              ></span>
+
+              {# Category badge #}
+              <span
+                class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded"
+                :class="categoryBadgeClass(ev.event_type)"
+                x-text="categoryLabel(ev.event_type)"
+              ></span>
+
+              {# Event type #}
+              <span
+                class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate"
+                x-text="ev.event_type"
+              ></span>
+
+              {# Payload preview #}
+              <span
+                class="hidden sm:block text-xs text-gray-400 dark:text-gray-500 truncate max-w-xs"
+                x-text="payloadPreview(ev.payload)"
+              ></span>
+
+              {# Correlation ID #}
+              <span
+                x-show="ev.correlation_id"
+                class="hidden md:block flex-shrink-0 text-xs font-mono text-gray-300 dark:text-gray-600 truncate max-w-[8rem]"
+                x-text="ev.correlation_id ? ev.correlation_id.slice(0, 8) + '…' : ''"
+              ></span>
+
+              {# Chevron #}
+              <iconify-icon
+                icon="mdi:chevron-down"
+                width="16"
+                class="flex-shrink-0 text-gray-400 transition-transform duration-200"
+                :class="ev.expanded ? 'rotate-180' : ''"
+              ></iconify-icon>
+            </button>
+
+            {# Expanded detail #}
+            <div x-show="ev.expanded" x-collapse>
+              <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-2">
+
+                {# Meta row #}
+                <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  <div class="flex gap-1.5">
+                    <dt class="font-medium">Event ID:</dt>
+                    <dd class="font-mono" x-text="ev.event_id"></dd>
+                  </div>
+                  <div class="flex gap-1.5" x-show="ev.correlation_id">
+                    <dt class="font-medium">Correlation:</dt>
+                    <dd class="font-mono" x-text="ev.correlation_id"></dd>
+                  </div>
+                  <div class="flex gap-1.5">
+                    <dt class="font-medium">Status:</dt>
+                    <dd x-text="ev.status || 'unknown'"></dd>
+                  </div>
+                  <div class="flex gap-1.5" x-show="ev.delivery_attempts > 0">
+                    <dt class="font-medium">Attempts:</dt>
+                    <dd x-text="ev.delivery_attempts"></dd>
+                  </div>
+                  <div class="flex gap-1.5" x-show="ev.last_error">
+                    <dt class="font-medium text-red-600">Error:</dt>
+                    <dd class="text-red-600" x-text="ev.last_error"></dd>
+                  </div>
+                  <div class="flex gap-1.5">
+                    <dt class="font-medium">Created:</dt>
+                    <dd x-text="formatDatetime(ev.created_at)"></dd>
+                  </div>
+                </dl>
+
+                {# Payload JSON #}
+                <div>
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Payload</p>
+                  <pre
+                    class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto leading-relaxed text-gray-800 dark:text-gray-200"
+                    x-text="JSON.stringify(ev.payload, null, 2)"
+                  ></pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    {# Service Calls section #}
+    <section>
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+          AI Service Calls
+        </h2>
+        <button
+          hx-get="{{ service_calls_url }}"
+          hx-target="#service-calls-table"
+          hx-swap="outerHTML"
+          hx-trigger="click"
+          class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
+        >
+          <iconify-icon icon="mdi:refresh" width="14"></iconify-icon>
+          Refresh
+        </button>
+      </div>
+
+      {% include "partials/watch_service_calls.html" %}
+    </section>
+
+  </div>{# /main content #}
+</div>{# /x-data #}
+{% endblock content %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+  (function () {
+    // ── Initial data from server (pre-serialized as valid JSON in view) ─────
+    const INITIAL_EVENTS = {{ outbox_events_json|safe }};
+
+    const STREAM_URL = "{{ stream_url }}";
+
+    const CATEGORIES = [
+      { key: "all",        label: "All",        prefix: null,         activeClass: "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900" },
+      { key: "chat",       label: "Chat",       prefix: "chat.",      activeClass: "bg-blue-600 text-white" },
+      { key: "simulation", label: "Simulation", prefix: "simulation.", activeClass: "bg-purple-600 text-white" },
+      { key: "metadata",   label: "Metadata",   prefix: "metadata.",  activeClass: "bg-emerald-600 text-white" },
+      { key: "feedback",   label: "Feedback",   prefix: "feedback.",  activeClass: "bg-orange-600 text-white" },
+      { key: "typing",     label: "Typing",     prefix: "typing.",    activeClass: "bg-gray-500 text-white" },
+      { key: "other",      label: "Other",      prefix: "__other__",  activeClass: "bg-yellow-500 text-white" },
+    ];
+
+    const BADGE_CLASSES = {
+      chat:       "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+      simulation: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+      metadata:   "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+      feedback:   "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+      typing:     "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
+      other:      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+    };
+
+    function categoryKeyForType(eventType) {
+      for (const cat of CATEGORIES) {
+        if (cat.prefix && cat.prefix !== "__other__" && eventType.startsWith(cat.prefix)) {
+          return cat.key;
+        }
+      }
+      return "other";
+    }
+
+    window.watchView = function () {
+      return {
+        events: INITIAL_EVENTS,
+        filter: "all",
+        searchText: "",
+        sortOrder: "desc",
+        autoScroll: true,
+        connected: false,
+        categories: CATEGORIES,
+        _es: null,
+        _reconnectTimer: null,
+        _reconnectDelay: 1000,
+
+        init() {
+          this.connect();
+        },
+
+        connect() {
+          const lastId = this.events.length
+            ? this.events[this.events.length - 1].event_id
+            : null;
+          const url = lastId ? `${STREAM_URL}?cursor=${lastId}` : STREAM_URL;
+
+          console.debug("[WatchView] Opening SSE stream:", url);
+          const es = new EventSource(url);
+          this._es = es;
+
+          es.addEventListener("simulation", (e) => {
+            try {
+              const envelope = JSON.parse(e.data);
+              this.addEvent(envelope);
+            } catch (err) {
+              console.error("[WatchView] Failed to parse SSE event:", err, e.data);
+            }
+          });
+
+          es.addEventListener("error", () => {
+            console.warn("[WatchView] SSE connection error — scheduling reconnect");
+            this.connected = false;
+            es.close();
+            this._scheduleReconnect();
+          });
+
+          es.addEventListener("open", () => {
+            console.debug("[WatchView] SSE connected");
+            this.connected = true;
+            this._reconnectDelay = 1000;
+          });
+        },
+
+        _scheduleReconnect() {
+          clearTimeout(this._reconnectTimer);
+          const delay = this._reconnectDelay;
+          this._reconnectDelay = Math.min(delay * 2, 30000);
+          console.debug(`[WatchView] Reconnecting in ${delay}ms`);
+          this._reconnectTimer = setTimeout(() => this.connect(), delay);
+        },
+
+        addEvent(envelope) {
+          // Normalise fields — SSE envelope may differ slightly from initial data
+          const ev = {
+            event_id: envelope.event_id,
+            event_type: envelope.event_type,
+            created_at: envelope.created_at,
+            correlation_id: envelope.correlation_id || "",
+            payload: envelope.payload || {},
+            status: envelope.status || "delivered",
+            delivery_attempts: envelope.delivery_attempts || 0,
+            last_error: envelope.last_error || null,
+            idempotency_key: envelope.idempotency_key || "",
+            expanded: false,
+          };
+          // Deduplication
+          if (this.events.some((e) => e.event_id === ev.event_id)) return;
+          this.events.push(ev);
+          if (this.autoScroll && this.sortOrder === "desc") {
+            this.$nextTick(() => {
+              const list = this.$refs.eventList;
+              if (list) list.scrollIntoView({ behavior: "smooth", block: "end" });
+            });
+          }
+        },
+
+        get filteredEvents() {
+          let result = this.events.slice();
+
+          // Category filter
+          if (this.filter !== "all") {
+            const cat = CATEGORIES.find((c) => c.key === this.filter);
+            if (cat) {
+              if (this.filter === "other") {
+                result = result.filter((ev) => categoryKeyForType(ev.event_type) === "other");
+              } else {
+                result = result.filter((ev) => ev.event_type.startsWith(cat.prefix));
+              }
+            }
+          }
+
+          // Text search
+          if (this.searchText.trim()) {
+            const q = this.searchText.trim().toLowerCase();
+            result = result.filter(
+              (ev) =>
+                ev.event_type.toLowerCase().includes(q) ||
+                JSON.stringify(ev.payload).toLowerCase().includes(q) ||
+                (ev.correlation_id || "").toLowerCase().includes(q)
+            );
+          }
+
+          // Sort
+          result.sort((a, b) => {
+            const diff = new Date(a.created_at) - new Date(b.created_at);
+            return this.sortOrder === "asc" ? diff : -diff;
+          });
+
+          return result;
+        },
+
+        countForCategory(catKey) {
+          if (catKey === "all") return this.events.length;
+          const cat = CATEGORIES.find((c) => c.key === catKey);
+          if (!cat) return 0;
+          if (catKey === "other") {
+            return this.events.filter((ev) => categoryKeyForType(ev.event_type) === "other").length;
+          }
+          return this.events.filter((ev) => ev.event_type.startsWith(cat.prefix)).length;
+        },
+
+        categoryLabel(eventType) {
+          const key = categoryKeyForType(eventType);
+          return CATEGORIES.find((c) => c.key === key)?.label || "Other";
+        },
+
+        categoryBadgeClass(eventType) {
+          return BADGE_CLASSES[categoryKeyForType(eventType)] || BADGE_CLASSES.other;
+        },
+
+        payloadPreview(payload) {
+          const keys = Object.keys(payload || {});
+          if (!keys.length) return "{}";
+          const preview = keys.slice(0, 3).map((k) => {
+            const v = payload[k];
+            const repr =
+              typeof v === "string"
+                ? `"${v.slice(0, 30)}${v.length > 30 ? "…" : ""}"`
+                : typeof v === "object" && v !== null
+                  ? "{…}"
+                  : String(v);
+            return `${k}: ${repr}`;
+          });
+          return `{ ${preview.join(", ")}${keys.length > 3 ? ", …" : ""} }`;
+        },
+
+        formatTime(iso) {
+          try {
+            return new Date(iso).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+            });
+          } catch {
+            return iso || "";
+          }
+        },
+
+        formatDatetime(iso) {
+          try {
+            return new Date(iso).toLocaleString([], {
+              dateStyle: "short",
+              timeStyle: "medium",
+              hour12: false,
+            });
+          } catch {
+            return iso || "";
+          }
+        },
+      };
+    };
+  })();
+</script>
+{% endblock scripts %}
