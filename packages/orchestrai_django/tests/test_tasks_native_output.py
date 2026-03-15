@@ -268,6 +268,13 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
         def count():
             return 0
 
+        def filter(self, **kwargs):
+            return self
+
+        @staticmethod
+        def first():
+            return None
+
     class RetryCall(DummyCall):
         def __init__(self):
             super().__init__()
