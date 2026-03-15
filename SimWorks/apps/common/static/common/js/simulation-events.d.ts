@@ -44,10 +44,10 @@ export type SimulationEventType =
     | 'feedback.failed'
     | 'feedback.retrying'
 
-    // TrainerLab events (future)
-    | 'vitals.updated'
-    | 'injury.created'
-    | 'intervention.created';
+    // TrainerLab events
+    | 'trainerlab.condition.created'
+    | 'trainerlab.vital.created'
+    | 'trainerlab.event.created';
 
 // ============================================================================
 // Event Payloads
@@ -210,45 +210,157 @@ export interface MetadataResultsCreatedEvent extends BaseEvent {
 }
 
 // ============================================================================
-// TrainerLab Events (Future)
+// TrainerLab Events
 // ============================================================================
 
-/**
- * Vital signs updated event
- */
-export interface VitalsUpdatedEvent extends BaseEvent {
-    type: 'vitals.updated';
+export interface TrainerLabDomainEventBase {
     simulation_id: number;
-    vital_type: 'heart_rate' | 'spo2' | 'etco2' | 'blood_glucose' | 'blood_pressure';
-    value: number;
-    min_value?: number;
-    max_value?: number;
+    domain_event_id?: number | null;
+    domain_event_type?: string;
+    source?: string;
+    supersedes_event_id?: number | null;
     timestamp: string;
 }
 
-/**
- * Injury created event
- */
-export interface InjuryCreatedEvent extends BaseEvent {
-    type: 'injury.created';
-    simulation_id: number;
+export interface TrainerLabInjuryFields {
     injury_id: number;
-    category: string;
-    location: string;
-    kind: string;
-    description?: string;
+    parent_injury_id?: number | null;
+    injury_category: string;
+    injury_location: string;
+    injury_kind: string;
+    injury_description?: string;
+    is_treated?: boolean;
+    is_resolved?: boolean;
+    injury_category_label?: string;
+    injury_location_label?: string;
+    injury_kind_label?: string;
 }
 
-/**
- * Intervention created event
- */
-export interface InterventionCreatedEvent extends BaseEvent {
-    type: 'intervention.created';
-    simulation_id: number;
+export interface InterventionDetailsBase {
+    kind: string;
+    version: number;
+}
+
+export interface TourniquetInterventionDetails extends InterventionDetailsBase {
+    kind: 'tourniquet';
+    version: 1;
+    application_mode: 'hasty' | 'deliberate';
+}
+
+export interface WoundPackingInterventionDetails extends InterventionDetailsBase {
+    kind: 'wound_packing';
+    version: 1;
+}
+
+export interface PressureDressingInterventionDetails extends InterventionDetailsBase {
+    kind: 'pressure_dressing';
+    version: 1;
+}
+
+export interface NasopharyngealAirwayInterventionDetails extends InterventionDetailsBase {
+    kind: 'npa';
+    version: 1;
+}
+
+export interface OropharyngealAirwayInterventionDetails extends InterventionDetailsBase {
+    kind: 'opa';
+    version: 1;
+}
+
+export interface NeedleDecompressionInterventionDetails extends InterventionDetailsBase {
+    kind: 'needle_decompression';
+    version: 1;
+}
+
+export interface SurgicalCricInterventionDetails extends InterventionDetailsBase {
+    kind: 'surgical_cric';
+    version: 1;
+}
+
+export type InterventionDetails =
+    | TourniquetInterventionDetails
+    | WoundPackingInterventionDetails
+    | PressureDressingInterventionDetails
+    | NasopharyngealAirwayInterventionDetails
+    | OropharyngealAirwayInterventionDetails
+    | NeedleDecompressionInterventionDetails
+    | SurgicalCricInterventionDetails;
+
+export interface TrainerLabInterventionFields {
     intervention_id: number;
     intervention_type: string;
+    intervention_label?: string;
+    site_code: string;
+    site_label?: string;
+    target_injury_id?: number | null;
+    status: 'applied' | 'adjusted' | 'reassessed' | 'removed';
+    effectiveness: 'unknown' | 'effective' | 'partially_effective' | 'ineffective';
+    notes?: string;
+    details: InterventionDetails;
+}
+
+export interface TrainerLabIllnessFields {
+    illness_id: number;
+    name: string;
     description?: string;
-    timestamp: string;
+    severity: 'low' | 'moderate' | 'high' | 'critical';
+    is_resolved?: boolean;
+}
+
+export interface TrainerLabVitalFields {
+    event_kind?: 'vital';
+    vital_type: 'heart_rate' | 'respiratory_rate' | 'spo2' | 'etco2' | 'blood_glucose' | 'blood_pressure';
+    min_value?: number;
+    max_value?: number;
+    lock_value?: boolean;
+    min_value_diastolic?: number;
+    max_value_diastolic?: number;
+}
+
+export interface TrainerLabConditionCreatedInjuryEvent extends TrainerLabDomainEventBase, TrainerLabInjuryFields {
+    type: 'trainerlab.condition.created';
+    event_kind: 'injury';
+    condition_kind: 'injury';
+    origin?: string;
+    call_id?: string;
+    correlation_id?: string | null;
+}
+
+export interface TrainerLabConditionCreatedIllnessEvent extends TrainerLabDomainEventBase, TrainerLabIllnessFields {
+    type: 'trainerlab.condition.created';
+    event_kind: 'illness';
+    condition_kind: 'illness';
+    origin?: string;
+    call_id?: string;
+    correlation_id?: string | null;
+}
+
+export interface TrainerLabVitalCreatedEvent extends TrainerLabDomainEventBase, TrainerLabVitalFields {
+    type: 'trainerlab.vital.created';
+    event_kind: 'vital';
+    origin?: string;
+    call_id?: string;
+    correlation_id?: string | null;
+}
+
+export interface TrainerLabEventCreatedInjuryEvent extends TrainerLabDomainEventBase, TrainerLabInjuryFields {
+    type: 'trainerlab.event.created';
+    event_kind: 'injury';
+}
+
+export interface TrainerLabEventCreatedIllnessEvent extends TrainerLabDomainEventBase, TrainerLabIllnessFields {
+    type: 'trainerlab.event.created';
+    event_kind: 'illness';
+}
+
+export interface TrainerLabEventCreatedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabInterventionFields {
+    type: 'trainerlab.event.created';
+    event_kind: 'intervention';
+}
+
+export interface TrainerLabEventCreatedVitalEvent extends TrainerLabDomainEventBase, TrainerLabVitalFields {
+    type: 'trainerlab.event.created';
+    event_kind: 'vital';
 }
 
 // ============================================================================
@@ -273,9 +385,13 @@ export type SimulationEvent =
     | FeedbackCreatedEvent
     | FeedbackContinuationEvent
     | MetadataResultsCreatedEvent
-    | VitalsUpdatedEvent
-    | InjuryCreatedEvent
-    | InterventionCreatedEvent;
+    | TrainerLabConditionCreatedInjuryEvent
+    | TrainerLabConditionCreatedIllnessEvent
+    | TrainerLabVitalCreatedEvent
+    | TrainerLabEventCreatedInjuryEvent
+    | TrainerLabEventCreatedIllnessEvent
+    | TrainerLabEventCreatedInterventionEvent
+    | TrainerLabEventCreatedVitalEvent;
 
 // ============================================================================
 // Client Commands (sent TO server)

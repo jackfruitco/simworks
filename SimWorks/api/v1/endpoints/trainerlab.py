@@ -21,7 +21,10 @@ from api.v1.schemas.trainerlab import (
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
-    InterventionGroupOut,
+    InterventionDefinitionOut,
+    InterventionDetailsSchemaOut,
+    InterventionDictionaryOut,
+    InterventionUIFieldOut,
     LabAccessOut,
     RunSummaryOut,
     ScenarioInstructionApplyIn,
@@ -52,6 +55,10 @@ from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
 from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
+from apps.trainerlab.intervention_dictionary import (
+    get_intervention_detail_schema_metadata,
+    list_intervention_definitions,
+)
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
@@ -85,43 +92,6 @@ from apps.trainerlab.services import (
 
 router = Router(tags=["trainerlab"], auth=JWTAuth())
 UserModel = get_user_model()
-
-INTERVENTION_DICTIONARY: list[InterventionGroupOut] = [
-    InterventionGroupOut(
-        group="Tourniquet",
-        items=[
-            DictionaryItemOut(code="M-TQ-H", label="Hasty Tourniquet"),
-            DictionaryItemOut(code="M-TQ-D", label="Deliberate Tourniquet"),
-        ],
-    ),
-    InterventionGroupOut(
-        group="Gauze",
-        items=[
-            DictionaryItemOut(code="M-GZ-PK", label="Non-Hemostatic Gauze Packed"),
-            DictionaryItemOut(code="M-GZ-PK-H", label="Hemostatic Gauze Packed"),
-            DictionaryItemOut(code="M-GZ-WP", label="Non-Hemostatic Gauze Wrapped"),
-            DictionaryItemOut(code="M-GZ-WP-H", label="Hemostatic Gauze Wrapped"),
-            DictionaryItemOut(code="M-GZ-ZF", label="Z-Folded Gauze"),
-            DictionaryItemOut(code="M-GZ-ZF-H", label="Hemostatic Z-Folded Gauze"),
-        ],
-    ),
-    InterventionGroupOut(
-        group="Airway",
-        items=[
-            DictionaryItemOut(code="A-P-R", label="Recovery Position"),
-            DictionaryItemOut(code="A-P-C", label="Position of Comfort"),
-            DictionaryItemOut(code="A-P-O", label="Other Position"),
-            DictionaryItemOut(code="A-HTCL", label="Head-Tilt-Chin-Lift"),
-            DictionaryItemOut(code="A-JT", label="Jaw-Thrust"),
-            DictionaryItemOut(code="A-NPA", label="NPA"),
-            DictionaryItemOut(code="A-OPA", label="OPA"),
-            DictionaryItemOut(code="A-SGA", label="SGA"),
-            DictionaryItemOut(code="A-INT", label="Intubation"),
-            DictionaryItemOut(code="A-SURG-O", label="Surgical Airway (Open Technique)"),
-            DictionaryItemOut(code="A-SURG-B", label="Surgical Airway (Bougie-aided)"),
-        ],
-    ),
-]
 
 
 def _get_idempotency_key(request: HttpRequest) -> str:
@@ -326,14 +296,45 @@ def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]
 
 @router.get(
     "/dictionaries/interventions/",
-    response=list[InterventionGroupOut],
-    summary="List intervention dictionary mappings",
+    response=InterventionDictionaryOut,
+    summary="List structured intervention dictionary",
 )
 @api_rate_limit
-def intervention_dictionary(request: HttpRequest) -> list[InterventionGroupOut]:
+def intervention_dictionary(request: HttpRequest) -> InterventionDictionaryOut:
     user = request.auth
     require_instructor_membership(user)
-    return INTERVENTION_DICTIONARY
+    definitions = []
+    for defn in list_intervention_definitions():
+        schema_meta = get_intervention_detail_schema_metadata(defn.type_code)
+        definitions.append(
+            InterventionDefinitionOut(
+                code=defn.type_code,
+                label=defn.label,
+                sites=[DictionaryItemOut(code=code, label=label) for code, label in defn.sites],
+                details_schema=InterventionDetailsSchemaOut(
+                    kind=defn.type_code,
+                    version=defn.details_schema_version,
+                    required_fields=schema_meta.get("required_fields", []),
+                    optional_fields=schema_meta.get("optional_fields", []),
+                    allows_extra=schema_meta.get("allows_extra", False),
+                ),
+                ui_fields=[
+                    InterventionUIFieldOut(
+                        name=field.name,
+                        label=field.label,
+                        input_type=field.input_type,
+                        required=field.required,
+                        help_text=field.help_text,
+                        options=[
+                            DictionaryItemOut(code=code, label=label)
+                            for code, label in field.choices
+                        ],
+                    )
+                    for field in defn.ui_fields
+                ],
+            )
+        )
+    return InterventionDictionaryOut(interventions=definitions)
 
 
 @router.get(
@@ -1031,17 +1032,23 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
     )
     _deactivate_superseded(supersedes)
 
-    return Intervention.objects.create(
+    obj = Intervention(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes_event=supersedes,
-        code=body.code,
-        description=body.description,
-        target=body.target,
-        anatomic_location=body.anatomic_location,
-        effective=body.effective,
+        intervention_type=body.intervention_type,
+        site_code=body.site_code,
+        target_injury_id=body.target_injury_id,
+        status=body.status,
+        effectiveness=body.effectiveness,
+        notes=body.notes,
+        details_json=body.details.model_dump(exclude_none=True),
         performed_by_role=body.performed_by_role,
     )
+    obj.sync_legacy_fields()
+    obj.full_clean()
+    obj.save()
+    return obj
 
 
 def _create_note(session: TrainerSession, body: SimulationNoteCreateIn) -> SimulationNote:

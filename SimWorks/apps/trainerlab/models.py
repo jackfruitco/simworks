@@ -3,11 +3,20 @@ from __future__ import annotations
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from polymorphic.models import PolymorphicModel
 
 from apps.simcore.models import BaseSession
+
+from .intervention_dictionary import (
+    INTERVENTION_DEFINITIONS,
+    build_legacy_intervention_code,
+    normalize_intervention_site,
+    normalize_intervention_type,
+    validate_intervention_details,
+)
 
 
 class SessionStatus(models.TextChoices):
@@ -382,16 +391,107 @@ class Intervention(ABCEvent):
         INSTRUCTOR = "instructor", _("Instructor")
         AI = "ai", _("AI")
 
+    class Status(models.TextChoices):
+        APPLIED = "applied", _("Applied")
+        ADJUSTED = "adjusted", _("Adjusted")
+        REASSESSED = "reassessed", _("Reassessed")
+        REMOVED = "removed", _("Removed")
+
+    class Effectiveness(models.TextChoices):
+        UNKNOWN = "unknown", _("Unknown")
+        EFFECTIVE = "effective", _("Effective")
+        PARTIALLY_EFFECTIVE = "partially_effective", _("Partially Effective")
+        INEFFECTIVE = "ineffective", _("Ineffective")
+
+    intervention_type = models.CharField(
+        max_length=64,
+        choices=[(d.type_code, d.label) for d in INTERVENTION_DEFINITIONS],
+        blank=True,
+        default="",
+        db_index=True,
+    )
+    site_code = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    target_injury = models.ForeignKey(
+        "trainerlab.Injury",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="targeted_by_interventions",
+    )
+    status = models.CharField(
+        max_length=24,
+        choices=Status.choices,
+        default=Status.APPLIED,
+    )
+    effectiveness = models.CharField(
+        max_length=24,
+        choices=Effectiveness.choices,
+        default=Effectiveness.UNKNOWN,
+    )
+    notes = models.TextField(blank=True, default="")
+    details_json = models.JSONField(default=dict, blank=True)
     code = models.CharField(max_length=64, blank=True, default="")
     description = models.TextField(blank=True, default="")
     target = models.CharField(max_length=120, blank=True, default="")
     anatomic_location = models.CharField(max_length=120, blank=True, default="")
-    effective = models.BooleanField(null=True, blank=True, default=None)
     performed_by_role = models.CharField(
         max_length=16,
         choices=PerformedByRole.choices,
         default=PerformedByRole.TRAINEE,
     )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "intervention_type"], name="idx_intervention_type"),
+            models.Index(fields=["simulation", "site_code"], name="idx_intervention_site"),
+        ]
+
+    def sync_legacy_fields(self) -> None:
+        if not self.intervention_type:
+            return
+        self.code = build_legacy_intervention_code(self.intervention_type, self.details_json)
+        self.description = self.notes
+        self.target = self.site_code
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, list[str] | str] = {}
+
+        if self.intervention_type:
+            try:
+                self.intervention_type = normalize_intervention_type(self.intervention_type)
+            except ValueError as exc:
+                errors["intervention_type"] = str(exc)
+            else:
+                if self.site_code:
+                    try:
+                        self.site_code = normalize_intervention_site(
+                            self.intervention_type, self.site_code
+                        )
+                    except ValueError as exc:
+                        errors["site_code"] = str(exc)
+                elif self.pk or self.notes or self.code:
+                    errors["site_code"] = "site_code is required for structured interventions"
+
+                try:
+                    self.details_json = validate_intervention_details(
+                        self.intervention_type, self.details_json or {}
+                    )
+                except ValueError as exc:
+                    errors["details_json"] = str(exc)
+
+        if self.target_injury_id and self.simulation_id != self.target_injury.simulation_id:
+            errors["target_injury"] = "target_injury must belong to the same simulation"
+
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        if self.intervention_type:
+            return (
+                f"{self.get_intervention_type_display()} at {self.site_code or 'unspecified site'}"
+            )
+        return super().__str__()
 
 
 class SimulationNote(ABCEvent):

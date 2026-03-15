@@ -1144,7 +1144,7 @@ class TestTrainerLabDictionaries:
         assert body["current_snapshot"]["vitals"] == []
         assert body["pending_runtime_reasons"] == []
 
-    def test_intervention_event_captures_runtime_fields_and_queues_reason(
+    def test_intervention_event_captures_structured_fields_and_queues_reason(
         self,
         auth_client_factory,
         instructor_user,
@@ -1159,11 +1159,12 @@ class TestTrainerLabDictionaries:
         response = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
-                "code": "M-TQ-D",
-                "description": "Tourniquet placed high and tight",
-                "target": "Left upper arm hemorrhage",
-                "anatomic_location": "left upper arm",
-                "effective": True,
+                "intervention_type": "tourniquet",
+                "site_code": "TQ-L-ARM",
+                "status": "applied",
+                "effectiveness": "unknown",
+                "notes": "Tourniquet placed high and tight",
+                "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
                 "performed_by_role": "trainee",
             },
             content_type="application/json",
@@ -1172,10 +1173,11 @@ class TestTrainerLabDictionaries:
 
         assert response.status_code == 200
 
-        intervention = Intervention.objects.get(code="M-TQ-D")
-        assert intervention.anatomic_location == "left upper arm"
-        assert intervention.effective is True
+        intervention = Intervention.objects.get(intervention_type="tourniquet")
+        assert intervention.site_code == "TQ-L-ARM"
+        assert intervention.effectiveness == "unknown"
         assert intervention.performed_by_role == "trainee"
+        assert intervention.code == "M-TQ-D"
 
         trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
         pending = trainer_session.runtime_state_json.get("pending_runtime_reasons", [])
@@ -1184,6 +1186,35 @@ class TestTrainerLabDictionaries:
 
         state = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/state/").json()
         assert state["pending_runtime_reasons"][-1]["reason_kind"] == "intervention_recorded"
+
+    def test_intervention_dictionary_endpoint_returns_structured_definitions(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+
+        response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert "interventions" in body
+        definitions = body["interventions"]
+        assert len(definitions) == 7
+
+        codes = [d["code"] for d in definitions]
+        assert "tourniquet" in codes
+        assert "needle_decompression" in codes
+
+        tq = next(d for d in definitions if d["code"] == "tourniquet")
+        assert tq["label"] == "Tourniquet"
+        assert {"code": "TQ-L-ARM", "label": "Left Arm"} in tq["sites"]
+        assert tq["details_schema"]["kind"] == "tourniquet"
+        assert "application_mode" in tq["details_schema"]["required_fields"]
+        assert len(tq["ui_fields"]) == 1
+        assert tq["ui_fields"][0]["name"] == "application_mode"
+        assert {"code": "hasty", "label": "Hasty"} in tq["ui_fields"][0]["options"]
 
     def test_runtime_worker_applies_mock_ai_output_and_emits_state_update(
         self,
@@ -1216,11 +1247,12 @@ class TestTrainerLabDictionaries:
         intervention_resp = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
-                "code": "M-TQ-D",
-                "description": "Tourniquet placed high and tight",
-                "target": "Massive hemorrhage",
-                "anatomic_location": "left upper arm",
-                "effective": True,
+                "intervention_type": "tourniquet",
+                "site_code": "TQ-L-ARM",
+                "status": "applied",
+                "effectiveness": "unknown",
+                "notes": "Tourniquet placed high and tight",
+                "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
                 "performed_by_role": "trainee",
             },
             content_type="application/json",
@@ -1229,7 +1261,9 @@ class TestTrainerLabDictionaries:
         assert intervention_resp.status_code == 200
 
         trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
-        intervention = Intervention.objects.filter(simulation_id=simulation_id).latest("timestamp")
+        intervention = Intervention.objects.filter(
+            simulation_id=simulation_id, intervention_type="tourniquet"
+        ).latest("timestamp")
         injury = Injury.objects.get(injury_description="GSW to the left chest")
 
         def _inline_enqueue(batch):

@@ -1,22 +1,12 @@
 # trainerlab/orca/schemas/initial.py
 
-from datetime import UTC
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from asgiref.sync import sync_to_async
 from pydantic import AliasChoices, Field
 
-from apps.trainerlab.models import (
-    ETCO2 as ORMETCO2,
-    SPO2 as ORMSPO2,
-    BloodGlucoseLevel as ORMBloodGlucoseLevel,
-    BloodPressure as ORMBloodPressure,
-    HeartRate as ORMHeartRate,
-    Illness as ORMIllness,
-    Injury as ORMInjury,
-    RespiratoryRate as ORMRespiratoryRate,
-)
+from apps.trainerlab.event_payloads import serialize_domain_event
 from apps.trainerlab.schemas import ScenarioBrief
 from orchestrai.types import StrictBaseModel
 
@@ -40,107 +30,11 @@ if TYPE_CHECKING:
     from orchestrai_django.persistence import PersistContext
 
 
-def _event_timestamp_iso(obj: Any) -> str | None:
-    timestamp = getattr(obj, "timestamp", None)
-    if timestamp is None:
-        return None
-    return timestamp.astimezone(UTC).isoformat()
-
-
-def _condition_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, Any]:
-    payload = {
-        "simulation_id": getattr(obj, "simulation_id", context.simulation_id),
-        "domain_event_id": getattr(obj, "id", None),
-        "domain_event_type": type(obj).__name__,
-        "source": getattr(obj, "source", None),
-        "supersedes_event_id": getattr(obj, "supersedes_event_id", None),
-        "timestamp": _event_timestamp_iso(obj),
-        "origin": "initial_scenario",
-        "call_id": context.call_id,
-        "correlation_id": context.correlation_id,
-    }
-
-    if isinstance(obj, ORMInjury):
-        payload.update(
-            {
-                "condition_kind": "injury",
-                "injury_category": obj.injury_category,
-                "injury_location": obj.injury_location,
-                "injury_kind": obj.injury_kind,
-                "injury_description": obj.injury_description,
-                "is_treated": obj.is_treated,
-                "is_resolved": obj.is_resolved,
-            }
-        )
-    elif isinstance(obj, ORMIllness):
-        payload.update(
-            {
-                "condition_kind": "illness",
-                "name": obj.name,
-                "description": obj.description,
-                "severity": obj.severity,
-                "is_resolved": obj.is_resolved,
-            }
-        )
-
-    return payload
-
-
-def _vital_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, Any]:
-    if isinstance(obj, ORMHeartRate):
-        vital_type = "heart_rate"
-    elif isinstance(obj, ORMRespiratoryRate):
-        vital_type = "respiratory_rate"
-    elif isinstance(obj, ORMSPO2):
-        vital_type = "spo2"
-    elif isinstance(obj, ORMETCO2):
-        vital_type = "etco2"
-    elif isinstance(obj, ORMBloodGlucoseLevel):
-        vital_type = "blood_glucose"
-    elif isinstance(obj, ORMBloodPressure):
-        vital_type = "blood_pressure"
-    else:
-        vital_type = type(obj).__name__
-
-    payload = {
-        "simulation_id": getattr(obj, "simulation_id", context.simulation_id),
-        "domain_event_id": getattr(obj, "id", None),
-        "domain_event_type": type(obj).__name__,
-        "source": getattr(obj, "source", None),
-        "supersedes_event_id": getattr(obj, "supersedes_event_id", None),
-        "timestamp": _event_timestamp_iso(obj),
-        "origin": "initial_scenario",
-        "call_id": context.call_id,
-        "correlation_id": context.correlation_id,
-        "vital_type": vital_type,
-        "min_value": getattr(obj, "min_value", None),
-        "max_value": getattr(obj, "max_value", None),
-        "lock_value": getattr(obj, "lock_value", None),
-    }
-    if isinstance(obj, ORMBloodPressure):
-        payload["min_value_diastolic"] = obj.min_value_diastolic
-        payload["max_value_diastolic"] = obj.max_value_diastolic
-
-    return payload
-
-
-def _scenario_brief_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, Any]:
+def _initial_extra(context: "PersistContext") -> dict[str, Any]:
     return {
-        "simulation_id": getattr(obj, "simulation_id", context.simulation_id),
-        "domain_event_id": getattr(obj, "id", None),
-        "domain_event_type": "ScenarioBrief",
-        "source": getattr(obj, "source", None),
-        "timestamp": _event_timestamp_iso(obj),
         "origin": "initial_scenario",
-        "call_id": context.call_id,
+        "call_id": str(context.call_id),
         "correlation_id": context.correlation_id,
-        "read_aloud_brief": obj.read_aloud_brief,
-        "environment": obj.environment,
-        "location_overview": obj.location_overview,
-        "threat_context": obj.threat_context,
-        "evacuation_options": obj.evacuation_options,
-        "evacuation_time": obj.evacuation_time,
-        "special_considerations": obj.special_considerations,
     }
 
 
@@ -215,12 +109,14 @@ class InitialScenarioSchema(StrictBaseModel):
                 if obj is not None:
                     vital_objects.append(obj)
 
+        extra = _initial_extra(context)
+
         if scenario_brief_obj is not None:
             await broadcast_domain_objects(
                 event_type="trainerlab.scenario_brief.created",
                 objects=[scenario_brief_obj],
                 context=context,
-                payload_builder=lambda obj: _scenario_brief_event_payload(obj, context=context),
+                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
             )
 
         if conditions:
@@ -228,7 +124,7 @@ class InitialScenarioSchema(StrictBaseModel):
                 event_type="trainerlab.condition.created",
                 objects=conditions,
                 context=context,
-                payload_builder=lambda obj: _condition_event_payload(obj, context=context),
+                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
             )
 
         if vital_objects:
@@ -236,7 +132,7 @@ class InitialScenarioSchema(StrictBaseModel):
                 event_type="trainerlab.vital.created",
                 objects=vital_objects,
                 context=context,
-                payload_builder=lambda obj: _vital_event_payload(obj, context=context),
+                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
             )
 
         await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(

@@ -278,17 +278,19 @@ def _serialize_intervention(
     effect = dict((intervention_effects or {}).get(str(obj.id), {}))
     return {
         "domain_event_id": obj.id,
+        "intervention_type": obj.intervention_type or None,
+        "site_code": obj.site_code or None,
+        "effectiveness": obj.effectiveness,
+        "notes": obj.notes,
         "code": obj.code,
         "description": obj.description,
         "target": obj.target,
         "anatomic_location": obj.anatomic_location,
-        "effective": obj.effective,
         "performed_by_role": obj.performed_by_role,
         "source": obj.source,
         "timestamp": _iso_or_none(obj.timestamp),
         "status": effect.get("status", "active"),
         "clinical_effect": effect.get("clinical_effect", ""),
-        "notes": effect.get("notes", ""),
     }
 
 

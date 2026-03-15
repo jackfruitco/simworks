@@ -3,12 +3,17 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from apps.trainerlab.injury_dictionary import (
     normalize_injury_category,
     normalize_injury_kind,
     normalize_injury_location,
+)
+from apps.trainerlab.intervention_dictionary import (
+    normalize_intervention_site,
+    normalize_intervention_type,
+    validate_intervention_details,
 )
 from apps.trainerlab.models import (
     ScenarioInstruction,
@@ -112,14 +117,54 @@ class IllnessCreateIn(BaseModel):
     supersedes_event_id: int | None = None
 
 
+class InterventionDetailsIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    kind: str
+    version: int = 1
+
+
 class InterventionCreateIn(BaseModel):
-    code: str = ""
-    description: str = ""
-    target: str = ""
-    anatomic_location: str = ""
-    effective: bool | None = None
+    intervention_type: str = Field(
+        ...,
+        description="Intervention type code or friendly label",
+    )
+    site_code: str = Field(
+        ...,
+        description="Intervention site code or friendly label, normalized per intervention type",
+    )
+    target_injury_id: int | None = None
+    status: Literal["applied", "adjusted", "reassessed", "removed"] = "applied"
+    effectiveness: Literal[
+        "unknown",
+        "effective",
+        "partially_effective",
+        "ineffective",
+    ] = "unknown"
+    notes: str = ""
+    details: InterventionDetailsIn = Field(
+        ...,
+        description=(
+            "Typed intervention-specific details. `details.kind` must match `intervention_type`."
+        ),
+    )
     performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
     supersedes_event_id: int | None = None
+
+    @field_validator("intervention_type")
+    @classmethod
+    def _normalize_intervention_type(cls, value: str) -> str:
+        return normalize_intervention_type(value)
+
+    @model_validator(mode="after")
+    def _normalize_site_and_validate_detail_shape(self) -> "InterventionCreateIn":
+        self.site_code = normalize_intervention_site(self.intervention_type, self.site_code)
+        validated = validate_intervention_details(
+            self.intervention_type,
+            self.details.model_dump(exclude_none=True),
+        )
+        self.details = InterventionDetailsIn.model_validate(validated)
+        return self
 
 
 class SimulationNoteCreateIn(BaseModel):
@@ -190,15 +235,17 @@ class RuntimeConditionStateOut(BaseModel):
 
 class RuntimeInterventionStateOut(BaseModel):
     domain_event_id: int | None = None
+    intervention_type: str | None = None
+    site_code: str | None = None
+    effectiveness: str = "unknown"
+    notes: str = ""
     code: str = ""
     description: str = ""
     target: str = ""
     anatomic_location: str = ""
-    effective: bool | None = None
     performed_by_role: str = "trainee"
     status: str = "active"
     clinical_effect: str = ""
-    notes: str = ""
     source: str | None = None
     timestamp: str | None = None
 
@@ -322,6 +369,35 @@ class DictionaryItemOut(BaseModel):
 class InterventionGroupOut(BaseModel):
     group: str
     items: list[DictionaryItemOut]
+
+
+class InterventionUIFieldOut(BaseModel):
+    name: str
+    label: str
+    input_type: str
+    required: bool = True
+    help_text: str = ""
+    options: list[DictionaryItemOut] = Field(default_factory=list)
+
+
+class InterventionDetailsSchemaOut(BaseModel):
+    kind: str
+    version: int
+    required_fields: list[str] = Field(default_factory=list)
+    optional_fields: list[str] = Field(default_factory=list)
+    allows_extra: bool = False
+
+
+class InterventionDefinitionOut(BaseModel):
+    code: str
+    label: str
+    sites: list[DictionaryItemOut]
+    details_schema: InterventionDetailsSchemaOut
+    ui_fields: list[InterventionUIFieldOut] = Field(default_factory=list)
+
+
+class InterventionDictionaryOut(BaseModel):
+    interventions: list[InterventionDefinitionOut]
 
 
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:

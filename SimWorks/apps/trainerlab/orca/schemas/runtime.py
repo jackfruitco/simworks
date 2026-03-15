@@ -100,11 +100,14 @@ class RuntimeSnapshotCondition(StrictBaseModel):
 
 class RuntimeSnapshotIntervention(StrictBaseModel):
     domain_event_id: int | None = None
+    intervention_type: str | None = None
+    site_code: str | None = None
+    effectiveness: str = "unknown"
+    notes: str = ""
     code: str = ""
     description: str = ""
     target: str = ""
     anatomic_location: str = ""
-    effective: bool | None = None
     performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
     status: Literal["active", "effective", "ineffective", "resolved"] = "active"
     clinical_effect: str = ""
