@@ -88,16 +88,4 @@ class Migration(migrations.Migration):
             name="details_json",
             field=models.JSONField(blank=True, default=dict),
         ),
-        migrations.AddIndex(
-            model_name="intervention",
-            index=models.Index(
-                fields=["simulation", "intervention_type"], name="idx_intervention_type"
-            ),
-        ),
-        migrations.AddIndex(
-            model_name="intervention",
-            index=models.Index(
-                fields=["simulation", "site_code"], name="idx_intervention_site"
-            ),
-        ),
     ]

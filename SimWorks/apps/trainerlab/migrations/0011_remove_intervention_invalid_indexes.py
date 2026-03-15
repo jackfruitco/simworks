@@ -5,25 +5,17 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     """
-    Remove composite indexes that reference 'simulation', which is defined on
-    the parent model (ABCEvent) and is not local to Intervention. Multi-table
-    inheritance prohibits non-local fields in Meta.indexes (models.E016).
+    No-op migration. The composite indexes on Intervention that referenced
+    'simulation' (a non-local field from parent model ABCEvent) were removed
+    from migration 0010 before being applied, so there is nothing to remove here.
 
-    The individual fields (intervention_type, site_code) already carry
-    db_index=True so no query-performance regression occurs.
+    Multi-table inheritance prohibits non-local fields in Meta.indexes (models.E016).
+    The individual fields (intervention_type, site_code) carry db_index=True so
+    no query-performance regression occurs.
     """
 
     dependencies = [
         ("trainerlab", "0010_intervention_structured_fields"),
     ]
 
-    operations = [
-        migrations.RemoveIndex(
-            model_name="intervention",
-            name="idx_intervention_type",
-        ),
-        migrations.RemoveIndex(
-            model_name="intervention",
-            name="idx_intervention_site",
-        ),
-    ]
+    operations = []
