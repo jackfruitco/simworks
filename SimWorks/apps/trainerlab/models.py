@@ -398,6 +398,32 @@ class SimulationNote(ABCEvent):
     content = models.TextField(max_length=2000)
 
 
+class ScenarioBrief(ABCEvent):
+    """Instructor-facing scenario brief delivered before simulation begins."""
+
+    read_aloud_brief = models.TextField(
+        help_text="Concise instructor read-aloud brief for the trainee.",
+    )
+    environment = models.TextField(blank=True, default="")
+    location_overview = models.TextField(blank=True, default="")
+    threat_context = models.TextField(blank=True, default="")
+    evacuation_options = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Available evacuation or transport options.",
+    )
+    evacuation_time = models.CharField(max_length=255, blank=True, default="")
+    special_considerations = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Other constraints or scenario considerations.",
+    )
+
+    def __str__(self):
+        brief_preview = (self.read_aloud_brief or "")[:50]
+        return f"ScenarioBrief at {self.timestamp:%H:%M:%S}: {brief_preview}..."
+
+
 class VitalMeasurement(ABCEvent):
     """
     Abstract class for vital signs.
