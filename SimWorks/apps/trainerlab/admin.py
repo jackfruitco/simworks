@@ -16,8 +16,10 @@ from .models import (
     Injury,
     Intervention,
     RespiratoryRate,
+    ScenarioBrief,
     ScenarioInstruction,
     ScenarioInstructionPermission,
+    SimulationNote,
     TrainerCommand,
     TrainerRunSummary,
     TrainerRuntimeEvent,
@@ -92,6 +94,8 @@ class ABCEventAdmin(PolymorphicParentModelAdmin):
         Injury,
         Illness,
         Intervention,
+        SimulationNote,
+        ScenarioBrief,
         VitalMeasurement,
         HeartRate,
         RespiratoryRate,
@@ -153,6 +157,16 @@ class IllnessAdmin(ABCEventChildAdmin):
 @admin.register(Intervention)
 class InterventionAdmin(ABCEventChildAdmin):
     base_model = Intervention
+
+
+@admin.register(SimulationNote)
+class SimulationNoteAdmin(ABCEventChildAdmin):
+    base_model = SimulationNote
+
+
+@admin.register(ScenarioBrief)
+class ScenarioBriefAdmin(ABCEventChildAdmin):
+    base_model = ScenarioBrief
 
 
 @admin.register(VitalMeasurement)

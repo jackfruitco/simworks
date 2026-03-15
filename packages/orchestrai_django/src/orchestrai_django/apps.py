@@ -43,7 +43,14 @@ logger = logging.getLogger(__name__)
 _startup_lock = threading.RLock()
 _started = False
 
-DEFAULT_SKIP_READY_COMMANDS = {"migrate", "makemigrations", "collectstatic", "shell"}
+DEFAULT_SKIP_READY_COMMANDS = {
+    "migrate",
+    "makemigrations",
+    "collectstatic",
+    "shell",
+    "export_openapi",
+    "create_dev_user",
+}
 
 
 def _coerce_bool(value: Any, default: bool = True) -> bool:

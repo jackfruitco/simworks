@@ -31,7 +31,12 @@ class TrainerLabMixin(NsMixin, BaseInstruction):
 @orca.instruction(order=10)
 class InitialResponseMixin(NsMixin, BaseInstruction):
     instruction = (
-        "First, generate the initial scenario by providing one or more conditions that "
+        "First, generate a scenario_brief that the instructor will read out loud to the trainee "
+        "before the simulation begins. The brief should include a concise spoken read-aloud "
+        "opening plus structured context about the environment, approximate location, scene or "
+        "enemy threat if applicable, evacuation options if applicable, expected evacuation time "
+        "if applicable, and any other special considerations that matter to the lane.\n\n"
+        "Then, generate the initial scenario by providing one or more conditions that "
         "are logical to a scripted scenario.\n\n"
         "Then, provide an initial set of vital sign measurements that match the patient's "
         "status clinically, including: "

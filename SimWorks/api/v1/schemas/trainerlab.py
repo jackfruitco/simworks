@@ -3,18 +3,24 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from apps.trainerlab.injury_dictionary import (
     normalize_injury_category,
     normalize_injury_kind,
     normalize_injury_location,
 )
+from apps.trainerlab.intervention_dictionary import (
+    normalize_intervention_site,
+    normalize_intervention_type,
+    validate_intervention_details,
+)
 from apps.trainerlab.models import (
     ScenarioInstruction,
     ScenarioInstructionPermission,
     TrainerSession,
 )
+from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatus, ScenarioBrief
 
 
 class LabAccessOut(BaseModel):
@@ -111,11 +117,67 @@ class IllnessCreateIn(BaseModel):
     supersedes_event_id: int | None = None
 
 
+class InterventionDetailsIn(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    kind: str
+    version: int = 1
+
+
 class InterventionCreateIn(BaseModel):
-    code: str = ""
-    description: str = ""
-    target: str = ""
+    intervention_type: str = Field(
+        ...,
+        description="Intervention type code or friendly label",
+    )
+    site_code: str = Field(
+        ...,
+        description="Intervention site code or friendly label, normalized per intervention type",
+    )
+    target_injury_id: int | None = None
+    status: Literal["applied", "adjusted", "reassessed", "removed"] = "applied"
+    effectiveness: Literal[
+        "unknown",
+        "effective",
+        "partially_effective",
+        "ineffective",
+    ] = "unknown"
+    notes: str = ""
+    details: InterventionDetailsIn = Field(
+        ...,
+        description=(
+            "Typed intervention-specific details. `details.kind` must match `intervention_type`."
+        ),
+    )
+    performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
     supersedes_event_id: int | None = None
+
+    @field_validator("intervention_type")
+    @classmethod
+    def _normalize_intervention_type(cls, value: str) -> str:
+        return normalize_intervention_type(value)
+
+    @model_validator(mode="after")
+    def _normalize_site_and_validate_detail_shape(self) -> "InterventionCreateIn":
+        self.site_code = normalize_intervention_site(self.intervention_type, self.site_code)
+        validated = validate_intervention_details(
+            self.intervention_type,
+            self.details.model_dump(exclude_none=True),
+        )
+        self.details = InterventionDetailsIn.model_validate(validated)
+        return self
+
+
+class SimulationNoteCreateIn(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+    send_to_ai: bool = False
+
+    @field_validator("content")
+    @classmethod
+    def _normalize_content(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("content must not be blank")
+        return stripped
 
 
 class VitalCreateIn(BaseModel):
@@ -151,8 +213,84 @@ class RunSummaryOut(BaseModel):
     final_state: dict[str, Any]
     event_type_counts: dict[str, int]
     timeline_highlights: list[dict[str, Any]]
+    notes: list[dict[str, Any]] = Field(default_factory=list)
     command_log: list[dict[str, Any]]
     ai_rationale_notes: list[Any]
+    ai_debrief: dict[str, Any] | None = None
+
+
+class RuntimeConditionStateOut(BaseModel):
+    domain_event_id: int | None = None
+    kind: Literal["injury", "illness"]
+    label: str
+    status: str
+    source: str | None = None
+    timestamp: str | None = None
+    injury_category: str | None = None
+    injury_location: str | None = None
+    injury_kind: str | None = None
+    description: str | None = None
+    severity: str | None = None
+
+
+class RuntimeInterventionStateOut(BaseModel):
+    domain_event_id: int | None = None
+    intervention_type: str | None = None
+    site_code: str | None = None
+    effectiveness: str = "unknown"
+    notes: str = ""
+    code: str = ""
+    description: str = ""
+    target: str = ""
+    anatomic_location: str = ""
+    performed_by_role: str = "trainee"
+    status: str = "active"
+    clinical_effect: str = ""
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeVitalStateOut(BaseModel):
+    domain_event_id: int | None = None
+    vital_type: Literal[
+        "heart_rate",
+        "respiratory_rate",
+        "spo2",
+        "etco2",
+        "blood_glucose",
+        "blood_pressure",
+    ]
+    min_value: int
+    max_value: int
+    lock_value: bool = False
+    min_value_diastolic: int | None = None
+    max_value_diastolic: int | None = None
+    trend: str = "stable"
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class TrainerRuntimeSnapshotOut(BaseModel):
+    conditions: list[RuntimeConditionStateOut] = Field(default_factory=list)
+    interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
+    vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
+    patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
+
+
+class TrainerRuntimeStateOut(BaseModel):
+    simulation_id: int
+    session_id: int
+    status: str
+    state_revision: int
+    active_elapsed_seconds: int
+    scenario_brief: ScenarioBrief
+    current_snapshot: TrainerRuntimeSnapshotOut
+    ai_plan: RuntimeInstructorIntent
+    ai_rationale_notes: list[str] = Field(default_factory=list)
+    pending_runtime_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    last_runtime_error: str = ""
+    last_ai_tick_at: datetime | None = None
 
 
 class SSEEnvelope(BaseModel):
@@ -233,6 +371,35 @@ class InterventionGroupOut(BaseModel):
     items: list[DictionaryItemOut]
 
 
+class InterventionUIFieldOut(BaseModel):
+    name: str
+    label: str
+    input_type: str
+    required: bool = True
+    help_text: str = ""
+    options: list[DictionaryItemOut] = Field(default_factory=list)
+
+
+class InterventionDetailsSchemaOut(BaseModel):
+    kind: str
+    version: int
+    required_fields: list[str] = Field(default_factory=list)
+    optional_fields: list[str] = Field(default_factory=list)
+    allows_extra: bool = False
+
+
+class InterventionDefinitionOut(BaseModel):
+    code: str
+    label: str
+    sites: list[DictionaryItemOut]
+    details_schema: InterventionDetailsSchemaOut
+    ui_fields: list[InterventionUIFieldOut] = Field(default_factory=list)
+
+
+class InterventionDictionaryOut(BaseModel):
+    interventions: list[InterventionDefinitionOut]
+
+
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     return TrainerRunOut(
         simulation_id=session.simulation_id,
@@ -247,6 +414,30 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         last_ai_tick_at=session.last_ai_tick_at,
         created_at=session.created_at,
         modified_at=session.modified_at,
+    )
+
+
+def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
+    runtime_state = dict(session.runtime_state_json or {})
+    scenario_brief = runtime_state.get("scenario_brief") or {
+        "read_aloud_brief": "Scenario brief pending.",
+    }
+    return TrainerRuntimeStateOut(
+        simulation_id=session.simulation_id,
+        session_id=session.id,
+        status=session.status,
+        state_revision=int(runtime_state.get("state_revision", 0) or 0),
+        active_elapsed_seconds=int(runtime_state.get("active_elapsed_seconds", 0) or 0),
+        scenario_brief=ScenarioBrief.model_validate(scenario_brief),
+        current_snapshot=TrainerRuntimeSnapshotOut.model_validate(
+            runtime_state.get("current_snapshot") or {}
+        ),
+        ai_plan=RuntimeInstructorIntent.model_validate(runtime_state.get("ai_plan") or {}),
+        ai_rationale_notes=list(runtime_state.get("ai_rationale_notes") or []),
+        pending_runtime_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
+        currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),
+        last_runtime_error=str(runtime_state.get("last_runtime_error") or ""),
+        last_ai_tick_at=session.last_ai_tick_at,
     )
 
 

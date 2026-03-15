@@ -1300,7 +1300,7 @@
     "/api/v1/trainerlab/dictionaries/interventions/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_intervention_dictionary",
-        "summary": "List intervention dictionary mappings",
+        "summary": "List structured intervention dictionary",
         "parameters": [],
         "responses": {
           "200": {
@@ -1308,11 +1308,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/InterventionGroupOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/InterventionDictionaryOut"
                 }
               }
             }
@@ -1854,6 +1850,43 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/state/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_get_trainer_runtime_state",
+        "summary": "Get authoritative TrainerLab runtime state snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRuntimeStateOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/run/start/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_start_trainer_run",
@@ -2225,6 +2258,53 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/InterventionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/notes/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_note_event",
+        "summary": "Inject simulation note event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationNoteCreateIn"
               }
             }
           },
@@ -3827,25 +3907,134 @@
         "title": "DictionaryItemOut",
         "type": "object"
       },
-      "InterventionGroupOut": {
+      "InterventionDefinitionOut": {
         "properties": {
-          "group": {
-            "title": "Group",
+          "code": {
+            "title": "Code",
             "type": "string"
           },
-          "items": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sites": {
             "items": {
               "$ref": "#/components/schemas/DictionaryItemOut"
             },
-            "title": "Items",
+            "title": "Sites",
+            "type": "array"
+          },
+          "details_schema": {
+            "$ref": "#/components/schemas/InterventionDetailsSchemaOut"
+          },
+          "ui_fields": {
+            "items": {
+              "$ref": "#/components/schemas/InterventionUIFieldOut"
+            },
+            "title": "Ui Fields",
             "type": "array"
           }
         },
         "required": [
-          "group",
-          "items"
+          "code",
+          "label",
+          "sites",
+          "details_schema"
         ],
-        "title": "InterventionGroupOut",
+        "title": "InterventionDefinitionOut",
+        "type": "object"
+      },
+      "InterventionDetailsSchemaOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "required_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          },
+          "optional_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Optional Fields",
+            "type": "array"
+          },
+          "allows_extra": {
+            "default": false,
+            "title": "Allows Extra",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "version"
+        ],
+        "title": "InterventionDetailsSchemaOut",
+        "type": "object"
+      },
+      "InterventionDictionaryOut": {
+        "properties": {
+          "interventions": {
+            "items": {
+              "$ref": "#/components/schemas/InterventionDefinitionOut"
+            },
+            "title": "Interventions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "interventions"
+        ],
+        "title": "InterventionDictionaryOut",
+        "type": "object"
+      },
+      "InterventionUIFieldOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "input_type": {
+            "title": "Input Type",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "help_text": {
+            "default": "",
+            "title": "Help Text",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryItemOut"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "input_type"
+        ],
+        "title": "InterventionUIFieldOut",
         "type": "object"
       },
       "PaginatedResponse_ScenarioInstructionOut_": {
@@ -4404,6 +4593,603 @@
         "title": "PaginatedResponse[TrainerRunOut]",
         "type": "object"
       },
+      "RuntimeConditionStateOut": {
+        "properties": {
+          "domain_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Event Id"
+          },
+          "kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "injury_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Category"
+          },
+          "injury_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Location"
+          },
+          "injury_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Kind"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "status"
+        ],
+        "title": "RuntimeConditionStateOut",
+        "type": "object"
+      },
+      "RuntimeInstructorIntent": {
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "trigger": {
+            "default": "",
+            "title": "Trigger",
+            "type": "string"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "upcoming_changes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upcoming Changes",
+            "type": "array"
+          },
+          "monitoring_focus": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Monitoring Focus",
+            "type": "array"
+          }
+        },
+        "title": "RuntimeInstructorIntent",
+        "type": "object"
+      },
+      "RuntimeInterventionStateOut": {
+        "properties": {
+          "domain_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Event Id"
+          },
+          "intervention_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention Type"
+          },
+          "site_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Code"
+          },
+          "effectiveness": {
+            "default": "unknown",
+            "title": "Effectiveness",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "code": {
+            "default": "",
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "anatomic_location": {
+            "default": "",
+            "title": "Anatomic Location",
+            "type": "string"
+          },
+          "performed_by_role": {
+            "default": "trainee",
+            "title": "Performed By Role",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "clinical_effect": {
+            "default": "",
+            "title": "Clinical Effect",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "title": "RuntimeInterventionStateOut",
+        "type": "object"
+      },
+      "RuntimePatientStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "avpu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avpu"
+          },
+          "respiratory_distress": {
+            "default": false,
+            "title": "Respiratory Distress",
+            "type": "boolean"
+          },
+          "hemodynamic_instability": {
+            "default": false,
+            "title": "Hemodynamic Instability",
+            "type": "boolean"
+          },
+          "impending_pneumothorax": {
+            "default": false,
+            "title": "Impending Pneumothorax",
+            "type": "boolean"
+          },
+          "tension_pneumothorax": {
+            "default": false,
+            "title": "Tension Pneumothorax",
+            "type": "boolean"
+          },
+          "narrative": {
+            "default": "",
+            "title": "Narrative",
+            "type": "string"
+          },
+          "teaching_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Teaching Flags",
+            "type": "array"
+          }
+        },
+        "title": "RuntimePatientStatus",
+        "type": "object"
+      },
+      "RuntimeVitalStateOut": {
+        "properties": {
+          "domain_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Event Id"
+          },
+          "vital_type": {
+            "enum": [
+              "heart_rate",
+              "respiratory_rate",
+              "spo2",
+              "etco2",
+              "blood_glucose",
+              "blood_pressure"
+            ],
+            "title": "Vital Type",
+            "type": "string"
+          },
+          "min_value": {
+            "title": "Min Value",
+            "type": "integer"
+          },
+          "max_value": {
+            "title": "Max Value",
+            "type": "integer"
+          },
+          "lock_value": {
+            "default": false,
+            "title": "Lock Value",
+            "type": "boolean"
+          },
+          "min_value_diastolic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value Diastolic"
+          },
+          "max_value_diastolic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value Diastolic"
+          },
+          "trend": {
+            "default": "stable",
+            "title": "Trend",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "vital_type",
+          "min_value",
+          "max_value"
+        ],
+        "title": "RuntimeVitalStateOut",
+        "type": "object"
+      },
+      "ScenarioBrief": {
+        "additionalProperties": false,
+        "properties": {
+          "read_aloud_brief": {
+            "description": "A concise instructor read-aloud brief delivered to the trainee before the simulation begins.",
+            "minLength": 1,
+            "title": "Read Aloud Brief",
+            "type": "string"
+          },
+          "environment": {
+            "default": "",
+            "description": "Simulation environment and overall setting.",
+            "title": "Environment",
+            "type": "string"
+          },
+          "location_overview": {
+            "default": "",
+            "description": "Approximate location and terrain or facility context.",
+            "title": "Location Overview",
+            "type": "string"
+          },
+          "threat_context": {
+            "default": "",
+            "description": "Enemy, threat, or scene-safety context when applicable.",
+            "title": "Threat Context",
+            "type": "string"
+          },
+          "evacuation_options": {
+            "description": "Available evacuation or transport options, if known.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evacuation Options",
+            "type": "array"
+          },
+          "evacuation_time": {
+            "default": "",
+            "description": "Expected evacuation time or transport delay when applicable.",
+            "title": "Evacuation Time",
+            "type": "string"
+          },
+          "special_considerations": {
+            "description": "Other constraints or scenario considerations the instructor should know.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Special Considerations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "read_aloud_brief"
+        ],
+        "title": "ScenarioBrief",
+        "type": "object"
+      },
+      "TrainerRuntimeSnapshotOut": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeConditionStateOut"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeInterventionStateOut"
+            },
+            "title": "Interventions",
+            "type": "array"
+          },
+          "vitals": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalStateOut"
+            },
+            "title": "Vitals",
+            "type": "array"
+          },
+          "patient_status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuntimePatientStatus"
+              }
+            ]
+          }
+        },
+        "title": "TrainerRuntimeSnapshotOut",
+        "type": "object"
+      },
+      "TrainerRuntimeStateOut": {
+        "properties": {
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "state_revision": {
+            "title": "State Revision",
+            "type": "integer"
+          },
+          "active_elapsed_seconds": {
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "scenario_brief": {
+            "$ref": "#/components/schemas/ScenarioBrief"
+          },
+          "current_snapshot": {
+            "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
+          },
+          "ai_plan": {
+            "$ref": "#/components/schemas/RuntimeInstructorIntent"
+          },
+          "ai_rationale_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ai Rationale Notes",
+            "type": "array"
+          },
+          "pending_runtime_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Runtime Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "last_runtime_error": {
+            "default": "",
+            "title": "Last Runtime Error",
+            "type": "string"
+          },
+          "last_ai_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ai Tick At"
+          }
+        },
+        "required": [
+          "simulation_id",
+          "session_id",
+          "status",
+          "state_revision",
+          "active_elapsed_seconds",
+          "scenario_brief",
+          "current_snapshot",
+          "ai_plan"
+        ],
+        "title": "TrainerRuntimeStateOut",
+        "type": "object"
+      },
       "SteerPromptIn": {
         "properties": {
           "prompt": {
@@ -4662,19 +5448,66 @@
       },
       "InterventionCreateIn": {
         "properties": {
-          "code": {
-            "default": "",
-            "title": "Code",
+          "intervention_type": {
+            "description": "Intervention type code or friendly label",
+            "title": "Intervention Type",
             "type": "string"
           },
-          "description": {
-            "default": "",
-            "title": "Description",
+          "site_code": {
+            "description": "Intervention site code or friendly label, normalized per intervention type",
+            "title": "Site Code",
             "type": "string"
           },
-          "target": {
+          "target_injury_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Injury Id"
+          },
+          "status": {
+            "default": "applied",
+            "enum": [
+              "applied",
+              "adjusted",
+              "reassessed",
+              "removed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "effectiveness": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "effective",
+              "partially_effective",
+              "ineffective"
+            ],
+            "title": "Effectiveness",
+            "type": "string"
+          },
+          "notes": {
             "default": "",
-            "title": "Target",
+            "title": "Notes",
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/InterventionDetailsIn",
+            "description": "Typed intervention-specific details. `details.kind` must match `intervention_type`."
+          },
+          "performed_by_role": {
+            "default": "trainee",
+            "enum": [
+              "trainee",
+              "instructor",
+              "ai"
+            ],
+            "title": "Performed By Role",
             "type": "string"
           },
           "supersedes_event_id": {
@@ -4689,7 +5522,51 @@
             "title": "Supersedes Event Id"
           }
         },
+        "required": [
+          "intervention_type",
+          "site_code",
+          "details"
+        ],
         "title": "InterventionCreateIn",
+        "type": "object"
+      },
+      "InterventionDetailsIn": {
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "InterventionDetailsIn",
+        "type": "object"
+      },
+      "SimulationNoteCreateIn": {
+        "properties": {
+          "content": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "send_to_ai": {
+            "default": false,
+            "title": "Send To Ai",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SimulationNoteCreateIn",
         "type": "object"
       },
       "VitalCreateIn": {
@@ -4813,6 +5690,14 @@
             "title": "Timeline Highlights",
             "type": "array"
           },
+          "notes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
           "command_log": {
             "items": {
               "additionalProperties": true,
@@ -4825,6 +5710,18 @@
             "items": {},
             "title": "Ai Rationale Notes",
             "type": "array"
+          },
+          "ai_debrief": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Debrief"
           }
         },
         "required": [
