@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import urlencode
 from uuid import uuid4
 
-import pytest
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth.models import AnonymousUser
+import pytest
 
 from api.v1.auth import create_access_token
 from apps.common.ws_auth import (
@@ -22,7 +22,6 @@ from apps.common.ws_auth import (
     SessionOrJWTAuthMiddlewareStack,
     _extract_bearer_token,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -112,9 +111,7 @@ class TestJWTAuthMiddleware:
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        user = await User.objects.acreate(
-            email=f"ws_jwt_{uuid4().hex[:6]}@test.com", role=role
-        )
+        user = await User.objects.acreate(email=f"ws_jwt_{uuid4().hex[:6]}@test.com", role=role)
         token = create_access_token(user)
 
         scope = _make_scope(headers=[_header("authorization", f"Bearer {token}")])
@@ -130,9 +127,7 @@ class TestJWTAuthMiddleware:
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        user = await User.objects.acreate(
-            email=f"ws_jwt_qp_{uuid4().hex[:6]}@test.com", role=role
-        )
+        user = await User.objects.acreate(email=f"ws_jwt_qp_{uuid4().hex[:6]}@test.com", role=role)
         token = create_access_token(user)
 
         qs = urlencode({"token": token}).encode()
@@ -156,8 +151,9 @@ class TestJWTAuthMiddleware:
 
     async def test_skips_jwt_when_user_already_authenticated(self):
         """If session auth already populated scope['user'], JWT is not attempted."""
-        from apps.accounts.models import UserRole
         from django.contrib.auth import get_user_model
+
+        from apps.accounts.models import UserRole
 
         User = get_user_model()
         role, _ = await UserRole.objects.aget_or_create(title="WS Session Test")
@@ -175,8 +171,9 @@ class TestJWTAuthMiddleware:
         assert result["user"].pk == session_user.pk
 
     async def test_falls_back_to_anonymous_for_inactive_user(self):
-        from apps.accounts.models import UserRole
         from django.contrib.auth import get_user_model
+
+        from apps.accounts.models import UserRole
 
         User = get_user_model()
         role, _ = await UserRole.objects.aget_or_create(title="WS Inactive Test")
@@ -244,21 +241,41 @@ class TestSessionOrJWTAuthMiddlewareStackOrdering:
 # ---------------------------------------------------------------------------
 
 
+def _make_ws_app():
+    """Build the auth+routing stack without AllowedHostsOriginValidator.
+
+    The full ASGI app wraps the websocket handler in AllowedHostsOriginValidator,
+    which rejects connections without a matching Origin header. For auth tests we
+    want to exercise SessionOrJWTAuthMiddlewareStack in isolation, so we build the
+    same stack (auth middleware + URL router) directly.
+    """
+    from channels.routing import URLRouter
+
+    from apps.chatlab.routing import websocket_urlpatterns as chatlab_ws
+    from apps.common.routing import websocket_urlpatterns as core_ws
+    from apps.common.ws_auth import SessionOrJWTAuthMiddlewareStack
+
+    return SessionOrJWTAuthMiddlewareStack(URLRouter(chatlab_ws + core_ws))
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 class TestJWTWebSocketEndToEnd:
-    """Integration tests: iOS-style JWT auth through the full ASGI application."""
+    """Integration tests: iOS-style JWT auth through SessionOrJWTAuthMiddlewareStack.
+
+    Uses the auth+routing stack directly (without AllowedHostsOriginValidator) so
+    tests focus on authentication rather than origin validation.
+    """
 
     async def _make_user_and_simulation(self):
+        from django.contrib.auth import get_user_model
+
         from apps.accounts.models import UserRole
         from apps.simcore.models import Simulation
-        from django.contrib.auth import get_user_model
 
         User = get_user_model()
         role, _ = await UserRole.objects.aget_or_create(title="WS E2E Test")
-        user = await User.objects.acreate(
-            email=f"ws_e2e_{uuid4().hex[:6]}@test.com", role=role
-        )
+        user = await User.objects.acreate(email=f"ws_e2e_{uuid4().hex[:6]}@test.com", role=role)
         simulation = await Simulation.objects.acreate(
             user=user,
             sim_patient_full_name="E2E Patient",
@@ -267,13 +284,11 @@ class TestJWTWebSocketEndToEnd:
 
     async def test_jwt_in_header_allows_ws_connection(self):
         """Mobile client with Authorization: Bearer <token> can connect."""
-        from config.asgi import application
-
         user, simulation = await self._make_user_and_simulation()
         token = create_access_token(user)
 
         communicator = WebsocketCommunicator(
-            application,
+            _make_ws_app(),
             f"/ws/simulation/{simulation.id}/",
             headers=[(b"authorization", f"Bearer {token}".encode())],
         )
@@ -287,13 +302,11 @@ class TestJWTWebSocketEndToEnd:
 
     async def test_jwt_in_query_param_allows_ws_connection(self):
         """Mobile client with ?token=<jwt> can connect."""
-        from config.asgi import application
-
         user, simulation = await self._make_user_and_simulation()
         token = create_access_token(user)
 
         communicator = WebsocketCommunicator(
-            application,
+            _make_ws_app(),
             f"/ws/simulation/{simulation.id}/?token={token}",
         )
         connected, _ = await communicator.connect()
@@ -306,12 +319,10 @@ class TestJWTWebSocketEndToEnd:
 
     async def test_no_auth_rejects_ws_connection(self):
         """WS connection without any auth is rejected (close code 4403)."""
-        from config.asgi import application
-
         _, simulation = await self._make_user_and_simulation()
 
         communicator = WebsocketCommunicator(
-            application,
+            _make_ws_app(),
             f"/ws/simulation/{simulation.id}/",
         )
         connected, _ = await communicator.connect()
@@ -326,12 +337,10 @@ class TestJWTWebSocketEndToEnd:
 
     async def test_invalid_jwt_rejects_ws_connection(self):
         """WS connection with a malformed JWT is treated as unauthenticated."""
-        from config.asgi import application
-
         _, simulation = await self._make_user_and_simulation()
 
         communicator = WebsocketCommunicator(
-            application,
+            _make_ws_app(),
             f"/ws/simulation/{simulation.id}/",
             headers=[(b"authorization", b"Bearer not.a.real.token")],
         )
@@ -345,9 +354,9 @@ class TestJWTWebSocketEndToEnd:
 
     async def test_jwt_user_cannot_access_other_users_simulation(self):
         """JWT-authenticated user is rejected for a simulation they don't own."""
-        from apps.accounts.models import UserRole
         from django.contrib.auth import get_user_model
-        from config.asgi import application
+
+        from apps.accounts.models import UserRole
 
         User = get_user_model()
         role, _ = await UserRole.objects.aget_or_create(title="WS E2E Other")
@@ -359,7 +368,7 @@ class TestJWTWebSocketEndToEnd:
         token = create_access_token(other_user)
 
         communicator = WebsocketCommunicator(
-            application,
+            _make_ws_app(),
             f"/ws/simulation/{simulation.id}/",
             headers=[(b"authorization", f"Bearer {token}".encode())],
         )
