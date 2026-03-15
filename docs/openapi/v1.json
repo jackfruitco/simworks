@@ -2751,6 +2751,18 @@
             ],
             "description": "Timestamp when simulation entered terminal state",
             "title": "Terminal At"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the failed simulation can be retried by the user",
+            "title": "Retryable"
           }
         },
         "required": [
