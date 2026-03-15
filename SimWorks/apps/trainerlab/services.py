@@ -539,7 +539,74 @@ def create_session_with_initial_generation(
         modifiers=modifiers,
     )
     call_id = enqueue_initial_scenario_generation(simulation=session.simulation)
+    if call_id:
+        _run_initial_generation_inline(session=session, call_id=call_id)
     return session, call_id
+
+
+def _run_initial_generation_inline(*, session: TrainerSession, call_id: str) -> None:
+    """Run initial scenario generation synchronously so the session is fully seeded on return.
+
+    The background task dispatched by enqueue_initial_scenario_generation() will see
+    the call already completed and return early — run_service_call() is idempotent.
+    """
+    from orchestrai_django.tasks import run_service_call
+
+    try:
+        run_service_call(call_id)
+    except Exception:
+        logger.exception(
+            "Inline initial generation failed for simulation %s",
+            session.simulation_id,
+        )
+        return
+
+    # Emit TrainerRuntimeEvent records so vitals/conditions are queryable via the event stream.
+    # OutboxEvents for SSE delivery were already created by post_persist() →
+    # broadcast_domain_objects(); these records serve the catch-up API consumers.
+    try:
+        session.refresh_from_db()
+        _emit_seeded_vital_events(session)
+        _emit_seeded_condition_events(session)
+    except Exception:
+        logger.exception(
+            "Failed to emit seeded runtime events for simulation %s",
+            session.simulation_id,
+        )
+
+
+def _emit_seeded_vital_events(session: TrainerSession) -> None:
+    for vital_type, model in VITAL_TYPE_MODEL_MAP.items():
+        obj = (
+            model.objects.filter(simulation=session.simulation, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+        if obj is not None:
+            emit_runtime_event(
+                session=session,
+                event_type="trainerlab.vital.created",
+                payload=_serialize_vital(vital_type, obj),
+                idempotency_key=f"trainerlab.vital.created:seeded:{session.id}:{vital_type}",
+            )
+
+
+def _emit_seeded_condition_events(session: TrainerSession) -> None:
+    for model in (Injury, Illness):
+        for obj in model.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        ):
+            event_type = (
+                "trainerlab.injury.created"
+                if isinstance(obj, Injury)
+                else "trainerlab.illness.created"
+            )
+            emit_runtime_event(
+                session=session,
+                event_type=event_type,
+                payload=_serialize_condition(obj),
+                idempotency_key=f"{event_type}:seeded:{session.id}:{obj.id}",
+            )
 
 
 def get_or_create_command(
