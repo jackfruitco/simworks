@@ -1194,6 +1194,54 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/lab-orders/": {
+      "post": {
+        "operationId": "api_v1_endpoints_lab_orders_submit_lab_orders",
+        "summary": "Submit signed lab orders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabOrdersOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Submits a list of signed lab orders to the AI engine. The AI generates clinically plausible results for each ordered test based on the patient's presentation. Results are persisted as structured metadata and broadcast to connected WebSocket clients via `metadata.created` events. Returns 202 Accepted immediately; results arrive asynchronously.",
+        "tags": [
+          "lab-orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabOrderSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/config/modifier-groups/": {
       "get": {
         "operationId": "api_v1_endpoints_modifiers_list_modifier_groups",
@@ -3817,6 +3865,62 @@
           }
         },
         "title": "SignOrdersIn",
+        "type": "object"
+      },
+      "LabOrdersOut": {
+        "description": "Response returned after lab orders are accepted for processing.",
+        "properties": {
+          "status": {
+            "const": "accepted",
+            "default": "accepted",
+            "description": "Request status",
+            "title": "Status",
+            "type": "string"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Service call ID for tracking (null if enqueueing failed)",
+            "title": "Call Id"
+          },
+          "orders": {
+            "description": "Orders accepted for processing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orders"
+        ],
+        "title": "LabOrdersOut",
+        "type": "object"
+      },
+      "LabOrderSubmit": {
+        "description": "Input schema for submitting signed lab orders.",
+        "properties": {
+          "orders": {
+            "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orders"
+        ],
+        "title": "LabOrderSubmit",
         "type": "object"
       },
       "ModifierGroupOut": {
