@@ -1,6 +1,12 @@
 """Instruction classes for chatlab services."""
 
 from .image import ImageGenerationInstruction
+from .lab_orders import (
+    LabOrderPatientContextInstruction,
+    LabOrderResultDetailInstruction,
+    LabOrderSchemaContractInstruction,
+    LabOrderTestListInstruction,
+)
 from .patient import (
     PatientBaseInstruction,
     PatientConversationBehaviorInstruction,
@@ -28,6 +34,10 @@ from .stitch import (
 
 __all__ = [
     "ImageGenerationInstruction",
+    "LabOrderPatientContextInstruction",
+    "LabOrderResultDetailInstruction",
+    "LabOrderSchemaContractInstruction",
+    "LabOrderTestListInstruction",
     "PatientBaseInstruction",
     "PatientConversationBehaviorInstruction",
     "PatientFieldSemanticsInstruction",

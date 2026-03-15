@@ -14,6 +14,7 @@ from api.v1.auth import JWTAuth
 from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.conversations import router as conversations_router
 from api.v1.endpoints.events import router as events_router
+from api.v1.endpoints.lab_orders import router as lab_orders_router
 from api.v1.endpoints.messages import router as messages_router
 from api.v1.endpoints.modifiers import router as modifiers_router
 from api.v1.endpoints.simulations import router as simulations_router
@@ -196,5 +197,6 @@ api.add_router("/simulations", events_router)  # Events (catch-up) are nested un
 api.add_router(
     "/simulations", tools_router
 )  # Tools (JSON payloads/actions) nested under simulations
+api.add_router("/simulations", lab_orders_router)  # Lab order submission nested under simulations
 api.add_router("/config", modifiers_router)  # Configuration endpoints (modifiers, etc.)
 api.add_router("/trainerlab", trainerlab_router)
