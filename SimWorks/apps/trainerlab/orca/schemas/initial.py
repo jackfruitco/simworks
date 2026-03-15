@@ -220,9 +220,7 @@ class InitialScenarioSchema(StrictBaseModel):
                 event_type="trainerlab.scenario_brief.created",
                 objects=[scenario_brief_obj],
                 context=context,
-                payload_builder=lambda obj: _scenario_brief_event_payload(
-                    obj, context=context
-                ),
+                payload_builder=lambda obj: _scenario_brief_event_payload(obj, context=context),
             )
 
         if conditions:

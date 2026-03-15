@@ -246,9 +246,7 @@ class TestTrainerLabInitialPersistence:
 
         await persist_schema(schema, context)
 
-        brief = await ScenarioBrief.objects.filter(
-            simulation_id=context.simulation_id
-        ).afirst()
+        brief = await ScenarioBrief.objects.filter(simulation_id=context.simulation_id).afirst()
         assert brief is not None
         assert brief.read_aloud_brief.startswith(
             "You are operating out of a roadside casualty collection point"
