@@ -33,6 +33,13 @@ class DummyAttempts:
     def count():
         return 0
 
+    def filter(self, **kwargs):
+        return self
+
+    @staticmethod
+    def first():
+        return None
+
 
 class DummyCall:
     def __init__(self):
