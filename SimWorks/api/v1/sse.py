@@ -36,6 +36,7 @@ def stream_outbox_events(
     heartbeat_interval_seconds: float | None = None,
     poll_interval_seconds: float = 1.0,
     heartbeat_comment: str = ": keep-alive\n\n",
+    emit_named_heartbeat: bool = False,
 ) -> StreamingHttpResponse:
     """Create a StreamingHttpResponse for simulation outbox events."""
     from apps.common.models import OutboxEvent
@@ -89,6 +90,8 @@ def stream_outbox_events(
                 now - last_signal_at >= heartbeat_interval_seconds
             ):
                 yield heartbeat_comment
+                if emit_named_heartbeat:
+                    yield "event: heartbeat\ndata: {}\n\n"
                 last_signal_at = now
 
             time.sleep(poll_interval_seconds)

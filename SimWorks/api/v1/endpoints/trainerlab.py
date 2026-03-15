@@ -23,6 +23,7 @@ from api.v1.schemas.trainerlab import (
     InterventionCreateIn,
     InterventionDefinitionOut,
     InterventionDetailsSchemaOut,
+    InterventionDictionaryItemOut,
     InterventionDictionaryOut,
     InterventionUIFieldOut,
     LabAccessOut,
@@ -296,45 +297,21 @@ def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]
 
 @router.get(
     "/dictionaries/interventions/",
-    response=InterventionDictionaryOut,
-    summary="List structured intervention dictionary",
+    response=list[InterventionDictionaryItemOut],
+    summary="List intervention dictionary (iOS-compatible flat format)",
 )
 @api_rate_limit
-def intervention_dictionary(request: HttpRequest) -> InterventionDictionaryOut:
+def intervention_dictionary(request: HttpRequest) -> list[InterventionDictionaryItemOut]:
     user = request.auth
     require_instructor_membership(user)
-    definitions = []
-    for defn in list_intervention_definitions():
-        schema_meta = get_intervention_detail_schema_metadata(defn.type_code)
-        definitions.append(
-            InterventionDefinitionOut(
-                code=defn.type_code,
-                label=defn.label,
-                sites=[DictionaryItemOut(code=code, label=label) for code, label in defn.sites],
-                details_schema=InterventionDetailsSchemaOut(
-                    kind=defn.type_code,
-                    version=defn.details_schema_version,
-                    required_fields=schema_meta.get("required_fields", []),
-                    optional_fields=schema_meta.get("optional_fields", []),
-                    allows_extra=schema_meta.get("allows_extra", False),
-                ),
-                ui_fields=[
-                    InterventionUIFieldOut(
-                        name=field.name,
-                        label=field.label,
-                        input_type=field.input_type,
-                        required=field.required,
-                        help_text=field.help_text,
-                        options=[
-                            DictionaryItemOut(code=code, label=label)
-                            for code, label in field.choices
-                        ],
-                    )
-                    for field in defn.ui_fields
-                ],
-            )
+    return [
+        InterventionDictionaryItemOut(
+            intervention_type=defn.type_code,
+            label=defn.label,
+            sites=[DictionaryItemOut(code=code, label=label) for code, label in defn.sites],
         )
-    return InterventionDictionaryOut(interventions=definitions)
+        for defn in list_intervention_definitions()
+    ]
 
 
 @router.get(
@@ -659,6 +636,7 @@ def list_trainer_sessions(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    q: str | None = Query(default=None, description="Text search across scenario spec"),
 ) -> PaginatedResponse[TrainerRunOut]:
     user = request.auth
     require_instructor_membership(user)
@@ -671,6 +649,9 @@ def list_trainer_sessions(
 
     if status:
         queryset = queryset.filter(status=status)
+
+    if q:
+        queryset = queryset.filter(scenario_spec_json__icontains=q)
 
     if cursor:
         try:
@@ -1138,7 +1119,7 @@ def _inject_event_core(
     elif event_kind == "vital":
         event_type = "trainerlab.vital.updated"
     elif event_kind == "intervention":
-        event_type = "trainerlab.intervention.recorded"
+        event_type = "trainerlab.intervention_created"
     elif event_kind == "note":
         event_type = "trainerlab.note.recorded"
     else:
@@ -1158,12 +1139,13 @@ def _inject_event_core(
                 {
                     "intervention_type": getattr(domain_event, "intervention_type", "") or None,
                     "site_code": getattr(domain_event, "site_code", "") or None,
+                    "status": getattr(domain_event, "status", "applied"),
+                    "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
+                    "notes": getattr(domain_event, "notes", ""),
                     "code": getattr(domain_event, "code", ""),
                     "description": getattr(domain_event, "description", ""),
                     "target": getattr(domain_event, "target", ""),
                     "anatomic_location": getattr(domain_event, "anatomic_location", ""),
-                    "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
-                    "notes": getattr(domain_event, "notes", ""),
                     "performed_by_role": getattr(domain_event, "performed_by_role", ""),
                 }
                 if event_kind == "intervention"
@@ -1414,4 +1396,5 @@ def stream_trainer_events(
         heartbeat_interval_seconds=10.0,
         poll_interval_seconds=1.0,
         heartbeat_comment=": keep-alive\n\n",
+        emit_named_heartbeat=True,
     )
