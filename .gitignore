@@ -4,6 +4,11 @@ __pycache__/
 **/__pycache__/
 .pytest-failure-artifacts/
 
+# Runtime media / image cache artifacts
+/CACHE/
+/images/
+/media/
+
 # Distribution / packaging
 .Python
 build/

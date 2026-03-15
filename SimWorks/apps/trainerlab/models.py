@@ -441,12 +441,6 @@ class Intervention(ABCEvent):
         default=PerformedByRole.TRAINEE,
     )
 
-    class Meta:
-        indexes = [
-            models.Index(fields=["simulation", "intervention_type"], name="idx_intervention_type"),
-            models.Index(fields=["simulation", "site_code"], name="idx_intervention_site"),
-        ]
-
     def sync_legacy_fields(self) -> None:
         if not self.intervention_type:
             return
