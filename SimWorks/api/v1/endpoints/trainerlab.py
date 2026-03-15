@@ -21,11 +21,7 @@ from api.v1.schemas.trainerlab import (
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
-    InterventionDefinitionOut,
-    InterventionDetailsSchemaOut,
     InterventionDictionaryItemOut,
-    InterventionDictionaryOut,
-    InterventionUIFieldOut,
     LabAccessOut,
     RunSummaryOut,
     ScenarioInstructionApplyIn,
@@ -57,7 +53,6 @@ from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
 from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
-    get_intervention_detail_schema_metadata,
     list_intervention_definitions,
 )
 from apps.trainerlab.models import (
