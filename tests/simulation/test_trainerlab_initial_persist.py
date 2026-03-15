@@ -6,12 +6,14 @@ import pytest
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
+    ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
     HeartRate,
     Illness,
     Injury,
     RespiratoryRate,
+    ScenarioBrief,
     TrainerSession,
 )
 from apps.trainerlab.orca.schemas import InitialScenarioSchema
@@ -239,6 +241,62 @@ class TestTrainerLabInitialPersistence:
         assert injury.injury_location == "HLA"
         assert injury.injury_kind == "LAC"
 
+    async def test_scenario_brief_persisted_as_abc_event(self, context):
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+
+        await persist_schema(schema, context)
+
+        brief = await ScenarioBrief.objects.filter(
+            simulation_id=context.simulation_id
+        ).afirst()
+        assert brief is not None
+        assert brief.read_aloud_brief.startswith(
+            "You are operating out of a roadside casualty collection point"
+        )
+        assert brief.environment == "Roadside casualty collection point with limited cover"
+        assert brief.location_overview == "Edge of a small village along a dusty supply route"
+        assert brief.threat_context == "Sporadic hostile fire reported within the surrounding area"
+        # Verify JSONField lists are stored as real lists, not stringified
+        assert brief.evacuation_options == [
+            "Ground evacuation",
+            "Delayed rotary wing if weather clears",
+        ]
+        assert isinstance(brief.evacuation_options, list)
+        assert brief.evacuation_time == "Approximately 20 minutes by ground"
+        assert brief.special_considerations == ["Limited light", "Dust may affect visibility"]
+        assert isinstance(brief.special_considerations, list)
+        assert brief.is_active is True
+
+    async def test_scenario_brief_appears_in_abc_event_timeline(self, context):
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+
+        await persist_schema(schema, context)
+
+        events = ABCEvent.objects.filter(simulation_id=context.simulation_id)
+        event_types = set()
+        async for event in events:
+            event_types.add(type(event).__name__)
+        assert "ScenarioBrief" in event_types
+
+    async def test_scenario_brief_sse_outbox_event(self, context):
+        from apps.common.models import OutboxEvent
+
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+        await persist_schema(schema, context)
+
+        brief_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="trainerlab.scenario_brief.created",
+        )
+        assert await brief_events.acount() == 1
+        event = await brief_events.afirst()
+        assert event is not None
+        assert event.payload["read_aloud_brief"].startswith(
+            "You are operating out of a roadside casualty collection point"
+        )
+        assert event.payload["domain_event_type"] == "ScenarioBrief"
+        assert event.payload["origin"] == "initial_scenario"
+
     async def test_persists_scenario_brief_to_runtime_state_when_session_exists(
         self, simulation, context
     ):
@@ -259,6 +317,35 @@ class TestTrainerLabInitialPersistence:
             "Ground evacuation",
             "Delayed rotary wing if weather clears",
         ]
+
+    async def test_scenario_brief_superseding(self, context):
+        """Second brief with supersedes_event deactivates the first."""
+        from apps.simcore.models import Simulation
+
+        simulation = await Simulation.objects.aget(id=context.simulation_id)
+
+        first = await ScenarioBrief.objects.acreate(
+            simulation=simulation,
+            read_aloud_brief="First brief",
+            is_active=True,
+        )
+        second = await ScenarioBrief.objects.acreate(
+            simulation=simulation,
+            read_aloud_brief="Second brief",
+            supersedes_event=first,
+            is_active=True,
+        )
+        first.is_active = False
+        await first.asave(update_fields=["is_active"])
+
+        active_briefs = ScenarioBrief.objects.filter(
+            simulation=simulation,
+            is_active=True,
+        )
+        assert await active_briefs.acount() == 1
+        active = await active_briefs.afirst()
+        assert active.id == second.id
+        assert active.read_aloud_brief == "Second brief"
 
 
 def test_validates_base_vital_min_max_range():

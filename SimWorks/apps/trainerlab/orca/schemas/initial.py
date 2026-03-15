@@ -124,6 +124,26 @@ def _vital_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, An
     return payload
 
 
+def _scenario_brief_event_payload(obj: Any, *, context: "PersistContext") -> dict[str, Any]:
+    return {
+        "simulation_id": getattr(obj, "simulation_id", context.simulation_id),
+        "domain_event_id": getattr(obj, "id", None),
+        "domain_event_type": "ScenarioBrief",
+        "source": getattr(obj, "source", None),
+        "timestamp": _event_timestamp_iso(obj),
+        "origin": "initial_scenario",
+        "call_id": context.call_id,
+        "correlation_id": context.correlation_id,
+        "read_aloud_brief": obj.read_aloud_brief,
+        "environment": obj.environment,
+        "location_overview": obj.location_overview,
+        "threat_context": obj.threat_context,
+        "evacuation_options": obj.evacuation_options,
+        "evacuation_time": obj.evacuation_time,
+        "special_considerations": obj.special_considerations,
+    }
+
+
 class MeasurementSchemaBlock(StrictBaseModel):
     heart_rate: HeartRate
     respiratory_rate: RespiratoryRate
@@ -167,6 +187,7 @@ class InitialScenarioSchema(StrictBaseModel):
     measurements: MeasurementSchemaBlock = Field(..., description="Measurement schema block")
 
     __persist__: ClassVar[dict[str, None]] = {
+        "scenario_brief": None,
         "conditions": None,
         "measurements": None,
     }
@@ -174,11 +195,9 @@ class InitialScenarioSchema(StrictBaseModel):
 
     async def post_persist(self, results: dict[str, Any], context: "PersistContext") -> None:
         from apps.common.outbox.helpers import broadcast_domain_objects
-        from apps.trainerlab.services import (
-            persist_initial_scenario_brief,
-            refresh_projection_from_domain_state,
-        )
+        from apps.trainerlab.services import refresh_projection_from_domain_state
 
+        scenario_brief_obj = results.get("scenario_brief")
         conditions = results.get("conditions", [])
         measurements = results.get("measurements", {})
 
@@ -196,6 +215,16 @@ class InitialScenarioSchema(StrictBaseModel):
                 if obj is not None:
                     vital_objects.append(obj)
 
+        if scenario_brief_obj is not None:
+            await broadcast_domain_objects(
+                event_type="trainerlab.scenario_brief.created",
+                objects=[scenario_brief_obj],
+                context=context,
+                payload_builder=lambda obj: _scenario_brief_event_payload(
+                    obj, context=context
+                ),
+            )
+
         if conditions:
             await broadcast_domain_objects(
                 event_type="trainerlab.condition.created",
@@ -212,10 +241,6 @@ class InitialScenarioSchema(StrictBaseModel):
                 payload_builder=lambda obj: _vital_event_payload(obj, context=context),
             )
 
-        await sync_to_async(persist_initial_scenario_brief, thread_sensitive=True)(
-            simulation_id=context.simulation_id,
-            scenario_brief=self.scenario_brief.model_dump(mode="json"),
-        )
         await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(
             simulation_id=context.simulation_id,
             correlation_id=context.correlation_id,

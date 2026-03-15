@@ -27,6 +27,7 @@ from .models import (
     Injury,
     Intervention,
     RespiratoryRate,
+    ScenarioBrief,
     SessionStatus,
     SimulationNote,
     TrainerCommand,
@@ -145,19 +146,6 @@ def build_runtime_state_defaults(
             **dict(state.get("scenario_brief") or {}),
         }
     return merged
-
-
-def persist_initial_scenario_brief(*, simulation_id: int, scenario_brief: dict[str, Any]) -> None:
-    session = TrainerSession.objects.filter(simulation_id=simulation_id).first()
-    if session is None:
-        return
-    state = get_runtime_state(session)
-    state["scenario_brief"] = {
-        **dict(state.get("scenario_brief") or {}),
-        **dict(scenario_brief or {}),
-    }
-    session.runtime_state_json = state
-    session.save(update_fields=["runtime_state_json", "modified_at"])
 
 
 def get_runtime_state(session: TrainerSession) -> dict[str, Any]:
@@ -366,6 +354,26 @@ def project_current_snapshot(
         if current is not None:
             vitals.append(_serialize_vital(vital_type, current))
 
+    scenario_brief_data: dict[str, Any] = {}
+    scenario_brief_obj = (
+        ScenarioBrief.objects.filter(
+            simulation=session.simulation,
+            is_active=True,
+        )
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    if scenario_brief_obj is not None:
+        scenario_brief_data = {
+            "read_aloud_brief": scenario_brief_obj.read_aloud_brief,
+            "environment": scenario_brief_obj.environment,
+            "location_overview": scenario_brief_obj.location_overview,
+            "threat_context": scenario_brief_obj.threat_context,
+            "evacuation_options": scenario_brief_obj.evacuation_options,
+            "evacuation_time": scenario_brief_obj.evacuation_time,
+            "special_considerations": scenario_brief_obj.special_considerations,
+        }
+
     return {
         "conditions": conditions,
         "interventions": interventions,
@@ -373,6 +381,7 @@ def project_current_snapshot(
         "patient_status": dict(
             (state.get("snapshot_annotations") or {}).get("patient_status") or {}
         ),
+        "scenario_brief": scenario_brief_data,
     }
 
 
@@ -408,7 +417,11 @@ def refresh_runtime_projection(
             state["tick_count"] = int(state.get("tick_count", 0) or 0) + tick_count
 
     state["active_elapsed_seconds"] = get_active_elapsed_seconds(session, state=state, now=now)
-    state["current_snapshot"] = project_current_snapshot(session, state=state)
+    snapshot = project_current_snapshot(session, state=state)
+    state["current_snapshot"] = snapshot
+    # Promote scenario_brief from snapshot to top-level state for backward compat
+    if snapshot.get("scenario_brief"):
+        state["scenario_brief"] = snapshot["scenario_brief"]
     state["state_revision"] = int(state.get("state_revision", 0) or 0) + 1
     state["last_runtime_completed_at"] = now.astimezone(UTC).isoformat()
 

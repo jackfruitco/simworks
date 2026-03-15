@@ -6,6 +6,8 @@ from orchestrai.types import StrictBaseModel
 
 
 class ScenarioBrief(StrictBaseModel):
+    __orm_model__ = "trainerlab.ScenarioBrief"
+
     read_aloud_brief: str = Field(
         ...,
         min_length=1,

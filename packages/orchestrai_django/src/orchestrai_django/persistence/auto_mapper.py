@@ -151,7 +151,10 @@ async def _create_orm_instance(
             # Accept epoch-style schema timestamps for DateTimeField mappings.
             value = datetime.fromtimestamp(value, tz=UTC)
 
-        if isinstance(value, (str, int, float, bool)) or value is None:
+        if model_field is not None and isinstance(model_field, models.JSONField):
+            # Pass JSON-serialisable values through directly for JSONField columns.
+            kwargs[orm_field] = value
+        elif isinstance(value, (str, int, float, bool)) or value is None:
             kwargs[orm_field] = value
         elif hasattr(value, "value"):  # Enum
             kwargs[orm_field] = value.value
