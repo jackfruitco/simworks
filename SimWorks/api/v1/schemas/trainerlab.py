@@ -13,6 +13,7 @@ from apps.trainerlab.injury_dictionary import (
 from apps.trainerlab.intervention_dictionary import (
     normalize_intervention_site,
     normalize_intervention_type,
+    normalize_site_code,
     validate_intervention_details,
 )
 from apps.trainerlab.models import (
@@ -20,7 +21,7 @@ from apps.trainerlab.models import (
     ScenarioInstructionPermission,
     TrainerSession,
 )
-from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatus, ScenarioBrief
+from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatus
 
 
 class LabAccessOut(BaseModel):
@@ -162,9 +163,16 @@ class InterventionCreateIn(BaseModel):
     def _normalize_intervention_type(cls, value: str) -> str:
         return normalize_intervention_type(value)
 
+    @field_validator("site_code", mode="before")
+    @classmethod
+    def _normalize_site_code(cls, v: str) -> str:
+        return normalize_site_code(v)
+
     @model_validator(mode="after")
     def _normalize_site_and_validate_detail_shape(self) -> "InterventionCreateIn":
-        self.site_code = normalize_intervention_site(self.intervention_type, self.site_code)
+        self.site_code = normalize_site_code(
+            normalize_intervention_site(self.intervention_type, self.site_code)
+        )
         validated = validate_intervention_details(
             self.intervention_type,
             self.details.model_dump(exclude_none=True),
@@ -176,6 +184,7 @@ class InterventionCreateIn(BaseModel):
 class SimulationNoteCreateIn(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     send_to_ai: bool = False
+    performed_by_role: Literal["trainee", "instructor", "ai"] = "instructor"
 
     @field_validator("content")
     @classmethod
@@ -283,13 +292,23 @@ class TrainerRuntimeSnapshotOut(BaseModel):
     patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
 
 
+class ScenarioBriefOut(BaseModel):
+    read_aloud_brief: str = ""
+    environment: str = ""
+    location_overview: str = ""
+    threat_context: str = ""
+    evacuation_options: str = ""
+    evacuation_time: str = ""
+    special_considerations: str = ""
+
+
 class TrainerRuntimeStateOut(BaseModel):
     simulation_id: int
     session_id: int
     status: str
     state_revision: int
     active_elapsed_seconds: int
-    scenario_brief: ScenarioBrief
+    scenario_brief: ScenarioBriefOut | None = None
     current_snapshot: TrainerRuntimeSnapshotOut
     ai_plan: RuntimeInstructorIntent
     ai_rationale_notes: list[str] = Field(default_factory=list)
@@ -437,18 +456,31 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     )
 
 
+def _join_if_list(value: Any) -> str:
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value)
+    return str(value or "")
+
+
 def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
     runtime_state = dict(session.runtime_state_json or {})
-    scenario_brief = runtime_state.get("scenario_brief") or {
-        "read_aloud_brief": "Scenario brief pending.",
-    }
+    raw_brief = runtime_state.get("scenario_brief") or session.scenario_spec_json or {}
+    scenario_brief_out = ScenarioBriefOut(
+        read_aloud_brief=str(raw_brief.get("read_aloud_brief") or ""),
+        environment=str(raw_brief.get("environment") or ""),
+        location_overview=str(raw_brief.get("location_overview") or ""),
+        threat_context=str(raw_brief.get("threat_context") or ""),
+        evacuation_options=_join_if_list(raw_brief.get("evacuation_options", "")),
+        evacuation_time=str(raw_brief.get("evacuation_time") or ""),
+        special_considerations=_join_if_list(raw_brief.get("special_considerations", "")),
+    )
     return TrainerRuntimeStateOut(
         simulation_id=session.simulation_id,
         session_id=session.id,
         status=session.status,
         state_revision=int(runtime_state.get("state_revision", 0) or 0),
         active_elapsed_seconds=int(runtime_state.get("active_elapsed_seconds", 0) or 0),
-        scenario_brief=ScenarioBrief.model_validate(scenario_brief),
+        scenario_brief=scenario_brief_out,
         current_snapshot=TrainerRuntimeSnapshotOut.model_validate(
             runtime_state.get("current_snapshot") or {}
         ),

@@ -1793,24 +1793,6 @@
               "title": "Status"
             },
             "required": false
-          },
-          {
-            "in": "query",
-            "name": "q",
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Text search across scenario spec",
-              "title": "Q"
-            },
-            "required": false,
-            "description": "Text search across scenario spec"
           }
         ],
         "responses": {
@@ -4956,60 +4938,45 @@
         "title": "RuntimeVitalStateOut",
         "type": "object"
       },
-      "ScenarioBrief": {
-        "additionalProperties": false,
+      "ScenarioBriefOut": {
         "properties": {
           "read_aloud_brief": {
-            "description": "A concise instructor read-aloud brief delivered to the trainee before the simulation begins.",
-            "minLength": 1,
+            "default": "",
             "title": "Read Aloud Brief",
             "type": "string"
           },
           "environment": {
             "default": "",
-            "description": "Simulation environment and overall setting.",
             "title": "Environment",
             "type": "string"
           },
           "location_overview": {
             "default": "",
-            "description": "Approximate location and terrain or facility context.",
             "title": "Location Overview",
             "type": "string"
           },
           "threat_context": {
             "default": "",
-            "description": "Enemy, threat, or scene-safety context when applicable.",
             "title": "Threat Context",
             "type": "string"
           },
           "evacuation_options": {
-            "description": "Available evacuation or transport options, if known.",
-            "items": {
-              "type": "string"
-            },
+            "default": "",
             "title": "Evacuation Options",
-            "type": "array"
+            "type": "string"
           },
           "evacuation_time": {
             "default": "",
-            "description": "Expected evacuation time or transport delay when applicable.",
             "title": "Evacuation Time",
             "type": "string"
           },
           "special_considerations": {
-            "description": "Other constraints or scenario considerations the instructor should know.",
-            "items": {
-              "type": "string"
-            },
+            "default": "",
             "title": "Special Considerations",
-            "type": "array"
+            "type": "string"
           }
         },
-        "required": [
-          "read_aloud_brief"
-        ],
-        "title": "ScenarioBrief",
+        "title": "ScenarioBriefOut",
         "type": "object"
       },
       "TrainerRuntimeSnapshotOut": {
@@ -5069,7 +5036,14 @@
             "type": "integer"
           },
           "scenario_brief": {
-            "$ref": "#/components/schemas/ScenarioBrief"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "current_snapshot": {
             "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
@@ -5132,7 +5106,6 @@
           "status",
           "state_revision",
           "active_elapsed_seconds",
-          "scenario_brief",
           "current_snapshot",
           "ai_plan"
         ],
@@ -5510,6 +5483,16 @@
             "default": false,
             "title": "Send To Ai",
             "type": "boolean"
+          },
+          "performed_by_role": {
+            "default": "instructor",
+            "enum": [
+              "trainee",
+              "instructor",
+              "ai"
+            ],
+            "title": "Performed By Role",
+            "type": "string"
           }
         },
         "required": [

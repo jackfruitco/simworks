@@ -746,15 +746,15 @@ class TestTrainerLabEvents:
 
         outbox_event = OutboxEvent.objects.get(
             simulation_id=simulation_id,
-            event_type="trainerlab.note.recorded",
+            event_type="trainerlab.note_created",
         )
         assert outbox_event.payload["content"] == "Instructor note for the timeline."
-        assert outbox_event.payload["send_to_ai"] is False
+        assert outbox_event.payload["created_by_role"] == "instructor"
 
         listed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/")
         assert listed.status_code == 200
         assert any(
-            item["event_type"] == "trainerlab.note.recorded"
+            item["event_type"] == "trainerlab.note_created"
             and item["payload"]["content"] == "Instructor note for the timeline."
             for item in listed.json()["items"]
         )
@@ -764,8 +764,8 @@ class TestTrainerLabEvents:
         )
         chunks = [decode_chunk(chunk) for chunk in islice(streamed.streaming_content, 3)]
         payload = "".join(chunks)
-        assert "trainerlab.note.recorded" in payload
-        assert '"send_to_ai": false' in payload
+        assert "trainerlab.note_created" in payload
+        assert '"created_by_role": "instructor"' in payload
 
     def test_note_event_send_to_ai_queues_runtime_reason(
         self,
@@ -1161,7 +1161,7 @@ class TestTrainerLabDictionaries:
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
                 "intervention_type": "tourniquet",
-                "site_code": "TQ-L-ARM",
+                "site_code": "left_arm",
                 "status": "applied",
                 "effectiveness": "unknown",
                 "notes": "Tourniquet placed high and tight",
@@ -1175,7 +1175,7 @@ class TestTrainerLabDictionaries:
         assert response.status_code == 200
 
         intervention = Intervention.objects.get(intervention_type="tourniquet")
-        assert intervention.site_code == "TQ-L-ARM"
+        assert intervention.site_code == "left_arm"
         assert intervention.effectiveness == "unknown"
         assert intervention.performed_by_role == "trainee"
         assert intervention.code == "M-TQ-D"
@@ -1195,7 +1195,7 @@ class TestTrainerLabDictionaries:
         ).first()
         assert outbox_event is not None
         assert outbox_event.payload["intervention_type"] == "tourniquet"
-        assert outbox_event.payload["site_code"] == "TQ-L-ARM"
+        assert outbox_event.payload["site_code"] == "left_arm"
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
@@ -1210,23 +1210,17 @@ class TestTrainerLabDictionaries:
         response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
 
         assert response.status_code == 200
-        body = response.json()
-        assert "interventions" in body
-        definitions = body["interventions"]
-        assert len(definitions) == 7
+        definitions = response.json()
+        assert isinstance(definitions, list)
+        assert len(definitions) == 16
 
-        codes = [d["code"] for d in definitions]
-        assert "tourniquet" in codes
-        assert "needle_decompression" in codes
+        types = [d["intervention_type"] for d in definitions]
+        assert "tourniquet" in types
+        assert "needle_decompression" in types
 
-        tq = next(d for d in definitions if d["code"] == "tourniquet")
+        tq = next(d for d in definitions if d["intervention_type"] == "tourniquet")
         assert tq["label"] == "Tourniquet"
-        assert {"code": "TQ-L-ARM", "label": "Left Arm"} in tq["sites"]
-        assert tq["details_schema"]["kind"] == "tourniquet"
-        assert "application_mode" in tq["details_schema"]["required_fields"]
-        assert len(tq["ui_fields"]) == 1
-        assert tq["ui_fields"][0]["name"] == "application_mode"
-        assert {"code": "hasty", "label": "Hasty"} in tq["ui_fields"][0]["options"]
+        assert {"code": "left_arm", "label": "Left Arm"} in tq["sites"]
 
     def test_runtime_worker_applies_mock_ai_output_and_emits_state_update(
         self,
@@ -1260,7 +1254,7 @@ class TestTrainerLabDictionaries:
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
                 "intervention_type": "tourniquet",
-                "site_code": "TQ-L-ARM",
+                "site_code": "left_arm",
                 "status": "applied",
                 "effectiveness": "unknown",
                 "notes": "Tourniquet placed high and tight",
@@ -1327,7 +1321,7 @@ class TestTrainerLabDictionaries:
         assert "effectiveness" in intervention_recorded.payload
         assert "effective" not in intervention_recorded.payload
         assert intervention_recorded.payload["intervention_type"] == "tourniquet"
-        assert intervention_recorded.payload["site_code"] == "TQ-L-ARM"
+        assert intervention_recorded.payload["site_code"] == "left_arm"
 
     def test_active_elapsed_seconds_freeze_while_paused(
         self,
@@ -1577,12 +1571,11 @@ class TestTrainerLabDictionaries:
         client = auth_client_factory(instructor_user)
         response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
         assert response.status_code == 200
-        data = response.json()
-        # New endpoint returns InterventionDictionaryOut: {"interventions": [...]}
-        interventions = data["interventions"]
-        codes = {item["code"] for item in interventions}
-        assert "npa" in codes
-        npa = next(item for item in interventions if item["code"] == "npa")
+        interventions = response.json()
+        assert isinstance(interventions, list)
+        types = {item["intervention_type"] for item in interventions}
+        assert "npa" in types
+        npa = next(item for item in interventions if item["intervention_type"] == "npa")
         assert npa["label"]
         assert isinstance(npa["sites"], list)
 

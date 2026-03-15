@@ -15,6 +15,7 @@ from .intervention_dictionary import (
     build_legacy_intervention_code,
     normalize_intervention_site,
     normalize_intervention_type,
+    normalize_site_code,
     validate_intervention_details,
 )
 
@@ -465,8 +466,8 @@ class Intervention(ABCEvent):
             else:
                 if self.site_code:
                     try:
-                        self.site_code = normalize_intervention_site(
-                            self.intervention_type, self.site_code
+                        self.site_code = normalize_site_code(
+                            normalize_intervention_site(self.intervention_type, self.site_code)
                         )
                     except ValueError as exc:
                         errors["site_code"] = str(exc)
