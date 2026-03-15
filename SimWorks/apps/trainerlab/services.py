@@ -87,6 +87,15 @@ def build_runtime_state_defaults(
         "state_revision": 0,
         "active_elapsed_seconds": 0,
         "active_elapsed_anchor_started_at": None,
+        "scenario_brief": {
+            "read_aloud_brief": "Scenario brief pending.",
+            "environment": "",
+            "location_overview": "",
+            "threat_context": "",
+            "evacuation_options": [],
+            "evacuation_time": "",
+            "special_considerations": [],
+        },
         "current_snapshot": {
             "conditions": [],
             "interventions": [],
@@ -131,7 +140,24 @@ def build_runtime_state_defaults(
             **baseline["ai_plan"],
             **dict(state.get("ai_plan") or {}),
         }
+        merged["scenario_brief"] = {
+            **baseline["scenario_brief"],
+            **dict(state.get("scenario_brief") or {}),
+        }
     return merged
+
+
+def persist_initial_scenario_brief(*, simulation_id: int, scenario_brief: dict[str, Any]) -> None:
+    session = TrainerSession.objects.filter(simulation_id=simulation_id).first()
+    if session is None:
+        return
+    state = get_runtime_state(session)
+    state["scenario_brief"] = {
+        **dict(state.get("scenario_brief") or {}),
+        **dict(scenario_brief or {}),
+    }
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
 
 
 def get_runtime_state(session: TrainerSession) -> dict[str, Any]:
@@ -399,6 +425,7 @@ def refresh_runtime_projection(
         payload={
             "state_revision": state["state_revision"],
             "active_elapsed_seconds": state["active_elapsed_seconds"],
+            "scenario_brief": state["scenario_brief"],
             "current_snapshot": state["current_snapshot"],
             "processed_reasons": processed_reasons or [],
         },

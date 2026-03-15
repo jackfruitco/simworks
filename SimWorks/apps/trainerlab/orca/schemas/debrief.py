@@ -1,21 +1,18 @@
 # trainerlab/orca/schemas/debrief.py
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+from orchestrai.types import StrictBaseModel
 
 
-class DebriefTimelineItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class DebriefTimelineItem(StrictBaseModel):
     title: str = Field(..., min_length=1)
     timestamp_label: str = Field(..., min_length=1)
     significance: str = Field(..., min_length=1)
 
 
-class TrainerRunDebriefOutput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class TrainerRunDebriefOutput(StrictBaseModel):
     narrative_summary: str = Field(..., min_length=1)
     strengths: list[str] = Field(default_factory=list)
     misses: list[str] = Field(default_factory=list)

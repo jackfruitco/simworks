@@ -12,6 +12,7 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     RespiratoryRate,
+    TrainerSession,
 )
 from apps.trainerlab.orca.schemas import InitialScenarioSchema
 from orchestrai_django.persistence import PersistContext, persist_schema
@@ -60,6 +61,19 @@ def _initial_payload(
     }
 
     payload = {
+        "scenario_brief": {
+            "read_aloud_brief": (
+                "You are operating out of a roadside casualty collection point on the edge of a "
+                "small village. Sporadic hostile fire has been reported nearby. Ground evacuation "
+                "is available in about 20 minutes."
+            ),
+            "environment": "Roadside casualty collection point with limited cover",
+            "location_overview": "Edge of a small village along a dusty supply route",
+            "threat_context": "Sporadic hostile fire reported within the surrounding area",
+            "evacuation_options": ["Ground evacuation", "Delayed rotary wing if weather clears"],
+            "evacuation_time": "Approximately 20 minutes by ground",
+            "special_considerations": ["Limited light", "Dust may affect visibility"],
+        },
         "conditions": [
             {
                 "kind": "injury",
@@ -225,6 +239,27 @@ class TestTrainerLabInitialPersistence:
         assert injury.injury_location == "HLA"
         assert injury.injury_kind == "LAC"
 
+    async def test_persists_scenario_brief_to_runtime_state_when_session_exists(
+        self, simulation, context
+    ):
+        await TrainerSession.objects.acreate(
+            simulation=simulation,
+            status="seeded",
+            runtime_state_json={},
+        )
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+
+        await persist_schema(schema, context)
+
+        session = await TrainerSession.objects.aget(simulation=simulation)
+        assert session.runtime_state_json["scenario_brief"]["read_aloud_brief"].startswith(
+            "You are operating out of a roadside casualty collection point"
+        )
+        assert session.runtime_state_json["scenario_brief"]["evacuation_options"] == [
+            "Ground evacuation",
+            "Delayed rotary wing if weather clears",
+        ]
+
 
 def test_validates_base_vital_min_max_range():
     payload = _initial_payload()
@@ -233,6 +268,14 @@ def test_validates_base_vital_min_max_range():
 
     with pytest.raises(ValidationError):
         InitialScenarioSchema.model_validate(payload)
+
+
+def test_initial_schema_uses_discriminated_condition_union():
+    schema = InitialScenarioSchema.model_json_schema()
+    condition_items = schema["properties"]["conditions"]["items"]
+
+    assert "discriminator" in condition_items
+    assert condition_items["discriminator"]["propertyName"] == "kind"
 
 
 def test_validates_blood_pressure_logic():

@@ -2,7 +2,7 @@
 
 from datetime import UTC
 import logging
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from asgiref.sync import sync_to_async
 from pydantic import AliasChoices, Field
@@ -17,6 +17,7 @@ from apps.trainerlab.models import (
     Injury as ORMInjury,
     RespiratoryRate as ORMRespiratoryRate,
 )
+from apps.trainerlab.schemas import ScenarioBrief
 from orchestrai.types import StrictBaseModel
 
 from .types import (
@@ -145,10 +146,20 @@ class MeasurementSchemaBlock(StrictBaseModel):
     }
 
 
+ConditionSchema = Annotated[Injury | Illness, Field(discriminator="kind")]
+
+
 class InitialScenarioSchema(StrictBaseModel):
     """Initial response schema for the ORCA service."""
 
-    conditions: list[Injury | Illness] = Field(
+    scenario_brief: ScenarioBrief = Field(
+        ...,
+        description=(
+            "Instructor-facing scenario brief that includes the read-aloud opening context and "
+            "high-level environmental details."
+        ),
+    )
+    conditions: list[ConditionSchema] = Field(
         ...,
         min_length=1,
         description="List of injuries or illnesses",
@@ -163,7 +174,10 @@ class InitialScenarioSchema(StrictBaseModel):
 
     async def post_persist(self, results: dict[str, Any], context: "PersistContext") -> None:
         from apps.common.outbox.helpers import broadcast_domain_objects
-        from apps.trainerlab.services import refresh_projection_from_domain_state
+        from apps.trainerlab.services import (
+            persist_initial_scenario_brief,
+            refresh_projection_from_domain_state,
+        )
 
         conditions = results.get("conditions", [])
         measurements = results.get("measurements", {})
@@ -198,6 +212,10 @@ class InitialScenarioSchema(StrictBaseModel):
                 payload_builder=lambda obj: _vital_event_payload(obj, context=context),
             )
 
+        await sync_to_async(persist_initial_scenario_brief, thread_sensitive=True)(
+            simulation_id=context.simulation_id,
+            scenario_brief=self.scenario_brief.model_dump(mode="json"),
+        )
         await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(
             simulation_id=context.simulation_id,
             correlation_id=context.correlation_id,

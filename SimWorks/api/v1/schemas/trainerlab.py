@@ -15,6 +15,7 @@ from apps.trainerlab.models import (
     ScenarioInstructionPermission,
     TrainerSession,
 )
+from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatus, ScenarioBrief
 
 
 class LabAccessOut(BaseModel):
@@ -222,31 +223,11 @@ class RuntimeVitalStateOut(BaseModel):
     timestamp: str | None = None
 
 
-class RuntimePatientStatusOut(BaseModel):
-    avpu: Literal["alert", "verbal", "pain", "unalert"] | None = None
-    respiratory_distress: bool = False
-    hemodynamic_instability: bool = False
-    impending_pneumothorax: bool = False
-    tension_pneumothorax: bool = False
-    narrative: str = ""
-    teaching_flags: list[str] = Field(default_factory=list)
-
-
 class TrainerRuntimeSnapshotOut(BaseModel):
     conditions: list[RuntimeConditionStateOut] = Field(default_factory=list)
     interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
     vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
-    patient_status: RuntimePatientStatusOut = Field(default_factory=RuntimePatientStatusOut)
-
-
-class RuntimeIntentOut(BaseModel):
-    summary: str = ""
-    rationale: str = ""
-    trigger: str = ""
-    eta_seconds: int | None = None
-    confidence: float = 0.0
-    upcoming_changes: list[str] = Field(default_factory=list)
-    monitoring_focus: list[str] = Field(default_factory=list)
+    patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
 
 
 class TrainerRuntimeStateOut(BaseModel):
@@ -255,8 +236,9 @@ class TrainerRuntimeStateOut(BaseModel):
     status: str
     state_revision: int
     active_elapsed_seconds: int
+    scenario_brief: ScenarioBrief
     current_snapshot: TrainerRuntimeSnapshotOut
-    ai_plan: RuntimeIntentOut
+    ai_plan: RuntimeInstructorIntent
     ai_rationale_notes: list[str] = Field(default_factory=list)
     pending_runtime_reasons: list[dict[str, Any]] = Field(default_factory=list)
     currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
@@ -361,16 +343,20 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
 
 def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
     runtime_state = dict(session.runtime_state_json or {})
+    scenario_brief = runtime_state.get("scenario_brief") or {
+        "read_aloud_brief": "Scenario brief pending.",
+    }
     return TrainerRuntimeStateOut(
         simulation_id=session.simulation_id,
         session_id=session.id,
         status=session.status,
         state_revision=int(runtime_state.get("state_revision", 0) or 0),
         active_elapsed_seconds=int(runtime_state.get("active_elapsed_seconds", 0) or 0),
+        scenario_brief=ScenarioBrief.model_validate(scenario_brief),
         current_snapshot=TrainerRuntimeSnapshotOut.model_validate(
             runtime_state.get("current_snapshot") or {}
         ),
-        ai_plan=RuntimeIntentOut.model_validate(runtime_state.get("ai_plan") or {}),
+        ai_plan=RuntimeInstructorIntent.model_validate(runtime_state.get("ai_plan") or {}),
         ai_rationale_notes=list(runtime_state.get("ai_rationale_notes") or []),
         pending_runtime_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
         currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),

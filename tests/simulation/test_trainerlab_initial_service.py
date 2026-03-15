@@ -33,3 +33,10 @@ class TestGenerateInitialScenarioService:
         assert "M=Massive Hemorrhage" in codebook
         assert "HLA=Left Anterior Head" in codebook
         assert "LAC=Laceration" in codebook
+
+    def test_initial_response_instruction_requests_scenario_brief(self):
+        instruction = InitialResponseMixin.instruction
+
+        assert "scenario_brief" in instruction
+        assert "read out loud to the trainee" in instruction
+        assert "evacuation options" in instruction

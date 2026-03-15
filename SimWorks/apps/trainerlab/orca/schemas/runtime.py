@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
+from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatus
 from orchestrai.types import StrictBaseModel
 
 
@@ -126,38 +127,16 @@ class RuntimeSnapshotVital(StrictBaseModel):
     trend: Literal["up", "down", "stable", "variable"] = "stable"
 
 
-class RuntimeSnapshotPatientStatus(StrictBaseModel):
-    avpu: Literal["alert", "verbal", "pain", "unalert"] | None = None
-    respiratory_distress: bool = False
-    hemodynamic_instability: bool = False
-    impending_pneumothorax: bool = False
-    tension_pneumothorax: bool = False
-    narrative: str = ""
-    teaching_flags: list[str] = Field(default_factory=list)
-
-
 class TrainerRuntimeSnapshot(StrictBaseModel):
     conditions: list[RuntimeSnapshotCondition] = Field(default_factory=list)
     interventions: list[RuntimeSnapshotIntervention] = Field(default_factory=list)
     vitals: list[RuntimeSnapshotVital] = Field(default_factory=list)
-    patient_status: RuntimeSnapshotPatientStatus = Field(
-        default_factory=RuntimeSnapshotPatientStatus
-    )
-
-
-class TrainerInstructorIntent(StrictBaseModel):
-    summary: str = ""
-    rationale: str = ""
-    trigger: str = ""
-    eta_seconds: int | None = Field(default=None, ge=0)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    upcoming_changes: list[str] = Field(default_factory=list)
-    monitoring_focus: list[str] = Field(default_factory=list)
+    patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
 
 
 class TrainerRuntimeTurnOutput(StrictBaseModel):
     state_changes: RuntimeStateChanges = Field(default_factory=RuntimeStateChanges)
     snapshot: TrainerRuntimeSnapshot
-    instructor_intent: TrainerInstructorIntent = Field(default_factory=TrainerInstructorIntent)
+    instructor_intent: RuntimeInstructorIntent = Field(default_factory=RuntimeInstructorIntent)
     rationale_notes: list[str] = Field(default_factory=list)
     llm_conditions_check: list[LLMConditionsCheckItem] = Field(default_factory=list)
