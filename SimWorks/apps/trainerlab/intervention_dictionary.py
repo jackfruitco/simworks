@@ -83,6 +83,51 @@ class SurgicalCricDetails(InterventionDetailsBase):
     version: Literal[1] = 1
 
 
+class JunctionalTourniquetDetails(InterventionDetailsBase):
+    kind: Literal["junctional_tourniquet"] = "junctional_tourniquet"
+    version: Literal[1] = 1
+
+
+class HemostaticAgentDetails(InterventionDetailsBase):
+    kind: Literal["hemostatic_agent"] = "hemostatic_agent"
+    version: Literal[1] = 1
+
+
+class PelvicBinderDetails(InterventionDetailsBase):
+    kind: Literal["pelvic_binder"] = "pelvic_binder"
+    version: Literal[1] = 1
+
+
+class IVAccessDetails(InterventionDetailsBase):
+    kind: Literal["iv_access"] = "iv_access"
+    version: Literal[1] = 1
+
+
+class IOAccessDetails(InterventionDetailsBase):
+    kind: Literal["io_access"] = "io_access"
+    version: Literal[1] = 1
+
+
+class FluidResuscitationDetails(InterventionDetailsBase):
+    kind: Literal["fluid_resuscitation"] = "fluid_resuscitation"
+    version: Literal[1] = 1
+
+
+class BloodTransfusionDetails(InterventionDetailsBase):
+    kind: Literal["blood_transfusion"] = "blood_transfusion"
+    version: Literal[1] = 1
+
+
+class AdvancedAirwayDetails(InterventionDetailsBase):
+    kind: Literal["advanced_airway"] = "advanced_airway"
+    version: Literal[1] = 1
+
+
+class ChestTubeDetails(InterventionDetailsBase):
+    kind: Literal["chest_tube"] = "chest_tube"
+    version: Literal[1] = 1
+
+
 @dataclass(frozen=True)
 class InterventionDefinition:
     type_code: str
@@ -184,6 +229,101 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         sites=(("ANTERIOR_NECK_MIDLINE", "Anterior Neck Midline"),),
         details_model=SurgicalCricDetails,
         legacy_code_map="A-SURG-CRIC",
+    ),
+    InterventionDefinition(
+        type_code="junctional_tourniquet",
+        label="Junctional Tourniquet",
+        sites=(
+            ("JTQ-RIGHT-GROIN", "Right Groin"),
+            ("JTQ-LEFT-GROIN", "Left Groin"),
+            ("JTQ-RIGHT-AXILLA", "Right Axilla"),
+            ("JTQ-LEFT-AXILLA", "Left Axilla"),
+        ),
+        details_model=JunctionalTourniquetDetails,
+        legacy_code_map="M-JTQ",
+    ),
+    InterventionDefinition(
+        type_code="hemostatic_agent",
+        label="Hemostatic Agent",
+        sites=(("HA-WOUND-SITE", "Wound Site"),),
+        details_model=HemostaticAgentDetails,
+        legacy_code_map="M-HEM",
+    ),
+    InterventionDefinition(
+        type_code="pelvic_binder",
+        label="Pelvic Binder",
+        sites=(("PB-PELVIS", "Pelvis"),),
+        details_model=PelvicBinderDetails,
+        legacy_code_map="M-PB",
+    ),
+    InterventionDefinition(
+        type_code="iv_access",
+        label="IV Access",
+        sites=(
+            ("IV-RIGHT-AC", "Right Antecubital"),
+            ("IV-LEFT-AC", "Left Antecubital"),
+            ("IV-RIGHT-EJ", "Right External Jugular"),
+            ("IV-LEFT-EJ", "Left External Jugular"),
+            ("IV-RIGHT-FEM", "Right Femoral"),
+            ("IV-LEFT-FEM", "Left Femoral"),
+        ),
+        details_model=IVAccessDetails,
+        legacy_code_map="C-IV",
+    ),
+    InterventionDefinition(
+        type_code="io_access",
+        label="IO Access",
+        sites=(
+            ("IO-RIGHT-PROX-TIBIA", "Right Proximal Tibia"),
+            ("IO-LEFT-PROX-TIBIA", "Left Proximal Tibia"),
+            ("IO-STERNUM", "Sternum"),
+            ("IO-RIGHT-HUMERUS", "Right Proximal Humerus"),
+            ("IO-LEFT-HUMERUS", "Left Proximal Humerus"),
+        ),
+        details_model=IOAccessDetails,
+        legacy_code_map="C-IO",
+    ),
+    InterventionDefinition(
+        type_code="fluid_resuscitation",
+        label="Fluid Resuscitation",
+        sites=(
+            ("FR-IV-LINE", "IV Line"),
+            ("FR-IO-LINE", "IO Line"),
+        ),
+        details_model=FluidResuscitationDetails,
+        legacy_code_map="C-FR",
+    ),
+    InterventionDefinition(
+        type_code="blood_transfusion",
+        label="Blood Transfusion / WBCT",
+        sites=(
+            ("BT-IV-LINE", "IV Line"),
+            ("BT-IO-LINE", "IO Line"),
+        ),
+        details_model=BloodTransfusionDetails,
+        legacy_code_map="C-BT",
+    ),
+    InterventionDefinition(
+        type_code="advanced_airway",
+        label="Advanced Airway",
+        sites=(
+            ("AA-ORAL-TRACHEA", "Oral Trachea"),
+            ("AA-NASAL-TRACHEA", "Nasal Trachea"),
+        ),
+        details_model=AdvancedAirwayDetails,
+        legacy_code_map="A-ADV-AIR",
+    ),
+    InterventionDefinition(
+        type_code="chest_tube",
+        label="Chest Tube / Finger Thoracostomy",
+        sites=(
+            ("CT-RIGHT-4TH-ICS", "Right 4th ICS"),
+            ("CT-LEFT-4TH-ICS", "Left 4th ICS"),
+            ("CT-RIGHT-5TH-ICS", "Right 5th ICS"),
+            ("CT-LEFT-5TH-ICS", "Left 5th ICS"),
+        ),
+        details_model=ChestTubeDetails,
+        legacy_code_map="R-CT",
     ),
 )
 

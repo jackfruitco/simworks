@@ -981,22 +981,24 @@ def _apply_intervention_effect(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.intervention.recorded",
+        event_type="trainerlab.intervention_created",
         payload={
             "domain_event_id": intervention.id,
             "intervention_type": intervention.intervention_type or None,
             "site_code": intervention.site_code or None,
+            "status": intervention.status,
+            "effectiveness": intervention.effectiveness,
+            "notes": intervention.notes,
+            "supersedes_event_id": intervention.supersedes_event_id,
             "code": intervention.code,
             "description": intervention.description,
             "target": intervention.target,
             "anatomic_location": intervention.anatomic_location,
-            "effectiveness": intervention.effectiveness,
-            "notes": intervention.notes,
             "performed_by_role": intervention.performed_by_role,
             "effect": effects[str(intervention.id)],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.intervention.recorded:{intervention.id}:{effects[str(intervention.id)]['status']}",
+        idempotency_key=f"trainerlab.intervention_created:{intervention.id}:{effects[str(intervention.id)]['status']}",
     )
 
 
