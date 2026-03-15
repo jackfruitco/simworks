@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from apps.trainerlab.injury_dictionary import (
     normalize_injury_category,
@@ -47,6 +47,8 @@ class TrainerRunOut(BaseModel):
     last_ai_tick_at: datetime | None
     created_at: datetime
     modified_at: datetime
+    terminal_reason_code: str | None = None
+    terminal_reason_text: str | None = None
 
 
 class TrainerCommandAck(BaseModel):
@@ -110,8 +112,12 @@ class InjuryCreateIn(BaseModel):
 
 
 class IllnessCreateIn(BaseModel):
-    name: str
-    description: str = ""
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(validation_alias=AliasChoices("illness_name", "name"))
+    description: str = Field(
+        default="", validation_alias=AliasChoices("illness_description", "description")
+    )
     severity: Literal["low", "moderate", "high", "critical"] = "moderate"
     is_resolved: bool = False
     supersedes_event_id: int | None = None
@@ -288,6 +294,7 @@ class TrainerRuntimeStateOut(BaseModel):
     ai_plan: RuntimeInstructorIntent
     ai_rationale_notes: list[str] = Field(default_factory=list)
     pending_runtime_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    pending_reasons: list[dict[str, Any]] = Field(default_factory=list)
     currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
     last_runtime_error: str = ""
     last_ai_tick_at: datetime | None = None
@@ -400,7 +407,18 @@ class InterventionDictionaryOut(BaseModel):
     interventions: list[InterventionDefinitionOut]
 
 
+class InterventionDictionaryItemOut(BaseModel):
+    """iOS-compatible flat intervention dictionary item."""
+
+    intervention_type: str
+    label: str
+    sites: list[DictionaryItemOut]
+
+
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
+    simulation = session.simulation
+    terminal_reason_code = getattr(simulation, "terminal_reason_code", "") or None
+    terminal_reason_text = getattr(simulation, "terminal_reason_text", "") or None
     return TrainerRunOut(
         simulation_id=session.simulation_id,
         status=session.status,
@@ -414,6 +432,8 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         last_ai_tick_at=session.last_ai_tick_at,
         created_at=session.created_at,
         modified_at=session.modified_at,
+        terminal_reason_code=terminal_reason_code,
+        terminal_reason_text=terminal_reason_text,
     )
 
 
@@ -435,6 +455,7 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
         ai_plan=RuntimeInstructorIntent.model_validate(runtime_state.get("ai_plan") or {}),
         ai_rationale_notes=list(runtime_state.get("ai_rationale_notes") or []),
         pending_runtime_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
+        pending_reasons=list(runtime_state.get("pending_runtime_reasons") or []),
         currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),
         last_runtime_error=str(runtime_state.get("last_runtime_error") or ""),
         last_ai_tick_at=session.last_ai_tick_at,
