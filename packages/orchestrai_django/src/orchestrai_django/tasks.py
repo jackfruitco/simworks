@@ -4,8 +4,10 @@ from dataclasses import dataclass
 import inspect
 import logging
 
+import structlog
 from asgiref.sync import async_to_sync
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.tasks import task
 from django.utils import timezone
@@ -16,6 +18,7 @@ from orchestrai.identity import Identity
 from orchestrai.identity.domains import SERVICES_DOMAIN
 from orchestrai.registry.active_app import get_component_store
 from orchestrai.registry.services import ensure_service_registry
+from orchestrai_django.logging import service_span
 from orchestrai_django.models import (
     AlreadySucceededError,
     AttemptAllocationError,
@@ -25,6 +28,15 @@ from orchestrai_django.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SIM_DEBUG_CACHE_KEY = "orca:sim_debug:{}"
+
+
+def _is_sim_debug(simulation_id) -> bool:
+    """Check if verbose debug logging is enabled for this simulation (via cache toggle)."""
+    if not simulation_id:
+        return False
+    return bool(cache.get(_SIM_DEBUG_CACHE_KEY.format(simulation_id)))
 
 
 class _SuppressFailureEmitter:
@@ -489,7 +501,31 @@ def run_service_call(call_id: str):
         call.save(update_fields=["status", "started_at", "related_object_id"])
 
     current_attempt = attempt_record.attempt
+
+    # Bind structured context for all log lines in this task execution
+    sim_id = call.context.get("simulation_id") if call.context else None
+    corr_id = str(call.correlation_id) if call.correlation_id else None
+    structlog.contextvars.bind_contextvars(
+        simulation_id=sim_id,
+        correlation_id=corr_id,
+        call_id=str(call_id),
+        service_identity=call.service_identity,
+    )
+
+    sim_debug = _is_sim_debug(sim_id)
+
     logger.info("Executing service call %s (attempt %d/%d)", call_id, current_attempt, max_attempts)
+
+    if sim_debug:
+        logger.info(
+            "[SIM_DEBUG] call_id=%s service=%s attempt=%d/%d sim_id=%s context=%s",
+            call_id,
+            call.service_identity,
+            current_attempt,
+            max_attempts,
+            sim_id,
+            call.context,
+        )
 
     service_cls = registry.get(Identity.get(call.service_identity))
     service = service_cls(**call.service_kwargs)
@@ -506,6 +542,16 @@ def run_service_call(call_id: str):
         # Never break execution because of emitter decoration.
         logger.debug("Failed to decorate service emitter for call=%s", call_id, exc_info=True)
 
+    span_attrs = {
+        "service.identity": call.service_identity,
+        "call_id": str(call_id),
+        "attempt": current_attempt,
+    }
+    if sim_id is not None:
+        span_attrs["simulation_id"] = str(sim_id)
+    if corr_id is not None:
+        span_attrs["correlation_id"] = corr_id
+
     try:
         payload = call.input or {}
 
@@ -513,27 +559,32 @@ def run_service_call(call_id: str):
         attempt_record.mark_dispatched()
         _emit_message_delivered_status(call)
 
-        # Prefer arun (Pydantic AI services), then aexecute, then execute
-        if hasattr(service, "arun") and callable(service.arun):
-            result = async_to_sync(service.arun)(**payload)
-        elif hasattr(service, "aexecute") and callable(service.aexecute):
-            aexecute = service.aexecute
-            if inspect.iscoroutinefunction(aexecute):
-                result = async_to_sync(aexecute)(**payload)
-            else:  # pragma: no cover - defensive fallback
-                result = aexecute(**payload)
-        elif hasattr(service, "execute") and callable(service.execute):
-            execute = service.execute
-            if inspect.iscoroutinefunction(execute):
-                result = async_to_sync(execute)(**payload)
-            else:
-                result = (
-                    async_to_sync(service.aexecute)(**payload)
-                    if hasattr(service, "aexecute")
-                    else execute(**payload)
-                )
-        else:  # pragma: no cover - defensive
-            raise RuntimeError("Service does not implement arun/aexecute/execute")
+        # Execute service inside a parent OTEL span so that instrumented child spans
+        # (e.g. openai.responses.create from logfire.instrument_openai) are grouped
+        # under a single "Orca service call" trace in Logfire.  OTEL context propagates
+        # through async_to_sync via Python contextvars (copied by asgiref).
+        with service_span("orchestrai.service_call", attributes=span_attrs):
+            # Prefer arun (Pydantic AI services), then aexecute, then execute
+            if hasattr(service, "arun") and callable(service.arun):
+                result = async_to_sync(service.arun)(**payload)
+            elif hasattr(service, "aexecute") and callable(service.aexecute):
+                aexecute = service.aexecute
+                if inspect.iscoroutinefunction(aexecute):
+                    result = async_to_sync(aexecute)(**payload)
+                else:  # pragma: no cover - defensive fallback
+                    result = aexecute(**payload)
+            elif hasattr(service, "execute") and callable(service.execute):
+                execute = service.execute
+                if inspect.iscoroutinefunction(execute):
+                    result = async_to_sync(execute)(**payload)
+                else:
+                    result = (
+                        async_to_sync(service.aexecute)(**payload)
+                        if hasattr(service, "aexecute")
+                        else execute(**payload)
+                    )
+            else:  # pragma: no cover - defensive
+                raise RuntimeError("Service does not implement arun/aexecute/execute")
 
         # Success! Store result and mark for domain persistence
         with transaction.atomic():
@@ -682,6 +733,17 @@ def run_service_call(call_id: str):
             call_id,
             current_attempt,
         )
+
+        if sim_debug:
+            logger.info(
+                "[SIM_DEBUG] call_id=%s service=%s succeeded"
+                " input_tokens=%s output_tokens=%s total_tokens=%s",
+                call_id,
+                call.service_identity,
+                attempt_record.input_tokens,
+                attempt_record.output_tokens,
+                attempt_record.total_tokens,
+            )
 
         # Populate attempt record with request data
         try:
@@ -864,6 +926,10 @@ def run_service_call(call_id: str):
 
             return call.to_jsonable()
 
+    finally:
+        # Always clear per-task structlog context to prevent leakage between tasks
+        structlog.contextvars.clear_contextvars()
+
 
 def _classify_error(exc: Exception) -> ErrorClassification:
     """Classify errors for system retry and user retry semantics."""
@@ -1016,7 +1082,9 @@ def process_pending_persistence():
                     call.domain_persisted = True
                     call.save(update_fields=["domain_persisted"])
 
-    logger.info(
+    # Only log at INFO when there was actual work to do; idle cycles are DEBUG-only
+    log_fn = logger.info if stats["claimed"] > 0 else logger.debug
+    log_fn(
         "Domain persistence batch complete: claimed=%d, processed=%d, failed=%d, skipped=%d",
         stats["claimed"],
         stats["processed"],
