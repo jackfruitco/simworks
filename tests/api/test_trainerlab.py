@@ -746,15 +746,15 @@ class TestTrainerLabEvents:
 
         outbox_event = OutboxEvent.objects.get(
             simulation_id=simulation_id,
-            event_type="trainerlab.note.recorded",
+            event_type="trainerlab.note_created",
         )
         assert outbox_event.payload["content"] == "Instructor note for the timeline."
-        assert outbox_event.payload["send_to_ai"] is False
+        assert outbox_event.payload["created_by_role"] == "instructor"
 
         listed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/")
         assert listed.status_code == 200
         assert any(
-            item["event_type"] == "trainerlab.note.recorded"
+            item["event_type"] == "trainerlab.note_created"
             and item["payload"]["content"] == "Instructor note for the timeline."
             for item in listed.json()["items"]
         )
@@ -764,8 +764,8 @@ class TestTrainerLabEvents:
         )
         chunks = [decode_chunk(chunk) for chunk in islice(streamed.streaming_content, 3)]
         payload = "".join(chunks)
-        assert "trainerlab.note.recorded" in payload
-        assert '"send_to_ai": false' in payload
+        assert "trainerlab.note_created" in payload
+        assert '"created_by_role": "instructor"' in payload
 
     def test_note_event_send_to_ai_queues_runtime_reason(
         self,
@@ -1161,7 +1161,7 @@ class TestTrainerLabDictionaries:
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
                 "intervention_type": "tourniquet",
-                "site_code": "TQ-L-ARM",
+                "site_code": "left_arm",
                 "status": "applied",
                 "effectiveness": "unknown",
                 "notes": "Tourniquet placed high and tight",
@@ -1175,7 +1175,7 @@ class TestTrainerLabDictionaries:
         assert response.status_code == 200
 
         intervention = Intervention.objects.get(intervention_type="tourniquet")
-        assert intervention.site_code == "TQ-L-ARM"
+        assert intervention.site_code == "left_arm"
         assert intervention.effectiveness == "unknown"
         assert intervention.performed_by_role == "trainee"
         assert intervention.code == "M-TQ-D"
@@ -1195,7 +1195,7 @@ class TestTrainerLabDictionaries:
         ).first()
         assert outbox_event is not None
         assert outbox_event.payload["intervention_type"] == "tourniquet"
-        assert outbox_event.payload["site_code"] == "TQ-L-ARM"
+        assert outbox_event.payload["site_code"] == "left_arm"
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
@@ -1221,7 +1221,7 @@ class TestTrainerLabDictionaries:
 
         tq = next(d for d in definitions if d["code"] == "tourniquet")
         assert tq["label"] == "Tourniquet"
-        assert {"code": "TQ-L-ARM", "label": "Left Arm"} in tq["sites"]
+        assert {"code": "left_arm", "label": "Left Arm"} in tq["sites"]
         assert tq["details_schema"]["kind"] == "tourniquet"
         assert "application_mode" in tq["details_schema"]["required_fields"]
         assert len(tq["ui_fields"]) == 1
@@ -1260,7 +1260,7 @@ class TestTrainerLabDictionaries:
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
                 "intervention_type": "tourniquet",
-                "site_code": "TQ-L-ARM",
+                "site_code": "left_arm",
                 "status": "applied",
                 "effectiveness": "unknown",
                 "notes": "Tourniquet placed high and tight",
@@ -1327,7 +1327,7 @@ class TestTrainerLabDictionaries:
         assert "effectiveness" in intervention_recorded.payload
         assert "effective" not in intervention_recorded.payload
         assert intervention_recorded.payload["intervention_type"] == "tourniquet"
-        assert intervention_recorded.payload["site_code"] == "TQ-L-ARM"
+        assert intervention_recorded.payload["site_code"] == "left_arm"
 
     def test_active_elapsed_seconds_freeze_while_paused(
         self,

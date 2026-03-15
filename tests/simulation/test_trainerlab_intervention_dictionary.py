@@ -27,8 +27,8 @@ def test_registry_exposes_typed_frontend_metadata():
 
 def test_normalizes_codes_labels_and_validates_details():
     assert normalize_intervention_type("Tourniquet") == "tourniquet"
-    assert normalize_intervention_site("tourniquet", "left arm") == "TQ-L-ARM"
-    assert get_intervention_site_label("tourniquet", "TQ-L-ARM") == "Left Arm"
+    assert normalize_intervention_site("tourniquet", "left arm") == "LEFT_ARM"
+    assert get_intervention_site_label("tourniquet", "LEFT_ARM") == "Left Arm"
     assert validate_intervention_details(
         "tourniquet",
         {"kind": "tourniquet", "version": 1, "application_mode": " Deliberate "},

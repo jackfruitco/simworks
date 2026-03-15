@@ -19,6 +19,7 @@ __all__ = [
     "list_intervention_definitions",
     "normalize_intervention_site",
     "normalize_intervention_type",
+    "normalize_site_code",
     "normalize_tourniquet_application_mode",
     "validate_intervention_details",
 ]
@@ -103,10 +104,10 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         type_code="tourniquet",
         label="Tourniquet",
         sites=(
-            ("TQ-L-ARM", "Left Arm"),
-            ("TQ-R-ARM", "Right Arm"),
-            ("TQ-L-LEG", "Left Leg"),
-            ("TQ-R-LEG", "Right Leg"),
+            ("LEFT_ARM", "Left Arm"),
+            ("RIGHT_ARM", "Right Arm"),
+            ("LEFT_LEG", "Left Leg"),
+            ("RIGHT_LEG", "Right Leg"),
         ),
         details_model=TourniquetDetails,
         ui_fields=(
@@ -126,12 +127,12 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         type_code="wound_packing",
         label="Wound Packing",
         sites=(
-            ("WP-L-AX", "Left Axilla"),
-            ("WP-R-AX", "Right Axilla"),
-            ("WP-L-ING", "Left Inguinal"),
-            ("WP-R-ING", "Right Inguinal"),
-            ("WP-L-NECK", "Left Neck"),
-            ("WP-R-NECK", "Right Neck"),
+            ("LEFT_AXILLA", "Left Axilla"),
+            ("RIGHT_AXILLA", "Right Axilla"),
+            ("LEFT_INGUINAL", "Left Inguinal"),
+            ("RIGHT_INGUINAL", "Right Inguinal"),
+            ("LEFT_NECK", "Left Neck"),
+            ("RIGHT_NECK", "Right Neck"),
         ),
         details_model=WoundPackingDetails,
         legacy_code_map="M-WPK",
@@ -140,10 +141,10 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         type_code="pressure_dressing",
         label="Pressure Dressing",
         sites=(
-            ("PD-L-ARM", "Left Arm"),
-            ("PD-R-ARM", "Right Arm"),
-            ("PD-L-LEG", "Left Leg"),
-            ("PD-R-LEG", "Right Leg"),
+            ("LEFT_ARM", "Left Arm"),
+            ("RIGHT_ARM", "Right Arm"),
+            ("LEFT_LEG", "Left Leg"),
+            ("RIGHT_LEG", "Right Leg"),
         ),
         details_model=PressureDressingDetails,
         legacy_code_map="M-PD",
@@ -151,14 +152,17 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
     InterventionDefinition(
         type_code="npa",
         label="Nasopharyngeal Airway",
-        sites=(("NPA-NARES", "Nares"),),
+        sites=(
+            ("RIGHT_NARE", "Right Nare"),
+            ("LEFT_NARE", "Left Nare"),
+        ),
         details_model=NasopharyngealAirwayDetails,
         legacy_code_map="A-NPA",
     ),
     InterventionDefinition(
         type_code="opa",
         label="Oropharyngeal Airway",
-        sites=(("OPA-ORAL", "Oral Airway"),),
+        sites=(("ORAL", "Oral"),),
         details_model=OropharyngealAirwayDetails,
         legacy_code_map="A-OPA",
     ),
@@ -166,10 +170,10 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         type_code="needle_decompression",
         label="Needle Decompression",
         sites=(
-            ("NCD-L-ANT", "Left Anterior Chest"),
-            ("NCD-R-ANT", "Right Anterior Chest"),
-            ("NCD-L-LAT", "Left Lateral Chest"),
-            ("NCD-R-LAT", "Right Lateral Chest"),
+            ("LEFT_ANTERIOR_CHEST", "Left Anterior Chest"),
+            ("RIGHT_ANTERIOR_CHEST", "Right Anterior Chest"),
+            ("LEFT_LATERAL_CHEST", "Left Lateral Chest"),
+            ("RIGHT_LATERAL_CHEST", "Right Lateral Chest"),
         ),
         details_model=NeedleDecompressionDetails,
         legacy_code_map="R-NCD",
@@ -177,7 +181,7 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
     InterventionDefinition(
         type_code="surgical_cric",
         label="Surgical Cricothyrotomy",
-        sites=(("CRIC-MIDLINE", "Anterior Neck"),),
+        sites=(("ANTERIOR_NECK_MIDLINE", "Anterior Neck Midline"),),
         details_model=SurgicalCricDetails,
         legacy_code_map="A-SURG-CRIC",
     ),
@@ -322,6 +326,11 @@ def normalize_intervention_site(intervention_type: str, value: Any) -> str:
     normalized_type = normalize_intervention_type(intervention_type)
     index = _build_bundle().sites_by_type[normalized_type]
     return _resolve_choice(index, value)
+
+
+def normalize_site_code(code: str) -> str:
+    """Normalize a site code to lowercase for API output and storage."""
+    return code.strip().lower()
 
 
 def normalize_tourniquet_application_mode(value: Any) -> str:

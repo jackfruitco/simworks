@@ -58,6 +58,7 @@ from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
     get_intervention_detail_schema_metadata,
     list_intervention_definitions,
+    normalize_site_code,
 )
 from apps.trainerlab.models import (
     ETCO2,
@@ -310,7 +311,7 @@ def intervention_dictionary(request: HttpRequest) -> InterventionDictionaryOut:
             InterventionDefinitionOut(
                 code=defn.type_code,
                 label=defn.label,
-                sites=[DictionaryItemOut(code=code, label=label) for code, label in defn.sites],
+                sites=[DictionaryItemOut(code=normalize_site_code(code), label=label) for code, label in defn.sites],
                 details_schema=InterventionDetailsSchemaOut(
                     kind=defn.type_code,
                     version=defn.details_schema_version,
@@ -1140,7 +1141,7 @@ def _inject_event_core(
     elif event_kind == "intervention":
         event_type = "trainerlab.intervention.recorded"
     elif event_kind == "note":
-        event_type = "trainerlab.note.recorded"
+        event_type = "trainerlab.note_created"
     else:
         event_type = "trainerlab.event.created"
 
@@ -1172,7 +1173,7 @@ def _inject_event_core(
             **(
                 {
                     "content": getattr(domain_event, "content", ""),
-                    "send_to_ai": send_to_ai,
+                    "created_by_role": payload_json.get("performed_by_role", "instructor"),
                 }
                 if event_kind == "note"
                 else {}
