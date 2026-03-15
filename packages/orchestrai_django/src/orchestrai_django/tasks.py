@@ -4,13 +4,13 @@ from dataclasses import dataclass
 import inspect
 import logging
 
-import structlog
 from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
 from django.tasks import task
 from django.utils import timezone
+import structlog
 
 from orchestrai import get_current_app
 from orchestrai.components.services.calls.mixins import _NullEmitter

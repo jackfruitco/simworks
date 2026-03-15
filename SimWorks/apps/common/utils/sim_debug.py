@@ -7,7 +7,8 @@ it works across multiple worker processes.
 Usage (programmatic)::
 
     from apps.common.utils.sim_debug import enable_simulation_debug, disable_simulation_debug
-    enable_simulation_debug(42, ttl=300)   # enable for 5 minutes
+
+    enable_simulation_debug(42, ttl=300)  # enable for 5 minutes
     disable_simulation_debug(42)
 
 Usage (management command)::

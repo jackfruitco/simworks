@@ -66,9 +66,7 @@ class Command(BaseCommand):
         elif subcommand == "disable":
             disable_simulation_debug(sim_id)
             self.stdout.write(
-                self.style.SUCCESS(
-                    f"[sim_debug] Disabled debug logging for simulation {sim_id}"
-                )
+                self.style.SUCCESS(f"[sim_debug] Disabled debug logging for simulation {sim_id}")
             )
 
         elif subcommand == "status":
