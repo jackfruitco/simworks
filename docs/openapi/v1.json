@@ -1300,7 +1300,7 @@
     "/api/v1/trainerlab/dictionaries/interventions/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_intervention_dictionary",
-        "summary": "List intervention dictionary (iOS-compatible flat format)",
+        "summary": "List structured intervention dictionary",
         "parameters": [],
         "responses": {
           "200": {
@@ -1308,11 +1308,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/InterventionDictionaryItemOut"
-                  },
-                  "title": "Response",
-                  "type": "array"
+                  "$ref": "#/components/schemas/InterventionDictionaryOut"
                 }
               }
             }
@@ -1793,24 +1789,6 @@
               "title": "Status"
             },
             "required": false
-          },
-          {
-            "in": "query",
-            "name": "q",
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Text search across scenario spec",
-              "title": "Q"
-            },
-            "required": false,
-            "description": "Text search across scenario spec"
           }
         ],
         "responses": {
@@ -3929,11 +3907,10 @@
         "title": "DictionaryItemOut",
         "type": "object"
       },
-      "InterventionDictionaryItemOut": {
-        "description": "iOS-compatible flat intervention dictionary item.",
+      "InterventionDefinitionOut": {
         "properties": {
-          "intervention_type": {
-            "title": "Intervention Type",
+          "code": {
+            "title": "Code",
             "type": "string"
           },
           "label": {
@@ -3946,14 +3923,118 @@
             },
             "title": "Sites",
             "type": "array"
+          },
+          "details_schema": {
+            "$ref": "#/components/schemas/InterventionDetailsSchemaOut"
+          },
+          "ui_fields": {
+            "items": {
+              "$ref": "#/components/schemas/InterventionUIFieldOut"
+            },
+            "title": "Ui Fields",
+            "type": "array"
           }
         },
         "required": [
-          "intervention_type",
+          "code",
           "label",
-          "sites"
+          "sites",
+          "details_schema"
         ],
-        "title": "InterventionDictionaryItemOut",
+        "title": "InterventionDefinitionOut",
+        "type": "object"
+      },
+      "InterventionDetailsSchemaOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "required_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          },
+          "optional_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Optional Fields",
+            "type": "array"
+          },
+          "allows_extra": {
+            "default": false,
+            "title": "Allows Extra",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "version"
+        ],
+        "title": "InterventionDetailsSchemaOut",
+        "type": "object"
+      },
+      "InterventionDictionaryOut": {
+        "properties": {
+          "interventions": {
+            "items": {
+              "$ref": "#/components/schemas/InterventionDefinitionOut"
+            },
+            "title": "Interventions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "interventions"
+        ],
+        "title": "InterventionDictionaryOut",
+        "type": "object"
+      },
+      "InterventionUIFieldOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "input_type": {
+            "title": "Input Type",
+            "type": "string"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "help_text": {
+            "default": "",
+            "title": "Help Text",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryItemOut"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "input_type"
+        ],
+        "title": "InterventionUIFieldOut",
         "type": "object"
       },
       "PaginatedResponse_ScenarioInstructionOut_": {
@@ -4956,60 +5037,45 @@
         "title": "RuntimeVitalStateOut",
         "type": "object"
       },
-      "ScenarioBrief": {
-        "additionalProperties": false,
+      "ScenarioBriefOut": {
         "properties": {
           "read_aloud_brief": {
-            "description": "A concise instructor read-aloud brief delivered to the trainee before the simulation begins.",
-            "minLength": 1,
+            "default": "",
             "title": "Read Aloud Brief",
             "type": "string"
           },
           "environment": {
             "default": "",
-            "description": "Simulation environment and overall setting.",
             "title": "Environment",
             "type": "string"
           },
           "location_overview": {
             "default": "",
-            "description": "Approximate location and terrain or facility context.",
             "title": "Location Overview",
             "type": "string"
           },
           "threat_context": {
             "default": "",
-            "description": "Enemy, threat, or scene-safety context when applicable.",
             "title": "Threat Context",
             "type": "string"
           },
           "evacuation_options": {
-            "description": "Available evacuation or transport options, if known.",
-            "items": {
-              "type": "string"
-            },
+            "default": "",
             "title": "Evacuation Options",
-            "type": "array"
+            "type": "string"
           },
           "evacuation_time": {
             "default": "",
-            "description": "Expected evacuation time or transport delay when applicable.",
             "title": "Evacuation Time",
             "type": "string"
           },
           "special_considerations": {
-            "description": "Other constraints or scenario considerations the instructor should know.",
-            "items": {
-              "type": "string"
-            },
+            "default": "",
             "title": "Special Considerations",
-            "type": "array"
+            "type": "string"
           }
         },
-        "required": [
-          "read_aloud_brief"
-        ],
-        "title": "ScenarioBrief",
+        "title": "ScenarioBriefOut",
         "type": "object"
       },
       "TrainerRuntimeSnapshotOut": {
@@ -5069,7 +5135,14 @@
             "type": "integer"
           },
           "scenario_brief": {
-            "$ref": "#/components/schemas/ScenarioBrief"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "current_snapshot": {
             "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
@@ -5132,7 +5205,6 @@
           "status",
           "state_revision",
           "active_elapsed_seconds",
-          "scenario_brief",
           "current_snapshot",
           "ai_plan"
         ],
@@ -5510,6 +5582,16 @@
             "default": false,
             "title": "Send To Ai",
             "type": "boolean"
+          },
+          "performed_by_role": {
+            "default": "instructor",
+            "enum": [
+              "trainee",
+              "instructor",
+              "ai"
+            ],
+            "title": "Performed By Role",
+            "type": "string"
           }
         },
         "required": [

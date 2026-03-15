@@ -311,7 +311,10 @@ def intervention_dictionary(request: HttpRequest) -> InterventionDictionaryOut:
             InterventionDefinitionOut(
                 code=defn.type_code,
                 label=defn.label,
-                sites=[DictionaryItemOut(code=normalize_site_code(code), label=label) for code, label in defn.sites],
+                sites=[
+                    DictionaryItemOut(code=normalize_site_code(code), label=label)
+                    for code, label in defn.sites
+                ],
                 details_schema=InterventionDetailsSchemaOut(
                     kind=defn.type_code,
                     version=defn.details_schema_version,
