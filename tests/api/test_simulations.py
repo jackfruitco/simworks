@@ -473,7 +473,7 @@ class TestQuickCreateSimulation:
         assert response.status_code == 201
         data = response.json()
         assert data["status"] == "failed"
-        assert data["terminal_reason_code"] == "initial_generation_enqueue_failed"
+        assert data["terminal_reason_code"] == "chatlab_initial_generation_enqueue_failed"
         assert (
             data["terminal_reason_text"] == "We could not start this simulation. Please try again."
         )
