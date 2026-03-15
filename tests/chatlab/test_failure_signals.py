@@ -75,7 +75,9 @@ class TestFailureSignals:
             simulation_id=simulation.id,
         ).latest("created_at")
         assert event.payload["status"] == simulation.SimulationStatus.FAILED
-        assert event.payload["terminal_reason_code"] == "chatlab_initial_generation_provider_timeout"
+        assert (
+            event.payload["terminal_reason_code"] == "chatlab_initial_generation_provider_timeout"
+        )
         assert event.payload["retryable"] is True
 
     @patch("apps.common.outbox.poke_drain_sync")
