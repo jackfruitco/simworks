@@ -97,7 +97,7 @@ async def create_new_simulation(
     except Exception:
         logger.exception("Initial generation enqueue failed for simulation %s", simulation.id)
         await sync_to_async(simulation.mark_failed)(
-            reason_code="initial_generation_enqueue_failed",
+            reason_code="chatlab_initial_generation_enqueue_failed",
             reason_text="We could not start this simulation. Please try again.",
             retryable=True,
         )

@@ -19,10 +19,10 @@ from api.v1.schemas.messages import (
 )
 from api.v1.utils import get_simulation_for_user
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
+from apps.common.retries import has_user_retries_remaining
 from config.logging import get_logger
 
 logger = get_logger(__name__)
-USER_RETRY_LIMIT = 2
 
 
 def _emit_message_status(
@@ -66,7 +66,7 @@ def _mark_message_failed(
     msg.delivery_status = Message.DeliveryStatus.FAILED
     msg.delivery_error_code = error_code
     msg.delivery_error_text = error_text
-    msg.delivery_retryable = retryable and msg.delivery_retry_count < USER_RETRY_LIMIT
+    msg.delivery_retryable = retryable and has_user_retries_remaining(msg.delivery_retry_count)
     msg.save(
         update_fields=[
             "delivery_status",
@@ -231,6 +231,18 @@ def _enqueue_ai_reply_and_handle_failure(
 ) -> None:
     call_id = _enqueue_ai_reply(conversation, simulation_id, user_msg_pk)
     if call_id:
+        from apps.chatlab.models import Message
+
+        try:
+            message = Message.objects.get(pk=user_msg_pk)
+        except Message.DoesNotExist:
+            return
+        _emit_message_status(
+            simulation_id=simulation_id,
+            message_id=user_msg_pk,
+            status=Message.DeliveryStatus.SENT,
+            retryable=message.delivery_retryable,
+        )
         return
     _mark_message_failed(
         message_id=user_msg_pk,
@@ -381,16 +393,9 @@ def create_message(
         transaction.on_commit(
             lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
         )
-        transaction.on_commit(
-            lambda: _emit_message_status(
-                simulation_id=simulation_id,
-                message_id=message.pk,
-                status=Message.DeliveryStatus.SENT,
-                retryable=True,
-            )
-        )
 
     # Return 202 Accepted since an AI response will be generated asynchronously
+    message.refresh_from_db()
     return 202, message_to_out(message, request=request)
 
 
@@ -425,7 +430,9 @@ def retry_message(
     if message.delivery_status != Message.DeliveryStatus.FAILED:
         raise HttpError(400, "Only failed messages can be retried")
 
-    if not message.delivery_retryable or message.delivery_retry_count >= USER_RETRY_LIMIT:
+    if not message.delivery_retryable or not has_user_retries_remaining(
+        message.delivery_retry_count
+    ):
         raise HttpError(400, "Retry limit reached for this message")
 
     conversation = message.conversation
@@ -439,7 +446,7 @@ def retry_message(
         message.delivery_status = Message.DeliveryStatus.SENT
         message.delivery_error_code = ""
         message.delivery_error_text = ""
-        message.delivery_retryable = message.delivery_retry_count < USER_RETRY_LIMIT
+        message.delivery_retryable = has_user_retries_remaining(message.delivery_retry_count)
         message.save(
             update_fields=[
                 "delivery_retry_count",
@@ -453,15 +460,8 @@ def retry_message(
         transaction.on_commit(
             lambda: _enqueue_ai_reply_and_handle_failure(conversation, simulation_id, message.pk)
         )
-        transaction.on_commit(
-            lambda: _emit_message_status(
-                simulation_id=simulation_id,
-                message_id=message.pk,
-                status=Message.DeliveryStatus.SENT,
-                retryable=message.delivery_retryable,
-            )
-        )
 
+    message.refresh_from_db()
     return 202, message_to_out(message, request=request)
 
 

@@ -14,13 +14,16 @@ from apps.chatlab.utils import (
     maybe_start_simulation,
 )
 from apps.common.decorators import resolve_user, simulation_required
+from apps.common.retries import (
+    has_user_retries_remaining,
+    is_initial_generation_retryable_reason,
+)
 from apps.simcore.models import Simulation
 from apps.simcore.tools import aget_tool, alist_tools
 
 from .models import Message
 
 logger = logging.getLogger(__name__)
-INITIAL_RETRY_LIMIT = 2
 
 
 @login_required
@@ -111,8 +114,8 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
     logger.debug(f"Sim{simulation_id} requested tools: {included_tools} ")
     simulation_retryable = (
         simulation.status == Simulation.SimulationStatus.FAILED
-        and simulation.terminal_reason_code.startswith("initial_generation")
-        and simulation.initial_retry_count < INITIAL_RETRY_LIMIT
+        and is_initial_generation_retryable_reason(simulation.terminal_reason_code)
+        and has_user_retries_remaining(simulation.initial_retry_count)
     )
 
     context = {

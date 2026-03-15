@@ -130,7 +130,7 @@ def enqueue_initial_scenario_generation(*, simulation: Simulation) -> str | None
     except Exception:
         logger.exception("Initial generation enqueue failed for simulation %s", simulation.id)
         simulation.mark_failed(
-            reason_code="initial_generation_enqueue_failed",
+            reason_code="trainerlab_initial_generation_enqueue_failed",
             reason_text="We could not start this simulation. Please try again.",
             retryable=True,
         )

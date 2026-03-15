@@ -17,6 +17,7 @@ from asgiref.sync import async_to_sync
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from apps.common.retries import has_user_retries_remaining
 from apps.simcore.models import Simulation, SimulationMetadata
 from orchestrai_django.signals import ai_response_failed
 
@@ -24,7 +25,6 @@ from .models import Message
 from .utils import broadcast_patient_results
 
 logger = logging.getLogger(__name__)
-USER_RETRY_LIMIT = 2
 
 
 def _emit_message_status(
@@ -204,7 +204,7 @@ def handle_ai_response_failed(
 
         retryable = (
             bool(user_retryable) if user_retryable is not None else True
-        ) and message.delivery_retry_count < USER_RETRY_LIMIT
+        ) and has_user_retries_remaining(message.delivery_retry_count)
         logger.info(
             "Marking outgoing message as failed after terminal service failure",
             extra={
@@ -244,9 +244,9 @@ def handle_ai_response_failed(
         except Simulation.DoesNotExist:
             return
         normalized_reason = reason_code or "failed"
-        if not normalized_reason.startswith("initial_generation_"):
-            normalized_reason = f"initial_generation_{normalized_reason}"
-        retryable = simulation.initial_retry_count < USER_RETRY_LIMIT
+        if not normalized_reason.startswith("chatlab_initial_generation_"):
+            normalized_reason = f"chatlab_initial_generation_{normalized_reason}"
+        retryable = has_user_retries_remaining(simulation.initial_retry_count)
         simulation.mark_failed(
             reason_code=normalized_reason,
             reason_text="Initial patient generation failed. Please try again or go back home.",
@@ -263,7 +263,7 @@ def handle_ai_response_failed(
         feedback_reason = reason_code or "generation_failed"
         if not feedback_reason.startswith("feedback_"):
             feedback_reason = f"feedback_{feedback_reason}"
-        retryable = simulation.feedback_retry_count < USER_RETRY_LIMIT
+        retryable = has_user_retries_remaining(simulation.feedback_retry_count)
         _emit_feedback_failure(
             simulation_id=simulation.id,
             error_code=feedback_reason,
