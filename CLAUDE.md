@@ -823,3 +823,20 @@ GET /api/v1/simulations/{id}/events/?after={event_id}&limit=50
   "has_more": true
 }
 ```
+
+## Environment & Tooling
+
+- Always use `python3.14.3` (or `uv run python` if a `uv` project)
+- Never use `pip install` — use `uv add` instead
+- Never use `python -m pytest` — use `uv run pytest`
+
+## Code Quality (always run after editing Python files)
+
+- Lint: `ruff check --fix .`
+- Format: `ruff format .`
+- Export OpenAPI: `uv run python scripts/export_openapi.py`
+
+## Workflow
+
+- After any model change, regenerate the OpenAPI schema
+- Before committing, always run ruff check + ruff format
