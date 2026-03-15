@@ -21,12 +21,15 @@ from api.v1.schemas.simulations import (
     simulation_to_out,
 )
 from apps.common.ratelimit import api_rate_limit
+from apps.common.retries import (
+    has_user_retries_remaining,
+    is_initial_generation_retryable_reason,
+)
 from config.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = Router(tags=["simulations"], auth=DualAuth())
-USER_RETRY_LIMIT = 2
 
 
 def _emit_feedback_event(simulation_id: int, event_type: str, payload: dict) -> None:
@@ -299,13 +302,10 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
     if sim.status != Simulation.SimulationStatus.FAILED:
         raise HttpError(400, "Simulation is not in failed state")
 
-    if not (
-        sim.terminal_reason_code.startswith("initial_generation")
-        or sim.terminal_reason_code in {"provider_timeout", "provider_transient_error"}
-    ):
+    if not is_initial_generation_retryable_reason(sim.terminal_reason_code):
         raise HttpError(400, "Initial generation retry is not available for this failure")
 
-    if sim.initial_retry_count >= USER_RETRY_LIMIT:
+    if not has_user_retries_remaining(sim.initial_retry_count):
         raise HttpError(400, "Retry limit reached for initial generation")
 
     patient_type = ConversationType.objects.filter(slug="simulated_patient").first()
@@ -327,7 +327,7 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
 
     call_id = _enqueue_initial_response(sim, conversation.id)
     if not call_id:
-        retryable = sim.initial_retry_count < USER_RETRY_LIMIT
+        retryable = has_user_retries_remaining(sim.initial_retry_count)
         sim.mark_failed(
             reason_code="initial_generation_enqueue_failed",
             reason_text="We could not restart this simulation. Please try again.",
@@ -360,7 +360,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
     }:
         raise HttpError(400, "Feedback retry is only available for ended simulations")
 
-    if sim.feedback_retry_count >= USER_RETRY_LIMIT:
+    if not has_user_retries_remaining(sim.feedback_retry_count):
         raise HttpError(400, "Retry limit reached for feedback generation")
 
     sim.feedback_retry_count += 1
@@ -371,14 +371,14 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
         event_type="feedback.retrying",
         payload={
             "simulation_id": sim.id,
-            "retryable": sim.feedback_retry_count < USER_RETRY_LIMIT,
+            "retryable": has_user_retries_remaining(sim.feedback_retry_count),
             "retry_count": sim.feedback_retry_count,
         },
     )
 
     call_id = _enqueue_feedback(sim.id)
     if not call_id:
-        retryable = sim.feedback_retry_count < USER_RETRY_LIMIT
+        retryable = has_user_retries_remaining(sim.feedback_retry_count)
         _emit_feedback_event(
             simulation_id=sim.id,
             event_type="feedback.failed",

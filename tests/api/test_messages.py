@@ -62,7 +62,14 @@ def patient_type(db):
     """Create a patient conversation type."""
     from apps.simcore.models import ConversationType
 
-    return ConversationType.objects.get(slug="simulated_patient")
+    conversation_type, _ = ConversationType.objects.get_or_create(
+        slug="simulated_patient",
+        defaults={
+            "display_name": "Patient",
+            "ai_persona": "patient",
+        },
+    )
+    return conversation_type
 
 
 @pytest.fixture
@@ -70,7 +77,15 @@ def feedback_type(db):
     """Create a feedback conversation type (Stitch)."""
     from apps.simcore.models import ConversationType
 
-    return ConversationType.objects.get(slug="simulated_feedback")
+    conversation_type, _ = ConversationType.objects.get_or_create(
+        slug="simulated_feedback",
+        defaults={
+            "display_name": "Stitch",
+            "ai_persona": "stitch",
+            "locks_with_simulation": False,
+        },
+    )
+    return conversation_type
 
 
 @pytest.fixture
@@ -560,7 +575,7 @@ class TestCreateMessage:
     def test_create_message_enqueue_failure_still_returns_202_and_marks_message_failed(
         self, mock_enqueue, auth_client, simulation, conversation
     ):
-        """Immediate enqueue failure still returns 202, but the message is failed durably."""
+        """Immediate enqueue failure returns the failed delivery state in the 202 body."""
         from apps.chatlab.models import Message
         from apps.common.models import OutboxEvent
 
@@ -573,7 +588,16 @@ class TestCreateMessage:
         )
 
         assert response.status_code == 202
-        msg = Message.objects.get(pk=response.json()["id"])
+        data = response.json()
+        assert data["delivery_status"] == Message.DeliveryStatus.FAILED
+        assert data["delivery_error_code"] == "enqueue_failed"
+        assert (
+            data["delivery_error_text"]
+            == "Message queued locally but failed to start AI processing. Try again."
+        )
+        assert data["delivery_retryable"] is True
+
+        msg = Message.objects.get(pk=data["id"])
         assert msg.delivery_status == Message.DeliveryStatus.FAILED
         assert msg.delivery_error_code == "enqueue_failed"
         assert msg.delivery_retryable is True
@@ -642,6 +666,52 @@ class TestGetMessage:
 @pytest.mark.django_db
 class TestRetryMessage:
     """Tests for POST /simulations/{id}/messages/{message_id}/retry/."""
+
+    @pytest.mark.django_db(transaction=True)
+    @patch("api.v1.endpoints.messages._enqueue_ai_reply")
+    def test_retry_message_enqueue_failure_returns_failed_delivery_state(
+        self, mock_enqueue, auth_client, simulation, conversation, test_user
+    ):
+        """Immediate retry enqueue failure returns the failed delivery state in the 202 body."""
+        from apps.chatlab.models import Message, RoleChoices
+
+        mock_enqueue.return_value = None
+        message = Message.objects.create(
+            simulation=simulation,
+            conversation=conversation,
+            sender=test_user,
+            content="Retry me",
+            role=RoleChoices.USER,
+            message_type=Message.MessageType.TEXT,
+            is_from_ai=False,
+            delivery_status=Message.DeliveryStatus.FAILED,
+            delivery_retryable=True,
+            delivery_retry_count=0,
+            delivery_error_code="ai_processing_failed",
+            delivery_error_text="Message failed to deliver to the AI service. Try again.",
+        )
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/messages/{message.pk}/retry/",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["delivery_status"] == Message.DeliveryStatus.FAILED
+        assert data["delivery_error_code"] == "enqueue_failed"
+        assert (
+            data["delivery_error_text"]
+            == "Message queued locally but failed to start AI processing. Try again."
+        )
+        assert data["delivery_retryable"] is True
+        assert data["delivery_retry_count"] == 1
+
+        message.refresh_from_db()
+        assert message.delivery_status == Message.DeliveryStatus.FAILED
+        assert message.delivery_error_code == "enqueue_failed"
+        assert message.delivery_retryable is True
+        assert message.delivery_retry_count == 1
 
     @patch("api.v1.endpoints.messages._enqueue_ai_reply")
     def test_retry_message_returns_media_fields(

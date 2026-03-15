@@ -5,7 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-USER_RETRY_LIMIT = 2
+from apps.common.retries import (
+    has_user_retries_remaining,
+    is_initial_generation_retryable_reason,
+)
 
 
 class SimulationOut(BaseModel):
@@ -128,11 +131,8 @@ def simulation_to_out(sim) -> SimulationOut:
     terminal_reason_code = getattr(sim, "terminal_reason_code", "") or ""
     retryable: bool | None = None
     if status == "failed":
-        is_initial_generation_retryable_failure = terminal_reason_code.startswith(
-            "initial_generation"
-        ) or terminal_reason_code in {"provider_timeout", "provider_transient_error"}
-        retryable = is_initial_generation_retryable_failure and (
-            getattr(sim, "initial_retry_count", 0) < USER_RETRY_LIMIT
+        retryable = is_initial_generation_retryable_reason(terminal_reason_code) and (
+            has_user_retries_remaining(getattr(sim, "initial_retry_count", 0))
         )
 
     return SimulationOut(
