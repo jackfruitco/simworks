@@ -11,7 +11,9 @@ if logfire_token:
     logfire.configure(token=logfire_token)
 else:
     # Allow local/test environments to run without Logfire authentication.
-    logfire.configure(send_to_logfire=False)
+    # console=False suppresses the local OTel console exporter that would otherwise
+    # duplicate every log line already printed by the Django console handler.
+    logfire.configure(send_to_logfire=False, console=False)
 
 logfire.instrument_httpx(
     capture_all=True
