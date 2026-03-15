@@ -1578,11 +1578,13 @@ class TestTrainerLabDictionaries:
         response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
         assert response.status_code == 200
         data = response.json()
-        group_names = {group["group"] for group in data}
-        assert "Airway" in group_names
-        airway_group = next(group for group in data if group["group"] == "Airway")
-        airway_codes = {item["code"] for item in airway_group["items"]}
-        assert "A-NPA" in airway_codes
+        # New endpoint returns InterventionDictionaryOut: {"interventions": [...]}
+        interventions = data["interventions"]
+        codes = {item["code"] for item in interventions}
+        assert "npa" in codes
+        npa = next(item for item in interventions if item["code"] == "npa")
+        assert npa["label"]
+        assert isinstance(npa["sites"], list)
 
     def test_injury_dictionary_matches_shared_mapping(
         self,
