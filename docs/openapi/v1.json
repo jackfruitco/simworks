@@ -1300,7 +1300,7 @@
     "/api/v1/trainerlab/dictionaries/interventions/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_intervention_dictionary",
-        "summary": "List structured intervention dictionary",
+        "summary": "List intervention dictionary (iOS-compatible flat format)",
         "parameters": [],
         "responses": {
           "200": {
@@ -1308,7 +1308,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InterventionDictionaryOut"
+                  "items": {
+                    "$ref": "#/components/schemas/InterventionDictionaryItemOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
                 }
               }
             }
@@ -1789,6 +1793,24 @@
               "title": "Status"
             },
             "required": false
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Text search across scenario spec",
+              "title": "Q"
+            },
+            "required": false,
+            "description": "Text search across scenario spec"
           }
         ],
         "responses": {
@@ -3907,10 +3929,11 @@
         "title": "DictionaryItemOut",
         "type": "object"
       },
-      "InterventionDefinitionOut": {
+      "InterventionDictionaryItemOut": {
+        "description": "iOS-compatible flat intervention dictionary item.",
         "properties": {
-          "code": {
-            "title": "Code",
+          "intervention_type": {
+            "title": "Intervention Type",
             "type": "string"
           },
           "label": {
@@ -3923,118 +3946,14 @@
             },
             "title": "Sites",
             "type": "array"
-          },
-          "details_schema": {
-            "$ref": "#/components/schemas/InterventionDetailsSchemaOut"
-          },
-          "ui_fields": {
-            "items": {
-              "$ref": "#/components/schemas/InterventionUIFieldOut"
-            },
-            "title": "Ui Fields",
-            "type": "array"
           }
         },
         "required": [
-          "code",
+          "intervention_type",
           "label",
-          "sites",
-          "details_schema"
+          "sites"
         ],
-        "title": "InterventionDefinitionOut",
-        "type": "object"
-      },
-      "InterventionDetailsSchemaOut": {
-        "properties": {
-          "kind": {
-            "title": "Kind",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          },
-          "required_fields": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Required Fields",
-            "type": "array"
-          },
-          "optional_fields": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Optional Fields",
-            "type": "array"
-          },
-          "allows_extra": {
-            "default": false,
-            "title": "Allows Extra",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "kind",
-          "version"
-        ],
-        "title": "InterventionDetailsSchemaOut",
-        "type": "object"
-      },
-      "InterventionDictionaryOut": {
-        "properties": {
-          "interventions": {
-            "items": {
-              "$ref": "#/components/schemas/InterventionDefinitionOut"
-            },
-            "title": "Interventions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "interventions"
-        ],
-        "title": "InterventionDictionaryOut",
-        "type": "object"
-      },
-      "InterventionUIFieldOut": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "input_type": {
-            "title": "Input Type",
-            "type": "string"
-          },
-          "required": {
-            "default": true,
-            "title": "Required",
-            "type": "boolean"
-          },
-          "help_text": {
-            "default": "",
-            "title": "Help Text",
-            "type": "string"
-          },
-          "options": {
-            "items": {
-              "$ref": "#/components/schemas/DictionaryItemOut"
-            },
-            "title": "Options",
-            "type": "array"
-          }
-        },
-        "required": [
-          "name",
-          "label",
-          "input_type"
-        ],
-        "title": "InterventionUIFieldOut",
+        "title": "InterventionDictionaryItemOut",
         "type": "object"
       },
       "PaginatedResponse_ScenarioInstructionOut_": {
@@ -4507,6 +4426,28 @@
             "format": "date-time",
             "title": "Modified At",
             "type": "string"
+          },
+          "terminal_reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason Code"
+          },
+          "terminal_reason_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason Text"
           }
         },
         "required": [
@@ -5151,6 +5092,14 @@
             "title": "Pending Runtime Reasons",
             "type": "array"
           },
+          "pending_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Reasons",
+            "type": "array"
+          },
           "currently_processing_reasons": {
             "items": {
               "additionalProperties": true,
@@ -5403,13 +5352,13 @@
       },
       "IllnessCreateIn": {
         "properties": {
-          "name": {
-            "title": "Name",
+          "illness_name": {
+            "title": "Illness Name",
             "type": "string"
           },
-          "description": {
+          "illness_description": {
             "default": "",
-            "title": "Description",
+            "title": "Illness Description",
             "type": "string"
           },
           "severity": {
@@ -5441,7 +5390,7 @@
           }
         },
         "required": [
-          "name"
+          "illness_name"
         ],
         "title": "IllnessCreateIn",
         "type": "object"
