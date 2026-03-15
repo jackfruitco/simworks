@@ -1210,23 +1210,17 @@ class TestTrainerLabDictionaries:
         response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
 
         assert response.status_code == 200
-        body = response.json()
-        assert "interventions" in body
-        definitions = body["interventions"]
-        assert len(definitions) == 7
+        definitions = response.json()
+        assert isinstance(definitions, list)
+        assert len(definitions) == 16
 
-        codes = [d["code"] for d in definitions]
-        assert "tourniquet" in codes
-        assert "needle_decompression" in codes
+        types = [d["intervention_type"] for d in definitions]
+        assert "tourniquet" in types
+        assert "needle_decompression" in types
 
-        tq = next(d for d in definitions if d["code"] == "tourniquet")
+        tq = next(d for d in definitions if d["intervention_type"] == "tourniquet")
         assert tq["label"] == "Tourniquet"
         assert {"code": "left_arm", "label": "Left Arm"} in tq["sites"]
-        assert tq["details_schema"]["kind"] == "tourniquet"
-        assert "application_mode" in tq["details_schema"]["required_fields"]
-        assert len(tq["ui_fields"]) == 1
-        assert tq["ui_fields"][0]["name"] == "application_mode"
-        assert {"code": "hasty", "label": "Hasty"} in tq["ui_fields"][0]["options"]
 
     def test_runtime_worker_applies_mock_ai_output_and_emits_state_update(
         self,
@@ -1577,12 +1571,11 @@ class TestTrainerLabDictionaries:
         client = auth_client_factory(instructor_user)
         response = client.get("/api/v1/trainerlab/dictionaries/interventions/")
         assert response.status_code == 200
-        data = response.json()
-        # New endpoint returns InterventionDictionaryOut: {"interventions": [...]}
-        interventions = data["interventions"]
-        codes = {item["code"] for item in interventions}
-        assert "npa" in codes
-        npa = next(item for item in interventions if item["code"] == "npa")
+        interventions = response.json()
+        assert isinstance(interventions, list)
+        types = {item["intervention_type"] for item in interventions}
+        assert "npa" in types
+        npa = next(item for item in interventions if item["intervention_type"] == "npa")
         assert npa["label"]
         assert isinstance(npa["sites"], list)
 

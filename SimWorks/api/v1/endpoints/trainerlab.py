@@ -21,10 +21,7 @@ from api.v1.schemas.trainerlab import (
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
-    InterventionDefinitionOut,
-    InterventionDetailsSchemaOut,
-    InterventionDictionaryOut,
-    InterventionUIFieldOut,
+    InterventionDictionaryItemOut,
     LabAccessOut,
     RunSummaryOut,
     ScenarioInstructionApplyIn,
@@ -56,7 +53,6 @@ from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
 from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
-    get_intervention_detail_schema_metadata,
     list_intervention_definitions,
     normalize_site_code,
 )
@@ -297,48 +293,24 @@ def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]
 
 @router.get(
     "/dictionaries/interventions/",
-    response=InterventionDictionaryOut,
-    summary="List structured intervention dictionary",
+    response=list[InterventionDictionaryItemOut],
+    summary="List intervention dictionary (iOS-compatible flat format)",
 )
 @api_rate_limit
-def intervention_dictionary(request: HttpRequest) -> InterventionDictionaryOut:
+def intervention_dictionary(request: HttpRequest) -> list[InterventionDictionaryItemOut]:
     user = request.auth
     require_instructor_membership(user)
-    definitions = []
-    for defn in list_intervention_definitions():
-        schema_meta = get_intervention_detail_schema_metadata(defn.type_code)
-        definitions.append(
-            InterventionDefinitionOut(
-                code=defn.type_code,
-                label=defn.label,
-                sites=[
-                    DictionaryItemOut(code=normalize_site_code(code), label=label)
-                    for code, label in defn.sites
-                ],
-                details_schema=InterventionDetailsSchemaOut(
-                    kind=defn.type_code,
-                    version=defn.details_schema_version,
-                    required_fields=schema_meta.get("required_fields", []),
-                    optional_fields=schema_meta.get("optional_fields", []),
-                    allows_extra=schema_meta.get("allows_extra", False),
-                ),
-                ui_fields=[
-                    InterventionUIFieldOut(
-                        name=field.name,
-                        label=field.label,
-                        input_type=field.input_type,
-                        required=field.required,
-                        help_text=field.help_text,
-                        options=[
-                            DictionaryItemOut(code=code, label=label)
-                            for code, label in field.choices
-                        ],
-                    )
-                    for field in defn.ui_fields
-                ],
-            )
+    return [
+        InterventionDictionaryItemOut(
+            intervention_type=defn.type_code,
+            label=defn.label,
+            sites=[
+                DictionaryItemOut(code=normalize_site_code(code), label=label)
+                for code, label in defn.sites
+            ],
         )
-    return InterventionDictionaryOut(interventions=definitions)
+        for defn in list_intervention_definitions()
+    ]
 
 
 @router.get(
