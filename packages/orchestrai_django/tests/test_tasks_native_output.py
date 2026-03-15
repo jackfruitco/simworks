@@ -327,3 +327,69 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
     assert enqueued_retry_call_ids == [call.id]
     # No failure signal should be emitted until retries are exhausted.
     assert observed_failures == []
+
+
+def test_run_service_call_skips_when_in_flight_attempt_exists(monkeypatch):
+    """Duplicate task dispatch is silently skipped when another attempt is already in-flight."""
+    from django.utils import timezone
+
+    class InFlightAttempt:
+        attempt = 1
+        status = "dispatched"
+        updated_at = timezone.now()  # Fresh — not stale
+
+    class InFlightAttempts:
+        @staticmethod
+        def count():
+            return 1
+
+        def filter(self, **kwargs):
+            return self
+
+        @staticmethod
+        def first():
+            return InFlightAttempt()
+
+    class InFlightCall(DummyCall):
+        def __init__(self):
+            super().__init__()
+            self.status = "in_progress"
+            self.attempts = InFlightAttempts()
+            self._allocate_called = False
+
+        def allocate_attempt(self):
+            self._allocate_called = True
+            return DummyAttempt()
+
+    call = InFlightCall()
+    service_executed = []
+
+    class NeverCalledService:
+        def __init__(self, **kwargs):
+            pass
+
+        async def arun(self, **payload):
+            service_executed.append(True)
+            return FakeRunResult()
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        tasks, "ensure_service_registry", lambda app=None: DummyRegistry(NeverCalledService)
+    )
+    monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+    monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+
+    result = tasks.run_service_call(call.id)
+
+    assert result["status"] == "in_progress"
+    assert not call._allocate_called, "allocate_attempt must not be called when in-flight"
+    assert not service_executed, "LLM service must not be executed when in-flight"

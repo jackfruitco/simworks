@@ -469,8 +469,8 @@ def normalize_intervention_site(intervention_type: str, value: Any) -> str:
 
 
 def normalize_site_code(code: str) -> str:
-    """Normalize a site code to lowercase for API output and storage."""
-    return code.strip().lower()
+    """Normalize a site code to uppercase snake_case for storage and API output."""
+    return code.strip().upper()
 
 
 def normalize_tourniquet_application_mode(value: Any) -> str:
