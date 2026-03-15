@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from apps.common.retries import (
     has_user_retries_remaining,
-    is_initial_generation_retryable_reason,
+    is_simulation_initial_generation_retryable,
 )
 
 
@@ -131,7 +131,7 @@ def simulation_to_out(sim) -> SimulationOut:
     terminal_reason_code = getattr(sim, "terminal_reason_code", "") or ""
     retryable: bool | None = None
     if status == "failed":
-        retryable = is_initial_generation_retryable_reason(terminal_reason_code) and (
+        retryable = is_simulation_initial_generation_retryable(sim) and (
             has_user_retries_remaining(getattr(sim, "initial_retry_count", 0))
         )
 

@@ -244,8 +244,8 @@ def handle_ai_response_failed(
         except Simulation.DoesNotExist:
             return
         normalized_reason = reason_code or "failed"
-        if not normalized_reason.startswith("initial_generation_"):
-            normalized_reason = f"initial_generation_{normalized_reason}"
+        if not normalized_reason.startswith("chatlab_initial_generation_"):
+            normalized_reason = f"chatlab_initial_generation_{normalized_reason}"
         retryable = has_user_retries_remaining(simulation.initial_retry_count)
         simulation.mark_failed(
             reason_code=normalized_reason,
