@@ -23,7 +23,7 @@ from api.v1.schemas.simulations import (
 from apps.common.ratelimit import api_rate_limit
 from apps.common.retries import (
     has_user_retries_remaining,
-    is_initial_generation_retryable_reason,
+    is_simulation_initial_generation_retryable,
 )
 from config.logging import get_logger
 
@@ -111,7 +111,11 @@ def list_simulations(
     from apps.simcore.models import Simulation
 
     user = request.auth
-    queryset = Simulation.objects.filter(user=user).order_by("-start_timestamp", "-pk")
+    queryset = (
+        Simulation.objects.filter(user=user)
+        .select_related("chatlab_session")
+        .order_by("-start_timestamp", "-pk")
+    )
 
     # Apply status filter
     if status == "in_progress":
@@ -243,7 +247,11 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     user = request.auth
 
     try:
-        sim = Simulation.objects.get(pk=simulation_id, user=user)
+        sim = (
+            Simulation.objects.select_related("chatlab_session").get(
+                pk=simulation_id, user=user
+            )
+        )
     except Simulation.DoesNotExist:
         raise HttpError(404, "Simulation not found") from None
 
@@ -295,14 +303,21 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
 
     user = request.auth
     try:
-        sim = Simulation.objects.get(pk=simulation_id, user=user)
+        sim = Simulation.objects.select_related("chatlab_session").get(
+            pk=simulation_id, user=user
+        )
     except Simulation.DoesNotExist:
         raise HttpError(404, "Simulation not found") from None
+
+    try:
+        sim.chatlab_session
+    except Exception:
+        raise HttpError(400, "Initial generation retry is only available for ChatLab simulations")
 
     if sim.status != Simulation.SimulationStatus.FAILED:
         raise HttpError(400, "Simulation is not in failed state")
 
-    if not is_initial_generation_retryable_reason(sim.terminal_reason_code):
+    if not is_simulation_initial_generation_retryable(sim):
         raise HttpError(400, "Initial generation retry is not available for this failure")
 
     if not has_user_retries_remaining(sim.initial_retry_count):
@@ -329,7 +344,7 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
     if not call_id:
         retryable = has_user_retries_remaining(sim.initial_retry_count)
         sim.mark_failed(
-            reason_code="initial_generation_enqueue_failed",
+            reason_code="chatlab_initial_generation_enqueue_failed",
             reason_text="We could not restart this simulation. Please try again.",
             retryable=retryable,
         )
