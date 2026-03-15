@@ -21,7 +21,6 @@ from apps.trainerlab.services import (
 )
 from orchestrai_django.persistence import PersistContext, persist_schema
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
