@@ -1175,7 +1175,7 @@ class TestTrainerLabDictionaries:
         assert response.status_code == 200
 
         intervention = Intervention.objects.get(intervention_type="tourniquet")
-        assert intervention.site_code == "left_arm"
+        assert intervention.site_code == "LEFT_ARM"
         assert intervention.effectiveness == "unknown"
         assert intervention.performed_by_role == "trainee"
         assert intervention.code == "M-TQ-D"
@@ -1195,7 +1195,7 @@ class TestTrainerLabDictionaries:
         ).first()
         assert outbox_event is not None
         assert outbox_event.payload["intervention_type"] == "tourniquet"
-        assert outbox_event.payload["site_code"] == "left_arm"
+        assert outbox_event.payload["site_code"] == "LEFT_ARM"
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
 
@@ -1220,7 +1220,7 @@ class TestTrainerLabDictionaries:
 
         tq = next(d for d in definitions if d["intervention_type"] == "tourniquet")
         assert tq["label"] == "Tourniquet"
-        assert {"code": "left_arm", "label": "Left Arm"} in tq["sites"]
+        assert {"code": "LEFT_ARM", "label": "Left Arm"} in tq["sites"]
 
     def test_runtime_worker_applies_mock_ai_output_and_emits_state_update(
         self,
@@ -1321,7 +1321,7 @@ class TestTrainerLabDictionaries:
         assert "effectiveness" in intervention_recorded.payload
         assert "effective" not in intervention_recorded.payload
         assert intervention_recorded.payload["intervention_type"] == "tourniquet"
-        assert intervention_recorded.payload["site_code"] == "left_arm"
+        assert intervention_recorded.payload["site_code"] == "LEFT_ARM"
 
     def test_active_elapsed_seconds_freeze_while_paused(
         self,

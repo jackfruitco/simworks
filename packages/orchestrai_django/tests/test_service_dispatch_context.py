@@ -73,6 +73,14 @@ def test_run_service_call_triggers_autostart(monkeypatch):
                 # Force an early return path before any service execution logic.
                 return 999
 
+            @classmethod
+            def filter(cls, **kwargs):
+                return cls
+
+            @staticmethod
+            def first():
+                return None
+
         def to_jsonable(self):
             return {"id": self.id, "status": self.status}
 
@@ -189,6 +197,14 @@ def test_run_service_call_uses_autostart_returned_app_for_registry(monkeypatch):
             @staticmethod
             def count():
                 return 999
+
+            @classmethod
+            def filter(cls, **kwargs):
+                return cls
+
+            @staticmethod
+            def first():
+                return None
 
         def to_jsonable(self):
             return {"id": self.id, "status": self.status}

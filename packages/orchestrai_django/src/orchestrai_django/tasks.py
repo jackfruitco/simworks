@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import inspect
 import logging
 
@@ -351,6 +352,11 @@ def _get_retry_delay(attempt: int) -> int:
     return base * (2 ** (attempt - 1))
 
 
+def _get_stale_attempt_threshold() -> int:
+    """Return seconds before an in-flight attempt is considered stale (worker died)."""
+    return getattr(settings, "ORCA_STALE_ATTEMPT_THRESHOLD", 300)  # 5 min default
+
+
 @dataclass(frozen=True)
 class ErrorClassification:
     system_retryable: bool
@@ -461,6 +467,23 @@ def run_service_call(call_id: str):
         # Check if already completed
         if call.status == CallStatus.COMPLETED:
             logger.info("Service call %s already completed, skipping", call_id)
+            return call.to_jsonable()
+
+        # Guard against duplicate task dispatch (Celery at-least-once delivery).
+        # If another worker already has an in-flight attempt, skip this one.
+        # A staleness threshold allows re-dispatch if a worker dies without cleaning up.
+        stale_cutoff = timezone.now() - timedelta(seconds=_get_stale_attempt_threshold())
+        in_flight = call.attempts.filter(
+            status__in=[AttemptStatus.BUILT, AttemptStatus.DISPATCHED],
+            updated_at__gt=stale_cutoff,
+        ).first()
+        if in_flight is not None:
+            logger.info(
+                "Service call %s: attempt %d already in flight (status=%s), skipping duplicate dispatch",
+                call_id,
+                in_flight.attempt,
+                in_flight.status,
+            )
             return call.to_jsonable()
 
         # Get current attempt count
