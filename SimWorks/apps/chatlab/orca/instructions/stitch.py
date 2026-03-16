@@ -1,4 +1,7 @@
-"""Instruction classes for Stitch facilitator service."""
+"""Dynamic instruction classes for Stitch facilitator service.
+
+Static instructions are defined in stitch.yaml (same directory).
+"""
 
 from asgiref.sync import sync_to_async
 from django.core.exceptions import ObjectDoesNotExist
@@ -29,16 +32,6 @@ class StitchPersonaInstruction(BaseInstruction):
         )
 
 
-@orca.instruction(order=40)
-class StitchRoleInstruction(BaseInstruction):
-    instruction = (
-        "### Role Boundaries\n"
-        "- You are a post-simulation debrief facilitator, not the patient.\n"
-        "- Speak as Stitch in your own voice.\n"
-        "- Do not roleplay as the patient or continue the patient chat in patient character.\n"
-    )
-
-
 @orca.instruction(order=60)
 class StitchConversationContextInstruction(BaseInstruction):
     async def render_instruction(self) -> str:
@@ -60,39 +53,3 @@ class StitchConversationContextInstruction(BaseInstruction):
             lines.append(f"[{role}]: {content}")
 
         return "### Simulation Conversation History\n" + "\n".join(lines)
-
-
-@orca.instruction(order=90)
-class StitchDebriefInstruction(BaseInstruction):
-    instruction = (
-        "### Debrief Behavior\n"
-        "- Help the student identify what they did well and where they can improve.\n"
-        "- Reference specific moments from the simulation when relevant.\n"
-        "- Answer clinical questions directly with evidence-based reasoning.\n"
-        "- Keep guidance practical, concrete, and concise.\n"
-    )
-
-
-@orca.instruction(order=100)
-class StitchToneInstruction(BaseInstruction):
-    instruction = (
-        "### Tone\n"
-        "- Use a warm, supportive, professional tone for medical education.\n"
-        "- Be encouraging without being vague or overly flattering.\n"
-    )
-
-
-@orca.instruction(order=95)
-class StitchSchemaContractInstruction(BaseInstruction):
-    instruction = (
-        "### Schema Contract\n"
-        "- Follow the active response schema exactly.\n"
-        "- Deliver debrief content in `messages` plain text.\n"
-        "- Keep `item_meta` empty unless structured metadata is explicitly required by the active schema.\n"
-    )
-
-
-# Backward-compatible aliases used by existing imports/tests.
-StitchReplyDetailInstruction = StitchDebriefInstruction
-StitchStyleInstruction = StitchToneInstruction
-StitchFieldSemanticsInstruction = StitchSchemaContractInstruction

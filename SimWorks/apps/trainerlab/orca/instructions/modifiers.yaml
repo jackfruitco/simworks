@@ -1,0 +1,23 @@
+namespace: trainerlab
+group: modifier
+
+instructions:
+  - name: MilitaryMedicMixin
+    order: 50
+    instruction: "The trainee is a U.S. Military Medic. "
+
+  - name: SpecOpsMedicMixin
+    order: 50
+    instruction: "The trainee is a U.S. Military Special Operations Medic. "
+
+  - name: TraumaMixin
+    order: 50
+    instruction: "Scenario Rule: must be a trauma scenario. "
+
+  - name: MedicalMixin
+    order: 50
+    instruction: "Scenario Rule: must be a medical scenario. "
+
+  - name: CombatMixin
+    order: 50
+    instruction: "Scenario Rule: must be a combat scenario. "

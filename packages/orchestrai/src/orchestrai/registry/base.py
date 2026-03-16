@@ -293,3 +293,16 @@ class ComponentRegistry(BaseRegistry[Identity, T]):
 
     def __init__(self) -> None:
         super().__init__(coerce_key=lambda x: Identity.get_for(x).label)
+
+    def find_by_name(self, name: str) -> type[T] | None:
+        """Return the first registered class whose ``__name__`` equals *name*.
+
+        This is an O(n) linear scan used by the ``instruction_refs`` resolver.
+        For the small number of instructions typically registered (< 100) this
+        is negligible; a secondary index can be added if profiling warrants it.
+        """
+        with self._lock:
+            for cls in self._store.values():
+                if cls.__name__ == name:
+                    return cls
+        return None

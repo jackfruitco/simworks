@@ -3,24 +3,12 @@
 
 from typing import ClassVar
 
-from apps.chatlab.orca.instructions.lab_orders import (
-    LabOrderPatientContextInstruction,
-    LabOrderResultDetailInstruction,
-    LabOrderSchemaContractInstruction,
-    LabOrderTestListInstruction,
-)
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
 
 
 @orca.service
-class GenerateLabResults(
-    LabOrderPatientContextInstruction,
-    LabOrderTestListInstruction,
-    LabOrderSchemaContractInstruction,
-    LabOrderResultDetailInstruction,
-    DjangoBaseService,
-):
+class GenerateLabResults(DjangoBaseService):
     """Generate structured lab and radiology results for signed lab orders.
 
     Accepts a list of ordered test names via context and returns clinically
@@ -31,6 +19,12 @@ class GenerateLabResults(
         orders (list[str]): Ordered test names (e.g. ["CBC", "BMP", "Chest X-Ray"]).
     """
 
+    instruction_refs: ClassVar[list[str]] = [
+        "LabOrderPatientContextInstruction",
+        "LabOrderTestListInstruction",
+        "LabOrderSchemaContractInstruction",
+        "LabOrderResultDetailInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id", "orders")
     use_native_output = True
 
