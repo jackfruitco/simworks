@@ -154,13 +154,14 @@ def _inline_runtime_payload(
                     "condition_kind": "illness",
                     "name": "Respiratory distress",
                     "description": "Progressive shortness of breath from a worsening chest injury.",
+                    "march_category": "R",
                     "severity": "high",
                 },
                 {
                     "action": "update",
                     "condition_kind": "injury",
                     "target_event_id": target_event_id,
-                    "injury_category": "R",
+                    "march_category": "R",
                     "injury_location": "TLA",
                     "injury_kind": "GSW",
                     "injury_description": "Chest GSW with worsening respiratory compromise",
@@ -565,27 +566,33 @@ class TestTrainerLabEvents:
         first_event = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "M",
+                "march_category": "M",
                 "injury_location": "LUA",
                 "injury_kind": "LAC",
                 "injury_description": "Initial laceration",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="injury-1",
         )
         assert first_event.status_code == 200
 
+        from apps.trainerlab.models import Problem
+
         first_injury = Injury.objects.get(injury_description="Initial laceration")
+        first_problem = Problem.objects.get(cause=first_injury)
         assert first_injury.is_active is True
+        assert first_problem.is_active is True
 
         second_event = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "M",
+                "march_category": "M",
                 "injury_location": "LUA",
                 "injury_kind": "LAC",
                 "injury_description": "Corrected laceration",
-                "supersedes_event_id": first_injury.id,
+                "severity": "moderate",
+                "supersedes_event_id": first_problem.id,
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="injury-2",
@@ -593,9 +600,13 @@ class TestTrainerLabEvents:
         assert second_event.status_code == 200
 
         first_injury.refresh_from_db()
-        corrected = Injury.objects.get(injury_description="Corrected laceration")
+        first_problem.refresh_from_db()
+        corrected_injury = Injury.objects.get(injury_description="Corrected laceration")
+        corrected_problem = Problem.objects.get(cause=corrected_injury)
         assert first_injury.is_active is False
-        assert corrected.supersedes_event_id == first_injury.id
+        assert first_problem.is_active is False
+        assert corrected_injury.supersedes_event_id == first_injury.id
+        assert corrected_problem.supersedes_event_id == first_problem.id
 
         page_one = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/?limit=1")
         assert page_one.status_code == 200
@@ -682,10 +693,11 @@ class TestTrainerLabEvents:
         first = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "M",
+                "march_category": "M",
                 "injury_location": "LUA",
                 "injury_kind": "LAC",
                 "injury_description": "Initial laceration",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="injury-conflict",
@@ -695,10 +707,11 @@ class TestTrainerLabEvents:
         second = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "M",
+                "march_category": "M",
                 "injury_location": "RUA",
                 "injury_kind": "LAC",
                 "injury_description": "Different injury",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="injury-conflict",
@@ -907,10 +920,11 @@ class TestTrainerLabEvents:
         injury = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "M",
+                "march_category": "M",
                 "injury_location": "LUA",
                 "injury_kind": "LAC",
                 "injury_description": "Should be rejected after stop",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="post-stop-injury",
@@ -984,18 +998,22 @@ class TestTrainerLabEvents:
         response = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "massive hemorrhage",
+                "march_category": "massive hemorrhage",
                 "injury_location": "left upper arm",
                 "injury_kind": "laceration",
                 "injury_description": "Friendly label injury",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="injury-friendly-1",
         )
         assert response.status_code == 200
 
+        from apps.trainerlab.models import Problem
+
         injury = Injury.objects.get(injury_description="Friendly label injury")
-        assert injury.injury_category == "M"
+        problem = Problem.objects.get(cause=injury)
+        assert problem.march_category == "M"
         assert injury.injury_location == "LUA"
         assert injury.injury_kind == "LAC"
 
@@ -1012,10 +1030,11 @@ class TestTrainerLabEvents:
         response = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "massive hemorrhage",
+                "march_category": "massive hemorrhage",
                 "injury_location": "not-a-real-location",
                 "injury_kind": "laceration",
                 "injury_description": "Should fail",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="injury-invalid-1",
@@ -1220,7 +1239,7 @@ class TestTrainerLabDictionaries:
         monkeypatch,
     ):
         from apps.common.models import OutboxEvent
-        from apps.trainerlab.models import Illness, Injury, Intervention, TrainerSession
+        from apps.trainerlab.models import Illness, Injury, Intervention, Problem, TrainerSession
         from apps.trainerlab.services import apply_runtime_turn_output, process_runtime_turn_queue
 
         client = auth_client_factory(instructor_user)
@@ -1230,10 +1249,11 @@ class TestTrainerLabDictionaries:
         injury_resp = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
             data={
-                "injury_category": "R",
+                "march_category": "R",
                 "injury_location": "TLA",
                 "injury_kind": "GSW",
                 "injury_description": "GSW to the left chest",
+                "severity": "moderate",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="runtime-worker-injury",
@@ -1261,13 +1281,14 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id, intervention_type="tourniquet"
         ).latest("timestamp")
         injury = Injury.objects.get(injury_description="GSW to the left chest")
+        problem = Problem.objects.get(cause=injury, simulation_id=simulation_id)
 
         def _inline_enqueue(batch):
             apply_runtime_turn_output(
                 session_id=batch["session_id"],
                 output_payload=_inline_runtime_payload(
                     intervention_event_id=intervention.id,
-                    target_event_id=injury.id,
+                    target_event_id=problem.id,
                 ),
                 service_context={
                     "session_id": batch["session_id"],

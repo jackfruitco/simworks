@@ -67,6 +67,7 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     Intervention,
+    Problem,
     RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
@@ -957,39 +958,67 @@ def _deactivate_superseded(event: ABCEvent | None) -> None:
         event.save(update_fields=["is_active"])
 
 
-def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Injury:
-    supersedes = _resolve_superseded_domain_event(
-        simulation_id=session.simulation_id,
-        supersedes_event_id=body.supersedes_event_id,
-    )
-    _deactivate_superseded(supersedes)
+def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
+    old_problem: Problem | None = None
+    if body.supersedes_event_id:
+        old_problem = Problem.objects.filter(
+            pk=body.supersedes_event_id, simulation=session.simulation
+        ).first()
+        if old_problem:
+            _deactivate_superseded(old_problem)
+            if old_problem.cause_id:
+                old_cause = ABCEvent.objects.filter(pk=old_problem.cause_id).first()
+                if old_cause:
+                    _deactivate_superseded(old_cause)
 
-    return Injury.objects.create(
+    new_injury = Injury.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=supersedes,
-        injury_category=body.injury_category,
+        supersedes_event=old_problem.cause if old_problem and old_problem.cause_id else None,
         injury_location=body.injury_location,
         injury_kind=body.injury_kind,
         injury_description=body.injury_description,
     )
-
-
-def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Illness:
-    supersedes = _resolve_superseded_domain_event(
-        simulation_id=session.simulation_id,
-        supersedes_event_id=body.supersedes_event_id,
-    )
-    _deactivate_superseded(supersedes)
-
-    return Illness.objects.create(
+    return Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=supersedes,
+        supersedes_event=old_problem,
+        cause=new_injury,
+        problem_kind=Problem.ProblemKind.INJURY,
+        march_category=body.march_category,
+        severity=body.severity,
+        description=body.description,
+    )
+
+
+def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
+    old_problem: Problem | None = None
+    if body.supersedes_event_id:
+        old_problem = Problem.objects.filter(
+            pk=body.supersedes_event_id, simulation=session.simulation
+        ).first()
+        if old_problem:
+            _deactivate_superseded(old_problem)
+            if old_problem.cause_id:
+                old_cause = ABCEvent.objects.filter(pk=old_problem.cause_id).first()
+                if old_cause:
+                    _deactivate_superseded(old_cause)
+
+    new_illness = Illness.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes_event=old_problem.cause if old_problem and old_problem.cause_id else None,
         name=body.name,
         description=body.description,
+    )
+    return Problem.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes_event=old_problem,
+        cause=new_illness,
+        problem_kind=Problem.ProblemKind.ILLNESS,
+        march_category=body.march_category,
         severity=body.severity,
-        is_resolved=body.is_resolved,
     )
 
 
@@ -1006,7 +1035,7 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         supersedes_event=supersedes,
         intervention_type=body.intervention_type,
         site_code=body.site_code,
-        target_injury_id=body.target_injury_id,
+        target_problem_id=body.target_problem_id,
         status=body.status,
         effectiveness=body.effectiveness,
         notes=body.notes,
@@ -1070,7 +1099,7 @@ def _inject_event_core(
     simulation_id: int,
     command_type: str,
     payload_json: dict,
-    create_fn: Callable[[TrainerSession], ABCEvent],
+    create_fn: Callable[[TrainerSession], ABCEvent | Problem],
 ) -> TrainerCommandAck:
     user = request.auth
     require_instructor_membership(user)
@@ -1113,39 +1142,50 @@ def _inject_event_core(
         event_type = "event.created"
 
     send_to_ai = bool(payload_json.get("send_to_ai", False))
-    emit_runtime_event(
-        session=session,
-        event_type=event_type,
-        payload={
+    from apps.trainerlab.event_payloads import serialize_domain_event
+
+    if event_kind in {"injury", "illness"}:
+        # domain_event is a Problem for condition events
+        event_payload = serialize_domain_event(domain_event)
+    elif event_kind == "intervention":
+        event_payload = {
             "domain_event_id": domain_event.id,
             "domain_event_type": domain_event.__class__.__name__,
             "source": domain_event.source,
             "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
             "supersedes_event_id": domain_event.supersedes_event_id,
-            **(
-                {
-                    "intervention_type": getattr(domain_event, "intervention_type", "") or None,
-                    "site_code": getattr(domain_event, "site_code", "") or None,
-                    "code": getattr(domain_event, "code", ""),
-                    "description": getattr(domain_event, "description", ""),
-                    "target": getattr(domain_event, "target", ""),
-                    "anatomic_location": getattr(domain_event, "anatomic_location", ""),
-                    "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
-                    "notes": getattr(domain_event, "notes", ""),
-                    "performed_by_role": getattr(domain_event, "performed_by_role", ""),
-                }
-                if event_kind == "intervention"
-                else {}
-            ),
-            **(
-                {
-                    "content": getattr(domain_event, "content", ""),
-                    "created_by_role": payload_json.get("performed_by_role", "instructor"),
-                }
-                if event_kind == "note"
-                else {}
-            ),
-        },
+            "intervention_type": getattr(domain_event, "intervention_type", "") or None,
+            "site_code": getattr(domain_event, "site_code", "") or None,
+            "code": getattr(domain_event, "code", ""),
+            "description": getattr(domain_event, "description", ""),
+            "target": getattr(domain_event, "target", ""),
+            "anatomic_location": getattr(domain_event, "anatomic_location", ""),
+            "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
+            "notes": getattr(domain_event, "notes", ""),
+            "performed_by_role": getattr(domain_event, "performed_by_role", ""),
+        }
+    elif event_kind == "note":
+        event_payload = {
+            "domain_event_id": domain_event.id,
+            "domain_event_type": domain_event.__class__.__name__,
+            "source": domain_event.source,
+            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
+            "supersedes_event_id": domain_event.supersedes_event_id,
+            "content": getattr(domain_event, "content", ""),
+            "created_by_role": payload_json.get("performed_by_role", "instructor"),
+        }
+    else:
+        event_payload = {
+            "domain_event_id": domain_event.id,
+            "domain_event_type": domain_event.__class__.__name__,
+            "source": domain_event.source,
+            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
+            "supersedes_event_id": domain_event.supersedes_event_id,
+        }
+    emit_runtime_event(
+        session=session,
+        event_type=event_type,
+        payload=event_payload,
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=f"{event_type}:{domain_event.id}",

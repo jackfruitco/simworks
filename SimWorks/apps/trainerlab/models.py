@@ -264,15 +264,6 @@ class ABCEvent(PolymorphicModel):
 
 
 class Injury(ABCEvent):
-    class InjuryCategory(models.TextChoices):
-        M = "M", _("Massive Hemorrhage")
-        A = "A", _("Airway")
-        R = "R", _("Respiration")
-        C = "C", _("Circulatory")
-        H1 = "H1", _("Hypothermia")
-        H2 = "H2", _("Head Injury")
-        PFC = "PC", _("Prolonged Field Care")
-
     class InjuryLocation(models.TextChoices):
         HEAD_LEFT_ANTERIOR = "HLA", _("Left Anterior Head")
         HEAD_RIGHT_ANTERIOR = "HRA", _("Right Anterior Head")
@@ -326,12 +317,6 @@ class Injury(ABCEvent):
         GSW = "GSW", _("Gunshot Wound")
         SHRAPNEL = "SHR", _("Shrapnel")
 
-    injury_category = models.CharField(
-        max_length=2,
-        choices=InjuryCategory.choices,
-        db_index=True,
-        help_text="The category of the injury",
-    )
     injury_location = models.CharField(
         max_length=4,
         choices=InjuryLocation.choices,
@@ -347,28 +332,86 @@ class Injury(ABCEvent):
 
     injury_description = models.CharField(max_length=100)
 
-    is_treated = models.BooleanField(default=False)
-    is_resolved = models.BooleanField(default=False)
-
     def __str__(self):
-        return (
-            f"{self.get_injury_kind_display()} at "
-            f"{self.get_injury_location_display()} "
-            f"({self.get_injury_category_display()})"
-        )
+        return f"{self.get_injury_kind_display()} at {self.get_injury_location_display()}"
 
 
 class Illness(ABCEvent):
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+
+
+class Problem(ABCEvent):
+    """
+    A treatable clinical problem owned by a simulation.
+
+    Separates the immutable cause (Injury or Illness) from the mutable
+    treatment lifecycle. Lifecycle fields (march_category, severity, is_treated,
+    is_resolved) live here; cause fields (mechanism, anatomy, illness name) live on
+    the linked Injury / Illness.
+
+    ``cause`` is a FK to ABCEvent so both Injury and Illness can be referenced.
+    Null cause means a standalone, instructor-injected problem with no underlying
+    cause record.
+
+    ``problem_kind`` is derived from the cause type at creation time and stored for
+    query/index performance: "injury", "illness", or "other".
+    """
+
+    class MARCHCategory(models.TextChoices):
+        M = "M", _("Massive Hemorrhage")
+        A = "A", _("Airway")
+        R = "R", _("Respiration")
+        C = "C", _("Circulatory")
+        H1 = "H1", _("Hypothermia")
+        H2 = "H2", _("Head Injury")
+        PFC = "PC", _("Prolonged Field Care")
+
     class Severity(models.TextChoices):
         LOW = "low", _("Low")
         MODERATE = "moderate", _("Moderate")
         HIGH = "high", _("High")
         CRITICAL = "critical", _("Critical")
 
-    name = models.CharField(max_length=120)
-    description = models.TextField(blank=True)
-    severity = models.CharField(max_length=16, choices=Severity.choices, default=Severity.MODERATE)
+    class ProblemKind(models.TextChoices):
+        INJURY = "injury", _("Injury")
+        ILLNESS = "illness", _("Illness")
+        OTHER = "other", _("Other")
+
+    cause = models.ForeignKey(
+        "trainerlab.ABCEvent",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="problems",
+        help_text="The underlying Injury or Illness. Null for standalone problems.",
+    )
+    problem_kind = models.CharField(
+        max_length=16,
+        choices=ProblemKind.choices,
+        default=ProblemKind.OTHER,
+        db_index=True,
+        help_text="Auto-derived from cause type at creation time.",
+    )
+    march_category = models.CharField(
+        max_length=3,
+        choices=MARCHCategory.choices,
+        db_index=True,
+    )
+    severity = models.CharField(
+        max_length=16,
+        choices=Severity.choices,
+        default=Severity.MODERATE,
+    )
+    is_treated = models.BooleanField(default=False)
     is_resolved = models.BooleanField(default=False)
+    description = models.TextField(blank=True, default="")
+
+    def __str__(self):
+        return (
+            f"Problem ({self.problem_kind}, {self.march_category}) "
+            f"{'resolved' if self.is_resolved else 'active'}"
+        )
 
 
 class Intervention(ABCEvent):
@@ -397,8 +440,8 @@ class Intervention(ABCEvent):
         db_index=True,
     )
     site_code = models.CharField(max_length=64, blank=True, default="", db_index=True)
-    target_injury = models.ForeignKey(
-        "trainerlab.Injury",
+    target_problem = models.ForeignKey(
+        "trainerlab.Problem",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -460,8 +503,8 @@ class Intervention(ABCEvent):
                 except ValueError as exc:
                     errors["details_json"] = str(exc)
 
-        if self.target_injury_id and self.simulation_id != self.target_injury.simulation_id:
-            errors["target_injury"] = "target_injury must belong to the same simulation"
+        if self.target_problem_id and self.simulation_id != self.target_problem.simulation_id:
+            errors["target_problem"] = "target_problem must belong to the same simulation"
 
         if errors:
             raise ValidationError(errors)

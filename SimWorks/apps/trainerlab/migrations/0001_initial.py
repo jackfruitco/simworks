@@ -234,7 +234,7 @@ class Migration(migrations.Migration):
                 name="bp_dia_min_le_max",
             ),
         ),
-        # ── Injury (no parent_injury) ─────────────────────────────────────────
+        # ── Injury (immutable cause — no lifecycle fields) ────────────────────
         migrations.CreateModel(
             name="Injury",
             fields=[
@@ -247,23 +247,6 @@ class Migration(migrations.Migration):
                         primary_key=True,
                         serialize=False,
                         to="trainerlab.abcevent",
-                    ),
-                ),
-                (
-                    "injury_category",
-                    models.CharField(
-                        choices=[
-                            ("M", "Massive Hemorrhage"),
-                            ("A", "Airway"),
-                            ("R", "Respiration"),
-                            ("C", "Circulatory"),
-                            ("H1", "Hypothermia"),
-                            ("H2", "Head Injury"),
-                            ("PC", "Prolonged Field Care"),
-                        ],
-                        db_index=True,
-                        help_text="The category of the injury",
-                        max_length=2,
                     ),
                 ),
                 (
@@ -330,13 +313,11 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("injury_description", models.CharField(max_length=100)),
-                ("is_treated", models.BooleanField(default=False)),
-                ("is_resolved", models.BooleanField(default=False)),
             ],
             options={"abstract": False, "base_manager_name": "objects"},
             bases=("trainerlab.abcevent",),
         ),
-        # ── Illness ──────────────────────────────────────────────────────────
+        # ── Illness (immutable cause — no lifecycle fields) ───────────────────
         migrations.CreateModel(
             name="Illness",
             fields=[
@@ -353,6 +334,64 @@ class Migration(migrations.Migration):
                 ),
                 ("name", models.CharField(max_length=120)),
                 ("description", models.TextField(blank=True)),
+            ],
+            options={"abstract": False, "base_manager_name": "objects"},
+            bases=("trainerlab.abcevent",),
+        ),
+        # ── Problem (lifecycle owner; links to Injury or Illness cause) ───────
+        migrations.CreateModel(
+            name="Problem",
+            fields=[
+                (
+                    "abcevent_ptr",
+                    models.OneToOneField(
+                        auto_created=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        parent_link=True,
+                        primary_key=True,
+                        serialize=False,
+                        to="trainerlab.abcevent",
+                    ),
+                ),
+                (
+                    "cause",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="problems",
+                        to="trainerlab.abcevent",
+                    ),
+                ),
+                (
+                    "problem_kind",
+                    models.CharField(
+                        choices=[
+                            ("injury", "Injury"),
+                            ("illness", "Illness"),
+                            ("other", "Other"),
+                        ],
+                        db_index=True,
+                        default="other",
+                        max_length=16,
+                    ),
+                ),
+                (
+                    "march_category",
+                    models.CharField(
+                        choices=[
+                            ("M", "Massive Hemorrhage"),
+                            ("A", "Airway"),
+                            ("R", "Respiration"),
+                            ("C", "Circulatory"),
+                            ("H1", "Hypothermia"),
+                            ("H2", "Head Injury"),
+                            ("PC", "Prolonged Field Care"),
+                        ],
+                        db_index=True,
+                        max_length=3,
+                    ),
+                ),
                 (
                     "severity",
                     models.CharField(
@@ -366,7 +405,9 @@ class Migration(migrations.Migration):
                         max_length=16,
                     ),
                 ),
+                ("is_treated", models.BooleanField(default=False)),
                 ("is_resolved", models.BooleanField(default=False)),
+                ("description", models.TextField(blank=True, default="")),
             ],
             options={"abstract": False, "base_manager_name": "objects"},
             bases=("trainerlab.abcevent",),
@@ -415,13 +456,13 @@ class Migration(migrations.Migration):
                 ),
                 ("site_code", models.CharField(blank=True, db_index=True, default="", max_length=64)),
                 (
-                    "target_injury",
+                    "target_problem",
                     models.ForeignKey(
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
                         related_name="targeted_by_interventions",
-                        to="trainerlab.injury",
+                        to="trainerlab.problem",
                     ),
                 ),
                 (

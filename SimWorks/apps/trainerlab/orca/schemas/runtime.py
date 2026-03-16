@@ -12,15 +12,20 @@ from orchestrai.types import StrictBaseModel
 class RuntimeConditionChange(StrictBaseModel):
     action: Literal["create", "update", "resolve"]
     condition_kind: Literal["injury", "illness"]
+    # target_event_id references a Problem ID (not Injury/Illness) for update/resolve.
     target_event_id: int | None = None
 
-    injury_category: str | None = None
+    # Injury-specific cause fields (create/update)
     injury_location: str | None = None
     injury_kind: str | None = None
     injury_description: str | None = None
 
+    # Illness-specific cause fields (create/update)
     name: str | None = None
     description: str | None = None
+
+    # Problem-level fields (create/update)
+    march_category: str | None = None
     severity: Literal["low", "moderate", "high", "critical"] | None = None
 
     @model_validator(mode="after")
@@ -28,16 +33,20 @@ class RuntimeConditionChange(StrictBaseModel):
         if self.action in {"update", "resolve"} and self.target_event_id is None:
             raise ValueError("target_event_id is required for update/resolve changes")
         if self.condition_kind == "injury" and self.action != "resolve":
-            required = [self.injury_category, self.injury_location, self.injury_kind]
+            required = [self.injury_location, self.injury_kind]
             if any(value in (None, "") for value in required):
-                raise ValueError("injury_category, injury_location, and injury_kind are required")
+                raise ValueError("injury_location and injury_kind are required")
             if not self.injury_description:
                 raise ValueError("injury_description is required for injury changes")
+            if not self.march_category:
+                raise ValueError("march_category is required for injury changes")
         if self.condition_kind == "illness" and self.action != "resolve":
             if not self.name:
                 raise ValueError("name is required for illness changes")
             if self.severity is None:
                 raise ValueError("severity is required for illness changes")
+            if not self.march_category:
+                raise ValueError("march_category is required for illness changes")
         return self
 
 
@@ -86,10 +95,10 @@ class RuntimeStateChanges(StrictBaseModel):
 
 class RuntimeSnapshotCondition(StrictBaseModel):
     domain_event_id: int | None = None
-    kind: Literal["injury", "illness"]
+    kind: Literal["injury", "illness", "other"]
     label: str
     status: Literal["active", "resolved", "worsening", "improving", "stable"] = "active"
-    injury_category: str | None = None
+    march_category: str | None = None
     injury_location: str | None = None
     injury_kind: str | None = None
     description: str = ""
