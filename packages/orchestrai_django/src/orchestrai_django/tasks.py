@@ -27,6 +27,7 @@ from orchestrai_django.models import (
     CallStatus,
     ServiceCall as ServiceCallModel,
 )
+from orchestrai_django.utils.serialization import pydantic_model_to_dict
 
 logger = logging.getLogger(__name__)
 
@@ -56,45 +57,6 @@ class _SuppressFailureEmitter:
 
     def __getattr__(self, item):
         return getattr(self._delegate, item)
-
-
-def _manual_extract_fields(obj):
-    """Manually extract fields from a Pydantic model when model_dump() fails with MockValSer."""
-    from orchestrai.utils.json import make_json_safe
-
-    result = {}
-    if hasattr(obj, "model_fields"):
-        for field_name in obj.model_fields:
-            try:
-                value = getattr(obj, field_name, None)
-                # Handle nested Pydantic models
-                if hasattr(value, "model_dump"):
-                    try:
-                        # Use mode="json" to ensure UUID/datetime are converted
-                        result[field_name] = value.model_dump(mode="json")
-                    except TypeError:
-                        # Nested model also has MockValSer - recurse
-                        result[field_name] = _manual_extract_fields(value)
-                elif isinstance(value, list):
-                    result[field_name] = [
-                        _manual_extract_fields(item)
-                        if hasattr(item, "model_fields")
-                        else make_json_safe(item)
-                        for item in value
-                    ]
-                elif isinstance(value, dict):
-                    result[field_name] = {
-                        k: _manual_extract_fields(v)
-                        if hasattr(v, "model_fields")
-                        else make_json_safe(v)
-                        for k, v in value.items()
-                    }
-                else:
-                    result[field_name] = make_json_safe(value)
-            except Exception as field_err:
-                logger.warning(f"Failed to extract field {field_name}: {field_err}")
-                result[field_name] = None
-    return result
 
 
 def _resolve_response_schema(schema):
@@ -215,10 +177,7 @@ def _build_request_json(service, payload, context, request_obj):
         prompt_text = ""
 
     if request_obj is not None:
-        try:
-            request_json = request_obj.model_dump(mode="json")
-        except TypeError:
-            request_json = _manual_extract_fields(request_obj)
+        request_json = pydantic_model_to_dict(request_obj)
 
         if prompt_text:
             input_items = request_json.get("input")
@@ -614,16 +573,7 @@ def run_service_call(call_id: str):
             # Serialize result to JSON
             call_output_data = None
             if hasattr(result, "model_dump"):
-                try:
-                    result_json = result.model_dump(mode="json")
-                except TypeError as e:
-                    if "MockValSer" in str(e):
-                        logger.warning(
-                            "MockValSer error during result serialization, manually extracting fields"
-                        )
-                        result_json = _manual_extract_fields(result)
-                    else:
-                        raise
+                result_json = pydantic_model_to_dict(result)
                 call_output_data = result_json
             elif hasattr(result, "output") and hasattr(result, "all_messages_json"):
                 # Pydantic AI AgentRunResult (dataclass)
@@ -706,10 +656,7 @@ def run_service_call(call_id: str):
             )
             if structured_data is not None:
                 if hasattr(structured_data, "model_dump"):
-                    try:
-                        attempt_record.structured_data = structured_data.model_dump(mode="json")
-                    except TypeError:
-                        attempt_record.structured_data = _manual_extract_fields(structured_data)
+                    attempt_record.structured_data = pydantic_model_to_dict(structured_data)
                 elif isinstance(structured_data, dict):
                     attempt_record.structured_data = structured_data
                 else:
@@ -780,13 +727,8 @@ def run_service_call(call_id: str):
 
             # Capture Pydantic AI Request object (raw)
             if request_obj is not None:
-                try:
-                    pydantic_request_json = request_obj.model_dump(mode="json")
-                    attempt_record.request_pydantic = pydantic_request_json
-                except TypeError:
-                    # Handle MockValSer or other serialization issues
-                    pydantic_request_json = _manual_extract_fields(request_obj)
-                    attempt_record.request_pydantic = pydantic_request_json
+                pydantic_request_json = pydantic_model_to_dict(request_obj)
+                attempt_record.request_pydantic = pydantic_request_json
 
             if request_json:
                 attempt_record.request_input = request_json
