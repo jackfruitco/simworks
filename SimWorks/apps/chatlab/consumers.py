@@ -80,10 +80,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         is_authenticated = bool(scope_user and getattr(scope_user, "is_authenticated", False))
         is_owner = bool(is_authenticated and self.simulation.user_id == scope_user.id)
         if not is_owner:
-            # Accept is required by the WebSocket protocol before closing.
-            # No data is sent to avoid leaking information about simulation
-            # existence or ownership to unauthorized callers.
             await self.accept()
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "error",
+                        "message": "You do not have access to this simulation.",
+                    },
+                    default=json_default,
+                )
+            )
             await self.close(code=4403)
             return
 
