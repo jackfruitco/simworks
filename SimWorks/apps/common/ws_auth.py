@@ -37,6 +37,10 @@ def _extract_bearer_token(scope) -> str | None:
         if raw.lower().startswith("bearer "):
             return raw.split(" ", 1)[1].strip()
 
+    # NOTE: Query-parameter tokens appear in server access logs, browser history,
+    # and proxy logs.  Prefer the Authorization header wherever possible.
+    # If query-param tokens must be used, ensure nginx is configured to strip
+    # the `token` parameter from logged URLs (e.g. via log_format rewrite).
     query = parse_qs(scope.get("query_string", b"").decode("utf-8"))
     token = query.get("token", [None])[0]
     return token.strip() if isinstance(token, str) else None

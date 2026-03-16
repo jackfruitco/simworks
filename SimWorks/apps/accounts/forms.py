@@ -148,6 +148,8 @@ class AvatarUploadForm(forms.ModelForm):
         fields = ["avatar"]
         widgets = {"avatar": forms.FileInput(attrs={"accept": "image/*", "class": "hidden"})}
 
+    _ALLOWED_IMAGE_FORMATS = {"JPEG", "PNG", "GIF", "WEBP"}
+
     def clean_avatar(self):
         avatar = self.cleaned_data.get("avatar")
         if avatar:
@@ -155,8 +157,25 @@ class AvatarUploadForm(forms.ModelForm):
             if avatar.size > 5 * 1024 * 1024:
                 raise ValidationError("Image file too large ( > 5MB )")
 
-            # Validate file type
-            if not avatar.content_type.startswith("image/"):
-                raise ValidationError("File must be an image")
+            # Validate by reading file bytes, not by trusting the client-supplied
+            # content_type header (which can be trivially spoofed).
+            try:
+                from PIL import Image
+
+                avatar.seek(0)
+                img = Image.open(avatar)
+                img_format = img.format  # Read format before verify() exhausts stream
+                img.verify()  # Validates image integrity (raises on corrupt/non-image)
+                avatar.seek(0)
+            except ValidationError:
+                raise
+            except Exception as exc:
+                raise ValidationError("File must be a valid image.") from exc
+
+            if img_format not in self._ALLOWED_IMAGE_FORMATS:
+                raise ValidationError(
+                    f"Unsupported image format '{img_format}'. "
+                    f"Allowed formats: {', '.join(sorted(self._ALLOWED_IMAGE_FORMATS))}."
+                )
 
         return avatar

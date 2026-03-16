@@ -22,11 +22,26 @@ ACCOUNT_SIGNUP_FIELDS = csv_from_env(
     default=["email*", "password1*", "password2*"],
 )
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
-ACCOUNT_EMAIL_VERIFICATION = "optional"  # Can be 'mandatory', 'optional', or 'none'
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 
 # Redirect URLs
 LOGIN_REDIRECT_URL = "/"
 ACCOUNT_LOGOUT_REDIRECT_URL = "/"
+
+# Explicit rate limits for allauth endpoints (requests per time window)
+ACCOUNT_RATE_LIMITS = {
+    "login_failed": "5/5m",  # 5 failed attempts per 5 minutes per IP
+    "login_attempt": "10/5m",  # 10 total login attempts per 5 minutes
+    "signup": "5/1h",  # 5 signups per hour per IP
+    "send_email": "3/5m",  # 3 email sends per 5 minutes per IP
+    "change_password": "3/5m",  # 3 password changes per 5 minutes
+    "password_reset": "3/5m",  # 3 password reset requests per 5 minutes per IP
+    "reauthenticate": "10/5m",
+    "confirm_login_code": "5/5m",
+    "request_login_code": "3/5m",
+    "confirm_signup": "10/5m",
+    "manage_2fa": "10/5m",
+}
 
 # Social authentication provider configuration
 SOCIALACCOUNT_PROVIDERS = {

@@ -40,7 +40,7 @@ def index(request):
         if request.user.is_authenticated
         else Simulation.objects.none()
     )
-    search_query = request.GET.get("q", "").strip()
+    search_query = request.GET.get("q", "").strip()[:200]
     search_messages = request.GET.get("search_messages") == "1"
 
     # Set simulation query filters if provided search_query
