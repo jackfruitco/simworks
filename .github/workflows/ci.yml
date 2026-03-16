@@ -81,15 +81,14 @@ jobs:
         run: uv run pre-commit run --all-files
 
       - name: Validate OpenAPI schema is up to date
-        working-directory: SimWorks
         run: |
-          uv run python manage.py export_openapi --output /tmp/current-schema.json
+          uv run python scripts/export_openapi.py --output /tmp/current-schema.json
 
-          if ! diff -q /tmp/current-schema.json ../docs/openapi/v1.json > /dev/null 2>&1; then
-            echo "::error::OpenAPI schema is out of date. Run 'uv run python SimWorks/manage.py export_openapi --output docs/openapi/v1.json' and commit the changes."
+          if ! diff -q /tmp/current-schema.json docs/openapi/v1.json > /dev/null 2>&1; then
+            echo "::error::OpenAPI schema is out of date. Run 'uv run python scripts/export_openapi.py --output docs/openapi/v1.json' and commit the changes."
             echo ""
             echo "Differences:"
-            diff /tmp/current-schema.json ../docs/openapi/v1.json || true
+            diff /tmp/current-schema.json docs/openapi/v1.json || true
             exit 1
           fi
           echo "OpenAPI schema is up to date"

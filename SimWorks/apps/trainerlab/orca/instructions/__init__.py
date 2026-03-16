@@ -10,6 +10,11 @@ from .runtime import (
     TrainerRuntimeContractInstruction,
     TrainerRuntimeRoleInstruction,
 )
+from .vitals import (
+    VitalsProgressionContextInstruction,
+    VitalsProgressionContractInstruction,
+    VitalsProgressionRoleInstruction,
+)
 
 __all__ = [
     "CombatMixin",
@@ -24,4 +29,7 @@ __all__ = [
     "TrainerRuntimeContractInstruction",
     "TrainerRuntimeRoleInstruction",
     "TraumaMixin",
+    "VitalsProgressionContextInstruction",
+    "VitalsProgressionContractInstruction",
+    "VitalsProgressionRoleInstruction",
 ]
