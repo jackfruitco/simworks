@@ -64,14 +64,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "source",
-                    models.CharField(
-                        choices=[("ai", "AI"), ("instructor", "Instructor"), ("system", "System")],
-                        default="system",
-                        max_length=16,
-                    ),
-                ),
-                (
                     "supersedes_event",
                     models.ForeignKey(
                         blank=True,
@@ -81,7 +73,6 @@ class Migration(migrations.Migration):
                         to="trainerlab.abcevent",
                     ),
                 ),
-                ("is_active", models.BooleanField(default=True)),
             ],
             options={"abstract": False, "base_manager_name": "objects"},
         ),
