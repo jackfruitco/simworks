@@ -21,6 +21,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 import django  # noqa: E402
 from django.core.management import call_command  # noqa: E402
 
+os.environ["DJANGO_SKIP_READY"] = "1"
+
 django.setup()
 
 if __name__ == "__main__":
