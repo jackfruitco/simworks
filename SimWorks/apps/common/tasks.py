@@ -97,6 +97,7 @@ def drain_outbox(self):
                     "Failed to deliver outbox event %s: %s",
                     event.id,
                     e,
+                    exc_info=True,
                 )
                 event.increment_attempts()
 
@@ -104,6 +105,14 @@ def drain_outbox(self):
                 if event.delivery_attempts >= DRAIN_MAX_ATTEMPTS:
                     event.mark_failed(str(e))
                     failed_count += 1
+                    logger.error(
+                        "Outbox event %s (%s) permanently failed after %d attempts — "
+                        "manual intervention required.",
+                        event.id,
+                        event.event_type,
+                        DRAIN_MAX_ATTEMPTS,
+                        exc_info=True,
+                    )
 
         logger.info(
             "Outbox drain complete: %d delivered, %d failed",

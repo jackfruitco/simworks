@@ -24,31 +24,49 @@ from ninja.errors import HttpError
 import redis
 
 
-def get_redis_client() -> redis.Redis:
+def get_redis_client() -> redis.Redis | None:
     """Get Redis client for rate limiting.
 
     Uses Redis database 3 (after channels=0, celery broker=1, celery results=2).
+    Constructs connection from individual settings to avoid exposing the full
+    connection URL (which contains the password) in the settings namespace.
     """
-    redis_base = getattr(settings, "REDIS_BASE", None)
-    if redis_base:
-        return redis.from_url(f"{redis_base}/3")
+    hostname = getattr(settings, "REDIS_HOSTNAME", None)
+    if not hostname:
+        # Redis not configured; rate limiting unavailable
+        return None
 
-    # Fallback for development/testing without Redis
-    return None
+    port = getattr(settings, "REDIS_PORT", 6379)
+    password = getattr(settings, "REDIS_PASSWORD", None)
+    return redis.Redis(
+        host=hostname,
+        port=port,
+        password=password,
+        db=3,
+        socket_connect_timeout=2,
+    )
 
 
 def get_client_ip(request: HttpRequest) -> str:
     """Extract client IP address from request.
 
-    Handles X-Forwarded-For header for requests behind a proxy.
+    When DJANGO_BEHIND_PROXY is True, takes the *rightmost* IP from
+    X-Forwarded-For (appended by our trusted proxy, cannot be spoofed by the
+    client).  When not behind a proxy, uses REMOTE_ADDR directly and ignores
+    X-Forwarded-For entirely to prevent IP spoofing via header injection.
     """
-    x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-    if x_forwarded_for:
-        # Take the first IP in the chain (original client)
-        ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        ip = request.META.get("REMOTE_ADDR", "unknown")
-    return ip
+    from django.conf import settings as _settings
+
+    behind_proxy = getattr(_settings, "DJANGO_BEHIND_PROXY", False)
+
+    if behind_proxy:
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+        if x_forwarded_for:
+            # Rightmost entry is appended by our trusted proxy; cannot be
+            # spoofed by the client (who can only prepend to the chain).
+            return x_forwarded_for.split(",")[-1].strip()
+
+    return request.META.get("REMOTE_ADDR", "unknown")
 
 
 def get_rate_limit_key(
@@ -150,6 +168,7 @@ def rate_limit(
     limit: int = 100,
     period: int = 60,
     prefix: str | None = None,
+    fail_closed: bool = False,
 ):
     """Decorator to apply rate limiting to an API endpoint.
 
@@ -161,6 +180,8 @@ def rate_limit(
         limit: Maximum number of requests allowed in the period
         period: Time period in seconds (default: 60 = 1 minute)
         prefix: Optional prefix for the rate limit key (defaults to function name)
+        fail_closed: If True, return 503 when Redis is unavailable instead of
+            allowing the request through (recommended for auth endpoints).
 
     Returns:
         Decorated function that checks rate limits before execution
@@ -177,14 +198,19 @@ def rate_limit(
             # Get or create Redis client
             redis_client = get_redis_client()
 
-            # If Redis is not available, skip rate limiting (fail open)
+            # Redis not configured (dev/test): rate limiting is disabled, always allow
             if redis_client is None:
                 return func(request, *args, **kwargs)
 
             try:
                 redis_client.ping()
-            except redis.ConnectionError:
-                # Redis unavailable, fail open
+            except redis.ConnectionError as exc:
+                # Redis is configured but unreachable (production outage).
+                # Fail closed on auth endpoints to prevent brute-force during outage.
+                if fail_closed:
+                    raise HttpError(
+                        503, "Service temporarily unavailable. Please try again later."
+                    ) from exc
                 return func(request, *args, **kwargs)
 
             # Generate rate limit key
@@ -232,6 +258,7 @@ auth_rate_limit = rate_limit(
     limit=_get_limit("RATE_LIMIT_AUTH_REQUESTS", 5),
     period=60,
     prefix="auth",
+    fail_closed=True,
 )
 message_rate_limit = rate_limit(
     key="user",

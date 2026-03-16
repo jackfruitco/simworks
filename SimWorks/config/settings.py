@@ -36,7 +36,9 @@ from .task_settings import (
     CELERY_ACCEPT_CONTENT,
     CELERY_BEAT_SCHEDULER,
     CELERY_BROKER_URL,
+    CELERY_RESULT_ACCEPT_CONTENT,
     CELERY_RESULT_BACKEND,
+    CELERY_RESULT_SERIALIZER,
     CELERY_TASK_SERIALIZER,
     CELERY_TASK_SOFT_TIME_LIMIT,
     CELERY_TASK_TIME_LIMIT,
@@ -46,7 +48,6 @@ from .task_settings import (
     RATE_LIMIT_API_REQUESTS,
     RATE_LIMIT_AUTH_REQUESTS,
     RATE_LIMIT_MESSAGE_REQUESTS,
-    REDIS_BASE,
     REDIS_HOSTNAME,
     REDIS_PASSWORD,
     REDIS_PORT,
@@ -60,10 +61,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key claimed in production secret!
-SECRET_KEY = os.getenv(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-y2g6+*cy9ia-!v&m_s40_m%294oyunrhd3m79(jqwxek_--d(7",
-)
+SECRET_KEY = check_env("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = bool_from_env("DJANGO_DEBUG", default=False)
@@ -152,7 +150,7 @@ elif db_engine == "postgresql":
             "ENGINE": "django.db.backends.postgresql",
             "NAME": os.getenv("POSTGRES_DB", "AppDatabase"),
             "USER": os.getenv("POSTGRES_USER", "appuser"),
-            "PASSWORD": os.getenv("POSTGRES_PASSWORD"),
+            "PASSWORD": check_env("POSTGRES_PASSWORD"),
             "HOST": os.getenv("POSTGRES_HOST", "db"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
         }
@@ -160,7 +158,10 @@ elif db_engine == "postgresql":
 else:
     raise ValueError(f"Unsupported database engine: {db_engine}")
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+EMAIL_BACKEND = check_env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
 
 # CORS
 CORS_ALLOWED_ORIGINS = check_env("DJANGO_CORS_ALLOWED_ORIGINS", default=CSRF_TRUSTED_ORIGINS)
@@ -176,7 +177,7 @@ ORCHESTRAI = {
 }
 
 # JWT Configuration (for mobile API clients)
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
+JWT_SECRET_KEY = check_env("JWT_SECRET_KEY")
 JWT_ACCESS_TOKEN_LIFETIME = int_from_env("JWT_ACCESS_TOKEN_LIFETIME", default=3600, minimum=1)
 JWT_REFRESH_TOKEN_LIFETIME = int_from_env("JWT_REFRESH_TOKEN_LIFETIME", default=604800, minimum=1)
 
@@ -212,3 +213,19 @@ SITE_ADMIN = {
 }
 
 CSRF_FAILURE_VIEW = "apps.common.views.csrf_failure"
+
+# Production safety guards
+if not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+
+    if CORS_ALLOW_ALL_ORIGINS:
+        raise ImproperlyConfigured(
+            "CORS_ALLOW_ALL_ORIGINS must not be True in production. "
+            "Set DJANGO_CORS_ALLOW_ALL_ORIGINS=false or remove the variable."
+        )
+
+    if EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
+        raise ImproperlyConfigured(
+            "Console email backend is not suitable for production. "
+            "Set EMAIL_BACKEND to a real backend (e.g. django.core.mail.backends.smtp.EmailBackend)."
+        )

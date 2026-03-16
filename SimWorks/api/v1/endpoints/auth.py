@@ -121,16 +121,16 @@ def obtain_token(request: HttpRequest, body: LoginRequest) -> TokenResponse:
     user = authenticate(request, username=body.email, password=body.password)
 
     if user is None:
-        logger.warning("auth.login_failed", email=body.email, reason="invalid_credentials")
+        logger.warning("auth.login_failed", reason="invalid_credentials")
         raise HttpError(401, "Invalid credentials")
 
     if not user.is_active:
         # Use same error message to prevent user enumeration
-        logger.warning("auth.login_failed", email=body.email, reason="user_inactive")
+        logger.warning("auth.login_failed", reason="user_inactive")
         raise HttpError(401, "Invalid credentials")
 
     tokens = create_tokens(user)
-    logger.info("auth.tokens_issued", user_id=user.pk, email=user.email)
+    logger.info("auth.tokens_issued", user_id=user.pk)
 
     return TokenResponse(**tokens)
 

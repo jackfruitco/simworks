@@ -3,6 +3,8 @@ import logging
 import os
 from typing import Any
 
+from django.core.exceptions import ImproperlyConfigured
+
 _SENTINEL = object()
 
 
@@ -21,8 +23,10 @@ def check_env(var_name, default=_SENTINEL):
     except KeyError:
         if default is not _SENTINEL:
             return default
-        # TODO re-enable check_env error
-        # raise ImproperlyConfigured(error_msg)
+        raise ImproperlyConfigured(
+            f"Required environment variable '{var_name}' is not set. "
+            f"Please set it in your environment or .env file."
+        ) from None
 
 
 def coerce_to_bool(value: str | bool | int) -> bool:

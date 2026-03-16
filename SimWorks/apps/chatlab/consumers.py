@@ -80,17 +80,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         is_authenticated = bool(scope_user and getattr(scope_user, "is_authenticated", False))
         is_owner = bool(is_authenticated and self.simulation.user_id == scope_user.id)
         if not is_owner:
+            # Accept is required by the WebSocket protocol before closing.
+            # No data is sent to avoid leaking information about simulation
+            # existence or ownership to unauthorized callers.
             await self.accept()
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "type": "error",
-                        "message": "You do not have access to this simulation.",
-                        "redirect": reverse("chatlab:index"),
-                    },
-                    default=json_default,
-                )
-            )
             await self.close(code=4403)
             return
 
@@ -173,7 +166,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         func_name = inspect.currentframe().f_code.co_name
         # Parse the incoming data first
-        data = json.loads(text_data)
+        try:
+            data = json.loads(text_data)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Received invalid JSON from WebSocket client")
+            await self.send(
+                text_data=json.dumps({"type": "error", "message": "Invalid message format"})
+            )
+            return
         event_type = data.get("type")
         ChatConsumer.log(func_name, f"{event_type} event received: {data}")
 
