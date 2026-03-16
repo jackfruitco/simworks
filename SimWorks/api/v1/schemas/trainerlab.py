@@ -6,7 +6,6 @@ from typing import Any, Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from apps.trainerlab.injury_dictionary import (
-    normalize_injury_category,
     normalize_injury_kind,
     normalize_injury_location,
 )
@@ -80,10 +79,6 @@ class SteerPromptIn(BaseModel):
 
 
 class InjuryCreateIn(BaseModel):
-    injury_category: str = Field(
-        ...,
-        description="Injury category code or friendly label (normalized to canonical code)",
-    )
     injury_location: str = Field(
         ...,
         description="Injury location code or friendly label (normalized to canonical code)",
@@ -93,12 +88,25 @@ class InjuryCreateIn(BaseModel):
         description="Injury kind code or friendly label (normalized to canonical code)",
     )
     injury_description: str
-    parent_injury_id: int | None = None
-    supersedes_event_id: int | None = None
+    march_category: str = Field(
+        ...,
+        description="MARCH triage category code (M, A, R, C, H1, H2, PC)",
+    )
+    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    description: str = Field(
+        default="",
+        description="Optional plain-text problem description (supplements injury_description)",
+    )
+    supersedes_event_id: int | None = Field(
+        default=None,
+        description="ID of the Problem being superseded by this new injury record",
+    )
 
-    @field_validator("injury_category")
+    @field_validator("march_category")
     @classmethod
-    def _normalize_injury_category(cls, value: str) -> str:
+    def _normalize_march_category(cls, value: str) -> str:
+        from apps.trainerlab.injury_dictionary import normalize_injury_category
+
         return normalize_injury_category(value)
 
     @field_validator("injury_location")
@@ -119,9 +127,22 @@ class IllnessCreateIn(BaseModel):
     description: str = Field(
         default="", validation_alias=AliasChoices("illness_description", "description")
     )
+    march_category: str = Field(
+        ...,
+        description="MARCH triage category (R, C, etc.) that this illness maps to",
+    )
     severity: Literal["low", "moderate", "high", "critical"] = "moderate"
-    is_resolved: bool = False
-    supersedes_event_id: int | None = None
+    supersedes_event_id: int | None = Field(
+        default=None,
+        description="ID of the Problem being superseded by this new illness record",
+    )
+
+    @field_validator("march_category")
+    @classmethod
+    def _normalize_march_category(cls, value: str) -> str:
+        from apps.trainerlab.injury_dictionary import normalize_injury_category
+
+        return normalize_injury_category(value)
 
 
 class InterventionDetailsIn(BaseModel):
@@ -140,7 +161,7 @@ class InterventionCreateIn(BaseModel):
         ...,
         description="Intervention site code or friendly label, normalized per intervention type",
     )
-    target_injury_id: int | None = None
+    target_problem_id: int | None = None
     status: Literal["applied", "adjusted", "reassessed", "removed"] = "applied"
     effectiveness: Literal[
         "unknown",
@@ -236,16 +257,19 @@ class RunSummaryOut(BaseModel):
 
 class RuntimeConditionStateOut(BaseModel):
     domain_event_id: int | None = None
-    kind: Literal["injury", "illness"]
+    kind: Literal["injury", "illness", "other"]
     label: str
     status: str
     source: str | None = None
     timestamp: str | None = None
-    injury_category: str | None = None
+    march_category: str | None = None
     injury_location: str | None = None
     injury_kind: str | None = None
     description: str | None = None
     severity: str | None = None
+    is_treated: bool = False
+    is_resolved: bool = False
+    control_state: str = "uncontrolled"
 
 
 class RuntimeInterventionStateOut(BaseModel):

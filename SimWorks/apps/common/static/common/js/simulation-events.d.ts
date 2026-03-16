@@ -222,18 +222,26 @@ export interface TrainerLabDomainEventBase {
     timestamp: string;
 }
 
-export interface TrainerLabInjuryFields {
-    injury_id: number;
-    parent_injury_id?: number | null;
-    injury_category: string;
-    injury_location: string;
-    injury_kind: string;
-    injury_description?: string;
+export interface TrainerLabConditionFields {
+    problem_id: number;
+    cause_event_id?: number | null;
+    kind: 'injury' | 'illness' | 'other';
+    label?: string;
+    march_category: string;
+    march_category_label?: string;
+    severity?: 'low' | 'moderate' | 'high' | 'critical';
     is_treated?: boolean;
     is_resolved?: boolean;
-    injury_category_label?: string;
+    control_state?: 'uncontrolled' | 'controlled' | 'resolved';
+    description?: string;
+    // injury-specific fields (present when kind='injury')
+    injury_location?: string;
+    injury_kind?: string;
     injury_location_label?: string;
     injury_kind_label?: string;
+    // illness-specific fields (present when kind='illness')
+    name?: string;
+    illness_description?: string;
 }
 
 export interface InterventionDetailsBase {
@@ -292,19 +300,11 @@ export interface TrainerLabInterventionFields {
     intervention_label?: string;
     site_code: string;
     site_label?: string;
-    target_injury_id?: number | null;
+    target_problem_id?: number | null;
     status: 'applied' | 'adjusted' | 'reassessed' | 'removed';
     effectiveness: 'unknown' | 'effective' | 'partially_effective' | 'ineffective';
     notes?: string;
     details: InterventionDetails;
-}
-
-export interface TrainerLabIllnessFields {
-    illness_id: number;
-    name: string;
-    description?: string;
-    severity: 'low' | 'moderate' | 'high' | 'critical';
-    is_resolved?: boolean;
 }
 
 export interface TrainerLabVitalFields {
@@ -317,19 +317,9 @@ export interface TrainerLabVitalFields {
     max_value_diastolic?: number;
 }
 
-export interface TrainerLabConditionCreatedInjuryEvent extends TrainerLabDomainEventBase, TrainerLabInjuryFields {
+export interface TrainerLabConditionCreatedEvent extends TrainerLabDomainEventBase, TrainerLabConditionFields {
     type: 'trainerlab.condition.created';
-    event_kind: 'injury';
-    condition_kind: 'injury';
-    origin?: string;
-    call_id?: string;
-    correlation_id?: string | null;
-}
-
-export interface TrainerLabConditionCreatedIllnessEvent extends TrainerLabDomainEventBase, TrainerLabIllnessFields {
-    type: 'trainerlab.condition.created';
-    event_kind: 'illness';
-    condition_kind: 'illness';
+    event_kind: 'condition';
     origin?: string;
     call_id?: string;
     correlation_id?: string | null;
@@ -343,14 +333,9 @@ export interface TrainerLabVitalCreatedEvent extends TrainerLabDomainEventBase, 
     correlation_id?: string | null;
 }
 
-export interface TrainerLabEventCreatedInjuryEvent extends TrainerLabDomainEventBase, TrainerLabInjuryFields {
+export interface TrainerLabEventCreatedConditionEvent extends TrainerLabDomainEventBase, TrainerLabConditionFields {
     type: 'trainerlab.event.created';
-    event_kind: 'injury';
-}
-
-export interface TrainerLabEventCreatedIllnessEvent extends TrainerLabDomainEventBase, TrainerLabIllnessFields {
-    type: 'trainerlab.event.created';
-    event_kind: 'illness';
+    event_kind: 'condition';
 }
 
 export interface TrainerLabEventCreatedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabInterventionFields {
@@ -385,11 +370,9 @@ export type SimulationEvent =
     | FeedbackCreatedEvent
     | FeedbackContinuationEvent
     | MetadataResultsCreatedEvent
-    | TrainerLabConditionCreatedInjuryEvent
-    | TrainerLabConditionCreatedIllnessEvent
+    | TrainerLabConditionCreatedEvent
     | TrainerLabVitalCreatedEvent
-    | TrainerLabEventCreatedInjuryEvent
-    | TrainerLabEventCreatedIllnessEvent
+    | TrainerLabEventCreatedConditionEvent
     | TrainerLabEventCreatedInterventionEvent
     | TrainerLabEventCreatedVitalEvent;
 

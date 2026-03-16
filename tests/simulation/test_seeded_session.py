@@ -69,7 +69,8 @@ def _make_initial_payload() -> dict:
         "conditions": [
             {
                 "kind": "injury",
-                "injury_category": "M",
+                "march_category": "M",
+                "severity": "moderate",
                 "injury_location": "HLA",
                 "injury_kind": "LAC",
                 "injury_description": "Scalp laceration with active bleeding",
@@ -78,6 +79,7 @@ def _make_initial_payload() -> dict:
                 "kind": "illness",
                 "name": "Heat exhaustion",
                 "description": "Signs of heat stress present",
+                "march_category": "H1",
                 "severity": "moderate",
             },
         ],
@@ -175,11 +177,11 @@ class TestSeededSessionEmitsEvents:
 
         vital_events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="trainerlab.vital.created",
+            event_type="vital.created",
         ).count()
         condition_events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type__in=["trainerlab.injury.created", "trainerlab.illness.created"],
+            event_type="condition.created",
         ).count()
 
         assert vital_events >= 1, "At least one vital event must exist after seeding"
@@ -275,7 +277,7 @@ class TestEmitSeededVitalEvents:
 
         events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="trainerlab.vital.created",
+            event_type="vital.created",
         )
         assert events.count() >= 1
 
@@ -303,7 +305,7 @@ class TestEmitSeededVitalEvents:
 
         events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type__in=["trainerlab.injury.created", "trainerlab.illness.created"],
+            event_type="condition.created",
         )
         assert events.count() >= 1
 

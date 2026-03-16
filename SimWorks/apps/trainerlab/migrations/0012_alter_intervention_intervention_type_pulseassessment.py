@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("trainerlab", "0011_remove_intervention_invalid_indexes"),
+        ("trainerlab", "0001_initial"),
     ]
 
     operations = [
@@ -124,15 +124,7 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
-            options={
-                "constraints": [
-                    models.UniqueConstraint(
-                        condition=models.Q(("is_active", True)),
-                        fields=("simulation", "location"),
-                        name="pulse_one_active_per_location",
-                    )
-                ],
-            },
+            options={},
             bases=("trainerlab.abcevent",),
         ),
     ]

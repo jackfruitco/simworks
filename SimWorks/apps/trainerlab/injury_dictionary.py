@@ -79,15 +79,15 @@ def _build_choice_index(*, field_name: str, choices: list[tuple[str, str]]) -> _
 
 
 def _build_integrity_warnings() -> tuple[str, ...]:
-    from apps.trainerlab.models import Injury
+    from apps.trainerlab.models import Problem
 
     warnings: list[str] = []
-    for member in Injury.InjuryCategory:
+    for member in Problem.MARCHCategory:
         if "_" in member.name:
             continue
         if len(member.name) <= 4 and member.name != member.value:
             warnings.append(
-                "InjuryCategory member "
+                "MARCHCategory member "
                 f"{member.name!r} maps to code {member.value!r}; review intent."
             )
     return tuple(warnings)
@@ -95,11 +95,11 @@ def _build_integrity_warnings() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def _build_bundle() -> _InjuryMappingBundle:
-    from apps.trainerlab.models import Injury
+    from apps.trainerlab.models import Injury, Problem
 
     category = _build_choice_index(
-        field_name="injury_category",
-        choices=[(str(code), str(label)) for code, label in Injury.InjuryCategory.choices],
+        field_name="march_category",
+        choices=[(str(code), str(label)) for code, label in Problem.MARCHCategory.choices],
     )
     location = _build_choice_index(
         field_name="injury_location",
@@ -179,9 +179,9 @@ def build_injury_codebook_instruction() -> str:
     kinds = _format_codebook_pairs(choices["kinds"])
     return (
         "### Injury Codebook\n"
-        "- Return canonical codes for `injury_category`, `injury_location`, and `injury_kind`.\n"
+        "- Return canonical codes for `march_category`, `injury_location`, and `injury_kind`.\n"
         "- You may reason with friendly labels, but your final output must use codes.\n"
-        f"- `injury_category` codes: {categories}\n"
+        f"- `march_category` codes: {categories}\n"
         f"- `injury_location` codes: {regions}\n"
         f"- `injury_kind` codes: {kinds}\n"
     )

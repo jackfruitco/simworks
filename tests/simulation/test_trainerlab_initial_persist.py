@@ -12,6 +12,7 @@ from apps.trainerlab.models import (
     HeartRate,
     Illness,
     Injury,
+    Problem,
     PulseAssessment,
     RespiratoryRate,
     ScenarioBrief,
@@ -94,7 +95,8 @@ def _initial_payload(
         "conditions": [
             {
                 "kind": "injury",
-                "injury_category": "M",
+                "march_category": "M",
+                "severity": "moderate",
                 "injury_location": "HLA",
                 "injury_kind": "LAC",
                 "injury_description": "Scalp laceration",
@@ -103,6 +105,7 @@ def _initial_payload(
                 "kind": "illness",
                 "name": "Heat illness",
                 "description": "Heat stress signs present",
+                "march_category": "H1",
                 "severity": "high",
             },
         ],
@@ -174,9 +177,16 @@ class TestTrainerLabInitialPersistence:
         assert await Injury.objects.filter(simulation_id=context.simulation_id).acount() == 1
         persisted_injury = await Injury.objects.filter(simulation_id=context.simulation_id).afirst()
         assert persisted_injury is not None
-        assert persisted_injury.injury_category == "M"
         assert persisted_injury.injury_location == "HLA"
         assert persisted_injury.injury_kind == "LAC"
+        # march_category and severity are on the Problem record, not the Injury cause
+        problem = await Problem.objects.filter(
+            simulation_id=context.simulation_id, problem_kind="injury"
+        ).afirst()
+        assert problem is not None
+        assert problem.march_category == "M"
+        assert problem.cause_id == persisted_injury.id
+        assert await Problem.objects.filter(simulation_id=context.simulation_id).acount() == 2
         assert await Illness.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert await HeartRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert (
@@ -189,6 +199,23 @@ class TestTrainerLabInitialPersistence:
             == 1
         )
         assert await BloodPressure.objects.filter(simulation_id=context.simulation_id).acount() == 1
+
+    async def test_problem_records_created_for_each_condition(self, context):
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+        await persist_schema(schema, context)
+
+        problems = Problem.objects.filter(simulation_id=context.simulation_id)
+        assert await problems.acount() == 2
+
+        injury_problem = await problems.filter(problem_kind="injury").afirst()
+        assert injury_problem is not None
+        assert injury_problem.march_category == "M"
+        assert injury_problem.severity == "moderate"
+
+        illness_problem = await problems.filter(problem_kind="illness").afirst()
+        assert illness_problem is not None
+        assert illness_problem.march_category == "H1"
+        assert illness_problem.severity == "high"
 
     async def test_persists_pulse_assessments(self, context):
         schema = InitialScenarioSchema.model_validate(_initial_payload())
@@ -286,7 +313,7 @@ class TestTrainerLabInitialPersistence:
 
     async def test_accepts_friendly_injury_labels_and_normalizes_to_codes(self, context):
         payload = _initial_payload()
-        payload["conditions"][0]["injury_category"] = "massive hemorrhage"
+        payload["conditions"][0]["march_category"] = "massive hemorrhage"
         payload["conditions"][0]["injury_location"] = "  left anterior head "
         payload["conditions"][0]["injury_kind"] = "laceration"
 
@@ -295,9 +322,13 @@ class TestTrainerLabInitialPersistence:
 
         injury = await Injury.objects.filter(simulation_id=context.simulation_id).afirst()
         assert injury is not None
-        assert injury.injury_category == "M"
         assert injury.injury_location == "HLA"
         assert injury.injury_kind == "LAC"
+        problem = await Problem.objects.filter(
+            simulation_id=context.simulation_id, problem_kind="injury"
+        ).afirst()
+        assert problem is not None
+        assert problem.march_category == "M"
 
     async def test_scenario_brief_persisted_as_abc_event(self, context):
         schema = InitialScenarioSchema.model_validate(_initial_payload())

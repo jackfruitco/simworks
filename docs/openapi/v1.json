@@ -4689,7 +4689,8 @@
           "kind": {
             "enum": [
               "injury",
-              "illness"
+              "illness",
+              "other"
             ],
             "title": "Kind",
             "type": "string"
@@ -4724,7 +4725,7 @@
             ],
             "title": "Timestamp"
           },
-          "injury_category": {
+          "march_category": {
             "anyOf": [
               {
                 "type": "string"
@@ -4733,7 +4734,7 @@
                 "type": "null"
               }
             ],
-            "title": "Injury Category"
+            "title": "March Category"
           },
           "injury_location": {
             "anyOf": [
@@ -4778,6 +4779,21 @@
               }
             ],
             "title": "Severity"
+          },
+          "is_treated": {
+            "default": false,
+            "title": "Is Treated",
+            "type": "boolean"
+          },
+          "is_resolved": {
+            "default": false,
+            "title": "Is Resolved",
+            "type": "boolean"
+          },
+          "control_state": {
+            "default": "uncontrolled",
+            "title": "Control State",
+            "type": "string"
           }
         },
         "required": [
@@ -5429,11 +5445,6 @@
       },
       "InjuryCreateIn": {
         "properties": {
-          "injury_category": {
-            "description": "Injury category code or friendly label (normalized to canonical code)",
-            "title": "Injury Category",
-            "type": "string"
-          },
           "injury_location": {
             "description": "Injury location code or friendly label (normalized to canonical code)",
             "title": "Injury Location",
@@ -5448,16 +5459,27 @@
             "title": "Injury Description",
             "type": "string"
           },
-          "parent_injury_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
+          "march_category": {
+            "description": "MARCH triage category code (M, A, R, C, H1, H2, PC)",
+            "title": "March Category",
+            "type": "string"
+          },
+          "severity": {
+            "default": "moderate",
+            "enum": [
+              "low",
+              "moderate",
+              "high",
+              "critical"
             ],
-            "title": "Parent Injury Id"
+            "title": "Severity",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "Optional plain-text problem description (supplements injury_description)",
+            "title": "Description",
+            "type": "string"
           },
           "supersedes_event_id": {
             "anyOf": [
@@ -5468,14 +5490,15 @@
                 "type": "null"
               }
             ],
+            "description": "ID of the Problem being superseded by this new injury record",
             "title": "Supersedes Event Id"
           }
         },
         "required": [
-          "injury_category",
           "injury_location",
           "injury_kind",
-          "injury_description"
+          "injury_description",
+          "march_category"
         ],
         "title": "InjuryCreateIn",
         "type": "object"
@@ -5491,6 +5514,11 @@
             "title": "Illness Description",
             "type": "string"
           },
+          "march_category": {
+            "description": "MARCH triage category (R, C, etc.) that this illness maps to",
+            "title": "March Category",
+            "type": "string"
+          },
           "severity": {
             "default": "moderate",
             "enum": [
@@ -5502,11 +5530,6 @@
             "title": "Severity",
             "type": "string"
           },
-          "is_resolved": {
-            "default": false,
-            "title": "Is Resolved",
-            "type": "boolean"
-          },
           "supersedes_event_id": {
             "anyOf": [
               {
@@ -5516,11 +5539,13 @@
                 "type": "null"
               }
             ],
+            "description": "ID of the Problem being superseded by this new illness record",
             "title": "Supersedes Event Id"
           }
         },
         "required": [
-          "illness_name"
+          "illness_name",
+          "march_category"
         ],
         "title": "IllnessCreateIn",
         "type": "object"
@@ -5537,7 +5562,7 @@
             "title": "Site Code",
             "type": "string"
           },
-          "target_injury_id": {
+          "target_problem_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -5546,7 +5571,7 @@
                 "type": "null"
               }
             ],
-            "title": "Target Injury Id"
+            "title": "Target Problem Id"
           },
           "status": {
             "default": "applied",

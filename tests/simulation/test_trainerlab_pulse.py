@@ -310,7 +310,8 @@ def _full_initial_payload() -> dict:
         "conditions": [
             {
                 "kind": "injury",
-                "injury_category": "M",
+                "march_category": "M",
+                "severity": "moderate",
                 "injury_location": "HLA",
                 "injury_kind": "LAC",
                 "injury_description": "Test laceration",

@@ -101,10 +101,11 @@ class InitialScenarioSchema(StrictBaseModel):
 
     async def post_persist(self, results: dict[str, Any], context: "PersistContext") -> None:
         from apps.common.outbox.helpers import broadcast_domain_objects
+        from apps.trainerlab.models import EventSource, Problem
         from apps.trainerlab.services import refresh_projection_from_domain_state
 
         scenario_brief_obj = results.get("scenario_brief")
-        conditions = results.get("conditions", [])
+        cause_objects = results.get("conditions", [])
         measurements = results.get("measurements", {})
         pulses = results.get("pulses", [])
 
@@ -124,6 +125,25 @@ class InitialScenarioSchema(StrictBaseModel):
 
         extra = _initial_extra(context)
 
+        # Create Problem records for each persisted cause (Injury/Illness).
+        # The Pydantic schema items carry march_category and severity which are
+        # Problem-level attributes; they were intentionally ignored by the ORM
+        # auto-mapper when creating the cause records.
+        problem_objects: list[Any] = []
+        cause_by_problem_id: dict[Any, Any] = {}
+        for schema_item, cause_obj in zip(self.conditions, cause_objects, strict=False):
+            problem_kind = schema_item.kind  # "injury" or "illness"
+            problem = await Problem.objects.acreate(
+                simulation_id=context.simulation_id,
+                source=EventSource.SYSTEM,
+                cause=cause_obj,
+                problem_kind=problem_kind,
+                march_category=schema_item.march_category,
+                severity=schema_item.severity,
+            )
+            problem_objects.append(problem)
+            cause_by_problem_id[problem.id] = cause_obj
+
         if scenario_brief_obj is not None:
             await broadcast_domain_objects(
                 event_type="trainerlab.scenario_brief.created",
@@ -132,12 +152,14 @@ class InitialScenarioSchema(StrictBaseModel):
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
             )
 
-        if conditions:
+        if problem_objects:
             await broadcast_domain_objects(
                 event_type="trainerlab.condition.created",
-                objects=conditions,
+                objects=problem_objects,
                 context=context,
-                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+                payload_builder=lambda obj: serialize_domain_event(
+                    obj, extra=extra, cause=cause_by_problem_id.get(obj.id)
+                ),
             )
 
         if vital_objects:
