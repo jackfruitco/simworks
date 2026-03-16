@@ -53,7 +53,7 @@ class Command(BaseCommand):
             try:
                 import yaml
 
-                output = yaml.dump(schema, default_flow_style=False, sort_keys=False)
+                output = yaml.safe_dump(schema, default_flow_style=False, sort_keys=False)
             except ImportError as err:
                 raise CommandError(
                     "PyYAML is required for YAML output. Install with: uv add pyyaml"
