@@ -1954,15 +1954,22 @@ def emit_intervention_assessed(
     if intervention is None:
         return
 
+    target_condition_id: int | None = None
     target_condition_label: str | None = None
     target_condition_control_state: str | None = None
-    if intervention.target_injury_id:
-        target = Injury.objects.filter(pk=intervention.target_injury_id).first()
-        if target:
-            target_condition_label = target.injury_description
-            if target.is_resolved:
+    if intervention.target_problem_id:
+        problem = Problem.objects.filter(pk=intervention.target_problem_id).first()
+        if problem:
+            target_condition_id = problem.pk
+            # Derive label from the underlying cause (Injury/Illness)
+            cause = problem.cause
+            if cause:
+                injury = Injury.objects.filter(pk=cause.pk).first()
+                if injury:
+                    target_condition_label = injury.injury_description
+            if problem.is_resolved:
                 target_condition_control_state = "resolved"
-            elif target.is_treated:
+            elif problem.is_treated:
                 target_condition_control_state = "controlled"
             else:
                 target_condition_control_state = "uncontrolled"
@@ -1977,7 +1984,7 @@ def emit_intervention_assessed(
             "effectiveness": effectiveness,
             "clinical_effect": clinical_effect,
             "status": status,
-            "target_condition_id": intervention.target_injury_id,
+            "target_condition_id": target_condition_id,
             "target_condition_label": target_condition_label,
             "target_condition_control_state": target_condition_control_state,
         },
