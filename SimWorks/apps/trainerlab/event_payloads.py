@@ -143,10 +143,9 @@ def _serialize_vital_event(obj: ABCEvent) -> dict[str, Any]:
     return payload
 
 
-def _serialize_problem_with_cause(obj: Problem) -> dict[str, Any]:
+def _serialize_problem_with_cause(obj: Problem, cause: ABCEvent | None = None) -> dict[str, Any]:
     """Serialize a Problem domain event, resolving its cause for extra fields."""
-    cause: ABCEvent | None = None
-    if obj.cause_id:
+    if cause is None and obj.cause_id:
         cause = ABCEvent.objects.filter(pk=obj.cause_id).first()
     base = {
         **_base_domain_event_payload(obj),
@@ -187,9 +186,10 @@ def serialize_domain_event(
     obj: ABCEvent,
     *,
     extra: Mapping[str, Any] | None = None,
+    cause: ABCEvent | None = None,
 ) -> dict[str, Any]:
     if isinstance(obj, Problem):
-        payload = _serialize_problem_with_cause(obj)
+        payload = _serialize_problem_with_cause(obj, cause)
     elif isinstance(obj, Injury):
         # Injury as a standalone cause (not wrapped in Problem) — rare path for direct
         # cause serialization (e.g. audit trails).

@@ -117,6 +117,7 @@ class InitialScenarioSchema(StrictBaseModel):
         # Problem-level attributes; they were intentionally ignored by the ORM
         # auto-mapper when creating the cause records.
         problem_objects: list[Any] = []
+        cause_by_problem_id: dict[Any, Any] = {}
         for schema_item, cause_obj in zip(self.conditions, cause_objects, strict=False):
             problem_kind = schema_item.kind  # "injury" or "illness"
             problem = await Problem.objects.acreate(
@@ -128,10 +129,11 @@ class InitialScenarioSchema(StrictBaseModel):
                 severity=schema_item.severity,
             )
             problem_objects.append(problem)
+            cause_by_problem_id[problem.id] = cause_obj
 
         if scenario_brief_obj is not None:
             await broadcast_domain_objects(
-                event_type="scenario_brief.created",
+                event_type="trainerlab.scenario_brief.created",
                 objects=[scenario_brief_obj],
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
@@ -139,15 +141,17 @@ class InitialScenarioSchema(StrictBaseModel):
 
         if problem_objects:
             await broadcast_domain_objects(
-                event_type="condition.created",
+                event_type="trainerlab.condition.created",
                 objects=problem_objects,
                 context=context,
-                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+                payload_builder=lambda obj: serialize_domain_event(
+                    obj, extra=extra, cause=cause_by_problem_id.get(obj.id)
+                ),
             )
 
         if vital_objects:
             await broadcast_domain_objects(
-                event_type="vital.created",
+                event_type="trainerlab.vital.created",
                 objects=vital_objects,
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),

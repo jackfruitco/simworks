@@ -228,6 +228,7 @@ export interface TrainerLabConditionFields {
     kind: 'injury' | 'illness' | 'other';
     label?: string;
     march_category: string;
+    march_category_label?: string;
     severity?: 'low' | 'moderate' | 'high' | 'critical';
     is_treated?: boolean;
     is_resolved?: boolean;
