@@ -198,16 +198,15 @@ def rate_limit(
             # Get or create Redis client
             redis_client = get_redis_client()
 
-            # If Redis is not available, either fail closed (503) or skip (fail open)
+            # Redis not configured (dev/test): rate limiting is disabled, always allow
             if redis_client is None:
-                if fail_closed:
-                    raise HttpError(503, "Service temporarily unavailable. Please try again later.")
                 return func(request, *args, **kwargs)
 
             try:
                 redis_client.ping()
             except redis.ConnectionError as exc:
-                # Redis unavailable
+                # Redis is configured but unreachable (production outage).
+                # Fail closed on auth endpoints to prevent brute-force during outage.
                 if fail_closed:
                     raise HttpError(
                         503, "Service temporarily unavailable. Please try again later."
