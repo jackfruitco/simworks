@@ -39,6 +39,7 @@ def test_user(django_user_model):
     )
 
 
+@pytest.mark.django_db
 class TestTokenGeneration:
     """Tests for JWT token generation."""
 
@@ -87,6 +88,7 @@ class TestTokenGeneration:
         assert isinstance(tokens["expires_in"], int)
 
 
+@pytest.mark.django_db
 class TestTokenValidation:
     """Tests for JWT token validation."""
 
@@ -149,6 +151,7 @@ class TestTokenValidation:
             decode_refresh_token(token)
 
 
+@pytest.mark.django_db
 class TestTokenRefresh:
     """Tests for token refresh flow."""
 
