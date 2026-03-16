@@ -13,6 +13,9 @@ from orchestrai_django.decorators import orca
 
 @orca.instruction(order=0)
 class PatientNameInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "patient"
+
     async def render_instruction(self) -> str:
         simulation = self.context.get("simulation")
         simulation_id = self.context.get("simulation_id")
@@ -47,6 +50,9 @@ class PatientNameInstruction(BaseInstruction):
 
 @orca.instruction(order=80)
 class PatientRecentScenarioHistoryInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "patient"
+
     async def _aget_simulation(self):
         simulation = self.context.get("simulation")
         if simulation is not None:

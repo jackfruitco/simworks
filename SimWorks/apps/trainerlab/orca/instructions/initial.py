@@ -18,5 +18,7 @@ __all__ = [
 
 @orca.instruction(order=15)
 class InjuryCodebookMixin(NsMixin, BaseInstruction):
+    group = "initial"
+
     def render_instruction(self) -> str:
         return build_injury_codebook_instruction()

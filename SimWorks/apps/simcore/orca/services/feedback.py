@@ -17,9 +17,9 @@ class GenerateInitialFeedback(FeedbackMixin, DjangoBaseService):
     """Generate the initial patient feedback using Pydantic AI."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "FeedbackInitialInstruction",
-        "FeedbackEducatorInstruction",
-        "MedicalAccuracyInstruction",
+        "simcore.feedback.FeedbackInitialInstruction",
+        "common.feedback.FeedbackEducatorInstruction",
+        "common.shared.MedicalAccuracyInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
@@ -34,8 +34,8 @@ class GenerateFeedbackContinuationReply(FeedbackMixin, DjangoBaseService):
     """Generate continuation feedback using Pydantic AI."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "FeedbackContinuationInstruction",
-        "FeedbackEducatorInstruction",
+        "simcore.feedback.FeedbackContinuationInstruction",
+        "common.feedback.FeedbackEducatorInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True

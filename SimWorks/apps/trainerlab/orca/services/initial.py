@@ -16,13 +16,13 @@ class GenerateInitialScenario(DjangoBaseService):
     """Generate an initial AI-generated Scenario for TrainerLab."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "BaseStitchPersona",
-        "TrainerLabMixin",
-        "InitialResponseMixin",
-        "InjuryCodebookMixin",
-        "MilitaryMedicMixin",
-        "TraumaMixin",
-        "CombatMixin",
+        "simcore.stitch.BaseStitchPersona",
+        "trainerlab.initial.TrainerLabMixin",
+        "trainerlab.initial.InitialResponseMixin",
+        "trainerlab.initial.InjuryCodebookMixin",
+        "trainerlab.modifier.MilitaryMedicMixin",
+        "trainerlab.modifier.TraumaMixin",
+        "trainerlab.modifier.CombatMixin",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True

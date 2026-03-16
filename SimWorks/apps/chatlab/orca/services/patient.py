@@ -15,13 +15,13 @@ class GenerateInitialResponse(DjangoBaseService):
     """Generate the initial patient response."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "PatientNameInstruction",
-        "CharacterConsistencyInstruction",
-        "PatientSafetyBoundariesInstruction",
-        "PatientConversationBehaviorInstruction",
-        "PatientSchemaContractInstruction",
-        "PatientRecentScenarioHistoryInstruction",
-        "PatientInitialDetailInstruction",
+        "chatlab.patient.PatientNameInstruction",
+        "common.shared.CharacterConsistencyInstruction",
+        "chatlab.patient.PatientSafetyBoundariesInstruction",
+        "chatlab.patient.PatientConversationBehaviorInstruction",
+        "chatlab.patient.PatientSchemaContractInstruction",
+        "chatlab.patient.PatientRecentScenarioHistoryInstruction",
+        "chatlab.patient.PatientInitialDetailInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
@@ -36,12 +36,12 @@ class GenerateReplyResponse(PreviousResponseMixin, DjangoBaseService):
     """Generate a reply to a user message."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "PatientNameInstruction",
-        "CharacterConsistencyInstruction",
-        "PatientSafetyBoundariesInstruction",
-        "PatientConversationBehaviorInstruction",
-        "PatientSchemaContractInstruction",
-        "PatientReplyDetailInstruction",
+        "chatlab.patient.PatientNameInstruction",
+        "common.shared.CharacterConsistencyInstruction",
+        "chatlab.patient.PatientSafetyBoundariesInstruction",
+        "chatlab.patient.PatientConversationBehaviorInstruction",
+        "chatlab.patient.PatientSchemaContractInstruction",
+        "chatlab.patient.PatientReplyDetailInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
@@ -78,7 +78,7 @@ class GenerateImageResponse(DjangoBaseService):
     """Generate a patient image via Pydantic AI."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "ImageGenerationInstruction",
+        "chatlab.image.ImageGenerationInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True

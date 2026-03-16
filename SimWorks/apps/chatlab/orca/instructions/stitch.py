@@ -13,6 +13,9 @@ from orchestrai_django.decorators import orca
 
 @orca.instruction(order=0)
 class StitchPersonaInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+
     async def render_instruction(self) -> str:
         simulation_id = self.context.get("simulation_id")
 
@@ -34,6 +37,9 @@ class StitchPersonaInstruction(BaseInstruction):
 
 @orca.instruction(order=60)
 class StitchConversationContextInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+
     async def render_instruction(self) -> str:
         simulation_id = self.context.get("simulation_id")
 

@@ -11,6 +11,9 @@ from orchestrai_django.decorators import orca
 
 @orca.instruction(order=0)
 class LabOrderPatientContextInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
+
     async def render_instruction(self) -> str:
         from apps.simcore.models import Simulation
 
@@ -39,6 +42,9 @@ class LabOrderPatientContextInstruction(BaseInstruction):
 
 @orca.instruction(order=10)
 class LabOrderTestListInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
+
     async def render_instruction(self) -> str:
         orders: list[str] = self.context.get("orders") or []
         if not orders:

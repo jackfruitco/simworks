@@ -15,12 +15,12 @@ class GenerateStitchReply(PreviousResponseMixin, DjangoBaseService):
     """Generate a reply from Stitch, the AI facilitator."""
 
     instruction_refs: ClassVar[list[str]] = [
-        "StitchPersonaInstruction",
-        "StitchRoleInstruction",
-        "StitchConversationContextInstruction",
-        "StitchDebriefInstruction",
-        "StitchSchemaContractInstruction",
-        "StitchToneInstruction",
+        "chatlab.stitch.StitchPersonaInstruction",
+        "chatlab.stitch.StitchRoleInstruction",
+        "chatlab.stitch.StitchConversationContextInstruction",
+        "chatlab.stitch.StitchDebriefInstruction",
+        "chatlab.stitch.StitchSchemaContractInstruction",
+        "chatlab.stitch.StitchToneInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = (
         "simulation_id",

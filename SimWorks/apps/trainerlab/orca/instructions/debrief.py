@@ -15,6 +15,8 @@ from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 @orca.instruction(order=40)
 class TrainerDebriefContextInstruction(NsMixin, BaseInstruction):
+    group = "debrief"
+
     def render_instruction(self) -> str:
         final_state = json.dumps(self.context.get("final_state", {}), sort_keys=True)
         timeline = json.dumps(self.context.get("timeline_highlights", []), sort_keys=True)

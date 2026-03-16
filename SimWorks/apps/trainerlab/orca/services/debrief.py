@@ -15,9 +15,9 @@ from orchestrai_django.decorators import orca
 @orca.service
 class GenerateTrainerRunDebrief(DjangoBaseService):
     instruction_refs: ClassVar[list[str]] = [
-        "TrainerDebriefRoleInstruction",
-        "TrainerDebriefContractInstruction",
-        "TrainerDebriefContextInstruction",
+        "trainerlab.debrief.TrainerDebriefRoleInstruction",
+        "trainerlab.debrief.TrainerDebriefContractInstruction",
+        "trainerlab.debrief.TrainerDebriefContextInstruction",
     ]
     required_context_keys = ("simulation_id", "session_id")
     use_native_output = True

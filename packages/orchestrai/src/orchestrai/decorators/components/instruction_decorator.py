@@ -50,6 +50,12 @@ class InstructionDecorator(BaseDecorator):
 
         cls.order = order
         cls.abstract = False
+        # Pin identity ``name`` to the raw class name so IdentityMixin never
+        # applies token stripping (e.g. "PatientNameInstruction" must not
+        # silently become "PatientName").  This keeps instruction_refs
+        # deterministic and matching the Python/YAML source exactly.
+        if not getattr(cls, "name", None):
+            cls.name = cls.__name__
 
     def register(self, candidate: type[Any]) -> None:
         if not issubclass(candidate, BaseInstruction):

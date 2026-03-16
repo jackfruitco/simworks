@@ -15,6 +15,8 @@ from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 @orca.instruction(order=40)
 class TrainerRuntimeContextInstruction(NsMixin, BaseInstruction):
+    group = "runtime"
+
     def render_instruction(self) -> str:
         snapshot = json.dumps(self.context.get("current_snapshot", {}), sort_keys=True)
         reasons = json.dumps(self.context.get("runtime_reasons", []), sort_keys=True)

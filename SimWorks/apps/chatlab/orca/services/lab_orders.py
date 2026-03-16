@@ -20,10 +20,10 @@ class GenerateLabResults(DjangoBaseService):
     """
 
     instruction_refs: ClassVar[list[str]] = [
-        "LabOrderPatientContextInstruction",
-        "LabOrderTestListInstruction",
-        "LabOrderSchemaContractInstruction",
-        "LabOrderResultDetailInstruction",
+        "chatlab.lab_orders.LabOrderPatientContextInstruction",
+        "chatlab.lab_orders.LabOrderTestListInstruction",
+        "chatlab.lab_orders.LabOrderSchemaContractInstruction",
+        "chatlab.lab_orders.LabOrderResultDetailInstruction",
     ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id", "orders")
     use_native_output = True

@@ -15,10 +15,10 @@ from orchestrai_django.decorators import orca
 @orca.service
 class GenerateTrainerRuntimeTurn(PreviousResponseMixin, DjangoBaseService):
     instruction_refs: ClassVar[list[str]] = [
-        "TrainerLabMixin",
-        "TrainerRuntimeRoleInstruction",
-        "TrainerRuntimeContractInstruction",
-        "TrainerRuntimeContextInstruction",
+        "trainerlab.initial.TrainerLabMixin",
+        "trainerlab.runtime.TrainerRuntimeRoleInstruction",
+        "trainerlab.runtime.TrainerRuntimeContractInstruction",
+        "trainerlab.runtime.TrainerRuntimeContextInstruction",
     ]
     required_context_keys = ("simulation_id", "session_id")
     use_native_output = True
