@@ -27,6 +27,7 @@ from .models import (
     Injury,
     Intervention,
     Problem,
+    PulseAssessment,
     RespiratoryRate,
     ScenarioBrief,
     SessionStatus,
@@ -102,6 +103,7 @@ def build_runtime_state_defaults(
             "conditions": [],
             "interventions": [],
             "vitals": [],
+            "pulses": [],
             "patient_status": {},
         },
         "snapshot_annotations": {"patient_status": {}},
@@ -327,6 +329,24 @@ def _serialize_vital(vital_type: str, obj: ABCEvent) -> dict[str, Any]:
     return payload
 
 
+def _serialize_pulse(obj: PulseAssessment) -> dict[str, Any]:
+    return {
+        "domain_event_id": obj.id,
+        "vital_type": "pulse_assessment",
+        "location": obj.location,
+        "present": obj.present,
+        "description": obj.description,
+        "color_normal": obj.color_normal,
+        "color_description": obj.color_description,
+        "condition_normal": obj.condition_normal,
+        "condition_description": obj.condition_description,
+        "temperature_normal": obj.temperature_normal,
+        "temperature_description": obj.temperature_description,
+        "timestamp": _iso_or_none(obj.timestamp),
+        "source": obj.source,
+    }
+
+
 def project_current_snapshot(
     session: TrainerSession,
     *,
@@ -396,10 +416,19 @@ def project_current_snapshot(
             "special_considerations": scenario_brief_obj.special_considerations,
         }
 
+    pulses: list[dict[str, Any]] = [
+        _serialize_pulse(obj)
+        for obj in PulseAssessment.objects.filter(
+            simulation=session.simulation,
+            is_active=True,
+        ).order_by("location")
+    ]
+
     return {
         "conditions": conditions,
         "interventions": interventions,
         "vitals": vitals,
+        "pulses": pulses,
         "patient_status": dict(
             (state.get("snapshot_annotations") or {}).get("patient_status") or {}
         ),
@@ -588,6 +617,7 @@ def _run_initial_generation_inline(*, session: TrainerSession, call_id: str) -> 
         session.refresh_from_db()
         _emit_seeded_vital_events(session)
         _emit_seeded_condition_events(session)
+        _emit_seeded_pulse_events(session)
     except Exception:
         logger.exception(
             "Failed to emit seeded runtime events for simulation %s",
@@ -609,6 +639,18 @@ def _emit_seeded_vital_events(session: TrainerSession) -> None:
                 payload=_serialize_vital(vital_type, obj),
                 idempotency_key=f"vital.created:seeded:{session.id}:{vital_type}",
             )
+
+
+def _emit_seeded_pulse_events(session: TrainerSession) -> None:
+    for obj in PulseAssessment.objects.filter(
+        simulation=session.simulation, is_active=True
+    ).order_by("location"):
+        emit_runtime_event(
+            session=session,
+            event_type="trainerlab.pulse.created",
+            payload=_serialize_pulse(obj),
+            idempotency_key=f"trainerlab.pulse.created:seeded:{session.id}:{obj.location}",
+        )
 
 
 def _emit_seeded_condition_events(session: TrainerSession) -> None:
@@ -1093,6 +1135,53 @@ def _apply_vital_change(
     )
 
 
+def _apply_pulse_change(
+    *,
+    session: TrainerSession,
+    change: dict[str, Any],
+    correlation_id: str | None,
+) -> None:
+    location = change.get("location")
+    if not location:
+        return
+
+    existing = (
+        PulseAssessment.objects.filter(
+            simulation=session.simulation,
+            location=location,
+            is_active=True,
+        )
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    _deactivate_event(existing)
+
+    created = PulseAssessment.objects.create(
+        simulation=session.simulation,
+        source=EventSource.AI,
+        supersedes_event=existing,
+        location=location,
+        present=bool(change.get("present", True)),
+        description=change.get("description", "strong"),
+        color_normal=bool(change.get("color_normal", True)),
+        color_description=change.get("color_description", "pink"),
+        condition_normal=bool(change.get("condition_normal", True)),
+        condition_description=change.get("condition_description", "dry"),
+        temperature_normal=bool(change.get("temperature_normal", True)),
+        temperature_description=change.get("temperature_description", "warm"),
+    )
+
+    payload = _serialize_pulse(created)
+    payload["action"] = "updated"
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.pulse.updated",
+        payload=payload,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.pulse.updated:{created.id}",
+    )
+
+
 def _apply_intervention_effect(
     *,
     session: TrainerSession,
@@ -1171,6 +1260,13 @@ def apply_runtime_turn_output(
 
         for change in output_payload.get("state_changes", {}).get("vitals", []):
             _apply_vital_change(
+                session=session,
+                change=change,
+                correlation_id=correlation_id,
+            )
+
+        for change in output_payload.get("state_changes", {}).get("pulses", []):
+            _apply_pulse_change(
                 session=session,
                 change=change,
                 correlation_id=correlation_id,

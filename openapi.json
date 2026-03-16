@@ -1,0 +1,5795 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SimWorks API",
+    "version": "1.0.0",
+    "description": "REST API for SimWorks medical training platform"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "api_v1_api_health_check",
+        "summary": "Health check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the API health status and current timestamp.",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/api/v1/health/auth": {
+      "get": {
+        "operationId": "api_v1_api_health_check_auth",
+        "summary": "Authenticated health check (session)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Health check that requires session authentication (web clients).",
+        "tags": [
+          "system"
+        ],
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/health/jwt": {
+      "get": {
+        "operationId": "api_v1_api_health_check_jwt",
+        "summary": "Authenticated health check (JWT)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Health check that requires JWT authentication (mobile clients).",
+        "tags": [
+          "system"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/token/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_obtain_token",
+        "summary": "Obtain JWT tokens",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Authenticate with email/password and receive JWT tokens.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/token/refresh/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_refresh_token",
+        "summary": "Refresh access token",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Use a refresh token to obtain a new access token.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/auth/logout/": {
+      "post": {
+        "operationId": "api_v1_endpoints_auth_logout",
+        "summary": "Logout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Revoke a refresh token/session (server-side), then the client should delete tokens locally.",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/api/v1/simulations/": {
+      "get": {
+        "operationId": "api_v1_endpoints_simulations_list_simulations",
+        "summary": "List user's simulations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "description": "Max items to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max items to return"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor for pagination (simulation ID)",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor for pagination (simulation ID)"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by status: in_progress, completed, timed_out, failed, canceled",
+              "title": "Status"
+            },
+            "required": false,
+            "description": "Filter by status: in_progress, completed, timed_out, failed, canceled"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search query",
+              "title": "Q"
+            },
+            "required": false,
+            "description": "Search query"
+          },
+          {
+            "in": "query",
+            "name": "search_messages",
+            "schema": {
+              "default": false,
+              "description": "When true, include chat message content in search",
+              "title": "Search Messages",
+              "type": "boolean"
+            },
+            "required": false,
+            "description": "When true, include chat message content in search"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_SimulationOut_"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns all simulations for the authenticated user, ordered by most recent first.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_create_simulation",
+        "summary": "Create a new simulation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new simulation for the authenticated user.",
+        "tags": [
+          "simulations"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/quick-create/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_quick_create_simulation",
+        "summary": "Quick-create ChatLab simulation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a ChatLab simulation with server-generated patient identity and optional modifiers, and enqueues initial response generation.",
+        "tags": [
+          "simulations"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationQuickCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_simulations_get_simulation",
+        "summary": "Get simulation details",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns details for a specific simulation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/end/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_end_simulation",
+        "summary": "End a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationEndResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Ends an in-progress simulation and triggers feedback generation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/retry-initial/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_retry_initial",
+        "summary": "Retry initial simulation generation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retries initial patient generation for a failed simulation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/retry-feedback/": {
+      "post": {
+        "operationId": "api_v1_endpoints_simulations_retry_feedback",
+        "summary": "Retry feedback generation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retries post-simulation feedback generation.",
+        "tags": [
+          "simulations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/conversations/": {
+      "get": {
+        "operationId": "api_v1_endpoints_conversations_list_conversations",
+        "summary": "List conversations in a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns all conversations for a simulation, ordered by creation time.",
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_conversations_create_conversation",
+        "summary": "Create a conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new conversation in a simulation (e.g. start a Stitch feedback chat).",
+        "tags": [
+          "conversations"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/conversations/{conversation_uuid}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_conversations_get_conversation",
+        "summary": "Get a specific conversation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "conversation_uuid",
+            "schema": {
+              "title": "Conversation Uuid",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns a specific conversation by UUID.",
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/messages/": {
+      "get": {
+        "operationId": "api_v1_endpoints_messages_list_messages",
+        "summary": "List messages in a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Max messages to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max messages to return"
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor for pagination (message ID)",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor for pagination (message ID)"
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "default": "asc",
+              "description": "Sort order: asc (oldest first) or desc (newest first)",
+              "title": "Order",
+              "type": "string"
+            },
+            "required": false,
+            "description": "Sort order: asc (oldest first) or desc (newest first)"
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a specific conversation",
+              "title": "Conversation Id"
+            },
+            "required": false,
+            "description": "Filter to a specific conversation"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns messages for a simulation with cursor-based pagination. Optionally filter by conversation_id.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_messages_create_message",
+        "summary": "Create a message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a new message in a simulation. Returns 201 for immediate response, 202 if AI response is pending.",
+        "tags": [
+          "messages"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/messages/{message_id}/retry/": {
+      "post": {
+        "operationId": "api_v1_endpoints_messages_retry_message",
+        "summary": "Retry a failed outgoing message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retries AI processing for a previously failed outgoing user message.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/messages/{message_id}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_messages_get_message",
+        "summary": "Get a specific message",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns a specific message by ID.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/events/": {
+      "get": {
+        "operationId": "api_v1_endpoints_events_list_events",
+        "summary": "List events for catch-up",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cursor (event ID) to start after",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Cursor (event ID) to start after"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "Max events to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false,
+            "description": "Max events to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_EventEnvelope_"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns events for a simulation, enabling clients to catch up on missed WebSocket events after reconnection. Uses cursor-based pagination with UUID event IDs as cursors.",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/events/stream/": {
+      "get": {
+        "operationId": "api_v1_endpoints_events_stream_events",
+        "summary": "SSE stream for simulation events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Outbox event cursor UUID",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "event_prefix",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional event_type prefix filter (e.g. trainerlab.)",
+              "title": "Event Prefix"
+            },
+            "required": false,
+            "description": "Optional event_type prefix filter (e.g. trainerlab.)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Streams outbox events for a simulation using a common transport envelope. Optionally filter by event type prefix.",
+        "tags": [
+          "events"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/tools/": {
+      "get": {
+        "operationId": "api_v1_endpoints_tools_list_simulation_tools",
+        "summary": "List simulation tools",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "names",
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional repeated tool names filter (e.g., ?names=patient_history&names=patient_results)",
+              "title": "Names"
+            },
+            "required": false,
+            "description": "Optional repeated tool names filter (e.g., ?names=patient_history&names=patient_results)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns JSON payloads for simulation tools.",
+        "tags": [
+          "tools"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/tools/{tool_name}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_tools_get_simulation_tool",
+        "summary": "Get a simulation tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "tool_name",
+            "schema": {
+              "title": "Tool Name",
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns JSON payload for a specific simulation tool.",
+        "tags": [
+          "tools"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/tools/patient_results/orders/": {
+      "post": {
+        "operationId": "api_v1_endpoints_tools_sign_lab_orders",
+        "summary": "Sign lab orders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignOrdersOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Signs requested lab orders and enqueues feedback generation.",
+        "tags": [
+          "tools"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignOrdersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/lab-orders/": {
+      "post": {
+        "operationId": "api_v1_endpoints_lab_orders_submit_lab_orders",
+        "summary": "Submit signed lab orders",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabOrdersOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Submits a list of signed lab orders to the AI engine. The AI generates clinically plausible results for each ordered test based on the patient's presentation. Results are persisted as structured metadata and broadcast to connected WebSocket clients via `metadata.created` events. Returns 202 Accepted immediately; results arrive asynchronously.",
+        "tags": [
+          "lab-orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabOrderSubmit"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/config/modifier-groups/": {
+      "get": {
+        "operationId": "api_v1_endpoints_modifiers_list_modifier_groups",
+        "summary": "List modifier groups",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "groups",
+            "schema": {
+              "description": "Filter by group names",
+              "items": {
+                "type": "string"
+              },
+              "title": "Groups",
+              "type": "array"
+            },
+            "required": false,
+            "description": "Filter by group names"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModifierGroupOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns available simulation modifier groups. Optionally filter by group names.",
+        "tags": [
+          "modifiers"
+        ]
+      }
+    },
+    "/api/v1/trainerlab/access/me/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_trainerlab_access_me",
+        "summary": "Get TrainerLab access for current user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabAccessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/dictionaries/injuries/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_injury_dictionary",
+        "summary": "List injury dictionary mappings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "$ref": "#/components/schemas/DictionaryItemOut"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Response",
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/dictionaries/interventions/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_intervention_dictionary",
+        "summary": "List intervention dictionary (iOS-compatible flat format)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InterventionDictionaryItemOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/presets/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_list_presets",
+        "summary": "List accessible TrainerLab scenario presets",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_ScenarioInstructionOut_"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_preset",
+        "summary": "Create TrainerLab scenario preset",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioInstructionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioInstructionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/presets/{preset_id}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_get_preset",
+        "summary": "Get TrainerLab scenario preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioInstructionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "api_v1_endpoints_trainerlab_update_preset",
+        "summary": "Update TrainerLab scenario preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioInstructionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioInstructionUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "api_v1_endpoints_trainerlab_delete_preset",
+        "summary": "Delete TrainerLab scenario preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/presets/{preset_id}/duplicate/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_duplicate_preset",
+        "summary": "Duplicate TrainerLab scenario preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioInstructionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/presets/{preset_id}/share/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_share_preset",
+        "summary": "Share TrainerLab scenario preset with a user",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioInstructionPermissionOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioInstructionPermissionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/presets/{preset_id}/unshare/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_unshare_preset",
+        "summary": "Remove shared access for a TrainerLab scenario preset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioInstructionUnshareIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/presets/{preset_id}/apply/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_apply_preset",
+        "summary": "Apply preset instructions to a TrainerLab simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "schema": {
+              "title": "Preset Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioInstructionApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_trainer_session",
+        "summary": "Create TrainerLab simulation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainerSessionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_list_trainer_sessions",
+        "summary": "List TrainerLab simulations for user",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            },
+            "required": false
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_TrainerRunOut_"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_get_trainer_session",
+        "summary": "Get TrainerLab simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/state/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_get_trainer_runtime_state",
+        "summary": "Get authoritative TrainerLab runtime state snapshot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRuntimeStateOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/start/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_start_trainer_run",
+        "summary": "Start TrainerLab run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/pause/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_pause_trainer_run",
+        "summary": "Pause TrainerLab run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/resume/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_resume_trainer_run",
+        "summary": "Resume TrainerLab run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/stop/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_stop_trainer_run",
+        "summary": "Stop TrainerLab run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/steer/prompt/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_steer_prompt",
+        "summary": "Apply instructor steering prompt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SteerPromptIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/adjust/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_adjust_simulation",
+        "summary": "Adjust a TrainerLab simulation scenario",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationAdjustAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationAdjustIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_injury_event",
+        "summary": "Inject injury event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InjuryCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/illnesses/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_illness_event",
+        "summary": "Inject illness event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IllnessCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_intervention_event",
+        "summary": "Inject intervention event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterventionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/notes/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_note_event",
+        "summary": "Inject simulation note event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationNoteCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/vitals/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_vital_event",
+        "summary": "Inject vital event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VitalCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_list_trainer_events",
+        "summary": "List TrainerLab runtime events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Outbox event cursor UUID",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Outbox event cursor UUID"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse_EventEnvelope_"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/summary/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_get_run_summary",
+        "summary": "Get run summary",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummaryOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/stream/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_stream_trainer_events",
+        "summary": "SSE stream for TrainerLab events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Outbox event cursor UUID",
+              "title": "Cursor"
+            },
+            "required": false,
+            "description": "Outbox event cursor UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "description": "Health check response.",
+        "properties": {
+          "status": {
+            "default": "ok",
+            "description": "Service status",
+            "title": "Status",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "Current server timestamp",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "description": "Response for successful token generation.",
+        "properties": {
+          "access_token": {
+            "description": "JWT access token for API authentication",
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "description": "JWT refresh token for obtaining new access tokens",
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Access token lifetime in seconds",
+            "examples": [
+              3600
+            ],
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "description": "Token type (always 'Bearer')",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in"
+        ],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "description": "Request body for token obtain endpoint.",
+        "properties": {
+          "email": {
+            "description": "User email address",
+            "examples": [
+              "user@example.com"
+            ],
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "description": "User password",
+            "examples": [
+              "secret123"
+            ],
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "RefreshResponse": {
+        "description": "Response for successful token refresh.",
+        "properties": {
+          "access_token": {
+            "description": "New JWT access token",
+            "title": "Access Token",
+            "type": "string"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "(Optional) Rotated refresh token, if rotation is enabled.",
+            "title": "Refresh Token"
+          },
+          "expires_in": {
+            "description": "Access token lifetime in seconds",
+            "examples": [
+              3600
+            ],
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "description": "Token type (always 'Bearer')",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "RefreshResponse",
+        "type": "object"
+      },
+      "RefreshRequest": {
+        "description": "Request body for token refresh endpoint.",
+        "properties": {
+          "refresh_token": {
+            "description": "JWT refresh token",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest",
+        "type": "object"
+      },
+      "LogoutRequest": {
+        "description": "Request body for logout endpoint.",
+        "properties": {
+          "refresh_token": {
+            "description": "Refresh token to revoke",
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "LogoutRequest",
+        "type": "object"
+      },
+      "PaginatedResponse_SimulationOut_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/SimulationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[SimulationOut]",
+        "type": "object"
+      },
+      "SimulationOut": {
+        "description": "Output schema for a simulation.",
+        "properties": {
+          "id": {
+            "description": "Simulation ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "user_id": {
+            "description": "Owner user ID",
+            "title": "User Id",
+            "type": "integer"
+          },
+          "start_timestamp": {
+            "description": "When the simulation started",
+            "format": "date-time",
+            "title": "Start Timestamp",
+            "type": "string"
+          },
+          "end_timestamp": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the simulation ended (null if in progress)",
+            "title": "End Timestamp"
+          },
+          "time_limit_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time limit in seconds (null if no limit)",
+            "title": "Time Limit Seconds"
+          },
+          "diagnosis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diagnosis for this simulation",
+            "title": "Diagnosis"
+          },
+          "chief_complaint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chief complaint for this simulation",
+            "title": "Chief Complaint"
+          },
+          "patient_display_name": {
+            "description": "Display name for the simulated patient",
+            "title": "Patient Display Name",
+            "type": "string"
+          },
+          "patient_initials": {
+            "description": "Initials for the simulated patient",
+            "title": "Patient Initials",
+            "type": "string"
+          },
+          "status": {
+            "description": "Current status of the simulation",
+            "enum": [
+              "in_progress",
+              "completed",
+              "timed_out",
+              "failed",
+              "canceled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terminal_reason_code": {
+            "default": "",
+            "description": "Machine-readable terminal reason code",
+            "title": "Terminal Reason Code",
+            "type": "string"
+          },
+          "terminal_reason_text": {
+            "default": "",
+            "description": "User-safe terminal reason text",
+            "title": "Terminal Reason Text",
+            "type": "string"
+          },
+          "terminal_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Timestamp when simulation entered terminal state",
+            "title": "Terminal At"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the failed simulation can be retried by the user",
+            "title": "Retryable"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "start_timestamp",
+          "patient_display_name",
+          "patient_initials",
+          "status"
+        ],
+        "title": "SimulationOut",
+        "type": "object"
+      },
+      "SimulationCreate": {
+        "description": "Input schema for creating a simulation.",
+        "properties": {
+          "diagnosis": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Diagnosis for the simulation",
+            "title": "Diagnosis"
+          },
+          "chief_complaint": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chief complaint for the simulation",
+            "title": "Chief Complaint"
+          },
+          "patient_full_name": {
+            "description": "Full name for the simulated patient",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Patient Full Name",
+            "type": "string"
+          },
+          "time_limit_seconds": {
+            "anyOf": [
+              {
+                "maximum": 86400,
+                "minimum": 60,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Time limit in seconds (null for no limit)",
+            "title": "Time Limit Seconds"
+          }
+        },
+        "required": [
+          "patient_full_name"
+        ],
+        "title": "SimulationCreate",
+        "type": "object"
+      },
+      "SimulationQuickCreate": {
+        "description": "Input schema for one-tap ChatLab simulation creation.",
+        "properties": {
+          "modifiers": {
+            "description": "Optional simulation modifier keys to apply.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          }
+        },
+        "title": "SimulationQuickCreate",
+        "type": "object"
+      },
+      "SimulationEndResponse": {
+        "description": "Response for ending a simulation.",
+        "properties": {
+          "id": {
+            "description": "Simulation ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "end_timestamp": {
+            "description": "When the simulation was ended",
+            "format": "date-time",
+            "title": "End Timestamp",
+            "type": "string"
+          },
+          "status": {
+            "const": "completed",
+            "default": "completed",
+            "description": "Final status",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "end_timestamp"
+        ],
+        "title": "SimulationEndResponse",
+        "type": "object"
+      },
+      "ConversationListResponse": {
+        "description": "Response for listing conversations.",
+        "properties": {
+          "items": {
+            "description": "List of conversations",
+            "items": {
+              "$ref": "#/components/schemas/ConversationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConversationListResponse",
+        "type": "object"
+      },
+      "ConversationOut": {
+        "description": "Output schema for a conversation.",
+        "properties": {
+          "id": {
+            "description": "Conversation ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "uuid": {
+            "description": "Conversation UUID",
+            "title": "Uuid",
+            "type": "string"
+          },
+          "simulation_id": {
+            "description": "Simulation this conversation belongs to",
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "conversation_type": {
+            "description": "Conversation type slug",
+            "title": "Conversation Type",
+            "type": "string"
+          },
+          "conversation_type_display": {
+            "description": "Human-readable type name",
+            "title": "Conversation Type Display",
+            "type": "string"
+          },
+          "icon": {
+            "default": "",
+            "description": "Iconify icon for this conversation type",
+            "title": "Icon",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "description": "Display name for the conversation partner",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "display_initials": {
+            "default": "",
+            "description": "Initials for avatar display",
+            "title": "Display Initials",
+            "type": "string"
+          },
+          "is_locked": {
+            "description": "Whether this conversation is read-only",
+            "title": "Is Locked",
+            "type": "boolean"
+          },
+          "created_at": {
+            "description": "When the conversation was created",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uuid",
+          "simulation_id",
+          "conversation_type",
+          "conversation_type_display",
+          "is_locked",
+          "created_at"
+        ],
+        "title": "ConversationOut",
+        "type": "object"
+      },
+      "ConversationCreate": {
+        "description": "Input schema for creating a conversation.",
+        "properties": {
+          "conversation_type": {
+            "description": "Conversation type slug (e.g. 'simulated_feedback')",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Conversation Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_type"
+        ],
+        "title": "ConversationCreate",
+        "type": "object"
+      },
+      "MessageListResponse": {
+        "description": "Response for listing messages with cursor pagination.",
+        "properties": {
+          "items": {
+            "description": "List of messages",
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page (message ID)",
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more messages exist",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "MessageListResponse",
+        "type": "object"
+      },
+      "MessageMediaOut": {
+        "description": "Media attachment metadata for a message.",
+        "properties": {
+          "id": {
+            "description": "SimulationImage ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "uuid": {
+            "description": "SimulationImage UUID",
+            "title": "Uuid",
+            "type": "string"
+          },
+          "original_url": {
+            "description": "Absolute URL to original image",
+            "title": "Original Url",
+            "type": "string"
+          },
+          "thumbnail_url": {
+            "description": "Absolute URL to thumbnail image",
+            "title": "Thumbnail Url",
+            "type": "string"
+          },
+          "url": {
+            "description": "Compatibility alias for thumbnail_url",
+            "title": "Url",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "",
+            "description": "Media MIME type",
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "Short media description",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uuid",
+          "original_url",
+          "thumbnail_url",
+          "url"
+        ],
+        "title": "MessageMediaOut",
+        "type": "object"
+      },
+      "MessageOut": {
+        "description": "Output schema for a chat message.",
+        "properties": {
+          "id": {
+            "description": "Message ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "simulation_id": {
+            "description": "Simulation ID this message belongs to",
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation ID this message belongs to",
+            "title": "Conversation Id"
+          },
+          "conversation_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Conversation type slug (e.g. 'simulated_patient', 'simulated_feedback')",
+            "title": "Conversation Type"
+          },
+          "sender_id": {
+            "description": "ID of the user who sent the message",
+            "title": "Sender Id",
+            "type": "integer"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Message content",
+            "title": "Content"
+          },
+          "role": {
+            "description": "Role of the message sender",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "message_type": {
+            "default": "text",
+            "description": "Type of message",
+            "enum": [
+              "text",
+              "image",
+              "video",
+              "audio",
+              "file",
+              "system"
+            ],
+            "title": "Message Type",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "When the message was created",
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "is_from_ai": {
+            "description": "Whether this message is from the AI",
+            "title": "Is From Ai",
+            "type": "boolean"
+          },
+          "display_name": {
+            "default": "",
+            "description": "Display name for the sender",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "delivery_status": {
+            "default": "sent",
+            "description": "Delivery status of outgoing messages",
+            "enum": [
+              "sent",
+              "delivered",
+              "failed"
+            ],
+            "title": "Delivery Status",
+            "type": "string"
+          },
+          "delivery_error_code": {
+            "default": "",
+            "description": "Machine-readable delivery error code",
+            "title": "Delivery Error Code",
+            "type": "string"
+          },
+          "delivery_error_text": {
+            "default": "",
+            "description": "User-safe delivery error text",
+            "title": "Delivery Error Text",
+            "type": "string"
+          },
+          "delivery_retryable": {
+            "default": true,
+            "description": "Whether the message can be retried by the user",
+            "title": "Delivery Retryable",
+            "type": "boolean"
+          },
+          "delivery_retry_count": {
+            "default": 0,
+            "description": "How many user retries have been attempted for this message",
+            "title": "Delivery Retry Count",
+            "type": "integer"
+          },
+          "media_list": {
+            "description": "Message media metadata (snake_case canonical API shape)",
+            "items": {
+              "$ref": "#/components/schemas/MessageMediaOut"
+            },
+            "title": "Media List",
+            "type": "array"
+          },
+          "mediaList": {
+            "description": "Compatibility alias for media_list",
+            "items": {
+              "$ref": "#/components/schemas/MessageMediaOut"
+            },
+            "title": "Medialist",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "simulation_id",
+          "sender_id",
+          "role",
+          "timestamp",
+          "is_from_ai"
+        ],
+        "title": "MessageOut",
+        "type": "object"
+      },
+      "MessageCreate": {
+        "description": "Input schema for creating a message.",
+        "properties": {
+          "content": {
+            "description": "Message content",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "message_type": {
+            "const": "text",
+            "default": "text",
+            "description": "Type of message (only 'text' supported via API)",
+            "title": "Message Type",
+            "type": "string"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Target conversation ID. Defaults to patient conversation if omitted.",
+            "title": "Conversation Id"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "MessageCreate",
+        "type": "object"
+      },
+      "EventEnvelope": {
+        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "properties": {
+          "event_id": {
+            "description": "Unique event identifier (UUID) for deduplication",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Event Id",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "Event type: chat.message_created, message_status_update, metadata.created, feedback.created, feedback.failed, feedback.retrying, typing.started, typing.stopped, simulation.ended, simulation.state_changed",
+            "examples": [
+              "chat.message_created",
+              "message_status_update",
+              "simulation.state_changed"
+            ],
+            "title": "Event Type",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Event timestamp (ISO 8601)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request correlation ID for tracing",
+            "examples": [
+              "abc123-def456"
+            ],
+            "title": "Correlation Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "Event-specific payload data (structure varies by event_type)",
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "event_id",
+          "event_type",
+          "created_at",
+          "payload"
+        ],
+        "title": "EventEnvelope",
+        "type": "object"
+      },
+      "PaginatedResponse_EventEnvelope_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/EventEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[EventEnvelope]",
+        "type": "object"
+      },
+      "LabResultItem": {
+        "properties": {
+          "kind": {
+            "const": "lab_result",
+            "default": "lab_result",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Lab result key",
+            "title": "Key",
+            "type": "string"
+          },
+          "result_name": {
+            "description": "Lab result name",
+            "title": "Result Name",
+            "type": "string"
+          },
+          "panel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lab panel name",
+            "title": "Panel Name"
+          },
+          "value": {
+            "description": "Lab result value",
+            "title": "Value",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lab result unit",
+            "title": "Unit"
+          },
+          "reference_range_high": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper reference range",
+            "title": "Reference Range High"
+          },
+          "reference_range_low": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower reference range",
+            "title": "Reference Range Low"
+          },
+          "flag": {
+            "description": "Result flag",
+            "title": "Flag",
+            "type": "string"
+          },
+          "attribute": {
+            "description": "Model attribute label",
+            "title": "Attribute",
+            "type": "string"
+          },
+          "type": {
+            "description": "Result type",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "result_name",
+          "value",
+          "flag",
+          "attribute",
+          "type"
+        ],
+        "title": "LabResultItem",
+        "type": "object"
+      },
+      "PatientHistoryItem": {
+        "properties": {
+          "kind": {
+            "const": "patient_history",
+            "default": "patient_history",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Diagnosis key",
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "description": "Diagnosis details",
+            "title": "Value",
+            "type": "string"
+          },
+          "diagnosis": {
+            "description": "Diagnosis name",
+            "title": "Diagnosis",
+            "type": "string"
+          },
+          "is_resolved": {
+            "description": "Whether the condition is resolved",
+            "title": "Is Resolved",
+            "type": "boolean"
+          },
+          "duration": {
+            "description": "How long the history item has been present",
+            "title": "Duration",
+            "type": "string"
+          },
+          "summary": {
+            "description": "Human-readable history summary",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "diagnosis",
+          "is_resolved",
+          "duration",
+          "summary"
+        ],
+        "title": "PatientHistoryItem",
+        "type": "object"
+      },
+      "SimulationFeedbackItem": {
+        "properties": {
+          "kind": {
+            "const": "simulation_feedback",
+            "default": "simulation_feedback",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Feedback key",
+            "enum": [
+              "hotwash_correct_diagnosis",
+              "hotwash_correct_treatment_plan",
+              "hotwash_patient_experience",
+              "hotwash_overall_feedback",
+              "hotwash_continuation_direct_answer"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Typed feedback value",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "SimulationFeedbackItem",
+        "type": "object"
+      },
+      "SimulationMetadataItem": {
+        "properties": {
+          "kind": {
+            "const": "patient_demographics",
+            "default": "patient_demographics",
+            "title": "Kind",
+            "type": "string"
+          },
+          "db_pk": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Primary key of the backing metadata row",
+            "title": "Db Pk"
+          },
+          "key": {
+            "description": "Metadata field key",
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "description": "Metadata field value",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "SimulationMetadataItem",
+        "type": "object"
+      },
+      "ToolDataItem": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SimulationMetadataItem"
+          },
+          {
+            "$ref": "#/components/schemas/SimulationFeedbackItem"
+          },
+          {
+            "$ref": "#/components/schemas/PatientHistoryItem"
+          },
+          {
+            "$ref": "#/components/schemas/LabResultItem"
+          }
+        ]
+      },
+      "ToolListResponse": {
+        "description": "Response for listing tool payloads.",
+        "properties": {
+          "items": {
+            "description": "Tool payloads",
+            "items": {
+              "$ref": "#/components/schemas/ToolOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ToolListResponse",
+        "type": "object"
+      },
+      "ToolOut": {
+        "description": "Output schema for a simulation tool payload.",
+        "properties": {
+          "name": {
+            "description": "Tool slug",
+            "title": "Name",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Human-readable tool name",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "data": {
+            "description": "Tool-specific data",
+            "items": {
+              "$ref": "#/components/schemas/ToolDataItem"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "is_generic": {
+            "default": false,
+            "description": "Whether this is a generic key-value tool",
+            "title": "Is Generic",
+            "type": "boolean"
+          },
+          "checksum": {
+            "description": "Checksum for client cache validation",
+            "title": "Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "display_name",
+          "checksum"
+        ],
+        "title": "ToolOut",
+        "type": "object"
+      },
+      "SignOrdersOut": {
+        "description": "Response for lab order signing.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "description": "Request status",
+            "title": "Status",
+            "type": "string"
+          },
+          "orders": {
+            "description": "Orders accepted for processing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "title": "SignOrdersOut",
+        "type": "object"
+      },
+      "SignOrdersIn": {
+        "description": "Input schema for lab order signing.",
+        "properties": {
+          "submitted_orders": {
+            "description": "Lab orders to sign and enqueue",
+            "items": {
+              "type": "string"
+            },
+            "title": "Submitted Orders",
+            "type": "array"
+          }
+        },
+        "title": "SignOrdersIn",
+        "type": "object"
+      },
+      "LabOrdersOut": {
+        "description": "Response returned after lab orders are accepted for processing.",
+        "properties": {
+          "status": {
+            "const": "accepted",
+            "default": "accepted",
+            "description": "Request status",
+            "title": "Status",
+            "type": "string"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Service call ID for tracking (null if enqueueing failed)",
+            "title": "Call Id"
+          },
+          "orders": {
+            "description": "Orders accepted for processing",
+            "items": {
+              "type": "string"
+            },
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orders"
+        ],
+        "title": "LabOrdersOut",
+        "type": "object"
+      },
+      "LabOrderSubmit": {
+        "description": "Input schema for submitting signed lab orders.",
+        "properties": {
+          "orders": {
+            "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "orders"
+        ],
+        "title": "LabOrderSubmit",
+        "type": "object"
+      },
+      "ModifierGroupOut": {
+        "description": "Group of related modifiers.",
+        "properties": {
+          "group": {
+            "description": "Group name",
+            "title": "Group",
+            "type": "string"
+          },
+          "description": {
+            "description": "Group description",
+            "title": "Description",
+            "type": "string"
+          },
+          "modifiers": {
+            "description": "Available modifiers in this group",
+            "items": {
+              "$ref": "#/components/schemas/ModifierOut"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group",
+          "description",
+          "modifiers"
+        ],
+        "title": "ModifierGroupOut",
+        "type": "object"
+      },
+      "ModifierOut": {
+        "description": "Individual modifier option.",
+        "properties": {
+          "key": {
+            "description": "Unique modifier key",
+            "title": "Key",
+            "type": "string"
+          },
+          "description": {
+            "description": "Human-readable description",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "description"
+        ],
+        "title": "ModifierOut",
+        "type": "object"
+      },
+      "LabAccessOut": {
+        "properties": {
+          "lab_slug": {
+            "title": "Lab Slug",
+            "type": "string"
+          },
+          "access_level": {
+            "enum": [
+              "viewer",
+              "instructor",
+              "admin"
+            ],
+            "title": "Access Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lab_slug",
+          "access_level"
+        ],
+        "title": "LabAccessOut",
+        "type": "object"
+      },
+      "DictionaryItemOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "DictionaryItemOut",
+        "type": "object"
+      },
+      "InterventionDictionaryItemOut": {
+        "description": "iOS-compatible flat intervention dictionary item.",
+        "properties": {
+          "intervention_type": {
+            "title": "Intervention Type",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/DictionaryItemOut"
+            },
+            "title": "Sites",
+            "type": "array"
+          }
+        },
+        "required": [
+          "intervention_type",
+          "label",
+          "sites"
+        ],
+        "title": "InterventionDictionaryItemOut",
+        "type": "object"
+      },
+      "PaginatedResponse_ScenarioInstructionOut_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioInstructionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[ScenarioInstructionOut]",
+        "type": "object"
+      },
+      "ScenarioInstructionOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "instruction_text": {
+            "title": "Instruction Text",
+            "type": "string"
+          },
+          "injuries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Injuries",
+            "type": "array"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioInstructionPermissionOut"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "modified_at": {
+            "format": "date-time",
+            "title": "Modified At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "title",
+          "description",
+          "instruction_text",
+          "injuries",
+          "severity",
+          "metadata",
+          "is_active",
+          "permissions",
+          "created_at",
+          "modified_at"
+        ],
+        "title": "ScenarioInstructionOut",
+        "type": "object"
+      },
+      "ScenarioInstructionPermissionOut": {
+        "properties": {
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "can_read": {
+            "title": "Can Read",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_share": {
+            "title": "Can Share",
+            "type": "boolean"
+          },
+          "can_duplicate": {
+            "title": "Can Duplicate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "user_id",
+          "can_read",
+          "can_edit",
+          "can_delete",
+          "can_share",
+          "can_duplicate"
+        ],
+        "title": "ScenarioInstructionPermissionOut",
+        "type": "object"
+      },
+      "ScenarioInstructionCreateIn": {
+        "properties": {
+          "title": {
+            "maxLength": 150,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "instruction_text": {
+            "default": "",
+            "title": "Instruction Text",
+            "type": "string"
+          },
+          "injuries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Injuries",
+            "type": "array"
+          },
+          "severity": {
+            "default": "moderate",
+            "enum": [
+              "low",
+              "moderate",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ScenarioInstructionCreateIn",
+        "type": "object"
+      },
+      "ScenarioInstructionUpdateIn": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 150,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "instruction_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction Text"
+          },
+          "injuries": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injuries"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "moderate",
+                  "high",
+                  "critical"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "title": "ScenarioInstructionUpdateIn",
+        "type": "object"
+      },
+      "ScenarioInstructionPermissionIn": {
+        "properties": {
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "can_read": {
+            "default": true,
+            "title": "Can Read",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "default": false,
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_delete": {
+            "default": false,
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_share": {
+            "default": false,
+            "title": "Can Share",
+            "type": "boolean"
+          },
+          "can_duplicate": {
+            "default": true,
+            "title": "Can Duplicate",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ScenarioInstructionPermissionIn",
+        "type": "object"
+      },
+      "ScenarioInstructionUnshareIn": {
+        "properties": {
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ScenarioInstructionUnshareIn",
+        "type": "object"
+      },
+      "TrainerCommandAck": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id"
+        ],
+        "title": "TrainerCommandAck",
+        "type": "object"
+      },
+      "ScenarioInstructionApplyIn": {
+        "properties": {
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "simulation_id"
+        ],
+        "title": "ScenarioInstructionApplyIn",
+        "type": "object"
+      },
+      "TrainerRunOut": {
+        "properties": {
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "scenario_spec": {
+            "additionalProperties": true,
+            "title": "Scenario Spec",
+            "type": "object"
+          },
+          "runtime_state": {
+            "additionalProperties": true,
+            "title": "Runtime State",
+            "type": "object"
+          },
+          "initial_directives": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Directives"
+          },
+          "tick_interval_seconds": {
+            "title": "Tick Interval Seconds",
+            "type": "integer"
+          },
+          "run_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Started At"
+          },
+          "run_paused_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Paused At"
+          },
+          "run_completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Completed At"
+          },
+          "last_ai_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ai Tick At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "modified_at": {
+            "format": "date-time",
+            "title": "Modified At",
+            "type": "string"
+          },
+          "terminal_reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason Code"
+          },
+          "terminal_reason_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason Text"
+          }
+        },
+        "required": [
+          "simulation_id",
+          "status",
+          "scenario_spec",
+          "runtime_state",
+          "initial_directives",
+          "tick_interval_seconds",
+          "run_started_at",
+          "run_paused_at",
+          "run_completed_at",
+          "last_ai_tick_at",
+          "created_at",
+          "modified_at"
+        ],
+        "title": "TrainerRunOut",
+        "type": "object"
+      },
+      "TrainerSessionCreateIn": {
+        "properties": {
+          "scenario_spec": {
+            "additionalProperties": true,
+            "title": "Scenario Spec",
+            "type": "object"
+          },
+          "directives": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directives"
+          },
+          "modifiers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Modifiers",
+            "type": "array"
+          }
+        },
+        "title": "TrainerSessionCreateIn",
+        "type": "object"
+      },
+      "PaginatedResponse_TrainerRunOut_": {
+        "properties": {
+          "items": {
+            "description": "List of items in this page",
+            "items": {
+              "$ref": "#/components/schemas/TrainerRunOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cursor for fetching the next page, null if no more items",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "description": "Whether more items exist beyond this page",
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PaginatedResponse[TrainerRunOut]",
+        "type": "object"
+      },
+      "RuntimeConditionStateOut": {
+        "properties": {
+          "domain_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Event Id"
+          },
+          "kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          },
+          "injury_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Category"
+          },
+          "injury_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Location"
+          },
+          "injury_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Kind"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "status"
+        ],
+        "title": "RuntimeConditionStateOut",
+        "type": "object"
+      },
+      "RuntimeInstructorIntent": {
+        "additionalProperties": false,
+        "properties": {
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "trigger": {
+            "default": "",
+            "title": "Trigger",
+            "type": "string"
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Seconds"
+          },
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "upcoming_changes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Upcoming Changes",
+            "type": "array"
+          },
+          "monitoring_focus": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Monitoring Focus",
+            "type": "array"
+          }
+        },
+        "title": "RuntimeInstructorIntent",
+        "type": "object"
+      },
+      "RuntimeInterventionStateOut": {
+        "properties": {
+          "domain_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Event Id"
+          },
+          "intervention_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention Type"
+          },
+          "site_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Code"
+          },
+          "effectiveness": {
+            "default": "unknown",
+            "title": "Effectiveness",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "code": {
+            "default": "",
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "anatomic_location": {
+            "default": "",
+            "title": "Anatomic Location",
+            "type": "string"
+          },
+          "performed_by_role": {
+            "default": "trainee",
+            "title": "Performed By Role",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "clinical_effect": {
+            "default": "",
+            "title": "Clinical Effect",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "title": "RuntimeInterventionStateOut",
+        "type": "object"
+      },
+      "RuntimePatientStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "avpu": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avpu"
+          },
+          "respiratory_distress": {
+            "default": false,
+            "title": "Respiratory Distress",
+            "type": "boolean"
+          },
+          "hemodynamic_instability": {
+            "default": false,
+            "title": "Hemodynamic Instability",
+            "type": "boolean"
+          },
+          "impending_pneumothorax": {
+            "default": false,
+            "title": "Impending Pneumothorax",
+            "type": "boolean"
+          },
+          "tension_pneumothorax": {
+            "default": false,
+            "title": "Tension Pneumothorax",
+            "type": "boolean"
+          },
+          "narrative": {
+            "default": "",
+            "title": "Narrative",
+            "type": "string"
+          },
+          "teaching_flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Teaching Flags",
+            "type": "array"
+          }
+        },
+        "title": "RuntimePatientStatus",
+        "type": "object"
+      },
+      "RuntimeVitalStateOut": {
+        "properties": {
+          "domain_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Event Id"
+          },
+          "vital_type": {
+            "enum": [
+              "heart_rate",
+              "respiratory_rate",
+              "spo2",
+              "etco2",
+              "blood_glucose",
+              "blood_pressure"
+            ],
+            "title": "Vital Type",
+            "type": "string"
+          },
+          "min_value": {
+            "title": "Min Value",
+            "type": "integer"
+          },
+          "max_value": {
+            "title": "Max Value",
+            "type": "integer"
+          },
+          "lock_value": {
+            "default": false,
+            "title": "Lock Value",
+            "type": "boolean"
+          },
+          "min_value_diastolic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value Diastolic"
+          },
+          "max_value_diastolic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value Diastolic"
+          },
+          "trend": {
+            "default": "stable",
+            "title": "Trend",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "vital_type",
+          "min_value",
+          "max_value"
+        ],
+        "title": "RuntimeVitalStateOut",
+        "type": "object"
+      },
+      "ScenarioBriefOut": {
+        "properties": {
+          "read_aloud_brief": {
+            "default": "",
+            "title": "Read Aloud Brief",
+            "type": "string"
+          },
+          "environment": {
+            "default": "",
+            "title": "Environment",
+            "type": "string"
+          },
+          "location_overview": {
+            "default": "",
+            "title": "Location Overview",
+            "type": "string"
+          },
+          "threat_context": {
+            "default": "",
+            "title": "Threat Context",
+            "type": "string"
+          },
+          "evacuation_options": {
+            "default": "",
+            "title": "Evacuation Options",
+            "type": "string"
+          },
+          "evacuation_time": {
+            "default": "",
+            "title": "Evacuation Time",
+            "type": "string"
+          },
+          "special_considerations": {
+            "default": "",
+            "title": "Special Considerations",
+            "type": "string"
+          }
+        },
+        "title": "ScenarioBriefOut",
+        "type": "object"
+      },
+      "TrainerRuntimeSnapshotOut": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeConditionStateOut"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeInterventionStateOut"
+            },
+            "title": "Interventions",
+            "type": "array"
+          },
+          "vitals": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalStateOut"
+            },
+            "title": "Vitals",
+            "type": "array"
+          },
+          "patient_status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RuntimePatientStatus"
+              }
+            ]
+          }
+        },
+        "title": "TrainerRuntimeSnapshotOut",
+        "type": "object"
+      },
+      "TrainerRuntimeStateOut": {
+        "properties": {
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "state_revision": {
+            "title": "State Revision",
+            "type": "integer"
+          },
+          "active_elapsed_seconds": {
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "scenario_brief": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioBriefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_snapshot": {
+            "$ref": "#/components/schemas/TrainerRuntimeSnapshotOut"
+          },
+          "ai_plan": {
+            "$ref": "#/components/schemas/RuntimeInstructorIntent"
+          },
+          "ai_rationale_notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ai Rationale Notes",
+            "type": "array"
+          },
+          "pending_runtime_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Runtime Reasons",
+            "type": "array"
+          },
+          "pending_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "last_runtime_error": {
+            "default": "",
+            "title": "Last Runtime Error",
+            "type": "string"
+          },
+          "last_ai_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ai Tick At"
+          }
+        },
+        "required": [
+          "simulation_id",
+          "session_id",
+          "status",
+          "state_revision",
+          "active_elapsed_seconds",
+          "current_snapshot",
+          "ai_plan"
+        ],
+        "title": "TrainerRuntimeStateOut",
+        "type": "object"
+      },
+      "SteerPromptIn": {
+        "properties": {
+          "prompt": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "SteerPromptIn",
+        "type": "object"
+      },
+      "SimulationAdjustAck": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          },
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command_id",
+          "simulation_id"
+        ],
+        "title": "SimulationAdjustAck",
+        "type": "object"
+      },
+      "SimulationAdjustIn": {
+        "properties": {
+          "target": {
+            "enum": [
+              "trend",
+              "injury",
+              "avpu",
+              "intervention",
+              "note"
+            ],
+            "title": "Target",
+            "type": "string"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down",
+                  "same",
+                  "worsen",
+                  "improve",
+                  "set",
+                  "add"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "magnitude": {
+            "anyOf": [
+              {
+                "maximum": 10,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Magnitude"
+          },
+          "injury_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Event Id"
+          },
+          "injury_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Region"
+          },
+          "avpu_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "alert",
+                  "verbal",
+                  "pain",
+                  "unalert"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avpu State"
+          },
+          "intervention_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention Code"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "SimulationAdjustIn",
+        "type": "object"
+      },
+      "InjuryCreateIn": {
+        "properties": {
+          "injury_category": {
+            "description": "Injury category code or friendly label (normalized to canonical code)",
+            "title": "Injury Category",
+            "type": "string"
+          },
+          "injury_location": {
+            "description": "Injury location code or friendly label (normalized to canonical code)",
+            "title": "Injury Location",
+            "type": "string"
+          },
+          "injury_kind": {
+            "description": "Injury kind code or friendly label (normalized to canonical code)",
+            "title": "Injury Kind",
+            "type": "string"
+          },
+          "injury_description": {
+            "title": "Injury Description",
+            "type": "string"
+          },
+          "parent_injury_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Injury Id"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "injury_category",
+          "injury_location",
+          "injury_kind",
+          "injury_description"
+        ],
+        "title": "InjuryCreateIn",
+        "type": "object"
+      },
+      "IllnessCreateIn": {
+        "properties": {
+          "illness_name": {
+            "title": "Illness Name",
+            "type": "string"
+          },
+          "illness_description": {
+            "default": "",
+            "title": "Illness Description",
+            "type": "string"
+          },
+          "severity": {
+            "default": "moderate",
+            "enum": [
+              "low",
+              "moderate",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "is_resolved": {
+            "default": false,
+            "title": "Is Resolved",
+            "type": "boolean"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "illness_name"
+        ],
+        "title": "IllnessCreateIn",
+        "type": "object"
+      },
+      "InterventionCreateIn": {
+        "properties": {
+          "intervention_type": {
+            "description": "Intervention type code or friendly label",
+            "title": "Intervention Type",
+            "type": "string"
+          },
+          "site_code": {
+            "description": "Intervention site code or friendly label, normalized per intervention type",
+            "title": "Site Code",
+            "type": "string"
+          },
+          "target_injury_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Injury Id"
+          },
+          "status": {
+            "default": "applied",
+            "enum": [
+              "applied",
+              "adjusted",
+              "reassessed",
+              "removed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "effectiveness": {
+            "default": "unknown",
+            "enum": [
+              "unknown",
+              "effective",
+              "partially_effective",
+              "ineffective"
+            ],
+            "title": "Effectiveness",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "details": {
+            "$ref": "#/components/schemas/InterventionDetailsIn",
+            "description": "Typed intervention-specific details. `details.kind` must match `intervention_type`."
+          },
+          "performed_by_role": {
+            "default": "trainee",
+            "enum": [
+              "trainee",
+              "instructor",
+              "ai"
+            ],
+            "title": "Performed By Role",
+            "type": "string"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "intervention_type",
+          "site_code",
+          "details"
+        ],
+        "title": "InterventionCreateIn",
+        "type": "object"
+      },
+      "InterventionDetailsIn": {
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "InterventionDetailsIn",
+        "type": "object"
+      },
+      "SimulationNoteCreateIn": {
+        "properties": {
+          "content": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "send_to_ai": {
+            "default": false,
+            "title": "Send To Ai",
+            "type": "boolean"
+          },
+          "performed_by_role": {
+            "default": "instructor",
+            "enum": [
+              "trainee",
+              "instructor",
+              "ai"
+            ],
+            "title": "Performed By Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "SimulationNoteCreateIn",
+        "type": "object"
+      },
+      "VitalCreateIn": {
+        "properties": {
+          "vital_type": {
+            "enum": [
+              "heart_rate",
+              "respiratory_rate",
+              "spo2",
+              "etco2",
+              "blood_glucose",
+              "blood_pressure"
+            ],
+            "title": "Vital Type",
+            "type": "string"
+          },
+          "min_value": {
+            "title": "Min Value",
+            "type": "integer"
+          },
+          "max_value": {
+            "title": "Max Value",
+            "type": "integer"
+          },
+          "lock_value": {
+            "default": false,
+            "title": "Lock Value",
+            "type": "boolean"
+          },
+          "min_value_diastolic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Value Diastolic"
+          },
+          "max_value_diastolic": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Value Diastolic"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "vital_type",
+          "min_value",
+          "max_value"
+        ],
+        "title": "VitalCreateIn",
+        "type": "object"
+      },
+      "RunSummaryOut": {
+        "properties": {
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "run_started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Started At"
+          },
+          "run_completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Completed At"
+          },
+          "final_state": {
+            "additionalProperties": true,
+            "title": "Final State",
+            "type": "object"
+          },
+          "event_type_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Event Type Counts",
+            "type": "object"
+          },
+          "timeline_highlights": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Timeline Highlights",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "command_log": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Command Log",
+            "type": "array"
+          },
+          "ai_rationale_notes": {
+            "items": {},
+            "title": "Ai Rationale Notes",
+            "type": "array"
+          },
+          "ai_debrief": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Debrief"
+          }
+        },
+        "required": [
+          "simulation_id",
+          "status",
+          "run_started_at",
+          "run_completed_at",
+          "final_state",
+          "event_type_counts",
+          "timeline_highlights",
+          "command_log",
+          "ai_rationale_notes"
+        ],
+        "title": "RunSummaryOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "SessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sessionid"
+      },
+      "JWTAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "DualAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": []
+}

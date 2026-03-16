@@ -49,7 +49,19 @@ class InitialResponseMixin(NsMixin, BaseInstruction):
         "respiratory rate, "
         "SPO2, "
         "ETCO2, "
-        "blood glucose level."
+        "blood glucose level.\n\n"
+        "Then, provide pulse assessments for all clinically relevant anatomic sites. "
+        "For each site, include both sides (left and right) for: radial, femoral, carotid, pedal. "
+        "For each assessment provide:\n"
+        "- present: whether the pulse is palpable (bool)\n"
+        "- description: pulse quality — one of: strong, bounding, weak, absent, thready\n"
+        "- color_normal: whether skin color is normal (bool)\n"
+        "- color_description: one of: pink, pale, mottled, cyanotic, flushed\n"
+        "- condition_normal: whether skin condition/moisture is normal (bool)\n"
+        "- condition_description: one of: dry, moist, diaphoretic, clammy\n"
+        "- temperature_normal: whether skin temperature is normal (bool)\n"
+        "- temperature_description: one of: warm, cool, cold, hot\n"
+        "Pulse assessments must be clinically consistent with the patient's injuries and vitals."
     )
 
 

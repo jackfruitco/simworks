@@ -18,6 +18,7 @@ from .types import (
     HeartRate,
     Illness,
     Injury,
+    PulseAssessmentItem,
     RespiratoryRate,
 )
 
@@ -79,11 +80,22 @@ class InitialScenarioSchema(StrictBaseModel):
         description="List of injuries or illnesses",
     )
     measurements: MeasurementSchemaBlock = Field(..., description="Measurement schema block")
+    pulses: list[PulseAssessmentItem] = Field(
+        ...,
+        min_length=1,
+        description=(
+            "Pulse assessments at anatomic sites with laterality. "
+            "Include all relevant sites: radial (left/right), femoral (left/right), "
+            "carotid (left/right), pedal (left/right). "
+            "For each site provide present, description, color, condition, and temperature."
+        ),
+    )
 
     __persist__: ClassVar[dict[str, None]] = {
         "scenario_brief": None,
         "conditions": None,
         "measurements": None,
+        "pulses": None,
     }
     __persist_primary__ = "conditions"
 
@@ -95,6 +107,7 @@ class InitialScenarioSchema(StrictBaseModel):
         scenario_brief_obj = results.get("scenario_brief")
         cause_objects = results.get("conditions", [])
         measurements = results.get("measurements", {})
+        pulses = results.get("pulses", [])
 
         vital_objects: list[Any] = []
         if isinstance(measurements, dict):
@@ -153,6 +166,14 @@ class InitialScenarioSchema(StrictBaseModel):
             await broadcast_domain_objects(
                 event_type="trainerlab.vital.created",
                 objects=vital_objects,
+                context=context,
+                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+            )
+
+        if pulses:
+            await broadcast_domain_objects(
+                event_type="trainerlab.pulse.created",
+                objects=pulses,
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
             )

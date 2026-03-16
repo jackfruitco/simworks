@@ -46,6 +46,16 @@ def user(db, user_role):
 
 def _make_initial_payload() -> dict:
     base = {"min_value": 10, "max_value": 20, "lock_value": False}
+    pulse = {
+        "present": True,
+        "description": "strong",
+        "color_normal": True,
+        "color_description": "pink",
+        "condition_normal": True,
+        "condition_description": "dry",
+        "temperature_normal": True,
+        "temperature_description": "warm",
+    }
     return {
         "scenario_brief": {
             "read_aloud_brief": "Patient down at roadside CCP, hostile fire in area.",
@@ -87,6 +97,16 @@ def _make_initial_payload() -> dict:
             },
             "etco2": {**base, "min_value": 30, "max_value": 40},
         },
+        "pulses": [
+            {**pulse, "location": "radial_left"},
+            {**pulse, "location": "radial_right"},
+            {**pulse, "location": "femoral_left"},
+            {**pulse, "location": "femoral_right"},
+            {**pulse, "location": "carotid_left"},
+            {**pulse, "location": "carotid_right"},
+            {**pulse, "location": "pedal_left"},
+            {**pulse, "location": "pedal_right"},
+        ],
     }
 
 

@@ -21,6 +21,7 @@ from .models import (
     Injury,
     Intervention,
     Problem,
+    PulseAssessment,
     RespiratoryRate,
     ScenarioBrief,
     SimulationNote,
@@ -110,6 +111,23 @@ def _base_domain_event_payload(obj: ABCEvent) -> dict[str, Any]:
         "source": obj.source,
         "supersedes_event_id": obj.supersedes_event_id,
         "timestamp": _event_timestamp_iso(obj),
+    }
+
+
+def _serialize_pulse_event(obj: PulseAssessment) -> dict[str, Any]:
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "pulse_assessment",
+        "vital_type": "pulse_assessment",
+        "location": obj.location,
+        "present": obj.present,
+        "description": obj.description,
+        "color_normal": obj.color_normal,
+        "color_description": obj.color_description,
+        "condition_normal": obj.condition_normal,
+        "condition_description": obj.condition_description,
+        "temperature_normal": obj.temperature_normal,
+        "temperature_description": obj.temperature_description,
     }
 
 
@@ -238,6 +256,8 @@ def serialize_domain_event(
             "event_kind": "note",
             "content": obj.content,
         }
+    elif isinstance(obj, PulseAssessment):
+        payload = _serialize_pulse_event(obj)
     else:
         payload = _serialize_vital_event(obj)
 

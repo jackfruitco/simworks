@@ -23,10 +23,11 @@ class TrainerRuntimeContractInstruction(NsMixin, BaseInstruction):
     instruction = (
         "Return only the structured runtime-turn schema with these top-level fields:\n"
         "- state_changes: Deltas only — new/updated/resolved conditions, trending vital ranges, "
+        "updated pulse assessments (location + present/description/color/condition/temperature), "
         "and intervention effect records.\n"
         "- snapshot: The COMPLETE current patient state after applying state_changes. "
-        "Include all active conditions, all current vital ranges, all active interventions, "
-        "and a patient_status summary.\n"
+        "Include all active conditions, all current vital ranges, all current pulse assessments "
+        "(all sites), all active interventions, and a patient_status summary.\n"
         "- instructor_intent: The AI engine's forward-looking plan for the instructor.\n"
         "- rationale_notes: Brief clinical reasoning strings explaining this turn's decisions.\n\n"
         "state_changes.conditions entries (one per change):\n"

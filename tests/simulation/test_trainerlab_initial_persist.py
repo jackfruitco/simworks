@@ -13,6 +13,7 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     Problem,
+    PulseAssessment,
     RespiratoryRate,
     ScenarioBrief,
     TrainerSession,
@@ -52,6 +53,20 @@ def context(simulation):
         simulation_id=simulation.id,
         call_id=str(uuid4()),
     )
+
+
+def _pulse_item(location: str) -> dict:
+    return {
+        "location": location,
+        "present": True,
+        "description": "strong",
+        "color_normal": True,
+        "color_description": "pink",
+        "condition_normal": True,
+        "condition_description": "dry",
+        "temperature_normal": True,
+        "temperature_description": "warm",
+    }
 
 
 def _initial_payload(
@@ -125,6 +140,16 @@ def _initial_payload(
         "min_value": 30,
         "max_value": 40,
     }
+    payload["pulses"] = [
+        _pulse_item("radial_left"),
+        _pulse_item("radial_right"),
+        _pulse_item("femoral_left"),
+        _pulse_item("femoral_right"),
+        _pulse_item("carotid_left"),
+        _pulse_item("carotid_right"),
+        _pulse_item("pedal_left"),
+        _pulse_item("pedal_right"),
+    ]
 
     if include_legacy_measurement_fields:
         for measurement in payload["measurements"].values():
@@ -192,6 +217,28 @@ class TestTrainerLabInitialPersistence:
         assert illness_problem.march_category == "H1"
         assert illness_problem.severity == "high"
 
+    async def test_persists_pulse_assessments(self, context):
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+
+        await persist_schema(schema, context)
+
+        assert (
+            await PulseAssessment.objects.filter(simulation_id=context.simulation_id).acount() == 8
+        )
+        radial_left = await PulseAssessment.objects.filter(
+            simulation_id=context.simulation_id,
+            location="radial_left",
+        ).afirst()
+        assert radial_left is not None
+        assert radial_left.present is True
+        assert radial_left.description == "strong"
+        assert radial_left.color_normal is True
+        assert radial_left.color_description == "pink"
+        assert radial_left.condition_normal is True
+        assert radial_left.condition_description == "dry"
+        assert radial_left.temperature_normal is True
+        assert radial_left.temperature_description == "warm"
+
     async def test_accepts_legacy_etc02_alias(self, context):
         schema = InitialScenarioSchema.model_validate(_initial_payload(etco2_key="etc02"))
 
@@ -225,15 +272,26 @@ class TestTrainerLabInitialPersistence:
             simulation_id=context.simulation_id,
             event_type="trainerlab.vital.created",
         )
+        pulse_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="trainerlab.pulse.created",
+        )
 
         assert await condition_events.acount() == 2
         assert await vital_events.acount() == 6
+        assert await pulse_events.acount() == 8
 
         example_vital = await vital_events.afirst()
         assert example_vital is not None
         assert example_vital.payload["origin"] == "initial_scenario"
         assert "vital_type" in example_vital.payload
         assert "domain_event_id" in example_vital.payload
+
+        example_pulse = await pulse_events.afirst()
+        assert example_pulse is not None
+        assert example_pulse.payload["origin"] == "initial_scenario"
+        assert "location" in example_pulse.payload
+        assert "domain_event_id" in example_pulse.payload
 
     async def test_emits_outbox_events_when_context_call_id_is_uuid(self, simulation):
         from apps.common.models import OutboxEvent

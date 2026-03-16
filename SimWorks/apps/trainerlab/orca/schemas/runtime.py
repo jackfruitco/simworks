@@ -79,6 +79,28 @@ class RuntimeVitalChange(StrictBaseModel):
         return self
 
 
+class RuntimePulseChange(StrictBaseModel):
+    action: Literal["update"] = "update"
+    location: Literal[
+        "radial_left",
+        "radial_right",
+        "femoral_left",
+        "femoral_right",
+        "carotid_left",
+        "carotid_right",
+        "pedal_left",
+        "pedal_right",
+    ]
+    present: bool
+    description: Literal["strong", "bounding", "weak", "absent", "thready"]
+    color_normal: bool
+    color_description: Literal["pink", "pale", "mottled", "cyanotic", "flushed"]
+    condition_normal: bool
+    condition_description: Literal["dry", "moist", "diaphoretic", "clammy"]
+    temperature_normal: bool
+    temperature_description: Literal["warm", "cool", "cold", "hot"]
+
+
 class RuntimeInterventionEffectChange(StrictBaseModel):
     action: Literal["record"] = "record"
     intervention_event_id: int
@@ -90,6 +112,7 @@ class RuntimeInterventionEffectChange(StrictBaseModel):
 class RuntimeStateChanges(StrictBaseModel):
     conditions: list[RuntimeConditionChange] = Field(default_factory=list)
     vitals: list[RuntimeVitalChange] = Field(default_factory=list)
+    pulses: list[RuntimePulseChange] = Field(default_factory=list)
     interventions: list[RuntimeInterventionEffectChange] = Field(default_factory=list)
 
 
@@ -120,6 +143,27 @@ class RuntimeSnapshotIntervention(StrictBaseModel):
     clinical_effect: str = ""
 
 
+class RuntimeSnapshotPulse(StrictBaseModel):
+    location: Literal[
+        "radial_left",
+        "radial_right",
+        "femoral_left",
+        "femoral_right",
+        "carotid_left",
+        "carotid_right",
+        "pedal_left",
+        "pedal_right",
+    ]
+    present: bool
+    description: Literal["strong", "bounding", "weak", "absent", "thready"]
+    color_normal: bool
+    color_description: Literal["pink", "pale", "mottled", "cyanotic", "flushed"]
+    condition_normal: bool
+    condition_description: Literal["dry", "moist", "diaphoretic", "clammy"]
+    temperature_normal: bool
+    temperature_description: Literal["warm", "cool", "cold", "hot"]
+
+
 class RuntimeSnapshotVital(StrictBaseModel):
     vital_type: Literal[
         "heart_rate",
@@ -141,6 +185,7 @@ class TrainerRuntimeSnapshot(StrictBaseModel):
     conditions: list[RuntimeSnapshotCondition] = Field(default_factory=list)
     interventions: list[RuntimeSnapshotIntervention] = Field(default_factory=list)
     vitals: list[RuntimeSnapshotVital] = Field(default_factory=list)
+    pulses: list[RuntimeSnapshotPulse] = Field(default_factory=list)
     patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
 
 

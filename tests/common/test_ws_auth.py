@@ -380,3 +380,93 @@ class TestJWTWebSocketEndToEnd:
         assert "access" in response["message"].lower()
 
         await communicator.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: NotificationsConsumer authentication
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.asyncio
+class TestNotificationsWebSocketEndToEnd:
+    """Integration tests: NotificationsConsumer auth through SessionOrJWTAuthMiddlewareStack.
+
+    Verifies that:
+    - Anonymous connections are rejected with close code 4001 (not HTTP 403)
+    - JWT-authenticated users can connect successfully
+    """
+
+    async def _make_user(self):
+        from django.contrib.auth import get_user_model
+
+        from apps.accounts.models import UserRole
+
+        User = get_user_model()
+        role, _ = await UserRole.objects.aget_or_create(title="WS Notif E2E Test")
+        return await User.objects.acreate(email=f"ws_notif_{uuid4().hex[:6]}@test.com", role=role)
+
+    async def test_anonymous_connection_is_rejected_with_close_code(self):
+        """Anonymous WS connection to notifications is rejected with close code 4001.
+
+        The consumer must call accept() before close() so the client receives
+        the close code rather than an HTTP 403 upgrade rejection.
+        """
+        communicator = WebsocketCommunicator(_make_ws_app(), "/ws/notifications/")
+        connected, _ = await communicator.connect()
+        # Consumer accepts then immediately closes with 4001 for unauthenticated users.
+        # A plain HTTP 403 rejection would have returned connected=False here.
+        assert connected is True
+
+        # The close frame carrying code 4001 arrives as the next output message.
+        close_message = await communicator.receive_output()
+        assert close_message["type"] == "websocket.close"
+        assert close_message.get("code") == 4001
+
+        await communicator.disconnect()
+
+    async def test_jwt_in_header_allows_notifications_connection(self):
+        """JWT-authenticated user can connect to the notifications WebSocket."""
+        user = await self._make_user()
+        token = create_access_token(user)
+
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            "/ws/notifications/",
+            headers=[(b"authorization", f"Bearer {token}".encode())],
+        )
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.disconnect()
+
+    async def test_jwt_in_query_param_allows_notifications_connection(self):
+        """JWT-authenticated user with ?token=<jwt> can connect to notifications."""
+        user = await self._make_user()
+        token = create_access_token(user)
+
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            f"/ws/notifications/?token={token}",
+        )
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.disconnect()
+
+    async def test_invalid_jwt_is_rejected_with_close_code(self):
+        """Invalid JWT token results in rejection with close code 4001."""
+        communicator = WebsocketCommunicator(
+            _make_ws_app(),
+            "/ws/notifications/",
+            headers=[(b"authorization", b"Bearer not.a.valid.token")],
+        )
+        connected, _ = await communicator.connect()
+        # Invalid JWT falls back to AnonymousUser; consumer accepts then closes.
+        assert connected is True
+
+        close_message = await communicator.receive_output()
+        assert close_message["type"] == "websocket.close"
+        assert close_message.get("code") == 4001
+
+        await communicator.disconnect()
