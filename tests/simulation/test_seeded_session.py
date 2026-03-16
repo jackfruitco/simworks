@@ -46,6 +46,16 @@ def user(db, user_role):
 
 def _make_initial_payload() -> dict:
     base = {"min_value": 10, "max_value": 20, "lock_value": False}
+    pulse = {
+        "present": True,
+        "description": "strong",
+        "color_normal": True,
+        "color_description": "pink",
+        "condition_normal": True,
+        "condition_description": "dry",
+        "temperature_normal": True,
+        "temperature_description": "warm",
+    }
     return {
         "scenario_brief": {
             "read_aloud_brief": "Patient down at roadside CCP, hostile fire in area.",
@@ -59,7 +69,8 @@ def _make_initial_payload() -> dict:
         "conditions": [
             {
                 "kind": "injury",
-                "injury_category": "M",
+                "march_category": "M",
+                "severity": "moderate",
                 "injury_location": "HLA",
                 "injury_kind": "LAC",
                 "injury_description": "Scalp laceration with active bleeding",
@@ -68,6 +79,7 @@ def _make_initial_payload() -> dict:
                 "kind": "illness",
                 "name": "Heat exhaustion",
                 "description": "Signs of heat stress present",
+                "march_category": "H1",
                 "severity": "moderate",
             },
         ],
@@ -85,6 +97,16 @@ def _make_initial_payload() -> dict:
             },
             "etco2": {**base, "min_value": 30, "max_value": 40},
         },
+        "pulses": [
+            {**pulse, "location": "radial_left"},
+            {**pulse, "location": "radial_right"},
+            {**pulse, "location": "femoral_left"},
+            {**pulse, "location": "femoral_right"},
+            {**pulse, "location": "carotid_left"},
+            {**pulse, "location": "carotid_right"},
+            {**pulse, "location": "pedal_left"},
+            {**pulse, "location": "pedal_right"},
+        ],
     }
 
 
@@ -155,11 +177,11 @@ class TestSeededSessionEmitsEvents:
 
         vital_events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="trainerlab.vital.created",
+            event_type="vital.created",
         ).count()
         condition_events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type__in=["trainerlab.injury.created", "trainerlab.illness.created"],
+            event_type="condition.created",
         ).count()
 
         assert vital_events >= 1, "At least one vital event must exist after seeding"
@@ -255,7 +277,7 @@ class TestEmitSeededVitalEvents:
 
         events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="trainerlab.vital.created",
+            event_type="vital.created",
         )
         assert events.count() >= 1
 
@@ -283,7 +305,7 @@ class TestEmitSeededVitalEvents:
 
         events = TrainerRuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type__in=["trainerlab.injury.created", "trainerlab.illness.created"],
+            event_type="condition.created",
         )
         assert events.count() >= 1
 

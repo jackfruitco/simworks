@@ -119,7 +119,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     **Persistence** (declarative):
     - messages → chatlab.Message via ``persist_messages`` (inherited from mixin)
     - metadata → simcore.SimulationMetadata polymorphic models via key-based upsert
-    - image_requested → Persisted to Message.image_requested field via context
+    - image_request.requested → sets Message.image_requested flag and enqueues image task
     - llm_conditions_check → NOT PERSISTED
 
     **WebSocket Broadcasting**:
@@ -147,10 +147,9 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
             description="Short descriptor of the clinical finding to emphasize",
         )
 
-    image_requested: bool = Field(..., description="Legacy image request flag")
     image_request: ImageRequest | None = Field(
         default=None,
-        description="Structured image generation intent (preferred over image_requested)",
+        description="Structured image generation intent (set requested=true when the patient references an image or scan)",
     )
     metadata: list[MetadataItem] = Field(
         ...,
@@ -176,9 +175,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
     @property
     def should_generate_image(self) -> bool:
-        if self.image_request is not None:
-            return bool(self.image_request.requested)
-        return bool(self.image_requested)
+        return self.image_request is not None and bool(self.image_request.requested)
 
     async def post_persist(self, results, context):
         """Update Message records and broadcast to WebSocket clients.

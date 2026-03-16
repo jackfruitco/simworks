@@ -8,28 +8,36 @@ from apps.trainerlab.injury_dictionary import (
     normalize_injury_kind,
     normalize_injury_location,
 )
-from apps.trainerlab.models import Illness as ORMIllness, Injury as ORMInjury
+from apps.trainerlab.models import Injury as ORMInjury
 from orchestrai_django.types import StrictBaseModel
 
 __all__ = ["Illness", "Injury"]
 
 
 class Injury(StrictBaseModel):
-    """Pydantic model for Injury."""
+    """LLM-facing schema for an injury cause.
 
-    kind: Literal["injury"] = Field(..., description="Injury")
-    injury_category: ORMInjury.InjuryCategory = Field(..., description="Category of the injury")
-    injury_location: ORMInjury.InjuryLocation = Field(..., description="Location of the injury")
-    injury_kind: ORMInjury.InjuryKind = Field(..., description="Kind of injury")
+    Maps to trainerlab.Injury (immutable cause record).
+    Problem-level fields (march_category, severity) are also provided here
+    and consumed by post_persist() to create the associated Problem record.
+    The auto-mapper creates the Injury ORM object; extra fields are silently
+    ignored when writing to the DB.
+    """
 
-    injury_description: str = Field(..., max_length=100, description="Description of the injury")
-    # parent_injury
+    kind: Literal["injury"] = Field(..., description="Discriminator — always 'injury'")
+    injury_location: ORMInjury.InjuryLocation = Field(..., description="Anatomic location")
+    injury_kind: ORMInjury.InjuryKind = Field(..., description="Mechanism of injury")
+    injury_description: str = Field(..., max_length=100, description="Brief description")
+    march_category: str = Field(..., description="MARCH triage category (M, A, R, C, H1, H2, PC)")
+    severity: Literal["low", "moderate", "high", "critical"] = Field(
+        default="moderate", description="Problem severity"
+    )
 
     __orm_model__ = "trainerlab.Injury"
 
-    @field_validator("injury_category", mode="before")
+    @field_validator("march_category", mode="before")
     @classmethod
-    def _normalize_injury_category(cls, value):
+    def _normalize_march_category(cls, value):
         return normalize_injury_category(value)
 
     @field_validator("injury_location", mode="before")
@@ -44,11 +52,26 @@ class Injury(StrictBaseModel):
 
 
 class Illness(StrictBaseModel):
-    """Pydantic model for Illness."""
+    """LLM-facing schema for an illness cause.
 
-    kind: Literal["illness"] = Field(..., description="Illness")
-    name: str = Field(..., max_length=120, description="Name of the illness")
-    description: str = Field(..., max_length=100, description="Description of the illness")
-    severity: ORMIllness.Severity = Field(..., description="Severity of the illness")
+    Maps to trainerlab.Illness (immutable cause record).
+    Problem-level fields (march_category, severity) are consumed by
+    post_persist() to create the associated Problem record.
+    """
+
+    kind: Literal["illness"] = Field(..., description="Discriminator — always 'illness'")
+    name: str = Field(..., max_length=120, description="Illness name")
+    description: str = Field(default="", max_length=500, description="Brief description")
+    march_category: str = Field(
+        ..., description="MARCH triage category this illness maps to (R, C, etc.)"
+    )
+    severity: Literal["low", "moderate", "high", "critical"] = Field(
+        default="moderate", description="Problem severity"
+    )
 
     __orm_model__ = "trainerlab.Illness"
+
+    @field_validator("march_category", mode="before")
+    @classmethod
+    def _normalize_march_category(cls, value):
+        return normalize_injury_category(value)

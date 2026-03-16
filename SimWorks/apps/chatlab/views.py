@@ -40,7 +40,7 @@ def index(request):
         if request.user.is_authenticated
         else Simulation.objects.none()
     )
-    search_query = request.GET.get("q", "").strip()
+    search_query = request.GET.get("q", "").strip()[:200]
     search_messages = request.GET.get("search_messages") == "1"
 
     # Set simulation query filters if provided search_query
@@ -174,7 +174,12 @@ def load_older_messages(request, simulation_id):
     except Message.DoesNotExist:
         return JsonResponse({"error": "Message not found."}, status=404)
 
-    qs = Message.objects.filter(simulation_id=simulation_id, timestamp__lt=before_message.timestamp)
+    # Use a compound cursor so that messages sharing the same timestamp are
+    # never skipped or repeated at a page boundary.
+    qs = Message.objects.filter(simulation_id=simulation_id).filter(
+        Q(timestamp__lt=before_message.timestamp)
+        | Q(timestamp=before_message.timestamp, id__lt=before_message.id)
+    )
 
     # Filter by conversation when specified (multi-conversation support)
     conversation_id = request.GET.get("conversation_id")

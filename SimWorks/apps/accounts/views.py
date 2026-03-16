@@ -134,6 +134,13 @@ def profile_view(request, user_id=None):
     return render(request, "accounts/profile_detail.html", context)
 
 
+_PROFILE_FIELD_MAX_LENGTH = {
+    "first_name": 150,
+    "last_name": 150,
+    "bio": 500,
+}
+
+
 @login_required
 @require_http_methods(["POST"])
 def update_profile_field(request):
@@ -142,13 +149,15 @@ def update_profile_field(request):
     Expects: field_name, field_value in POST data
     """
     field_name = request.POST.get("field_name")
-    field_value = request.POST.get("field_value")
+    field_value = request.POST.get("field_value", "")
 
     # Whitelist allowed fields
-    allowed_fields = ["first_name", "last_name", "bio"]
-
-    if field_name not in allowed_fields:
+    if field_name not in _PROFILE_FIELD_MAX_LENGTH:
         return JsonResponse({"error": "Invalid field"}, status=400)
+
+    max_length = _PROFILE_FIELD_MAX_LENGTH[field_name]
+    if len(field_value) > max_length:
+        return JsonResponse({"error": f"Value too long (max {max_length} characters)"}, status=400)
 
     # Update the user field
     setattr(request.user, field_name, field_value)

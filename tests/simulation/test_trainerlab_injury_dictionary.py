@@ -7,14 +7,14 @@ from apps.trainerlab.injury_dictionary import (
     normalize_injury_kind,
     normalize_injury_location,
 )
-from apps.trainerlab.models import Injury
+from apps.trainerlab.models import Injury, Problem
 
 
 def test_dictionary_choices_match_orm_choices():
     choices = get_injury_dictionary_choices()
 
     assert choices["categories"] == [
-        (str(code), str(label)) for code, label in Injury.InjuryCategory.choices
+        (str(code), str(label)) for code, label in Problem.MARCHCategory.choices
     ]
     assert choices["regions"] == [
         (str(code), str(label)) for code, label in Injury.InjuryLocation.choices

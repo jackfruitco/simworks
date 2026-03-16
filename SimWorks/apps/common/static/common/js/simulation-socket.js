@@ -74,7 +74,8 @@ class SimulationSocket {
 
     connect() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const url = `${protocol}//${window.location.host}/ws/simulation/${this.simulationId}/`;
+        const tokenParam = this.authToken ? `?token=${encodeURIComponent(this.authToken)}` : '';
+        const url = `${protocol}//${window.location.host}/ws/simulation/${this.simulationId}/${tokenParam}`;
 
         this.ws = new WebSocket(url);
         const isReconnect = this.reconnectAttempts > 0;

@@ -41,7 +41,7 @@ def test_load_older_button_visibility_is_top_and_failure_bound():
 
 def test_trainerlab_event_contract_includes_friendly_labels():
     source = _read("SimWorks/apps/common/static/common/js/simulation-events.d.ts")
-    assert "injury_category_label?: string;" in source
+    assert "march_category_label?: string;" in source
     assert "injury_location_label?: string;" in source
     assert "injury_kind_label?: string;" in source
     assert "intervention_label?: string;" in source
@@ -49,9 +49,9 @@ def test_trainerlab_event_contract_includes_friendly_labels():
     assert "details: InterventionDetails;" in source
     assert "type: 'trainerlab.event.created';" in source
     assert "type: 'trainerlab.condition.created';" in source
-    assert "injury_category: string;" in source
-    assert "injury_location: string;" in source
-    assert "injury_kind: string;" in source
+    assert "march_category: string;" in source
+    assert "injury_location?: string;" in source
+    assert "injury_kind?: string;" in source
     assert "intervention_code?: string;" not in source
     assert "legacy_code?: string;" not in source
     assert "type: 'injury.created';" not in source

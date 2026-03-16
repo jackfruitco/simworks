@@ -26,13 +26,30 @@ class TestGetClientIP:
         ip = get_client_ip(request)
         assert ip == "192.168.1.1"
 
-    def test_returns_first_forwarded_ip(self):
-        """Test that the first IP in X-Forwarded-For chain is used."""
+    def test_ignores_forwarded_header_when_not_behind_proxy(self):
+        """Test that X-Forwarded-For is ignored when DJANGO_BEHIND_PROXY is False."""
         request = RequestFactory().get("/")
         request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 127.0.0.1"
+        request.META["REMOTE_ADDR"] = "203.0.113.5"
 
-        ip = get_client_ip(request)
-        assert ip == "10.0.0.1"
+        with patch("apps.common.ratelimit.settings") as mock_settings:
+            mock_settings.DJANGO_BEHIND_PROXY = False
+            ip = get_client_ip(request)
+
+        # XFF is client-supplied when not behind proxy; use REMOTE_ADDR instead
+        assert ip == "203.0.113.5"
+
+    def test_returns_rightmost_forwarded_ip_when_behind_proxy(self):
+        """Test that the rightmost XFF IP is used when behind a trusted proxy."""
+        request = RequestFactory().get("/")
+        request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 203.0.113.5"
+
+        with patch("apps.common.ratelimit.settings") as mock_settings:
+            mock_settings.DJANGO_BEHIND_PROXY = True
+            ip = get_client_ip(request)
+
+        # Rightmost IP is appended by our trusted proxy; cannot be spoofed by client
+        assert ip == "203.0.113.5"
 
     def test_returns_unknown_when_no_ip_available(self):
         """Test fallback to 'unknown' when no IP info available."""

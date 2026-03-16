@@ -125,19 +125,37 @@ async def persist_schema(schema: BaseModel, context: PersistContext) -> Any:
     return results
 
 
+# Module prefixes that are allowed as schema FQN targets.  This prevents an
+# attacker who can write to ServiceCallRecord.schema_fqn from loading arbitrary
+# Python modules (e.g. os, subprocess, builtins) via importlib.
+_ALLOWED_FQN_PREFIXES: tuple[str, ...] = (
+    "apps.",
+    "orchestrai",
+    "config.",
+)
+
+
 def resolve_schema_class(fqn: str) -> type:
     """Import and return a Pydantic schema class from a fully-qualified name.
 
     Args:
-        fqn: Dotted path like ``chatlab.orca.schemas.patient.PatientInitialOutputSchema``
+        fqn: Dotted path like ``apps.chatlab.orca.schemas.patient.PatientInitialOutputSchema``
 
     Returns:
         The schema class.
 
     Raises:
+        ValueError: If the FQN references a disallowed module.
         ImportError: If the module cannot be found.
         AttributeError: If the class does not exist in the module.
     """
     module_path, class_name = fqn.rsplit(".", 1)
+
+    if not any(module_path.startswith(prefix) for prefix in _ALLOWED_FQN_PREFIXES):
+        raise ValueError(
+            f"Schema FQN {fqn!r} references a disallowed module path {module_path!r}. "
+            f"Only modules under {_ALLOWED_FQN_PREFIXES} are permitted."
+        )
+
     module = importlib.import_module(module_path)
     return getattr(module, class_name)

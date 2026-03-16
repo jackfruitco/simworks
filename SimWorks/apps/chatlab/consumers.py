@@ -80,17 +80,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         is_authenticated = bool(scope_user and getattr(scope_user, "is_authenticated", False))
         is_owner = bool(is_authenticated and self.simulation.user_id == scope_user.id)
         if not is_owner:
+            # Accept is required by the WebSocket protocol before closing.
+            # No data is sent to avoid leaking information about simulation
+            # existence or ownership to unauthorized callers.
             await self.accept()
-            await self.send(
-                text_data=json.dumps(
-                    {
-                        "type": "error",
-                        "message": "You do not have access to this simulation.",
-                        "redirect": reverse("chatlab:index"),
-                    },
-                    default=json_default,
-                )
-            )
             await self.close(code=4403)
             return
 
@@ -173,7 +166,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         func_name = inspect.currentframe().f_code.co_name
         # Parse the incoming data first
-        data = json.loads(text_data)
+        try:
+            data = json.loads(text_data)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Received invalid JSON from WebSocket client")
+            await self.send(
+                text_data=json.dumps({"type": "error", "message": "Invalid message format"})
+            )
+            return
         event_type = data.get("type")
         ChatConsumer.log(func_name, f"{event_type} event received: {data}")
 
@@ -229,11 +229,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Check whether a simulation has ended either by flag or time limit.
 
+        Refreshes ``status`` and ``end_timestamp`` from the database on each
+        call so that state changes made by external processes (staff actions,
+        workers on other nodes) are picked up without requiring a reconnect.
+
         :param simulation: The simulation object to evaluate
         :return: True if the simulation has ended, False otherwise
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
+
+        await sync_to_async(simulation.refresh_from_db)(fields=["status", "end_timestamp"])
 
         if simulation.is_complete:
             return True

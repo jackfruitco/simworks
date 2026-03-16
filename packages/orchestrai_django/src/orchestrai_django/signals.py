@@ -5,63 +5,12 @@ from uuid import UUID
 
 from django.dispatch import Signal
 
-from orchestrai.utils.json import make_json_safe
+from orchestrai_django.utils.serialization import pydantic_model_to_dict
 
 
-# NEW: light helpers to introspect request/response + identity
 def _as_dict(obj: Any) -> dict:
-    """
-    Best-effort conversion of Pydantic/dataclass objects to dict
-    for signal payloads. Falls back to repr(...) if needed.
-    """
-    if obj is None:
-        return {}
-    dump = getattr(obj, "model_dump", None)
-    if callable(dump):
-        try:
-            return dump()  # Pydantic v2 style
-        except TypeError as e:
-            # MockValSer error - manually extract fields instead
-            if "MockValSer" in str(e):
-                result = {}
-                # Manually extract all model fields
-                if hasattr(obj, "model_fields"):
-                    for field_name in obj.model_fields:
-                        try:
-                            value = getattr(obj, field_name, None)
-                            # Recursively convert nested Pydantic models
-                            if hasattr(value, "model_dump"):
-                                result[field_name] = _as_dict(value)
-                            elif isinstance(value, list):
-                                result[field_name] = [
-                                    _as_dict(item)
-                                    if hasattr(item, "model_dump")
-                                    else make_json_safe(item)
-                                    for item in value
-                                ]
-                            elif isinstance(value, dict):
-                                result[field_name] = {
-                                    k: _as_dict(v)
-                                    if hasattr(v, "model_dump")
-                                    else make_json_safe(v)
-                                    for k, v in value.items()
-                                }
-                            else:
-                                result[field_name] = make_json_safe(value)
-                        except Exception:
-                            result[field_name] = None
-                    return result
-            # Other TypeError - try JSON mode fallback
-            try:
-                return dump(mode="json")
-            except Exception:
-                pass
-    dct = getattr(obj, "dict", None)
-    if callable(dct):
-        return dct()
-    if hasattr(obj, "__dict__"):
-        return dict(obj.__dict__)
-    return {"value": repr(obj)}
+    """Best-effort conversion of Pydantic/dataclass objects to a dict for signal payloads."""
+    return pydantic_model_to_dict(obj)
 
 
 def _split_identity(identity: str) -> tuple[str | None, str | None, str | None, str | None]:

@@ -105,8 +105,29 @@ class Message(PersistModel):
         self.provider_response_id = id_
         self.save(update_fields=["provider_response_id"])
 
-    def get_openai_input(self) -> dict:
-        """Return list formatted for OpenAI Responses API input."""
+    def get_openai_input(self, request=None) -> dict:
+        """Return dict formatted for OpenAI Responses API input.
+
+        For image-type messages, includes image_url content blocks so the LLM
+        receives visual context from previously generated images.  The caller
+        must supply *request* (or ensure images are served at absolute URLs) for
+        the URLs to be resolvable by the provider.
+        """
+        if self.message_type == self.MessageType.IMAGE:
+            from apps.chatlab.media_payloads import build_message_media_payload
+
+            media_payload = build_message_media_payload(self, request=request)
+            content = [
+                {"type": "input_image", "image_url": item["original_url"]}
+                for item in media_payload.get("media_list", [])
+                if item.get("original_url")
+            ]
+            if self.content:
+                content.append({"type": "input_text", "text": self.content})
+            return {
+                "role": self.get_role_display(),
+                "content": content if content else self.content,
+            }
         return {
             "role": self.get_role_display(),
             "content": self.content,
@@ -126,6 +147,12 @@ class Message(PersistModel):
 
     class Meta:
         ordering: ClassVar = ["timestamp"]
+        indexes: ClassVar = [
+            models.Index(
+                fields=["simulation", "timestamp"],
+                name="chatlab_msg_sim_ts_idx",
+            ),
+        ]
         constraints: ClassVar = [
             models.UniqueConstraint(
                 fields=["source_message"],

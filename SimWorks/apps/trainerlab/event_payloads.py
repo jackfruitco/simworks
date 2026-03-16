@@ -20,6 +20,8 @@ from .models import (
     Illness,
     Injury,
     Intervention,
+    Problem,
+    PulseAssessment,
     RespiratoryRate,
     ScenarioBrief,
     SimulationNote,
@@ -36,7 +38,7 @@ __all__ = [
 def _injury_label_maps() -> dict[str, dict[str, str]]:
     choices = get_injury_dictionary_choices()
     return {
-        "injury_category": dict(choices["categories"]),
+        "march_category": dict(choices["categories"]),
         "injury_location": dict(choices["regions"]),
         "injury_kind": dict(choices["kinds"]),
     }
@@ -52,7 +54,7 @@ def _event_timestamp_iso(obj: Any) -> str | None:
 def _enrich_injury_labels(payload: dict[str, Any]) -> None:
     injury_maps = _injury_label_maps()
     for field_name, label_field in (
-        ("injury_category", "injury_category_label"),
+        ("march_category", "march_category_label"),
         ("injury_location", "injury_location_label"),
         ("injury_kind", "injury_kind_label"),
     ):
@@ -84,6 +86,14 @@ def _enrich_structured_intervention(payload: dict[str, Any]) -> bool:
     return True
 
 
+def _problem_control_state(problem: Problem) -> str:
+    if problem.is_resolved:
+        return "resolved"
+    if problem.is_treated:
+        return "controlled"
+    return "uncontrolled"
+
+
 def enrich_trainer_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     enriched = dict(payload or {})
 
@@ -101,6 +111,23 @@ def _base_domain_event_payload(obj: ABCEvent) -> dict[str, Any]:
         "source": obj.source,
         "supersedes_event_id": obj.supersedes_event_id,
         "timestamp": _event_timestamp_iso(obj),
+    }
+
+
+def _serialize_pulse_event(obj: PulseAssessment) -> dict[str, Any]:
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "pulse_assessment",
+        "vital_type": "pulse_assessment",
+        "location": obj.location,
+        "present": obj.present,
+        "description": obj.description,
+        "color_normal": obj.color_normal,
+        "color_description": obj.color_description,
+        "condition_normal": obj.condition_normal,
+        "condition_description": obj.condition_description,
+        "temperature_normal": obj.temperature_normal,
+        "temperature_description": obj.temperature_description,
     }
 
 
@@ -134,35 +161,69 @@ def _serialize_vital_event(obj: ABCEvent) -> dict[str, Any]:
     return payload
 
 
+def _serialize_problem_with_cause(obj: Problem, cause: ABCEvent | None = None) -> dict[str, Any]:
+    """Serialize a Problem domain event, resolving its cause for extra fields."""
+    if cause is None and obj.cause_id:
+        cause = ABCEvent.objects.filter(pk=obj.cause_id).first()
+    base = {
+        **_base_domain_event_payload(obj),
+        "event_kind": "condition",
+        "kind": obj.problem_kind,
+        "problem_id": obj.id,
+        "cause_event_id": obj.cause_id,
+        "march_category": obj.march_category,
+        "severity": obj.severity,
+        "is_treated": obj.is_treated,
+        "is_resolved": obj.is_resolved,
+        "control_state": _problem_control_state(obj),
+        "description": obj.description,
+    }
+    if isinstance(cause, Injury):
+        base.update(
+            {
+                "label": cause.injury_description,
+                "injury_location": cause.injury_location,
+                "injury_kind": cause.injury_kind,
+            }
+        )
+        _enrich_injury_labels(base)
+    elif isinstance(cause, Illness):
+        base.update(
+            {
+                "label": cause.name,
+                "name": cause.name,
+                "illness_description": cause.description,
+            }
+        )
+    else:
+        base["label"] = obj.description or "Unknown condition"
+    return base
+
+
 def serialize_domain_event(
     obj: ABCEvent,
     *,
     extra: Mapping[str, Any] | None = None,
+    cause: ABCEvent | None = None,
 ) -> dict[str, Any]:
-    if isinstance(obj, Injury):
+    if isinstance(obj, Problem):
+        payload = _serialize_problem_with_cause(obj, cause)
+    elif isinstance(obj, Injury):
+        # Injury as a standalone cause (not wrapped in Problem) — rare path for direct
+        # cause serialization (e.g. audit trails).
         payload = {
             **_base_domain_event_payload(obj),
             "event_kind": "injury",
-            "condition_kind": "injury",
-            "injury_id": obj.id,
-            "parent_injury_id": obj.parent_injury_id,
-            "injury_category": obj.injury_category,
             "injury_location": obj.injury_location,
             "injury_kind": obj.injury_kind,
             "injury_description": obj.injury_description,
-            "is_treated": obj.is_treated,
-            "is_resolved": obj.is_resolved,
         }
     elif isinstance(obj, Illness):
         payload = {
             **_base_domain_event_payload(obj),
             "event_kind": "illness",
-            "condition_kind": "illness",
-            "illness_id": obj.id,
             "name": obj.name,
             "description": obj.description,
-            "severity": obj.severity,
-            "is_resolved": obj.is_resolved,
         }
     elif isinstance(obj, Intervention):
         payload = {
@@ -171,7 +232,7 @@ def serialize_domain_event(
             "intervention_id": obj.id,
             "intervention_type": obj.intervention_type,
             "site_code": obj.site_code,
-            "target_injury_id": obj.target_injury_id,
+            "target_problem_id": obj.target_problem_id,
             "status": obj.status,
             "effectiveness": obj.effectiveness,
             "notes": obj.notes,
@@ -195,6 +256,8 @@ def serialize_domain_event(
             "event_kind": "note",
             "content": obj.content,
         }
+    elif isinstance(obj, PulseAssessment):
+        payload = _serialize_pulse_event(obj)
     else:
         payload = _serialize_vital_event(obj)
 

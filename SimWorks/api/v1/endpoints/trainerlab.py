@@ -76,6 +76,7 @@ from apps.trainerlab.models import (
     Illness,
     Injury,
     Intervention,
+    Problem,
     RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
@@ -571,14 +572,14 @@ def apply_preset(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.preset.applied",
+        event_type="preset.applied",
         payload={
             "preset_id": instruction.id,
             "title": instruction.title,
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=(f"trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}"),
+        idempotency_key=(f"preset.applied:{session.id}:{instruction.id}:{command.id}"),
     )
     append_pending_runtime_reason(
         session=session,
@@ -852,14 +853,14 @@ def steer_prompt(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.command.accepted",
+        event_type="command.accepted",
         payload={
             "command": "steer_prompt",
             "prompt": body.prompt,
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.command.accepted:{command.id}",
+        idempotency_key=f"command.accepted:{command.id}",
     )
     append_pending_runtime_reason(
         session=session,
@@ -939,19 +940,19 @@ def adjust_simulation(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.adjustment.accepted",
+        event_type="adjustment.accepted",
         payload=adjustment_entry,
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.adjustment.accepted:{command.id}",
+        idempotency_key=f"adjustment.accepted:{command.id}",
     )
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.adjustment.applied",
+        event_type="adjustment.applied",
         payload=adjustment_entry,
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.adjustment.applied:{command.id}",
+        idempotency_key=f"adjustment.applied:{command.id}",
     )
     append_pending_runtime_reason(
         session=session,
@@ -988,47 +989,67 @@ def _deactivate_superseded(event: ABCEvent | None) -> None:
         event.save(update_fields=["is_active"])
 
 
-def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Injury:
-    supersedes = _resolve_superseded_domain_event(
-        simulation_id=session.simulation_id,
-        supersedes_event_id=body.supersedes_event_id,
-    )
-    _deactivate_superseded(supersedes)
-
-    parent_injury = None
-    if body.parent_injury_id:
-        parent_injury = Injury.objects.filter(
-            pk=body.parent_injury_id,
-            simulation_id=session.simulation_id,
+def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
+    old_problem: Problem | None = None
+    if body.supersedes_event_id:
+        old_problem = Problem.objects.filter(
+            pk=body.supersedes_event_id, simulation=session.simulation
         ).first()
+        if old_problem:
+            _deactivate_superseded(old_problem)
+            if old_problem.cause_id:
+                old_cause = ABCEvent.objects.filter(pk=old_problem.cause_id).first()
+                if old_cause:
+                    _deactivate_superseded(old_cause)
 
-    return Injury.objects.create(
+    new_injury = Injury.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=supersedes,
-        injury_category=body.injury_category,
+        supersedes_event=old_problem.cause if old_problem and old_problem.cause_id else None,
         injury_location=body.injury_location,
         injury_kind=body.injury_kind,
         injury_description=body.injury_description,
-        parent_injury=parent_injury,
     )
-
-
-def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Illness:
-    supersedes = _resolve_superseded_domain_event(
-        simulation_id=session.simulation_id,
-        supersedes_event_id=body.supersedes_event_id,
-    )
-    _deactivate_superseded(supersedes)
-
-    return Illness.objects.create(
+    return Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=supersedes,
+        supersedes_event=old_problem,
+        cause=new_injury,
+        problem_kind=Problem.ProblemKind.INJURY,
+        march_category=body.march_category,
+        severity=body.severity,
+        description=body.description,
+    )
+
+
+def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
+    old_problem: Problem | None = None
+    if body.supersedes_event_id:
+        old_problem = Problem.objects.filter(
+            pk=body.supersedes_event_id, simulation=session.simulation
+        ).first()
+        if old_problem:
+            _deactivate_superseded(old_problem)
+            if old_problem.cause_id:
+                old_cause = ABCEvent.objects.filter(pk=old_problem.cause_id).first()
+                if old_cause:
+                    _deactivate_superseded(old_cause)
+
+    new_illness = Illness.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes_event=old_problem.cause if old_problem and old_problem.cause_id else None,
         name=body.name,
         description=body.description,
+    )
+    return Problem.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes_event=old_problem,
+        cause=new_illness,
+        problem_kind=Problem.ProblemKind.ILLNESS,
+        march_category=body.march_category,
         severity=body.severity,
-        is_resolved=body.is_resolved,
     )
 
 
@@ -1045,7 +1066,7 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         supersedes_event=supersedes,
         intervention_type=body.intervention_type,
         site_code=body.site_code,
-        target_injury_id=body.target_injury_id,
+        target_problem_id=body.target_problem_id,
         status=body.status,
         effectiveness=body.effectiveness,
         notes=body.notes,
@@ -1109,7 +1130,7 @@ def _inject_event_core(
     simulation_id: int,
     command_type: str,
     payload_json: dict,
-    create_fn: Callable[[TrainerSession], ABCEvent],
+    create_fn: Callable[[TrainerSession], ABCEvent | Problem],
 ) -> TrainerCommandAck:
     user = request.auth
     require_instructor_membership(user)
@@ -1141,50 +1162,61 @@ def _inject_event_core(
         raise HttpError(409, str(exc)) from None
 
     if event_kind in {"injury", "illness"}:
-        event_type = "trainerlab.condition.created"
+        event_type = "condition.created"
     elif event_kind == "vital":
-        event_type = "trainerlab.vital.updated"
+        event_type = "vital.updated"
     elif event_kind == "intervention":
-        event_type = "trainerlab.intervention.recorded"
+        event_type = "intervention.recorded"
     elif event_kind == "note":
-        event_type = "trainerlab.note_created"
+        event_type = "note.created"
     else:
-        event_type = "trainerlab.event.created"
+        event_type = "event.created"
 
     send_to_ai = bool(payload_json.get("send_to_ai", False))
-    emit_runtime_event(
-        session=session,
-        event_type=event_type,
-        payload={
+    from apps.trainerlab.event_payloads import serialize_domain_event
+
+    if event_kind in {"injury", "illness"}:
+        # domain_event is a Problem for condition events
+        event_payload = serialize_domain_event(domain_event)
+    elif event_kind == "intervention":
+        event_payload = {
             "domain_event_id": domain_event.id,
             "domain_event_type": domain_event.__class__.__name__,
             "source": domain_event.source,
             "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
             "supersedes_event_id": domain_event.supersedes_event_id,
-            **(
-                {
-                    "intervention_type": getattr(domain_event, "intervention_type", "") or None,
-                    "site_code": getattr(domain_event, "site_code", "") or None,
-                    "code": getattr(domain_event, "code", ""),
-                    "description": getattr(domain_event, "description", ""),
-                    "target": getattr(domain_event, "target", ""),
-                    "anatomic_location": getattr(domain_event, "anatomic_location", ""),
-                    "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
-                    "notes": getattr(domain_event, "notes", ""),
-                    "performed_by_role": getattr(domain_event, "performed_by_role", ""),
-                }
-                if event_kind == "intervention"
-                else {}
-            ),
-            **(
-                {
-                    "content": getattr(domain_event, "content", ""),
-                    "created_by_role": payload_json.get("performed_by_role", "instructor"),
-                }
-                if event_kind == "note"
-                else {}
-            ),
-        },
+            "intervention_type": getattr(domain_event, "intervention_type", "") or None,
+            "site_code": getattr(domain_event, "site_code", "") or None,
+            "code": getattr(domain_event, "code", ""),
+            "description": getattr(domain_event, "description", ""),
+            "target": getattr(domain_event, "target", ""),
+            "anatomic_location": getattr(domain_event, "anatomic_location", ""),
+            "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
+            "notes": getattr(domain_event, "notes", ""),
+            "performed_by_role": getattr(domain_event, "performed_by_role", ""),
+        }
+    elif event_kind == "note":
+        event_payload = {
+            "domain_event_id": domain_event.id,
+            "domain_event_type": domain_event.__class__.__name__,
+            "source": domain_event.source,
+            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
+            "supersedes_event_id": domain_event.supersedes_event_id,
+            "content": getattr(domain_event, "content", ""),
+            "created_by_role": payload_json.get("performed_by_role", "instructor"),
+        }
+    else:
+        event_payload = {
+            "domain_event_id": domain_event.id,
+            "domain_event_type": domain_event.__class__.__name__,
+            "source": domain_event.source,
+            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
+            "supersedes_event_id": domain_event.supersedes_event_id,
+        }
+    emit_runtime_event(
+        session=session,
+        event_type=event_type,
+        payload=event_payload,
         created_by=user,
         correlation_id=correlation_id,
         idempotency_key=f"{event_type}:{domain_event.id}",
@@ -1339,10 +1371,7 @@ def list_trainer_events(
     session = _get_session_for_simulation(simulation_id, user)
 
     queryset = order_outbox_queryset(
-        OutboxEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type__startswith="trainerlab.",
-        )
+        OutboxEvent.objects.filter(simulation_id=session.simulation_id)
     )
 
     if cursor:
@@ -1354,7 +1383,6 @@ def list_trainer_events(
         cursor_event = OutboxEvent.objects.filter(
             id=cursor_uuid,
             simulation_id=session.simulation_id,
-            event_type__startswith="trainerlab.",
         ).first()
         if cursor_event is None:
             raise HttpError(400, "Invalid cursor")
@@ -1416,8 +1444,7 @@ def stream_trainer_events(
     return stream_outbox_events(
         simulation_id=session.simulation_id,
         cursor=cursor,
-        event_type_prefix="trainerlab.",
-        sse_event_name="trainerlab",
+        sse_event_name="sim",
         heartbeat_interval_seconds=10.0,
         poll_interval_seconds=1.0,
         heartbeat_comment=": keep-alive\n\n",

@@ -22,6 +22,22 @@ from orchestrai_django.persistence.engine import PersistContext
 
 logger = logging.getLogger(__name__)
 
+# Fields that must never be auto-mapped from an LLM schema response, regardless
+# of name matching.  An LLM-controlled schema could otherwise escalate privileges
+# by producing a field whose name coincidentally matches a sensitive model column.
+_BLOCKED_ORM_FIELDS: frozenset[str] = frozenset(
+    {
+        "password",
+        "last_login",
+        "is_staff",
+        "is_superuser",
+        "is_active",
+        "date_joined",
+        "groups",
+        "user_permissions",
+    }
+)
+
 
 @dataclass(frozen=True)
 class OrmOverride:
@@ -136,6 +152,17 @@ async def _create_orm_instance(
                 "Skipping %s.%s: no matching field on %s and not in __orm_field_map__",
                 type(item).__name__,
                 pydantic_field,
+                model_cls.__name__,
+            )
+            continue
+
+        # Block auto-mapping of sensitive model fields to prevent privilege
+        # escalation via LLM-controlled schema responses.
+        if orm_field in _BLOCKED_ORM_FIELDS:
+            logger.warning(
+                "Blocked auto-mapping of sensitive field %r onto %s — "
+                "use an explicit persist function if this field must be written.",
+                orm_field,
                 model_cls.__name__,
             )
             continue

@@ -491,7 +491,21 @@ class ServiceCall(TimestampedModel):
             self.model_name = model_name
         if provider_response_id is not None:
             self.provider_response_id = provider_response_id
-        self.save()
+        self.save(
+            update_fields=[
+                "status",
+                "finished_at",
+                "output_data",
+                "messages_json",
+                "usage_json",
+                "model_name",
+                "provider_response_id",
+                "input_tokens",
+                "output_tokens",
+                "total_tokens",
+                "updated_at",
+            ]
+        )
 
     def mark_failed(self, error: str) -> None:
         """Mark the call as failed with an error message."""

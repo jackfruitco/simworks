@@ -27,6 +27,8 @@ from .models import (
     Illness,
     Injury,
     Intervention,
+    Problem,
+    PulseAssessment,
     RespiratoryRate,
     ScenarioBrief,
     SessionStatus,
@@ -102,6 +104,7 @@ def build_runtime_state_defaults(
             "conditions": [],
             "interventions": [],
             "vitals": [],
+            "pulses": [],
             "patient_status": {},
         },
         "snapshot_annotations": {"patient_status": {}},
@@ -237,37 +240,52 @@ def emit_runtime_event(
     return runtime_event
 
 
-def _serialize_condition(obj: Injury | Illness) -> dict[str, Any]:
+def _problem_control_state(problem: Problem) -> str:
+    if problem.is_resolved:
+        return "resolved"
+    if problem.is_treated:
+        return "controlled"
+    return "uncontrolled"
+
+
+def _serialize_condition(problem: Problem, cause: ABCEvent | None) -> dict[str, Any]:
+    """Serialize a Problem (lifecycle record) with its underlying cause."""
     payload = {
-        "domain_event_id": obj.id,
-        "source": obj.source,
-        "supersedes_event_id": obj.supersedes_event_id,
-        "timestamp": _iso_or_none(obj.timestamp),
-        "status": "resolved" if getattr(obj, "is_resolved", False) else "active",
-        "kind": "illness" if isinstance(obj, Illness) else "injury",
+        "domain_event_id": problem.id,
+        "problem_id": problem.id,
+        "cause_event_id": problem.cause_id,
+        "source": problem.source,
+        "supersedes_event_id": problem.supersedes_event_id,
+        "timestamp": _iso_or_none(problem.timestamp),
+        "kind": problem.problem_kind,
+        "march_category": problem.march_category,
+        "severity": problem.severity,
+        "is_treated": problem.is_treated,
+        "is_resolved": problem.is_resolved,
+        "control_state": _problem_control_state(problem),
+        "status": "resolved" if problem.is_resolved else "active",
+        "description": problem.description,
     }
-    if isinstance(obj, Injury):
+    if isinstance(cause, Injury):
         payload.update(
             {
-                "label": obj.injury_description,
-                "injury_category": obj.injury_category,
-                "injury_location": obj.injury_location,
-                "injury_kind": obj.injury_kind,
-                "injury_category_label": obj.get_injury_category_display(),
-                "injury_location_label": obj.get_injury_location_display(),
-                "injury_kind_label": obj.get_injury_kind_display(),
-                "is_treated": obj.is_treated,
+                "label": cause.injury_description,
+                "injury_location": cause.injury_location,
+                "injury_kind": cause.injury_kind,
+                "injury_location_label": cause.get_injury_location_display(),
+                "injury_kind_label": cause.get_injury_kind_display(),
+            }
+        )
+    elif isinstance(cause, Illness):
+        payload.update(
+            {
+                "label": cause.name,
+                "name": cause.name,
+                "illness_description": cause.description,
             }
         )
     else:
-        payload.update(
-            {
-                "label": obj.name,
-                "name": obj.name,
-                "description": obj.description,
-                "severity": obj.severity,
-            }
-        )
+        payload["label"] = problem.description or "Unknown condition"
     return payload
 
 
@@ -312,6 +330,24 @@ def _serialize_vital(vital_type: str, obj: ABCEvent) -> dict[str, Any]:
     return payload
 
 
+def _serialize_pulse(obj: PulseAssessment) -> dict[str, Any]:
+    return {
+        "domain_event_id": obj.id,
+        "vital_type": "pulse_assessment",
+        "location": obj.location,
+        "present": obj.present,
+        "description": obj.description,
+        "color_normal": obj.color_normal,
+        "color_description": obj.color_description,
+        "condition_normal": obj.condition_normal,
+        "condition_description": obj.condition_description,
+        "temperature_normal": obj.temperature_normal,
+        "temperature_description": obj.temperature_description,
+        "timestamp": _iso_or_none(obj.timestamp),
+        "source": obj.source,
+    }
+
+
 def project_current_snapshot(
     session: TrainerSession,
     *,
@@ -326,12 +362,16 @@ def project_current_snapshot(
         )
     )
 
-    conditions: list[dict[str, Any]] = []
-    for model in (Injury, Illness):
-        queryset = model.objects.filter(simulation=session.simulation, is_active=True).order_by(
+    problems = list(
+        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
             "timestamp", "id"
         )
-        conditions.extend(_serialize_condition(item) for item in queryset)
+    )
+    cause_ids = [p.cause_id for p in problems if p.cause_id]
+    cause_map: dict[int, ABCEvent] = (
+        {c.id: c for c in ABCEvent.objects.filter(pk__in=cause_ids)} if cause_ids else {}
+    )
+    conditions = [_serialize_condition(p, cause_map.get(p.cause_id)) for p in problems]
 
     interventions = [
         _serialize_intervention(
@@ -377,10 +417,19 @@ def project_current_snapshot(
             "special_considerations": scenario_brief_obj.special_considerations,
         }
 
+    pulses: list[dict[str, Any]] = [
+        _serialize_pulse(obj)
+        for obj in PulseAssessment.objects.filter(
+            simulation=session.simulation,
+            is_active=True,
+        ).order_by("location")
+    ]
+
     return {
         "conditions": conditions,
         "interventions": interventions,
         "vitals": vitals,
+        "pulses": pulses,
         "patient_status": dict(
             (state.get("snapshot_annotations") or {}).get("patient_status") or {}
         ),
@@ -437,7 +486,7 @@ def refresh_runtime_projection(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.state.updated",
+        event_type="state.updated",
         payload={
             "state_revision": state["state_revision"],
             "active_elapsed_seconds": state["active_elapsed_seconds"],
@@ -446,18 +495,18 @@ def refresh_runtime_projection(
             "processed_reasons": processed_reasons or [],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.state.updated:{session.id}:{state['state_revision']}",
+        idempotency_key=f"state.updated:{session.id}:{state['state_revision']}",
     )
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.ai.intent.updated",
+        event_type="ai.intent.updated",
         payload={
             "state_revision": state["state_revision"],
             "ai_plan": state["ai_plan"],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.ai.intent.updated:{session.id}:{state['state_revision']}",
+        idempotency_key=f"ai.intent.updated:{session.id}:{state['state_revision']}",
     )
     return state
 
@@ -495,7 +544,7 @@ def create_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.session.seeded",
+        event_type="session.seeded",
         payload={
             "status": session.status,
             "scenario_spec": session.scenario_spec_json,
@@ -569,6 +618,7 @@ def _run_initial_generation_inline(*, session: TrainerSession, call_id: str) -> 
         session.refresh_from_db()
         _emit_seeded_vital_events(session)
         _emit_seeded_condition_events(session)
+        _emit_seeded_pulse_events(session)
     except Exception:
         logger.exception(
             "Failed to emit seeded runtime events for simulation %s",
@@ -586,28 +636,41 @@ def _emit_seeded_vital_events(session: TrainerSession) -> None:
         if obj is not None:
             emit_runtime_event(
                 session=session,
-                event_type="trainerlab.vital.created",
+                event_type="vital.created",
                 payload=_serialize_vital(vital_type, obj),
-                idempotency_key=f"trainerlab.vital.created:seeded:{session.id}:{vital_type}",
+                idempotency_key=f"vital.created:seeded:{session.id}:{vital_type}",
             )
+
+
+def _emit_seeded_pulse_events(session: TrainerSession) -> None:
+    for obj in PulseAssessment.objects.filter(
+        simulation=session.simulation, is_active=True
+    ).order_by("location"):
+        emit_runtime_event(
+            session=session,
+            event_type="trainerlab.pulse.created",
+            payload=_serialize_pulse(obj),
+            idempotency_key=f"trainerlab.pulse.created:seeded:{session.id}:{obj.location}",
+        )
 
 
 def _emit_seeded_condition_events(session: TrainerSession) -> None:
-    for model in (Injury, Illness):
-        for obj in model.objects.filter(simulation=session.simulation, is_active=True).order_by(
+    problems = list(
+        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
             "timestamp", "id"
-        ):
-            event_type = (
-                "trainerlab.injury.created"
-                if isinstance(obj, Injury)
-                else "trainerlab.illness.created"
-            )
-            emit_runtime_event(
-                session=session,
-                event_type=event_type,
-                payload=_serialize_condition(obj),
-                idempotency_key=f"{event_type}:seeded:{session.id}:{obj.id}",
-            )
+        )
+    )
+    cause_ids = [p.cause_id for p in problems if p.cause_id]
+    cause_map: dict[int, ABCEvent] = (
+        {c.id: c for c in ABCEvent.objects.filter(pk__in=cause_ids)} if cause_ids else {}
+    )
+    for problem in problems:
+        emit_runtime_event(
+            session=session,
+            event_type="condition.created",
+            payload=_serialize_condition(problem, cause_map.get(problem.cause_id)),
+            idempotency_key=f"condition.created:seeded:{session.id}:{problem.id}",
+        )
 
 
 def get_or_create_command(
@@ -815,13 +878,13 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
         session = TrainerSession.objects.select_related("simulation").get(pk=session_id)
         emit_runtime_event(
             session=session,
-            event_type="trainerlab.runtime.failed",
+            event_type="runtime.failed",
             payload={
                 "error": str(exc),
                 "reasons": batch["reasons"],
             },
             correlation_id=batch.get("correlation_id"),
-            idempotency_key=f"trainerlab.runtime.failed:{session.id}:{timezone.now().timestamp()}",
+            idempotency_key=f"runtime.failed:{session.id}:{timezone.now().timestamp()}",
         )
         raise
 
@@ -850,11 +913,12 @@ def clear_runtime_processing(
 
 
 def _event_payload_for_condition(
-    condition: Injury | Illness,
+    problem: Problem,
+    cause: ABCEvent | None,
     *,
     action: str,
 ) -> dict[str, Any]:
-    payload = _serialize_condition(condition)
+    payload = _serialize_condition(problem, cause)
     payload["action"] = action
     return payload
 
@@ -862,16 +926,17 @@ def _event_payload_for_condition(
 def _emit_condition_change(
     *,
     session: TrainerSession,
-    condition: Injury | Illness,
+    problem: Problem,
+    cause: ABCEvent | None,
     action: str,
     correlation_id: str | None,
 ) -> None:
     emit_runtime_event(
         session=session,
-        event_type=f"trainerlab.condition.{action}",
-        payload=_event_payload_for_condition(condition, action=action),
+        event_type=f"condition.{action}",
+        payload=_event_payload_for_condition(problem, cause, action=action),
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.condition.{action}:{condition.id}",
+        idempotency_key=f"condition.{action}:{problem.id}",
     )
 
 
@@ -911,66 +976,115 @@ def _apply_condition_change(
     action = change.get("action")
     condition_kind = change.get("condition_kind")
     target_event_id = change.get("target_event_id")
-    source_event = _resolve_superseded_event(
-        session=session,
-        target_event_id=target_event_id,
-        expected_model=(Injury, Illness),
-    )
+
+    # target_event_id now references a Problem (not Injury/Illness directly).
+    source_problem: Problem | None = None
+    if target_event_id:
+        source_problem = Problem.objects.filter(
+            pk=target_event_id, simulation=session.simulation
+        ).first()
 
     if action in {"update", "resolve"}:
-        _deactivate_event(source_event)
+        _deactivate_event(source_problem)
+
+    emit_action = (
+        "resolved" if action == "resolve" else ("updated" if action == "update" else "created")
+    )
 
     if condition_kind == "injury":
-        injury_source = source_event if isinstance(source_event, Injury) else None
-        if action == "resolve" and injury_source is None:
+        if action == "resolve" and source_problem is None:
             return
-        created = Injury.objects.create(
+
+        # For resolve: keep existing cause; only create a new Problem record.
+        # For create/update: create a new Injury cause.
+        old_cause_injury: Injury | None = None
+        if source_problem and source_problem.cause_id:
+            raw_cause = ABCEvent.objects.filter(pk=source_problem.cause_id).first()
+            old_cause_injury = raw_cause if isinstance(raw_cause, Injury) else None
+
+        if action == "resolve":
+            new_injury = old_cause_injury
+        else:
+            if action == "update" and old_cause_injury:
+                _deactivate_event(old_cause_injury)
+            new_injury = Injury.objects.create(
+                simulation=session.simulation,
+                source=EventSource.AI,
+                supersedes_event=old_cause_injury,
+                injury_location=change.get("injury_location")
+                or getattr(
+                    old_cause_injury,
+                    "injury_location",
+                    Injury.InjuryLocation.THORAX_LEFT_ANTERIOR,
+                ),
+                injury_kind=change.get("injury_kind")
+                or getattr(old_cause_injury, "injury_kind", Injury.InjuryKind.LACERATION),
+                injury_description=change.get("injury_description")
+                or getattr(old_cause_injury, "injury_description", "Updated injury"),
+            )
+
+        new_problem = Problem.objects.create(
             simulation=session.simulation,
             source=EventSource.AI,
-            supersedes_event=source_event,
-            injury_category=change.get("injury_category")
-            or getattr(injury_source, "injury_category", Injury.InjuryCategory.M),
-            injury_location=change.get("injury_location")
-            or getattr(
-                injury_source, "injury_location", Injury.InjuryLocation.THORAX_LEFT_ANTERIOR
-            ),
-            injury_kind=change.get("injury_kind")
-            or getattr(injury_source, "injury_kind", Injury.InjuryKind.LACERATION),
-            injury_description=change.get("injury_description")
-            or getattr(injury_source, "injury_description", "Updated injury"),
-            parent_injury=getattr(injury_source, "parent_injury", None),
-            is_treated=bool(change.get("is_treated", getattr(injury_source, "is_treated", False))),
-            is_resolved=action == "resolve" or bool(change.get("is_resolved", False)),
+            supersedes_event=source_problem,
+            cause=new_injury,
+            problem_kind=Problem.ProblemKind.INJURY,
+            march_category=change.get("march_category")
+            or getattr(source_problem, "march_category", Problem.MARCHCategory.M),
+            severity=change.get("severity")
+            or getattr(source_problem, "severity", Problem.Severity.MODERATE),
+            is_treated=getattr(source_problem, "is_treated", False),
+            is_resolved=action == "resolve",
         )
         _emit_condition_change(
             session=session,
-            condition=created,
-            action="resolved"
-            if action == "resolve"
-            else ("updated" if action == "update" else "created"),
+            problem=new_problem,
+            cause=new_injury,
+            action=emit_action,
             correlation_id=correlation_id,
         )
         return
 
-    illness_source = source_event if isinstance(source_event, Illness) else None
-    if action == "resolve" and illness_source is None:
+    # illness branch
+    if action == "resolve" and source_problem is None:
         return
-    created = Illness.objects.create(
+
+    old_cause_illness: Illness | None = None
+    if source_problem and source_problem.cause_id:
+        raw_cause = ABCEvent.objects.filter(pk=source_problem.cause_id).first()
+        old_cause_illness = raw_cause if isinstance(raw_cause, Illness) else None
+
+    if action == "resolve":
+        new_illness = old_cause_illness
+    else:
+        if action == "update" and old_cause_illness:
+            _deactivate_event(old_cause_illness)
+        new_illness = Illness.objects.create(
+            simulation=session.simulation,
+            source=EventSource.AI,
+            supersedes_event=old_cause_illness,
+            name=change.get("name") or getattr(old_cause_illness, "name", "Emergent condition"),
+            description=change.get("description") or getattr(old_cause_illness, "description", ""),
+        )
+
+    new_problem = Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.AI,
-        supersedes_event=source_event,
-        name=change.get("name") or getattr(illness_source, "name", "Emergent condition"),
-        description=change.get("description") or getattr(illness_source, "description", ""),
+        supersedes_event=source_problem,
+        cause=new_illness,
+        problem_kind=Problem.ProblemKind.ILLNESS,
+        march_category=change.get("march_category")
+        or getattr(source_problem, "march_category", Problem.MARCHCategory.R),
         severity=change.get("severity")
-        or getattr(illness_source, "severity", Illness.Severity.MODERATE),
-        is_resolved=action == "resolve" or bool(change.get("is_resolved", False)),
+        or getattr(source_problem, "severity", Problem.Severity.MODERATE),
+        is_treated=getattr(source_problem, "is_treated", False),
+        is_resolved=action == "resolve",
     )
     _emit_condition_change(
         session=session,
-        condition=created,
-        action="resolved"
-        if action == "resolve"
-        else ("updated" if action == "update" else "created"),
+        problem=new_problem,
+        cause=new_illness,
+        action=emit_action,
         correlation_id=correlation_id,
     )
 
@@ -1015,10 +1129,57 @@ def _apply_vital_change(
     payload["trend"] = change.get("trend", "stable")
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.vital.updated",
+        event_type="vital.updated",
         payload=payload,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.vital.updated:{created.id}",
+        idempotency_key=f"vital.updated:{created.id}",
+    )
+
+
+def _apply_pulse_change(
+    *,
+    session: TrainerSession,
+    change: dict[str, Any],
+    correlation_id: str | None,
+) -> None:
+    location = change.get("location")
+    if not location:
+        return
+
+    existing = (
+        PulseAssessment.objects.filter(
+            simulation=session.simulation,
+            location=location,
+            is_active=True,
+        )
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    _deactivate_event(existing)
+
+    created = PulseAssessment.objects.create(
+        simulation=session.simulation,
+        source=EventSource.AI,
+        supersedes_event=existing,
+        location=location,
+        present=bool(change.get("present", True)),
+        description=change.get("description", "strong"),
+        color_normal=bool(change.get("color_normal", True)),
+        color_description=change.get("color_description", "pink"),
+        condition_normal=bool(change.get("condition_normal", True)),
+        condition_description=change.get("condition_description", "dry"),
+        temperature_normal=bool(change.get("temperature_normal", True)),
+        temperature_description=change.get("temperature_description", "warm"),
+    )
+
+    payload = _serialize_pulse(created)
+    payload["action"] = "updated"
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.pulse.updated",
+        payload=payload,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.pulse.updated:{created.id}",
     )
 
 
@@ -1049,7 +1210,7 @@ def _apply_intervention_effect(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.intervention_created",
+        event_type="intervention.created",
         payload={
             "domain_event_id": intervention.id,
             "intervention_type": intervention.intervention_type or None,
@@ -1066,7 +1227,7 @@ def _apply_intervention_effect(
             "effect": effects[str(intervention.id)],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.intervention_created:{intervention.id}:{effects[str(intervention.id)]['status']}",
+        idempotency_key=f"intervention.created:{intervention.id}:{effects[str(intervention.id)]['status']}",
     )
 
     # #6: Emit structured assessment event so clients get a closed-loop feedback signal
@@ -1112,6 +1273,13 @@ def apply_runtime_turn_output(
 
         for change in output_payload.get("state_changes", {}).get("vitals", []):
             _apply_vital_change(
+                session=session,
+                change=change,
+                correlation_id=correlation_id,
+            )
+
+        for change in output_payload.get("state_changes", {}).get("pulses", []):
+            _apply_pulse_change(
                 session=session,
                 change=change,
                 correlation_id=correlation_id,
@@ -1223,14 +1391,14 @@ def apply_debrief_output(
 
         emit_runtime_event(
             session=session,
-            event_type="trainerlab.summary.updated",
+            event_type="summary.updated",
             payload={
                 "summary_id": summary.id,
                 "ai_debrief": output_payload,
                 "ai_debrief_revision": next_revision,
             },
             correlation_id=correlation_id,
-            idempotency_key=f"trainerlab.summary.updated:{session.id}:{next_revision}",
+            idempotency_key=f"summary.updated:{session.id}:{next_revision}",
         )
         return summary
 
@@ -1262,7 +1430,7 @@ def start_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.started",
+        event_type="run.started",
         payload={"status": session.status},
         created_by=user,
         correlation_id=correlation_id,
@@ -1293,7 +1461,7 @@ def pause_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.paused",
+        event_type="run.paused",
         payload={"status": session.status},
         created_by=user,
         correlation_id=correlation_id,
@@ -1320,7 +1488,7 @@ def resume_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.resumed",
+        event_type="run.resumed",
         payload={"status": session.status},
         created_by=user,
         correlation_id=correlation_id,
@@ -1355,7 +1523,7 @@ def stop_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.stopped",
+        event_type="run.stopped",
         payload={
             "status": session.status,
             "discarded_runtime_reason_count": len(discarded_reasons),
@@ -1431,10 +1599,10 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.summary.ready",
+        event_type="summary.ready",
         payload={"summary_id": summary.id},
         created_by=generated_by,
-        idempotency_key=f"trainerlab.summary.ready:{summary.id}",
+        idempotency_key=f"summary.ready:{summary.id}",
     )
 
     return summary

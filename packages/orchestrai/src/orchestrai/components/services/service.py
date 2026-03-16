@@ -45,13 +45,13 @@ from __future__ import annotations
 
 from abc import ABC
 import asyncio
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import cached_property
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar, TypeVar
 
 from pydantic import BaseModel
-from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from orchestrai.components.base import BaseComponent
 from orchestrai.components.instructions.base import BaseInstruction
@@ -73,6 +73,72 @@ tracer = get_tracer("orchestrai.service")
 
 # Type variable for response schema
 T = TypeVar("T", bound=BaseModel)
+
+
+# ---------------------------------------------------------------------------
+# Provider factory functions (lazy imports — optional provider SDKs)
+# ---------------------------------------------------------------------------
+
+
+def _make_openai_model(model_name: str, api_key: str | None) -> Any:
+    from pydantic_ai.models.openai import OpenAIResponsesModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    logger.info("Creating OpenAI model '%s'", model_name)
+    return OpenAIResponsesModel(model_name, provider=OpenAIProvider(api_key=api_key))
+
+
+def _make_anthropic_model(model_name: str, api_key: str | None) -> Any:
+    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.providers.anthropic import AnthropicProvider
+
+    logger.info("Creating Anthropic model '%s'", model_name)
+    return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
+
+
+def _make_gemini_model(model_name: str, api_key: str | None) -> Any:
+    from pydantic_ai.models.gemini import GeminiModel
+    from pydantic_ai.providers.google import GoogleProvider
+
+    logger.info("Creating Gemini model '%s'", model_name)
+    return GeminiModel(model_name, provider=GoogleProvider(api_key=api_key))
+
+
+def _make_groq_model(model_name: str, api_key: str | None) -> Any:
+    from pydantic_ai.models.groq import GroqModel
+    from pydantic_ai.providers.groq import GroqProvider
+
+    logger.info("Creating Groq model '%s'", model_name)
+    return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
+
+
+def _make_mistral_model(model_name: str, api_key: str | None) -> Any:
+    from pydantic_ai.models.mistral import MistralModel
+    from pydantic_ai.providers.mistral import MistralProvider
+
+    logger.info("Creating Mistral model '%s'", model_name)
+    return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
+
+
+def _make_cohere_model(model_name: str, api_key: str | None) -> Any:
+    from pydantic_ai.models.cohere import CohereModel
+    from pydantic_ai.providers.cohere import CohereProvider
+
+    logger.info("Creating Cohere model '%s'", model_name)
+    return CohereModel(model_name, provider=CohereProvider(api_key=api_key))
+
+
+#: Built-in provider dispatch table.  Maps the provider prefix (extracted from
+#: ``"provider:model"`` strings) to a factory ``(model_name, api_key) -> model``.
+_BUILTIN_PROVIDER_FACTORIES: dict[str, Callable[[str, str | None], Any]] = {
+    "openai": _make_openai_model,
+    "anthropic": _make_anthropic_model,
+    "google": _make_gemini_model,
+    "gemini": _make_gemini_model,
+    "groq": _make_groq_model,
+    "mistral": _make_mistral_model,
+    "cohere": _make_cohere_model,
+}
 
 
 class TaskDescriptor:
@@ -181,6 +247,14 @@ class BaseService[T: BaseModel](
         3. DEFAULT_MODEL from OrchestrAI config (ORCA_DEFAULT_MODEL env var)
         4. Hardcoded fallback: "openai-responses:gpt-4o-mini"
 
+    Provider Registration:
+        Third-party providers can be registered without subclassing::
+
+            BaseService.register_provider(
+                "myprovider",
+                lambda model_name, api_key: MyModel(model_name, api_key=api_key),
+            )
+
     Example:
         @orca.instruction(order=10)
         class PersonaInstruction(BaseInstruction):
@@ -204,6 +278,17 @@ class BaseService[T: BaseModel](
     model: ClassVar[str] = ""
     fallback_models: ClassVar[list[str]] = []
     _FALLBACK_MODEL: ClassVar[str] = "openai-responses:gpt-5-nano"
+
+    # Class-level cache: one built model object per concrete service class.
+    # Keyed by class; populated on first access when no instance override is set.
+    # Thread-safety: Python's GIL makes the dict read/write atomic for CPython;
+    # worst case two threads build the same model simultaneously and one
+    # overwrites the other — both produce identical results.
+    _class_model_cache: ClassVar[dict[type, Any]] = {}
+
+    # Per-class provider overrides.  Populated via register_provider().
+    # Falls back to _BUILTIN_PROVIDER_FACTORIES for unknown names.
+    _PROVIDER_FACTORIES: ClassVar[dict[str, Callable[[str, str | None], Any]]] = {}
 
     # Response schema (Pydantic model)
     response_schema: ClassVar[type[BaseModel] | None] = None
@@ -246,6 +331,45 @@ class BaseService[T: BaseModel](
 
         # Agent instance (lazily created)
         self._agent: Agent | None = None
+
+    # ---------------------------------------------------------------------------
+    # Provider registration
+    # ---------------------------------------------------------------------------
+
+    @classmethod
+    def register_provider(
+        cls,
+        name: str,
+        factory: Callable[[str, str | None], Any],
+    ) -> None:
+        """Register a custom provider factory.
+
+        The factory receives ``(model_name, api_key)`` and must return a
+        Pydantic AI-compatible model object.
+
+        Registered factories are checked before the built-in set, so they can
+        also override a built-in provider (e.g. for testing).
+
+        Example::
+
+            BaseService.register_provider(
+                "myprovider",
+                lambda model_name, api_key: MyModel(model_name, api_key=api_key),
+            )
+        """
+        cls._PROVIDER_FACTORIES[name] = factory
+
+    @classmethod
+    def _get_provider_factory(
+        cls,
+        provider: str,
+    ) -> Callable[[str, str | None], Any] | None:
+        """Return the factory for *provider*, class-level overrides first."""
+        return cls._PROVIDER_FACTORIES.get(provider) or _BUILTIN_PROVIDER_FACTORIES.get(provider)
+
+    # ---------------------------------------------------------------------------
+    # Model resolution
+    # ---------------------------------------------------------------------------
 
     @property
     def effective_model(self) -> str:
@@ -315,10 +439,9 @@ class BaseService[T: BaseModel](
         """
         Build a Pydantic AI model with API key from environment.
 
-        Uses settings-based env var lookup via ``orchestrai.utils.env``.
-        The env var name is configured in ``app.conf["API_KEY_ENVVARS"]``.
-
-        Supports: openai, anthropic, google/gemini, groq, mistral, cohere
+        Dispatches to a registered factory based on the provider prefix in
+        ``"provider:model"`` format.  Use :meth:`register_provider` to add
+        support for additional providers at runtime.
 
         Args:
             model_str: Model identifier string (e.g., "openai-responses:gpt-5-nano")
@@ -332,7 +455,6 @@ class BaseService[T: BaseModel](
         from orchestrai import get_current_app
         from orchestrai.utils.env_utils import get_api_key_envvar
 
-        # Parse provider:model format
         if ":" not in model_str:
             raise ValueError(
                 f"Invalid model format '{model_str}'. Expected 'provider:model' "
@@ -348,7 +470,6 @@ class BaseService[T: BaseModel](
         api_key, _ = self._get_api_key_for_provider(provider)
 
         # Check if API key is required but missing
-        # Supported providers are those configured in API_KEY_ENVVARS
         app = get_current_app()
         supported_providers = (
             set(app.conf.get("API_KEY_ENVVARS", {}).keys()) if app and app.conf else set()
@@ -360,70 +481,9 @@ class BaseService[T: BaseModel](
                 f"No API key found for provider '{provider}'. Set {configured_envvar}."
             )
 
-        # OpenAI
-        if provider == "openai":
-            from pydantic_ai.providers.openai import OpenAIProvider
-
-            logger.info(
-                "Creating OpenAI model '%s'",
-                model_name,
-            )
-            return OpenAIResponsesModel(model_name, provider=OpenAIProvider(api_key=api_key))
-
-        # Anthropic
-        if provider == "anthropic":
-            from pydantic_ai.models.anthropic import AnthropicModel
-            from pydantic_ai.providers.anthropic import AnthropicProvider
-
-            logger.info(
-                "Creating Anthropic model '%s'",
-                model_name,
-            )
-            return AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
-
-        # Google/Gemini
-        if provider in ("google", "gemini"):
-            from pydantic_ai.models.gemini import GeminiModel
-            from pydantic_ai.providers.google import GoogleProvider
-
-            logger.info(
-                "Creating Gemini model '%s'",
-                model_name,
-            )
-            return GeminiModel(model_name, provider=GoogleProvider(api_key=api_key))
-
-        # Groq
-        if provider == "groq":
-            from pydantic_ai.models.groq import GroqModel
-            from pydantic_ai.providers.groq import GroqProvider
-
-            logger.info(
-                "Creating Groq model '%s'",
-                model_name,
-            )
-            return GroqModel(model_name, provider=GroqProvider(api_key=api_key))
-
-        # Mistral
-        if provider == "mistral":
-            from pydantic_ai.models.mistral import MistralModel
-            from pydantic_ai.providers.mistral import MistralProvider
-
-            logger.info(
-                "Creating Mistral model '%s'",
-                model_name,
-            )
-            return MistralModel(model_name, provider=MistralProvider(api_key=api_key))
-
-        # Cohere
-        if provider == "cohere":
-            from pydantic_ai.models.cohere import CohereModel
-            from pydantic_ai.providers.cohere import CohereProvider
-
-            logger.info(
-                "Creating Cohere model '%s'",
-                model_name,
-            )
-            return CohereModel(model_name, provider=CohereProvider(api_key=api_key))
+        factory = type(self)._get_provider_factory(provider)
+        if factory is not None:
+            return factory(model_name, api_key)
 
         # Unknown provider - let Pydantic AI handle it
         logger.warning(
@@ -433,22 +493,9 @@ class BaseService[T: BaseModel](
         )
         return model_str
 
-    @cached_property
-    def agent(self) -> Agent:
-        """
-        Cached Pydantic AI Agent instance.
-
-        The agent is configured with:
-        - Model (with optional fallbacks)
-        - Result type (response_schema, potentially wrapped in NativeOutput)
-        - System prompts (collected from instruction classes)
-        """
-        from pydantic_ai import Agent, NativeOutput
-
-        # Build model with API key from OrchestrAI config
-        model = self._build_model_with_api_key(self.effective_model)
-
-        # Handle fallbacks
+    def _build_pydantic_ai_model(self, model_str: str) -> Any:
+        """Build model + optional FallbackModel wrapper for a given model string."""
+        model = self._build_model_with_api_key(model_str)
         if self.fallback_models:
             try:
                 from pydantic_ai.models.fallback import FallbackModel
@@ -457,6 +504,44 @@ class BaseService[T: BaseModel](
                 model = FallbackModel(model, *fallback_models)
             except ImportError:
                 logger.warning("FallbackModel not available, using primary model only")
+        return model
+
+    def _get_or_build_class_model(self) -> Any:
+        """Return the class-level cached Pydantic AI model.
+
+        The model is built once per concrete service class and cached in
+        ``BaseService._class_model_cache``.  When an instance override is
+        active the cache is bypassed and a fresh model is returned.
+        """
+        if self._model_override:
+            # Instance override — always build fresh, never cache
+            return self._build_pydantic_ai_model(self._model_override)
+
+        cls = type(self)
+        if cls not in BaseService._class_model_cache:
+            BaseService._class_model_cache[cls] = self._build_pydantic_ai_model(
+                self.effective_model
+            )
+        return BaseService._class_model_cache[cls]
+
+    # ---------------------------------------------------------------------------
+    # Agent
+    # ---------------------------------------------------------------------------
+
+    @cached_property
+    def agent(self) -> Agent:
+        """
+        Cached Pydantic AI Agent instance.
+
+        The agent is configured with:
+        - Model (with optional fallbacks) — cached at class level for efficiency
+        - Result type (response_schema, potentially wrapped in NativeOutput)
+        - System prompts (collected from instruction classes)
+        """
+        from pydantic_ai import Agent, NativeOutput
+
+        # Obtain model — class-level cached unless instance override is set
+        model = self._get_or_build_class_model()
 
         # Configure output type
         output_type = self.response_schema
@@ -500,18 +585,27 @@ class BaseService[T: BaseModel](
 
         return agent
 
+    # ---------------------------------------------------------------------------
+    # Context validation
+    # ---------------------------------------------------------------------------
+
     def check_required_context(self) -> None:
-        """Validate that required context keys are present."""
+        """Validate that required context keys are present and non-None."""
         required = self.required_context_keys or ()
-        missing = [key for key in required if self.context.get(key) is None]
+        missing = [key for key in required if key not in self.context or self.context[key] is None]
         if missing:
             raise ValueError(f"Missing required context keys: {', '.join(missing)}")
+
+    # ---------------------------------------------------------------------------
+    # Lifecycle hooks
+    # ---------------------------------------------------------------------------
 
     def setup(self, **ctx: Any) -> BaseService:
         """Merge incoming context and validate required keys."""
         incoming = ctx.get("context") if "context" in ctx else ctx
         if isinstance(incoming, dict) and incoming:
-            self.context.update(incoming)
+            # Reassign rather than mutating the existing dict to avoid aliasing
+            self.context = {**self.context, **incoming}
         self.check_required_context()
         return self
 
@@ -523,34 +617,50 @@ class BaseService[T: BaseModel](
         """Post-processing hook (passthrough by default)."""
         return result
 
+    # ---------------------------------------------------------------------------
+    # Execution
+    # ---------------------------------------------------------------------------
+
     async def arun(self, **ctx: Any) -> RunResult[T]:
         """
         Execute the service using Pydantic AI Agent.
 
         This is the main execution method. It:
-        1. Builds the system prompt from instruction classes
-        2. Gets the user message from context
-        3. Executes the agent with the prompts
-        4. Returns the validated result
+        1. Builds a working context copy (self.context is never mutated)
+        2. Builds the system prompt from instruction classes
+        3. Gets the user message from context
+        4. Executes the agent with the prompts
+        5. Returns the validated result
 
         Args:
-            **ctx: Additional context to merge before execution
+            **ctx: Additional context merged for this execution only.
+                   Does not modify ``self.context``.
 
         Returns:
             RunResult containing the validated response and metadata
         """
-        # Merge context
-        if ctx:
-            self.context.update(ctx)
+        # Build a working copy — self.context is never mutated during execution.
+        # This prevents context from one call bleeding into the next if the same
+        # instance is reused.
+        working_ctx: dict[str, Any] = {**self.context, **ctx} if ctx else dict(self.context)
 
+        # Optional per-execution context preparation hook.
+        # Temporarily expose as self.context so existing hook implementations
+        # can augment it via self.context, then capture any changes.
         prepare_ctx = getattr(self, "_aprepare_context", None)
         if callable(prepare_ctx):
-            await prepare_ctx()
+            _saved_ctx = self.context
+            self.context = working_ctx
+            try:
+                await prepare_ctx()
+                working_ctx = dict(self.context)
+            finally:
+                self.context = _saved_ctx
 
         # Create service call for tracking
         call = self._create_call(
             payload=ctx,
-            context=self.context,
+            context=working_ctx,
             dispatch={"service": self.identity.as_str},
             service=self.identity.as_str,
         )
@@ -563,13 +673,13 @@ class BaseService[T: BaseModel](
                 attributes={"service.identity": self.identity.as_str},
             ):
                 # Get user message from context
-                user_message = self.context.get("user_message", "")
-                message_history = self.context.get("message_history")
+                user_message = working_ctx.get("user_message", "")
+                message_history = working_ctx.get("message_history")
 
                 model_settings = None
-                previous_response_id = self.context.get(
+                previous_response_id = working_ctx.get(
                     "previous_provider_response_id"
-                ) or self.context.get("previous_response_id")
+                ) or working_ctx.get("previous_response_id")
                 if previous_response_id:
                     model_settings = {
                         "openai_previous_response_id": previous_response_id,
@@ -579,7 +689,7 @@ class BaseService[T: BaseModel](
                 # capture the service instance to read the latest context state.
                 result = await self.agent.run(
                     user_message,
-                    deps=self.context,
+                    deps=working_ctx,
                     message_history=message_history,
                     model_settings=model_settings,
                 )
@@ -594,14 +704,14 @@ class BaseService[T: BaseModel](
                     call.output_tokens = result.usage().output_tokens or 0
                     call.total_tokens = result.usage().total_tokens or 0
 
-                await self.on_success(self.context, result)
+                await self.on_success(working_ctx, result)
                 return result
 
         except Exception as e:
             call.status = "failed"
             call.finished_at = datetime.now(UTC)
             call.error = str(e)
-            await self.on_failure(self.context, e)
+            await self.on_failure(working_ctx, e)
             raise
 
     async def on_success(self, context: dict[str, Any], result: RunResult[T]) -> None:
