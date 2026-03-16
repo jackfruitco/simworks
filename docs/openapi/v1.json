@@ -903,6 +903,53 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/messages/{message_id}/read/": {
+      "patch": {
+        "operationId": "api_v1_endpoints_messages_mark_message_read",
+        "summary": "Mark a message as read",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Marks a message as read by the current user.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_events_list_events",
@@ -3329,6 +3376,12 @@
             "description": "How many user retries have been attempted for this message",
             "title": "Delivery Retry Count",
             "type": "integer"
+          },
+          "is_read": {
+            "default": false,
+            "description": "Whether the current user has read this message",
+            "title": "Is Read",
+            "type": "boolean"
           },
           "media_list": {
             "description": "Message media metadata (snake_case canonical API shape)",

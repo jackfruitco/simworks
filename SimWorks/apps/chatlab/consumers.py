@@ -229,11 +229,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         Check whether a simulation has ended either by flag or time limit.
 
+        Refreshes ``status`` and ``end_timestamp`` from the database on each
+        call so that state changes made by external processes (staff actions,
+        workers on other nodes) are picked up without requiring a reconnect.
+
         :param simulation: The simulation object to evaluate
         :return: True if the simulation has ended, False otherwise
         """
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
+
+        await sync_to_async(simulation.refresh_from_db)(fields=["status", "end_timestamp"])
 
         if simulation.is_complete:
             return True

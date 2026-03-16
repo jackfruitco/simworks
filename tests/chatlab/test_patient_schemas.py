@@ -329,16 +329,12 @@ class TestPatientReplySchema:
         """Verify reply schema has expected fields."""
         schema_json = PatientReplyOutputSchema.model_json_schema()
 
-        required_fields = {"image_requested", "messages", "metadata", "llm_conditions_check"}
+        required_fields = {"messages", "metadata", "llm_conditions_check"}
         actual_fields = set(schema_json["properties"].keys())
 
         assert required_fields.issubset(actual_fields)
         assert "image_request" in actual_fields
-
-    def test_image_requested_field(self):
-        """Verify image_requested is boolean."""
-        schema_json = PatientReplyOutputSchema.model_json_schema()
-        assert schema_json["properties"]["image_requested"]["type"] == "boolean"
+        assert "image_requested" not in actual_fields
 
     def test_image_request_field(self):
         """Verify image_request structured contract exists."""
@@ -346,10 +342,9 @@ class TestPatientReplySchema:
         image_request = schema_json["properties"]["image_request"]
         assert image_request["anyOf"][0]["$ref"].endswith("ImageRequest")
 
-    def test_round_trip_with_image_requested(self):
-        """Verify parsing with image_requested=True."""
+    def test_round_trip_without_image_request(self):
+        """Verify parsing when no image is requested (image_request omitted)."""
         sample_output = {
-            "image_requested": True,
             "messages": [
                 {
                     "role": "assistant",
@@ -362,11 +357,11 @@ class TestPatientReplySchema:
         }
 
         parsed = PatientReplyOutputSchema.model_validate(sample_output)
-        assert parsed.image_requested is True
+        assert parsed.image_request is None
+        assert parsed.should_generate_image is False
 
     def test_round_trip_with_structured_image_request(self):
         sample_output = {
-            "image_requested": True,
             "image_request": {
                 "requested": True,
                 "prompt": "close-up smartphone photo of unilateral ankle swelling",

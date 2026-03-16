@@ -214,10 +214,9 @@ class TestPatientInitialPersistence:
 @pytest.mark.asyncio
 class TestPatientReplyPersistence:
     async def test_creates_message_no_metadata(self, context):
-        """PatientReplyOutputSchema only persists messages (image_requested is not persisted)."""
+        """PatientReplyOutputSchema only persists messages (image_request is not persisted)."""
         schema = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": False,
                 "messages": [
                     {
                         "role": "assistant",
@@ -236,10 +235,10 @@ class TestPatientReplyPersistence:
         assert result.content == "The pain is on my left side."
 
     async def test_post_persist_called_for_image_requested(self, context, caplog):
-        """post_persist hook should log when image_requested is True."""
+        """post_persist hook should log when image_request.requested is True."""
         schema = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": True,
+                "image_request": {"requested": True, "prompt": "photo of swollen ankle"},
                 "messages": [
                     {
                         "role": "assistant",
@@ -266,7 +265,7 @@ class TestPatientReplyPersistence:
         """PatientReplyOutputSchema should create outbox events for messages."""
         schema = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": True,
+                "image_request": {"requested": True, "prompt": "photo of sharp chest pain"},
                 "messages": [
                     {
                         "role": "assistant",
@@ -297,13 +296,11 @@ class TestPatientReplyPersistence:
         assert msg_event.correlation_id == context.correlation_id
         assert "message_id" in msg_event.payload
         assert "content" in msg_event.payload
-        assert "image_requested" in msg_event.payload
-        assert msg_event.payload["image_requested"] is True
+        assert msg_event.payload.get("image_requested") is True
 
     async def test_post_persist_enqueues_image_task_for_structured_intent(self, context):
         schema = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": True,
                 "image_request": {
                     "requested": True,
                     "prompt": "smartphone photo of red swollen wrist",
@@ -333,7 +330,6 @@ class TestPatientReplyPersistence:
     async def test_post_persist_skips_enqueue_when_not_requested(self, context):
         schema = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": False,
                 "image_request": {
                     "requested": False,
                     "prompt": "",
@@ -363,7 +359,6 @@ class TestPatientReplyPersistence:
 
         initial = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": False,
                 "messages": [
                     {
                         "role": "assistant",
@@ -381,7 +376,6 @@ class TestPatientReplyPersistence:
 
         update = PatientReplyOutputSchema.model_validate(
             {
-                "image_requested": False,
                 "messages": [
                     {
                         "role": "assistant",

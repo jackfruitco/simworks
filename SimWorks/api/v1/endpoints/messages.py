@@ -493,3 +493,37 @@ def get_message(
         raise HttpError(404, "Message not found") from err
 
     return message_to_out(message, request=request)
+
+
+@router.patch(
+    "/{simulation_id}/messages/{message_id}/read/",
+    response=MessageOut,
+    summary="Mark a message as read",
+    description="Marks a message as read by the current user.",
+)
+@api_rate_limit
+def mark_message_read(
+    request: HttpRequest,
+    simulation_id: int,
+    message_id: int,
+) -> MessageOut:
+    """Mark a message as read."""
+    from apps.chatlab.models import Message
+
+    user = request.auth
+    sim = get_simulation_for_user(simulation_id, user)
+
+    try:
+        message = (
+            Message.objects.select_related("conversation__conversation_type")
+            .prefetch_related("media")
+            .get(pk=message_id, simulation=sim, is_deleted=False)
+        )
+    except Message.DoesNotExist as err:
+        raise HttpError(404, "Message not found") from err
+
+    if not message.is_read:
+        message.is_read = True
+        message.save(update_fields=["is_read"])
+
+    return message_to_out(message, request=request)

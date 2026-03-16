@@ -65,6 +65,10 @@ class MessageOut(BaseModel):
         default=0,
         description="How many user retries have been attempted for this message",
     )
+    is_read: bool = Field(
+        default=False,
+        description="Whether the current user has read this message",
+    )
     media_list: list[MessageMediaOut] = Field(
         default_factory=list,
         description="Message media metadata (snake_case canonical API shape)",
@@ -154,6 +158,7 @@ def message_to_out(msg, request=None) -> MessageOut:
         delivery_error_text=getattr(msg, "delivery_error_text", ""),
         delivery_retryable=getattr(msg, "delivery_retryable", True),
         delivery_retry_count=getattr(msg, "delivery_retry_count", 0),
+        is_read=bool(getattr(msg, "is_read", False)),
         media_list=media_payload.get("media_list", []),
         mediaList=media_payload.get("mediaList", []),
     )
