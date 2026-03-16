@@ -30,8 +30,16 @@ Dynamic instructions (containing ``${variable}`` placeholders) override
 ``render_instruction()`` and substitute values from ``self.context``
 (the owning service's context dict) at render time.
 
-To declare that certain context keys **must** be present before rendering,
-add ``required_variables`` to the instruction definition:
+Variable substitution
+---------------------
+- **Required variables**: declared in ``required_variables``; validated
+  before rendering.  Missing required variables raise
+  :class:`~orchestrai.components.instructions.base.MissingRequiredContextError`
+  immediately.
+- **Non-required (optional) variables**: not declared in
+  ``required_variables``; substituted with an empty string if absent.
+  This is the silent-fallback policy for optional placeholders.  Document
+  any placeholder that *must* be present in ``required_variables`` instead.
 
 .. code-block:: yaml
 
@@ -44,13 +52,18 @@ add ``required_variables`` to the instruction definition:
         Patient: ${patient_name}
         Chief complaint: ${chief_complaint}
 
-If any declared variable is absent when ``render_instruction()`` is called,
-a :class:`~orchestrai.components.instructions.base.MissingRequiredContextError`
-is raised immediately with the instruction name, missing keys, and available
-context keys.  There is no silent fallback to empty string for required vars.
-
+Identity
+--------
 The ``name`` of each generated class is pinned to the value from the YAML
-definition — no identity token stripping is applied.
+``name`` key — no token stripping is applied.  This means refs in
+``instruction_refs`` lists must use the exact YAML name, e.g.
+``"chatlab.patient.PatientSafetyBoundariesInstruction"``.
+
+Validation
+----------
+:func:`load_yaml_instructions` validates the YAML structure at load time.
+Malformed definitions raise :class:`YAMLInstructionDefinitionError` with
+the file path and a descriptive message, rather than a bare ``KeyError``.
 """
 
 from __future__ import annotations
@@ -66,12 +79,35 @@ from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN
 if TYPE_CHECKING:
     pass
 
-__all__ = ["load_yaml_instructions"]
+__all__ = ["YAMLInstructionDefinitionError", "load_yaml_instructions"]
 
 logger = logging.getLogger(__name__)
 
 # Matches ${variable_name} placeholders in instruction text.
 _TEMPLATE_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+# Keys accepted at the per-instruction item level.
+_ITEM_KNOWN_KEYS = frozenset({"name", "order", "instruction", "required_variables"})
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class YAMLInstructionDefinitionError(ValueError):
+    """Raised when a YAML instruction file contains an invalid definition.
+
+    Attributes
+    ----------
+    path:
+        Path to the YAML file that caused the error, if known.
+    """
+
+    def __init__(self, message: str, *, path: Path | str | None = None) -> None:
+        self.path = path
+        prefix = f"Invalid YAML instruction definition in {path}: " if path else ""
+        super().__init__(f"{prefix}{message}")
 
 
 # ---------------------------------------------------------------------------
@@ -79,8 +115,93 @@ _TEMPLATE_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # ---------------------------------------------------------------------------
 
 
+def _validate_item(item: Any, *, index: int, path: Path | str | None) -> None:
+    """Validate a single instruction item dict from YAML.
+
+    Raises :class:`YAMLInstructionDefinitionError` on the first problem found.
+    """
+    loc = f"instructions[{index}]"
+
+    if not isinstance(item, dict):
+        raise YAMLInstructionDefinitionError(
+            f"{loc}: each instruction must be a mapping, got {type(item).__name__!r}",
+            path=path,
+        )
+
+    # --- required fields ---
+
+    name = item.get("name")
+    if name is None:
+        raise YAMLInstructionDefinitionError(
+            f"{loc}: missing required key 'name'",
+            path=path,
+        )
+    if not isinstance(name, str) or not name.strip():
+        raise YAMLInstructionDefinitionError(
+            f"{loc}: 'name' must be a non-empty string, got {name!r}",
+            path=path,
+        )
+
+    instruction = item.get("instruction")
+    if instruction is None:
+        raise YAMLInstructionDefinitionError(
+            f"{loc} ({name!r}): missing required key 'instruction'",
+            path=path,
+        )
+    if not isinstance(instruction, str) or not instruction.strip():
+        raise YAMLInstructionDefinitionError(
+            f"{loc} ({name!r}): 'instruction' must be a non-empty string",
+            path=path,
+        )
+
+    # --- optional fields ---
+
+    order = item.get("order", 50)
+    if not isinstance(order, int) or isinstance(order, bool):
+        raise YAMLInstructionDefinitionError(
+            f"{loc} ({name!r}): 'order' must be an integer, got {order!r}",
+            path=path,
+        )
+    if not (0 <= order <= 100):
+        raise YAMLInstructionDefinitionError(
+            f"{loc} ({name!r}): 'order' must be between 0 and 100, got {order!r}",
+            path=path,
+        )
+
+    required_vars = item.get("required_variables")
+    if required_vars is not None:
+        if not isinstance(required_vars, list):
+            raise YAMLInstructionDefinitionError(
+                f"{loc} ({name!r}): 'required_variables' must be a list[str], "
+                f"got {type(required_vars).__name__!r}",
+                path=path,
+            )
+        for i, v in enumerate(required_vars):
+            if not isinstance(v, str) or not v.strip():
+                raise YAMLInstructionDefinitionError(
+                    f"{loc} ({name!r}): 'required_variables[{i}]' must be a "
+                    f"non-empty string, got {v!r}",
+                    path=path,
+                )
+
+    # --- unknown keys (warn, not error, to allow future extensions) ---
+    unknown = set(item) - _ITEM_KNOWN_KEYS
+    if unknown:
+        logger.warning(
+            "YAML instruction %r in %s has unknown keys %r — will be ignored",
+            name,
+            path or "<unknown>",
+            sorted(unknown),
+        )
+
+
 def _render_template(template: str, context: dict[str, Any]) -> str:
-    """Substitute ``${variable}`` placeholders from *context*."""
+    """Substitute ``${variable}`` placeholders from *context*.
+
+    Non-required (optional) variables missing from *context* are substituted
+    with an empty string.  Required variables should be validated by the
+    instruction before this function is called.
+    """
 
     def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
         return str(context.get(m.group(1), ""))
@@ -94,7 +215,7 @@ def _make_instruction_class(
     namespace: str | None,
     group: str | None,
 ) -> type[BaseInstruction]:
-    """Return a new ``BaseInstruction`` subclass from a YAML item dict."""
+    """Return a new ``BaseInstruction`` subclass from a *pre-validated* YAML item dict."""
     name: str = item["name"]
     order: int = int(item.get("order", 50))
     template: str = str(item["instruction"])
@@ -166,6 +287,12 @@ def load_yaml_instructions(
     -------
     list[type[BaseInstruction]]
         The generated instruction classes, in file order.
+
+    Raises
+    ------
+    YAMLInstructionDefinitionError
+        If the YAML file contains an invalid instruction definition (bad types,
+        missing required keys, duplicate names, etc.).
     """
     import yaml  # deferred import — pyyaml is an optional dep
 
@@ -175,8 +302,40 @@ def load_yaml_instructions(
     if not data or "instructions" not in data:
         return []
 
+    if not isinstance(data["instructions"], list):
+        raise YAMLInstructionDefinitionError(
+            "'instructions' must be a list",
+            path=path,
+        )
+
     namespace: str | None = data.get("namespace")
     group: str | None = data.get("group")
+
+    if namespace is not None and not isinstance(namespace, str):
+        raise YAMLInstructionDefinitionError(
+            f"'namespace' must be a string, got {type(namespace).__name__!r}",
+            path=path,
+        )
+    if group is not None and not isinstance(group, str):
+        raise YAMLInstructionDefinitionError(
+            f"'group' must be a string, got {type(group).__name__!r}",
+            path=path,
+        )
+
+    # Validate all items first so errors are reported before any registration.
+    for index, item in enumerate(data["instructions"]):
+        _validate_item(item, index=index, path=path)
+
+    # Check for duplicate names within the file.
+    seen_names: set[str] = set()
+    for item in data["instructions"]:
+        name = item["name"]
+        if name in seen_names:
+            raise YAMLInstructionDefinitionError(
+                f"duplicate instruction name {name!r}",
+                path=path,
+            )
+        seen_names.add(name)
 
     classes: list[type[BaseInstruction]] = []
     for item in data["instructions"]:
