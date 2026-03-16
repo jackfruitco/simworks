@@ -61,7 +61,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key claimed in production secret!
-SECRET_KEY = check_env("DJANGO_SECRET_KEY")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = bool_from_env("DJANGO_DEBUG", default=False)
@@ -150,7 +150,7 @@ elif db_engine == "postgresql":
             "ENGINE": "django.db.backends.postgresql",
             "NAME": os.getenv("POSTGRES_DB", "AppDatabase"),
             "USER": os.getenv("POSTGRES_USER", "appuser"),
-            "PASSWORD": check_env("POSTGRES_PASSWORD"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD"),
             "HOST": os.getenv("POSTGRES_HOST", "db"),
             "PORT": os.getenv("POSTGRES_PORT", "5432"),
         }
@@ -177,7 +177,7 @@ ORCHESTRAI = {
 }
 
 # JWT Configuration (for mobile API clients)
-JWT_SECRET_KEY = check_env("JWT_SECRET_KEY")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ACCESS_TOKEN_LIFETIME = int_from_env("JWT_ACCESS_TOKEN_LIFETIME", default=3600, minimum=1)
 JWT_REFRESH_TOKEN_LIFETIME = int_from_env("JWT_REFRESH_TOKEN_LIFETIME", default=604800, minimum=1)
 
@@ -206,10 +206,10 @@ MEDIA_ROOT = BASE_DIR.parent / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-SITE_NAME = check_env("SITE_NAME")
+SITE_NAME = check_env("SITE_NAME", default="MedSim")
 SITE_ADMIN = {
-    "NAME": check_env("SITE_ADMIN_NAME", default="SimWorks"),
-    "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<EMAIL>"),
+    "NAME": check_env("SITE_ADMIN_NAME", default="MedSim"),
+    "EMAIL": check_env("SITE_ADMIN_EMAIL", default="<admin@jackfruitco.com>"),
 }
 
 CSRF_FAILURE_VIEW = "apps.common.views.csrf_failure"

@@ -4229,10 +4229,11 @@
         "description": "Input schema for submitting signed lab orders.",
         "properties": {
           "orders": {
-            "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty.",
+            "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty. Maximum 50 orders per request.",
             "items": {
               "type": "string"
             },
+            "maxItems": 50,
             "minItems": 1,
             "title": "Orders",
             "type": "array"
