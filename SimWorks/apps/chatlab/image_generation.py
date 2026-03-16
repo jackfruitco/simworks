@@ -82,20 +82,16 @@ def generate_patient_image(
     image_size = size or os.getenv("ORCA_IMAGE_SIZE", "1024x1024")
     client = OpenAI(api_key=api_key)
 
+    # gpt-image-1 and similar newer models do not accept response_format;
+    # they always return b64_json.  Only pass the param for legacy models
+    # (dall-e-2, dall-e-3) that require it.
+    _LEGACY_MODELS = {"dall-e-2", "dall-e-3"}
+    kwargs: dict = {"model": model_name, "prompt": prompt, "size": image_size}
+    if model_name in _LEGACY_MODELS:
+        kwargs["response_format"] = "b64_json"
+
     try:
-        response = client.images.generate(
-            model=model_name,
-            prompt=prompt,
-            size=image_size,
-            response_format="b64_json",
-        )
-    except TypeError:
-        # Older/newer SDK compatibility fallback.
-        response = client.images.generate(
-            model=model_name,
-            prompt=prompt,
-            size=image_size,
-        )
+        response = client.images.generate(**kwargs)
     except Exception as exc:
         raise ImageGenerationError(str(exc)) from exc
 
