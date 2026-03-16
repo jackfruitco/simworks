@@ -676,3 +676,77 @@ class BloodPressure(VitalMeasurement):
                 name="bp_dia_min_le_max",
             ),
         ]
+
+
+class PulseAssessment(ABCEvent):
+    """Pulse assessment at a specific anatomic site.
+
+    Records pulse presence, quality, and peripheral perfusion indicators
+    (skin color, condition, temperature) at each anatomic location.
+    """
+
+    class Location(models.TextChoices):
+        RADIAL_LEFT = "radial_left", "Radial (Left)"
+        RADIAL_RIGHT = "radial_right", "Radial (Right)"
+        FEMORAL_LEFT = "femoral_left", "Femoral (Left)"
+        FEMORAL_RIGHT = "femoral_right", "Femoral (Right)"
+        CAROTID_LEFT = "carotid_left", "Carotid (Left)"
+        CAROTID_RIGHT = "carotid_right", "Carotid (Right)"
+        PEDAL_LEFT = "pedal_left", "Pedal (Left)"
+        PEDAL_RIGHT = "pedal_right", "Pedal (Right)"
+
+    class Description(models.TextChoices):
+        STRONG = "strong", "Strong"
+        BOUNDING = "bounding", "Bounding"
+        WEAK = "weak", "Weak"
+        ABSENT = "absent", "Absent"
+        THREADY = "thready", "Thready"
+
+    class ColorDescription(models.TextChoices):
+        PINK = "pink", "Pink"
+        PALE = "pale", "Pale"
+        MOTTLED = "mottled", "Mottled"
+        CYANOTIC = "cyanotic", "Cyanotic"
+        FLUSHED = "flushed", "Flushed"
+
+    class ConditionDescription(models.TextChoices):
+        DRY = "dry", "Dry"
+        MOIST = "moist", "Moist"
+        DIAPHORETIC = "diaphoretic", "Diaphoretic"
+        CLAMMY = "clammy", "Clammy"
+
+    class TemperatureDescription(models.TextChoices):
+        WARM = "warm", "Warm"
+        COOL = "cool", "Cool"
+        COLD = "cold", "Cold"
+        HOT = "hot", "Hot"
+
+    location = models.CharField(max_length=20, choices=Location.choices)
+    present = models.BooleanField()
+    description = models.CharField(max_length=20, choices=Description.choices)
+
+    color_normal = models.BooleanField()
+    color_description = models.CharField(max_length=20, choices=ColorDescription.choices)
+
+    condition_normal = models.BooleanField()
+    condition_description = models.CharField(max_length=20, choices=ConditionDescription.choices)
+
+    temperature_normal = models.BooleanField()
+    temperature_description = models.CharField(
+        max_length=20, choices=TemperatureDescription.choices
+    )
+
+    def __str__(self):
+        return (
+            f"PulseAssessment {self.timestamp:%H:%M:%S} "
+            f"{self.location}: {'present' if self.present else 'absent'} ({self.description})"
+        )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["simulation", "location"],
+                condition=models.Q(is_active=True),
+                name="pulse_one_active_per_location",
+            ),
+        ]
