@@ -551,14 +551,14 @@ def apply_preset(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.preset.applied",
+        event_type="preset.applied",
         payload={
             "preset_id": instruction.id,
             "title": instruction.title,
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=(f"trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}"),
+        idempotency_key=(f"preset.applied:{session.id}:{instruction.id}:{command.id}"),
     )
     append_pending_runtime_reason(
         session=session,
@@ -821,14 +821,14 @@ def steer_prompt(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.command.accepted",
+        event_type="command.accepted",
         payload={
             "command": "steer_prompt",
             "prompt": body.prompt,
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.command.accepted:{command.id}",
+        idempotency_key=f"command.accepted:{command.id}",
     )
     append_pending_runtime_reason(
         session=session,
@@ -908,19 +908,19 @@ def adjust_simulation(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.adjustment.accepted",
+        event_type="adjustment.accepted",
         payload=adjustment_entry,
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.adjustment.accepted:{command.id}",
+        idempotency_key=f"adjustment.accepted:{command.id}",
     )
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.adjustment.applied",
+        event_type="adjustment.applied",
         payload=adjustment_entry,
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.adjustment.applied:{command.id}",
+        idempotency_key=f"adjustment.applied:{command.id}",
     )
     append_pending_runtime_reason(
         session=session,
@@ -964,13 +964,6 @@ def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Injury:
     )
     _deactivate_superseded(supersedes)
 
-    parent_injury = None
-    if body.parent_injury_id:
-        parent_injury = Injury.objects.filter(
-            pk=body.parent_injury_id,
-            simulation_id=session.simulation_id,
-        ).first()
-
     return Injury.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
@@ -979,7 +972,6 @@ def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Injury:
         injury_location=body.injury_location,
         injury_kind=body.injury_kind,
         injury_description=body.injury_description,
-        parent_injury=parent_injury,
     )
 
 
@@ -1110,15 +1102,15 @@ def _inject_event_core(
         raise HttpError(409, str(exc)) from None
 
     if event_kind in {"injury", "illness"}:
-        event_type = "trainerlab.condition.created"
+        event_type = "condition.created"
     elif event_kind == "vital":
-        event_type = "trainerlab.vital.updated"
+        event_type = "vital.updated"
     elif event_kind == "intervention":
-        event_type = "trainerlab.intervention.recorded"
+        event_type = "intervention.recorded"
     elif event_kind == "note":
-        event_type = "trainerlab.note_created"
+        event_type = "note.created"
     else:
-        event_type = "trainerlab.event.created"
+        event_type = "event.created"
 
     send_to_ai = bool(payload_json.get("send_to_ai", False))
     emit_runtime_event(
@@ -1308,10 +1300,7 @@ def list_trainer_events(
     session = _get_session_for_simulation(simulation_id, user)
 
     queryset = order_outbox_queryset(
-        OutboxEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type__startswith="trainerlab.",
-        )
+        OutboxEvent.objects.filter(simulation_id=session.simulation_id)
     )
 
     if cursor:
@@ -1323,7 +1312,6 @@ def list_trainer_events(
         cursor_event = OutboxEvent.objects.filter(
             id=cursor_uuid,
             simulation_id=session.simulation_id,
-            event_type__startswith="trainerlab.",
         ).first()
         if cursor_event is None:
             raise HttpError(400, "Invalid cursor")
@@ -1385,8 +1373,7 @@ def stream_trainer_events(
     return stream_outbox_events(
         simulation_id=session.simulation_id,
         cursor=cursor,
-        event_type_prefix="trainerlab.",
-        sse_event_name="trainerlab",
+        sse_event_name="sim",
         heartbeat_interval_seconds=10.0,
         poll_interval_seconds=1.0,
         heartbeat_comment=": keep-alive\n\n",

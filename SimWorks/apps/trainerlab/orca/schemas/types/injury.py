@@ -23,7 +23,6 @@ class Injury(StrictBaseModel):
     injury_kind: ORMInjury.InjuryKind = Field(..., description="Kind of injury")
 
     injury_description: str = Field(..., max_length=100, description="Description of the injury")
-    # parent_injury
 
     __orm_model__ = "trainerlab.Injury"
 

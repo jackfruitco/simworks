@@ -113,7 +113,7 @@ class InitialScenarioSchema(StrictBaseModel):
 
         if scenario_brief_obj is not None:
             await broadcast_domain_objects(
-                event_type="trainerlab.scenario_brief.created",
+                event_type="scenario_brief.created",
                 objects=[scenario_brief_obj],
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
@@ -121,7 +121,7 @@ class InitialScenarioSchema(StrictBaseModel):
 
         if conditions:
             await broadcast_domain_objects(
-                event_type="trainerlab.condition.created",
+                event_type="condition.created",
                 objects=conditions,
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
@@ -129,7 +129,7 @@ class InitialScenarioSchema(StrictBaseModel):
 
         if vital_objects:
             await broadcast_domain_objects(
-                event_type="trainerlab.vital.created",
+                event_type="vital.created",
                 objects=vital_objects,
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),

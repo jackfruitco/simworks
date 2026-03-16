@@ -93,7 +93,6 @@ class InjuryCreateIn(BaseModel):
         description="Injury kind code or friendly label (normalized to canonical code)",
     )
     injury_description: str
-    parent_injury_id: int | None = None
     supersedes_event_id: int | None = None
 
     @field_validator("injury_category")

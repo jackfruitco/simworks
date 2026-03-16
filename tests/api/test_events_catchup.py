@@ -356,10 +356,10 @@ class TestStreamEvents:
         from apps.common.models import OutboxEvent
 
         OutboxEvent.objects.create(
-            event_type="trainerlab.session.seeded",
+            event_type="session.seeded",
             simulation_id=simulation.pk,
             payload={"status": "seeded"},
-            idempotency_key=f"trainerlab.seeded:{simulation.pk}:{uuid.uuid4()}",
+            idempotency_key=f"session.seeded:{simulation.pk}:{uuid.uuid4()}",
         )
         OutboxEvent.objects.create(
             event_type="chat.message_created",
@@ -369,7 +369,7 @@ class TestStreamEvents:
         )
 
         response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=trainerlab."
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=session."
         )
 
         assert response.status_code == 200
@@ -382,5 +382,5 @@ class TestStreamEvents:
             chunks.append(chunk)
         payload = "".join(chunks)
 
-        assert "trainerlab.session.seeded" in payload
+        assert "session.seeded" in payload
         assert "chat.message_created" not in payload

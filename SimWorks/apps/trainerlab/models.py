@@ -347,23 +347,8 @@ class Injury(ABCEvent):
 
     injury_description = models.CharField(max_length=100)
 
-    parent_injury = models.ForeignKey(
-        "self", on_delete=models.CASCADE, related_name="children_injuries", null=True, blank=True
-    )
     is_treated = models.BooleanField(default=False)
     is_resolved = models.BooleanField(default=False)
-
-    @property
-    def original_injury(self):
-        return self.parent_injury or self
-
-    @property
-    def is_parent_injury(self):
-        return self.parent_injury is None
-
-    @property
-    def is_child_injury(self):
-        return self.parent_injury is not None
 
     def __str__(self):
         return (

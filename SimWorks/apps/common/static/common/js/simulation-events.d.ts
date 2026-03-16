@@ -224,7 +224,6 @@ export interface TrainerLabDomainEventBase {
 
 export interface TrainerLabInjuryFields {
     injury_id: number;
-    parent_injury_id?: number | null;
     injury_category: string;
     injury_location: string;
     injury_kind: string;

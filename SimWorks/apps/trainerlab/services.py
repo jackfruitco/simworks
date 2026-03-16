@@ -447,7 +447,7 @@ def refresh_runtime_projection(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.state.updated",
+        event_type="state.updated",
         payload={
             "state_revision": state["state_revision"],
             "active_elapsed_seconds": state["active_elapsed_seconds"],
@@ -456,18 +456,18 @@ def refresh_runtime_projection(
             "processed_reasons": processed_reasons or [],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.state.updated:{session.id}:{state['state_revision']}",
+        idempotency_key=f"state.updated:{session.id}:{state['state_revision']}",
     )
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.ai.intent.updated",
+        event_type="ai.intent.updated",
         payload={
             "state_revision": state["state_revision"],
             "ai_plan": state["ai_plan"],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.ai.intent.updated:{session.id}:{state['state_revision']}",
+        idempotency_key=f"ai.intent.updated:{session.id}:{state['state_revision']}",
     )
     return state
 
@@ -505,7 +505,7 @@ def create_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.session.seeded",
+        event_type="session.seeded",
         payload={
             "status": session.status,
             "scenario_spec": session.scenario_spec_json,
@@ -596,9 +596,9 @@ def _emit_seeded_vital_events(session: TrainerSession) -> None:
         if obj is not None:
             emit_runtime_event(
                 session=session,
-                event_type="trainerlab.vital.created",
+                event_type="vital.created",
                 payload=_serialize_vital(vital_type, obj),
-                idempotency_key=f"trainerlab.vital.created:seeded:{session.id}:{vital_type}",
+                idempotency_key=f"vital.created:seeded:{session.id}:{vital_type}",
             )
 
 
@@ -607,16 +607,11 @@ def _emit_seeded_condition_events(session: TrainerSession) -> None:
         for obj in model.objects.filter(simulation=session.simulation, is_active=True).order_by(
             "timestamp", "id"
         ):
-            event_type = (
-                "trainerlab.injury.created"
-                if isinstance(obj, Injury)
-                else "trainerlab.illness.created"
-            )
             emit_runtime_event(
                 session=session,
-                event_type=event_type,
+                event_type="condition.created",
                 payload=_serialize_condition(obj),
-                idempotency_key=f"{event_type}:seeded:{session.id}:{obj.id}",
+                idempotency_key=f"condition.created:seeded:{session.id}:{obj.id}",
             )
 
 
@@ -825,13 +820,13 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
         session = TrainerSession.objects.select_related("simulation").get(pk=session_id)
         emit_runtime_event(
             session=session,
-            event_type="trainerlab.runtime.failed",
+            event_type="runtime.failed",
             payload={
                 "error": str(exc),
                 "reasons": batch["reasons"],
             },
             correlation_id=batch.get("correlation_id"),
-            idempotency_key=f"trainerlab.runtime.failed:{session.id}:{timezone.now().timestamp()}",
+            idempotency_key=f"runtime.failed:{session.id}:{timezone.now().timestamp()}",
         )
         raise
 
@@ -878,10 +873,10 @@ def _emit_condition_change(
 ) -> None:
     emit_runtime_event(
         session=session,
-        event_type=f"trainerlab.condition.{action}",
+        event_type=f"condition.{action}",
         payload=_event_payload_for_condition(condition, action=action),
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.condition.{action}:{condition.id}",
+        idempotency_key=f"condition.{action}:{condition.id}",
     )
 
 
@@ -948,7 +943,6 @@ def _apply_condition_change(
             or getattr(injury_source, "injury_kind", Injury.InjuryKind.LACERATION),
             injury_description=change.get("injury_description")
             or getattr(injury_source, "injury_description", "Updated injury"),
-            parent_injury=getattr(injury_source, "parent_injury", None),
             is_treated=getattr(injury_source, "is_treated", False),
             is_resolved=action == "resolve",
         )
@@ -1025,10 +1019,10 @@ def _apply_vital_change(
     payload["trend"] = change.get("trend", "stable")
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.vital.updated",
+        event_type="vital.updated",
         payload=payload,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.vital.updated:{created.id}",
+        idempotency_key=f"vital.updated:{created.id}",
     )
 
 
@@ -1059,7 +1053,7 @@ def _apply_intervention_effect(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.intervention_created",
+        event_type="intervention.created",
         payload={
             "domain_event_id": intervention.id,
             "intervention_type": intervention.intervention_type or None,
@@ -1076,7 +1070,7 @@ def _apply_intervention_effect(
             "effect": effects[str(intervention.id)],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.intervention_created:{intervention.id}:{effects[str(intervention.id)]['status']}",
+        idempotency_key=f"intervention.created:{intervention.id}:{effects[str(intervention.id)]['status']}",
     )
 
 
@@ -1221,14 +1215,14 @@ def apply_debrief_output(
 
         emit_runtime_event(
             session=session,
-            event_type="trainerlab.summary.updated",
+            event_type="summary.updated",
             payload={
                 "summary_id": summary.id,
                 "ai_debrief": output_payload,
                 "ai_debrief_revision": next_revision,
             },
             correlation_id=correlation_id,
-            idempotency_key=f"trainerlab.summary.updated:{session.id}:{next_revision}",
+            idempotency_key=f"summary.updated:{session.id}:{next_revision}",
         )
         return summary
 
@@ -1260,7 +1254,7 @@ def start_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.started",
+        event_type="run.started",
         payload={"status": session.status},
         created_by=user,
         correlation_id=correlation_id,
@@ -1291,7 +1285,7 @@ def pause_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.paused",
+        event_type="run.paused",
         payload={"status": session.status},
         created_by=user,
         correlation_id=correlation_id,
@@ -1318,7 +1312,7 @@ def resume_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.resumed",
+        event_type="run.resumed",
         payload={"status": session.status},
         created_by=user,
         correlation_id=correlation_id,
@@ -1353,7 +1347,7 @@ def stop_session(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.run.stopped",
+        event_type="run.stopped",
         payload={
             "status": session.status,
             "discarded_runtime_reason_count": len(discarded_reasons),
@@ -1429,10 +1423,10 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.summary.ready",
+        event_type="summary.ready",
         payload={"summary_id": summary.id},
         created_by=generated_by,
-        idempotency_key=f"trainerlab.summary.ready:{summary.id}",
+        idempotency_key=f"summary.ready:{summary.id}",
     )
 
     return summary

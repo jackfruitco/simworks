@@ -153,7 +153,6 @@ def serialize_domain_event(
             "event_kind": "injury",
             "condition_kind": "injury",
             "injury_id": obj.id,
-            "parent_injury_id": obj.parent_injury_id,
             "injury_category": obj.injury_category,
             "injury_location": obj.injury_location,
             "injury_kind": obj.injury_kind,

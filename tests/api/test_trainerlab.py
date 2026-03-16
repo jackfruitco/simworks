@@ -719,10 +719,7 @@ class TestTrainerLabEvents:
         simulation_id = session["simulation_id"]
 
         anchor = (
-            OutboxEvent.objects.filter(
-                simulation_id=simulation_id,
-                event_type__startswith="trainerlab.",
-            )
+            OutboxEvent.objects.filter(simulation_id=simulation_id)
             .order_by("created_at", "id")
             .last()
         )
@@ -745,7 +742,7 @@ class TestTrainerLabEvents:
 
         outbox_event = OutboxEvent.objects.get(
             simulation_id=simulation_id,
-            event_type="trainerlab.note_created",
+            event_type="note.created",
         )
         assert outbox_event.payload["content"] == "Instructor note for the timeline."
         assert outbox_event.payload["created_by_role"] == "instructor"
@@ -753,7 +750,7 @@ class TestTrainerLabEvents:
         listed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/")
         assert listed.status_code == 200
         assert any(
-            item["event_type"] == "trainerlab.note_created"
+            item["event_type"] == "note.created"
             and item["payload"]["content"] == "Instructor note for the timeline."
             for item in listed.json()["items"]
         )
@@ -763,7 +760,7 @@ class TestTrainerLabEvents:
         )
         chunks = [decode_chunk(chunk) for chunk in islice(streamed.streaming_content, 3)]
         payload = "".join(chunks)
-        assert "trainerlab.note_created" in payload
+        assert "note.created" in payload
         assert '"created_by_role": "instructor"' in payload
 
     def test_note_event_send_to_ai_queues_runtime_reason(
@@ -1039,26 +1036,23 @@ class TestTrainerLabEvents:
         simulation_id = session["simulation_id"]
 
         anchor = (
-            OutboxEvent.objects.filter(
-                simulation_id=simulation_id,
-                event_type__startswith="trainerlab.",
-            )
+            OutboxEvent.objects.filter(simulation_id=simulation_id)
             .order_by("created_at", "id")
             .last()
         )
         if anchor is None:
             anchor = OutboxEvent.objects.create(
-                event_type="trainerlab.stream.anchor",
+                event_type="stream.anchor",
                 simulation_id=simulation_id,
                 payload={"status": "anchored"},
-                idempotency_key=f"trainerlab.anchor:{simulation_id}",
+                idempotency_key=f"stream.anchor:{simulation_id}",
             )
 
         streamed = OutboxEvent.objects.create(
-            event_type="trainerlab.session.seeded",
+            event_type="session.seeded",
             simulation_id=simulation_id,
             payload={"status": "seeded"},
-            idempotency_key=f"trainerlab.seeded:{simulation_id}",
+            idempotency_key=f"session.seeded:{simulation_id}",
         )
 
         response = client.get(
@@ -1073,8 +1067,8 @@ class TestTrainerLabEvents:
         payload = "".join(chunks)
 
         assert chunks[0] == f"id: {streamed.id}\n"
-        assert chunks[1] == "event: trainerlab\n"
-        assert "trainerlab.session.seeded" in payload
+        assert chunks[1] == "event: sim\n"
+        assert "session.seeded" in payload
         assert '"status": "seeded"' in payload
 
     def test_sse_stream_endpoint_emits_idle_keep_alive(
@@ -1095,19 +1089,16 @@ class TestTrainerLabEvents:
         simulation_id = session["simulation_id"]
 
         anchor = (
-            OutboxEvent.objects.filter(
-                simulation_id=simulation_id,
-                event_type__startswith="trainerlab.",
-            )
+            OutboxEvent.objects.filter(simulation_id=simulation_id)
             .order_by("created_at", "id")
             .last()
         )
         if anchor is None:
             anchor = OutboxEvent.objects.create(
-                event_type="trainerlab.stream.anchor",
+                event_type="stream.anchor",
                 simulation_id=simulation_id,
                 payload={"status": "anchored"},
-                idempotency_key=f"trainerlab.idle.anchor:{simulation_id}",
+                idempotency_key=f"stream.anchor.idle:{simulation_id}",
             )
 
         response = client.get(
@@ -1190,7 +1181,7 @@ class TestTrainerLabDictionaries:
         # Verify the outbox event payload from _inject_event_core has structured fields
         outbox_event = OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="trainerlab.intervention.recorded",
+            event_type="intervention.recorded",
         ).first()
         assert outbox_event is not None
         assert outbox_event.payload["intervention_type"] == "tourniquet"
@@ -1309,12 +1300,12 @@ class TestTrainerLabDictionaries:
         ).exists()
         assert OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="trainerlab.state.updated",
+            event_type="state.updated",
         ).exists()
 
         intervention_recorded = OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="trainerlab.intervention.recorded",
+            event_type="intervention.recorded",
         ).first()
         assert intervention_recorded is not None
         assert "effectiveness" in intervention_recorded.payload
@@ -1410,7 +1401,7 @@ class TestTrainerLabDictionaries:
         ]
         assert OutboxEvent.objects.filter(
             simulation_id=trainer_session.simulation_id,
-            event_type="trainerlab.summary.updated",
+            event_type="summary.updated",
         ).exists()
 
     def test_apply_debrief_output_emits_new_outbox_event_for_each_revision(
@@ -1462,7 +1453,7 @@ class TestTrainerLabDictionaries:
         events = list(
             OutboxEvent.objects.filter(
                 simulation_id=trainer_session.simulation_id,
-                event_type="trainerlab.summary.updated",
+                event_type="summary.updated",
             ).order_by("created_at", "id")
         )
         assert len(events) == 2
