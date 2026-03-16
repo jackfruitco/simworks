@@ -413,10 +413,15 @@ class TestNotificationsWebSocketEndToEnd:
         the close code rather than an HTTP 403 upgrade rejection.
         """
         communicator = WebsocketCommunicator(_make_ws_app(), "/ws/notifications/")
-        connected, close_code = await communicator.connect()
-        # Consumer accepts then immediately closes with 4001 for unauthenticated users
+        connected, _ = await communicator.connect()
+        # Consumer accepts then immediately closes with 4001 for unauthenticated users.
+        # A plain HTTP 403 rejection would have returned connected=False here.
         assert connected is True
-        assert close_code == 4001
+
+        # The close frame carrying code 4001 arrives as the next output message.
+        close_message = await communicator.receive_output()
+        assert close_message["type"] == "websocket.close"
+        assert close_message.get("code") == 4001
 
         await communicator.disconnect()
 
@@ -456,8 +461,12 @@ class TestNotificationsWebSocketEndToEnd:
             "/ws/notifications/",
             headers=[(b"authorization", b"Bearer not.a.valid.token")],
         )
-        connected, close_code = await communicator.connect()
+        connected, _ = await communicator.connect()
+        # Invalid JWT falls back to AnonymousUser; consumer accepts then closes.
         assert connected is True
-        assert close_code == 4001
+
+        close_message = await communicator.receive_output()
+        assert close_message["type"] == "websocket.close"
+        assert close_message.get("code") == 4001
 
         await communicator.disconnect()
