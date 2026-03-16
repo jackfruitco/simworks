@@ -236,6 +236,14 @@ def emit_runtime_event(
     return runtime_event
 
 
+def _injury_control_state(obj: Injury) -> str:
+    if obj.is_resolved:
+        return "resolved"
+    if obj.is_treated:
+        return "controlled"
+    return "uncontrolled"
+
+
 def _serialize_condition(obj: Injury | Illness) -> dict[str, Any]:
     payload = {
         "domain_event_id": obj.id,
@@ -256,6 +264,8 @@ def _serialize_condition(obj: Injury | Illness) -> dict[str, Any]:
                 "injury_location_label": obj.get_injury_location_display(),
                 "injury_kind_label": obj.get_injury_kind_display(),
                 "is_treated": obj.is_treated,
+                "is_resolved": obj.is_resolved,
+                "control_state": _injury_control_state(obj),
             }
         )
     else:
@@ -265,6 +275,7 @@ def _serialize_condition(obj: Injury | Illness) -> dict[str, Any]:
                 "name": obj.name,
                 "description": obj.description,
                 "severity": obj.severity,
+                "is_resolved": obj.is_resolved,
             }
         )
     return payload
@@ -938,8 +949,8 @@ def _apply_condition_change(
             injury_description=change.get("injury_description")
             or getattr(injury_source, "injury_description", "Updated injury"),
             parent_injury=getattr(injury_source, "parent_injury", None),
-            is_treated=bool(change.get("is_treated", getattr(injury_source, "is_treated", False))),
-            is_resolved=action == "resolve" or bool(change.get("is_resolved", False)),
+            is_treated=getattr(injury_source, "is_treated", False),
+            is_resolved=action == "resolve",
         )
         _emit_condition_change(
             session=session,
@@ -962,7 +973,7 @@ def _apply_condition_change(
         description=change.get("description") or getattr(illness_source, "description", ""),
         severity=change.get("severity")
         or getattr(illness_source, "severity", Illness.Severity.MODERATE),
-        is_resolved=action == "resolve" or bool(change.get("is_resolved", False)),
+        is_resolved=action == "resolve",
     )
     _emit_condition_change(
         session=session,

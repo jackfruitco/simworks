@@ -164,7 +164,6 @@ def _inline_runtime_payload(
                     "injury_location": "TLA",
                     "injury_kind": "GSW",
                     "injury_description": "Chest GSW with worsening respiratory compromise",
-                    "is_treated": False,
                 },
             ]
             if target_event_id

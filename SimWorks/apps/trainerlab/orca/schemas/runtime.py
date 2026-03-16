@@ -18,8 +18,6 @@ class RuntimeConditionChange(StrictBaseModel):
     injury_location: str | None = None
     injury_kind: str | None = None
     injury_description: str | None = None
-    is_treated: bool = False
-    is_resolved: bool = False
 
     name: str | None = None
     description: str | None = None

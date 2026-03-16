@@ -84,6 +84,14 @@ def _enrich_structured_intervention(payload: dict[str, Any]) -> bool:
     return True
 
 
+def _injury_control_state(obj: Injury) -> str:
+    if obj.is_resolved:
+        return "resolved"
+    if obj.is_treated:
+        return "controlled"
+    return "uncontrolled"
+
+
 def enrich_trainer_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     enriched = dict(payload or {})
 
@@ -152,6 +160,7 @@ def serialize_domain_event(
             "injury_description": obj.injury_description,
             "is_treated": obj.is_treated,
             "is_resolved": obj.is_resolved,
+            "control_state": _injury_control_state(obj),
         }
     elif isinstance(obj, Illness):
         payload = {
