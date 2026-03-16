@@ -48,7 +48,7 @@
           })
         </script>
         <script src="{% static 'common/js/toast-store.js' %}"></script>
-        <script src="{% static 'common/js/notifications.js' %}"></script>
+        {% if user.is_authenticated %}<script src="{% static 'common/js/notifications.js' %}"></script>{% endif %}
     <script>
     // Global HTMX error handling with retry logic
     document.body.addEventListener('htmx:responseError', function(evt) {
