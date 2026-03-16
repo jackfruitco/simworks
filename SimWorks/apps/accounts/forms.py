@@ -2,6 +2,7 @@ from allauth.account.forms import SignupForm
 from django import forms
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import transaction
 
 from .models import Invitation, UserRole
 
@@ -74,7 +75,10 @@ class InvitationSignupForm(SignupForm):
             raise ValidationError("An invitation token is required to sign up.")
 
         try:
-            invitation = Invitation.objects.get(token=token, is_claimed=False)
+            with transaction.atomic():
+                invitation = Invitation.objects.select_for_update().get(
+                    token=token, is_claimed=False
+                )
         except Invitation.DoesNotExist:
             raise ValidationError("Invalid invitation token or already claimed.") from None
 
