@@ -87,7 +87,9 @@ logger = logging.getLogger(__name__)
 _TEMPLATE_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 # Keys accepted at the per-instruction item level.
-_ITEM_KNOWN_KEYS = frozenset({"name", "order", "instruction", "required_variables"})
+_ITEM_KNOWN_KEYS = frozenset(
+    {"name", "order", "instruction", "required_variables", "optional_variables"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +186,32 @@ def _validate_item(item: Any, *, index: int, path: Path | str | None) -> None:
                     path=path,
                 )
 
+    optional_vars = item.get("optional_variables")
+    if optional_vars is not None:
+        if not isinstance(optional_vars, list):
+            raise YAMLInstructionDefinitionError(
+                f"{loc} ({name!r}): 'optional_variables' must be a list[str], "
+                f"got {type(optional_vars).__name__!r}",
+                path=path,
+            )
+        for i, v in enumerate(optional_vars):
+            if not isinstance(v, str) or not v.strip():
+                raise YAMLInstructionDefinitionError(
+                    f"{loc} ({name!r}): 'optional_variables[{i}]' must be a "
+                    f"non-empty string, got {v!r}",
+                    path=path,
+                )
+        # required and optional must not overlap
+        req_set = set(required_vars or [])
+        opt_set = set(optional_vars)
+        overlap = req_set & opt_set
+        if overlap:
+            raise YAMLInstructionDefinitionError(
+                f"{loc} ({name!r}): variables {sorted(overlap)!r} appear in both "
+                "'required_variables' and 'optional_variables'",
+                path=path,
+            )
+
     # --- unknown keys (warn, not error, to allow future extensions) ---
     unknown = set(item) - _ITEM_KNOWN_KEYS
     if unknown:
@@ -209,20 +237,69 @@ def _render_template(template: str, context: dict[str, Any]) -> str:
     return _TEMPLATE_VAR_RE.sub(_replace, template)
 
 
+def _check_template_drift(
+    template: str,
+    required: tuple[str, ...],
+    optional: tuple[str, ...],
+    *,
+    name: str,
+    path: Path | str | None,
+) -> None:
+    """Warn at load time when template variables and declarations drift apart.
+
+    Two conditions emit a warning:
+
+    - A ``${variable}`` placeholder appears in the template but is not
+      declared in either ``required_variables`` or ``optional_variables``
+      (undeclared optional — silently renders as empty string, but the omission
+      is likely unintentional).
+    - A variable is declared in ``required_variables`` or ``optional_variables``
+      but does not appear as a ``${variable}`` placeholder in the template
+      (dead declaration).
+    """
+    template_vars = frozenset(_TEMPLATE_VAR_RE.findall(template))
+    declared_vars = frozenset(required) | frozenset(optional)
+
+    undeclared = template_vars - declared_vars
+    if undeclared:
+        logger.warning(
+            "YAML instruction %r in %s: template uses ${...} variables %r that are "
+            "not declared in 'required_variables' or 'optional_variables' — "
+            "they will silently render as empty string",
+            name,
+            path or "<unknown>",
+            sorted(undeclared),
+        )
+
+    dead = declared_vars - template_vars
+    if dead:
+        logger.warning(
+            "YAML instruction %r in %s: variables %r are declared but not used in the template",
+            name,
+            path or "<unknown>",
+            sorted(dead),
+        )
+
+
 def _make_instruction_class(
     item: dict[str, Any],
     *,
     namespace: str | None,
     group: str | None,
+    path: Path | str | None = None,
 ) -> type[BaseInstruction]:
     """Return a new ``BaseInstruction`` subclass from a *pre-validated* YAML item dict."""
     name: str = item["name"]
     order: int = int(item.get("order", 50))
     template: str = str(item["instruction"])
     required: tuple[str, ...] = tuple(item.get("required_variables") or [])
+    optional: tuple[str, ...] = tuple(item.get("optional_variables") or [])
 
     is_dynamic = bool(_TEMPLATE_VAR_RE.search(template))
     needs_validation = bool(required)
+
+    # Warn at load time if template vars and declarations drift apart.
+    _check_template_drift(template, required, optional, name=name, path=path)
 
     # Pin ``name`` explicitly so IdentityMixin never applies token stripping
     # (e.g. "PatientNameInstruction" must not become "PatientName").
@@ -234,6 +311,7 @@ def _make_instruction_class(
         "order": order,
         "abstract": False,
         "required_variables": required,
+        "optional_variables": optional,
     }
 
     if is_dynamic:
@@ -339,7 +417,7 @@ def load_yaml_instructions(
 
     classes: list[type[BaseInstruction]] = []
     for item in data["instructions"]:
-        cls = _make_instruction_class(item, namespace=namespace, group=group)
+        cls = _make_instruction_class(item, namespace=namespace, group=group, path=path)
         if app is not None:
             app.components.registry(INSTRUCTIONS_DOMAIN).register(cls)
             logger.debug("Registered YAML instruction %r from %s", cls.__name__, path.name)

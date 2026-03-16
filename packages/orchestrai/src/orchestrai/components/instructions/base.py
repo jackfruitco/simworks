@@ -58,6 +58,12 @@ class BaseInstruction(IdentityMixin, ABC):
     # ``required_variables`` key; Python instructions may set it manually.
     required_variables: ClassVar[tuple[str, ...]] = ()
 
+    # Document optional ${variable} placeholders used in the instruction
+    # template.  These are substituted with an empty string when absent —
+    # declaring them here makes the contract explicit and suppresses drift
+    # warnings at load time.  No runtime behaviour change.
+    optional_variables: ClassVar[tuple[str, ...]] = ()
+
     def _validate_context(self, context: dict[str, Any]) -> None:
         """Raise MissingRequiredContextError if any required_variables are absent.
 

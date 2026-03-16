@@ -3,7 +3,7 @@
 Covers:
 - 3-part identity ref resolution (namespace.group.ClassName)
 - 4-part identity ref resolution (domain.namespace.group.ClassName)
-- bare-name fallback (deprecated; emits DeprecationWarning)
+- invalid ref format raises ValueError (bare names not supported)
 - missing ref raises ValueError with diagnostic labels
 - ordering is driven by instruction metadata (order), not list position
 - deduplication of duplicate refs in a single list
@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import ClassVar
-import warnings
 
 import pytest
 
@@ -160,38 +159,46 @@ def test_four_part_ref_resolves_correct_class() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Bare-name (deprecated) fallback
+# Invalid ref format → clear error
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_bare_name_still_resolves_with_deprecation_warning() -> None:
-    """Bare class names still resolve via find_by_name with a DeprecationWarning."""
+def test_bare_name_raises_value_error() -> None:
+    """A bare name (no dots) raises ValueError immediately — no deprecation path."""
 
     class _Service:
         instruction_refs: ClassVar[list[str]] = ["InstrB"]
 
     app = _make_app(_InstrB)
-    with push_current_app(app), pytest.warns(DeprecationWarning, match="bare name.*deprecated"):
-        result = collect_instructions(_Service)
-
-    assert result == [_InstrB]
+    with push_current_app(app), pytest.raises(ValueError, match="invalid ref format"):
+        collect_instructions(_Service)
 
 
 @pytest.mark.unit
-def test_bare_name_warning_text_suggests_three_part_format() -> None:
-    """The deprecation warning message mentions the preferred 3-part format."""
+def test_one_dot_ref_raises_value_error() -> None:
+    """A 2-part ref (one dot) raises ValueError with a format hint."""
+
+    class _Service:
+        instruction_refs: ClassVar[list[str]] = ["testns.InstrA"]
+
+    app = _make_app(_InstrA)
+    with push_current_app(app), pytest.raises(ValueError, match="invalid ref format"):
+        collect_instructions(_Service)
+
+
+@pytest.mark.unit
+def test_invalid_ref_error_suggests_three_part_format() -> None:
+    """The error message for an invalid format mentions the expected 3-part format."""
 
     class _Service:
         instruction_refs: ClassVar[list[str]] = ["InstrA"]
 
     app = _make_app(_InstrA)
-    with push_current_app(app), warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    with push_current_app(app), pytest.raises(ValueError) as exc_info:
         collect_instructions(_Service)
 
-    msgs = [str(w.message) for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert any("namespace.group.ClassName" in m for m in msgs)
+    assert "namespace.group.ClassName" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -229,16 +236,14 @@ def test_missing_ref_error_includes_available_labels() -> None:
 
 @pytest.mark.unit
 def test_missing_bare_name_raises_value_error() -> None:
-    """A bare name that finds nothing raises ValueError."""
+    """A bare name raises ValueError with the ref text in the message."""
 
     class _Service:
         instruction_refs: ClassVar[list[str]] = ["GhostInstruction"]
 
     app = _make_app(_InstrA)
-    with push_current_app(app), warnings.catch_warnings(record=True):
-        warnings.simplefilter("always")
-        with pytest.raises(ValueError, match="GhostInstruction"):
-            collect_instructions(_Service)
+    with push_current_app(app), pytest.raises(ValueError, match="GhostInstruction"):
+        collect_instructions(_Service)
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-import warnings
 
 from orchestrai.components.instructions.base import BaseInstruction
 from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN
@@ -30,8 +29,6 @@ def collect_instructions(cls: type) -> list[type[BaseInstruction]]:
        - ``"namespace.group.ClassName"`` — 3-part identity ref (domain
          ``instructions`` is implicit).  **Preferred format.**
        - ``"domain.namespace.group.ClassName"`` — 4-part full identity label.
-       - ``"ClassName"`` — bare class name (deprecated; O(n) scan; emits a
-         ``DeprecationWarning``).
 
        The returned list is sorted by ``(order, __name__)``.
 
@@ -56,8 +53,7 @@ def collect_instructions(cls: type) -> list[type[BaseInstruction]]:
 def _resolve_instruction_refs(refs: list[str]) -> list[type[BaseInstruction]]:
     """Resolve a list of instruction ref strings to classes.
 
-    Supports 3-part ``namespace.group.Name``, 4-part ``domain.ns.group.Name``,
-    and bare ``Name`` refs (deprecated).
+    Supports 3-part ``namespace.group.Name`` and 4-part ``domain.ns.group.Name``.
     """
     from orchestrai._state import get_current_app  # avoid import-time cycles
 
@@ -115,21 +111,12 @@ def _resolve_single_ref(ref: str, registry) -> type[BaseInstruction]:  # type: i
             )
         return cls  # type: ignore[return-value]
 
-    # Bare name (no dots) — deprecated fallback.
-    warnings.warn(
-        f"instruction_refs: bare name {ref!r} is deprecated. "
-        "Use a 3-part 'namespace.group.ClassName' ref instead. "
-        "Bare names are O(n) and non-unique across namespaces.",
-        DeprecationWarning,
-        stacklevel=6,
+    raise ValueError(
+        f"instruction_refs: invalid ref format {ref!r}. "
+        "Use 'namespace.group.ClassName' (3-part) or "
+        "'domain.namespace.group.ClassName' (4-part). "
+        f"Available labels: {sorted(registry.labels())}"
     )
-    cls = registry.find_by_name(ref)
-    if cls is None:
-        raise ValueError(
-            f"instruction_refs: no instruction named {ref!r} found. "
-            f"Available labels: {sorted(registry.labels())}"
-        )
-    return cls  # type: ignore[return-value]
 
 
 def _collect_from_mro(cls: type) -> list[type[BaseInstruction]]:

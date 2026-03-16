@@ -4,6 +4,8 @@ Covers:
 - basic loading of static and dynamic YAML instructions
 - required_variables: validation success and failure
 - non-required variable substitution policy (empty string fallback)
+- optional_variables: stored on class, suppresses drift warnings, overlap error
+- template/required drift lint warnings
 - YAMLInstructionDefinitionError for malformed definitions
 - backward compatibility (files without required_variables)
 - pinned class names (no identity token stripping)
@@ -704,3 +706,199 @@ def test_missing_required_context_error_attributes() -> None:
     assert err.missing_keys == ["foo", "bar"]
     assert err.available_keys == ["baz"]
     assert isinstance(err, ValueError)
+
+
+# ---------------------------------------------------------------------------
+# optional_variables: stored on class, suppresses drift warning
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_optional_variables_stored_on_class(tmp_path: Path) -> None:
+    """optional_variables are stored as a tuple on the generated class."""
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: OptVarInstruction
+            optional_variables:
+              - note
+              - extra
+            instruction: "Hello. ${note} ${extra}"
+        """,
+    )
+    (cls,) = load_yaml_instructions(p)
+    assert cls.optional_variables == ("note", "extra")
+
+
+@pytest.mark.unit
+def test_optional_variables_default_empty(tmp_path: Path) -> None:
+    """optional_variables defaults to an empty tuple when not declared."""
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: NoOptInstruction
+            instruction: "Static text."
+        """,
+    )
+    (cls,) = load_yaml_instructions(p)
+    assert cls.optional_variables == ()
+
+
+@pytest.mark.unit
+def test_optional_variables_suppresses_undeclared_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Declaring a placeholder in optional_variables suppresses the undeclared warning."""
+    import logging
+
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: SuppressedWarningInstruction
+            optional_variables:
+              - greeting
+            instruction: "Hello, ${greeting}."
+        """,
+    )
+    with caplog.at_level(logging.WARNING):
+        load_yaml_instructions(p)
+
+    assert not any("undeclared" in r.message or "greeting" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_error_optional_variables_not_list(tmp_path: Path) -> None:
+    """optional_variables that is not a list raises YAMLInstructionDefinitionError."""
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: BadOptVars
+            optional_variables: just_a_string
+            instruction: "${just_a_string}."
+        """,
+    )
+    with pytest.raises(YAMLInstructionDefinitionError, match="'optional_variables' must be a list"):
+        load_yaml_instructions(p)
+
+
+@pytest.mark.unit
+def test_error_optional_variables_overlap_with_required(tmp_path: Path) -> None:
+    """Variables in both required and optional raise YAMLInstructionDefinitionError."""
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: OverlapInstruction
+            required_variables:
+              - patient_name
+            optional_variables:
+              - patient_name
+            instruction: "${patient_name}."
+        """,
+    )
+    with pytest.raises(YAMLInstructionDefinitionError, match="appear in both"):
+        load_yaml_instructions(p)
+
+
+# ---------------------------------------------------------------------------
+# Template/required drift lint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_drift_warns_when_template_var_undeclared(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A template placeholder not in required or optional emits a warning."""
+    import logging
+
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: UndeclaredVarInstruction
+            instruction: "Hello, ${mystery_var}."
+        """,
+    )
+    with caplog.at_level(logging.WARNING):
+        load_yaml_instructions(p)
+
+    assert any("mystery_var" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_drift_warns_when_required_var_not_in_template(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A required variable not used in the template emits a warning."""
+    import logging
+
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: DeadRequiredInstruction
+            required_variables:
+              - unused_var
+            instruction: "No placeholders here."
+        """,
+    )
+    with caplog.at_level(logging.WARNING):
+        load_yaml_instructions(p)
+
+    assert any("unused_var" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_drift_warns_when_optional_var_not_in_template(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A declared optional variable not used in the template emits a warning."""
+    import logging
+
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: DeadOptionalInstruction
+            optional_variables:
+              - ghost_var
+            instruction: "No placeholders here."
+        """,
+    )
+    with caplog.at_level(logging.WARNING):
+        load_yaml_instructions(p)
+
+    assert any("ghost_var" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_drift_no_warning_when_all_declared(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No drift warning when all template vars are declared (required or optional)."""
+    import logging
+
+    p = _write_yaml(
+        tmp_path,
+        """
+        instructions:
+          - name: WellDeclaredInstruction
+            required_variables:
+              - patient_name
+            optional_variables:
+              - note
+            instruction: "Patient: ${patient_name}. Note: ${note}."
+        """,
+    )
+    with caplog.at_level(logging.WARNING):
+        load_yaml_instructions(p)
+
+    drift_warnings = [
+        r for r in caplog.records if "undeclared" in r.message or "not used" in r.message
+    ]
+    assert drift_warnings == []
