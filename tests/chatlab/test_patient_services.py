@@ -153,7 +153,6 @@ class TestSchemaSerializability:
         import json
 
         sample_output = {
-            "image_requested": False,
             "messages": [
                 {
                     "role": "assistant",
@@ -171,7 +170,7 @@ class TestSchemaSerializability:
         json_str = json.dumps(dumped)
         assert json_str is not None
         assert "Reply text" in json_str
-        assert "image_requested" in json_str
+        assert "image_request" in json_str
 
 
 @pytest.mark.django_db
