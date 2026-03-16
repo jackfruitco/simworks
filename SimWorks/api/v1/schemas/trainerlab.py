@@ -17,6 +17,7 @@ from apps.trainerlab.intervention_dictionary import (
     validate_intervention_details,
 )
 from apps.trainerlab.models import (
+    DebriefAnnotation,
     ScenarioInstruction,
     ScenarioInstructionPermission,
     TrainerSession,
@@ -308,6 +309,8 @@ class TrainerRuntimeStateOut(BaseModel):
     status: str
     state_revision: int
     active_elapsed_seconds: int
+    tick_interval_seconds: int = 15
+    next_tick_at: datetime | None = None
     scenario_brief: ScenarioBriefOut | None = None
     current_snapshot: TrainerRuntimeSnapshotOut
     ai_plan: RuntimeInstructorIntent
@@ -434,6 +437,156 @@ class InterventionDictionaryItemOut(BaseModel):
     sites: list[DictionaryItemOut]
 
 
+# ---------------------------------------------------------------------------
+# #2 — Condition control state
+# ---------------------------------------------------------------------------
+
+
+class ConditionControlUpdateIn(BaseModel):
+    is_treated: bool | None = None
+    is_resolved: bool | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "ConditionControlUpdateIn":
+        if self.is_treated is None and self.is_resolved is None:
+            raise ValueError("At least one of is_treated or is_resolved must be provided.")
+        return self
+
+
+class ConditionControlOut(BaseModel):
+    condition_id: int
+    kind: Literal["injury", "illness"]
+    is_treated: bool
+    is_resolved: bool
+    control_state: Literal["uncontrolled", "controlled", "resolved"]
+    label: str
+
+
+# ---------------------------------------------------------------------------
+# #4 — Debrief annotations
+# ---------------------------------------------------------------------------
+
+
+class AnnotationCreateIn(BaseModel):
+    learning_objective: Literal[
+        "assessment",
+        "hemorrhage_control",
+        "airway",
+        "breathing",
+        "circulation",
+        "hypothermia",
+        "communication",
+        "triage",
+        "intervention",
+        "other",
+    ] = "other"
+    observation_text: str = Field(min_length=1, max_length=2000)
+    outcome: Literal["correct", "incorrect", "missed", "improvised", "pending"] = "pending"
+    linked_event_id: int | None = None
+    elapsed_seconds_at: int | None = None
+
+
+class AnnotationOut(BaseModel):
+    id: int
+    session_id: int
+    simulation_id: int
+    created_by_id: int | None
+    learning_objective: str
+    learning_objective_label: str
+    observation_text: str
+    outcome: str
+    outcome_label: str
+    linked_event_id: int | None
+    elapsed_seconds_at: int | None
+    created_at: datetime
+
+
+def annotation_to_out(obj: DebriefAnnotation) -> AnnotationOut:
+    return AnnotationOut(
+        id=obj.id,
+        session_id=obj.session_id,
+        simulation_id=obj.simulation_id,
+        created_by_id=obj.created_by_id,
+        learning_objective=obj.learning_objective,
+        learning_objective_label=obj.get_learning_objective_display(),
+        observation_text=obj.observation_text,
+        outcome=obj.outcome,
+        outcome_label=obj.get_outcome_display(),
+        linked_event_id=obj.linked_event_id,
+        elapsed_seconds_at=obj.elapsed_seconds_at,
+        created_at=obj.created_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# #5 — Preset application diff
+# ---------------------------------------------------------------------------
+
+
+class PresetApplyConditionItem(BaseModel):
+    id: int
+    kind: str
+    label: str
+
+
+class PresetApplyVitalChange(BaseModel):
+    before: dict[str, Any] | None
+    after: dict[str, Any]
+
+
+class PresetApplyDiff(BaseModel):
+    conditions_added: list[PresetApplyConditionItem] = Field(default_factory=list)
+    vitals_changed: dict[str, PresetApplyVitalChange] = Field(default_factory=dict)
+    state_revision_before: int | None = None
+
+
+class PresetApplyOut(BaseModel):
+    command_id: str
+    status: str = "accepted"
+    diff: PresetApplyDiff = Field(default_factory=PresetApplyDiff)
+
+
+# ---------------------------------------------------------------------------
+# #7 — Scenario brief edit
+# ---------------------------------------------------------------------------
+
+
+class ScenarioBriefUpdateIn(BaseModel):
+    read_aloud_brief: str | None = None
+    environment: str | None = None
+    location_overview: str | None = None
+    threat_context: str | None = None
+    evacuation_options: list[str] | None = None
+    evacuation_time: str | None = None
+    special_considerations: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> "ScenarioBriefUpdateIn":
+        fields = [
+            self.read_aloud_brief,
+            self.environment,
+            self.location_overview,
+            self.threat_context,
+            self.evacuation_options,
+            self.evacuation_time,
+            self.special_considerations,
+        ]
+        if all(f is None for f in fields):
+            raise ValueError("At least one field must be provided to update the scenario brief.")
+        return self
+
+
+class ScenarioBriefDetailOut(BaseModel):
+    domain_event_id: int
+    read_aloud_brief: str
+    environment: str
+    location_overview: str
+    threat_context: str
+    evacuation_options: list[str]
+    evacuation_time: str
+    special_considerations: list[str]
+
+
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     simulation = session.simulation
     terminal_reason_code = getattr(simulation, "terminal_reason_code", "") or None
@@ -463,6 +616,8 @@ def _join_if_list(value: Any) -> str:
 
 
 def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
+    from datetime import timedelta
+
     runtime_state = dict(session.runtime_state_json or {})
     raw_brief = runtime_state.get("scenario_brief") or session.scenario_spec_json or {}
     scenario_brief_out = ScenarioBriefOut(
@@ -474,12 +629,19 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
         evacuation_time=str(raw_brief.get("evacuation_time") or ""),
         special_considerations=_join_if_list(raw_brief.get("special_considerations", "")),
     )
+    # #3: Compute next_tick_at for trainer countdown visibility
+    next_tick_at = None
+    if session.last_ai_tick_at is not None and session.tick_interval_seconds:
+        next_tick_at = session.last_ai_tick_at + timedelta(seconds=session.tick_interval_seconds)
+
     return TrainerRuntimeStateOut(
         simulation_id=session.simulation_id,
         session_id=session.id,
         status=session.status,
         state_revision=int(runtime_state.get("state_revision", 0) or 0),
         active_elapsed_seconds=int(runtime_state.get("active_elapsed_seconds", 0) or 0),
+        tick_interval_seconds=session.tick_interval_seconds,
+        next_tick_at=next_tick_at,
         scenario_brief=scenario_brief_out,
         current_snapshot=TrainerRuntimeSnapshotOut.model_validate(
             runtime_state.get("current_snapshot") or {}

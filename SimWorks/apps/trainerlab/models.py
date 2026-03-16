@@ -519,6 +519,79 @@ class ScenarioBrief(ABCEvent):
         return f"ScenarioBrief at {self.timestamp:%H:%M:%S}: {brief_preview}..."
 
 
+class DebriefAnnotation(models.Model):
+    """Structured instructor annotation dropped during a live session for debrief anchoring."""
+
+    class LearningObjective(models.TextChoices):
+        ASSESSMENT = "assessment", _("Patient Assessment")
+        HEMORRHAGE_CONTROL = "hemorrhage_control", _("Hemorrhage Control")
+        AIRWAY = "airway", _("Airway Management")
+        BREATHING = "breathing", _("Breathing / Respiration")
+        CIRCULATION = "circulation", _("Circulation / Shock")
+        HYPOTHERMIA = "hypothermia", _("Hypothermia Prevention")
+        COMMUNICATION = "communication", _("Communication / Reporting")
+        TRIAGE = "triage", _("Triage Decision")
+        INTERVENTION = "intervention", _("Intervention Technique")
+        OTHER = "other", _("Other")
+
+    class Outcome(models.TextChoices):
+        CORRECT = "correct", _("Correct")
+        INCORRECT = "incorrect", _("Incorrect")
+        MISSED = "missed", _("Missed")
+        IMPROVISED = "improvised", _("Improvised")
+        PENDING = "pending", _("Pending / Unscored")
+
+    session = models.ForeignKey(
+        "trainerlab.TrainerSession",
+        on_delete=models.CASCADE,
+        related_name="debrief_annotations",
+    )
+    simulation = models.ForeignKey(
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="debrief_annotations",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trainerlab_debrief_annotations",
+    )
+    learning_objective = models.CharField(
+        max_length=32,
+        choices=LearningObjective.choices,
+        default=LearningObjective.OTHER,
+    )
+    observation_text = models.TextField(max_length=2000)
+    outcome = models.CharField(
+        max_length=16,
+        choices=Outcome.choices,
+        default=Outcome.PENDING,
+    )
+    # Optional: link to a specific domain event (e.g. the injury that was missed)
+    linked_event_id = models.IntegerField(null=True, blank=True)
+    # Allow backdating to a specific elapsed second in the simulation
+    elapsed_seconds_at = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(
+                fields=["session", "created_at"],
+                name="idx_debrief_annotation_session",
+            ),
+            models.Index(
+                fields=["simulation", "created_at"],
+                name="idx_debrief_annotation_sim",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_learning_objective_display()} [{self.get_outcome_display()}]"
+
+
 class VitalMeasurement(ABCEvent):
     """
     Abstract class for vital signs.

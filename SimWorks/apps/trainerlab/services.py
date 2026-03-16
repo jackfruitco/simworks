@@ -21,6 +21,7 @@ from .models import (
     ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
+    DebriefAnnotation,
     EventSource,
     HeartRate,
     Illness,
@@ -1068,6 +1069,18 @@ def _apply_intervention_effect(
         idempotency_key=f"trainerlab.intervention_created:{intervention.id}:{effects[str(intervention.id)]['status']}",
     )
 
+    # #6: Emit structured assessment event so clients get a closed-loop feedback signal
+    assessed_status = change.get("status", "active")
+    assessed_effectiveness = change.get("clinical_effect", "")
+    emit_intervention_assessed(
+        session=session,
+        intervention_id=intervention.id,
+        effectiveness=change.get("effectiveness", "unknown"),
+        clinical_effect=assessed_effectiveness,
+        status=assessed_status,
+        correlation_id=correlation_id,
+    )
+
 
 def apply_runtime_turn_output(
     *,
@@ -1435,3 +1448,455 @@ def refresh_completed_run_review(
     summary = build_summary(session=session, generated_by=generated_by)
     enqueue_summary_debrief(session=session)
     return summary
+
+
+# ---------------------------------------------------------------------------
+# #1 — Orca Pulse Vitals Service helpers
+# ---------------------------------------------------------------------------
+
+
+def apply_vitals_progression_output(
+    *,
+    session_id: int,
+    output_payload: dict[str, Any],
+    service_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist vitals-only AI output and refresh runtime state."""
+    correlation_id = service_context.get("correlation_id")
+    with transaction.atomic():
+        session = (
+            TrainerSession.objects.select_for_update()
+            .select_related("simulation")
+            .get(pk=session_id)
+        )
+        state = get_runtime_state(session)
+        if session.status in TERMINAL_SESSION_STATUSES:
+            return state
+
+        for change in output_payload.get("vitals", []):
+            _apply_vital_change(session=session, change=change, correlation_id=correlation_id)
+
+        refreshed = refresh_runtime_projection(
+            session=session,
+            correlation_id=correlation_id,
+            update_tick_timestamp=False,
+        )
+
+    return refreshed
+
+
+def enqueue_vitals_progression(
+    *,
+    session: TrainerSession,
+    correlation_id: str | None = None,
+) -> str | None:
+    """Enqueue a vitals-only AI progression turn."""
+    from .orca.services import GenerateVitalsProgression
+
+    state = get_runtime_state(session)
+    current_snapshot = project_current_snapshot(session, state=state)
+
+    try:
+        return GenerateVitalsProgression.task.using(
+            context={
+                "simulation_id": session.simulation_id,
+                "session_id": session.id,
+                "active_elapsed_seconds": get_active_elapsed_seconds(session, state=state),
+                "current_snapshot": current_snapshot,
+                "runtime_reasons": [{"reason_kind": "manual_vitals_tick"}],
+                "correlation_id": correlation_id,
+            },
+        ).enqueue(
+            user_message="Update the patient's vital signs based on current clinical state.",
+        )
+    except Exception:
+        logger.exception("trainerlab.vitals.enqueue_failed", session_id=session.id)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# #2 — Condition control state mutation
+# ---------------------------------------------------------------------------
+
+
+def update_condition_control_state(
+    *,
+    session: TrainerSession,
+    condition_id: int,
+    is_treated: bool | None = None,
+    is_resolved: bool | None = None,
+    correlation_id: str | None = None,
+) -> Injury | Illness:
+    """
+    Update the instructor-controlled treatment/resolution state of an Injury or Illness.
+
+    Creates a superseding event record (immutable event log) and deactivates the old one
+    so the full condition history is preserved.
+    """
+    original = ABCEvent.objects.filter(
+        pk=condition_id,
+        simulation=session.simulation,
+        is_active=True,
+    ).first()
+    if original is None:
+        raise ValidationError(f"Active condition {condition_id} not found for this simulation.")
+
+    if not isinstance(original, (Injury, Illness)):
+        raise ValidationError("Only Injury or Illness conditions can have control state updated.")
+
+    _deactivate_event(original)
+
+    if isinstance(original, Injury):
+        created: Injury | Illness = Injury.objects.create(
+            simulation=session.simulation,
+            source=EventSource.INSTRUCTOR,
+            supersedes_event=original,
+            injury_category=original.injury_category,
+            injury_location=original.injury_location,
+            injury_kind=original.injury_kind,
+            injury_description=original.injury_description,
+            parent_injury=original.parent_injury,
+            is_treated=is_treated if is_treated is not None else original.is_treated,
+            is_resolved=is_resolved if is_resolved is not None else original.is_resolved,
+        )
+    else:
+        created = Illness.objects.create(
+            simulation=session.simulation,
+            source=EventSource.INSTRUCTOR,
+            supersedes_event=original,
+            name=original.name,
+            description=original.description,
+            severity=original.severity,
+            is_resolved=is_resolved if is_resolved is not None else original.is_resolved,
+        )
+
+    is_treated_val = getattr(created, "is_treated", False)
+    is_resolved_val = getattr(created, "is_resolved", False)
+    if is_resolved_val:
+        control_state = "resolved"
+    elif is_treated_val:
+        control_state = "controlled"
+    else:
+        control_state = "uncontrolled"
+
+    payload = _serialize_condition(created)
+    payload["control_state"] = control_state
+    payload["action"] = "control_state_updated"
+
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.condition.control_state_updated",
+        payload=payload,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.condition.control_state_updated:{created.id}",
+    )
+
+    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+    return created
+
+
+# ---------------------------------------------------------------------------
+# #3 — Manual tick trigger
+# ---------------------------------------------------------------------------
+
+
+def trigger_manual_tick(
+    *,
+    session: TrainerSession,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Immediately append a manual tick reason and schedule the runtime turn.
+
+    Returns the queued reason dict.
+    """
+    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
+        raise ValidationError("Manual tick is only allowed on running or paused sessions.")
+
+    reason = append_pending_runtime_reason(
+        session=session,
+        reason_kind="manual_tick",
+        payload={"triggered_at": timezone.now().astimezone(UTC).isoformat()},
+        correlation_id=correlation_id,
+    )
+
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.tick.triggered",
+        payload={
+            "trigger": "manual",
+            "correlation_id": correlation_id,
+        },
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.tick.triggered:{session.id}:{reason['created_at']}",
+    )
+    return reason
+
+
+# ---------------------------------------------------------------------------
+# #4 — Live debrief annotations
+# ---------------------------------------------------------------------------
+
+
+def create_debrief_annotation(
+    *,
+    session: TrainerSession,
+    created_by,
+    learning_objective: str,
+    observation_text: str,
+    outcome: str,
+    linked_event_id: int | None = None,
+    elapsed_seconds_at: int | None = None,
+    correlation_id: str | None = None,
+) -> DebriefAnnotation:
+    """Create a structured debrief annotation for this session."""
+    annotation = DebriefAnnotation.objects.create(
+        session=session,
+        simulation=session.simulation,
+        created_by=created_by,
+        learning_objective=learning_objective,
+        observation_text=observation_text,
+        outcome=outcome,
+        linked_event_id=linked_event_id,
+        elapsed_seconds_at=elapsed_seconds_at,
+    )
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.annotation.created",
+        payload={
+            "annotation_id": annotation.id,
+            "learning_objective": annotation.learning_objective,
+            "observation_text": annotation.observation_text,
+            "outcome": annotation.outcome,
+            "linked_event_id": annotation.linked_event_id,
+            "elapsed_seconds_at": annotation.elapsed_seconds_at,
+        },
+        created_by=created_by,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.annotation.created:{annotation.id}",
+    )
+    return annotation
+
+
+def get_session_annotations(*, session: TrainerSession) -> list[DebriefAnnotation]:
+    return list(session.debrief_annotations.select_related("created_by").order_by("created_at"))
+
+
+# ---------------------------------------------------------------------------
+# #5 — Preset application diff
+# ---------------------------------------------------------------------------
+
+
+def snapshot_before_preset(session: TrainerSession) -> dict[str, Any]:
+    """Capture a lightweight snapshot of active conditions and vitals before preset application."""
+    state = get_runtime_state(session)
+    conditions = []
+    for model in (Injury, Illness):
+        for obj in model.objects.filter(simulation=session.simulation, is_active=True):
+            conditions.append(
+                {
+                    "id": obj.id,
+                    "kind": "illness" if isinstance(obj, Illness) else "injury",
+                    "label": getattr(obj, "name", None) or getattr(obj, "injury_description", ""),
+                }
+            )
+    vitals = {}
+    for vital_type, model in VITAL_TYPE_MODEL_MAP.items():
+        obj = (
+            model.objects.filter(simulation=session.simulation, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+        if obj is not None:
+            vitals[vital_type] = {
+                "min_value": obj.min_value,
+                "max_value": obj.max_value,
+            }
+    return {
+        "conditions": conditions,
+        "vitals": vitals,
+        "state_revision": int(state.get("state_revision", 0)),
+    }
+
+
+def compute_preset_diff(
+    *,
+    before: dict[str, Any],
+    session: TrainerSession,
+) -> dict[str, Any]:
+    """Compare before/after snapshots and build a human-readable diff."""
+    after_conditions = []
+    for model in (Injury, Illness):
+        for obj in model.objects.filter(simulation=session.simulation, is_active=True):
+            after_conditions.append(
+                {
+                    "id": obj.id,
+                    "kind": "illness" if isinstance(obj, Illness) else "injury",
+                    "label": getattr(obj, "name", None) or getattr(obj, "injury_description", ""),
+                }
+            )
+    before_ids = {c["id"] for c in before.get("conditions", [])}
+    added_conditions = [c for c in after_conditions if c["id"] not in before_ids]
+
+    after_vitals: dict[str, Any] = {}
+    for vital_type, model in VITAL_TYPE_MODEL_MAP.items():
+        obj = (
+            model.objects.filter(simulation=session.simulation, is_active=True)
+            .order_by("-timestamp", "-id")
+            .first()
+        )
+        if obj is not None:
+            after_vitals[vital_type] = {
+                "min_value": obj.min_value,
+                "max_value": obj.max_value,
+            }
+
+    changed_vitals: dict[str, Any] = {}
+    for vtype, after_val in after_vitals.items():
+        before_val = before.get("vitals", {}).get(vtype)
+        if before_val != after_val:
+            changed_vitals[vtype] = {"before": before_val, "after": after_val}
+
+    return {
+        "conditions_added": added_conditions,
+        "vitals_changed": changed_vitals,
+        "state_revision_before": before.get("state_revision"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# #6 — Intervention assessed event (called from _apply_intervention_effect)
+# ---------------------------------------------------------------------------
+
+
+def emit_intervention_assessed(
+    *,
+    session: TrainerSession,
+    intervention_id: int,
+    effectiveness: str,
+    clinical_effect: str,
+    status: str,
+    correlation_id: str | None = None,
+) -> None:
+    """Emit trainerlab.intervention.assessed when the AI evaluates an intervention."""
+    intervention = Intervention.objects.filter(
+        pk=intervention_id,
+        simulation=session.simulation,
+    ).first()
+    if intervention is None:
+        return
+
+    target_condition_label: str | None = None
+    target_condition_control_state: str | None = None
+    if intervention.target_injury_id:
+        target = Injury.objects.filter(pk=intervention.target_injury_id).first()
+        if target:
+            target_condition_label = target.injury_description
+            if target.is_resolved:
+                target_condition_control_state = "resolved"
+            elif target.is_treated:
+                target_condition_control_state = "controlled"
+            else:
+                target_condition_control_state = "uncontrolled"
+
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.intervention.assessed",
+        payload={
+            "intervention_id": intervention_id,
+            "intervention_type": intervention.intervention_type or None,
+            "site_code": intervention.site_code or None,
+            "effectiveness": effectiveness,
+            "clinical_effect": clinical_effect,
+            "status": status,
+            "target_condition_id": intervention.target_injury_id,
+            "target_condition_label": target_condition_label,
+            "target_condition_control_state": target_condition_control_state,
+        },
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.intervention.assessed:{intervention_id}:{status}",
+    )
+
+
+# ---------------------------------------------------------------------------
+# #7 — Scenario brief edit
+# ---------------------------------------------------------------------------
+
+
+def update_scenario_brief(
+    *,
+    session: TrainerSession,
+    updates: dict[str, Any],
+    user=None,
+    correlation_id: str | None = None,
+) -> ScenarioBrief:
+    """
+    Edit the scenario brief text fields.
+
+    Creates a new superseding ScenarioBrief event and updates runtime_state_json.
+    """
+    existing = (
+        ScenarioBrief.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    if existing is not None:
+        _deactivate_event(existing)
+
+    current_brief: dict[str, Any] = {}
+    if existing is not None:
+        current_brief = {
+            "read_aloud_brief": existing.read_aloud_brief,
+            "environment": existing.environment,
+            "location_overview": existing.location_overview,
+            "threat_context": existing.threat_context,
+            "evacuation_options": existing.evacuation_options,
+            "evacuation_time": existing.evacuation_time,
+            "special_considerations": existing.special_considerations,
+        }
+
+    merged = {**current_brief, **{k: v for k, v in updates.items() if v is not None}}
+    new_brief = ScenarioBrief.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes_event=existing,
+        read_aloud_brief=merged.get("read_aloud_brief", ""),
+        environment=merged.get("environment", ""),
+        location_overview=merged.get("location_overview", ""),
+        threat_context=merged.get("threat_context", ""),
+        evacuation_options=merged.get("evacuation_options", []),
+        evacuation_time=merged.get("evacuation_time", ""),
+        special_considerations=merged.get("special_considerations", []),
+    )
+
+    state = get_runtime_state(session)
+    state["scenario_brief"] = {
+        "read_aloud_brief": new_brief.read_aloud_brief,
+        "environment": new_brief.environment,
+        "location_overview": new_brief.location_overview,
+        "threat_context": new_brief.threat_context,
+        "evacuation_options": new_brief.evacuation_options,
+        "evacuation_time": new_brief.evacuation_time,
+        "special_considerations": new_brief.special_considerations,
+    }
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.scenario_brief.updated",
+        payload={
+            "domain_event_id": new_brief.id,
+            "read_aloud_brief": new_brief.read_aloud_brief,
+            "environment": new_brief.environment,
+            "location_overview": new_brief.location_overview,
+            "threat_context": new_brief.threat_context,
+            "evacuation_options": new_brief.evacuation_options,
+            "evacuation_time": new_brief.evacuation_time,
+            "special_considerations": new_brief.special_considerations,
+        },
+        created_by=user,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.scenario_brief.updated:{new_brief.id}",
+    )
+    return new_brief

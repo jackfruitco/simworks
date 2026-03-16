@@ -17,13 +17,21 @@ from api.v1.auth import JWTAuth
 from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.schemas.trainerlab import (
+    AnnotationCreateIn,
+    AnnotationOut,
+    ConditionControlOut,
+    ConditionControlUpdateIn,
     DictionaryItemOut,
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
     InterventionDictionaryItemOut,
     LabAccessOut,
+    PresetApplyDiff,
+    PresetApplyOut,
     RunSummaryOut,
+    ScenarioBriefDetailOut,
+    ScenarioBriefUpdateIn,
     ScenarioInstructionApplyIn,
     ScenarioInstructionCreateIn,
     ScenarioInstructionOut,
@@ -40,6 +48,7 @@ from api.v1.schemas.trainerlab import (
     TrainerRuntimeStateOut,
     TrainerSessionCreateIn,
     VitalCreateIn,
+    annotation_to_out,
     scenario_instruction_to_out,
     scenario_permission_to_out,
     trainer_run_to_out,
@@ -77,14 +86,22 @@ from apps.trainerlab.models import (
 )
 from apps.trainerlab.services import (
     append_pending_runtime_reason,
+    compute_preset_diff,
+    create_debrief_annotation,
     create_session_with_initial_generation,
     emit_runtime_event,
+    enqueue_vitals_progression,
     get_or_create_command,
+    get_session_annotations,
     pause_session,
     refresh_completed_run_review,
     resume_session,
+    snapshot_before_preset,
     start_session,
     stop_session,
+    trigger_manual_tick,
+    update_condition_control_state,
+    update_scenario_brief,
 )
 
 router = Router(tags=["trainerlab"], auth=JWTAuth())
@@ -505,7 +522,7 @@ def unshare_preset(
 
 @router.post(
     "/presets/{preset_id}/apply/",
-    response=TrainerCommandAck,
+    response=PresetApplyOut,
     summary="Apply preset instructions to a TrainerLab simulation",
 )
 @api_rate_limit
@@ -513,7 +530,7 @@ def apply_preset(
     request: HttpRequest,
     preset_id: int,
     body: ScenarioInstructionApplyIn,
-) -> TrainerCommandAck:
+) -> PresetApplyOut:
     user = request.auth
     require_instructor_membership(user)
     instruction = _get_instruction_for_user(preset_id, user)
@@ -530,8 +547,11 @@ def apply_preset(
         payload_json=payload,
     )
     if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
-        return _accepted(command)
+        return PresetApplyOut(command_id=str(command.id), status="accepted")
     _reject_terminal_mutation(command=command, session=session)
+
+    # #5: Snapshot state before applying preset to compute diff afterwards
+    before_snapshot = snapshot_before_preset(session)
 
     state = dict(session.runtime_state_json or {})
     applied_presets = list(state.get("applied_presets", []))
@@ -574,7 +594,18 @@ def apply_preset(
     command.status = TrainerCommand.CommandStatus.PROCESSED
     command.processed_at = timezone.now()
     command.save(update_fields=["status", "processed_at"])
-    return _accepted(command)
+
+    # #5: Compute diff and return enriched response
+    diff_data = compute_preset_diff(before=before_snapshot, session=session)
+    diff = PresetApplyDiff(
+        conditions_added=diff_data.get("conditions_added", []),
+        vitals_changed={
+            vtype: {"before": v.get("before"), "after": v["after"]}
+            for vtype, v in diff_data.get("vitals_changed", {}).items()
+        },
+        state_revision_before=diff_data.get("state_revision_before"),
+    )
+    return PresetApplyOut(command_id=str(command.id), status="accepted", diff=diff)
 
 
 @router.post(
@@ -1390,4 +1421,252 @@ def stream_trainer_events(
         heartbeat_interval_seconds=10.0,
         poll_interval_seconds=1.0,
         heartbeat_comment=": keep-alive\n\n",
+    )
+
+
+# ---------------------------------------------------------------------------
+# #1 — Orca Pulse Vitals tick endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/simulations/{simulation_id}/run/tick/vitals/",
+    response=TrainerCommandAck,
+    summary="Trigger an on-demand AI vital signs progression update",
+)
+@api_rate_limit
+def trigger_vitals_tick(
+    request: HttpRequest,
+    simulation_id: int,
+) -> TrainerCommandAck:
+    """
+    Immediately enqueue a vitals-only AI progression turn.
+
+    Unlike the full runtime tick, this service only updates vital sign ranges
+    and does not modify conditions or interventions.
+    """
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    correlation_id = _get_correlation_id(request)
+
+    if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED}:
+        raise HttpError(409, "Vitals tick is only allowed on running or paused sessions.")
+
+    call_id = enqueue_vitals_progression(session=session, correlation_id=correlation_id)
+    if call_id is None:
+        raise HttpError(503, "Could not enqueue vitals progression; please retry.")
+
+    return TrainerCommandAck(command_id=call_id, status="accepted")
+
+
+# ---------------------------------------------------------------------------
+# #2 — Condition control state mutation
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/simulations/{simulation_id}/conditions/{condition_id}/",
+    response=ConditionControlOut,
+    summary="Update treatment/resolution state of a condition",
+)
+@api_rate_limit
+def update_condition(
+    request: HttpRequest,
+    simulation_id: int,
+    condition_id: int,
+    body: ConditionControlUpdateIn,
+) -> ConditionControlOut:
+    """
+    Set the instructor-controlled treatment or resolution state of an Injury or Illness.
+
+    - `is_treated=true` → marks the condition as `controlled` (treatment applied)
+    - `is_resolved=true` → marks the condition as `resolved` (no longer active clinically)
+
+    Creates a superseding event record preserving full history.
+    """
+    from django.core.exceptions import ValidationError as DjangoValidationError
+
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    correlation_id = _get_correlation_id(request)
+
+    try:
+        condition = update_condition_control_state(
+            session=session,
+            condition_id=condition_id,
+            is_treated=body.is_treated,
+            is_resolved=body.is_resolved,
+            correlation_id=correlation_id,
+        )
+    except DjangoValidationError as exc:
+        raise HttpError(404, str(exc)) from None
+
+    is_treated = getattr(condition, "is_treated", False)
+    is_resolved = getattr(condition, "is_resolved", False)
+    if is_resolved:
+        control_state = "resolved"
+    elif is_treated:
+        control_state = "controlled"
+    else:
+        control_state = "uncontrolled"
+
+    if isinstance(condition, Injury):
+        label = condition.injury_description
+        kind = "injury"
+    else:
+        label = condition.name
+        kind = "illness"
+
+    return ConditionControlOut(
+        condition_id=condition.id,
+        kind=kind,
+        is_treated=is_treated,
+        is_resolved=is_resolved,
+        control_state=control_state,
+        label=label,
+    )
+
+
+# ---------------------------------------------------------------------------
+# #3 — Manual tick trigger
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/simulations/{simulation_id}/run/tick/",
+    response=TrainerCommandAck,
+    summary="Trigger an immediate AI runtime turn",
+)
+@api_rate_limit
+def trigger_tick(
+    request: HttpRequest,
+    simulation_id: int,
+) -> TrainerCommandAck:
+    """
+    Immediately queue a manual AI runtime turn, bypassing the tick interval timer.
+
+    Useful for teaching moments where the trainer needs an instant patient state update.
+    The response is `accepted` once the reason is queued; the actual AI turn executes
+    asynchronously.
+    """
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    correlation_id = _get_correlation_id(request)
+
+    try:
+        reason = trigger_manual_tick(session=session, correlation_id=correlation_id)
+    except Exception as exc:
+        raise HttpError(409, str(exc)) from None
+
+    return TrainerCommandAck(
+        command_id=reason.get("created_at", ""),
+        status="accepted",
+    )
+
+
+# ---------------------------------------------------------------------------
+# #4 — Live debrief annotations
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/simulations/{simulation_id}/annotations/",
+    response={201: AnnotationOut},
+    summary="Create a live debrief annotation",
+)
+@api_rate_limit
+def create_annotation(
+    request: HttpRequest,
+    simulation_id: int,
+    body: AnnotationCreateIn,
+) -> tuple[int, AnnotationOut]:
+    """
+    Drop a structured pedagogical annotation during a live session.
+
+    Annotations are tied to learning objectives (e.g. hemorrhage_control, airway)
+    and outcomes (correct, incorrect, missed). They are included in the AI debrief
+    generation context to improve post-session feedback quality.
+    """
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    correlation_id = _get_correlation_id(request)
+
+    annotation = create_debrief_annotation(
+        session=session,
+        created_by=user,
+        learning_objective=body.learning_objective,
+        observation_text=body.observation_text,
+        outcome=body.outcome,
+        linked_event_id=body.linked_event_id,
+        elapsed_seconds_at=body.elapsed_seconds_at,
+        correlation_id=correlation_id,
+    )
+    return 201, annotation_to_out(annotation)
+
+
+@router.get(
+    "/simulations/{simulation_id}/annotations/",
+    response=list[AnnotationOut],
+    summary="List debrief annotations for a simulation",
+)
+@api_rate_limit
+def list_annotations(
+    request: HttpRequest,
+    simulation_id: int,
+) -> list[AnnotationOut]:
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    return [annotation_to_out(a) for a in get_session_annotations(session=session)]
+
+
+# ---------------------------------------------------------------------------
+# #7 — Scenario brief edit
+# ---------------------------------------------------------------------------
+
+
+@router.patch(
+    "/simulations/{simulation_id}/scenario-brief/",
+    response=ScenarioBriefDetailOut,
+    summary="Edit the scenario brief for a simulation",
+)
+@api_rate_limit
+def update_scenario_brief_endpoint(
+    request: HttpRequest,
+    simulation_id: int,
+    body: ScenarioBriefUpdateIn,
+) -> ScenarioBriefDetailOut:
+    """
+    Partially update the AI-generated scenario brief.
+
+    Only the fields provided in the request body are changed; all others retain
+    their current values. This is useful for correcting or customising the
+    read-aloud brief before delivering it to students.
+
+    Emits a `trainerlab.scenario_brief.updated` SSE event.
+    """
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    correlation_id = _get_correlation_id(request)
+
+    brief = update_scenario_brief(
+        session=session,
+        updates=body.model_dump(exclude_none=True),
+        user=user,
+        correlation_id=correlation_id,
+    )
+    return ScenarioBriefDetailOut(
+        domain_event_id=brief.id,
+        read_aloud_brief=brief.read_aloud_brief,
+        environment=brief.environment,
+        location_overview=brief.location_overview,
+        threat_context=brief.threat_context,
+        evacuation_options=list(brief.evacuation_options or []),
+        evacuation_time=brief.evacuation_time,
+        special_considerations=list(brief.special_considerations or []),
     )
