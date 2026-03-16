@@ -22,6 +22,7 @@ import django  # noqa: E402
 from django.core.management import call_command  # noqa: E402
 
 os.environ["DJANGO_SKIP_READY"] = "1"
+os.environ["DJANGO_DEBUG"] = "1"
 
 django.setup()
 
