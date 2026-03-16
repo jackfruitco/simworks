@@ -28,8 +28,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_ALLOWED_IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp"})
+
+
 def get_image_path(instance, filename):
-    ext = os.path.splitext(filename)[1] or ".webp"
+    ext = os.path.splitext(filename)[1].lower() or ".webp"
+    # Whitelist extensions to prevent path manipulation or execution of server-side scripts.
+    if ext not in _ALLOWED_IMAGE_EXTENSIONS:
+        ext = ".webp"
     unique_id = instance.uuid
     return f"images/simulation/{instance.simulation.pk}/{unique_id}{ext}"
 
