@@ -38,6 +38,8 @@ CELERY_BROKER_URL = f"{REDIS_BASE}/1"
 CELERY_RESULT_BACKEND = f"{REDIS_BASE}/2"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_RESULT_ACCEPT_CONTENT = ["json"]  # Explicitly reject pickle in result backend
 CELERY_TASK_TIME_LIMIT = int_from_env("CELERY_TASK_TIME_LIMIT", default=30, minimum=1)
 CELERY_TASK_SOFT_TIME_LIMIT = int_from_env("CELERY_TASK_SOFT_TIME_LIMIT", default=25, minimum=1)
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
