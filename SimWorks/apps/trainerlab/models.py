@@ -367,7 +367,7 @@ class Injury(BaseDomainEvent):
         db_index=True,
         help_text="The kind of injury",
     )
-    injury_description = models.CharField(max_length=100)
+    injury_description = models.CharField(max_length=500)
     supersedes = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,

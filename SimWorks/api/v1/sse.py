@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC
 import json
 import time
@@ -61,7 +62,7 @@ def stream_outbox_events(
         if cursor_event is None:
             raise HttpError(400, "Invalid cursor")
 
-    def event_stream():
+    async def event_stream():
         last_event = cursor_event if cursor else None
         last_signal_at = time.monotonic()
 
@@ -74,7 +75,7 @@ def stream_outbox_events(
             if last_event is not None:
                 queryset = apply_outbox_cursor(queryset, last_event)
 
-            events = list(queryset[:100])
+            events = [e async for e in queryset[:100]]
             for event in events:
                 data = build_transport_envelope(event)
                 data["created_at"] = event.created_at.astimezone(UTC).isoformat()
@@ -94,7 +95,7 @@ def stream_outbox_events(
                     yield "event: heartbeat\ndata: {}\n\n"
                 last_signal_at = now
 
-            time.sleep(poll_interval_seconds)
+            await asyncio.sleep(poll_interval_seconds)
 
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache, no-transform"

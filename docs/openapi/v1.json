@@ -5848,6 +5848,7 @@
             "type": "string"
           },
           "injury_description": {
+            "maxLength": 500,
             "title": "Injury Description",
             "type": "string"
           },
@@ -6293,6 +6294,14 @@
       },
       "ConditionControlUpdateIn": {
         "properties": {
+          "kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "is_treated": {
             "anyOf": [
               {
@@ -6316,6 +6325,9 @@
             "title": "Is Resolved"
           }
         },
+        "required": [
+          "kind"
+        ],
         "title": "ConditionControlUpdateIn",
         "type": "object"
       },

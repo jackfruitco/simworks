@@ -205,7 +205,7 @@ def _base_fields(app_label, model_name):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("trainerlab", "0013_debriefannotation"),
+        ("trainerlab", "0014_alter_injury_injury_description"),
         ("simcore", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ("contenttypes", "0002_remove_content_type_name"),
@@ -334,7 +334,7 @@ class Migration(migrations.Migration):
                         max_length=4,
                     ),
                 ),
-                ("injury_description", models.CharField(max_length=100)),
+                ("injury_description", models.CharField(max_length=500)),
                 (
                     "supersedes",
                     models.ForeignKey(
