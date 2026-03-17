@@ -992,19 +992,21 @@ def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
     old_problem: Problem | None = None
     if body.supersedes_event_id:
         old_problem = (
-            Problem.objects.select_related("cause_injury")
+            Problem.objects.select_related("cause_injury", "cause_illness")
             .filter(pk=body.supersedes_event_id, simulation=session.simulation)
             .first()
         )
         if old_problem:
             _deactivate_superseded(old_problem)
-            old_cause = old_problem.cause_injury
+            # Deactivate whichever cause is set — handles cross-kind replacements.
+            old_cause = old_problem.cause_injury or old_problem.cause_illness
             if old_cause:
                 _deactivate_superseded(old_cause)
 
     new_injury = Injury.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
+        # supersedes is a same-kind self-FK; only set when the old cause was also an Injury.
         supersedes=old_problem.cause_injury if old_problem else None,
         injury_location=body.injury_location,
         injury_kind=body.injury_kind,
@@ -1026,19 +1028,21 @@ def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
     old_problem: Problem | None = None
     if body.supersedes_event_id:
         old_problem = (
-            Problem.objects.select_related("cause_illness")
+            Problem.objects.select_related("cause_injury", "cause_illness")
             .filter(pk=body.supersedes_event_id, simulation=session.simulation)
             .first()
         )
         if old_problem:
             _deactivate_superseded(old_problem)
-            old_cause = old_problem.cause_illness
+            # Deactivate whichever cause is set — handles cross-kind replacements.
+            old_cause = old_problem.cause_illness or old_problem.cause_injury
             if old_cause:
                 _deactivate_superseded(old_cause)
 
     new_illness = Illness.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
+        # supersedes is a same-kind self-FK; only set when the old cause was also an Illness.
         supersedes=old_problem.cause_illness if old_problem else None,
         name=body.name,
         description=body.description,
@@ -1538,6 +1542,7 @@ def update_condition(
         condition = update_condition_control_state(
             session=session,
             condition_id=condition_id,
+            kind=body.kind,
             is_treated=body.is_treated,
             is_resolved=body.is_resolved,
             correlation_id=correlation_id,

@@ -1670,6 +1670,7 @@ def update_condition_control_state(
     *,
     session: TrainerSession,
     condition_id: int,
+    kind: str,
     is_treated: bool | None = None,
     is_resolved: bool | None = None,
     correlation_id: str | None = None,
@@ -1680,14 +1681,12 @@ def update_condition_control_state(
     Creates a superseding event record (immutable event log) and deactivates the old one
     so the full condition history is preserved.
     """
-    original: Injury | Illness | None = (
-        Injury.objects.filter(
-            pk=condition_id, simulation=session.simulation, is_active=True
-        ).first()
-        or Illness.objects.filter(
-            pk=condition_id, simulation=session.simulation, is_active=True
-        ).first()
-    )
+    # Use kind to do a direct typed lookup — avoids PK collisions between the
+    # independent auto-increment sequences on Injury and Illness tables.
+    model_cls = Injury if kind == "injury" else Illness
+    original: Injury | Illness | None = model_cls.objects.filter(
+        pk=condition_id, simulation=session.simulation, is_active=True
+    ).first()
     if original is None:
         raise ValidationError(f"Active condition {condition_id} not found for this simulation.")
 

@@ -467,6 +467,7 @@ class InterventionDictionaryItemOut(BaseModel):
 
 
 class ConditionControlUpdateIn(BaseModel):
+    kind: Literal["injury", "illness"]
     is_treated: bool | None = None
     is_resolved: bool | None = None
 
