@@ -133,10 +133,15 @@ class InitialScenarioSchema(StrictBaseModel):
         cause_by_problem_id: dict[Any, Any] = {}
         for schema_item, cause_obj in zip(self.conditions, cause_objects, strict=False):
             problem_kind = schema_item.kind  # "injury" or "illness"
+            from apps.trainerlab.models import Injury as InjuryModel
+
+            cause_injury = cause_obj if isinstance(cause_obj, InjuryModel) else None
+            cause_illness = cause_obj if not isinstance(cause_obj, InjuryModel) else None
             problem = await Problem.objects.acreate(
                 simulation_id=context.simulation_id,
                 source=EventSource.SYSTEM,
-                cause=cause_obj,
+                cause_injury=cause_injury,
+                cause_illness=cause_illness,
                 problem_kind=problem_kind,
                 march_category=schema_item.march_category,
                 severity=schema_item.severity,

@@ -18,7 +18,6 @@ from config.logging import get_logger
 from .models import (
     ETCO2,
     SPO2,
-    ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
     DebriefAnnotation,
@@ -30,12 +29,12 @@ from .models import (
     Problem,
     PulseAssessment,
     RespiratoryRate,
+    RuntimeEvent,
     ScenarioBrief,
     SessionStatus,
     SimulationNote,
     TrainerCommand,
     TrainerRunSummary,
-    TrainerRuntimeEvent,
     TrainerSession,
 )
 
@@ -208,11 +207,11 @@ def emit_runtime_event(
     event_type: str,
     payload: dict[str, Any],
     created_by=None,
-    supersedes: TrainerRuntimeEvent | None = None,
+    supersedes: RuntimeEvent | None = None,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
-) -> TrainerRuntimeEvent:
-    runtime_event = TrainerRuntimeEvent.objects.create(
+) -> RuntimeEvent:
+    runtime_event = RuntimeEvent.objects.create(
         session=session,
         simulation=session.simulation,
         event_type=event_type,
@@ -248,14 +247,14 @@ def _problem_control_state(problem: Problem) -> str:
     return "uncontrolled"
 
 
-def _serialize_condition(problem: Problem, cause: ABCEvent | None) -> dict[str, Any]:
+def _serialize_condition(problem: Problem, cause: Injury | Illness | None) -> dict[str, Any]:
     """Serialize a Problem (lifecycle record) with its underlying cause."""
     payload = {
         "domain_event_id": problem.id,
         "problem_id": problem.id,
         "cause_event_id": problem.cause_id,
         "source": problem.source,
-        "supersedes_event_id": problem.supersedes_event_id,
+        "supersedes_event_id": problem.supersedes_id,
         "timestamp": _iso_or_none(problem.timestamp),
         "kind": problem.problem_kind,
         "march_category": problem.march_category,
@@ -313,7 +312,7 @@ def _serialize_intervention(
     }
 
 
-def _serialize_vital(vital_type: str, obj: ABCEvent) -> dict[str, Any]:
+def _serialize_vital(vital_type: str, obj: Any) -> dict[str, Any]:
     payload = {
         "domain_event_id": obj.id,
         "vital_type": vital_type,
@@ -363,15 +362,11 @@ def project_current_snapshot(
     )
 
     problems = list(
-        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
-            "timestamp", "id"
-        )
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
     )
-    cause_ids = [p.cause_id for p in problems if p.cause_id]
-    cause_map: dict[int, ABCEvent] = (
-        {c.id: c for c in ABCEvent.objects.filter(pk__in=cause_ids)} if cause_ids else {}
-    )
-    conditions = [_serialize_condition(p, cause_map.get(p.cause_id)) for p in problems]
+    conditions = [_serialize_condition(p, p.cause) for p in problems]
 
     interventions = [
         _serialize_intervention(
@@ -656,19 +651,15 @@ def _emit_seeded_pulse_events(session: TrainerSession) -> None:
 
 def _emit_seeded_condition_events(session: TrainerSession) -> None:
     problems = list(
-        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
-            "timestamp", "id"
-        )
-    )
-    cause_ids = [p.cause_id for p in problems if p.cause_id]
-    cause_map: dict[int, ABCEvent] = (
-        {c.id: c for c in ABCEvent.objects.filter(pk__in=cause_ids)} if cause_ids else {}
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
     )
     for problem in problems:
         emit_runtime_event(
             session=session,
             event_type="condition.created",
-            payload=_serialize_condition(problem, cause_map.get(problem.cause_id)),
+            payload=_serialize_condition(problem, problem.cause),
             idempotency_key=f"condition.created:seeded:{session.id}:{problem.id}",
         )
 
@@ -914,7 +905,7 @@ def clear_runtime_processing(
 
 def _event_payload_for_condition(
     problem: Problem,
-    cause: ABCEvent | None,
+    cause: Injury | Illness | None,
     *,
     action: str,
 ) -> dict[str, Any]:
@@ -927,7 +918,7 @@ def _emit_condition_change(
     *,
     session: TrainerSession,
     problem: Problem,
-    cause: ABCEvent | None,
+    cause: Injury | Illness | None,
     action: str,
     correlation_id: str | None,
 ) -> None:
@@ -944,23 +935,17 @@ def _resolve_superseded_event(
     *,
     session: TrainerSession,
     target_event_id: int | None,
-    expected_model: type[ABCEvent] | tuple[type[ABCEvent], ...],
-) -> ABCEvent | None:
+    expected_model: type,
+) -> Any | None:
     if not target_event_id:
         return None
-    return ABCEvent.objects.filter(
+    return expected_model.objects.filter(
         pk=target_event_id,
         simulation=session.simulation,
-        polymorphic_ctype__model__in=[
-            model._meta.model_name
-            for model in (
-                expected_model if isinstance(expected_model, tuple) else (expected_model,)
-            )
-        ],
     ).first()
 
 
-def _deactivate_event(event: ABCEvent | None) -> None:
+def _deactivate_event(event: Any | None) -> None:
     if event is None or not event.is_active:
         return
     event.is_active = False
@@ -997,10 +982,7 @@ def _apply_condition_change(
 
         # For resolve: keep existing cause; only create a new Problem record.
         # For create/update: create a new Injury cause.
-        old_cause_injury: Injury | None = None
-        if source_problem and source_problem.cause_id:
-            raw_cause = ABCEvent.objects.filter(pk=source_problem.cause_id).first()
-            old_cause_injury = raw_cause if isinstance(raw_cause, Injury) else None
+        old_cause_injury: Injury | None = source_problem.cause_injury if source_problem else None
 
         if action == "resolve":
             new_injury = old_cause_injury
@@ -1010,7 +992,7 @@ def _apply_condition_change(
             new_injury = Injury.objects.create(
                 simulation=session.simulation,
                 source=EventSource.AI,
-                supersedes_event=old_cause_injury,
+                supersedes=old_cause_injury,
                 injury_location=change.get("injury_location")
                 or getattr(
                     old_cause_injury,
@@ -1026,8 +1008,8 @@ def _apply_condition_change(
         new_problem = Problem.objects.create(
             simulation=session.simulation,
             source=EventSource.AI,
-            supersedes_event=source_problem,
-            cause=new_injury,
+            supersedes=source_problem,
+            cause_injury=new_injury,
             problem_kind=Problem.ProblemKind.INJURY,
             march_category=change.get("march_category")
             or getattr(source_problem, "march_category", Problem.MARCHCategory.M),
@@ -1049,10 +1031,7 @@ def _apply_condition_change(
     if action == "resolve" and source_problem is None:
         return
 
-    old_cause_illness: Illness | None = None
-    if source_problem and source_problem.cause_id:
-        raw_cause = ABCEvent.objects.filter(pk=source_problem.cause_id).first()
-        old_cause_illness = raw_cause if isinstance(raw_cause, Illness) else None
+    old_cause_illness: Illness | None = source_problem.cause_illness if source_problem else None
 
     if action == "resolve":
         new_illness = old_cause_illness
@@ -1062,7 +1041,7 @@ def _apply_condition_change(
         new_illness = Illness.objects.create(
             simulation=session.simulation,
             source=EventSource.AI,
-            supersedes_event=old_cause_illness,
+            supersedes=old_cause_illness,
             name=change.get("name") or getattr(old_cause_illness, "name", "Emergent condition"),
             description=change.get("description") or getattr(old_cause_illness, "description", ""),
         )
@@ -1070,8 +1049,8 @@ def _apply_condition_change(
     new_problem = Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.AI,
-        supersedes_event=source_problem,
-        cause=new_illness,
+        supersedes=source_problem,
+        cause_illness=new_illness,
         problem_kind=Problem.ProblemKind.ILLNESS,
         march_category=change.get("march_category")
         or getattr(source_problem, "march_category", Problem.MARCHCategory.R),
@@ -1110,7 +1089,7 @@ def _apply_vital_change(
     common = {
         "simulation": session.simulation,
         "source": EventSource.AI,
-        "supersedes_event": existing,
+        "supersedes": existing,
         "min_value": change.get("min_value"),
         "max_value": change.get("max_value"),
         "lock_value": bool(change.get("lock_value", False)),
@@ -1160,7 +1139,7 @@ def _apply_pulse_change(
     created = PulseAssessment.objects.create(
         simulation=session.simulation,
         source=EventSource.AI,
-        supersedes_event=existing,
+        supersedes=existing,
         location=location,
         present=bool(change.get("present", True)),
         description=change.get("description", "strong"),
@@ -1218,7 +1197,7 @@ def _apply_intervention_effect(
             "status": intervention.status,
             "effectiveness": intervention.effectiveness,
             "notes": intervention.notes,
-            "supersedes_event_id": intervention.supersedes_event_id,
+            "supersedes_event_id": intervention.supersedes_id,
             "code": intervention.code,
             "description": intervention.description,
             "target": intervention.target,
@@ -1701,16 +1680,16 @@ def update_condition_control_state(
     Creates a superseding event record (immutable event log) and deactivates the old one
     so the full condition history is preserved.
     """
-    original = ABCEvent.objects.filter(
-        pk=condition_id,
-        simulation=session.simulation,
-        is_active=True,
-    ).first()
+    original: Injury | Illness | None = (
+        Injury.objects.filter(
+            pk=condition_id, simulation=session.simulation, is_active=True
+        ).first()
+        or Illness.objects.filter(
+            pk=condition_id, simulation=session.simulation, is_active=True
+        ).first()
+    )
     if original is None:
         raise ValidationError(f"Active condition {condition_id} not found for this simulation.")
-
-    if not isinstance(original, (Injury, Illness)):
-        raise ValidationError("Only Injury or Illness conditions can have control state updated.")
 
     _deactivate_event(original)
 
@@ -1718,7 +1697,7 @@ def update_condition_control_state(
         created: Injury | Illness = Injury.objects.create(
             simulation=session.simulation,
             source=EventSource.INSTRUCTOR,
-            supersedes_event=original,
+            supersedes=original,
             injury_category=original.injury_category,
             injury_location=original.injury_location,
             injury_kind=original.injury_kind,
@@ -1731,7 +1710,7 @@ def update_condition_control_state(
         created = Illness.objects.create(
             simulation=session.simulation,
             source=EventSource.INSTRUCTOR,
-            supersedes_event=original,
+            supersedes=original,
             name=original.name,
             description=original.description,
             severity=original.severity,
@@ -2034,7 +2013,7 @@ def update_scenario_brief(
     new_brief = ScenarioBrief.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=existing,
+        supersedes=existing,
         read_aloud_brief=merged.get("read_aloud_brief", ""),
         environment=merged.get("environment", ""),
         location_overview=merged.get("location_overview", ""),

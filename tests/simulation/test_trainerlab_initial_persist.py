@@ -6,7 +6,6 @@ import pytest
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
-    ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
     HeartRate,
@@ -185,7 +184,7 @@ class TestTrainerLabInitialPersistence:
         ).afirst()
         assert problem is not None
         assert problem.march_category == "M"
-        assert problem.cause_id == persisted_injury.id
+        assert problem.cause_injury_id == persisted_injury.id
         assert await Problem.objects.filter(simulation_id=context.simulation_id).acount() == 2
         assert await Illness.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert await HeartRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
@@ -354,16 +353,12 @@ class TestTrainerLabInitialPersistence:
         assert isinstance(brief.special_considerations, list)
         assert brief.is_active is True
 
-    async def test_scenario_brief_appears_in_abc_event_timeline(self, context):
+    async def test_scenario_brief_appears_in_domain_event_tables(self, context):
         schema = InitialScenarioSchema.model_validate(_initial_payload())
 
         await persist_schema(schema, context)
 
-        events = ABCEvent.objects.filter(simulation_id=context.simulation_id)
-        event_types = set()
-        async for event in events:
-            event_types.add(type(event).__name__)
-        assert "ScenarioBrief" in event_types
+        assert await ScenarioBrief.objects.filter(simulation_id=context.simulation_id).acount() == 1
 
     async def test_scenario_brief_sse_outbox_event(self, context):
         from apps.common.models import OutboxEvent
@@ -419,7 +414,7 @@ class TestTrainerLabInitialPersistence:
         second = await ScenarioBrief.objects.acreate(
             simulation=simulation,
             read_aloud_brief="Second brief",
-            supersedes_event=first,
+            supersedes=first,
             is_active=True,
         )
         first.is_active = False

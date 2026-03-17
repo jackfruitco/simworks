@@ -580,7 +580,7 @@ class TestTrainerLabEvents:
         from apps.trainerlab.models import Problem
 
         first_injury = Injury.objects.get(injury_description="Initial laceration")
-        first_problem = Problem.objects.get(cause=first_injury)
+        first_problem = Problem.objects.get(cause_injury=first_injury)
         assert first_injury.is_active is True
         assert first_problem.is_active is True
 
@@ -602,11 +602,11 @@ class TestTrainerLabEvents:
         first_injury.refresh_from_db()
         first_problem.refresh_from_db()
         corrected_injury = Injury.objects.get(injury_description="Corrected laceration")
-        corrected_problem = Problem.objects.get(cause=corrected_injury)
+        corrected_problem = Problem.objects.get(cause_injury=corrected_injury)
         assert first_injury.is_active is False
         assert first_problem.is_active is False
-        assert corrected_injury.supersedes_event_id == first_injury.id
-        assert corrected_problem.supersedes_event_id == first_problem.id
+        assert corrected_injury.supersedes_id == first_injury.id
+        assert corrected_problem.supersedes_id == first_problem.id
 
         page_one = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/?limit=1")
         assert page_one.status_code == 200
@@ -1012,7 +1012,7 @@ class TestTrainerLabEvents:
         from apps.trainerlab.models import Problem
 
         injury = Injury.objects.get(injury_description="Friendly label injury")
-        problem = Problem.objects.get(cause=injury)
+        problem = Problem.objects.get(cause_injury=injury)
         assert problem.march_category == "M"
         assert injury.injury_location == "LUA"
         assert injury.injury_kind == "LAC"
@@ -1281,7 +1281,7 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id, intervention_type="tourniquet"
         ).latest("timestamp")
         injury = Injury.objects.get(injury_description="GSW to the left chest")
-        problem = Problem.objects.get(cause=injury, simulation_id=simulation_id)
+        problem = Problem.objects.get(cause_injury=injury, simulation_id=simulation_id)
 
         def _inline_enqueue(batch):
             apply_runtime_turn_output(
