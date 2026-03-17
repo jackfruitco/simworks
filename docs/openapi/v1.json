@@ -5848,6 +5848,7 @@
             "type": "string"
           },
           "injury_description": {
+            "maxLength": 500,
             "title": "Injury Description",
             "type": "string"
           },

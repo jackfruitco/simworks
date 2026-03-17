@@ -88,7 +88,7 @@ class InjuryCreateIn(BaseModel):
         ...,
         description="Injury kind code or friendly label (normalized to canonical code)",
     )
-    injury_description: str
+    injury_description: str = Field(..., max_length=500)
     march_category: str = Field(
         ...,
         description="MARCH triage category code (M, A, R, C, H1, H2, PC)",
