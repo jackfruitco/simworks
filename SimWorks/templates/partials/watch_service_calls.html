@@ -127,17 +127,19 @@
             >Copy call</button>
           </div>
 
-          {# Hidden full-call JSON for copy — includes metadata, input, and output #}
+          {# Hidden full-call JSON for copy — includes metadata, input, and output.
+             |safe is required on all values: script raw-text is not HTML-decoded,
+             so auto-escaped entities like &quot; would corrupt the copied JSON. #}
           <script id="sc-full-{{ sc.id }}" type="application/json">{
-  "id": "{{ sc.id }}",
-  "service_identity": "{{ sc.service_identity|escapejs }}",
-  "status": "{{ sc.status|escapejs }}",
-  "started_at": {% if sc.started_at %}"{{ sc.started_at|date:"c" }}"{% else %}null{% endif %},
-  "finished_at": {% if sc.finished_at %}"{{ sc.finished_at|date:"c" }}"{% else %}null{% endif %},
+  "id": "{{ sc.id|safe }}",
+  "service_identity": "{{ sc.service_identity|escapejs|safe }}",
+  "status": "{{ sc.status|escapejs|safe }}",
+  "started_at": {% if sc.started_at %}"{{ sc.started_at|date:"c"|safe }}"{% else %}null{% endif %},
+  "finished_at": {% if sc.finished_at %}"{{ sc.finished_at|date:"c"|safe }}"{% else %}null{% endif %},
   "input_tokens": {{ sc.input_tokens|default:0 }},
   "output_tokens": {{ sc.output_tokens|default:0 }},
-  "input": {% if sc.input %}{{ sc.input|json_pretty }}{% else %}null{% endif %},
-  "output": {% if sc.output_data %}{{ sc.output_data|json_pretty }}{% else %}null{% endif %}
+  "input": {% if sc.input %}{{ sc.input|json_pretty|safe }}{% else %}null{% endif %},
+  "output": {% if sc.output_data %}{{ sc.output_data|json_pretty|safe }}{% else %}null{% endif %}
 }</script>
 
           {# Error #}
