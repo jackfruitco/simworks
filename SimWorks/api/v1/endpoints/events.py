@@ -169,5 +169,6 @@ def stream_events(
         cursor=cursor,
         event_type_prefix=event_prefix,
         sse_event_name="simulation",
-        heartbeat_comment=": keepalive\n\n",
+        heartbeat_interval_seconds=10.0,
+        heartbeat_comment=": keep-alive\n\n",
     )

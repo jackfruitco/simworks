@@ -74,4 +74,4 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=10 CMD /app
 
 WORKDIR /app/SimWorks
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "75"]

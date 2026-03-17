@@ -1432,14 +1432,16 @@ def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
     "/simulations/{simulation_id}/events/stream/",
     summary="SSE stream for TrainerLab events",
 )
-def stream_trainer_events(
+async def stream_trainer_events(
     request: HttpRequest,
     simulation_id: int,
     cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
 ) -> StreamingHttpResponse:
+    from asgiref.sync import sync_to_async
+
     user = request.auth
-    require_instructor_membership(user)
-    session = _get_session_for_simulation(simulation_id, user)
+    await sync_to_async(require_instructor_membership)(user)
+    session = await sync_to_async(_get_session_for_simulation)(simulation_id, user)
 
     return stream_outbox_events(
         simulation_id=session.simulation_id,
