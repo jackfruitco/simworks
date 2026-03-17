@@ -3,9 +3,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SSE_LOCATION = (
-    "location ~ ^/api/v1/(trainerlab/simulations|simulations)/[0-9]+/events/stream/?$ {"
-)
+SSE_LOCATION = "location ~ ^/api/v1/(trainerlab/simulations|simulations)/[0-9]+/events/stream/?$ {"
 REQUIRED_SSE_DIRECTIVES = (
     "proxy_http_version 1.1;",
     "proxy_buffering off;",
@@ -55,6 +53,4 @@ def test_sse_location_disables_proxy_buffering(config_path):
 
     block = _extract_location_block(config, SSE_LOCATION)
     for directive in REQUIRED_SSE_DIRECTIVES:
-        assert directive in block, (
-            f"{directive!r} not found inside SSE block in {config_path.name}"
-        )
+        assert directive in block, f"{directive!r} not found inside SSE block in {config_path.name}"
