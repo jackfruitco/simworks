@@ -1,7 +1,6 @@
 """Tests for TrainerLab API v1 endpoints."""
 
 from datetime import UTC, datetime, timedelta
-from itertools import islice
 
 from django.test import Client
 import pytest
@@ -16,12 +15,8 @@ class FakeClock:
     def monotonic(self) -> float:
         return self.current
 
-    def sleep(self, seconds: float) -> None:
+    async def sleep(self, seconds: float) -> None:
         self.current += seconds
-
-
-def decode_chunk(chunk) -> str:
-    return chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
 
 
 @pytest.fixture
@@ -768,10 +763,12 @@ class TestTrainerLabEvents:
             for item in listed.json()["items"]
         )
 
+        from tests.helpers.sse import collect_streaming_chunks
+
         streamed = client.get(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
-        chunks = [decode_chunk(chunk) for chunk in islice(streamed.streaming_content, 3)]
+        chunks = collect_streaming_chunks(streamed, 3)
         payload = "".join(chunks)
         assert "note.created" in payload
         assert '"created_by_role": "instructor"' in payload
@@ -1082,7 +1079,9 @@ class TestTrainerLabEvents:
         assert response["Cache-Control"] == "no-cache, no-transform"
         assert response["X-Accel-Buffering"] == "no"
 
-        chunks = [decode_chunk(chunk) for chunk in islice(response.streaming_content, 3)]
+        from tests.helpers.sse import collect_streaming_chunks
+
+        chunks = collect_streaming_chunks(response, 3)
         payload = "".join(chunks)
 
         assert chunks[0] == f"id: {streamed.id}\n"
@@ -1098,10 +1097,11 @@ class TestTrainerLabEvents:
         monkeypatch,
     ):
         from apps.common.models import OutboxEvent
+        from tests.helpers.sse import collect_streaming_chunks
 
         clock = FakeClock()
         monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
-        monkeypatch.setattr("api.v1.sse.time.sleep", clock.sleep)
+        monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="sse-idle-session")
@@ -1124,7 +1124,8 @@ class TestTrainerLabEvents:
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
 
-        first_chunk = decode_chunk(next(response.streaming_content))
+        chunks = collect_streaming_chunks(response, 1)
+        first_chunk = chunks[0]
 
         assert first_chunk == ": keep-alive\n\n"
         assert "event:" not in first_chunk

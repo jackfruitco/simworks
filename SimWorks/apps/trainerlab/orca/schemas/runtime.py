@@ -18,7 +18,7 @@ class RuntimeConditionChange(StrictBaseModel):
     # Injury-specific cause fields (create/update)
     injury_location: str | None = None
     injury_kind: str | None = None
-    injury_description: str | None = None
+    injury_description: str | None = Field(default=None, max_length=500)
 
     # Illness-specific cause fields (create/update)
     name: str | None = None

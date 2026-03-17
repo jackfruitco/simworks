@@ -73,6 +73,15 @@ def validation_error_handler(request: HttpRequest, exc: ValidationError):
     else:
         detail = "Validation error"
 
+    logger.warning(
+        "request_validation_error",
+        path=request.path,
+        method=request.method,
+        detail=detail,
+        errors=errors,
+        correlation_id=get_correlation_id(request),
+    )
+
     return api.create_response(
         request,
         create_error_response(
