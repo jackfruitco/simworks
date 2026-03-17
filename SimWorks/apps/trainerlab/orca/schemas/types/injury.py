@@ -27,7 +27,7 @@ class Injury(StrictBaseModel):
     kind: Literal["injury"] = Field(..., description="Discriminator — always 'injury'")
     injury_location: ORMInjury.InjuryLocation = Field(..., description="Anatomic location")
     injury_kind: ORMInjury.InjuryKind = Field(..., description="Mechanism of injury")
-    injury_description: str = Field(..., max_length=100, description="Brief description")
+    injury_description: str = Field(..., max_length=500, description="Brief description")
     march_category: str = Field(..., description="MARCH triage category (M, A, R, C, H1, H2, PC)")
     severity: Literal["low", "moderate", "high", "critical"] = Field(
         default="moderate", description="Problem severity"

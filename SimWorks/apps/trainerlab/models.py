@@ -330,7 +330,7 @@ class Injury(ABCEvent):
         help_text="The kind of injury",
     )
 
-    injury_description = models.CharField(max_length=100)
+    injury_description = models.CharField(max_length=500)
 
     def __str__(self):
         return f"{self.get_injury_kind_display()} at {self.get_injury_location_display()}"
