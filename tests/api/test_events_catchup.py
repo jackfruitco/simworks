@@ -371,8 +371,9 @@ class TestStreamEvents:
         )
 
         assert response.status_code == 200
-        chunks = collect_streaming_chunks(response, 3)
+        chunks = collect_streaming_chunks(response, 6)
         payload = "".join(chunks)
 
+        assert ": keep-alive" in payload or "event: simulation" in payload
         assert "session.seeded" in payload
         assert "chat.message_created" not in payload
