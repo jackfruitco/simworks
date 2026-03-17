@@ -92,3 +92,34 @@ def check_required_env_vars(app_configs, **kwargs):
             )
 
     return errors
+
+
+@register(Tags.security, deploy=True)
+def check_production_settings(app_configs, **kwargs):
+    """Validate production-unsafe settings when DEBUG=False."""
+    errors = []
+
+    if not _prod_only():
+        return errors
+
+    if getattr(settings, "CORS_ALLOW_ALL_ORIGINS", False):
+        errors.append(
+            Error(
+                "CORS_ALLOW_ALL_ORIGINS must not be True in production.",
+                hint="Set DJANGO_CORS_ALLOW_ALL_ORIGINS=false or remove the variable.",
+                id="config.E010",
+            )
+        )
+
+    email_backend = getattr(settings, "EMAIL_BACKEND", "")
+    if email_backend == "django.core.mail.backends.console.EmailBackend":
+        errors.append(
+            Error(
+                "Console email backend is not suitable for production.",
+                hint="Set EMAIL_BACKEND to a real backend "
+                "(e.g. django.core.mail.backends.smtp.EmailBackend).",
+                id="config.E011",
+            )
+        )
+
+    return errors

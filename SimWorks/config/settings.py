@@ -213,19 +213,3 @@ SITE_ADMIN = {
 }
 
 CSRF_FAILURE_VIEW = "apps.common.views.csrf_failure"
-
-# Production safety guards
-if not DEBUG:
-    from django.core.exceptions import ImproperlyConfigured
-
-    if CORS_ALLOW_ALL_ORIGINS:
-        raise ImproperlyConfigured(
-            "CORS_ALLOW_ALL_ORIGINS must not be True in production. "
-            "Set DJANGO_CORS_ALLOW_ALL_ORIGINS=false or remove the variable."
-        )
-
-    if EMAIL_BACKEND == "django.core.mail.backends.console.EmailBackend":
-        raise ImproperlyConfigured(
-            "Console email backend is not suitable for production. "
-            "Set EMAIL_BACKEND to a real backend (e.g. django.core.mail.backends.smtp.EmailBackend)."
-        )
