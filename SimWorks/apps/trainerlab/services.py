@@ -15,6 +15,12 @@ from apps.simcore.models import Simulation
 from apps.simcore.utils import generate_fake_name
 from config.logging import get_logger
 
+from .event_payloads import (
+    serialize_cause_snapshot,
+    serialize_intervention_summary,
+    serialize_problem_snapshot,
+    serialize_recommendation_summary,
+)
 from .models import (
     ETCO2,
     SPO2,
@@ -28,6 +34,7 @@ from .models import (
     Intervention,
     Problem,
     PulseAssessment,
+    RecommendedIntervention,
     RespiratoryRate,
     RuntimeEvent,
     ScenarioBrief,
@@ -100,6 +107,10 @@ def build_runtime_state_defaults(
             "special_considerations": [],
         },
         "current_snapshot": {
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
+            # Legacy alias retained internally while runtime turn processing transitions.
             "conditions": [],
             "interventions": [],
             "vitals": [],
@@ -240,51 +251,14 @@ def emit_runtime_event(
 
 
 def _problem_control_state(problem: Problem) -> str:
-    if problem.is_resolved:
-        return "resolved"
-    if problem.is_treated:
-        return "controlled"
-    return "uncontrolled"
+    return problem.status
 
 
 def _serialize_condition(problem: Problem, cause: Injury | Illness | None) -> dict[str, Any]:
-    """Serialize a Problem (lifecycle record) with its underlying cause."""
-    payload = {
-        "domain_event_id": problem.id,
-        "problem_id": problem.id,
-        "cause_event_id": problem.cause_id,
-        "source": problem.source,
-        "supersedes_event_id": problem.supersedes_id,
-        "timestamp": _iso_or_none(problem.timestamp),
-        "kind": problem.problem_kind,
-        "march_category": problem.march_category,
-        "severity": problem.severity,
-        "is_treated": problem.is_treated,
-        "is_resolved": problem.is_resolved,
-        "control_state": _problem_control_state(problem),
-        "status": "resolved" if problem.is_resolved else "active",
-        "description": problem.description,
-    }
-    if isinstance(cause, Injury):
-        payload.update(
-            {
-                "label": cause.injury_description,
-                "injury_location": cause.injury_location,
-                "injury_kind": cause.injury_kind,
-                "injury_location_label": cause.get_injury_location_display(),
-                "injury_kind_label": cause.get_injury_kind_display(),
-            }
-        )
-    elif isinstance(cause, Illness):
-        payload.update(
-            {
-                "label": cause.name,
-                "name": cause.name,
-                "illness_description": cause.description,
-            }
-        )
-    else:
-        payload["label"] = problem.description or "Unknown condition"
+    del cause
+    payload = serialize_problem_snapshot(problem)
+    payload["domain_event_id"] = problem.id
+    payload["supersedes_event_id"] = problem.supersedes_id
     return payload
 
 
@@ -294,22 +268,10 @@ def _serialize_intervention(
     intervention_effects: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     effect = dict((intervention_effects or {}).get(str(obj.id), {}))
-    return {
-        "domain_event_id": obj.id,
-        "intervention_type": obj.intervention_type or None,
-        "site_code": obj.site_code or None,
-        "effectiveness": obj.effectiveness,
-        "notes": obj.notes,
-        "code": obj.code,
-        "description": obj.description,
-        "target": obj.target,
-        "anatomic_location": obj.anatomic_location,
-        "performed_by_role": obj.performed_by_role,
-        "source": obj.source,
-        "timestamp": _iso_or_none(obj.timestamp),
-        "status": effect.get("status", "active"),
-        "clinical_effect": effect.get("clinical_effect", ""),
-    }
+    payload = serialize_intervention_summary(obj)
+    payload["domain_event_id"] = obj.id
+    payload["clinical_effect"] = effect.get("clinical_effect", "")
+    return payload
 
 
 def _serialize_vital(vital_type: str, obj: Any) -> dict[str, Any]:
@@ -361,22 +323,54 @@ def project_current_snapshot(
         )
     )
 
-    problems = list(
-        Problem.objects.select_related("cause_injury", "cause_illness")
+    recommendation_objects = list(
+        RecommendedIntervention.objects.select_related(
+            "target_problem",
+            "target_injury",
+            "target_illness",
+        )
         .filter(simulation=session.simulation, is_active=True)
         .order_by("timestamp", "id")
     )
-    conditions = [_serialize_condition(p, p.cause) for p in problems]
+    recommendations = [serialize_recommendation_summary(item) for item in recommendation_objects]
+
+    problems = list(
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .prefetch_related("recommended_interventions")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    problem_items = [_serialize_condition(p, p.cause) for p in problems]
+
+    injury_objects = list(
+        Injury.objects.prefetch_related("recommended_interventions")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    illness_objects = list(
+        Illness.objects.prefetch_related("recommended_interventions")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    causes = [
+        serialize_cause_snapshot(item)
+        for item in sorted(
+            [*injury_objects, *illness_objects],
+            key=lambda item: (item.timestamp, item.id),
+        )
+    ]
 
     interventions = [
         _serialize_intervention(
             item,
             intervention_effects=dict(state.get("intervention_effects") or {}),
         )
-        for item in Intervention.objects.filter(
+        for item in Intervention.objects.select_related("target_problem")
+        .filter(
             simulation=session.simulation,
             is_active=True,
-        ).order_by("timestamp", "id")
+        )
+        .order_by("timestamp", "id")
     ]
 
     vitals: list[dict[str, Any]] = []
@@ -421,7 +415,10 @@ def project_current_snapshot(
     ]
 
     return {
-        "conditions": conditions,
+        "causes": causes,
+        "problems": problem_items,
+        "recommended_interventions": recommendations,
+        "conditions": problem_items,
         "interventions": interventions,
         "vitals": vitals,
         "pulses": pulses,
@@ -650,17 +647,60 @@ def _emit_seeded_pulse_events(session: TrainerSession) -> None:
 
 
 def _emit_seeded_condition_events(session: TrainerSession) -> None:
+    injuries = list(
+        Injury.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
+    illnesses = list(
+        Illness.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
     problems = list(
         Problem.objects.select_related("cause_injury", "cause_illness")
+        .prefetch_related("recommended_interventions")
         .filter(simulation=session.simulation, is_active=True)
         .order_by("timestamp", "id")
     )
+    recommendations = list(
+        RecommendedIntervention.objects.select_related(
+            "target_problem",
+            "target_injury",
+            "target_illness",
+        )
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    for injury in injuries:
+        emit_runtime_event(
+            session=session,
+            event_type="injury.created",
+            payload=serialize_cause_snapshot(injury),
+            idempotency_key=f"injury.created:seeded:{session.id}:{injury.id}",
+        )
+    for illness in illnesses:
+        emit_runtime_event(
+            session=session,
+            event_type="illness.created",
+            payload=serialize_cause_snapshot(illness),
+            idempotency_key=f"illness.created:seeded:{session.id}:{illness.id}",
+        )
     for problem in problems:
         emit_runtime_event(
             session=session,
-            event_type="condition.created",
+            event_type="problem.created",
             payload=_serialize_condition(problem, problem.cause),
-            idempotency_key=f"condition.created:seeded:{session.id}:{problem.id}",
+            idempotency_key=f"problem.created:seeded:{session.id}:{problem.id}",
+        )
+    for recommendation in recommendations:
+        emit_runtime_event(
+            session=session,
+            event_type="recommended_intervention.created",
+            payload=serialize_recommendation_summary(recommendation),
+            idempotency_key=(
+                f"recommended_intervention.created:seeded:{session.id}:{recommendation.id}"
+            ),
         )
 
 
@@ -924,10 +964,10 @@ def _emit_condition_change(
 ) -> None:
     emit_runtime_event(
         session=session,
-        event_type=f"condition.{action}",
+        event_type=f"problem.{action}",
         payload=_event_payload_for_condition(problem, cause, action=action),
         correlation_id=correlation_id,
-        idempotency_key=f"condition.{action}:{problem.id}",
+        idempotency_key=f"problem.{action}:{problem.id}",
     )
 
 
@@ -976,6 +1016,20 @@ def _apply_condition_change(
         "resolved" if action == "resolve" else ("updated" if action == "update" else "created")
     )
 
+    march_category = change.get("march_category") or getattr(source_problem, "march_category", "")
+    inferred_problem_kind = getattr(source_problem, "kind", "") or {
+        Problem.MARCHCategory.M: "hemorrhage",
+        Problem.MARCHCategory.A: "airway_obstruction",
+        Problem.MARCHCategory.R: "respiratory_distress",
+        Problem.MARCHCategory.C: "pain",
+        Problem.MARCHCategory.H1: "heat_illness",
+    }.get(march_category, "open_wound" if condition_kind == "injury" else "infectious_process")
+    next_status = (
+        Problem.Status.RESOLVED
+        if action == "resolve"
+        else getattr(source_problem, "status", Problem.Status.ACTIVE)
+    )
+
     if condition_kind == "injury":
         if action == "resolve" and source_problem is None:
             return
@@ -1011,12 +1065,21 @@ def _apply_condition_change(
             supersedes=source_problem,
             cause_injury=new_injury,
             problem_kind=Problem.ProblemKind.INJURY,
-            march_category=change.get("march_category")
-            or getattr(source_problem, "march_category", Problem.MARCHCategory.M),
+            kind=inferred_problem_kind,
+            code=inferred_problem_kind,
+            title=change.get("injury_description")
+            or getattr(source_problem, "title", "Updated problem"),
+            display_name=change.get("injury_description")
+            or getattr(source_problem, "display_name", "Updated problem"),
+            description=change.get("description")
+            or change.get("injury_description")
+            or getattr(source_problem, "description", ""),
+            march_category=march_category or Problem.MARCHCategory.M,
             severity=change.get("severity")
             or getattr(source_problem, "severity", Problem.Severity.MODERATE),
-            is_treated=getattr(source_problem, "is_treated", False),
-            is_resolved=action == "resolve",
+            anatomical_location=change.get("injury_location")
+            or getattr(source_problem, "anatomical_location", ""),
+            status=next_status,
         )
         _emit_condition_change(
             session=session,
@@ -1052,12 +1115,18 @@ def _apply_condition_change(
         supersedes=source_problem,
         cause_illness=new_illness,
         problem_kind=Problem.ProblemKind.ILLNESS,
-        march_category=change.get("march_category")
-        or getattr(source_problem, "march_category", Problem.MARCHCategory.R),
+        kind=inferred_problem_kind,
+        code=inferred_problem_kind,
+        title=change.get("name") or getattr(source_problem, "title", "Updated problem"),
+        display_name=change.get("name")
+        or getattr(source_problem, "display_name", "Updated problem"),
+        description=change.get("description") or getattr(source_problem, "description", ""),
+        march_category=march_category or Problem.MARCHCategory.R,
         severity=change.get("severity")
         or getattr(source_problem, "severity", Problem.Severity.MODERATE),
-        is_treated=getattr(source_problem, "is_treated", False),
-        is_resolved=action == "resolve",
+        anatomical_location=change.get("anatomical_location")
+        or getattr(source_problem, "anatomical_location", ""),
+        status=next_status,
     )
     _emit_condition_change(
         session=session,
@@ -1189,24 +1258,14 @@ def _apply_intervention_effect(
 
     emit_runtime_event(
         session=session,
-        event_type="intervention.created",
+        event_type="intervention.updated",
         payload={
             "domain_event_id": intervention.id,
-            "intervention_type": intervention.intervention_type or None,
-            "site_code": intervention.site_code or None,
-            "status": intervention.status,
-            "effectiveness": intervention.effectiveness,
-            "notes": intervention.notes,
-            "supersedes_event_id": intervention.supersedes_id,
-            "code": intervention.code,
-            "description": intervention.description,
-            "target": intervention.target,
-            "anatomic_location": intervention.anatomic_location,
-            "performed_by_role": intervention.performed_by_role,
+            **serialize_intervention_summary(intervention),
             "effect": effects[str(intervention.id)],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"intervention.created:{intervention.id}:{effects[str(intervention.id)]['status']}",
+        idempotency_key=f"intervention.updated:{intervention.id}:{effects[str(intervention.id)]['status']}",
     )
 
     # #6: Emit structured assessment event so clients get a closed-loop feedback signal
@@ -1674,67 +1733,66 @@ def update_condition_control_state(
     is_treated: bool | None = None,
     is_resolved: bool | None = None,
     correlation_id: str | None = None,
-) -> Injury | Illness:
+) -> Problem:
     """
-    Update the instructor-controlled treatment/resolution state of an Injury or Illness.
+    Update the instructor-controlled treatment/resolution state of a Problem.
 
     Creates a superseding event record (immutable event log) and deactivates the old one
     so the full condition history is preserved.
     """
-    # Use kind to do a direct typed lookup — avoids PK collisions between the
-    # independent auto-increment sequences on Injury and Illness tables.
-    model_cls = Injury if kind == "injury" else Illness
-    original: Injury | Illness | None = model_cls.objects.filter(
-        pk=condition_id, simulation=session.simulation, is_active=True
-    ).first()
+    del kind
+    original: Problem | None = (
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .filter(
+            pk=condition_id,
+            simulation=session.simulation,
+            is_active=True,
+        )
+        .first()
+    )
     if original is None:
-        raise ValidationError(f"Active condition {condition_id} not found for this simulation.")
+        raise ValidationError(f"Active problem {condition_id} not found for this simulation.")
 
     _deactivate_event(original)
 
-    if isinstance(original, Injury):
-        created: Injury | Illness = Injury.objects.create(
-            simulation=session.simulation,
-            source=EventSource.INSTRUCTOR,
-            supersedes=original,
-            injury_category=original.injury_category,
-            injury_location=original.injury_location,
-            injury_kind=original.injury_kind,
-            injury_description=original.injury_description,
-            parent_injury=original.parent_injury,
-            is_treated=is_treated if is_treated is not None else original.is_treated,
-            is_resolved=is_resolved if is_resolved is not None else original.is_resolved,
-        )
-    else:
-        created = Illness.objects.create(
-            simulation=session.simulation,
-            source=EventSource.INSTRUCTOR,
-            supersedes=original,
-            name=original.name,
-            description=original.description,
-            severity=original.severity,
-            is_resolved=is_resolved if is_resolved is not None else original.is_resolved,
-        )
+    next_status = original.status
+    if is_resolved is True:
+        next_status = Problem.Status.RESOLVED
+    elif is_treated is True and original.status == Problem.Status.ACTIVE:
+        next_status = Problem.Status.TREATED
+    elif is_treated is False and original.status == Problem.Status.TREATED:
+        next_status = Problem.Status.ACTIVE
 
-    is_treated_val = getattr(created, "is_treated", False)
-    is_resolved_val = getattr(created, "is_resolved", False)
-    if is_resolved_val:
-        control_state = "resolved"
-    elif is_treated_val:
-        control_state = "controlled"
-    else:
-        control_state = "uncontrolled"
+    created = Problem.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=original,
+        cause_injury=original.cause_injury,
+        cause_illness=original.cause_illness,
+        problem_kind=original.problem_kind,
+        kind=original.kind,
+        code=original.code,
+        slug=original.slug,
+        title=original.title,
+        display_name=original.display_name,
+        description=original.description,
+        march_category=original.march_category,
+        severity=original.severity,
+        anatomical_location=original.anatomical_location,
+        laterality=original.laterality,
+        status=next_status,
+        metadata_json=original.metadata_json,
+    )
 
-    payload = _serialize_condition(created)
-    payload["control_state"] = control_state
-    payload["action"] = "control_state_updated"
+    payload = _serialize_condition(created, created.cause)
+    payload["action"] = "status_updated"
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.condition.control_state_updated",
+        event_type="problem.updated",
         payload=payload,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.condition.control_state_updated:{created.id}",
+        idempotency_key=f"problem.updated:manual-status:{created.id}",
     )
 
     refresh_runtime_projection(session=session, correlation_id=correlation_id)

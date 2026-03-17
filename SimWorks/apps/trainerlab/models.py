@@ -5,7 +5,9 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from slugify import slugify
 
 from apps.simcore.models import BaseSession
 
@@ -31,6 +33,23 @@ class EventSource(models.TextChoices):
     AI = "ai", _("AI")
     INSTRUCTOR = "instructor", _("Instructor")
     SYSTEM = "system", _("System")
+
+
+def _normalized_slug(value: str) -> str:
+    return slugify(value or "", separator="_")
+
+
+def _normalized_code(value: str) -> str:
+    return _normalized_slug(value).upper()
+
+
+def _derive_laterality(value: str) -> str:
+    normalized = (value or "").upper()
+    if "LEFT" in normalized or normalized.startswith("L"):
+        return "left"
+    if "RIGHT" in normalized or normalized.startswith("R"):
+        return "right"
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +387,15 @@ class Injury(BaseDomainEvent):
         help_text="The kind of injury",
     )
     injury_description = models.CharField(max_length=500)
+    kind = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    code = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="")
+    title = models.CharField(max_length=120, blank=True, default="")
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    anatomical_location = models.CharField(max_length=120, blank=True, default="")
+    laterality = models.CharField(max_length=16, blank=True, default="")
+    metadata_json = models.JSONField(default=dict, blank=True)
     supersedes = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -375,6 +403,33 @@ class Injury(BaseDomainEvent):
         blank=True,
         related_name="superseded_by",
     )
+
+    @property
+    def cause_kind(self) -> str:
+        return "injury"
+
+    def clean(self) -> None:
+        super().clean()
+        if not self.kind:
+            self.kind = _normalized_slug(self.get_injury_kind_display() or self.injury_kind)
+        if not self.code:
+            self.code = self.injury_kind
+        if not self.slug:
+            self.slug = _normalized_slug(self.kind or self.code or self.injury_kind)
+        if not self.title:
+            self.title = self.injury_description
+        if not self.display_name:
+            self.display_name = self.title
+        if not self.description:
+            self.description = self.injury_description
+        if not self.anatomical_location:
+            self.anatomical_location = self.get_injury_location_display()
+        if not self.laterality:
+            self.laterality = _derive_laterality(self.anatomical_location or self.injury_location)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.get_injury_kind_display()} at {self.get_injury_location_display()}"
@@ -383,6 +438,14 @@ class Injury(BaseDomainEvent):
 class Illness(BaseDomainEvent):
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
+    kind = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    code = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="")
+    title = models.CharField(max_length=120, blank=True, default="")
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    anatomical_location = models.CharField(max_length=120, blank=True, default="")
+    laterality = models.CharField(max_length=16, blank=True, default="")
+    metadata_json = models.JSONField(default=dict, blank=True)
     supersedes = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -390,6 +453,27 @@ class Illness(BaseDomainEvent):
         blank=True,
         related_name="superseded_by",
     )
+
+    @property
+    def cause_kind(self) -> str:
+        return "illness"
+
+    def clean(self) -> None:
+        super().clean()
+        if not self.kind:
+            self.kind = _normalized_slug(self.name)
+        if not self.code:
+            self.code = _normalized_code(self.name)
+        if not self.slug:
+            self.slug = _normalized_slug(self.kind or self.name)
+        if not self.title:
+            self.title = self.name
+        if not self.display_name:
+            self.display_name = self.title
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -401,17 +485,14 @@ class Problem(BaseDomainEvent):
     """
     A treatable clinical problem owned by a simulation.
 
-    Separates the immutable cause (Injury or Illness) from the mutable
-    treatment lifecycle. Lifecycle fields (march_category, severity, is_treated,
-    is_resolved) live here; cause fields (mechanism, anatomy, illness name) live
-    on the linked Injury / Illness.
+    Injury and Illness remain immutable source records. Problem is the mutable
+    clinical entity the engine can track as active, treated, controlled, or
+    resolved. For the current schema version every Problem must reference exactly
+    one direct cause via ``cause_injury`` or ``cause_illness``.
 
-    ``cause_injury`` and ``cause_illness`` are typed nullable FKs replacing the
-    previous polymorphic ``cause → ABCEvent``.  Exactly one (or neither for
-    standalone problems) will be set.
-
-    ``problem_kind`` is derived from the cause type at creation time and stored
-    for query/index performance: "injury", "illness", or "other".
+    A future many-to-many or derived/systemic problem model will likely replace
+    these two direct cause FKs with a dedicated link model. For now we enforce a
+    single direct cause to keep persistence and adjudication deterministic.
     """
 
     class MARCHCategory(models.TextChoices):
@@ -433,6 +514,12 @@ class Problem(BaseDomainEvent):
         INJURY = "injury", _("Injury")
         ILLNESS = "illness", _("Illness")
         OTHER = "other", _("Other")
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", _("Active")
+        TREATED = "treated", _("Treated")
+        CONTROLLED = "controlled", _("Controlled")
+        RESOLVED = "resolved", _("Resolved")
 
     cause_injury = models.ForeignKey(
         "trainerlab.Injury",
@@ -463,8 +550,13 @@ class Problem(BaseDomainEvent):
         choices=ProblemKind.choices,
         default=ProblemKind.OTHER,
         db_index=True,
-        help_text="Auto-derived from cause type at creation time.",
+        help_text="Deprecated direct-cause classification; prefer kind/code for problem identity.",
     )
+    kind = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    code = models.CharField(max_length=64, blank=True, default="", db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="", db_index=True)
+    title = models.CharField(max_length=120, blank=True, default="")
+    display_name = models.CharField(max_length=120, blank=True, default="")
     march_category = models.CharField(
         max_length=3,
         choices=MARCHCategory.choices,
@@ -475,9 +567,27 @@ class Problem(BaseDomainEvent):
         choices=Severity.choices,
         default=Severity.MODERATE,
     )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
     is_treated = models.BooleanField(default=False)
     is_resolved = models.BooleanField(default=False)
     description = models.TextField(blank=True, default="")
+    anatomical_location = models.CharField(max_length=120, blank=True, default="")
+    laterality = models.CharField(max_length=16, blank=True, default="")
+    treated_at = models.DateTimeField(blank=True, null=True)
+    controlled_at = models.DateTimeField(blank=True, null=True)
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "status"], name="idx_problem_sim_status"),
+            models.Index(fields=["simulation", "kind"], name="idx_problem_sim_kind"),
+        ]
 
     @property
     def cause(self):
@@ -489,11 +599,209 @@ class Problem(BaseDomainEvent):
         """Return the PK of the cause object, or None."""
         return self.cause_injury_id or self.cause_illness_id
 
+    @property
+    def cause_kind(self) -> str | None:
+        if self.cause_injury_id:
+            return "injury"
+        if self.cause_illness_id:
+            return "illness"
+        return None
+
+    @property
+    def is_controlled(self) -> bool:
+        return self.status in {self.Status.CONTROLLED, self.Status.RESOLVED}
+
+    def _sync_status_fields(self) -> None:
+        now = timezone.now()
+        if self.status == self.Status.ACTIVE:
+            self.is_treated = False
+            self.is_resolved = False
+            self.treated_at = None
+            self.controlled_at = None
+            self.resolved_at = None
+            return
+        if self.status == self.Status.TREATED:
+            self.is_treated = True
+            self.is_resolved = False
+            self.treated_at = self.treated_at or now
+            self.controlled_at = None
+            self.resolved_at = None
+            return
+        if self.status == self.Status.CONTROLLED:
+            self.is_treated = True
+            self.is_resolved = False
+            self.treated_at = self.treated_at or now
+            self.controlled_at = self.controlled_at or now
+            self.resolved_at = None
+            return
+        self.is_treated = True
+        self.is_resolved = True
+        self.treated_at = self.treated_at or now
+        self.controlled_at = self.controlled_at or now
+        self.resolved_at = self.resolved_at or now
+
+    def clean(self) -> None:
+        super().clean()
+        if bool(self.cause_injury_id) == bool(self.cause_illness_id):
+            raise ValidationError(
+                {
+                    "cause_injury": "Problem must reference exactly one direct cause.",
+                    "cause_illness": "Problem must reference exactly one direct cause.",
+                }
+            )
+        if not self.kind:
+            if self.code:
+                self.kind = _normalized_slug(self.code)
+            elif self.title:
+                self.kind = _normalized_slug(self.title)
+        if not self.code:
+            self.code = self.kind or _normalized_slug(self.title or self.description)
+        if not self.slug:
+            self.slug = _normalized_slug(self.kind or self.code or self.title)
+        if not self.title:
+            self.title = self.display_name or self.description or "Clinical problem"
+        if not self.display_name:
+            self.display_name = self.title
+        if not self.anatomical_location and self.cause is not None:
+            self.anatomical_location = getattr(self.cause, "anatomical_location", "") or ""
+        if not self.laterality:
+            self.laterality = _derive_laterality(self.anatomical_location) or _derive_laterality(
+                getattr(self.cause, "laterality", "")
+            )
+        self._sync_status_fields()
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
     def __str__(self):
-        return (
-            f"Problem ({self.problem_kind}, {self.march_category}) "
-            f"{'resolved' if self.is_resolved else 'active'}"
-        )
+        return f"Problem ({self.kind or self.problem_kind}, {self.status})"
+
+
+# ---------------------------------------------------------------------------
+# Domain event: RecommendedIntervention
+# ---------------------------------------------------------------------------
+
+
+class RecommendedIntervention(BaseDomainEvent):
+    class RecommendationSource(models.TextChoices):
+        AI = "ai", _("AI")
+        RULES = "rules", _("Rules")
+        MERGED = "merged", _("Merged")
+
+    class ValidationStatus(models.TextChoices):
+        ACCEPTED = "accepted", _("Accepted")
+        NORMALIZED = "normalized", _("Normalized")
+        DOWNGRADED = "downgraded", _("Downgraded")
+        REJECTED = "rejected", _("Rejected")
+
+    kind = models.CharField(max_length=64, db_index=True)
+    code = models.CharField(max_length=64, db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="", db_index=True)
+    title = models.CharField(max_length=120)
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    target_problem = models.ForeignKey(
+        "trainerlab.Problem",
+        on_delete=models.CASCADE,
+        related_name="recommended_interventions",
+    )
+    target_injury = models.ForeignKey(
+        "trainerlab.Injury",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recommended_interventions",
+    )
+    target_illness = models.ForeignKey(
+        "trainerlab.Illness",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recommended_interventions",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    recommendation_source = models.CharField(
+        max_length=16,
+        choices=RecommendationSource.choices,
+        default=RecommendationSource.AI,
+    )
+    validation_status = models.CharField(
+        max_length=16,
+        choices=ValidationStatus.choices,
+        default=ValidationStatus.ACCEPTED,
+        db_index=True,
+    )
+    normalized_kind = models.CharField(max_length=64, blank=True, default="")
+    normalized_code = models.CharField(max_length=64, blank=True, default="")
+    rationale = models.TextField(blank=True, default="")
+    priority = models.PositiveSmallIntegerField(null=True, blank=True)
+    site_code = models.CharField(max_length=64, blank=True, default="")
+    site_label = models.CharField(max_length=120, blank=True, default="")
+    contraindications_json = models.JSONField(default=list, blank=True)
+    warnings_json = models.JSONField(default=list, blank=True)
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["simulation", "validation_status"],
+                name="idx_reco_sim_validation",
+            ),
+            models.Index(fields=["target_problem"], name="idx_reco_target_problem"),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+
+        if self.target_problem_id and self.simulation_id != self.target_problem.simulation_id:
+            errors["target_problem"] = "target_problem must belong to the same simulation"
+
+        if self.target_injury_id and self.target_illness_id:
+            errors["target_injury"] = "Recommendation can only reference one explicit target cause."
+            errors["target_illness"] = (
+                "Recommendation can only reference one explicit target cause."
+            )
+
+        if self.target_problem_id:
+            expected_cause = self.target_problem.cause
+            if (
+                self.target_injury_id
+                and expected_cause
+                and self.target_injury_id != expected_cause.id
+            ):
+                errors["target_injury"] = "target_injury must match the target_problem cause"
+            if (
+                self.target_illness_id
+                and expected_cause
+                and self.target_illness_id != expected_cause.id
+            ):
+                errors["target_illness"] = "target_illness must match the target_problem cause"
+
+        if not self.normalized_kind:
+            self.normalized_kind = self.kind
+        if not self.normalized_code:
+            self.normalized_code = self.code
+        if not self.slug:
+            self.slug = _normalized_slug(self.normalized_kind or self.kind or self.code)
+        if not self.display_name:
+            self.display_name = self.title
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} -> Problem {self.target_problem_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -505,7 +813,12 @@ class Intervention(BaseDomainEvent):
     class PerformedByRole(models.TextChoices):
         TRAINEE = "trainee", _("Trainee")
         INSTRUCTOR = "instructor", _("Instructor")
-        AI = "ai", _("AI")
+        SYSTEM = "system", _("System")
+
+    class InitiatedByType(models.TextChoices):
+        USER = "user", _("User")
+        INSTRUCTOR = "instructor", _("Instructor")
+        SYSTEM = "system", _("System")
 
     class Status(models.TextChoices):
         APPLIED = "applied", _("Applied")
@@ -562,6 +875,13 @@ class Intervention(BaseDomainEvent):
         choices=PerformedByRole.choices,
         default=PerformedByRole.TRAINEE,
     )
+    initiated_by_type = models.CharField(
+        max_length=16,
+        choices=InitiatedByType.choices,
+        default=InitiatedByType.USER,
+        db_index=True,
+    )
+    initiated_by_id = models.PositiveIntegerField(null=True, blank=True)
 
     def sync_legacy_fields(self) -> None:
         if not self.intervention_type:
@@ -569,10 +889,18 @@ class Intervention(BaseDomainEvent):
         self.code = build_legacy_intervention_code(self.intervention_type, self.details_json)
         self.description = self.notes
         self.target = self.site_code
+        if not self.anatomic_location and self.site_code:
+            self.anatomic_location = self.site_code
 
     def clean(self) -> None:
         super().clean()
         errors: dict[str, list[str] | str] = {}
+
+        if self.source == EventSource.AI:
+            errors["source"] = (
+                "AI cannot create actual performed interventions. "
+                "Only user, instructor, or system initiated actions are allowed."
+            )
 
         if self.intervention_type:
             try:
@@ -597,11 +925,36 @@ class Intervention(BaseDomainEvent):
                 except ValueError as exc:
                     errors["details_json"] = str(exc)
 
-        if self.target_problem_id and self.simulation_id != self.target_problem.simulation_id:
+        if not self.target_problem_id:
+            errors["target_problem"] = "Actual interventions must target a Problem."
+        elif self.simulation_id != self.target_problem.simulation_id:
             errors["target_problem"] = "target_problem must belong to the same simulation"
+
+        if self.target_problem_id and self.target_problem.status == Problem.Status.RESOLVED:
+            errors["target_problem"] = (
+                "Cannot record a new performed intervention against a resolved problem"
+            )
+
+        role_map = {
+            self.PerformedByRole.TRAINEE: self.InitiatedByType.USER,
+            self.PerformedByRole.INSTRUCTOR: self.InitiatedByType.INSTRUCTOR,
+            self.PerformedByRole.SYSTEM: self.InitiatedByType.SYSTEM,
+        }
+        self.performed_by_role = {
+            self.InitiatedByType.USER: self.PerformedByRole.TRAINEE,
+            self.InitiatedByType.INSTRUCTOR: self.PerformedByRole.INSTRUCTOR,
+            self.InitiatedByType.SYSTEM: self.PerformedByRole.SYSTEM,
+        }[self.initiated_by_type]
+        if self.performed_by_role not in role_map:
+            errors["performed_by_role"] = "performed_by_role must map to a non-AI initiated_by_type"
 
         if errors:
             raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.sync_legacy_fields()
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         if self.intervention_type:

@@ -60,6 +60,7 @@ from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
+from apps.trainerlab.adjudication import adjudicate_intervention
 from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
     list_intervention_definitions,
@@ -988,6 +989,23 @@ def _deactivate_superseded(event: Any | None) -> None:
         event.save(update_fields=["is_active"])
 
 
+def _problem_identity_from_context(
+    *, march_category: str, label: str, fallback: str
+) -> dict[str, str]:
+    kind = {
+        "M": "hemorrhage",
+        "A": "airway_obstruction",
+        "R": "respiratory_distress",
+        "H1": "heat_illness",
+    }.get(march_category, fallback)
+    return {
+        "kind": kind,
+        "code": kind,
+        "title": label,
+        "display_name": label,
+    }
+
+
 def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
     old_problem: Problem | None = None
     if body.supersedes_event_id:
@@ -1012,15 +1030,25 @@ def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
         injury_kind=body.injury_kind,
         injury_description=body.injury_description,
     )
+    problem_identity = _problem_identity_from_context(
+        march_category=body.march_category,
+        label=body.injury_description,
+        fallback="open_wound",
+    )
     return Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=old_problem,
         cause_injury=new_injury,
         problem_kind=Problem.ProblemKind.INJURY,
+        kind=problem_identity["kind"],
+        code=problem_identity["code"],
+        title=problem_identity["title"],
+        display_name=problem_identity["display_name"],
         march_category=body.march_category,
         severity=body.severity,
         description=body.description,
+        anatomical_location=new_injury.anatomical_location,
     )
 
 
@@ -1047,14 +1075,24 @@ def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
         name=body.name,
         description=body.description,
     )
+    problem_identity = _problem_identity_from_context(
+        march_category=body.march_category,
+        label=body.name,
+        fallback="infectious_process",
+    )
     return Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=old_problem,
         cause_illness=new_illness,
         problem_kind=Problem.ProblemKind.ILLNESS,
+        kind=problem_identity["kind"],
+        code=problem_identity["code"],
+        title=problem_identity["title"],
+        display_name=problem_identity["display_name"],
         march_category=body.march_category,
         severity=body.severity,
+        description=body.description,
     )
 
 
@@ -1076,11 +1114,11 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         effectiveness=body.effectiveness,
         notes=body.notes,
         details_json=body.details.model_dump(exclude_none=True),
-        performed_by_role=body.performed_by_role,
+        initiated_by_type=body.initiated_by_type,
+        initiated_by_id=body.initiated_by_id,
     )
-    obj.sync_legacy_fields()
-    obj.full_clean()
     obj.save()
+    obj._adjudication_result = adjudicate_intervention(obj)
     return obj
 
 
@@ -1180,12 +1218,10 @@ def _inject_event_core(
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
 
-    if event_kind in {"injury", "illness"}:
-        event_type = "condition.created"
-    elif event_kind == "vital":
+    if event_kind == "vital":
         event_type = "vital.updated"
     elif event_kind == "intervention":
-        event_type = "intervention.recorded"
+        event_type = "intervention.created"
     elif event_kind == "note":
         event_type = "note.created"
     else:
@@ -1194,27 +1230,7 @@ def _inject_event_core(
     send_to_ai = bool(payload_json.get("send_to_ai", False))
     from apps.trainerlab.event_payloads import serialize_domain_event
 
-    if event_kind in {"injury", "illness"}:
-        # domain_event is a Problem for condition events
-        event_payload = serialize_domain_event(domain_event)
-    elif event_kind == "intervention":
-        event_payload = {
-            "domain_event_id": domain_event.id,
-            "domain_event_type": domain_event.__class__.__name__,
-            "source": domain_event.source,
-            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_id,
-            "intervention_type": getattr(domain_event, "intervention_type", "") or None,
-            "site_code": getattr(domain_event, "site_code", "") or None,
-            "code": getattr(domain_event, "code", ""),
-            "description": getattr(domain_event, "description", ""),
-            "target": getattr(domain_event, "target", ""),
-            "anatomic_location": getattr(domain_event, "anatomic_location", ""),
-            "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
-            "notes": getattr(domain_event, "notes", ""),
-            "performed_by_role": getattr(domain_event, "performed_by_role", ""),
-        }
-    elif event_kind == "note":
+    if event_kind == "note":
         event_payload = {
             "domain_event_id": domain_event.id,
             "domain_event_type": domain_event.__class__.__name__,
@@ -1225,21 +1241,53 @@ def _inject_event_core(
             "created_by_role": payload_json.get("performed_by_role", "instructor"),
         }
     else:
-        event_payload = {
-            "domain_event_id": domain_event.id,
-            "domain_event_type": domain_event.__class__.__name__,
-            "source": domain_event.source,
-            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_id,
-        }
-    emit_runtime_event(
-        session=session,
-        event_type=event_type,
-        payload=event_payload,
-        created_by=user,
-        correlation_id=correlation_id,
-        idempotency_key=f"{event_type}:{domain_event.id}",
-    )
+        event_payload = serialize_domain_event(domain_event)
+
+    if event_kind in {"injury", "illness"}:
+        cause = domain_event.cause
+        cause_event_type = "injury.created" if event_kind == "injury" else "illness.created"
+        emit_runtime_event(
+            session=session,
+            event_type=cause_event_type,
+            payload=serialize_domain_event(cause),
+            created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"{cause_event_type}:{cause.id}",
+        )
+        emit_runtime_event(
+            session=session,
+            event_type="problem.created",
+            payload=serialize_domain_event(domain_event),
+            created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"problem.created:{domain_event.id}",
+        )
+    else:
+        emit_runtime_event(
+            session=session,
+            event_type=event_type,
+            payload=event_payload,
+            created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"{event_type}:{domain_event.id}",
+        )
+
+    if event_kind == "intervention" and getattr(domain_event, "_adjudication_result", None):
+        adjudication_result = domain_event._adjudication_result
+        refreshed_problem = Problem.objects.filter(pk=domain_event.target_problem_id).first()
+        if refreshed_problem is not None and adjudication_result.changed:
+            emit_runtime_event(
+                session=session,
+                event_type=(
+                    "problem.resolved"
+                    if refreshed_problem.status == Problem.Status.RESOLVED
+                    else "problem.updated"
+                ),
+                payload=serialize_domain_event(refreshed_problem),
+                created_by=user,
+                correlation_id=correlation_id,
+                idempotency_key=f"problem.updated:post-intervention:{refreshed_problem.id}:{domain_event.id}",
+            )
     should_queue_runtime = session.status != SessionStatus.COMPLETED and (
         event_kind != "note" or send_to_ai
     )
@@ -1526,12 +1574,7 @@ def update_condition(
     body: ConditionControlUpdateIn,
 ) -> ConditionControlOut:
     """
-    Set the instructor-controlled treatment or resolution state of an Injury or Illness.
-
-    - `is_treated=true` → marks the condition as `controlled` (treatment applied)
-    - `is_resolved=true` → marks the condition as `resolved` (no longer active clinically)
-
-    Creates a superseding event record preserving full history.
+    Set the instructor-controlled treatment or resolution state of a Problem.
     """
     from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -1544,7 +1587,7 @@ def update_condition(
         condition = update_condition_control_state(
             session=session,
             condition_id=condition_id,
-            kind=body.kind,
+            kind="problem",
             is_treated=body.is_treated,
             is_resolved=body.is_resolved,
             correlation_id=correlation_id,
@@ -1552,29 +1595,12 @@ def update_condition(
     except DjangoValidationError as exc:
         raise HttpError(404, str(exc)) from None
 
-    is_treated = getattr(condition, "is_treated", False)
-    is_resolved = getattr(condition, "is_resolved", False)
-    if is_resolved:
-        control_state = "resolved"
-    elif is_treated:
-        control_state = "controlled"
-    else:
-        control_state = "uncontrolled"
-
-    if isinstance(condition, Injury):
-        label = condition.injury_description
-        kind = "injury"
-    else:
-        label = condition.name
-        kind = "illness"
-
     return ConditionControlOut(
-        condition_id=condition.id,
-        kind=kind,
-        is_treated=is_treated,
-        is_resolved=is_resolved,
-        control_state=control_state,
-        label=label,
+        problem_id=condition.id,
+        is_treated=condition.is_treated,
+        is_resolved=condition.is_resolved,
+        status=condition.status,
+        label=condition.display_name or condition.title,
     )
 
 

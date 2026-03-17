@@ -1,6 +1,9 @@
 # trainerlab/orca/instructions/initial.py
 
+from apps.trainerlab.cause_dictionary import build_cause_dictionary_instruction
 from apps.trainerlab.injury_dictionary import build_injury_codebook_instruction
+from apps.trainerlab.intervention_dictionary import list_intervention_definitions
+from apps.trainerlab.problem_dictionary import build_problem_dictionary_instruction
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
 
@@ -36,12 +39,28 @@ class InitialResponseMixin(NsMixin, BaseInstruction):
         "opening plus structured context about the environment, approximate location, scene or "
         "enemy threat if applicable, evacuation options if applicable, expected evacuation time "
         "if applicable, and any other special considerations that matter to the lane.\n\n"
-        "Then, generate the initial scenario by providing one or more conditions. "
-        "Each condition must include march_category (MARCH triage code) and "
-        "severity ('low'|'moderate'|'high'|'critical').\n"
-        "- For an injury: also provide injury_location (anatomic code), "
-        "injury_kind (mechanism code), and injury_description (brief text).\n"
-        "- For an illness: also provide name (illness name) and description (optional).\n\n"
+        "Then, generate explicit `causes`, `problems`, and `recommended_interventions`.\n"
+        "- Causes are immutable source records only. Use `cause_kind='injury'` or "
+        "`cause_kind='illness'` and do not embed problem lifecycle fields on causes.\n"
+        "- Problems are the actionable clinical entities. Every problem must reference exactly "
+        "one cause via `cause_ref`.\n"
+        "- One cause may create multiple problems.\n"
+        "- Recommended interventions are suggestions only. They must target a problem, not a cause.\n"
+        "- `performed_interventions` must be omitted or an empty list unless trusted system "
+        "context explicitly says a real intervention was already performed.\n"
+        "- Never state or imply that an intervention was performed unless the input explicitly "
+        "provides that action.\n"
+        "- Never mark a problem treated, controlled, or resolved because of an intervention "
+        "unless that intervention was explicitly provided and will be adjudicated by engine rules.\n\n"
+        "Prefer medically meaningful decomposition.\n"
+        "Good examples:\n"
+        "- Cause: GSW left thigh\n"
+        "- Problem: Massive hemorrhage from left thigh\n"
+        "- Recommended intervention: Tourniquet to left thigh\n"
+        "Bad examples:\n"
+        "- GSW treated with tourniquet\n"
+        "- Bleeding controlled\n"
+        "- Needle decompression performed\n\n"
         "Then, provide an initial set of vital sign measurements that match the patient's "
         "status clinically, including: "
         "heart rate, "
@@ -68,4 +87,15 @@ class InitialResponseMixin(NsMixin, BaseInstruction):
 @orca.instruction(order=15)
 class InjuryCodebookMixin(NsMixin, BaseInstruction):
     def render_instruction(self) -> str:
-        return build_injury_codebook_instruction()
+        interventions = ", ".join(
+            f"{definition.type_code}={definition.label}"
+            for definition in list_intervention_definitions()
+        )
+        return (
+            build_cause_dictionary_instruction()
+            + build_injury_codebook_instruction()
+            + build_problem_dictionary_instruction()
+            + "### Intervention Dictionary\n"
+            + "- Use canonical intervention kinds from this list when possible.\n"
+            + f"- Intervention kinds: {interventions}\n"
+        )

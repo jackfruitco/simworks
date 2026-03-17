@@ -8,9 +8,9 @@ Tests:
 5. Invalid envelope (missing event_type) is dropped
 """
 
+from datetime import datetime
 import json
 import uuid
-from datetime import datetime
 
 import pytest
 
@@ -157,19 +157,21 @@ class TestChatConsumerOutboxEventHandler:
         consumer.send = mock_send
 
         # Simulate outbox event from drain worker
-        await consumer.outbox_event({
-            "type": "outbox.event",
-            "event": {
-                "event_id": "test-event-123",
-                "event_type": "message.created",
-                "created_at": "2024-01-15T10:30:00Z",
-                "correlation_id": "corr-123",
-                "payload": {
-                    "message_id": 456,
-                    "content": "Hello from outbox",
+        await consumer.outbox_event(
+            {
+                "type": "outbox.event",
+                "event": {
+                    "event_id": "test-event-123",
+                    "event_type": "message.created",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "correlation_id": "corr-123",
+                    "payload": {
+                        "message_id": 456,
+                        "content": "Hello from outbox",
+                    },
                 },
-            },
-        })
+            }
+        )
 
         assert len(sent_messages) == 1
         sent_data = json.loads(sent_messages[0])
@@ -194,14 +196,16 @@ class TestChatConsumerOutboxEventHandler:
         consumer.send = mock_send
 
         # Invalid envelope - missing event_type
-        await consumer.outbox_event({
-            "type": "outbox.event",
-            "event": {
-                "event_id": "test-event-123",
-                # Missing event_type
-                "payload": {},
-            },
-        })
+        await consumer.outbox_event(
+            {
+                "type": "outbox.event",
+                "event": {
+                    "event_id": "test-event-123",
+                    # Missing event_type
+                    "payload": {},
+                },
+            }
+        )
 
         # Should NOT send anything
         assert len(sent_messages) == 0
@@ -220,10 +224,12 @@ class TestChatConsumerOutboxEventHandler:
         consumer.send = mock_send
 
         # Empty event
-        await consumer.outbox_event({
-            "type": "outbox.event",
-            "event": {},
-        })
+        await consumer.outbox_event(
+            {
+                "type": "outbox.event",
+                "event": {},
+            }
+        )
 
         # Should NOT send anything
         assert len(sent_messages) == 0
@@ -246,19 +252,21 @@ class TestNotificationsConsumerOutboxEventHandler:
         consumer.send = mock_send
 
         # Simulate outbox event
-        await consumer.outbox_event({
-            "type": "outbox.event",
-            "event": {
-                "event_id": "notif-event-123",
-                "event_type": "simulation.ended",
-                "created_at": "2024-01-15T11:00:00Z",
-                "correlation_id": None,
-                "payload": {
-                    "simulation_id": 789,
-                    "message": "Simulation ended",
+        await consumer.outbox_event(
+            {
+                "type": "outbox.event",
+                "event": {
+                    "event_id": "notif-event-123",
+                    "event_type": "simulation.ended",
+                    "created_at": "2024-01-15T11:00:00Z",
+                    "correlation_id": None,
+                    "payload": {
+                        "simulation_id": 789,
+                        "message": "Simulation ended",
+                    },
                 },
-            },
-        })
+            }
+        )
 
         assert len(sent_messages) == 1
         sent_data = json.loads(sent_messages[0])
@@ -281,13 +289,15 @@ class TestNotificationsConsumerOutboxEventHandler:
         consumer.send = mock_send
 
         # Invalid envelope
-        await consumer.outbox_event({
-            "type": "outbox.event",
-            "event": {
-                "event_id": "test-123",
-                # Missing event_type
-            },
-        })
+        await consumer.outbox_event(
+            {
+                "type": "outbox.event",
+                "event": {
+                    "event_id": "test-123",
+                    # Missing event_type
+                },
+            }
+        )
 
         assert len(sent_messages) == 0
 

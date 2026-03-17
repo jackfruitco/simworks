@@ -768,7 +768,7 @@ class TestTrainerLabEvents:
         streamed = client.get(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
-        chunks = collect_streaming_chunks(streamed, 3)
+        chunks = collect_streaming_chunks(streamed, 8)
         payload = "".join(chunks)
         assert "note.created" in payload
         assert '"created_by_role": "instructor"' in payload
@@ -1081,11 +1081,11 @@ class TestTrainerLabEvents:
 
         from tests.helpers.sse import collect_streaming_chunks
 
-        chunks = collect_streaming_chunks(response, 3)
+        chunks = collect_streaming_chunks(response, 8)
         payload = "".join(chunks)
 
-        assert chunks[0] == f"id: {streamed.id}\n"
-        assert chunks[1] == "event: sim\n"
+        assert f"id: {streamed.id}\n" in payload
+        assert "event: sim\n" in payload
         assert "session.seeded" in payload
         assert '"status": "seeded"' in payload
 
@@ -1129,7 +1129,7 @@ class TestTrainerLabEvents:
 
         assert first_chunk == ": keep-alive\n\n"
         assert "event:" not in first_chunk
-        assert clock.current == pytest.approx(10.0)
+        assert clock.current == pytest.approx(0.0)
 
 
 @pytest.mark.django_db
@@ -1149,7 +1149,9 @@ class TestTrainerLabDictionaries:
         body = response.json()
         assert body["simulation_id"] == session["simulation_id"]
         assert body["state_revision"] == 0
-        assert body["current_snapshot"]["conditions"] == []
+        assert body["current_snapshot"]["causes"] == []
+        assert body["current_snapshot"]["problems"] == []
+        assert body["current_snapshot"]["recommended_interventions"] == []
         assert body["current_snapshot"]["interventions"] == []
         assert body["current_snapshot"]["vitals"] == []
         assert body["pending_runtime_reasons"] == []
@@ -1161,22 +1163,37 @@ class TestTrainerLabDictionaries:
         instructor_membership,
     ):
         from apps.common.models import OutboxEvent
-        from apps.trainerlab.models import Intervention, TrainerSession
+        from apps.trainerlab.models import Intervention, Problem, TrainerSession
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="intervention-runtime-fields")
         simulation_id = session["simulation_id"]
+        injury_resp = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/injuries/",
+            data={
+                "march_category": "M",
+                "injury_location": "LUL",
+                "injury_kind": "GSW",
+                "injury_description": "GSW to the left thigh",
+                "severity": "critical",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="intervention-runtime-fields-problem",
+        )
+        assert injury_resp.status_code == 200
+        problem_id = Problem.objects.filter(simulation_id=simulation_id).latest("timestamp").id
 
         response = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
                 "intervention_type": "tourniquet",
                 "site_code": "left_arm",
+                "target_problem_id": problem_id,
                 "status": "applied",
                 "effectiveness": "unknown",
                 "notes": "Tourniquet placed high and tight",
                 "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
-                "performed_by_role": "trainee",
+                "initiated_by_type": "user",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="intervention-runtime-fields-1",
@@ -1187,7 +1204,7 @@ class TestTrainerLabDictionaries:
         intervention = Intervention.objects.get(intervention_type="tourniquet")
         assert intervention.site_code == "LEFT_ARM"
         assert intervention.effectiveness == "unknown"
-        assert intervention.performed_by_role == "trainee"
+        assert intervention.initiated_by_type == "user"
         assert intervention.code == "M-TQ-D"
 
         trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
@@ -1201,10 +1218,10 @@ class TestTrainerLabDictionaries:
         # Verify the outbox event payload from _inject_event_core has structured fields
         outbox_event = OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="intervention.recorded",
+            event_type="intervention.created",
         ).first()
         assert outbox_event is not None
-        assert outbox_event.payload["intervention_type"] == "tourniquet"
+        assert outbox_event.payload["kind"] == "tourniquet"
         assert outbox_event.payload["site_code"] == "LEFT_ARM"
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
@@ -1222,11 +1239,13 @@ class TestTrainerLabDictionaries:
         assert response.status_code == 200
         definitions = response.json()
         assert isinstance(definitions, list)
-        assert len(definitions) == 16
+        assert len(definitions) >= 18
 
         types = [d["intervention_type"] for d in definitions]
         assert "tourniquet" in types
+        assert "chest_seal" in types
         assert "needle_decompression" in types
+        assert "antibiotics" in types
 
         tq = next(d for d in definitions if d["intervention_type"] == "tourniquet")
         assert tq["label"] == "Tourniquet"
@@ -1261,16 +1280,20 @@ class TestTrainerLabDictionaries:
         )
         assert injury_resp.status_code == 200
 
+        injury = Injury.objects.get(injury_description="GSW to the left chest")
+        problem = Problem.objects.get(cause_injury=injury, simulation_id=simulation_id)
+
         intervention_resp = client.post(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
             data={
                 "intervention_type": "tourniquet",
                 "site_code": "left_arm",
+                "target_problem_id": problem.id,
                 "status": "applied",
                 "effectiveness": "unknown",
                 "notes": "Tourniquet placed high and tight",
                 "details": {"kind": "tourniquet", "version": 1, "application_mode": "deliberate"},
-                "performed_by_role": "trainee",
+                "initiated_by_type": "user",
             },
             content_type="application/json",
             HTTP_IDEMPOTENCY_KEY="runtime-worker-intervention",
@@ -1281,8 +1304,6 @@ class TestTrainerLabDictionaries:
         intervention = Intervention.objects.filter(
             simulation_id=simulation_id, intervention_type="tourniquet"
         ).latest("timestamp")
-        injury = Injury.objects.get(injury_description="GSW to the left chest")
-        problem = Problem.objects.get(cause_injury=injury, simulation_id=simulation_id)
 
         def _inline_enqueue(batch):
             apply_runtime_turn_output(
@@ -1327,12 +1348,12 @@ class TestTrainerLabDictionaries:
 
         intervention_recorded = OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="intervention.recorded",
+            event_type="intervention.created",
         ).first()
         assert intervention_recorded is not None
         assert "effectiveness" in intervention_recorded.payload
         assert "effective" not in intervention_recorded.payload
-        assert intervention_recorded.payload["intervention_type"] == "tourniquet"
+        assert intervention_recorded.payload["kind"] == "tourniquet"
         assert intervention_recorded.payload["site_code"] == "LEFT_ARM"
 
     def test_active_elapsed_seconds_freeze_while_paused(

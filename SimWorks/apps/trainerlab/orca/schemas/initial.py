@@ -1,12 +1,16 @@
 # trainerlab/orca/schemas/initial.py
 
+from __future__ import annotations
+
 import logging
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 
 from asgiref.sync import sync_to_async
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 
+from apps.trainerlab.adjudication import adjudicate_intervention
 from apps.trainerlab.event_payloads import serialize_domain_event
+from apps.trainerlab.recommendations import validate_and_normalize_recommendation
 from apps.trainerlab.schemas import ScenarioBrief
 from orchestrai.types import StrictBaseModel
 
@@ -16,9 +20,12 @@ from .types import (
     BloodGlucoseLevel,
     BloodPressure,
     HeartRate,
-    Illness,
-    Injury,
+    IllnessSeed,
+    InjurySeed,
+    PerformedInterventionSeed,
+    ProblemSeed,
     PulseAssessmentItem,
+    RecommendedInterventionSeed,
     RespiratoryRate,
 )
 
@@ -31,7 +38,11 @@ if TYPE_CHECKING:
     from orchestrai_django.persistence import PersistContext
 
 
-def _initial_extra(context: "PersistContext") -> dict[str, Any]:
+async def _passthrough(value: Any, _context: PersistContext) -> Any:
+    return value
+
+
+def _initial_extra(context: PersistContext) -> dict[str, Any]:
     return {
         "origin": "initial_scenario",
         "call_id": str(context.call_id),
@@ -51,17 +62,8 @@ class MeasurementSchemaBlock(StrictBaseModel):
         serialization_alias="etco2",
     )
 
-    __persist__: ClassVar[dict[str, None]] = {
-        "heart_rate": None,
-        "respiratory_rate": None,
-        "spo2": None,
-        "blood_glucose_level": None,
-        "blood_pressure": None,
-        "etco2": None,
-    }
 
-
-ConditionSchema = Annotated[Injury | Illness, Field(discriminator="kind")]
+CauseSchema = Annotated[InjurySeed | IllnessSeed, Field(discriminator="cause_kind")]
 
 
 class InitialScenarioSchema(StrictBaseModel):
@@ -74,11 +76,13 @@ class InitialScenarioSchema(StrictBaseModel):
             "high-level environmental details."
         ),
     )
-    conditions: list[ConditionSchema] = Field(
+    causes: list[CauseSchema] = Field(..., min_length=1, description="Immutable cause records")
+    problems: list[ProblemSeed] = Field(
         ...,
-        min_length=1,
-        description="List of injuries or illnesses",
+        description="Mutable actionable clinical problems, each linked to exactly one cause.",
     )
+    recommended_interventions: list[RecommendedInterventionSeed] = Field(default_factory=list)
+    performed_interventions: list[PerformedInterventionSeed] = Field(default_factory=list)
     measurements: MeasurementSchemaBlock = Field(..., description="Measurement schema block")
     pulses: list[PulseAssessmentItem] = Field(
         ...,
@@ -91,97 +95,324 @@ class InitialScenarioSchema(StrictBaseModel):
         ),
     )
 
-    __persist__: ClassVar[dict[str, None]] = {
-        "scenario_brief": None,
-        "conditions": None,
-        "measurements": None,
-        "pulses": None,
+    __persist__: ClassVar[dict[str, Any]] = {
+        "scenario_brief": _passthrough,
+        "causes": _passthrough,
+        "problems": _passthrough,
+        "recommended_interventions": _passthrough,
+        "performed_interventions": _passthrough,
+        "measurements": _passthrough,
+        "pulses": _passthrough,
     }
-    __persist_primary__ = "conditions"
 
-    async def post_persist(self, results: dict[str, Any], context: "PersistContext") -> None:
+    @model_validator(mode="after")
+    def _validate_cross_references(self):
+        cause_ids = [item.temp_id for item in self.causes]
+        if len(cause_ids) != len(set(cause_ids)):
+            raise ValueError("Cause temp_id values must be unique.")
+
+        problem_ids = [item.temp_id for item in self.problems]
+        if len(problem_ids) != len(set(problem_ids)):
+            raise ValueError("Problem temp_id values must be unique.")
+
+        recommendation_ids = [item.temp_id for item in self.recommended_interventions]
+        if len(recommendation_ids) != len(set(recommendation_ids)):
+            raise ValueError("Recommended intervention temp_id values must be unique.")
+
+        cause_refs = {item.temp_id for item in self.causes}
+        recommendation_refs = {item.temp_id for item in self.recommended_interventions}
+        problem_refs = {item.temp_id for item in self.problems}
+
+        for problem in self.problems:
+            if problem.cause_ref not in cause_refs:
+                raise ValueError(
+                    f"Problem {problem.temp_id!r} references unknown cause {problem.cause_ref!r}."
+                )
+            missing_recommendations = [
+                ref for ref in problem.recommendation_refs if ref not in recommendation_refs
+            ]
+            if missing_recommendations:
+                raise ValueError(
+                    f"Problem {problem.temp_id!r} references unknown recommendations: "
+                    f"{', '.join(missing_recommendations)}."
+                )
+
+        for recommendation in self.recommended_interventions:
+            if recommendation.target_problem_ref not in problem_refs:
+                raise ValueError(
+                    f"Recommendation {recommendation.temp_id!r} references unknown problem "
+                    f"{recommendation.target_problem_ref!r}."
+                )
+            if (
+                recommendation.target_cause_ref
+                and recommendation.target_cause_ref not in cause_refs
+            ):
+                raise ValueError(
+                    f"Recommendation {recommendation.temp_id!r} references unknown cause "
+                    f"{recommendation.target_cause_ref!r}."
+                )
+
+        for performed in self.performed_interventions:
+            if performed.target_problem_ref not in problem_refs:
+                raise ValueError(
+                    "Performed intervention references an unknown target_problem_ref: "
+                    f"{performed.target_problem_ref!r}."
+                )
+        return self
+
+    async def post_persist(self, _results: dict[str, Any], context: PersistContext) -> None:
         from apps.common.outbox.helpers import broadcast_domain_objects
-        from apps.trainerlab.models import EventSource, Problem
+        from apps.trainerlab.models import (
+            ETCO2 as ETCO2Model,
+            SPO2 as SPO2Model,
+            BloodGlucoseLevel as BloodGlucoseModel,
+            BloodPressure as BloodPressureModel,
+            EventSource,
+            HeartRate as HeartRateModel,
+            Illness,
+            Injury,
+            Intervention,
+            Problem,
+            PulseAssessment,
+            RecommendedIntervention,
+            RespiratoryRate as RespiratoryRateModel,
+            ScenarioBrief as ScenarioBriefModel,
+        )
         from apps.trainerlab.services import refresh_projection_from_domain_state
 
-        scenario_brief_obj = results.get("scenario_brief")
-        cause_objects = results.get("conditions", [])
-        measurements = results.get("measurements", {})
-        pulses = results.get("pulses", [])
+        allow_seeded_performed = bool(context.extra.get("allow_seeded_performed_interventions"))
+        if self.performed_interventions and not allow_seeded_performed:
+            raise ValueError(
+                "Initial scenario generation may not create performed interventions unless the "
+                "context explicitly allows trusted seeded interventions."
+            )
 
+        scenario_brief_payload = self.scenario_brief.model_dump(mode="json")
+        scenario_brief_obj = await ScenarioBriefModel.objects.acreate(
+            simulation_id=context.simulation_id,
+            source=EventSource.AI,
+            **scenario_brief_payload,
+        )
+
+        measurement_payload = self.measurements.model_dump(mode="json")
+        vital_model_map = {
+            "heart_rate": HeartRateModel,
+            "respiratory_rate": RespiratoryRateModel,
+            "spo2": SPO2Model,
+            "blood_glucose_level": BloodGlucoseModel,
+            "blood_pressure": BloodPressureModel,
+            "etco2": ETCO2Model,
+        }
         vital_objects: list[Any] = []
-        if isinstance(measurements, dict):
-            for key in (
-                "heart_rate",
-                "respiratory_rate",
-                "spo2",
-                "blood_glucose_level",
-                "blood_pressure",
-                "etco2",
-            ):
-                obj = measurements.get(key)
-                if obj is not None:
-                    vital_objects.append(obj)
+        for key, model_cls in vital_model_map.items():
+            payload = dict(measurement_payload[key])
+            vital_objects.append(
+                await model_cls.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.AI,
+                    **payload,
+                )
+            )
+
+        pulse_objects = [
+            await PulseAssessment.objects.acreate(
+                simulation_id=context.simulation_id,
+                source=EventSource.AI,
+                **pulse_item.model_dump(mode="json"),
+            )
+            for pulse_item in self.pulses
+        ]
+
+        causes_by_ref: dict[str, Injury | Illness] = {}
+        injury_objects: list[Injury] = []
+        illness_objects: list[Illness] = []
+        for cause_seed in self.causes:
+            if isinstance(cause_seed, InjurySeed):
+                cause_obj = await Injury.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.AI,
+                    injury_location=cause_seed.injury_location,
+                    injury_kind=cause_seed.injury_kind,
+                    injury_description=cause_seed.injury_description,
+                    kind=cause_seed.kind,
+                    code=cause_seed.code,
+                    slug=cause_seed.kind,
+                    title=cause_seed.title,
+                    display_name=cause_seed.display_name,
+                    description=cause_seed.description,
+                    anatomical_location=cause_seed.anatomical_location,
+                    laterality=cause_seed.laterality,
+                    metadata_json=cause_seed.metadata,
+                )
+                injury_objects.append(cause_obj)
+            else:
+                cause_obj = await Illness.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.AI,
+                    name=cause_seed.name,
+                    description=cause_seed.description,
+                    kind=cause_seed.kind,
+                    code=cause_seed.code,
+                    slug=cause_seed.kind,
+                    title=cause_seed.title,
+                    display_name=cause_seed.display_name,
+                    anatomical_location=cause_seed.anatomical_location,
+                    laterality=cause_seed.laterality,
+                    metadata_json=cause_seed.metadata,
+                )
+                illness_objects.append(cause_obj)
+            causes_by_ref[cause_seed.temp_id] = cause_obj
+
+        problems_by_ref: dict[str, Problem] = {}
+        problem_objects: list[Problem] = []
+        for problem_seed in self.problems:
+            cause_obj = causes_by_ref[problem_seed.cause_ref]
+            problem = await Problem.objects.acreate(
+                simulation_id=context.simulation_id,
+                source=EventSource.AI,
+                cause_injury=cause_obj if isinstance(cause_obj, Injury) else None,
+                cause_illness=cause_obj if isinstance(cause_obj, Illness) else None,
+                problem_kind=(
+                    Problem.ProblemKind.INJURY
+                    if isinstance(cause_obj, Injury)
+                    else Problem.ProblemKind.ILLNESS
+                ),
+                kind=problem_seed.kind,
+                code=problem_seed.code,
+                slug=problem_seed.kind,
+                title=problem_seed.title,
+                display_name=problem_seed.display_name,
+                description=problem_seed.description,
+                march_category=problem_seed.march_category or Problem.MARCHCategory.C,
+                severity=problem_seed.severity,
+                anatomical_location=problem_seed.anatomical_location,
+                laterality=problem_seed.laterality,
+                status=problem_seed.initial_status,
+            )
+            problem_objects.append(problem)
+            problems_by_ref[problem_seed.temp_id] = problem
+
+        recommendation_objects: list[RecommendedIntervention] = []
+        for recommendation_seed in self.recommended_interventions:
+            problem = problems_by_ref[recommendation_seed.target_problem_ref]
+            normalization = validate_and_normalize_recommendation(
+                problem=problem,
+                raw_kind=recommendation_seed.intervention_kind,
+                raw_title=recommendation_seed.title,
+                raw_site=recommendation_seed.site,
+                rationale=recommendation_seed.rationale,
+                priority=recommendation_seed.priority,
+                warnings=recommendation_seed.warnings,
+                contraindications=recommendation_seed.contraindications,
+                metadata=recommendation_seed.metadata,
+            )
+            if not normalization.accepted:
+                logger.info(
+                    "Rejected TrainerLab recommendation %s for problem %s: %s",
+                    recommendation_seed.temp_id,
+                    problem.id,
+                    normalization.metadata.get("rejection_reason"),
+                )
+                continue
+            cause_obj = (
+                causes_by_ref[recommendation_seed.target_cause_ref]
+                if recommendation_seed.target_cause_ref
+                else problem.cause
+            )
+            recommendation = await RecommendedIntervention.objects.acreate(
+                simulation_id=context.simulation_id,
+                source=EventSource.AI,
+                kind=normalization.kind,
+                code=normalization.code,
+                slug=normalization.slug,
+                title=normalization.title,
+                display_name=normalization.display_name,
+                description="",
+                target_problem=problem,
+                target_injury=cause_obj if isinstance(cause_obj, Injury) else None,
+                target_illness=cause_obj if isinstance(cause_obj, Illness) else None,
+                recommendation_source=normalization.recommendation_source,
+                validation_status=normalization.validation_status,
+                normalized_kind=normalization.kind,
+                normalized_code=normalization.code,
+                rationale=normalization.rationale,
+                priority=normalization.priority,
+                site_code=normalization.site_code,
+                site_label=normalization.site_label,
+                contraindications_json=normalization.contraindications,
+                warnings_json=normalization.warnings,
+                metadata_json=normalization.metadata,
+            )
+            recommendation_objects.append(recommendation)
+
+        intervention_objects: list[Intervention] = []
+        for performed_seed in self.performed_interventions:
+            target_problem = problems_by_ref[performed_seed.target_problem_ref]
+            intervention = await Intervention.objects.acreate(
+                simulation_id=context.simulation_id,
+                source=EventSource.SYSTEM,
+                intervention_type=performed_seed.intervention_kind,
+                site_code=performed_seed.site,
+                target_problem=target_problem,
+                notes=performed_seed.notes,
+                details_json=performed_seed.details,
+                initiated_by_type=performed_seed.initiated_by_type,
+                initiated_by_id=performed_seed.initiated_by_id,
+            )
+            adjudicate_intervention(intervention)
+            intervention_objects.append(intervention)
 
         extra = _initial_extra(context)
 
-        # Create Problem records for each persisted cause (Injury/Illness).
-        # The Pydantic schema items carry march_category and severity which are
-        # Problem-level attributes; they were intentionally ignored by the ORM
-        # auto-mapper when creating the cause records.
-        problem_objects: list[Any] = []
-        cause_by_problem_id: dict[Any, Any] = {}
-        for schema_item, cause_obj in zip(self.conditions, cause_objects, strict=False):
-            problem_kind = schema_item.kind  # "injury" or "illness"
-            from apps.trainerlab.models import Injury as InjuryModel
+        await broadcast_domain_objects(
+            event_type="trainerlab.scenario_brief.created",
+            objects=[scenario_brief_obj],
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
 
-            cause_injury = cause_obj if isinstance(cause_obj, InjuryModel) else None
-            cause_illness = cause_obj if not isinstance(cause_obj, InjuryModel) else None
-            problem = await Problem.objects.acreate(
-                simulation_id=context.simulation_id,
-                source=EventSource.SYSTEM,
-                cause_injury=cause_injury,
-                cause_illness=cause_illness,
-                problem_kind=problem_kind,
-                march_category=schema_item.march_category,
-                severity=schema_item.severity,
-            )
-            problem_objects.append(problem)
-            cause_by_problem_id[problem.id] = cause_obj
-
-        if scenario_brief_obj is not None:
-            await broadcast_domain_objects(
-                event_type="trainerlab.scenario_brief.created",
-                objects=[scenario_brief_obj],
-                context=context,
-                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
-            )
-
-        if problem_objects:
-            await broadcast_domain_objects(
-                event_type="trainerlab.condition.created",
-                objects=problem_objects,
-                context=context,
-                payload_builder=lambda obj: serialize_domain_event(
-                    obj, extra=extra, cause=cause_by_problem_id.get(obj.id)
-                ),
-            )
-
-        if vital_objects:
-            await broadcast_domain_objects(
-                event_type="trainerlab.vital.created",
-                objects=vital_objects,
-                context=context,
-                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
-            )
-
-        if pulses:
-            await broadcast_domain_objects(
-                event_type="trainerlab.pulse.created",
-                objects=pulses,
-                context=context,
-                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
-            )
+        await broadcast_domain_objects(
+            event_type="injury.created",
+            objects=injury_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="illness.created",
+            objects=illness_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="problem.created",
+            objects=problem_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="recommended_intervention.created",
+            objects=recommendation_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="intervention.created",
+            objects=intervention_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="trainerlab.vital.created",
+            objects=vital_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="trainerlab.pulse.created",
+            objects=pulse_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
 
         await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(
             simulation_id=context.simulation_id,

@@ -66,23 +66,57 @@ def _make_initial_payload() -> dict:
             "evacuation_time": "20 minutes",
             "special_considerations": [],
         },
-        "conditions": [
+        "causes": [
             {
-                "kind": "injury",
-                "march_category": "M",
-                "severity": "moderate",
+                "temp_id": "cause_scalp_laceration",
+                "cause_kind": "injury",
+                "kind": "laceration",
+                "code": "LAC",
+                "title": "Scalp laceration",
+                "display_name": "Scalp laceration",
+                "description": "Scalp laceration with active bleeding",
+                "anatomical_location": "Left anterior head",
+                "laterality": "left",
                 "injury_location": "HLA",
                 "injury_kind": "LAC",
                 "injury_description": "Scalp laceration with active bleeding",
             },
             {
-                "kind": "illness",
+                "temp_id": "cause_heat_exhaustion",
+                "cause_kind": "illness",
+                "kind": "heat_illness",
+                "code": "HEAT_ILLNESS",
+                "title": "Heat exhaustion",
+                "display_name": "Heat exhaustion",
                 "name": "Heat exhaustion",
                 "description": "Signs of heat stress present",
-                "march_category": "H1",
-                "severity": "moderate",
             },
         ],
+        "problems": [
+            {
+                "temp_id": "problem_scalp_bleeding",
+                "kind": "hemorrhage",
+                "code": "hemorrhage",
+                "title": "Scalp hemorrhage",
+                "display_name": "Scalp hemorrhage",
+                "description": "Moderate scalp bleeding",
+                "severity": "moderate",
+                "march_category": "M",
+                "cause_ref": "cause_scalp_laceration",
+            },
+            {
+                "temp_id": "problem_heat_illness",
+                "kind": "heat_illness",
+                "code": "heat_illness",
+                "title": "Heat exhaustion",
+                "display_name": "Heat exhaustion",
+                "description": "Signs of heat stress present",
+                "severity": "moderate",
+                "march_category": "H1",
+                "cause_ref": "cause_heat_exhaustion",
+            },
+        ],
+        "recommended_interventions": [],
         "measurements": {
             "heart_rate": {**base, "min_value": 110, "max_value": 130},
             "respiratory_rate": {**base, "min_value": 18, "max_value": 24},
@@ -147,8 +181,8 @@ class TestGenerateInitialScenarioSchemaValid:
 
 @pytest.mark.django_db(transaction=True)
 class TestSeededSessionEmitsEvents:
-    def test_seeded_session_emits_vitals_and_conditions(self, user, monkeypatch):
-        """create_session_with_initial_generation must emit vital + condition events."""
+    def test_seeded_session_emits_vitals_causes_and_problems(self, user, monkeypatch):
+        """create_session_with_initial_generation must emit vital + cause + problem events."""
         from apps.trainerlab.models import RuntimeEvent
 
         simulation_id_holder = [None]
@@ -179,16 +213,27 @@ class TestSeededSessionEmitsEvents:
             simulation_id=session.simulation_id,
             event_type="vital.created",
         ).count()
-        condition_events = RuntimeEvent.objects.filter(
+        cause_events = (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="injury.created",
+            ).count()
+            + RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="illness.created",
+            ).count()
+        )
+        problem_events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="condition.created",
+            event_type="problem.created",
         ).count()
 
         assert vital_events >= 1, "At least one vital event must exist after seeding"
-        assert condition_events >= 1, "At least one condition event must exist after seeding"
+        assert cause_events >= 1, "At least one cause event must exist after seeding"
+        assert problem_events >= 1, "At least one problem event must exist after seeding"
 
     def test_seeded_session_outbox_events_queued(self, user, monkeypatch):
-        """Outbox must have at least vital + condition events queued."""
+        """Outbox must have at least vital + cause/problem events queued."""
         from apps.common.models import OutboxEvent
 
         simulation_id_holder = [None]
@@ -282,7 +327,7 @@ class TestEmitSeededVitalEvents:
         assert events.count() >= 1
 
     def test_emits_one_event_per_condition(self, user):
-        """_emit_seeded_condition_events creates RuntimeEvent per injury/illness."""
+        """_emit_seeded_condition_events creates RuntimeEvent per cause/problem."""
         from asgiref.sync import async_to_sync
 
         from apps.trainerlab.models import RuntimeEvent
@@ -303,11 +348,22 @@ class TestEmitSeededVitalEvents:
 
         _emit_seeded_condition_events(session)
 
-        events = RuntimeEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type="condition.created",
+        cause_events = (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="injury.created",
+            ).count()
+            + RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="illness.created",
+            ).count()
         )
-        assert events.count() >= 1
+        problem_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type="problem.created",
+        ).count()
+        assert cause_events >= 1
+        assert problem_events >= 1
 
 
 # ---------------------------------------------------------------------------

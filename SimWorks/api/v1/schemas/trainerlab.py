@@ -162,7 +162,7 @@ class InterventionCreateIn(BaseModel):
         ...,
         description="Intervention site code or friendly label, normalized per intervention type",
     )
-    target_problem_id: int | None = None
+    target_problem_id: int
     status: Literal["applied", "adjusted", "reassessed", "removed"] = "applied"
     effectiveness: Literal[
         "unknown",
@@ -177,7 +177,8 @@ class InterventionCreateIn(BaseModel):
             "Typed intervention-specific details. `details.kind` must match `intervention_type`."
         ),
     )
-    performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
+    initiated_by_type: Literal["user", "instructor", "system"] = "user"
+    initiated_by_id: int | None = None
     supersedes_event_id: int | None = None
 
     @field_validator("intervention_type")
@@ -206,7 +207,7 @@ class InterventionCreateIn(BaseModel):
 class SimulationNoteCreateIn(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     send_to_ai: bool = False
-    performed_by_role: Literal["trainee", "instructor", "ai"] = "instructor"
+    performed_by_role: Literal["trainee", "instructor", "system"] = "instructor"
 
     @field_validator("content")
     @classmethod
@@ -256,34 +257,78 @@ class RunSummaryOut(BaseModel):
     ai_debrief: dict[str, Any] | None = None
 
 
-class RuntimeConditionStateOut(BaseModel):
-    domain_event_id: int | None = None
-    kind: Literal["injury", "illness", "other"]
-    label: str
-    status: str
+class RuntimeCauseStateOut(BaseModel):
+    id: int
+    cause_kind: Literal["injury", "illness"]
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    anatomical_location: str | None = None
+    laterality: str | None = None
+    recommended_interventions: list[dict[str, Any]] = Field(default_factory=list)
     source: str | None = None
     timestamp: str | None = None
-    march_category: str | None = None
-    injury_location: str | None = None
-    injury_kind: str | None = None
+
+
+class RecommendedInterventionStateOut(BaseModel):
+    recommendation_id: int
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    target_problem_id: int
+    target_cause_id: int | None = None
+    target_cause_kind: Literal["injury", "illness"] | None = None
+    recommendation_source: Literal["ai", "rules", "merged"]
+    validation_status: Literal["accepted", "normalized", "downgraded", "rejected"]
+    normalized_kind: str
+    normalized_code: str
+    rationale: str = ""
+    priority: int | None = None
+    site_code: str | None = None
+    site_label: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    contraindications: list[str] = Field(default_factory=list)
+
+
+class RuntimeProblemStateOut(BaseModel):
+    problem_id: int
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
     description: str | None = None
     severity: str | None = None
-    is_treated: bool = False
-    is_resolved: bool = False
-    control_state: str = "uncontrolled"
+    march_category: str | None = None
+    anatomical_location: str | None = None
+    laterality: str | None = None
+    status: Literal["active", "treated", "controlled", "resolved"]
+    treated_at: str | None = None
+    controlled_at: str | None = None
+    resolved_at: str | None = None
+    cause_id: int
+    cause_kind: Literal["injury", "illness"]
+    recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
+    source: str | None = None
+    timestamp: str | None = None
 
 
 class RuntimeInterventionStateOut(BaseModel):
-    domain_event_id: int | None = None
-    intervention_type: str | None = None
+    intervention_id: int
+    kind: str
+    code: str
+    title: str
     site_code: str | None = None
     effectiveness: str = "unknown"
     notes: str = ""
-    code: str = ""
-    description: str = ""
-    target: str = ""
-    anatomic_location: str = ""
-    performed_by_role: str = "trainee"
+    target_problem_id: int | None = None
+    initiated_by_type: Literal["user", "instructor", "system"]
+    initiated_by_id: int | None = None
     status: str = "active"
     clinical_effect: str = ""
     source: str | None = None
@@ -311,9 +356,12 @@ class RuntimeVitalStateOut(BaseModel):
 
 
 class TrainerRuntimeSnapshotOut(BaseModel):
-    conditions: list[RuntimeConditionStateOut] = Field(default_factory=list)
+    causes: list[RuntimeCauseStateOut] = Field(default_factory=list)
+    problems: list[RuntimeProblemStateOut] = Field(default_factory=list)
+    recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
     interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
     vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
+    pulses: list[dict[str, Any]] = Field(default_factory=list)
     patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
 
 
@@ -467,7 +515,6 @@ class InterventionDictionaryItemOut(BaseModel):
 
 
 class ConditionControlUpdateIn(BaseModel):
-    kind: Literal["injury", "illness"]
     is_treated: bool | None = None
     is_resolved: bool | None = None
 
@@ -479,11 +526,10 @@ class ConditionControlUpdateIn(BaseModel):
 
 
 class ConditionControlOut(BaseModel):
-    condition_id: int
-    kind: Literal["injury", "illness"]
+    problem_id: int
     is_treated: bool
     is_resolved: bool
-    control_state: Literal["uncontrolled", "controlled", "resolved"]
+    status: Literal["active", "treated", "controlled", "resolved"]
     label: str
 
 

@@ -46,13 +46,12 @@ def test_trainerlab_event_contract_includes_friendly_labels():
     assert "injury_kind_label?: string;" in source
     assert "intervention_label?: string;" in source
     assert "site_label?: string;" in source
-    assert "details: InterventionDetails;" in source
-    assert "type: 'trainerlab.event.created';" in source
-    assert "type: 'trainerlab.condition.created';" in source
-    assert "march_category: string;" in source
-    assert "injury_location?: string;" in source
-    assert "injury_kind?: string;" in source
-    assert "intervention_code?: string;" not in source
-    assert "legacy_code?: string;" not in source
-    assert "type: 'injury.created';" not in source
-    assert "type: 'intervention.created';" not in source
+    assert "type: 'injury.created';" in source
+    assert "type: 'problem.created';" in source
+    assert "type: 'recommended_intervention.created'" in source
+    assert "type: 'intervention.created' | 'intervention.updated';" in source
+    assert "cause_kind: 'injury' | 'illness';" in source
+    assert "recommended_interventions?: TrainerLabRecommendedInterventionFields[];" in source
+    assert "initiated_by_type: 'user' | 'instructor' | 'system';" in source
+    assert "type: 'trainerlab.condition.created';" not in source
+    assert "type: 'trainerlab.event.created';" not in source

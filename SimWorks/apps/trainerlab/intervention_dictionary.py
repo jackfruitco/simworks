@@ -128,6 +128,16 @@ class ChestTubeDetails(InterventionDetailsBase):
     version: Literal[1] = 1
 
 
+class ChestSealDetails(InterventionDetailsBase):
+    kind: Literal["chest_seal"] = "chest_seal"
+    version: Literal[1] = 1
+
+
+class AntibioticsDetails(InterventionDetailsBase):
+    kind: Literal["antibiotics"] = "antibiotics"
+    version: Literal[1] = 1
+
+
 @dataclass(frozen=True)
 class InterventionDefinition:
     type_code: str
@@ -210,6 +220,18 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         sites=(("ORAL", "Oral"),),
         details_model=OropharyngealAirwayDetails,
         legacy_code_map="A-OPA",
+    ),
+    InterventionDefinition(
+        type_code="chest_seal",
+        label="Chest Seal",
+        sites=(
+            ("LEFT_ANTERIOR_CHEST", "Left Anterior Chest"),
+            ("RIGHT_ANTERIOR_CHEST", "Right Anterior Chest"),
+            ("LEFT_POSTERIOR_CHEST", "Left Posterior Chest"),
+            ("RIGHT_POSTERIOR_CHEST", "Right Posterior Chest"),
+        ),
+        details_model=ChestSealDetails,
+        legacy_code_map="R-CS",
     ),
     InterventionDefinition(
         type_code="needle_decompression",
@@ -324,6 +346,17 @@ INTERVENTION_DEFINITIONS: tuple[InterventionDefinition, ...] = (
         ),
         details_model=ChestTubeDetails,
         legacy_code_map="R-CT",
+    ),
+    InterventionDefinition(
+        type_code="antibiotics",
+        label="Antibiotics",
+        sites=(
+            ("SYSTEMIC", "Systemic"),
+            ("IV_LINE", "IV Line"),
+            ("ORAL", "Oral"),
+        ),
+        details_model=AntibioticsDetails,
+        legacy_code_map="C-ABX",
     ),
 )
 

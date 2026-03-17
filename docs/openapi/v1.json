@@ -2689,7 +2689,7 @@
             }
           }
         },
-        "description": "Set the instructor-controlled treatment or resolution state of an Injury or Illness.\n\n- `is_treated=true` \u2192 marks the condition as `controlled` (treatment applied)\n- `is_resolved=true` \u2192 marks the condition as `resolved` (no longer active clinically)\n\nCreates a superseding event record preserving full history.",
+        "description": "Set the instructor-controlled treatment or resolution state of a Problem.",
         "tags": [
           "trainerlab"
         ],
@@ -5030,9 +5030,51 @@
         "title": "PaginatedResponse[TrainerRunOut]",
         "type": "object"
       },
-      "RuntimeConditionStateOut": {
+      "RecommendedInterventionStateOut": {
         "properties": {
-          "domain_event_id": {
+          "recommendation_id": {
+            "title": "Recommendation Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "target_problem_id": {
+            "title": "Target Problem Id",
+            "type": "integer"
+          },
+          "target_cause_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -5041,24 +5083,205 @@
                 "type": "null"
               }
             ],
-            "title": "Domain Event Id"
+            "title": "Target Cause Id"
           },
-          "kind": {
+          "target_cause_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "injury",
+                  "illness"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Cause Kind"
+          },
+          "recommendation_source": {
+            "enum": [
+              "ai",
+              "rules",
+              "merged"
+            ],
+            "title": "Recommendation Source",
+            "type": "string"
+          },
+          "validation_status": {
+            "enum": [
+              "accepted",
+              "normalized",
+              "downgraded",
+              "rejected"
+            ],
+            "title": "Validation Status",
+            "type": "string"
+          },
+          "normalized_kind": {
+            "title": "Normalized Kind",
+            "type": "string"
+          },
+          "normalized_code": {
+            "title": "Normalized Code",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "site_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Code"
+          },
+          "site_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Label"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "contraindications": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contraindications",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recommendation_id",
+          "kind",
+          "code",
+          "title",
+          "target_problem_id",
+          "recommendation_source",
+          "validation_status",
+          "normalized_kind",
+          "normalized_code"
+        ],
+        "title": "RecommendedInterventionStateOut",
+        "type": "object"
+      },
+      "RuntimeCauseStateOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "cause_kind": {
             "enum": [
               "injury",
-              "illness",
-              "other"
+              "illness"
             ],
+            "title": "Cause Kind",
+            "type": "string"
+          },
+          "kind": {
             "title": "Kind",
             "type": "string"
           },
-          "label": {
-            "title": "Label",
+          "code": {
+            "title": "Code",
             "type": "string"
           },
-          "status": {
-            "title": "Status",
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
             "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "anatomical_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anatomical Location"
+          },
+          "laterality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laterality"
+          },
+          "recommended_interventions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recommended Interventions",
+            "type": "array"
           },
           "source": {
             "anyOf": [
@@ -5081,84 +5304,16 @@
               }
             ],
             "title": "Timestamp"
-          },
-          "march_category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "March Category"
-          },
-          "injury_location": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Injury Location"
-          },
-          "injury_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Injury Kind"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "severity": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Severity"
-          },
-          "is_treated": {
-            "default": false,
-            "title": "Is Treated",
-            "type": "boolean"
-          },
-          "is_resolved": {
-            "default": false,
-            "title": "Is Resolved",
-            "type": "boolean"
-          },
-          "control_state": {
-            "default": "uncontrolled",
-            "title": "Control State",
-            "type": "string"
           }
         },
         "required": [
+          "id",
+          "cause_kind",
           "kind",
-          "label",
-          "status"
+          "code",
+          "title"
         ],
-        "title": "RuntimeConditionStateOut",
+        "title": "RuntimeCauseStateOut",
         "type": "object"
       },
       "RuntimeInstructorIntent": {
@@ -5218,27 +5373,21 @@
       },
       "RuntimeInterventionStateOut": {
         "properties": {
-          "domain_event_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Domain Event Id"
+          "intervention_id": {
+            "title": "Intervention Id",
+            "type": "integer"
           },
-          "intervention_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Intervention Type"
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
           },
           "site_code": {
             "anyOf": [
@@ -5261,30 +5410,36 @@
             "title": "Notes",
             "type": "string"
           },
-          "code": {
-            "default": "",
-            "title": "Code",
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "initiated_by_type": {
+            "enum": [
+              "user",
+              "instructor",
+              "system"
+            ],
+            "title": "Initiated By Type",
             "type": "string"
           },
-          "description": {
-            "default": "",
-            "title": "Description",
-            "type": "string"
-          },
-          "target": {
-            "default": "",
-            "title": "Target",
-            "type": "string"
-          },
-          "anatomic_location": {
-            "default": "",
-            "title": "Anatomic Location",
-            "type": "string"
-          },
-          "performed_by_role": {
-            "default": "trainee",
-            "title": "Performed By Role",
-            "type": "string"
+          "initiated_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By Id"
           },
           "status": {
             "default": "active",
@@ -5319,6 +5474,13 @@
             "title": "Timestamp"
           }
         },
+        "required": [
+          "intervention_id",
+          "kind",
+          "code",
+          "title",
+          "initiated_by_type"
+        ],
         "title": "RuntimeInterventionStateOut",
         "type": "object"
       },
@@ -5370,6 +5532,198 @@
           }
         },
         "title": "RuntimePatientStatus",
+        "type": "object"
+      },
+      "RuntimeProblemStateOut": {
+        "properties": {
+          "problem_id": {
+            "title": "Problem Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "march_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "March Category"
+          },
+          "anatomical_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anatomical Location"
+          },
+          "laterality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laterality"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "treated",
+              "controlled",
+              "resolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "treated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Treated At"
+          },
+          "controlled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controlled At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "cause_id": {
+            "title": "Cause Id",
+            "type": "integer"
+          },
+          "cause_kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Cause Kind",
+            "type": "string"
+          },
+          "recommended_interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedInterventionStateOut"
+            },
+            "title": "Recommended Interventions",
+            "type": "array"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "problem_id",
+          "kind",
+          "code",
+          "title",
+          "status",
+          "cause_id",
+          "cause_kind"
+        ],
+        "title": "RuntimeProblemStateOut",
         "type": "object"
       },
       "RuntimeVitalStateOut": {
@@ -5511,11 +5865,25 @@
       },
       "TrainerRuntimeSnapshotOut": {
         "properties": {
-          "conditions": {
+          "causes": {
             "items": {
-              "$ref": "#/components/schemas/RuntimeConditionStateOut"
+              "$ref": "#/components/schemas/RuntimeCauseStateOut"
             },
-            "title": "Conditions",
+            "title": "Causes",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeProblemStateOut"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "recommended_interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedInterventionStateOut"
+            },
+            "title": "Recommended Interventions",
             "type": "array"
           },
           "interventions": {
@@ -5530,6 +5898,14 @@
               "$ref": "#/components/schemas/RuntimeVitalStateOut"
             },
             "title": "Vitals",
+            "type": "array"
+          },
+          "pulses": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pulses",
             "type": "array"
           },
           "patient_status": {
@@ -5956,15 +6332,8 @@
             "type": "string"
           },
           "target_problem_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Problem Id"
+            "title": "Target Problem Id",
+            "type": "integer"
           },
           "status": {
             "default": "applied",
@@ -5997,15 +6366,26 @@
             "$ref": "#/components/schemas/InterventionDetailsIn",
             "description": "Typed intervention-specific details. `details.kind` must match `intervention_type`."
           },
-          "performed_by_role": {
-            "default": "trainee",
+          "initiated_by_type": {
+            "default": "user",
             "enum": [
-              "trainee",
+              "user",
               "instructor",
-              "ai"
+              "system"
             ],
-            "title": "Performed By Role",
+            "title": "Initiated By Type",
             "type": "string"
+          },
+          "initiated_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By Id"
           },
           "supersedes_event_id": {
             "anyOf": [
@@ -6022,6 +6402,7 @@
         "required": [
           "intervention_type",
           "site_code",
+          "target_problem_id",
           "details"
         ],
         "title": "InterventionCreateIn",
@@ -6064,7 +6445,7 @@
             "enum": [
               "trainee",
               "instructor",
-              "ai"
+              "system"
             ],
             "title": "Performed By Role",
             "type": "string"
@@ -6247,17 +6628,9 @@
       },
       "ConditionControlOut": {
         "properties": {
-          "condition_id": {
-            "title": "Condition Id",
+          "problem_id": {
+            "title": "Problem Id",
             "type": "integer"
-          },
-          "kind": {
-            "enum": [
-              "injury",
-              "illness"
-            ],
-            "title": "Kind",
-            "type": "string"
           },
           "is_treated": {
             "title": "Is Treated",
@@ -6267,13 +6640,14 @@
             "title": "Is Resolved",
             "type": "boolean"
           },
-          "control_state": {
+          "status": {
             "enum": [
-              "uncontrolled",
+              "active",
+              "treated",
               "controlled",
               "resolved"
             ],
-            "title": "Control State",
+            "title": "Status",
             "type": "string"
           },
           "label": {
@@ -6282,11 +6656,10 @@
           }
         },
         "required": [
-          "condition_id",
-          "kind",
+          "problem_id",
           "is_treated",
           "is_resolved",
-          "control_state",
+          "status",
           "label"
         ],
         "title": "ConditionControlOut",
@@ -6294,14 +6667,6 @@
       },
       "ConditionControlUpdateIn": {
         "properties": {
-          "kind": {
-            "enum": [
-              "injury",
-              "illness"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
           "is_treated": {
             "anyOf": [
               {
@@ -6325,9 +6690,6 @@
             "title": "Is Resolved"
           }
         },
-        "required": [
-          "kind"
-        ],
         "title": "ConditionControlUpdateIn",
         "type": "object"
       },

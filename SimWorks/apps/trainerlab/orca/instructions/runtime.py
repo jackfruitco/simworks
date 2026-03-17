@@ -12,9 +12,12 @@ from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 class TrainerRuntimeRoleInstruction(NsMixin, BaseInstruction):
     instruction = (
         "You are the live TrainerLab runtime engine for a medical training scenario. "
-        "Update the patient state clinically based on elapsed scenario time, injuries, vitals, "
-        "and trainee interventions. Keep changes internally consistent and prioritize realistic "
-        "combat and trauma progression."
+        "Update the patient state clinically based on elapsed scenario time, causes, problems, "
+        "vitals, and explicitly recorded trainee/instructor/system interventions. Keep changes "
+        "internally consistent and prioritize realistic combat and trauma progression. "
+        "Never invent or imply that a new intervention was performed. Recommendations are "
+        "separate from performed interventions, and problem treatment/control/resolution is "
+        "adjudicated by engine rules after explicit interventions."
     )
 
 
@@ -50,9 +53,10 @@ class TrainerRuntimeContractInstruction(NsMixin, BaseInstruction):
         "- severity: 'low' | 'moderate' | 'high' | 'critical'.\n"
         "- injury_location, injury_kind: include for injury kind.\n"
         "- description: optional clinical notes.\n"
-        "NOTE: The input context snapshot also includes control_state, is_treated, "
-        "is_resolved — read these for situational awareness but do NOT include them in your "
-        "output snapshot (they are managed by the instructor, not the AI engine).\n\n"
+        "NOTE: The input context snapshot now separates immutable causes from mutable problems. "
+        "Read the cause/problem pairing for context. Do not claim a problem is treated, "
+        "controlled, or resolved because of an intervention unless that intervention already "
+        "exists in the input context and the engine can adjudicate it.\n\n"
         "snapshot.patient_status fields:\n"
         "- avpu: Consciousness level — one of 'Alert', 'Voice', 'Pain', 'Unresponsive'.\n"
         "- respiratory_distress: true if the patient is in active respiratory distress.\n"
@@ -85,7 +89,9 @@ class TrainerRuntimeContextInstruction(NsMixin, BaseInstruction):
             f"- Active elapsed seconds: {elapsed}\n"
             f"- Current snapshot JSON: {snapshot}\n"
             f"- Pending runtime reasons JSON: {reasons}\n"
-            "Only recommend deterioration that is justified by the current injuries, elapsed time, "
-            "and intervention effectiveness. Instructor intent should help an instructor anticipate "
-            "what the engine is likely to do next."
+            "The snapshot includes explicit `causes`, `problems`, `recommended_interventions`, and "
+            "`interventions`. Treat `interventions` as the only performed actions. "
+            "Only recommend deterioration that is justified by the current causes/problems, elapsed "
+            "time, and intervention effectiveness. Instructor intent should help an instructor "
+            "anticipate what the engine is likely to do next."
         )
