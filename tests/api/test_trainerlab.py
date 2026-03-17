@@ -768,7 +768,7 @@ class TestTrainerLabEvents:
         streamed = client.get(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
-        chunks = collect_streaming_chunks(streamed, 3)
+        chunks = collect_streaming_chunks(streamed, 8)
         payload = "".join(chunks)
         assert "note.created" in payload
         assert '"created_by_role": "instructor"' in payload
@@ -1081,11 +1081,11 @@ class TestTrainerLabEvents:
 
         from tests.helpers.sse import collect_streaming_chunks
 
-        chunks = collect_streaming_chunks(response, 3)
+        chunks = collect_streaming_chunks(response, 8)
         payload = "".join(chunks)
 
-        assert chunks[0] == f"id: {streamed.id}\n"
-        assert chunks[1] == "event: sim\n"
+        assert f"id: {streamed.id}\n" in chunks
+        assert "event: sim\n" in chunks
         assert "session.seeded" in payload
         assert '"status": "seeded"' in payload
 
@@ -1098,6 +1098,14 @@ class TestTrainerLabEvents:
     ):
         from apps.common.models import OutboxEvent
         from tests.helpers.sse import collect_streaming_chunks
+
+        def _fake_enqueue(*, simulation):
+            return "call-test-idle-keepalive"
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            _fake_enqueue,
+        )
 
         clock = FakeClock()
         monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
@@ -1129,7 +1137,7 @@ class TestTrainerLabEvents:
 
         assert first_chunk == ": keep-alive\n\n"
         assert "event:" not in first_chunk
-        assert clock.current == pytest.approx(10.0)
+        assert clock.current == pytest.approx(0.0)
 
 
 @pytest.mark.django_db

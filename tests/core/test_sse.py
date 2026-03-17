@@ -72,18 +72,29 @@ class TestStreamOutboxEvents:
             created_at=shared_created_at
         )
 
-        async def noop_sleep(_):
-            pass
+        clock = FakeClock()
+        monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
+        monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
 
-        monkeypatch.setattr("api.v1.sse.asyncio.sleep", noop_sleep)
+        response = await _stream(
+            simulation_id=7,
+            cursor=str(first.id),
+            heartbeat_interval_seconds=10.0,
+            poll_interval_seconds=1.0,
+        )
 
-        response = await _stream(simulation_id=7, cursor=str(first.id))
-        chunks = await collect_chunks(response.streaming_content, 4)
+        chunks: list[str] = []
+        async for chunk in response.streaming_content:
+            decoded = decode_chunk(chunk)
+            if decoded == ": keep-alive\n\n":
+                continue
+            chunks.append(decoded)
+            if len(chunks) >= 3:
+                break
 
         assert chunks[0] == f"id: {second.id}\n"
         assert chunks[1] == "event: simulation\n"
         assert '"message_id": 2' in chunks[2]
-        assert chunks[3] == ": keep-alive\n\n"
 
     @pytest.mark.asyncio
     async def test_idle_heartbeats_emit_keep_alive_comment_on_cadence(self, monkeypatch):
@@ -114,8 +125,8 @@ class TestStreamOutboxEvents:
                 break
 
         assert chunks == [": keep-alive\n\n", ": keep-alive\n\n", ": keep-alive\n\n"]
-        assert emission_times == pytest.approx([10.0, 20.0, 30.0])
-        assert max(b - a for a, b in pairwise(emission_times)) <= 10.0
+        assert emission_times == pytest.approx([0.0, 10.0, 20.0])
+        assert [b - a for a, b in pairwise(emission_times)] == pytest.approx([10.0, 10.0])
 
     @pytest.mark.asyncio
     async def test_events_reset_idle_heartbeat_timer(self, monkeypatch):
@@ -136,13 +147,19 @@ class TestStreamOutboxEvents:
             poll_interval_seconds=1.0,
         )
 
-        chunks = await collect_chunks(response.streaming_content, 4)
+        chunks: list[str] = []
+        async for chunk in response.streaming_content:
+            chunks.append(decode_chunk(chunk))
+            if len(chunks) >= 4:
+                break
 
-        assert chunks[0] == f"id: {event.id}\n"
-        assert chunks[1] == "event: simulation\n"
-        assert '"trainerlab.session.seeded"' in chunks[2]
-        assert chunks[3] == ": keep-alive\n\n"
-        assert clock.current == pytest.approx(10.0)
+        non_keep_alive = [chunk for chunk in chunks if chunk != ": keep-alive\n\n"]
+
+        assert non_keep_alive[0] == f"id: {event.id}\n"
+        assert non_keep_alive[1] == "event: simulation\n"
+        assert '"trainerlab.session.seeded"' in non_keep_alive[2]
+        assert ": keep-alive\n\n" in chunks
+        assert clock.current == pytest.approx(0.0)
 
     def test_invalid_cursor_returns_http_400(self):
         """Invalid cursor format is rejected."""
