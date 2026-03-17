@@ -75,7 +75,7 @@ FEATURE_SETTING_CHECKS: list[tuple[Callable[[], bool], str, str, str, str]] = [
 ]
 
 
-@register(Tags.security)
+@register(Tags.security, deploy=True)
 def check_required_env_vars(app_configs, **kwargs):
     errors = []
 
@@ -90,5 +90,56 @@ def check_required_env_vars(app_configs, **kwargs):
                     id=error_id,
                 )
             )
+
+    return errors
+
+
+@register(Tags.security, deploy=True)
+def check_production_settings(app_configs, **kwargs):
+    """Validate production-unsafe settings when DEBUG=False."""
+    errors = []
+
+    if not _prod_only():
+        return errors
+
+    if getattr(settings, "CORS_ALLOW_ALL_ORIGINS", False):
+        errors.append(
+            Error(
+                "CORS_ALLOW_ALL_ORIGINS must not be True in production.",
+                hint="Set DJANGO_CORS_ALLOW_ALL_ORIGINS=false or remove the variable.",
+                id="config.E010",
+            )
+        )
+
+    email_backend = getattr(settings, "EMAIL_BACKEND", "")
+    if email_backend == "django.core.mail.backends.console.EmailBackend":
+        errors.append(
+            Error(
+                "Console email backend is not suitable for production.",
+                hint="Set EMAIL_BACKEND to a real backend "
+                "(e.g. django.core.mail.backends.smtp.EmailBackend).",
+                id="config.E011",
+            )
+        )
+
+    secret_key = getattr(settings, "SECRET_KEY", "")
+    if isinstance(secret_key, str) and secret_key.startswith("django-insecure-"):
+        errors.append(
+            Error(
+                "SECRET_KEY is using an insecure placeholder value.",
+                hint="Set the DJANGO_SECRET_KEY environment variable to a secure random value.",
+                id="config.E012",
+            )
+        )
+
+    jwt_key = getattr(settings, "JWT_SECRET_KEY", "")
+    if isinstance(jwt_key, str) and jwt_key.startswith("django-insecure-"):
+        errors.append(
+            Error(
+                "JWT_SECRET_KEY is using an insecure placeholder value.",
+                hint="Set the JWT_SECRET_KEY environment variable to a secure random value.",
+                id="config.E013",
+            )
+        )
 
     return errors
