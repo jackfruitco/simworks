@@ -4,6 +4,7 @@ from datetime import timedelta
 from itertools import pairwise
 import uuid
 
+from asgiref.sync import sync_to_async
 from django.utils import timezone
 from ninja.errors import HttpError
 import pytest
@@ -35,6 +36,11 @@ async def collect_chunks(streaming_content, n: int) -> list[str]:
         if len(chunks) >= n:
             break
     return chunks
+
+
+# Wrap the sync function so it runs in a thread (same as Django ASGI does
+# for sync views), avoiding SynchronousOnlyOperation from the cursor lookup.
+_stream = sync_to_async(stream_outbox_events, thread_sensitive=False)
 
 
 @pytest.mark.django_db
@@ -71,7 +77,7 @@ class TestStreamOutboxEvents:
 
         monkeypatch.setattr("api.v1.sse.asyncio.sleep", noop_sleep)
 
-        response = stream_outbox_events(simulation_id=7, cursor=str(first.id))
+        response = await _stream(simulation_id=7, cursor=str(first.id))
         chunks = await collect_chunks(response.streaming_content, 4)
 
         assert chunks[0] == f"id: {second.id}\n"
@@ -92,7 +98,7 @@ class TestStreamOutboxEvents:
             idempotency_key="trainerlab.anchor:test",
         )
 
-        response = stream_outbox_events(
+        response = await _stream(
             simulation_id=99,
             cursor=str(anchor.id),
             heartbeat_interval_seconds=10.0,
@@ -124,7 +130,7 @@ class TestStreamOutboxEvents:
             idempotency_key="trainerlab.seeded:test",
         )
 
-        response = stream_outbox_events(
+        response = await _stream(
             simulation_id=8,
             heartbeat_interval_seconds=10.0,
             poll_interval_seconds=1.0,
