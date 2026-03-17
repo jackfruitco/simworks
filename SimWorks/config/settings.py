@@ -61,7 +61,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key claimed in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-ci-placeholder")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = bool_from_env("DJANGO_DEBUG", default=False)
@@ -177,7 +177,7 @@ ORCHESTRAI = {
 }
 
 # JWT Configuration (for mobile API clients)
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "django-insecure-jwt-ci-placeholder")
 JWT_ACCESS_TOKEN_LIFETIME = int_from_env("JWT_ACCESS_TOKEN_LIFETIME", default=3600, minimum=1)
 JWT_REFRESH_TOKEN_LIFETIME = int_from_env("JWT_REFRESH_TOKEN_LIFETIME", default=604800, minimum=1)
 
