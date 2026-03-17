@@ -23,6 +23,7 @@ urlpatterns = [
     # Django-allauth URLs (login, signup, password reset, etc.)
     path("accounts/", include("allauth.urls")),
     path("chatlab/", include("apps.chatlab.urls")),
+    path("trainerlab/", include("apps.trainerlab.urls")),
     path(
         "robots.txt",
         CommonViews.RobotsView.as_view(content_type="text/plain"),
