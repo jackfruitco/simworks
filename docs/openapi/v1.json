@@ -2322,6 +2322,53 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/problems/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_problem_event",
+        "summary": "Inject problem event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_intervention_event",
@@ -2642,7 +2689,7 @@
             }
           }
         },
-        "description": "Immediately enqueue a vitals-only AI progression turn.\n\nUnlike the full runtime tick, this service only updates vital sign ranges\nand does not modify conditions or interventions.",
+        "description": "Immediately enqueue a vitals-only AI progression turn.\n\nUnlike the full runtime tick, this service only updates vital sign ranges\nand does not modify causes, problems, or interventions.",
         "tags": [
           "trainerlab"
         ],
@@ -2653,10 +2700,10 @@
         ]
       }
     },
-    "/api/v1/trainerlab/simulations/{simulation_id}/conditions/{condition_id}/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/problems/{problem_id}/": {
       "patch": {
-        "operationId": "api_v1_endpoints_trainerlab_update_condition",
-        "summary": "Update treatment/resolution state of a condition",
+        "operationId": "api_v1_endpoints_trainerlab_update_problem",
+        "summary": "Update treatment/resolution state of a problem",
         "parameters": [
           {
             "in": "path",
@@ -2669,9 +2716,9 @@
           },
           {
             "in": "path",
-            "name": "condition_id",
+            "name": "problem_id",
             "schema": {
-              "title": "Condition Id",
+              "title": "Problem Id",
               "type": "integer"
             },
             "required": true
@@ -2683,7 +2730,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConditionControlOut"
+                  "$ref": "#/components/schemas/ProblemStatusOut"
                 }
               }
             }
@@ -2697,7 +2744,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConditionControlUpdateIn"
+                "$ref": "#/components/schemas/ProblemStatusUpdateIn"
               }
             }
           },
@@ -4711,7 +4758,7 @@
         "title": "ScenarioInstructionUnshareIn",
         "type": "object"
       },
-      "PresetApplyConditionItem": {
+      "PresetApplyCauseItem": {
         "properties": {
           "id": {
             "title": "Id",
@@ -4731,16 +4778,16 @@
           "kind",
           "label"
         ],
-        "title": "PresetApplyConditionItem",
+        "title": "PresetApplyCauseItem",
         "type": "object"
       },
       "PresetApplyDiff": {
         "properties": {
-          "conditions_added": {
+          "causes_added": {
             "items": {
-              "$ref": "#/components/schemas/PresetApplyConditionItem"
+              "$ref": "#/components/schemas/PresetApplyCauseItem"
             },
-            "title": "Conditions Added",
+            "title": "Causes Added",
             "type": "array"
           },
           "vitals_changed": {
@@ -5036,6 +5083,11 @@
             "title": "Recommendation Id",
             "type": "integer"
           },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -5069,6 +5121,17 @@
               }
             ],
             "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "target_problem_id": {
             "title": "Target Problem Id",
@@ -5178,6 +5241,11 @@
             },
             "title": "Contraindications",
             "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           }
         },
         "required": [
@@ -5199,6 +5267,11 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
           },
           "cause_kind": {
             "enum": [
@@ -5282,6 +5355,11 @@
             },
             "title": "Recommended Interventions",
             "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "source": {
             "anyOf": [
@@ -5377,6 +5455,11 @@
             "title": "Intervention Id",
             "type": "integer"
           },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -5408,6 +5491,11 @@
           "notes": {
             "default": "",
             "title": "Notes",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
             "type": "string"
           },
           "target_problem_id": {
@@ -5539,6 +5627,11 @@
           "problem_id": {
             "title": "Problem Id",
             "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
           },
           "kind": {
             "title": "Kind",
@@ -5690,6 +5783,11 @@
             },
             "title": "Recommended Interventions",
             "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "source": {
             "anyOf": [
@@ -6228,6 +6326,127 @@
             "title": "Injury Description",
             "type": "string"
           },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the Injury being superseded by this new cause record",
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "injury_location",
+          "injury_kind",
+          "injury_description"
+        ],
+        "title": "InjuryCreateIn",
+        "type": "object"
+      },
+      "IllnessCreateIn": {
+        "properties": {
+          "illness_name": {
+            "title": "Illness Name",
+            "type": "string"
+          },
+          "illness_description": {
+            "default": "",
+            "title": "Illness Description",
+            "type": "string"
+          },
+          "anatomical_location": {
+            "default": "",
+            "title": "Anatomical Location",
+            "type": "string"
+          },
+          "laterality": {
+            "default": "",
+            "title": "Laterality",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the Illness being superseded by this new cause record",
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "illness_name"
+        ],
+        "title": "IllnessCreateIn",
+        "type": "object"
+      },
+      "ProblemCreateIn": {
+        "properties": {
+          "cause_kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Cause Kind",
+            "type": "string"
+          },
+          "cause_id": {
+            "title": "Cause Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
           "march_category": {
             "description": "MARCH triage category code (M, A, R, C, H1, H2, PC)",
             "title": "March Category",
@@ -6244,60 +6463,31 @@
             "title": "Severity",
             "type": "string"
           },
-          "description": {
+          "anatomical_location": {
             "default": "",
-            "description": "Optional plain-text problem description (supplements injury_description)",
-            "title": "Description",
+            "title": "Anatomical Location",
             "type": "string"
           },
-          "supersedes_event_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "ID of the Problem being superseded by this new injury record",
-            "title": "Supersedes Event Id"
-          }
-        },
-        "required": [
-          "injury_location",
-          "injury_kind",
-          "injury_description",
-          "march_category"
-        ],
-        "title": "InjuryCreateIn",
-        "type": "object"
-      },
-      "IllnessCreateIn": {
-        "properties": {
-          "illness_name": {
-            "title": "Illness Name",
-            "type": "string"
-          },
-          "illness_description": {
+          "laterality": {
             "default": "",
-            "title": "Illness Description",
+            "title": "Laterality",
             "type": "string"
           },
-          "march_category": {
-            "description": "MARCH triage category (R, C, etc.) that this illness maps to",
-            "title": "March Category",
-            "type": "string"
-          },
-          "severity": {
-            "default": "moderate",
+          "status": {
+            "default": "active",
             "enum": [
-              "low",
-              "moderate",
-              "high",
-              "critical"
+              "active",
+              "treated",
+              "controlled",
+              "resolved"
             ],
-            "title": "Severity",
+            "title": "Status",
             "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "supersedes_event_id": {
             "anyOf": [
@@ -6308,15 +6498,18 @@
                 "type": "null"
               }
             ],
-            "description": "ID of the Problem being superseded by this new illness record",
+            "description": "ID of the Problem being superseded by this new problem record",
             "title": "Supersedes Event Id"
           }
         },
         "required": [
-          "illness_name",
+          "cause_kind",
+          "cause_id",
+          "kind",
+          "title",
           "march_category"
         ],
-        "title": "IllnessCreateIn",
+        "title": "ProblemCreateIn",
         "type": "object"
       },
       "InterventionCreateIn": {
@@ -6626,7 +6819,7 @@
         "title": "RunSummaryOut",
         "type": "object"
       },
-      "ConditionControlOut": {
+      "ProblemStatusOut": {
         "properties": {
           "problem_id": {
             "title": "Problem Id",
@@ -6634,6 +6827,10 @@
           },
           "is_treated": {
             "title": "Is Treated",
+            "type": "boolean"
+          },
+          "is_controlled": {
+            "title": "Is Controlled",
             "type": "boolean"
           },
           "is_resolved": {
@@ -6658,14 +6855,15 @@
         "required": [
           "problem_id",
           "is_treated",
+          "is_controlled",
           "is_resolved",
           "status",
           "label"
         ],
-        "title": "ConditionControlOut",
+        "title": "ProblemStatusOut",
         "type": "object"
       },
-      "ConditionControlUpdateIn": {
+      "ProblemStatusUpdateIn": {
         "properties": {
           "is_treated": {
             "anyOf": [
@@ -6690,7 +6888,7 @@
             "title": "Is Resolved"
           }
         },
-        "title": "ConditionControlUpdateIn",
+        "title": "ProblemStatusUpdateIn",
         "type": "object"
       },
       "AnnotationOut": {

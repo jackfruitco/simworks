@@ -174,8 +174,10 @@ class RecommendedInterventionSeed(StrictBaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _normalize_recommendation_kind(self):
-        self.intervention_kind = normalize_intervention_type(self.intervention_kind or self.title)
+    def _normalize_recommendation_seed(self):
+        self.intervention_kind = (self.intervention_kind or self.title).strip()
+        if not self.title:
+            self.title = self.intervention_kind
         return self
 
 

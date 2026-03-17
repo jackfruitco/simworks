@@ -9,44 +9,45 @@ from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatu
 from orchestrai.types import StrictBaseModel
 
 
-class RuntimeConditionChange(StrictBaseModel):
+class RuntimeProblemChange(StrictBaseModel):
     action: Literal["create", "update", "resolve"]
-    condition_kind: Literal["injury", "illness"]
-    # target_event_id references a Problem ID (not Injury/Illness) for update/resolve.
-    target_event_id: int | None = None
+    cause_kind: Literal["injury", "illness"]
+    target_problem_id: int | None = None
 
-    # Injury-specific cause fields (create/update)
     injury_location: str | None = None
     injury_kind: str | None = None
     injury_description: str | None = Field(default=None, max_length=500)
 
-    # Illness-specific cause fields (create/update)
     name: str | None = None
     description: str | None = None
 
-    # Problem-level fields (create/update)
+    problem_kind: str | None = None
+    title: str | None = None
     march_category: str | None = None
     severity: Literal["low", "moderate", "high", "critical"] | None = None
+    anatomical_location: str | None = None
 
     @model_validator(mode="after")
     def validate_shape(self):
-        if self.action in {"update", "resolve"} and self.target_event_id is None:
-            raise ValueError("target_event_id is required for update/resolve changes")
-        if self.condition_kind == "injury" and self.action != "resolve":
-            required = [self.injury_location, self.injury_kind]
+        if self.action in {"update", "resolve"} and self.target_problem_id is None:
+            raise ValueError("target_problem_id is required for update/resolve changes")
+        if self.cause_kind == "injury" and self.action != "resolve":
+            required = [self.injury_location, self.injury_kind, self.injury_description]
             if any(value in (None, "") for value in required):
-                raise ValueError("injury_location and injury_kind are required")
-            if not self.injury_description:
-                raise ValueError("injury_description is required for injury changes")
+                raise ValueError(
+                    "injury_location, injury_kind, and injury_description are required"
+                )
+        if self.cause_kind == "illness" and self.action != "resolve" and not self.name:
+            raise ValueError("name is required for illness changes")
+        if self.action != "resolve":
+            if not self.problem_kind:
+                raise ValueError("problem_kind is required for create/update changes")
+            if not self.title:
+                raise ValueError("title is required for create/update changes")
             if not self.march_category:
-                raise ValueError("march_category is required for injury changes")
-        if self.condition_kind == "illness" and self.action != "resolve":
-            if not self.name:
-                raise ValueError("name is required for illness changes")
+                raise ValueError("march_category is required for create/update changes")
             if self.severity is None:
-                raise ValueError("severity is required for illness changes")
-            if not self.march_category:
-                raise ValueError("march_category is required for illness changes")
+                raise ValueError("severity is required for create/update changes")
         return self
 
 
@@ -110,35 +111,44 @@ class RuntimeInterventionEffectChange(StrictBaseModel):
 
 
 class RuntimeStateChanges(StrictBaseModel):
-    conditions: list[RuntimeConditionChange] = Field(default_factory=list)
+    problems: list[RuntimeProblemChange] = Field(default_factory=list)
     vitals: list[RuntimeVitalChange] = Field(default_factory=list)
     pulses: list[RuntimePulseChange] = Field(default_factory=list)
     interventions: list[RuntimeInterventionEffectChange] = Field(default_factory=list)
 
 
-class RuntimeSnapshotCondition(StrictBaseModel):
-    domain_event_id: int | None = None
-    kind: Literal["injury", "illness", "other"]
-    label: str
-    status: Literal["active", "resolved", "worsening", "improving", "stable"] = "active"
-    march_category: str | None = None
-    injury_location: str | None = None
-    injury_kind: str | None = None
+class RuntimeSnapshotCause(StrictBaseModel):
+    id: int | None = None
+    cause_kind: Literal["injury", "illness"]
+    kind: str
+    code: str
+    title: str
     description: str = ""
-    severity: str | None = None
+    anatomical_location: str = ""
+
+
+class RuntimeSnapshotProblem(StrictBaseModel):
+    problem_id: int | None = None
+    kind: str
+    code: str
+    title: str
+    description: str = ""
+    status: Literal["active", "treated", "controlled", "resolved"] = "active"
+    march_category: str | None = None
+    severity: Literal["low", "moderate", "high", "critical"] | None = None
+    anatomical_location: str | None = None
+    cause_id: int | None = None
+    cause_kind: Literal["injury", "illness"] | None = None
 
 
 class RuntimeSnapshotIntervention(StrictBaseModel):
-    domain_event_id: int | None = None
+    intervention_id: int | None = None
     intervention_type: str | None = None
     site_code: str | None = None
     effectiveness: str = "unknown"
     notes: str = ""
-    code: str = ""
-    description: str = ""
-    target: str = ""
-    anatomic_location: str = ""
-    performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
+    target_problem_id: int | None = None
+    initiated_by_type: Literal["user", "instructor", "system"] = "user"
     status: Literal["active", "effective", "ineffective", "resolved"] = "active"
     clinical_effect: str = ""
 
@@ -182,7 +192,9 @@ class RuntimeSnapshotVital(StrictBaseModel):
 
 
 class TrainerRuntimeSnapshot(StrictBaseModel):
-    conditions: list[RuntimeSnapshotCondition] = Field(default_factory=list)
+    causes: list[RuntimeSnapshotCause] = Field(default_factory=list)
+    problems: list[RuntimeSnapshotProblem] = Field(default_factory=list)
+    recommended_interventions: list[dict[str, str | int | None]] = Field(default_factory=list)
     interventions: list[RuntimeSnapshotIntervention] = Field(default_factory=list)
     vitals: list[RuntimeSnapshotVital] = Field(default_factory=list)
     pulses: list[RuntimeSnapshotPulse] = Field(default_factory=list)

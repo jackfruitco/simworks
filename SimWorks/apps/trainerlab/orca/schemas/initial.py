@@ -345,6 +345,38 @@ class InitialScenarioSchema(StrictBaseModel):
             )
             recommendation_objects.append(recommendation)
 
+        recommendations_by_problem_id: dict[int, list[RecommendedIntervention]] = {}
+        recommendations_by_cause_key: dict[tuple[str, int], list[RecommendedIntervention]] = {}
+        for recommendation in recommendation_objects:
+            recommendations_by_problem_id.setdefault(recommendation.target_problem_id, []).append(
+                recommendation
+            )
+            if recommendation.target_injury_id:
+                recommendations_by_cause_key.setdefault(
+                    ("injury", recommendation.target_injury_id), []
+                ).append(recommendation)
+            elif recommendation.target_illness_id:
+                recommendations_by_cause_key.setdefault(
+                    ("illness", recommendation.target_illness_id), []
+                ).append(recommendation)
+
+        for problem in problem_objects:
+            problem._prefetched_objects_cache = {
+                "recommended_interventions": recommendations_by_problem_id.get(problem.id, [])
+            }
+        for injury in injury_objects:
+            injury._prefetched_objects_cache = {
+                "recommended_interventions": recommendations_by_cause_key.get(
+                    ("injury", injury.id), []
+                )
+            }
+        for illness in illness_objects:
+            illness._prefetched_objects_cache = {
+                "recommended_interventions": recommendations_by_cause_key.get(
+                    ("illness", illness.id), []
+                )
+            }
+
         intervention_objects: list[Intervention] = []
         for performed_seed in self.performed_interventions:
             target_problem = problems_by_ref[performed_seed.target_problem_ref]
@@ -359,7 +391,7 @@ class InitialScenarioSchema(StrictBaseModel):
                 initiated_by_type=performed_seed.initiated_by_type,
                 initiated_by_id=performed_seed.initiated_by_id,
             )
-            adjudicate_intervention(intervention)
+            await sync_to_async(adjudicate_intervention)(intervention)
             intervention_objects.append(intervention)
 
         extra = _initial_extra(context)

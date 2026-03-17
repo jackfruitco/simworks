@@ -2,9 +2,10 @@
 """
 Service class to generate vital sign progression for the TrainerLab application.
 
-This service handles only physiological measurements — it does not modify conditions
-or interventions. It is designed to run independently of the full runtime turn service,
-enabling higher-cadence or on-demand vital sign updates.
+This service handles only physiological measurements. It does not modify causes,
+problems, recommendations, or interventions, and it is designed to run
+independently of the full runtime turn service, enabling higher-cadence or
+on-demand vital sign updates.
 """
 
 from asgiref.sync import sync_to_async
@@ -30,9 +31,9 @@ class GenerateVitalsProgression(
     """
     Generate a focused vital sign progression update for the current patient state.
 
-    Unlike GenerateTrainerRuntimeTurn, this service only reads conditions/interventions
-    as context and outputs updated vital sign ranges. It is safe to call in parallel with
-    or independently of the full runtime turn.
+    Unlike GenerateTrainerRuntimeTurn, this service only reads causes, problems,
+    and interventions as context and outputs updated vital sign ranges. It is
+    safe to call in parallel with or independently of the full runtime turn.
 
     Identity: services.trainerlab.vitals.GenerateVitalsProgression
     """

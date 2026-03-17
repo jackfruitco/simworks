@@ -46,12 +46,13 @@ export type SimulationEventType =
 
     // TrainerLab events
     | 'injury.created'
+    | 'injury.updated'
     | 'illness.created'
+    | 'illness.updated'
     | 'problem.created'
     | 'problem.updated'
     | 'problem.resolved'
     | 'recommended_intervention.created'
-    | 'recommended_intervention.updated'
     | 'recommended_intervention.removed'
     | 'intervention.created'
     | 'intervention.updated'
@@ -233,6 +234,7 @@ export interface TrainerLabDomainEventBase {
 
 export interface TrainerLabCauseFields {
     id: number;
+    active?: boolean;
     cause_kind: 'injury' | 'illness';
     kind: string;
     code: string;
@@ -246,6 +248,8 @@ export interface TrainerLabCauseFields {
     injury_kind?: string;
     injury_location_label?: string;
     injury_kind_label?: string;
+    recommended_interventions?: TrainerLabRecommendedInterventionFields[];
+    metadata?: Record<string, unknown>;
 }
 
 export interface InterventionDetailsBase {
@@ -300,6 +304,7 @@ export type InterventionDetails =
 
 export interface TrainerLabInterventionFields {
     intervention_id: number;
+    active?: boolean;
     kind: string;
     code: string;
     title: string;
@@ -313,10 +318,12 @@ export interface TrainerLabInterventionFields {
     effectiveness?: 'unknown' | 'effective' | 'partially_effective' | 'ineffective';
     notes?: string;
     details?: InterventionDetails | Record<string, unknown>;
+    description?: string;
 }
 
 export interface TrainerLabProblemFields {
     problem_id: number;
+    active?: boolean;
     kind: string;
     code: string;
     slug?: string;
@@ -335,15 +342,18 @@ export interface TrainerLabProblemFields {
     cause_id: number;
     cause_kind: 'injury' | 'illness';
     recommended_interventions?: TrainerLabRecommendedInterventionFields[];
+    metadata?: Record<string, unknown>;
 }
 
 export interface TrainerLabRecommendedInterventionFields {
     recommendation_id: number;
+    active?: boolean;
     kind: string;
     code: string;
     slug?: string;
     title: string;
     display_name?: string;
+    description?: string;
     target_problem_id: number;
     target_cause_id?: number | null;
     target_cause_kind?: 'injury' | 'illness';
@@ -357,6 +367,7 @@ export interface TrainerLabRecommendedInterventionFields {
     site_label?: string;
     warnings?: string[];
     contraindications?: string[];
+    metadata?: Record<string, unknown>;
 }
 
 export interface TrainerLabVitalFields {
@@ -370,7 +381,7 @@ export interface TrainerLabVitalFields {
 }
 
 export interface TrainerLabInjuryCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
-    type: 'injury.created';
+    type: 'injury.created' | 'injury.updated';
     event_kind: 'cause';
     origin?: string;
     call_id?: string;
@@ -378,7 +389,7 @@ export interface TrainerLabInjuryCreatedEvent extends TrainerLabDomainEventBase,
 }
 
 export interface TrainerLabIllnessCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
-    type: 'illness.created';
+    type: 'illness.created' | 'illness.updated';
     event_kind: 'cause';
     origin?: string;
     call_id?: string;
@@ -396,7 +407,7 @@ export interface TrainerLabProblemUpdatedEvent extends TrainerLabDomainEventBase
 }
 
 export interface TrainerLabRecommendedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabRecommendedInterventionFields {
-    type: 'recommended_intervention.created' | 'recommended_intervention.updated' | 'recommended_intervention.removed';
+    type: 'recommended_intervention.created' | 'recommended_intervention.removed';
     event_kind: 'recommended_intervention';
 }
 

@@ -5,6 +5,8 @@ from datetime import UTC
 from functools import lru_cache
 from typing import Any
 
+from django.core.exceptions import SynchronousOnlyOperation
+
 from .injury_dictionary import get_injury_dictionary_choices
 from .intervention_dictionary import get_intervention_label, get_intervention_site_label
 from .models import (
@@ -172,11 +174,13 @@ def serialize_recommendation_summary(obj: RecommendedIntervention) -> dict[str, 
     return enrich_trainer_payload(
         {
             "recommendation_id": obj.id,
+            "active": obj.is_active,
             "kind": obj.kind,
             "code": obj.code,
             "slug": obj.slug,
             "title": obj.title,
             "display_name": obj.display_name,
+            "description": obj.description,
             "target_problem_id": obj.target_problem_id,
             "target_cause_id": target_cause_id,
             "target_cause_kind": target_cause_kind,
@@ -189,6 +193,7 @@ def serialize_recommendation_summary(obj: RecommendedIntervention) -> dict[str, 
             "site_code": obj.site_code,
             "warnings": list(obj.warnings_json or []),
             "contraindications": list(obj.contraindications_json or []),
+            "metadata": dict(obj.metadata_json or {}),
         }
     )
 
@@ -197,11 +202,16 @@ def serialize_problem_snapshot(problem: Problem) -> dict[str, Any]:
     recommendations = list(
         getattr(problem, "_prefetched_objects_cache", {}).get("recommended_interventions", [])
     )
+    recommendations = [item for item in recommendations if item.is_active]
     if not recommendations and hasattr(problem, "recommended_interventions"):
-        recommendations = list(problem.recommended_interventions.all())
+        try:
+            recommendations = list(problem.recommended_interventions.filter(is_active=True))
+        except SynchronousOnlyOperation:
+            recommendations = []
     return enrich_trainer_payload(
         {
             "problem_id": problem.id,
+            "active": problem.is_active,
             "kind": problem.kind,
             "code": problem.code,
             "slug": problem.slug,
@@ -221,6 +231,7 @@ def serialize_problem_snapshot(problem: Problem) -> dict[str, Any]:
             "recommended_interventions": [
                 serialize_recommendation_summary(item) for item in recommendations
             ],
+            "metadata": dict(problem.metadata_json or {}),
             "source": problem.source,
             "timestamp": _event_timestamp_iso(problem),
         }
@@ -231,11 +242,16 @@ def serialize_cause_snapshot(cause: Injury | Illness) -> dict[str, Any]:
     recommended = list(
         getattr(cause, "_prefetched_objects_cache", {}).get("recommended_interventions", [])
     )
+    recommended = [item for item in recommended if item.is_active]
     if not recommended and hasattr(cause, "recommended_interventions"):
-        recommended = list(cause.recommended_interventions.all())
+        try:
+            recommended = list(cause.recommended_interventions.filter(is_active=True))
+        except SynchronousOnlyOperation:
+            recommended = []
     return enrich_trainer_payload(
         {
             "id": cause.id,
+            "active": cause.is_active,
             "cause_kind": cause.cause_kind,
             "kind": cause.kind,
             "code": cause.code,
@@ -248,6 +264,7 @@ def serialize_cause_snapshot(cause: Injury | Illness) -> dict[str, Any]:
             "recommended_interventions": [
                 serialize_recommendation_summary(item) for item in recommended
             ],
+            "metadata": dict(cause.metadata_json or {}),
             "source": cause.source,
             "timestamp": _event_timestamp_iso(cause),
             "injury_location": getattr(cause, "injury_location", None),
@@ -260,6 +277,7 @@ def serialize_intervention_summary(obj: Intervention) -> dict[str, Any]:
     return enrich_trainer_payload(
         {
             "intervention_id": obj.id,
+            "active": obj.is_active,
             "kind": obj.intervention_type,
             "code": obj.intervention_type,
             "title": get_intervention_label(obj.intervention_type) if obj.intervention_type else "",
@@ -271,6 +289,7 @@ def serialize_intervention_summary(obj: Intervention) -> dict[str, Any]:
             "notes": obj.notes,
             "site_code": obj.site_code,
             "details": dict(obj.details_json or {}),
+            "description": obj.description,
             "source": obj.source,
             "timestamp": _event_timestamp_iso(obj),
         }
@@ -278,24 +297,11 @@ def serialize_intervention_summary(obj: Intervention) -> dict[str, Any]:
 
 
 def _serialize_cause_event(obj: Injury | Illness) -> dict[str, Any]:
-    payload = {
+    return {
         **_base_domain_event_payload(obj),
         "event_kind": "cause",
-        "id": obj.id,
-        "cause_kind": obj.cause_kind,
-        "kind": obj.kind,
-        "code": obj.code,
-        "slug": obj.slug,
-        "title": obj.title,
-        "display_name": obj.display_name,
-        "description": obj.description,
-        "anatomical_location": obj.anatomical_location,
-        "laterality": obj.laterality,
+        **serialize_cause_snapshot(obj),
     }
-    if isinstance(obj, Injury):
-        payload["injury_location"] = obj.injury_location
-        payload["injury_kind"] = obj.injury_kind
-    return payload
 
 
 def _serialize_problem_event(obj: Problem) -> dict[str, Any]:

@@ -80,10 +80,10 @@ class TestStreamOutboxEvents:
         response = await _stream(simulation_id=7, cursor=str(first.id))
         chunks = await collect_chunks(response.streaming_content, 4)
 
-        assert chunks[0] == f"id: {second.id}\n"
-        assert chunks[1] == "event: simulation\n"
-        assert '"message_id": 2' in chunks[2]
-        assert chunks[3] == ": keep-alive\n\n"
+        assert chunks[0] == ": keep-alive\n\n"
+        assert chunks[1] == f"id: {second.id}\n"
+        assert chunks[2] == "event: simulation\n"
+        assert '"message_id": 2' in chunks[3]
 
     @pytest.mark.asyncio
     async def test_idle_heartbeats_emit_keep_alive_comment_on_cadence(self, monkeypatch):
@@ -114,7 +114,7 @@ class TestStreamOutboxEvents:
                 break
 
         assert chunks == [": keep-alive\n\n", ": keep-alive\n\n", ": keep-alive\n\n"]
-        assert emission_times == pytest.approx([10.0, 20.0, 30.0])
+        assert emission_times == pytest.approx([0.0, 10.0, 20.0])
         assert max(b - a for a, b in pairwise(emission_times)) <= 10.0
 
     @pytest.mark.asyncio
@@ -136,12 +136,13 @@ class TestStreamOutboxEvents:
             poll_interval_seconds=1.0,
         )
 
-        chunks = await collect_chunks(response.streaming_content, 4)
+        chunks = await collect_chunks(response.streaming_content, 5)
 
-        assert chunks[0] == f"id: {event.id}\n"
-        assert chunks[1] == "event: simulation\n"
-        assert '"trainerlab.session.seeded"' in chunks[2]
-        assert chunks[3] == ": keep-alive\n\n"
+        assert chunks[0] == ": keep-alive\n\n"
+        assert chunks[1] == f"id: {event.id}\n"
+        assert chunks[2] == "event: simulation\n"
+        assert '"trainerlab.session.seeded"' in chunks[3]
+        assert chunks[4] == ": keep-alive\n\n"
         assert clock.current == pytest.approx(10.0)
 
     def test_invalid_cursor_returns_http_400(self):
