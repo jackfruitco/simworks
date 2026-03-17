@@ -87,9 +87,11 @@ async def broadcast_domain_objects(
             # Build payload using caller-provided function
             payload = payload_builder(obj)
 
-            # Generate idempotency key from event type + object ID
-            # This prevents duplicate events if post_persist runs multiple times
-            idempotency_key = f"{event_type}:{obj.id}"
+            # Include the model class name so objects from different tables that
+            # happen to share the same auto-increment PK get distinct keys.
+            # (Previously shared via ABCEvent; now each type has its own table.)
+            model_label = type(obj).__name__
+            idempotency_key = f"{event_type}:{model_label}:{obj.id}"
 
             # Create outbox event
             event = await enqueue_event(

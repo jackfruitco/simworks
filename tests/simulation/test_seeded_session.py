@@ -1,7 +1,7 @@
 """Tests for synchronous initial generation during create_session_with_initial_generation.
 
 These tests verify that by the time create_session_with_initial_generation() returns:
-- TrainerRuntimeEvent records exist for each vital and condition
+- RuntimeEvent records exist for each vital and condition
 - runtime_state_json has scenario_brief populated
 - OutboxEvent records are queued for delivery
 - Session status is still 'seeded'
@@ -149,7 +149,7 @@ class TestGenerateInitialScenarioSchemaValid:
 class TestSeededSessionEmitsEvents:
     def test_seeded_session_emits_vitals_and_conditions(self, user, monkeypatch):
         """create_session_with_initial_generation must emit vital + condition events."""
-        from apps.trainerlab.models import TrainerRuntimeEvent
+        from apps.trainerlab.models import RuntimeEvent
 
         simulation_id_holder = [None]
 
@@ -175,11 +175,11 @@ class TestSeededSessionEmitsEvents:
             modifiers=[],
         )
 
-        vital_events = TrainerRuntimeEvent.objects.filter(
+        vital_events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
             event_type="vital.created",
         ).count()
-        condition_events = TrainerRuntimeEvent.objects.filter(
+        condition_events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
             event_type="condition.created",
         ).count()
@@ -253,10 +253,10 @@ class TestSeededSessionEmitsEvents:
 @pytest.mark.django_db(transaction=True)
 class TestEmitSeededVitalEvents:
     def test_emits_one_event_per_vital_type(self, user):
-        """_emit_seeded_vital_events creates TrainerRuntimeEvent for each vital in DB."""
+        """_emit_seeded_vital_events creates RuntimeEvent for each vital in DB."""
         from asgiref.sync import async_to_sync
 
-        from apps.trainerlab.models import TrainerRuntimeEvent
+        from apps.trainerlab.models import RuntimeEvent
         from apps.trainerlab.services import create_session
 
         session = create_session(
@@ -275,17 +275,17 @@ class TestEmitSeededVitalEvents:
 
         _emit_seeded_vital_events(session)
 
-        events = TrainerRuntimeEvent.objects.filter(
+        events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
             event_type="vital.created",
         )
         assert events.count() >= 1
 
     def test_emits_one_event_per_condition(self, user):
-        """_emit_seeded_condition_events creates TrainerRuntimeEvent per injury/illness."""
+        """_emit_seeded_condition_events creates RuntimeEvent per injury/illness."""
         from asgiref.sync import async_to_sync
 
-        from apps.trainerlab.models import TrainerRuntimeEvent
+        from apps.trainerlab.models import RuntimeEvent
         from apps.trainerlab.services import create_session
 
         session = create_session(
@@ -303,7 +303,7 @@ class TestEmitSeededVitalEvents:
 
         _emit_seeded_condition_events(session)
 
-        events = TrainerRuntimeEvent.objects.filter(
+        events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
             event_type="condition.created",
         )

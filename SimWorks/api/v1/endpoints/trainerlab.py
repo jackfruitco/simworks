@@ -68,7 +68,6 @@ from apps.trainerlab.intervention_dictionary import (
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
-    ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
     EventSource,
@@ -971,17 +970,17 @@ def adjust_simulation(
     )
 
 
-def _resolve_superseded_domain_event(
+def _resolve_superseded_intervention(
     *,
     simulation_id: int,
     supersedes_event_id: int | None,
-) -> ABCEvent | None:
+) -> Intervention | None:
     if not supersedes_event_id:
         return None
-    return ABCEvent.objects.filter(pk=supersedes_event_id, simulation_id=simulation_id).first()
+    return Intervention.objects.filter(pk=supersedes_event_id, simulation_id=simulation_id).first()
 
 
-def _deactivate_superseded(event: ABCEvent | None) -> None:
+def _deactivate_superseded(event: Any | None) -> None:
     if event is None:
         return
     if event.is_active:
@@ -992,20 +991,23 @@ def _deactivate_superseded(event: ABCEvent | None) -> None:
 def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
     old_problem: Problem | None = None
     if body.supersedes_event_id:
-        old_problem = Problem.objects.filter(
-            pk=body.supersedes_event_id, simulation=session.simulation
-        ).first()
+        old_problem = (
+            Problem.objects.select_related("cause_injury", "cause_illness")
+            .filter(pk=body.supersedes_event_id, simulation=session.simulation)
+            .first()
+        )
         if old_problem:
             _deactivate_superseded(old_problem)
-            if old_problem.cause_id:
-                old_cause = ABCEvent.objects.filter(pk=old_problem.cause_id).first()
-                if old_cause:
-                    _deactivate_superseded(old_cause)
+            # Deactivate whichever cause is set — handles cross-kind replacements.
+            old_cause = old_problem.cause_injury or old_problem.cause_illness
+            if old_cause:
+                _deactivate_superseded(old_cause)
 
     new_injury = Injury.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=old_problem.cause if old_problem and old_problem.cause_id else None,
+        # supersedes is a same-kind self-FK; only set when the old cause was also an Injury.
+        supersedes=old_problem.cause_injury if old_problem else None,
         injury_location=body.injury_location,
         injury_kind=body.injury_kind,
         injury_description=body.injury_description,
@@ -1013,8 +1015,8 @@ def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
     return Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=old_problem,
-        cause=new_injury,
+        supersedes=old_problem,
+        cause_injury=new_injury,
         problem_kind=Problem.ProblemKind.INJURY,
         march_category=body.march_category,
         severity=body.severity,
@@ -1025,28 +1027,31 @@ def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
 def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
     old_problem: Problem | None = None
     if body.supersedes_event_id:
-        old_problem = Problem.objects.filter(
-            pk=body.supersedes_event_id, simulation=session.simulation
-        ).first()
+        old_problem = (
+            Problem.objects.select_related("cause_injury", "cause_illness")
+            .filter(pk=body.supersedes_event_id, simulation=session.simulation)
+            .first()
+        )
         if old_problem:
             _deactivate_superseded(old_problem)
-            if old_problem.cause_id:
-                old_cause = ABCEvent.objects.filter(pk=old_problem.cause_id).first()
-                if old_cause:
-                    _deactivate_superseded(old_cause)
+            # Deactivate whichever cause is set — handles cross-kind replacements.
+            old_cause = old_problem.cause_illness or old_problem.cause_injury
+            if old_cause:
+                _deactivate_superseded(old_cause)
 
     new_illness = Illness.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=old_problem.cause if old_problem and old_problem.cause_id else None,
+        # supersedes is a same-kind self-FK; only set when the old cause was also an Illness.
+        supersedes=old_problem.cause_illness if old_problem else None,
         name=body.name,
         description=body.description,
     )
     return Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=old_problem,
-        cause=new_illness,
+        supersedes=old_problem,
+        cause_illness=new_illness,
         problem_kind=Problem.ProblemKind.ILLNESS,
         march_category=body.march_category,
         severity=body.severity,
@@ -1054,7 +1059,7 @@ def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
 
 
 def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
-    supersedes = _resolve_superseded_domain_event(
+    supersedes = _resolve_superseded_intervention(
         simulation_id=session.simulation_id,
         supersedes_event_id=body.supersedes_event_id,
     )
@@ -1063,7 +1068,7 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
     obj = Intervention(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes_event=supersedes,
+        supersedes=supersedes,
         intervention_type=body.intervention_type,
         site_code=body.site_code,
         target_problem_id=body.target_problem_id,
@@ -1087,17 +1092,31 @@ def _create_note(session: TrainerSession, body: SimulationNoteCreateIn) -> Simul
     )
 
 
-def _create_vital(session: TrainerSession, body: VitalCreateIn) -> ABCEvent:
-    supersedes = _resolve_superseded_domain_event(
-        simulation_id=session.simulation_id,
-        supersedes_event_id=body.supersedes_event_id,
+_VITAL_MODEL_MAP = {
+    "heart_rate": HeartRate,
+    "respiratory_rate": RespiratoryRate,
+    "spo2": SPO2,
+    "etco2": ETCO2,
+    "blood_glucose": BloodGlucoseLevel,
+    "blood_pressure": BloodPressure,
+}
+
+
+def _create_vital(session: TrainerSession, body: VitalCreateIn) -> Any:
+    vital_model = _VITAL_MODEL_MAP.get(body.vital_type)
+    supersedes = (
+        vital_model.objects.filter(
+            pk=body.supersedes_event_id, simulation_id=session.simulation_id
+        ).first()
+        if body.supersedes_event_id and vital_model
+        else None
     )
     _deactivate_superseded(supersedes)
 
     common = {
         "simulation": session.simulation,
         "source": EventSource.INSTRUCTOR,
-        "supersedes_event": supersedes,
+        "supersedes": supersedes,
         "min_value": body.min_value,
         "max_value": body.max_value,
         "lock_value": body.lock_value,
@@ -1130,7 +1149,7 @@ def _inject_event_core(
     simulation_id: int,
     command_type: str,
     payload_json: dict,
-    create_fn: Callable[[TrainerSession], ABCEvent | Problem],
+    create_fn: Callable[[TrainerSession], Any],
 ) -> TrainerCommandAck:
     user = request.auth
     require_instructor_membership(user)
@@ -1184,7 +1203,7 @@ def _inject_event_core(
             "domain_event_type": domain_event.__class__.__name__,
             "source": domain_event.source,
             "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_event_id,
+            "supersedes_event_id": domain_event.supersedes_id,
             "intervention_type": getattr(domain_event, "intervention_type", "") or None,
             "site_code": getattr(domain_event, "site_code", "") or None,
             "code": getattr(domain_event, "code", ""),
@@ -1201,7 +1220,7 @@ def _inject_event_core(
             "domain_event_type": domain_event.__class__.__name__,
             "source": domain_event.source,
             "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_event_id,
+            "supersedes_event_id": domain_event.supersedes_id,
             "content": getattr(domain_event, "content", ""),
             "created_by_role": payload_json.get("performed_by_role", "instructor"),
         }
@@ -1211,7 +1230,7 @@ def _inject_event_core(
             "domain_event_type": domain_event.__class__.__name__,
             "source": domain_event.source,
             "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_event_id,
+            "supersedes_event_id": domain_event.supersedes_id,
         }
     emit_runtime_event(
         session=session,
@@ -1525,6 +1544,7 @@ def update_condition(
         condition = update_condition_control_state(
             session=session,
             condition_id=condition_id,
+            kind=body.kind,
             is_treated=body.is_treated,
             is_resolved=body.is_resolved,
             correlation_id=correlation_id,

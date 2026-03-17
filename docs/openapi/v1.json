@@ -6294,6 +6294,14 @@
       },
       "ConditionControlUpdateIn": {
         "properties": {
+          "kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "is_treated": {
             "anyOf": [
               {
@@ -6317,6 +6325,9 @@
             "title": "Is Resolved"
           }
         },
+        "required": [
+          "kind"
+        ],
         "title": "ConditionControlUpdateIn",
         "type": "object"
       },

@@ -6,7 +6,6 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from polymorphic.models import PolymorphicModel
 
 from apps.simcore.models import BaseSession
 
@@ -32,6 +31,44 @@ class EventSource(models.TextChoices):
     AI = "ai", _("AI")
     INSTRUCTOR = "instructor", _("Instructor")
     SYSTEM = "system", _("System")
+
+
+# ---------------------------------------------------------------------------
+# Abstract base for all typed domain events
+# ---------------------------------------------------------------------------
+
+
+class BaseDomainEvent(models.Model):
+    """Abstract base for typed TrainerLab domain models.
+
+    Each concrete subclass gets its own standalone table — no multi-table
+    inheritance, no polymorphic JOINs.  Common fields (simulation, source,
+    is_active, timestamp) live directly on each table via this abstract base.
+    """
+
+    simulation = models.ForeignKey(
+        "simcore.Simulation",
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
+    source = models.CharField(
+        max_length=16,
+        choices=EventSource.choices,
+        default=EventSource.SYSTEM,
+    )
+    is_active = models.BooleanField(default=True, db_index=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        abstract = True
+
+    def __str__(self):
+        return f"{self.__class__.__name__} at {self.timestamp:%H:%M:%S}"
+
+
+# ---------------------------------------------------------------------------
+# Session / command / runtime-event models
+# ---------------------------------------------------------------------------
 
 
 class TrainerSession(BaseSession):
@@ -106,17 +143,30 @@ class TrainerCommand(models.Model):
         ]
 
 
-class TrainerRuntimeEvent(models.Model):
-    """Append-only TrainerLab event stream feeding outbox + SSE."""
+class RuntimeEvent(models.Model):
+    """Append-only TrainerLab event stream feeding outbox + SSE.
+
+    Replaces TrainerRuntimeEvent.  Every domain state change (vital update,
+    condition created, intervention recorded…) and every session lifecycle
+    event (session.seeded, run.started, state.updated…) produces one row here.
+
+    Domain model rows (Injury, Problem, Intervention, vitals…) are the source
+    of truth for current state.  RuntimeEvent is the append-only audit log and
+    SSE delivery mechanism.
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     session = models.ForeignKey(
-        "trainerlab.TrainerSession", on_delete=models.CASCADE, related_name="runtime_events"
+        "trainerlab.TrainerSession",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="runtime_events",
     )
     simulation = models.ForeignKey(
         "simcore.Simulation",
         on_delete=models.CASCADE,
-        related_name="trainer_runtime_events",
+        related_name="runtime_events",
     )
     event_type = models.CharField(max_length=120)
     payload = models.JSONField(default=dict, blank=True)
@@ -133,15 +183,16 @@ class TrainerRuntimeEvent(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="trainer_runtime_events",
+        related_name="runtime_events",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = "trainerlab_runtimeevent"
         ordering = ["created_at"]
         indexes = [
-            models.Index(fields=["simulation", "created_at"], name="idx_trainer_evt_sim"),
-            models.Index(fields=["session", "created_at"], name="idx_trainer_evt_session"),
+            models.Index(fields=["simulation", "created_at"], name="idx_runtime_evt_sim"),
+            models.Index(fields=["session", "created_at"], name="idx_runtime_evt_session"),
         ]
 
 
@@ -152,6 +203,11 @@ class TrainerRunSummary(models.Model):
     summary_json = models.JSONField(default=dict)
     generated_at = models.DateTimeField(auto_now_add=True)
     generator_version = models.CharField(max_length=32, default="v1")
+
+
+# ---------------------------------------------------------------------------
+# Scenario presets
+# ---------------------------------------------------------------------------
 
 
 class ScenarioInstruction(models.Model):
@@ -240,30 +296,12 @@ class ScenarioInstructionPermission(models.Model):
         return f"{self.scenario_instruction_id}:{self.user_id}"
 
 
-class ABCEvent(PolymorphicModel):
-    """Abstract class for mutable TrainerLab domain events."""
-
-    timestamp = models.DateTimeField(auto_now_add=True)
-    simulation = models.ForeignKey(
-        "simcore.Simulation", on_delete=models.CASCADE, related_name="events"
-    )
-    source = models.CharField(
-        max_length=16, choices=EventSource.choices, default=EventSource.SYSTEM
-    )
-    supersedes_event = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="superseded_domain_events",
-    )
-    is_active = models.BooleanField(default=True)
-
-    def __str__(self):
-        return f"{self.__class__.__name__} at {self.timestamp:%H:%M:%S}"
+# ---------------------------------------------------------------------------
+# Domain event: causes (Injury, Illness)
+# ---------------------------------------------------------------------------
 
 
-class Injury(ABCEvent):
+class Injury(BaseDomainEvent):
     class InjuryLocation(models.TextChoices):
         HEAD_LEFT_ANTERIOR = "HLA", _("Left Anterior Head")
         HEAD_RIGHT_ANTERIOR = "HRA", _("Right Anterior Head")
@@ -329,33 +367,51 @@ class Injury(ABCEvent):
         db_index=True,
         help_text="The kind of injury",
     )
-
     injury_description = models.CharField(max_length=500)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
 
     def __str__(self):
         return f"{self.get_injury_kind_display()} at {self.get_injury_location_display()}"
 
 
-class Illness(ABCEvent):
+class Illness(BaseDomainEvent):
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
 
 
-class Problem(ABCEvent):
+# ---------------------------------------------------------------------------
+# Domain event: Problem (condition lifecycle)
+# ---------------------------------------------------------------------------
+
+
+class Problem(BaseDomainEvent):
     """
     A treatable clinical problem owned by a simulation.
 
     Separates the immutable cause (Injury or Illness) from the mutable
     treatment lifecycle. Lifecycle fields (march_category, severity, is_treated,
-    is_resolved) live here; cause fields (mechanism, anatomy, illness name) live on
-    the linked Injury / Illness.
+    is_resolved) live here; cause fields (mechanism, anatomy, illness name) live
+    on the linked Injury / Illness.
 
-    ``cause`` is a FK to ABCEvent so both Injury and Illness can be referenced.
-    Null cause means a standalone, instructor-injected problem with no underlying
-    cause record.
+    ``cause_injury`` and ``cause_illness`` are typed nullable FKs replacing the
+    previous polymorphic ``cause → ABCEvent``.  Exactly one (or neither for
+    standalone problems) will be set.
 
-    ``problem_kind`` is derived from the cause type at creation time and stored for
-    query/index performance: "injury", "illness", or "other".
+    ``problem_kind`` is derived from the cause type at creation time and stored
+    for query/index performance: "injury", "illness", or "other".
     """
 
     class MARCHCategory(models.TextChoices):
@@ -378,13 +434,29 @@ class Problem(ABCEvent):
         ILLNESS = "illness", _("Illness")
         OTHER = "other", _("Other")
 
-    cause = models.ForeignKey(
-        "trainerlab.ABCEvent",
+    cause_injury = models.ForeignKey(
+        "trainerlab.Injury",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="problems",
-        help_text="The underlying Injury or Illness. Null for standalone problems.",
+        help_text="The underlying Injury cause. Null for illness-based or standalone problems.",
+    )
+    cause_illness = models.ForeignKey(
+        "trainerlab.Illness",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="problems",
+        help_text="The underlying Illness cause. Null for injury-based or standalone problems.",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+        help_text="The Problem record this one replaces.",
     )
     problem_kind = models.CharField(
         max_length=16,
@@ -407,6 +479,16 @@ class Problem(ABCEvent):
     is_resolved = models.BooleanField(default=False)
     description = models.TextField(blank=True, default="")
 
+    @property
+    def cause(self):
+        """Return the typed cause object (Injury or Illness), or None."""
+        return self.cause_injury or self.cause_illness
+
+    @property
+    def cause_id(self):
+        """Return the PK of the cause object, or None."""
+        return self.cause_injury_id or self.cause_illness_id
+
     def __str__(self):
         return (
             f"Problem ({self.problem_kind}, {self.march_category}) "
@@ -414,7 +496,12 @@ class Problem(ABCEvent):
         )
 
 
-class Intervention(ABCEvent):
+# ---------------------------------------------------------------------------
+# Domain event: Intervention
+# ---------------------------------------------------------------------------
+
+
+class Intervention(BaseDomainEvent):
     class PerformedByRole(models.TextChoices):
         TRAINEE = "trainee", _("Trainee")
         INSTRUCTOR = "instructor", _("Instructor")
@@ -446,6 +533,13 @@ class Intervention(ABCEvent):
         null=True,
         blank=True,
         related_name="targeted_by_interventions",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
     )
     status = models.CharField(
         max_length=24,
@@ -517,11 +611,23 @@ class Intervention(ABCEvent):
         return super().__str__()
 
 
-class SimulationNote(ABCEvent):
+# ---------------------------------------------------------------------------
+# Domain event: SimulationNote, ScenarioBrief
+# ---------------------------------------------------------------------------
+
+
+class SimulationNote(BaseDomainEvent):
     content = models.TextField(max_length=2000)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
 
 
-class ScenarioBrief(ABCEvent):
+class ScenarioBrief(BaseDomainEvent):
     """Instructor-facing scenario brief delivered before simulation begins."""
 
     read_aloud_brief = models.TextField(
@@ -541,10 +647,22 @@ class ScenarioBrief(ABCEvent):
         blank=True,
         help_text="Other constraints or scenario considerations.",
     )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
 
     def __str__(self):
         brief_preview = (self.read_aloud_brief or "")[:50]
         return f"ScenarioBrief at {self.timestamp:%H:%M:%S}: {brief_preview}..."
+
+
+# ---------------------------------------------------------------------------
+# Debrief annotation
+# ---------------------------------------------------------------------------
 
 
 class DebriefAnnotation(models.Model):
@@ -620,9 +738,14 @@ class DebriefAnnotation(models.Model):
         return f"{self.get_learning_objective_display()} [{self.get_outcome_display()}]"
 
 
-class VitalMeasurement(ABCEvent):
+# ---------------------------------------------------------------------------
+# Domain event: Vital measurements
+# ---------------------------------------------------------------------------
+
+
+class VitalMeasurement(BaseDomainEvent):
     """
-    Abstract class for vital signs.
+    Abstract base for vital signs.
 
     To reduce LLM AI calls, we use a range of values for each vital sign,
     and the front end will use the min and max values to generate a random value.
@@ -659,15 +782,26 @@ class VitalMeasurement(ABCEvent):
         )
 
     class Meta:
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(min_value__lte=models.F("max_value")),
-                name="vital_min_le_max",
-            ),
-        ]
+        abstract = True
 
 
 class HeartRate(VitalMeasurement):
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(min_value__lte=models.F("max_value")),
+                name="heartrate_min_le_max",
+            ),
+        ]
+
     @property
     def unit(self):
         return "bpm"
@@ -682,6 +816,22 @@ class HeartRate(VitalMeasurement):
 
 
 class RespiratoryRate(VitalMeasurement):
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(min_value__lte=models.F("max_value")),
+                name="respiratoryrate_min_le_max",
+            ),
+        ]
+
     @property
     def unit(self):
         return "breaths/min"
@@ -696,6 +846,22 @@ class RespiratoryRate(VitalMeasurement):
 
 
 class SPO2(VitalMeasurement):
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(min_value__lte=models.F("max_value")),
+                name="spo2_min_le_max",
+            ),
+        ]
+
     @property
     def unit(self):
         return "%"
@@ -710,6 +876,22 @@ class SPO2(VitalMeasurement):
 
 
 class ETCO2(VitalMeasurement):
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(min_value__lte=models.F("max_value")),
+                name="etco2_min_le_max",
+            ),
+        ]
+
     @property
     def unit(self):
         return "mmHg"
@@ -724,6 +906,22 @@ class ETCO2(VitalMeasurement):
 
 
 class BloodGlucoseLevel(VitalMeasurement):
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(min_value__lte=models.F("max_value")),
+                name="bloodglucoselevel_min_le_max",
+            ),
+        ]
+
     @property
     def unit(self):
         return "mg/dL"
@@ -740,6 +938,13 @@ class BloodGlucoseLevel(VitalMeasurement):
 class BloodPressure(VitalMeasurement):
     min_value_diastolic = models.PositiveSmallIntegerField()
     max_value_diastolic = models.PositiveSmallIntegerField()
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
 
     # min_value and max_value are used for systolic pressures but aliased for convenience
     @property
@@ -773,13 +978,22 @@ class BloodPressure(VitalMeasurement):
     class Meta:
         constraints = [
             models.CheckConstraint(
+                condition=models.Q(min_value__lte=models.F("max_value")),
+                name="bloodpressure_min_le_max",
+            ),
+            models.CheckConstraint(
                 condition=models.Q(min_value_diastolic__lte=models.F("max_value_diastolic")),
                 name="bp_dia_min_le_max",
             ),
         ]
 
 
-class PulseAssessment(ABCEvent):
+# ---------------------------------------------------------------------------
+# Domain event: PulseAssessment
+# ---------------------------------------------------------------------------
+
+
+class PulseAssessment(BaseDomainEvent):
     """Pulse assessment at a specific anatomic site.
 
     Records pulse presence, quality, and peripheral perfusion indicators
@@ -836,12 +1050,16 @@ class PulseAssessment(ABCEvent):
     temperature_description = models.CharField(
         max_length=20, choices=TemperatureDescription.choices
     )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
 
     def __str__(self):
         return (
             f"PulseAssessment {self.timestamp:%H:%M:%S} "
             f"{self.location}: {'present' if self.present else 'absent'} ({self.description})"
         )
-
-    class Meta:
-        pass
