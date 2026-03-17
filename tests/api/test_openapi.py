@@ -66,8 +66,6 @@ class TestOpenAPIExport:
 
     def test_yaml_format_without_pyyaml(self):
         """Test that YAML format fails gracefully without PyYAML."""
-        # This test assumes PyYAML is not installed
-        # If it is installed, this test will be skipped
         try:
             import yaml  # noqa: F401
 
@@ -79,6 +77,26 @@ class TestOpenAPIExport:
             call_command("export_openapi", format="yaml", stdout=StringIO())
 
         assert "PyYAML is required" in str(exc_info.value)
+
+    def test_yaml_format_with_pyyaml(self):
+        """Test that YAML format works correctly when PyYAML is installed."""
+        try:
+            import yaml
+        except ImportError:
+            pytest.skip("PyYAML is not installed")
+
+        out = StringIO()
+        call_command("export_openapi", format="yaml", stdout=out)
+        output = out.getvalue()
+
+        # Should be valid YAML
+        schema = yaml.safe_load(output)
+
+        # Should have required OpenAPI fields
+        assert "openapi" in schema
+        assert schema["openapi"].startswith("3.")
+        assert "info" in schema
+        assert "paths" in schema
 
 
 class TestOpenAPISchemaContent:

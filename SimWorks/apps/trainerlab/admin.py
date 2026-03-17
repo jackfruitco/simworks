@@ -1,62 +1,31 @@
 from django.contrib import admin
-from django.utils.translation import gettext_lazy as _
-from polymorphic.admin import (
-    PolymorphicChildModelAdmin,
-    PolymorphicParentModelAdmin,
-)
 
 from .models import (
     ETCO2,
     SPO2,
-    ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
     HeartRate,
     Illness,
     Injury,
     Intervention,
+    Problem,
+    PulseAssessment,
     RespiratoryRate,
+    RuntimeEvent,
     ScenarioBrief,
     ScenarioInstruction,
     ScenarioInstructionPermission,
     SimulationNote,
     TrainerCommand,
     TrainerRunSummary,
-    TrainerRuntimeEvent,
     TrainerSession,
-    VitalMeasurement,
 )
 
-
-class VitalAbbreviatedNameFilter(admin.SimpleListFilter):
-    title = _("vital")
-    parameter_name = "vital_abbrev"
-
-    def lookups(self, request, model_admin):
-        return (
-            ("HR", "HR"),
-            ("RR", "RR"),
-            ("SPO2", "SPO2"),
-            ("ETCO2", "ETCO2"),
-            ("BGL", "BGL"),
-            ("BP", "BP"),
-        )
-
-    def queryset(self, request, queryset):
-        value = self.value()
-        if value == "HR":
-            return queryset.instance_of(HeartRate)
-        if value == "RR":
-            return queryset.instance_of(RespiratoryRate)
-        if value == "SPO2":
-            return queryset.instance_of(SPO2)
-        if value == "ETCO2":
-            return queryset.instance_of(ETCO2)
-        if value == "BGL":
-            return queryset.instance_of(BloodGlucoseLevel)
-        if value == "BP":
-            return queryset.instance_of(BloodPressure)
-        return queryset
+_DOMAIN_LIST_DISPLAY = ("id", "timestamp", "simulation", "source", "is_active")
+_DOMAIN_LIST_FILTER = ("source", "is_active")
+_DOMAIN_SEARCH = ("simulation__id",)
+_DOMAIN_ORDERING = ("-timestamp",)
 
 
 @admin.register(TrainerSession)
@@ -80,128 +49,115 @@ class TrainerCommandAdmin(admin.ModelAdmin):
     search_fields = ("idempotency_key", "session__id")
 
 
-@admin.register(TrainerRuntimeEvent)
-class TrainerRuntimeEventAdmin(admin.ModelAdmin):
+@admin.register(RuntimeEvent)
+class RuntimeEventAdmin(admin.ModelAdmin):
     list_display = ("id", "session", "event_type", "created_at")
     list_filter = ("event_type",)
     search_fields = ("session__id", "simulation__id")
 
 
-@admin.register(ABCEvent)
-class ABCEventAdmin(PolymorphicParentModelAdmin):
-    base_model = ABCEvent
-    child_models = (
-        Injury,
-        Illness,
-        Intervention,
-        SimulationNote,
-        ScenarioBrief,
-        VitalMeasurement,
-        HeartRate,
-        RespiratoryRate,
-        SPO2,
-        ETCO2,
-        BloodGlucoseLevel,
-        BloodPressure,
-    )
-    list_display = (
-        "id",
-        "timestamp",
-        "simulation",
-        "source",
-        "vital_abbreviated_name",
-        "is_active",
-    )
-    list_filter = ("source", VitalAbbreviatedNameFilter, "is_active")
-    search_fields = ("simulation__id",)
-    ordering = ("-timestamp",)
-
-    @admin.display(description="Vital")
-    def vital_abbreviated_name(self, obj):
-        if isinstance(obj, VitalMeasurement):
-            return obj.abbreviated_name
-        return ""
-
-
-class ABCEventChildAdmin(PolymorphicChildModelAdmin):
-    base_model = ABCEvent
-    list_display = (
-        "id",
-        "timestamp",
-        "simulation",
-        "source",
-        "vital_abbreviated_name",
-        "is_active",
-    )
-    list_filter = ("source", VitalAbbreviatedNameFilter, "is_active")
-    search_fields = ("simulation__id",)
-    ordering = ("-timestamp",)
-
-    @admin.display(description="Vital")
-    def vital_abbreviated_name(self, obj):
-        if isinstance(obj, VitalMeasurement):
-            return obj.abbreviated_name
-        return ""
-
-
 @admin.register(Injury)
-class InjuryAdmin(ABCEventChildAdmin):
-    base_model = Injury
+class InjuryAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "injury_location", "injury_kind")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(Illness)
-class IllnessAdmin(ABCEventChildAdmin):
-    base_model = Illness
+class IllnessAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "name")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
+
+
+@admin.register(Problem)
+class ProblemAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "problem_kind", "march_category", "severity")
+    list_filter = (*_DOMAIN_LIST_FILTER, "problem_kind")
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(Intervention)
-class InterventionAdmin(ABCEventChildAdmin):
-    base_model = Intervention
+class InterventionAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "intervention_type", "status")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(SimulationNote)
-class SimulationNoteAdmin(ABCEventChildAdmin):
-    base_model = SimulationNote
+class SimulationNoteAdmin(admin.ModelAdmin):
+    list_display = _DOMAIN_LIST_DISPLAY
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(ScenarioBrief)
-class ScenarioBriefAdmin(ABCEventChildAdmin):
-    base_model = ScenarioBrief
+class ScenarioBriefAdmin(admin.ModelAdmin):
+    list_display = _DOMAIN_LIST_DISPLAY
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
-@admin.register(VitalMeasurement)
-class VitalMeasurementAdmin(ABCEventChildAdmin):
-    base_model = VitalMeasurement
+@admin.register(PulseAssessment)
+class PulseAssessmentAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "location", "present")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(HeartRate)
-class HeartRateAdmin(ABCEventChildAdmin):
-    base_model = HeartRate
+class HeartRateAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "min_value", "max_value")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(RespiratoryRate)
-class RespiratoryRateAdmin(ABCEventChildAdmin):
-    base_model = RespiratoryRate
+class RespiratoryRateAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "min_value", "max_value")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(SPO2)
-class SPO2Admin(ABCEventChildAdmin):
-    base_model = SPO2
+class SPO2Admin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "min_value", "max_value")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(ETCO2)
-class ETCO2Admin(ABCEventChildAdmin):
-    base_model = ETCO2
+class ETCO2Admin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "min_value", "max_value")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(BloodGlucoseLevel)
-class BloodGlucoseLevelAdmin(ABCEventChildAdmin):
-    base_model = BloodGlucoseLevel
+class BloodGlucoseLevelAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "min_value", "max_value")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 @admin.register(BloodPressure)
-class BloodPressureAdmin(ABCEventChildAdmin):
-    base_model = BloodPressure
+class BloodPressureAdmin(admin.ModelAdmin):
+    list_display = (*_DOMAIN_LIST_DISPLAY, "min_value", "max_value")
+    list_filter = _DOMAIN_LIST_FILTER
+    search_fields = _DOMAIN_SEARCH
+    ordering = _DOMAIN_ORDERING
 
 
 admin.site.register(TrainerRunSummary)

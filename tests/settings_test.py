@@ -3,6 +3,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "test"
+DEBUG = True
 JWT_SECRET_KEY = "test-jwt-secret-key-for-tests"
 INSTALLED_APPS = [
     "django.contrib.contenttypes",

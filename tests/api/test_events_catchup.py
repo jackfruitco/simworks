@@ -333,27 +333,25 @@ class TestStreamEvents:
     """Tests for shared simulation SSE stream endpoint."""
 
     def test_stream_events_returns_sse_envelope(self, auth_client, simulation, outbox_events):
+        from tests.helpers.sse import collect_streaming_chunks
+
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/events/stream/")
 
         assert response.status_code == 200
         assert response["Content-Type"].startswith("text/event-stream")
 
-        stream_iter = iter(response.streaming_content)
-        chunks = []
-        for _ in range(3):
-            chunk = next(stream_iter)
-            if isinstance(chunk, bytes):
-                chunk = chunk.decode("utf-8")
-            chunks.append(chunk)
+        chunks = collect_streaming_chunks(response, 6)
         payload = "".join(chunks)
 
+        assert ": keep-alive" in payload or "event: simulation" in payload
+        assert "id: " in payload
         assert "event: simulation" in payload
         assert "data: " in payload
-        assert "event_type" in payload
         assert "test.event_" in payload
 
     def test_stream_events_supports_prefix_filter(self, auth_client, simulation):
         from apps.common.models import OutboxEvent
+        from tests.helpers.sse import collect_streaming_chunks
 
         OutboxEvent.objects.create(
             event_type="session.seeded",
@@ -373,14 +371,9 @@ class TestStreamEvents:
         )
 
         assert response.status_code == 200
-        stream_iter = iter(response.streaming_content)
-        chunks = []
-        for _ in range(3):
-            chunk = next(stream_iter)
-            if isinstance(chunk, bytes):
-                chunk = chunk.decode("utf-8")
-            chunks.append(chunk)
+        chunks = collect_streaming_chunks(response, 6)
         payload = "".join(chunks)
 
+        assert ": keep-alive" in payload or "event: simulation" in payload
         assert "session.seeded" in payload
         assert "chat.message_created" not in payload

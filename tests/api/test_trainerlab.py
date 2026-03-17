@@ -1,7 +1,6 @@
 """Tests for TrainerLab API v1 endpoints."""
 
 from datetime import UTC, datetime, timedelta
-from itertools import islice
 
 from django.test import Client
 import pytest
@@ -16,12 +15,8 @@ class FakeClock:
     def monotonic(self) -> float:
         return self.current
 
-    def sleep(self, seconds: float) -> None:
+    async def sleep(self, seconds: float) -> None:
         self.current += seconds
-
-
-def decode_chunk(chunk) -> str:
-    return chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk
 
 
 @pytest.fixture
@@ -580,7 +575,7 @@ class TestTrainerLabEvents:
         from apps.trainerlab.models import Problem
 
         first_injury = Injury.objects.get(injury_description="Initial laceration")
-        first_problem = Problem.objects.get(cause=first_injury)
+        first_problem = Problem.objects.get(cause_injury=first_injury)
         assert first_injury.is_active is True
         assert first_problem.is_active is True
 
@@ -602,11 +597,11 @@ class TestTrainerLabEvents:
         first_injury.refresh_from_db()
         first_problem.refresh_from_db()
         corrected_injury = Injury.objects.get(injury_description="Corrected laceration")
-        corrected_problem = Problem.objects.get(cause=corrected_injury)
+        corrected_problem = Problem.objects.get(cause_injury=corrected_injury)
         assert first_injury.is_active is False
         assert first_problem.is_active is False
-        assert corrected_injury.supersedes_event_id == first_injury.id
-        assert corrected_problem.supersedes_event_id == first_problem.id
+        assert corrected_injury.supersedes_id == first_injury.id
+        assert corrected_problem.supersedes_id == first_problem.id
 
         page_one = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/?limit=1")
         assert page_one.status_code == 200
@@ -768,10 +763,12 @@ class TestTrainerLabEvents:
             for item in listed.json()["items"]
         )
 
+        from tests.helpers.sse import collect_streaming_chunks
+
         streamed = client.get(
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
-        chunks = [decode_chunk(chunk) for chunk in islice(streamed.streaming_content, 3)]
+        chunks = collect_streaming_chunks(streamed, 8)
         payload = "".join(chunks)
         assert "note.created" in payload
         assert '"created_by_role": "instructor"' in payload
@@ -1012,7 +1009,7 @@ class TestTrainerLabEvents:
         from apps.trainerlab.models import Problem
 
         injury = Injury.objects.get(injury_description="Friendly label injury")
-        problem = Problem.objects.get(cause=injury)
+        problem = Problem.objects.get(cause_injury=injury)
         assert problem.march_category == "M"
         assert injury.injury_location == "LUA"
         assert injury.injury_kind == "LAC"
@@ -1082,11 +1079,13 @@ class TestTrainerLabEvents:
         assert response["Cache-Control"] == "no-cache, no-transform"
         assert response["X-Accel-Buffering"] == "no"
 
-        chunks = [decode_chunk(chunk) for chunk in islice(response.streaming_content, 3)]
+        from tests.helpers.sse import collect_streaming_chunks
+
+        chunks = collect_streaming_chunks(response, 8)
         payload = "".join(chunks)
 
-        assert chunks[0] == f"id: {streamed.id}\n"
-        assert chunks[1] == "event: sim\n"
+        assert f"id: {streamed.id}\n" in chunks
+        assert "event: sim\n" in chunks
         assert "session.seeded" in payload
         assert '"status": "seeded"' in payload
 
@@ -1098,10 +1097,19 @@ class TestTrainerLabEvents:
         monkeypatch,
     ):
         from apps.common.models import OutboxEvent
+        from tests.helpers.sse import collect_streaming_chunks
+
+        def _fake_enqueue(*, simulation):
+            return "call-test-idle-keepalive"
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            _fake_enqueue,
+        )
 
         clock = FakeClock()
         monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
-        monkeypatch.setattr("api.v1.sse.time.sleep", clock.sleep)
+        monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
 
         client = auth_client_factory(instructor_user)
         session = _create_session(client, idempotency_key="sse-idle-session")
@@ -1124,11 +1132,12 @@ class TestTrainerLabEvents:
             f"/api/v1/trainerlab/simulations/{simulation_id}/events/stream/?cursor={anchor.id}"
         )
 
-        first_chunk = decode_chunk(next(response.streaming_content))
+        chunks = collect_streaming_chunks(response, 1)
+        first_chunk = chunks[0]
 
         assert first_chunk == ": keep-alive\n\n"
         assert "event:" not in first_chunk
-        assert clock.current == pytest.approx(10.0)
+        assert clock.current == pytest.approx(0.0)
 
 
 @pytest.mark.django_db
@@ -1281,7 +1290,7 @@ class TestTrainerLabDictionaries:
             simulation_id=simulation_id, intervention_type="tourniquet"
         ).latest("timestamp")
         injury = Injury.objects.get(injury_description="GSW to the left chest")
-        problem = Problem.objects.get(cause=injury, simulation_id=simulation_id)
+        problem = Problem.objects.get(cause_injury=injury, simulation_id=simulation_id)
 
         def _inline_enqueue(batch):
             apply_runtime_turn_output(

@@ -13,7 +13,6 @@ from .intervention_dictionary import (
 from .models import (
     ETCO2,
     SPO2,
-    ABCEvent,
     BloodGlucoseLevel,
     BloodPressure,
     HeartRate,
@@ -103,13 +102,13 @@ def enrich_trainer_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
     return enriched
 
 
-def _base_domain_event_payload(obj: ABCEvent) -> dict[str, Any]:
+def _base_domain_event_payload(obj: Any) -> dict[str, Any]:
     return {
         "simulation_id": obj.simulation_id,
         "domain_event_id": obj.id,
         "domain_event_type": type(obj).__name__,
         "source": obj.source,
-        "supersedes_event_id": obj.supersedes_event_id,
+        "supersedes_event_id": obj.supersedes_id,
         "timestamp": _event_timestamp_iso(obj),
     }
 
@@ -131,7 +130,7 @@ def _serialize_pulse_event(obj: PulseAssessment) -> dict[str, Any]:
     }
 
 
-def _serialize_vital_event(obj: ABCEvent) -> dict[str, Any]:
+def _serialize_vital_event(obj: Any) -> dict[str, Any]:
     if isinstance(obj, HeartRate):
         vital_type = "heart_rate"
     elif isinstance(obj, RespiratoryRate):
@@ -161,10 +160,12 @@ def _serialize_vital_event(obj: ABCEvent) -> dict[str, Any]:
     return payload
 
 
-def _serialize_problem_with_cause(obj: Problem, cause: ABCEvent | None = None) -> dict[str, Any]:
+def _serialize_problem_with_cause(
+    obj: Problem, cause: Injury | Illness | None = None
+) -> dict[str, Any]:
     """Serialize a Problem domain event, resolving its cause for extra fields."""
-    if cause is None and obj.cause_id:
-        cause = ABCEvent.objects.filter(pk=obj.cause_id).first()
+    if cause is None:
+        cause = obj.cause
     base = {
         **_base_domain_event_payload(obj),
         "event_kind": "condition",
@@ -201,10 +202,10 @@ def _serialize_problem_with_cause(obj: Problem, cause: ABCEvent | None = None) -
 
 
 def serialize_domain_event(
-    obj: ABCEvent,
+    obj: Any,
     *,
     extra: Mapping[str, Any] | None = None,
-    cause: ABCEvent | None = None,
+    cause: Injury | Illness | None = None,
 ) -> dict[str, Any]:
     if isinstance(obj, Problem):
         payload = _serialize_problem_with_cause(obj, cause)

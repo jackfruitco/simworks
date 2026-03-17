@@ -1,18 +1,12 @@
 """Observability and instrumentation settings."""
 
-from __future__ import annotations
-
 import os
 
 import logfire
 
-logfire_token = os.getenv("LOGFIRE_API_KEY")
-if logfire_token:
-    logfire.configure(token=logfire_token)
+if os.getenv("LOGFIRE_TOKEN") or os.getenv("LOGFIRE_API_KEY"):
+    logfire.configure()
 else:
-    # Allow local/test environments to run without Logfire authentication.
-    # console=False suppresses the local OTel console exporter that would otherwise
-    # duplicate every log line already printed by the Django console handler.
     logfire.configure(send_to_logfire=False, console=False)
 
 logfire.instrument_httpx(

@@ -55,9 +55,7 @@ def get_client_ip(request: HttpRequest) -> str:
     client).  When not behind a proxy, uses REMOTE_ADDR directly and ignores
     X-Forwarded-For entirely to prevent IP spoofing via header injection.
     """
-    from django.conf import settings as _settings
-
-    behind_proxy = getattr(_settings, "DJANGO_BEHIND_PROXY", False)
+    behind_proxy = getattr(settings, "DJANGO_BEHIND_PROXY", False)
 
     if behind_proxy:
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
