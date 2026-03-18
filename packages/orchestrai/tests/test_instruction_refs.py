@@ -13,9 +13,9 @@ Covers:
 
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 import textwrap
-from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -186,6 +186,7 @@ def test_three_part_ref_lazy_imports_python_instruction_package(monkeypatch, tmp
     monkeypatch.syspath_prepend(str(tmp_path))
 
     try:
+
         class _Service:
             instruction_refs: ClassVar[list[str]] = ["demo.runtime.DynamicInstruction"]
 
@@ -245,6 +246,7 @@ def test_three_part_ref_supports_mixed_lazy_python_and_yaml_resolution(
     monkeypatch.syspath_prepend(str(tmp_path))
 
     try:
+
         class _Service:
             instruction_refs: ClassVar[list[str]] = [
                 "demo.runtime.DynamicInstruction",
