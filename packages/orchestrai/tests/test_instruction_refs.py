@@ -304,8 +304,8 @@ def test_same_order_is_broken_by_class_name() -> None:
     with push_current_app(app):
         result = collect_instructions(_Service)
 
-    # Alpha < Zeta alphabetically → Alpha first despite being listed second
-    assert [c.__name__ for c in result] == ["Alpha", "Zeta"]
+    # Alpha < Zeta alphabetically by identity name → Alpha first despite being listed second
+    assert [getattr(c, "name", c.__name__) for c in result] == ["Alpha", "Zeta"]
 
 
 # ---------------------------------------------------------------------------

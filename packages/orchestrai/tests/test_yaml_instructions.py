@@ -40,7 +40,7 @@ def _write_yaml(tmp_path: Path, content: str) -> Path:
 
 def _run(coro):
     """Run a coroutine synchronously (test helper)."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _make_instance(cls: type[BaseInstruction], context: dict) -> BaseInstruction:

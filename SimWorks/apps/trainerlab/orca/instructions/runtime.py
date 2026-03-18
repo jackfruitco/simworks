@@ -30,3 +30,21 @@ class TrainerRuntimeContextInstruction(NsMixin, BaseInstruction):
             "and intervention effectiveness. Instructor intent should help an instructor anticipate "
             "what the engine is likely to do next."
         )
+
+
+@orca.instruction(order=20)
+class TrainerRuntimeRoleInstruction(NsMixin, BaseInstruction):
+    group = "runtime"
+    instruction = (
+        "You are the live TrainerLab runtime engine for a medical training scenario. "
+        "Update patient state clinically based on elapsed time, injuries, vitals, and trainee interventions."
+    )
+
+
+@orca.instruction(order=30)
+class TrainerRuntimeContractInstruction(NsMixin, BaseInstruction):
+    group = "runtime"
+    instruction = (
+        "Return only the structured runtime-turn schema with top-level fields: "
+        "state_changes, snapshot, instructor_intent, rationale_notes."
+    )

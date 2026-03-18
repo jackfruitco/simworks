@@ -59,3 +59,29 @@ class LabOrderTestListInstruction(BaseInstruction):
             "Use the test name as the `key` field (lowercase, underscored, e.g. 'cbc_wbc').\n"
             "Group related tests using a consistent `panel_name` where applicable."
         )
+
+
+@orca.instruction(order=20)
+class LabOrderSchemaContractInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
+    instruction = (
+        "### Schema Contract\n"
+        "- Return `results` as a list of items using only lab_result or rad_result records.\n"
+        "- Use `kind=lab_result` for numeric tests and `kind=rad_result` for imaging studies.\n"
+        "- Always include `llm_conditions_check` as concise key/value compliance checks.\n"
+        "- Do not include patient-facing messages."
+    )
+
+
+@orca.instruction(order=30)
+class LabOrderResultDetailInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
+    instruction = (
+        "### Result Generation Guidance\n"
+        "- Generate results that are clinically plausible for the patient's presentation.\n"
+        "- Abnormal results should be consistent with the likely diagnosis.\n"
+        "- Include reference ranges and units for numeric lab results.\n"
+        "- For radiology, provide a brief specific impression (1-3 sentences)."
+    )

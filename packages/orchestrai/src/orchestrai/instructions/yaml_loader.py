@@ -83,6 +83,10 @@ __all__ = ["YAMLInstructionDefinitionError", "load_yaml_instructions"]
 
 logger = logging.getLogger(__name__)
 
+# Cache generated classes by absolute YAML path so imports and runtime discovery
+# can share a single class object identity.
+_YAML_CLASS_CACHE: dict[Path, list[type[BaseInstruction]]] = {}
+
 # Matches ${variable_name} placeholders in instruction text.
 _TEMPLATE_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -358,7 +362,7 @@ def load_yaml_instructions(
         Filesystem path to the ``.yaml`` instruction file.
     app:
         The OrchestrAI application instance.  When provided, each generated
-        class is registered into ``app.components.registry(INSTRUCTIONS_DOMAIN)``.
+        class is registered into ``app.component_store.registry(INSTRUCTIONS_DOMAIN)``.
         Pass ``None`` to skip registration (useful for testing).
 
     Returns
@@ -373,6 +377,16 @@ def load_yaml_instructions(
         missing required keys, duplicate names, etc.).
     """
     import yaml  # deferred import — pyyaml is an optional dep
+
+    resolved_path = path.resolve()
+    cached = _YAML_CLASS_CACHE.get(resolved_path)
+    if cached is not None:
+        if app is not None:
+            registry = app.component_store.registry(INSTRUCTIONS_DOMAIN)
+            for cls in cached:
+                if registry.try_get(cls.identity) is None:
+                    registry.register(cls)
+        return list(cached)
 
     with path.open(encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
@@ -416,11 +430,22 @@ def load_yaml_instructions(
         seen_names.add(name)
 
     classes: list[type[BaseInstruction]] = []
+    registry = app.component_store.registry(INSTRUCTIONS_DOMAIN) if app is not None else None
     for item in data["instructions"]:
         cls = _make_instruction_class(item, namespace=namespace, group=group, path=path)
-        if app is not None:
-            app.components.registry(INSTRUCTIONS_DOMAIN).register(cls)
-            logger.debug("Registered YAML instruction %r from %s", cls.__name__, path.name)
+        if registry is not None:
+            existing = registry.try_get(cls.identity)
+            if existing is None:
+                registry.register(cls)
+                logger.debug("Registered YAML instruction %r from %s", cls.__name__, path.name)
+            else:
+                logger.debug(
+                    "Skipped YAML instruction %r from %s; identity %s already registered",
+                    cls.__name__,
+                    path.name,
+                    cls.identity.label,
+                )
         classes.append(cls)
 
+    _YAML_CLASS_CACHE[resolved_path] = list(classes)
     return classes

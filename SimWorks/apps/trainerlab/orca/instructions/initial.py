@@ -22,3 +22,21 @@ class InjuryCodebookMixin(NsMixin, BaseInstruction):
 
     def render_instruction(self) -> str:
         return build_injury_codebook_instruction()
+
+
+@orca.instruction(order=5)
+class TrainerLabMixin(NsMixin, BaseInstruction):
+    group = "initial"
+    instruction = (
+        "The user is a medical training instruction proctoring a live simulation medical scenario lane for a student. "
+        "Assist with generating the patient scenario and provide concise instructor support."
+    )
+
+
+@orca.instruction(order=10)
+class InitialResponseMixin(NsMixin, BaseInstruction):
+    group = "initial"
+    instruction = (
+        "Generate a scenario_brief read out loud to the trainee, including scene context and evacuation options. "
+        "Then generate initial conditions, initial vitals, and clinically consistent pulse assessments."
+    )
