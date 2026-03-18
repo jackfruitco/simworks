@@ -1,4 +1,9 @@
 # trainerlab/orca/instructions/runtime.py
+"""Dynamic instruction classes for TrainerLab runtime turn service.
+
+Static instructions (TrainerRuntimeRoleInstruction, TrainerRuntimeContractInstruction)
+are defined in runtime.yaml (same directory).
+"""
 
 import json
 
@@ -10,6 +15,7 @@ from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 @orca.instruction(order=20)
 class TrainerRuntimeRoleInstruction(NsMixin, BaseInstruction):
+    group = "runtime"
     instruction = (
         "You are the live TrainerLab runtime engine for a medical training scenario. "
         "Update the patient state clinically based on elapsed scenario time, causes, problems, "
@@ -23,6 +29,7 @@ class TrainerRuntimeRoleInstruction(NsMixin, BaseInstruction):
 
 @orca.instruction(order=30)
 class TrainerRuntimeContractInstruction(NsMixin, BaseInstruction):
+    group = "runtime"
     instruction = (
         "Return only the structured runtime-turn schema with these top-level fields:\n"
         "- state_changes: Deltas only — advisory problem observations, trending vital ranges, "
@@ -75,6 +82,8 @@ class TrainerRuntimeContractInstruction(NsMixin, BaseInstruction):
 
 @orca.instruction(order=40)
 class TrainerRuntimeContextInstruction(NsMixin, BaseInstruction):
+    group = "runtime"
+
     def render_instruction(self) -> str:
         snapshot = json.dumps(self.context.get("current_snapshot", {}), sort_keys=True)
         reasons = json.dumps(self.context.get("runtime_reasons", []), sort_keys=True)

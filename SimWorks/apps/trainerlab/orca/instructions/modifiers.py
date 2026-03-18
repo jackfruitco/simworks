@@ -1,37 +1,24 @@
-# trainerlab/orca/instructions/modifiers.py
-
+"""Modifier instruction classes for TrainerLab services."""
 
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
-from orchestrai_django.identity import DjangoIdentityMixin
 
 from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 
-class ModifierGroupMixin(DjangoIdentityMixin):
+@orca.instruction(order=50)
+class MilitaryMedicMixin(NsMixin, BaseInstruction):
     group = "modifier"
+    instruction = "The trainee is a U.S. Military Medic."
 
 
-@orca.instruction
-class MilitaryMedicMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
-    instruction = "The trainee is a U.S. Military Medic. "
+@orca.instruction(order=50)
+class CombatMixin(NsMixin, BaseInstruction):
+    group = "modifier"
+    instruction = "Scenario Rule: must be a combat scenario."
 
 
-@orca.instruction
-class SpecOpsMedicMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
-    instruction = "The trainee is a U.S. Military Special Operations Medic. "
-
-
-@orca.instruction
-class TraumaMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
-    instruction = "Scenario Rule: must be a trauma scenario. "
-
-
-@orca.instruction
-class MedicalMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
-    instruction = "Scenario Rule: must be a medical scenario. "
-
-
-@orca.instruction
-class CombatMixin(NsMixin, ModifierGroupMixin, BaseInstruction):
-    instruction = "Scenario Rule: must be a combat scenario. "
+@orca.instruction(order=50)
+class TraumaMixin(NsMixin, BaseInstruction):
+    group = "modifier"
+    instruction = "Scenario Rule: must be a trauma scenario."

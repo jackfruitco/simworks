@@ -4,14 +4,6 @@
 import logging
 from typing import ClassVar
 
-from apps.chatlab.orca.instructions import (
-    StitchConversationContextInstruction,
-    StitchPersonaInstruction,
-    StitchReplyDetailInstruction,
-    StitchRoleInstruction,
-    StitchSchemaContractInstruction,
-    StitchToneInstruction,
-)
 from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import orca
 
@@ -19,18 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 @orca.service
-class GenerateStitchReply(
-    PreviousResponseMixin,
-    StitchPersonaInstruction,
-    StitchRoleInstruction,
-    StitchConversationContextInstruction,
-    StitchReplyDetailInstruction,
-    StitchSchemaContractInstruction,
-    StitchToneInstruction,
-    DjangoBaseService,
-):
+class GenerateStitchReply(PreviousResponseMixin, DjangoBaseService):
     """Generate a reply from Stitch, the AI facilitator."""
 
+    instruction_refs: ClassVar[list[str]] = [
+        "chatlab.stitch.StitchPersonaInstruction",
+        "chatlab.stitch.StitchRoleInstruction",
+        "chatlab.stitch.StitchConversationContextInstruction",
+        "chatlab.stitch.StitchDebriefInstruction",
+        "chatlab.stitch.StitchSchemaContractInstruction",
+        "chatlab.stitch.StitchToneInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = (
         "simulation_id",
         "conversation_id",

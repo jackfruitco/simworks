@@ -1,4 +1,7 @@
-"""Instruction classes for lab order result generation services."""
+"""Dynamic instruction classes for lab order result generation services.
+
+Static instructions are defined in lab_orders.yaml (same directory).
+"""
 
 from django.core.exceptions import ObjectDoesNotExist
 
@@ -8,6 +11,9 @@ from orchestrai_django.decorators import orca
 
 @orca.instruction(order=0)
 class LabOrderPatientContextInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
+
     async def render_instruction(self) -> str:
         from apps.simcore.models import Simulation
 
@@ -36,6 +42,9 @@ class LabOrderPatientContextInstruction(BaseInstruction):
 
 @orca.instruction(order=10)
 class LabOrderTestListInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
+
     async def render_instruction(self) -> str:
         orders: list[str] = self.context.get("orders") or []
         if not orders:
@@ -54,29 +63,25 @@ class LabOrderTestListInstruction(BaseInstruction):
 
 @orca.instruction(order=20)
 class LabOrderSchemaContractInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
     instruction = (
         "### Schema Contract\n"
-        "- Return `results` as a list of items. Each item must be either:\n"
-        "  - `{'kind': 'lab_result', 'key': ..., 'value': ..., 'panel_name': ..., "
-        "'result_unit': ..., 'reference_range_low': ..., 'reference_range_high': ..., "
-        "'result_flag': 'normal'|'abnormal', 'result_comment': ...}`\n"
-        "  - `{'kind': 'rad_result', 'key': ..., 'value': ..., 'result_flag': 'normal'|'abnormal'|'critical'}`\n"
-        "- Use `kind='lab_result'` for blood/urine/culture panels and similar numeric tests.\n"
-        "- Use `kind='rad_result'` for imaging studies (X-ray, CT, MRI, ultrasound, ECG).\n"
+        "- Return `results` as a list of items using only lab_result or rad_result records.\n"
+        "- Use `kind=lab_result` for numeric tests and `kind=rad_result` for imaging studies.\n"
         "- Always include `llm_conditions_check` as concise key/value compliance checks.\n"
-        "- Do not include patient-facing messages — this schema has no `messages` field.\n"
+        "- Do not include patient-facing messages."
     )
 
 
 @orca.instruction(order=30)
 class LabOrderResultDetailInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "lab_orders"
     instruction = (
         "### Result Generation Guidance\n"
         "- Generate results that are clinically plausible for the patient's presentation.\n"
         "- Abnormal results should be consistent with the likely diagnosis.\n"
-        "- Normal results should be realistic for the patient's age and demographics.\n"
-        "- Include reference ranges and units for all numeric lab results.\n"
-        "- For radiology, provide a brief but specific impression (1-3 sentences).\n"
-        "- Set `result_flag` to 'abnormal' only when the result is clinically significant.\n"
-        "- Add a `result_comment` for critical or clinically important findings.\n"
+        "- Include reference ranges and units for numeric lab results.\n"
+        "- For radiology, provide a brief specific impression (1-3 sentences)."
     )

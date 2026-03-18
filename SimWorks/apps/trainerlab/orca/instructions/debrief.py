@@ -1,4 +1,9 @@
 # trainerlab/orca/instructions/debrief.py
+"""Dynamic instruction classes for TrainerLab debrief service.
+
+Static instructions (TrainerDebriefRoleInstruction, TrainerDebriefContractInstruction)
+are defined in debrief.yaml (same directory).
+"""
 
 import json
 
@@ -8,38 +13,10 @@ from orchestrai_django.decorators import orca
 from ..identity_mixins import TrainerlabNamespaceMixin as NsMixin
 
 
-@orca.instruction(order=20)
-class TrainerDebriefRoleInstruction(NsMixin, BaseInstruction):
-    instruction = (
-        "You are an expert medical training debrief facilitator. "
-        "Summarize what happened in the scenario, what the trainee did well, what they missed, "
-        "and what teaching points the instructor should emphasize."
-    )
-
-
-@orca.instruction(order=30)
-class TrainerDebriefContractInstruction(NsMixin, BaseInstruction):
-    instruction = (
-        "Return only the structured debrief schema with these fields:\n"
-        "- narrative_summary: Required. A concise paragraph describing what happened in the "
-        "scenario — the clinical progression, key decision points, and outcome.\n"
-        "- strengths: List of specific things the trainee did well, grounded in actual scenario "
-        "events. Empty list if none.\n"
-        "- misses: List of specific things the trainee missed, did incorrectly, or failed to do "
-        "in time. Empty list if none.\n"
-        "- deterioration_timeline: List of key clinical events in chronological order. Each item "
-        "requires: title (short event label), timestamp_label (human-readable time reference, "
-        "e.g. 'T+2:30'), and significance (why this moment mattered clinically or educationally).\n"
-        "- teaching_points: List of educational takeaways the instructor should emphasize in "
-        "the debrief discussion. Distinct from misses — frame as learning objectives.\n"
-        "- overall_assessment: Required. A holistic one-to-two sentence qualitative summary of "
-        "the trainee's performance.\n"
-        "Keep all feedback instructor-facing, concise, and grounded in the actual scenario events."
-    )
-
-
 @orca.instruction(order=40)
 class TrainerDebriefContextInstruction(NsMixin, BaseInstruction):
+    group = "debrief"
+
     def render_instruction(self) -> str:
         final_state = json.dumps(self.context.get("final_state", {}), sort_keys=True)
         timeline = json.dumps(self.context.get("timeline_highlights", []), sort_keys=True)
@@ -54,3 +31,21 @@ class TrainerDebriefContextInstruction(NsMixin, BaseInstruction):
             "Use this to produce the narrative summary, deterioration timeline, strengths, misses, "
             "and teaching points."
         )
+
+
+@orca.instruction(order=20)
+class TrainerDebriefRoleInstruction(NsMixin, BaseInstruction):
+    group = "debrief"
+    instruction = (
+        "You are an expert medical training debrief facilitator. "
+        "Summarize what happened, what the trainee did well, what they missed, and key teaching points."
+    )
+
+
+@orca.instruction(order=30)
+class TrainerDebriefContractInstruction(NsMixin, BaseInstruction):
+    group = "debrief"
+    instruction = (
+        "Return only the structured debrief schema: narrative_summary, strengths, misses, "
+        "deterioration_timeline, teaching_points, overall_assessment."
+    )

@@ -1,0 +1,30 @@
+namespace: simcore
+group: feedback
+
+instructions:
+  - name: FeedbackInitialInstruction
+    order: 0
+    instruction: |
+      Evaluate the completed simulation and produce structured initial feedback.
+      Assess diagnostic accuracy, treatment-plan appropriateness, patient experience (0-5),
+      and a concise narrative debrief.
+      The narrative should include: correct diagnosis and treatment plan, key differentials,
+      important missed history questions (if any), 1-2 sustains, and 1-2 improves.
+
+      ### Response Schema
+      - Use GenerateInitialSimulationFeedback.
+      - Include top-level keys: metadata and llm_conditions_check.
+      - metadata must match InitialFeedbackBlock.
+      - llm_conditions_check must be a concise list of key/value checks.
+
+  - name: FeedbackContinuationInstruction
+    order: 10
+    instruction: |
+      Provide a direct, concise answer to the learner's follow-up question.
+      Keep coaching practical and tied to the completed simulation context.
+
+      ### Response Schema
+      - Use GenerateFeedbackContinuationResponse.
+      - Include top-level keys: metadata and llm_conditions_check.
+      - metadata.direct_answer must contain the learner-facing answer text.
+      - llm_conditions_check must be a concise list of key/value checks.

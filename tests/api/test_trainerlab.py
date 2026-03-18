@@ -1206,6 +1206,14 @@ class TestTrainerLabEvents:
         from apps.common.models import OutboxEvent
         from tests.helpers.sse import collect_streaming_chunks
 
+        def _fake_enqueue(*, simulation):
+            return "call-test-idle-keepalive"
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            _fake_enqueue,
+        )
+
         clock = FakeClock()
         monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
         monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
