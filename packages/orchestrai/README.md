@@ -1,24 +1,50 @@
-# Orchestrate Intelligence
+# orchestrai
 
-<p align="center">
-  <img src="docs/assets/orchestrai-logo.png" alt="OrchestrAI logo" width="420" />
-  <br>
-  <em>or-kis-stray-eye</em>
-</p>
+`orchestrai` is the provider-agnostic orchestration engine used by the MedSim platform.
 
-A lightweight, provider-agnostic orchestration layer for building structured AI workflows in pure Python. The refactored core favors explicit lifecycles, import safety, and predictable registries.
+It provides reusable primitives for building structured AI workflows without coupling to Django or MedSim application code.
 
-Import the application class directly from the top-level package:
+## What problem it solves
 
-```python
-from orchestrai import OrchestrAI
+`orchestrai` standardizes how projects:
+- configure providers/clients,
+- register services/schemas/tools,
+- run explicit lifecycle bootstrapping (`configure → setup → discover → finalize`),
+- and keep orchestration behavior consistent across environments.
 
-app = OrchestrAI()
-```
+## What it owns
 
-## Quick start
+- application lifecycle + settings loading
+- provider and client registries
+- service and schema registration primitives
+- discovery/finalization hooks
+- codecs/tooling primitives shared across integrations
 
-Create an app, apply configuration, and run the lifecycle explicitly:
+## What it does not own
+
+- Django models/persistence
+- Django app settings layout
+- product feature workflows (ChatLab, TrainerLab, etc.)
+
+Those concerns belong to MedSim app code and `orchestrai_django`.
+
+## Relationship to `orchestrai_django`
+
+- Use **`orchestrai`** for framework-agnostic orchestration logic.
+- Use **`orchestrai_django`** when integrating orchestration into Django apps.
+
+In MedSim, app code should usually consume the Django-facing APIs from `orchestrai_django`, while the lower-level orchestration contracts stay in `orchestrai`.
+
+## Core concepts
+
+- **Provider**: model/backend adapter implementation (for example OpenAI-backed provider).
+- **Client**: configured access point that selects providers and runtime behavior.
+- **Service**: executable orchestration unit.
+- **Schema**: structured output contract.
+- **Registry**: validated lookup store for registered components.
+- **Lifecycle**: explicit setup/discovery/finalization steps to avoid import-time side effects.
+
+## Minimal usage
 
 ```python
 from orchestrai import OrchestrAI
@@ -27,79 +53,26 @@ app = (
     OrchestrAI()
     .configure(
         {
-            "CLIENT": "demo-client",
-            "CLIENTS": {"demo-client": {"name": "demo-client", "api_key": "..."}},
-            "PROVIDERS": {"demo-provider": {"backend": "openai", "model": "gpt-4o-mini"}},
+            "CLIENT": "default",
+            "CLIENTS": {"default": {"name": "default", "api_key": "token"}},
+            "PROVIDERS": {"default": {"backend": "openai", "model": "gpt-4o-mini"}},
         }
     )
-    .setup()      # prepare loader and registries
-    .discover()   # optionally import discovery modules
-    .finalize()   # attach shared callbacks and freeze registries
+    .setup()
+    .discover()
+    .finalize()
 )
-
-with app.as_current():
-    # resolve the default client from the registry
-    client = app.client
 ```
 
-`start()` (or `run()`) is a convenience wrapper that performs discovery, finalization, prints the jumping-orca welcome banner once, and summarizes registered components.
+## Stability notes
 
-## Settings flow
-
-`Settings` is the authoritative configuration mapping. The `OrchestrAI` constructor loads defaults from `orchestrai.settings` and applies overrides from `ORCHESTRAI_CONFIG_MODULE` automatically:
-
-```python
-from orchestrai.conf.settings import Settings
-
-settings = Settings()
-settings.update_from_envvar()  # optional when you want to mirror the app's boot logic
-```
-
-Client-facing helpers accept the typed `ClientSettings` model from `orchestrai.client.settings_loader`. Use `load_client_settings` to convert an already-built `Settings` instance; the legacy `load_orca_settings` shim remains for compatibility but emits a deprecation warning:
-
-```python
-from orchestrai.client.settings_loader import ClientSettings, load_client_settings
-
-client_settings: ClientSettings = load_client_settings(settings)
-```
-
-## Lifecycle overview
-
-1. **configure** - apply settings from mappings, objects, or environment variables.
-2. **setup** - prepare the loader and populate registries for clients, providers, response processors, and services.
-3. **discover** - import configured discovery modules via the loader.
-4. **finalize** - run shared decorators/finalizers and freeze registries.
-5. **start** / **run** - convenience method that prints the banner, runs discovery, and finalizes the app.
-
-The app never performs network or discovery work during import; all actions are explicit.
-
-### Environment variables for the OpenAI backend
-
-The bundled OpenAI backend expects an API key and model to be provided explicitly. Set the following environment variables (or
-configure equivalent settings) before starting your app:
-
-- `ORCA_PROVIDER_API_KEY` - your OpenAI API key (falls back to `OPENAI_API_KEY` if not set)
-- `ORCA_PROVIDER_MODEL` - the default model name (for example, `gpt-4o-mini`)
-
-In single mode, set `CLIENT["api_key_envvar"]` to the name of your API key
-environment variable (for example, `ORCA_PROVIDER_API_KEY`). In multi-orca pod
-mode, the same `api_key_envvar` field on a `PROVIDERS` entry is passed through to
-the backend factory, which resolves the key from the environment before
-instantiating the provider.
+- Lifecycle APIs and registry patterns are core/stable surfaces.
+- Discovery conventions and some integration helper patterns may evolve; check package docs when upgrading.
 
 ## Documentation
 
-Comprehensive guides live in the [`docs/`](docs/) directory:
-
-- [Quick Start](docs/quick_start.md) - create an app, configure it, and make your first request.
-- [Full Guide](docs/full_documentation.md) - deep dive into configuration, lifecycle hooks, registries, and discovery.
-
-## Contributing
-
-1. Create a virtual environment and install the package in editable mode: `pip install -e .[dev]`.
-2. Run the test suite before submitting changes: `pytest`.
-3. Follow conventional commit messages and open a pull request with a clear summary of your changes.
-
-## License
-
-MIT License © 2024 OrchestrAI contributors
+- Quick start: [`docs/quick_start.md`](docs/quick_start.md)
+- Full guide: [`docs/full_documentation.md`](docs/full_documentation.md)
+- Service lifecycle reference: [`docs/service_lifecycle_spec.md`](docs/service_lifecycle_spec.md)
+- MedSim platform docs: [`../../docs/index.md`](../../docs/index.md)
+- Django integration package: [`../orchestrai_django/README.md`](../orchestrai_django/README.md)

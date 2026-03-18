@@ -2,7 +2,7 @@
 
 ## Context
 
-TrainerLab is the instructor-facing module of SimWorks — a Django/OrchestrAI medical training platform. Trainers use an iPad-first REST+SSE API to manage live clinical scenarios: injecting events, steering AI behavior, monitoring patient state, and generating debriefs.
+TrainerLab is the instructor-facing module of MedSim (formerly SimWorks) — a Django/OrchestrAI medical training platform. Trainers use an iPad-first REST+SSE API to manage live clinical scenarios: injecting events, steering AI behavior, monitoring patient state, and generating debriefs.
 
 **Incoming branches inform this analysis:**
 - `claude/injury-control-states-Crlch`: Adds `Problem` model separating immutable injury causes from mutable treatment lifecycle; adds `control_state` field (`uncontrolled` / `controlled` / `resolved`); restricts AI from setting `is_treated`/`is_resolved` (instructor-only authority).

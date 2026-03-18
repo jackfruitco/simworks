@@ -1,10 +1,10 @@
 # WebSocket Event Broadcasting
 
-This document describes the WebSocket event system used for real-time updates in SimWorks.
+This document describes the WebSocket event system used for real-time updates in MedSim.
 
 ## Overview
 
-SimWorks uses a **reliable event delivery pattern** combining:
+MedSim uses a **reliable event delivery pattern** combining:
 1. **WebSocket hints** for real-time notifications
 2. **Outbox pattern** for durable event storage
 3. **Catch-up API** for event recovery after reconnection
@@ -334,7 +334,7 @@ GET /api/v1/events/{simulation_id}/events/
 
 ### Manual Testing
 
-1. **Start development server**: `uv run python SimWorks/manage.py runserver`
+1. **Start development server**: `uv run python MedSim/manage.py runserver`
 2. **Open browser console**: Connect to WebSocket
 3. **Trigger AI response**: Send message or generate feedback
 4. **Verify events**: Check console for outbox events
