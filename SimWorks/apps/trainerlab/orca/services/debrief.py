@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from asgiref.sync import sync_to_async
 
 from apps.trainerlab.models import TrainerSession
@@ -9,20 +11,14 @@ from apps.trainerlab.services import apply_debrief_output
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
 
-from ..instructions import (
-    TrainerDebriefContextInstruction,
-    TrainerDebriefContractInstruction,
-    TrainerDebriefRoleInstruction,
-)
-
 
 @orca.service
-class GenerateTrainerRunDebrief(
-    TrainerDebriefRoleInstruction,
-    TrainerDebriefContractInstruction,
-    TrainerDebriefContextInstruction,
-    DjangoBaseService,
-):
+class GenerateTrainerRunDebrief(DjangoBaseService):
+    instruction_refs: ClassVar[list[str]] = [
+        "trainerlab.debrief.TrainerDebriefRoleInstruction",
+        "trainerlab.debrief.TrainerDebriefContractInstruction",
+        "trainerlab.debrief.TrainerDebriefContextInstruction",
+    ]
     required_context_keys = ("simulation_id", "session_id")
     use_native_output = True
 

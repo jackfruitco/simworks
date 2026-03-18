@@ -903,6 +903,53 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/messages/{message_id}/read/": {
+      "patch": {
+        "operationId": "api_v1_endpoints_messages_mark_message_read",
+        "summary": "Mark a message as read",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Marks a message as read by the current user.",
+        "tags": [
+          "messages"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/simulations/{simulation_id}/events/": {
       "get": {
         "operationId": "api_v1_endpoints_events_list_events",
@@ -1722,7 +1769,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrainerCommandAck"
+                  "$ref": "#/components/schemas/PresetApplyOut"
                 }
               }
             }
@@ -2567,6 +2614,274 @@
           }
         ]
       }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/tick/vitals/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_trigger_vitals_tick",
+        "summary": "Trigger an on-demand AI vital signs progression update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "description": "Immediately enqueue a vitals-only AI progression turn.\n\nUnlike the full runtime tick, this service only updates vital sign ranges\nand does not modify conditions or interventions.",
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/conditions/{condition_id}/": {
+      "patch": {
+        "operationId": "api_v1_endpoints_trainerlab_update_condition",
+        "summary": "Update treatment/resolution state of a condition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "condition_id",
+            "schema": {
+              "title": "Condition Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConditionControlOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Set the instructor-controlled treatment or resolution state of an Injury or Illness.\n\n- `is_treated=true` \u2192 marks the condition as `controlled` (treatment applied)\n- `is_resolved=true` \u2192 marks the condition as `resolved` (no longer active clinically)\n\nCreates a superseding event record preserving full history.",
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConditionControlUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/run/tick/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_trigger_tick",
+        "summary": "Trigger an immediate AI runtime turn",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "description": "Immediately queue a manual AI runtime turn, bypassing the tick interval timer.\n\nUseful for teaching moments where the trainer needs an instant patient state update.\nThe response is `accepted` once the reason is queued; the actual AI turn executes\nasynchronously.",
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/annotations/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_annotation",
+        "summary": "Create a live debrief annotation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnotationOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Drop a structured pedagogical annotation during a live session.\n\nAnnotations are tied to learning objectives (e.g. hemorrhage_control, airway)\nand outcomes (correct, incorrect, missed). They are included in the AI debrief\ngeneration context to improve post-session feedback quality.",
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnotationCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      },
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_list_annotations",
+        "summary": "List debrief annotations for a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AnnotationOut"
+                  },
+                  "title": "Response",
+                  "type": "array"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/scenario-brief/": {
+      "patch": {
+        "operationId": "api_v1_endpoints_trainerlab_update_scenario_brief_endpoint",
+        "summary": "Edit the scenario brief for a simulation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioBriefDetailOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Partially update the AI-generated scenario brief.\n\nOnly the fields provided in the request body are changed; all others retain\ntheir current values. This is useful for correcting or customising the\nread-aloud brief before delivering it to students.\n\nEmits a `trainerlab.scenario_brief.updated` SSE event.",
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioBriefUpdateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -3330,6 +3645,12 @@
             "title": "Delivery Retry Count",
             "type": "integer"
           },
+          "is_read": {
+            "default": false,
+            "description": "Whether the current user has read this message",
+            "title": "Is Read",
+            "type": "boolean"
+          },
           "media_list": {
             "description": "Message media metadata (snake_case canonical API shape)",
             "items": {
@@ -3908,10 +4229,11 @@
         "description": "Input schema for submitting signed lab orders.",
         "properties": {
           "orders": {
-            "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty.",
+            "description": "List of ordered test names (e.g. ['CBC', 'BMP', 'Chest X-Ray']). Each string must be non-empty. Maximum 50 orders per request.",
             "items": {
               "type": "string"
             },
+            "maxItems": 50,
             "minItems": 1,
             "title": "Orders",
             "type": "array"
@@ -4389,7 +4711,61 @@
         "title": "ScenarioInstructionUnshareIn",
         "type": "object"
       },
-      "TrainerCommandAck": {
+      "PresetApplyConditionItem": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "title": "PresetApplyConditionItem",
+        "type": "object"
+      },
+      "PresetApplyDiff": {
+        "properties": {
+          "conditions_added": {
+            "items": {
+              "$ref": "#/components/schemas/PresetApplyConditionItem"
+            },
+            "title": "Conditions Added",
+            "type": "array"
+          },
+          "vitals_changed": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PresetApplyVitalChange"
+            },
+            "title": "Vitals Changed",
+            "type": "object"
+          },
+          "state_revision_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Revision Before"
+          }
+        },
+        "title": "PresetApplyDiff",
+        "type": "object"
+      },
+      "PresetApplyOut": {
         "properties": {
           "command_id": {
             "title": "Command Id",
@@ -4399,12 +4775,46 @@
             "default": "accepted",
             "title": "Status",
             "type": "string"
+          },
+          "diff": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PresetApplyDiff"
+              }
+            ]
           }
         },
         "required": [
           "command_id"
         ],
-        "title": "TrainerCommandAck",
+        "title": "PresetApplyOut",
+        "type": "object"
+      },
+      "PresetApplyVitalChange": {
+        "properties": {
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "after": {
+            "additionalProperties": true,
+            "title": "After",
+            "type": "object"
+          }
+        },
+        "required": [
+          "before",
+          "after"
+        ],
+        "title": "PresetApplyVitalChange",
         "type": "object"
       },
       "ScenarioInstructionApplyIn": {
@@ -4636,7 +5046,8 @@
           "kind": {
             "enum": [
               "injury",
-              "illness"
+              "illness",
+              "other"
             ],
             "title": "Kind",
             "type": "string"
@@ -4671,7 +5082,7 @@
             ],
             "title": "Timestamp"
           },
-          "injury_category": {
+          "march_category": {
             "anyOf": [
               {
                 "type": "string"
@@ -4680,7 +5091,7 @@
                 "type": "null"
               }
             ],
-            "title": "Injury Category"
+            "title": "March Category"
           },
           "injury_location": {
             "anyOf": [
@@ -4725,6 +5136,21 @@
               }
             ],
             "title": "Severity"
+          },
+          "is_treated": {
+            "default": false,
+            "title": "Is Treated",
+            "type": "boolean"
+          },
+          "is_resolved": {
+            "default": false,
+            "title": "Is Resolved",
+            "type": "boolean"
+          },
+          "control_state": {
+            "default": "uncontrolled",
+            "title": "Control State",
+            "type": "string"
           }
         },
         "required": [
@@ -5139,6 +5565,23 @@
             "title": "Active Elapsed Seconds",
             "type": "integer"
           },
+          "tick_interval_seconds": {
+            "default": 15,
+            "title": "Tick Interval Seconds",
+            "type": "integer"
+          },
+          "next_tick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Tick At"
+          },
           "scenario_brief": {
             "anyOf": [
               {
@@ -5214,6 +5657,24 @@
           "ai_plan"
         ],
         "title": "TrainerRuntimeStateOut",
+        "type": "object"
+      },
+      "TrainerCommandAck": {
+        "properties": {
+          "command_id": {
+            "title": "Command Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command_id"
+        ],
+        "title": "TrainerCommandAck",
         "type": "object"
       },
       "SteerPromptIn": {
@@ -5376,11 +5837,6 @@
       },
       "InjuryCreateIn": {
         "properties": {
-          "injury_category": {
-            "description": "Injury category code or friendly label (normalized to canonical code)",
-            "title": "Injury Category",
-            "type": "string"
-          },
           "injury_location": {
             "description": "Injury location code or friendly label (normalized to canonical code)",
             "title": "Injury Location",
@@ -5392,19 +5848,31 @@
             "type": "string"
           },
           "injury_description": {
+            "maxLength": 500,
             "title": "Injury Description",
             "type": "string"
           },
-          "parent_injury_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
+          "march_category": {
+            "description": "MARCH triage category code (M, A, R, C, H1, H2, PC)",
+            "title": "March Category",
+            "type": "string"
+          },
+          "severity": {
+            "default": "moderate",
+            "enum": [
+              "low",
+              "moderate",
+              "high",
+              "critical"
             ],
-            "title": "Parent Injury Id"
+            "title": "Severity",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "Optional plain-text problem description (supplements injury_description)",
+            "title": "Description",
+            "type": "string"
           },
           "supersedes_event_id": {
             "anyOf": [
@@ -5415,14 +5883,15 @@
                 "type": "null"
               }
             ],
+            "description": "ID of the Problem being superseded by this new injury record",
             "title": "Supersedes Event Id"
           }
         },
         "required": [
-          "injury_category",
           "injury_location",
           "injury_kind",
-          "injury_description"
+          "injury_description",
+          "march_category"
         ],
         "title": "InjuryCreateIn",
         "type": "object"
@@ -5438,6 +5907,11 @@
             "title": "Illness Description",
             "type": "string"
           },
+          "march_category": {
+            "description": "MARCH triage category (R, C, etc.) that this illness maps to",
+            "title": "March Category",
+            "type": "string"
+          },
           "severity": {
             "default": "moderate",
             "enum": [
@@ -5449,11 +5923,6 @@
             "title": "Severity",
             "type": "string"
           },
-          "is_resolved": {
-            "default": false,
-            "title": "Is Resolved",
-            "type": "boolean"
-          },
           "supersedes_event_id": {
             "anyOf": [
               {
@@ -5463,11 +5932,13 @@
                 "type": "null"
               }
             ],
+            "description": "ID of the Problem being superseded by this new illness record",
             "title": "Supersedes Event Id"
           }
         },
         "required": [
-          "illness_name"
+          "illness_name",
+          "march_category"
         ],
         "title": "IllnessCreateIn",
         "type": "object"
@@ -5484,7 +5955,7 @@
             "title": "Site Code",
             "type": "string"
           },
-          "target_injury_id": {
+          "target_problem_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -5493,7 +5964,7 @@
                 "type": "null"
               }
             ],
-            "title": "Target Injury Id"
+            "title": "Target Problem Id"
           },
           "status": {
             "default": "applied",
@@ -5772,6 +6243,391 @@
           "ai_rationale_notes"
         ],
         "title": "RunSummaryOut",
+        "type": "object"
+      },
+      "ConditionControlOut": {
+        "properties": {
+          "condition_id": {
+            "title": "Condition Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "is_treated": {
+            "title": "Is Treated",
+            "type": "boolean"
+          },
+          "is_resolved": {
+            "title": "Is Resolved",
+            "type": "boolean"
+          },
+          "control_state": {
+            "enum": [
+              "uncontrolled",
+              "controlled",
+              "resolved"
+            ],
+            "title": "Control State",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition_id",
+          "kind",
+          "is_treated",
+          "is_resolved",
+          "control_state",
+          "label"
+        ],
+        "title": "ConditionControlOut",
+        "type": "object"
+      },
+      "ConditionControlUpdateIn": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "is_treated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Treated"
+          },
+          "is_resolved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Resolved"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ConditionControlUpdateIn",
+        "type": "object"
+      },
+      "AnnotationOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "integer"
+          },
+          "simulation_id": {
+            "title": "Simulation Id",
+            "type": "integer"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id"
+          },
+          "learning_objective": {
+            "title": "Learning Objective",
+            "type": "string"
+          },
+          "learning_objective_label": {
+            "title": "Learning Objective Label",
+            "type": "string"
+          },
+          "observation_text": {
+            "title": "Observation Text",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "outcome_label": {
+            "title": "Outcome Label",
+            "type": "string"
+          },
+          "linked_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Event Id"
+          },
+          "elapsed_seconds_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Seconds At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "simulation_id",
+          "created_by_id",
+          "learning_objective",
+          "learning_objective_label",
+          "observation_text",
+          "outcome",
+          "outcome_label",
+          "linked_event_id",
+          "elapsed_seconds_at",
+          "created_at"
+        ],
+        "title": "AnnotationOut",
+        "type": "object"
+      },
+      "AnnotationCreateIn": {
+        "properties": {
+          "learning_objective": {
+            "default": "other",
+            "enum": [
+              "assessment",
+              "hemorrhage_control",
+              "airway",
+              "breathing",
+              "circulation",
+              "hypothermia",
+              "communication",
+              "triage",
+              "intervention",
+              "other"
+            ],
+            "title": "Learning Objective",
+            "type": "string"
+          },
+          "observation_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Observation Text",
+            "type": "string"
+          },
+          "outcome": {
+            "default": "pending",
+            "enum": [
+              "correct",
+              "incorrect",
+              "missed",
+              "improvised",
+              "pending"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "linked_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linked Event Id"
+          },
+          "elapsed_seconds_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Seconds At"
+          }
+        },
+        "required": [
+          "observation_text"
+        ],
+        "title": "AnnotationCreateIn",
+        "type": "object"
+      },
+      "ScenarioBriefDetailOut": {
+        "properties": {
+          "domain_event_id": {
+            "title": "Domain Event Id",
+            "type": "integer"
+          },
+          "read_aloud_brief": {
+            "title": "Read Aloud Brief",
+            "type": "string"
+          },
+          "environment": {
+            "title": "Environment",
+            "type": "string"
+          },
+          "location_overview": {
+            "title": "Location Overview",
+            "type": "string"
+          },
+          "threat_context": {
+            "title": "Threat Context",
+            "type": "string"
+          },
+          "evacuation_options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evacuation Options",
+            "type": "array"
+          },
+          "evacuation_time": {
+            "title": "Evacuation Time",
+            "type": "string"
+          },
+          "special_considerations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Special Considerations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain_event_id",
+          "read_aloud_brief",
+          "environment",
+          "location_overview",
+          "threat_context",
+          "evacuation_options",
+          "evacuation_time",
+          "special_considerations"
+        ],
+        "title": "ScenarioBriefDetailOut",
+        "type": "object"
+      },
+      "ScenarioBriefUpdateIn": {
+        "properties": {
+          "read_aloud_brief": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read Aloud Brief"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "location_overview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Overview"
+          },
+          "threat_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threat Context"
+          },
+          "evacuation_options": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evacuation Options"
+          },
+          "evacuation_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evacuation Time"
+          },
+          "special_considerations": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Considerations"
+          }
+        },
+        "title": "ScenarioBriefUpdateIn",
         "type": "object"
       }
     },

@@ -1,4 +1,7 @@
-"""Instruction classes for image generation."""
+"""Instruction classes for image generation.
+
+Static instructions are defined in image.yaml (same directory).
+"""
 
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
@@ -6,13 +9,12 @@ from orchestrai_django.decorators import orca
 
 @orca.instruction(order=50)
 class ImageGenerationInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "image"
     instruction = (
-        "For this response only, generate an image based off the medical "
-        "backend's request in the message(s).\n"
-        "Images must not be against OpenAI guidelines.\n"
-        "The image should be as if taken by the patient with a smartphone. "
-        "The image should not show details that would not normally be seen "
-        "in an image. Do not overexaggerate the look of a sign or symptom.\n\n"
+        "For this response only, generate an image based off the medical backend's request in the message(s).\n"
+        "Images must not violate OpenAI guidelines.\n"
+        "The image should look like a patient smartphone photo and should not exaggerate signs or symptoms.\n\n"
         "### Response Schema\n"
         "- This service does not use a structured JSON response schema.\n"
         "- Return only the image-generation response expected by the model/tooling layer.\n"

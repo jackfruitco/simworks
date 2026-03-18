@@ -4,11 +4,6 @@
 import logging
 from typing import ClassVar
 
-from apps.common.orca.instructions import FeedbackEducatorInstruction, MedicalAccuracyInstruction
-from apps.simcore.orca.instructions import (
-    FeedbackContinuationInstruction,
-    FeedbackInitialInstruction,
-)
 from orchestrai_django.components.services import DjangoBaseService
 from orchestrai_django.decorators import orca
 
@@ -18,15 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 @orca.service
-class GenerateInitialFeedback(
-    FeedbackInitialInstruction,
-    FeedbackEducatorInstruction,
-    MedicalAccuracyInstruction,
-    FeedbackMixin,
-    DjangoBaseService,
-):
+class GenerateInitialFeedback(FeedbackMixin, DjangoBaseService):
     """Generate the initial patient feedback using Pydantic AI."""
 
+    instruction_refs: ClassVar[list[str]] = [
+        "simcore.feedback.FeedbackInitialInstruction",
+        "common.feedback.FeedbackEducatorInstruction",
+        "common.shared.MedicalAccuracyInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
 
@@ -36,14 +30,13 @@ class GenerateInitialFeedback(
 
 
 @orca.service
-class GenerateFeedbackContinuationReply(
-    FeedbackContinuationInstruction,
-    FeedbackEducatorInstruction,
-    FeedbackMixin,
-    DjangoBaseService,
-):
+class GenerateFeedbackContinuationReply(FeedbackMixin, DjangoBaseService):
     """Generate continuation feedback using Pydantic AI."""
 
+    instruction_refs: ClassVar[list[str]] = [
+        "simcore.feedback.FeedbackContinuationInstruction",
+        "common.feedback.FeedbackEducatorInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
 

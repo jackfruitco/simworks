@@ -17,14 +17,8 @@ from .vitals import (
 )
 
 __all__ = [
-    "CombatMixin",
-    "InitialResponseMixin",
     "InjuryCodebookMixin",
-    "MilitaryMedicMixin",
     "TrainerDebriefContextInstruction",
-    "TrainerDebriefContractInstruction",
-    "TrainerDebriefRoleInstruction",
-    "TrainerLabMixin",
     "TrainerRuntimeContextInstruction",
     "TrainerRuntimeContractInstruction",
     "TrainerRuntimeRoleInstruction",

@@ -1,4 +1,7 @@
-"""Instruction classes for Stitch facilitator service."""
+"""Dynamic instruction classes for Stitch facilitator service.
+
+Static instructions are defined in stitch.yaml (same directory).
+"""
 
 from asgiref.sync import sync_to_async
 from django.core.exceptions import ObjectDoesNotExist
@@ -10,6 +13,9 @@ from orchestrai_django.decorators import orca
 
 @orca.instruction(order=0)
 class StitchPersonaInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+
     async def render_instruction(self) -> str:
         simulation_id = self.context.get("simulation_id")
 
@@ -29,18 +35,11 @@ class StitchPersonaInstruction(BaseInstruction):
         )
 
 
-@orca.instruction(order=40)
-class StitchRoleInstruction(BaseInstruction):
-    instruction = (
-        "### Role Boundaries\n"
-        "- You are a post-simulation debrief facilitator, not the patient.\n"
-        "- Speak as Stitch in your own voice.\n"
-        "- Do not roleplay as the patient or continue the patient chat in patient character.\n"
-    )
-
-
 @orca.instruction(order=60)
 class StitchConversationContextInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+
     async def render_instruction(self) -> str:
         simulation_id = self.context.get("simulation_id")
 
@@ -62,37 +61,49 @@ class StitchConversationContextInstruction(BaseInstruction):
         return "### Simulation Conversation History\n" + "\n".join(lines)
 
 
-@orca.instruction(order=90)
-class StitchDebriefInstruction(BaseInstruction):
+@orca.instruction(order=40)
+class StitchRoleInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
     instruction = (
-        "### Debrief Behavior\n"
-        "- Help the student identify what they did well and where they can improve.\n"
-        "- Reference specific moments from the simulation when relevant.\n"
-        "- Answer clinical questions directly with evidence-based reasoning.\n"
-        "- Keep guidance practical, concrete, and concise.\n"
+        "### Role Boundaries\n"
+        "- You are a post-simulation debrief facilitator, not the patient.\n"
+        "- Speak as Stitch in your own voice.\n"
+        "- Do not roleplay as the patient or continue the patient chat in patient character."
     )
 
 
-@orca.instruction(order=100)
-class StitchToneInstruction(BaseInstruction):
+@orca.instruction(order=90)
+class StitchDebriefInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
     instruction = (
-        "### Tone\n"
-        "- Use a warm, supportive, professional tone for medical education.\n"
-        "- Be encouraging without being vague or overly flattering.\n"
+        "### Debrief Behavior\n"
+        "- Identify one strength and one improvement area in each response when possible.\n"
+        "- Cite specific moments from the simulation; do not give generic feedback.\n"
+        "- Answer clinical questions directly using evidence-based reasoning.\n"
+        "- Keep guidance practical, concrete, and concise."
     )
 
 
 @orca.instruction(order=95)
 class StitchSchemaContractInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
     instruction = (
         "### Schema Contract\n"
         "- Follow the active response schema exactly.\n"
         "- Deliver debrief content in `messages` plain text.\n"
-        "- Keep `item_meta` empty unless structured metadata is explicitly required by the active schema.\n"
+        "- Keep `item_meta` empty unless structured metadata is explicitly required by the active schema."
     )
 
 
-# Backward-compatible aliases used by existing imports/tests.
-StitchReplyDetailInstruction = StitchDebriefInstruction
-StitchStyleInstruction = StitchToneInstruction
-StitchFieldSemanticsInstruction = StitchSchemaContractInstruction
+@orca.instruction(order=100)
+class StitchToneInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+    instruction = (
+        "### Tone\n"
+        "- Use a warm, supportive, professional tone.\n"
+        "- Be encouraging but specific; avoid vague praise."
+    )

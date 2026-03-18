@@ -6,10 +6,14 @@ from collections.abc import Iterable, Sequence
 import glob
 import importlib
 import importlib.util
+import logging
 import os
+from pathlib import Path
 import sys
 
 from .base import BaseLoader
+
+logger = logging.getLogger(__name__)
 
 
 class DefaultLoader(BaseLoader):
@@ -35,7 +39,48 @@ class DefaultLoader(BaseLoader):
         for module in expanded:
             importlib.import_module(module)
             imported.append(module)
+
+        # Load YAML instruction files from the discovery paths.
+        self._load_yaml_instructions(app, resolved)
+
         return imported
+
+    def _load_yaml_instructions(self, app, modules: Sequence[str]) -> None:
+        """Find and load YAML instruction files from each module's instructions/ dir."""
+        from orchestrai.instructions.yaml_loader import load_yaml_instructions
+
+        for module_path in modules:
+            try:
+                spec = importlib.util.find_spec(module_path)
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError(
+                    f"Instruction discovery root {module_path!r} could not be resolved"
+                ) from exc
+            if spec is None:
+                logger.warning(
+                    "Instruction discovery root %r has no import spec; skipping YAML instruction discovery",
+                    module_path,
+                )
+                continue
+            if spec.submodule_search_locations is None:
+                logger.warning(
+                    "Instruction discovery root %r is not a package; skipping YAML instruction discovery",
+                    module_path,
+                )
+                continue
+            for location in spec.submodule_search_locations:
+                base_path = Path(location)
+                instruction_dirs = [base_path]
+                if base_path.name != "instructions":
+                    instruction_dirs.append(base_path / "instructions")
+                    instruction_dirs.append(base_path.parent / "instructions")
+
+                for instr_dir in instruction_dirs:
+                    if not instr_dir.is_dir():
+                        continue
+                    for yaml_file in sorted(instr_dir.glob("*.yaml")):
+                        logger.debug("Loading YAML instructions from %s", yaml_file)
+                        load_yaml_instructions(yaml_file, app=app)
 
     def _expand_package_roots(self, modules: Sequence[str]) -> list[str]:
         """Expand package roots to include known component submodules when present.
