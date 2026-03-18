@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import logging
 from pathlib import Path
@@ -123,7 +124,7 @@ def _resolve_single_ref(ref: str, registry, *, app) -> type[BaseInstruction]:  #
         )
         cls = registry.try_get(identity)
         if cls is None:
-            _attempt_lazy_yaml_load(namespace=namespace, group=group, app=app)
+            _attempt_lazy_python_import(namespace=namespace)
             cls = registry.try_get(identity)
         if cls is None:
             _attempt_lazy_yaml_load(namespace=namespace, group=group, app=app)
@@ -155,6 +156,16 @@ def _resolve_single_ref(ref: str, registry, *, app) -> type[BaseInstruction]:  #
         "'domain.namespace.group.ClassName' (4-part). "
         f"Available labels: {sorted(registry.labels())}"
     )
+
+
+def _attempt_lazy_python_import(*, namespace: str) -> None:
+    """Attempt to import the package-level Python instruction registration surface."""
+
+    module_name = f"apps.{namespace}.orca.instructions"
+    try:
+        importlib.import_module(module_name)
+    except Exception:
+        return
 
 
 def _attempt_lazy_yaml_load(*, namespace: str, group: str, app) -> None:

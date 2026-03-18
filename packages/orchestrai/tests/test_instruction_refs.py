@@ -13,6 +13,9 @@ Covers:
 
 from __future__ import annotations
 
+import sys
+import textwrap
+from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -78,7 +81,18 @@ def _make_app(*instruction_classes: type[BaseInstruction]) -> SimpleNamespace:
     registry = store.registry(INSTRUCTIONS_DOMAIN)
     for cls in instruction_classes:
         registry.register(cls)
-    return SimpleNamespace(components=store)
+    return SimpleNamespace(components=store, component_store=store)
+
+
+def _write_package_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(textwrap.dedent(content), encoding="utf-8")
+
+
+def _clear_demo_modules(prefix: str) -> None:
+    for name in list(sys.modules):
+        if name == prefix or name.startswith(f"{prefix}."):
+            sys.modules.pop(name, None)
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +151,113 @@ def test_three_part_ref_distinguishes_namespaces() -> None:
     assert result_clone == [_InstrAClone]
     # These are genuinely different classes — proves no namespace collision
     assert result_a[0] is not result_clone[0]
+
+
+@pytest.mark.unit
+def test_three_part_ref_lazy_imports_python_instruction_package(monkeypatch, tmp_path) -> None:
+    """Unresolved 3-part refs lazily import the namespace instruction package."""
+
+    package_root = tmp_path / "apps" / "demo"
+    instructions_dir = package_root / "orca" / "instructions"
+    _write_package_file(tmp_path / "apps" / "__init__.py", "")
+    _write_package_file(package_root / "__init__.py", "")
+    _write_package_file(package_root / "orca" / "__init__.py", "")
+    _write_package_file(
+        instructions_dir / "__init__.py",
+        """
+        from .runtime import DynamicInstruction
+        """,
+    )
+    _write_package_file(
+        instructions_dir / "runtime.py",
+        """
+        from orchestrai.components.instructions.base import BaseInstruction
+        from orchestrai.decorators.components.instruction_decorator import InstructionDecorator
+
+        instruction = InstructionDecorator()
+
+        @instruction(namespace="demo", group="runtime", order=40)
+        class DynamicInstruction(BaseInstruction):
+            instruction = "Dynamic instruction."
+        """,
+    )
+
+    _clear_demo_modules("apps")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    try:
+        class _Service:
+            instruction_refs: ClassVar[list[str]] = ["demo.runtime.DynamicInstruction"]
+
+        app = _make_app()
+        with push_current_app(app):
+            result = collect_instructions(_Service)
+    finally:
+        _clear_demo_modules("apps")
+
+    assert [cls.name for cls in result] == ["DynamicInstruction"]
+
+
+@pytest.mark.unit
+def test_three_part_ref_supports_mixed_lazy_python_and_yaml_resolution(
+    monkeypatch, tmp_path
+) -> None:
+    """Python-import fallback and YAML lazy-load can satisfy refs in the same namespace/group."""
+
+    package_root = tmp_path / "apps" / "demo"
+    instructions_dir = package_root / "orca" / "instructions"
+    _write_package_file(tmp_path / "apps" / "__init__.py", "")
+    _write_package_file(package_root / "__init__.py", "")
+    _write_package_file(package_root / "orca" / "__init__.py", "")
+    _write_package_file(
+        instructions_dir / "__init__.py",
+        """
+        from .runtime import DynamicInstruction
+        """,
+    )
+    _write_package_file(
+        instructions_dir / "runtime.py",
+        """
+        from orchestrai.components.instructions.base import BaseInstruction
+        from orchestrai.decorators.components.instruction_decorator import InstructionDecorator
+
+        instruction = InstructionDecorator()
+
+        @instruction(namespace="demo", group="runtime", order=40)
+        class DynamicInstruction(BaseInstruction):
+            instruction = "Dynamic instruction."
+        """,
+    )
+    _write_package_file(
+        instructions_dir / "runtime.yaml",
+        """
+        namespace: demo
+        group: runtime
+
+        instructions:
+          - name: StaticInstruction
+            order: 10
+            instruction: Static instruction.
+        """,
+    )
+
+    _clear_demo_modules("apps")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    try:
+        class _Service:
+            instruction_refs: ClassVar[list[str]] = [
+                "demo.runtime.DynamicInstruction",
+                "demo.runtime.StaticInstruction",
+            ]
+
+        app = _make_app()
+        with push_current_app(app):
+            result = collect_instructions(_Service)
+    finally:
+        _clear_demo_modules("apps")
+
+    assert [cls.name for cls in result] == ["StaticInstruction", "DynamicInstruction"]
 
 
 # ---------------------------------------------------------------------------
