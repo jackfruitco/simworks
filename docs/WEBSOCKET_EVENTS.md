@@ -457,7 +457,7 @@ Search logs for: `"Outbox event created"`, `"Delivered outbox event"`
 
 ## References
 
-- CLAUDE.md - Overall architecture and patterns
-- core/outbox/ - Outbox pattern implementation
-- api/v1/endpoints/events.py - Catch-up API endpoint
-- chatlab/consumers.py - WebSocket consumer implementation
+- docs/architecture.md - Platform architecture and boundaries
+- SimWorks/core/outbox/ - Outbox pattern implementation
+- SimWorks/api/v1/endpoints/events.py - Catch-up API endpoint
+- SimWorks/chatlab/consumers.py - WebSocket consumer implementation

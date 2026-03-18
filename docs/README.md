@@ -4,16 +4,15 @@ This folder contains technical documentation for the MedSim platform (formerly S
 
 ## Start here
 
-- [`index.md`](index.md) — documentation map and entry points.
-- [`architecture.md`](architecture.md) — platform architecture and boundaries.
-- [`quick-start.md`](quick-start.md) — local development quick start.
-- [`testing/`](testing/) — test lanes, ownership, and coverage policy.
+- [`index.md`](index.md) — primary docs index
+- [`quick-start.md`](quick-start.md) — local setup and development workflow
+- [`architecture.md`](architecture.md) — architecture and boundaries
 
-## Package documentation
+## Documentation system
 
-- `orchestrai` docs: [`../packages/orchestrai/README.md`](../packages/orchestrai/README.md)
-- `orchestrai_django` docs: [`../packages/orchestrai_django/README.md`](../packages/orchestrai_django/README.md)
+- [`meta/documentation_map.md`](meta/documentation_map.md) — what each major doc is for
+- [`agents/README.md`](agents/README.md) — shared guidance for coding agents
 
 ## Naming
 
-MedSim is the current product name. Some paths/modules still use `simworks` or `SimWorks` as legacy repository identifiers.
+MedSim is the product name. Some repository paths/modules still use legacy `simworks`/`SimWorks` identifiers.

@@ -1,21 +1,25 @@
-# AGENT INSTRUCTIONS — OrchestrAI package
+# AGENT INSTRUCTIONS — orchestrai scope
 
 ## Scope
-These instructions cover the OrchestrAI library under `packages/orchestrai/` (including `src/orchestrai/` and docs).
 
-## Development workflow
-- Run the package test suite with `uv run pytest packages/orchestrai` from the repo root.
-- Keep the public API stable; add exports through `__init__.py` when introducing new components.
-- Avoid introducing import-time side effects—lifecycle steps should remain explicit.
+Applies to `packages/orchestrai/` and subdirectories.
 
-## Coding guidance
-- Prefer clear lifecycle naming (`configure()`, `setup()`, `discover()`, `finalize()`, `start()`).
-- Keep registries predictable: validate keys early and surface helpful errors for collisions.
-- Document new behaviors in `packages/orchestrai/docs/` when adding or changing workflow steps.
-- Keep `orchestrai` framework-agnostic: do **not** import from `orchestrai_django` (or other
-  integrations). Platform-specific wiring should be injected via fixups or adapters, not
-  baked into the core package.
+## Local constraints
+
+- Keep `orchestrai` framework-agnostic.
+- Do **not** import from `orchestrai_django` in core package code.
+- Keep lifecycle explicit and avoid import-time side effects.
+- Preserve public API stability; expose new public components intentionally.
+
+## Validation
+
+Run:
+```bash
+uv run pytest packages/orchestrai
+```
 
 ## Documentation
-- Update `packages/orchestrai/README.md` if usage or installation changes.
-- Note meaningful library changes in commit messages so downstream projects can track updates.
+
+Update package docs when behavior/lifecycle/public APIs change:
+- `packages/orchestrai/README.md`
+- `packages/orchestrai/docs/`

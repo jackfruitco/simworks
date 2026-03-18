@@ -27,6 +27,7 @@ MedSim is organized into three layers:
 - **Testing lanes and ownership:** [`docs/testing/`](docs/testing)
 - **`orchestrai` package docs:** [`packages/orchestrai/README.md`](packages/orchestrai/README.md)
 - **`orchestrai_django` package docs:** [`packages/orchestrai_django/README.md`](packages/orchestrai_django/README.md)
+- **Documentation system map:** [`docs/meta/documentation_map.md`](docs/meta/documentation_map.md)
 
 ## Local development and validation
 

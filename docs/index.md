@@ -1,8 +1,8 @@
 # MedSim docs index
 
-MedSim is a medical simulation and training platform with AI-assisted workflows. This index is the primary entry point for contributors and coding agents.
+MedSim is a medical simulation and training platform with AI-assisted workflows.
 
-## Platform docs
+## Human-focused docs
 
 - [Architecture at a glance](architecture.md)
 - [Quick start](quick-start.md)
@@ -10,7 +10,7 @@ MedSim is a medical simulation and training platform with AI-assisted workflows.
 - [WebSocket event contract](WEBSOCKET_EVENTS.md)
 - [TrainerLab roadmap and improvements](TRAINERLAB_IMPROVEMENTS.md)
 
-## AI layer docs
+## Package docs
 
 - [`orchestrai` package README](../packages/orchestrai/README.md)
 - [`orchestrai` deep docs](../packages/orchestrai/docs/full_documentation.md)
@@ -23,10 +23,13 @@ MedSim is a medical simulation and training platform with AI-assisted workflows.
 - [Coverage policy](testing/coverage_policy.md)
 - [Testing ownership](testing/ownership.md)
 
+## Documentation system docs
+
+- [Documentation map (humans + agents)](meta/documentation_map.md)
+- [Documentation audit summary](meta/documentation_audit.md)
+
 ## Boundaries summary
 
 - **MedSim**: product/application platform and user-facing workflows.
 - **`orchestrai`**: provider-agnostic orchestration engine/library.
 - **`orchestrai_django`**: Django-native integration facade for consuming `orchestrai` in Django apps.
-
-When in doubt: application code should prefer `orchestrai_django` integration points over direct imports from low-level `orchestrai` internals.
