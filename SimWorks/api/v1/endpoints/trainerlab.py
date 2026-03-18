@@ -20,6 +20,7 @@ from api.v1.schemas.trainerlab import (
     AnnotationCreateIn,
     AnnotationOut,
     AssessmentFindingCreateIn,
+    ControlPlaneDebugOut,
     DiagnosticResultCreateIn,
     DictionaryItemOut,
     DispositionStateCreateIn,
@@ -54,6 +55,7 @@ from api.v1.schemas.trainerlab import (
     TrainerSessionCreateIn,
     VitalCreateIn,
     annotation_to_out,
+    control_plane_debug_to_out,
     scenario_instruction_to_out,
     scenario_permission_to_out,
     trainer_run_to_out,
@@ -98,6 +100,7 @@ from apps.trainerlab.models import (
 )
 from apps.trainerlab.services import (
     append_pending_runtime_reason,
+    commit_non_ai_mutation_side_effects,
     compute_preset_diff,
     create_debrief_annotation,
     create_session_with_initial_generation,
@@ -108,9 +111,7 @@ from apps.trainerlab.services import (
     get_or_create_command,
     get_session_annotations,
     pause_session,
-    recompute_active_recommendations,
     refresh_completed_run_review,
-    refresh_runtime_projection,
     resume_session,
     snapshot_before_preset,
     start_session,
@@ -740,6 +741,19 @@ def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> Train
     require_instructor_membership(user)
     session = _get_session_for_simulation(simulation_id, user)
     return trainer_state_to_out(session)
+
+
+@router.get(
+    "/simulations/{simulation_id}/control-plane/",
+    response=ControlPlaneDebugOut,
+    summary="Get TrainerLab control-plane debug state",
+)
+@api_rate_limit
+def get_control_plane_debug(request: HttpRequest, simulation_id: int) -> ControlPlaneDebugOut:
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+    return control_plane_debug_to_out(session)
 
 
 def _mark_command_failed(command: TrainerCommand, error: str) -> None:
@@ -1489,17 +1503,13 @@ def _inject_event_core(
                 correlation_id=correlation_id,
                 idempotency_key=f"problem.updated:post-intervention:{refreshed_problem.id}:{domain_event.id}",
             )
-    if event_kind in {
-        "problem",
-        "assessment_finding",
-        "diagnostic_result",
-        "resource",
-        "disposition",
-        "intervention",
-    }:
-        recompute_active_recommendations(session=session, correlation_id=correlation_id)
-
-    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+    commit_non_ai_mutation_side_effects(
+        session=session,
+        event_kind=event_kind,
+        correlation_id=correlation_id,
+        worker_kind="manual_injection",
+        domains=[event_kind],
+    )
 
     should_queue_runtime = session.status != SessionStatus.COMPLETED and (
         event_kind != "note" or send_to_ai

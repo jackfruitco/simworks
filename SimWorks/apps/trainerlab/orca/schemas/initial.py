@@ -220,8 +220,11 @@ class InitialScenarioSchema(StrictBaseModel):
             ResourceState,
             RespiratoryRate as RespiratoryRateModel,
             ScenarioBrief as ScenarioBriefModel,
+            TrainerSession,
         )
-        from apps.trainerlab.services import refresh_projection_from_domain_state
+        from apps.trainerlab.services import (
+            commit_non_ai_mutation_side_effects,
+        )
 
         allow_seeded_performed = bool(context.extra.get("allow_seeded_performed_interventions"))
         if self.performed_interventions and not allow_seeded_performed:
@@ -672,7 +675,14 @@ class InitialScenarioSchema(StrictBaseModel):
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
 
-        await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(
-            simulation_id=context.simulation_id,
+        session = await TrainerSession.objects.select_related("simulation").aget(
+            simulation_id=context.simulation_id
+        )
+        await sync_to_async(commit_non_ai_mutation_side_effects, thread_sensitive=True)(
+            session=session,
+            event_kind="initial_seed",
             correlation_id=context.correlation_id,
+            worker_kind="initial_seed",
+            domains=["physiology", "causes", "problems", "recommendations"],
+            source_call_id=str(context.call_id),
         )

@@ -18,6 +18,12 @@ from orchestrai.types import StrictBaseModel
 
 
 class RuntimeProblemObservation(StrictBaseModel):
+    worker_kind: str = ""
+    domains: list[str] = Field(default_factory=list)
+    driver_reason_kinds: list[str] = Field(default_factory=list)
+    driver_intervention_ids: list[int] = Field(default_factory=list)
+    source_call_id: str = ""
+    correlation_id: str = ""
     observation: Literal[
         "new_problem",
         "worsening",
@@ -50,6 +56,12 @@ class RuntimeProblemObservation(StrictBaseModel):
 
 
 class RuntimeVitalUpdate(StrictBaseModel):
+    worker_kind: str = ""
+    domains: list[str] = Field(default_factory=list)
+    driver_reason_kinds: list[str] = Field(default_factory=list)
+    driver_intervention_ids: list[int] = Field(default_factory=list)
+    source_call_id: str = ""
+    correlation_id: str = ""
     vital_type: Literal[
         "heart_rate",
         "respiratory_rate",
@@ -78,6 +90,12 @@ class RuntimeVitalUpdate(StrictBaseModel):
 
 
 class RuntimePulseUpdate(StrictBaseModel):
+    worker_kind: str = ""
+    domains: list[str] = Field(default_factory=list)
+    driver_reason_kinds: list[str] = Field(default_factory=list)
+    driver_intervention_ids: list[int] = Field(default_factory=list)
+    source_call_id: str = ""
+    correlation_id: str = ""
     location: Literal[
         "radial_left",
         "radial_right",
@@ -107,6 +125,12 @@ class RuntimePulseChange(RuntimePulseUpdate):
 
 
 class RuntimeFindingUpdate(StrictBaseModel):
+    worker_kind: str = ""
+    domains: list[str] = Field(default_factory=list)
+    driver_reason_kinds: list[str] = Field(default_factory=list)
+    driver_intervention_ids: list[int] = Field(default_factory=list)
+    source_call_id: str = ""
+    correlation_id: str = ""
     action: Literal["create", "update", "remove"] = "create"
     target_finding_id: int | None = None
     target_problem_id: int | None = None
@@ -127,6 +151,12 @@ class RuntimeFindingUpdate(StrictBaseModel):
 
 
 class RuntimeRecommendationSuggestion(StrictBaseModel):
+    worker_kind: str = ""
+    domains: list[str] = Field(default_factory=list)
+    driver_reason_kinds: list[str] = Field(default_factory=list)
+    driver_intervention_ids: list[int] = Field(default_factory=list)
+    source_call_id: str = ""
+    correlation_id: str = ""
     intervention_kind: str
     title: str = ""
     target_problem_id: int
@@ -141,6 +171,12 @@ class RuntimeRecommendationSuggestion(StrictBaseModel):
 
 
 class RuntimeInterventionAssessment(StrictBaseModel):
+    worker_kind: str = ""
+    domains: list[str] = Field(default_factory=list)
+    driver_reason_kinds: list[str] = Field(default_factory=list)
+    driver_intervention_ids: list[int] = Field(default_factory=list)
+    source_call_id: str = ""
+    correlation_id: str = ""
     intervention_event_id: int
     status: Literal["active", "effective", "ineffective", "resolved"] = "active"
     effectiveness: Literal[
