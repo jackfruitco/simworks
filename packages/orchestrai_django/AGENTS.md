@@ -1,19 +1,25 @@
-# AGENT INSTRUCTIONS — OrchestrAI Django integration
+# AGENT INSTRUCTIONS — orchestrai_django scope
 
 ## Scope
-Applies to the Django integration package in `packages/orchestrai_django/`, including `src/orchestrai_django/` and docs.
 
-## Development workflow
-- Run tests from the repo root with `uv run pytest packages/orchestrai_django`.
-- Keep Django wiring explicit: registrations and signal emitters should not fire at import time unless necessary for Django app loading.
-- Align examples and docs with the current package name and API surface.
-- Maintain one-way dependencies: plug into core `orchestrai` via fixups or adapters; never add imports in the core package back to `orchestrai_django`.
+Applies to `packages/orchestrai_django/` and subdirectories.
 
-## Coding guidance
-- Validate tuple³ identities (`origin.bucket.name`) before registry insertion; raise clear errors on collisions.
-- Prefer decorators (`@orca.service`, `@orca.instruction`) for registrations and keep them idempotent.
-- When adding execution helpers, ensure synchronous and asynchronous paths stay consistent.
+## Local constraints
+
+- Keep Django wiring explicit and predictable.
+- Maintain one-way dependency on `orchestrai` (no reverse coupling in core package).
+- Keep sync/async execution paths behaviorally aligned.
+- Keep registration identities validated and idempotent.
+
+## Validation
+
+Run:
+```bash
+uv run pytest packages/orchestrai_django
+```
 
 ## Documentation
-- Update `packages/orchestrai_django/docs/` and README quick starts when behavior changes.
-- Mention integration-impacting changes in commit messages so downstream projects stay aligned.
+
+Update integration docs when behavior/API changes:
+- `packages/orchestrai_django/README.md`
+- `packages/orchestrai_django/docs/`
