@@ -4,7 +4,7 @@ from pydantic import Field
 
 from orchestrai.types import StrictBaseModel
 
-from .runtime import RuntimeVitalChange
+from .runtime import RuntimeVitalUpdate
 
 
 class VitalsProgressionOutput(StrictBaseModel):
@@ -17,7 +17,7 @@ class VitalsProgressionOutput(StrictBaseModel):
     **Identity**: schemas.trainerlab.vitals.VitalsProgressionOutput
     """
 
-    vitals: list[RuntimeVitalChange] = Field(
+    vitals: list[RuntimeVitalUpdate] = Field(
         ...,
         min_length=1,
         description="Updated vital sign ranges for all active vital types.",

@@ -202,38 +202,37 @@ def _inline_runtime_payload(
     *,
     intervention_event_id: int | None = None,
     target_event_id: int | None = None,
+    cause_id: int | None = None,
 ) -> dict:
     return {
         "state_changes": {
-            "problems": [
+            "problem_observations": [
                 {
-                    "action": "create",
-                    "cause_kind": "illness",
-                    "name": "Respiratory distress",
+                    "observation": "new_problem",
+                    "cause_kind": "injury",
+                    "cause_id": cause_id,
                     "description": "Progressive shortness of breath from a worsening chest injury.",
                     "problem_kind": "respiratory_distress",
                     "title": "Respiratory distress",
                     "march_category": "R",
                     "severity": "high",
+                    "anatomical_location": "Left Anterior Chest",
                 },
                 {
-                    "action": "update",
-                    "cause_kind": "injury",
+                    "observation": "worsening",
                     "target_problem_id": target_event_id,
                     "problem_kind": "open_chest_wound",
                     "title": "Open chest wound",
                     "march_category": "R",
-                    "injury_location": "TLA",
-                    "injury_kind": "GSW",
-                    "injury_description": "Chest GSW with worsening respiratory compromise",
+                    "description": "Chest GSW with worsening respiratory compromise",
                     "anatomical_location": "Left Anterior Chest",
+                    "severity": "high",
                 },
             ]
-            if target_event_id
+            if target_event_id and cause_id
             else [],
-            "vitals": [
+            "vital_updates": [
                 {
-                    "action": "update",
                     "vital_type": "respiratory_rate",
                     "min_value": 28,
                     "max_value": 34,
@@ -241,7 +240,6 @@ def _inline_runtime_payload(
                     "trend": "up",
                 },
                 {
-                    "action": "update",
                     "vital_type": "spo2",
                     "min_value": 84,
                     "max_value": 89,
@@ -249,12 +247,39 @@ def _inline_runtime_payload(
                     "trend": "down",
                 },
             ],
-            "interventions": (
+            "finding_updates": [
+                {
+                    "action": "create",
+                    "finding_kind": "diminished_breath_sounds",
+                    "title": "Diminished breath sounds",
+                    "description": "Reduced left-sided breath sounds on reassessment.",
+                    "status": "worsening",
+                    "severity": "high",
+                    "target_problem_id": target_event_id,
+                    "anatomical_location": "Left anterior chest",
+                    "laterality": "left",
+                }
+            ]
+            if target_event_id
+            else [],
+            "recommendation_suggestions": [
+                {
+                    "intervention_kind": "chest_seal",
+                    "title": "Chest seal to left anterior chest",
+                    "target_problem_id": target_event_id,
+                    "rationale": "Open chest wound remains active and worsening.",
+                    "priority": 1,
+                    "site": "left_anterior_chest",
+                }
+            ]
+            if target_event_id
+            else [],
+            "intervention_assessments": (
                 [
                     {
-                        "action": "record",
                         "intervention_event_id": intervention_event_id,
                         "status": "effective",
+                        "effectiveness": "effective",
                         "clinical_effect": "Bleeding control improved after proper placement.",
                         "notes": "Continue monitoring for re-bleed.",
                     }
@@ -263,43 +288,11 @@ def _inline_runtime_payload(
                 else []
             ),
         },
-        "snapshot": {
-            "causes": [],
-            "problems": [
-                {
-                    "kind": "respiratory_distress",
-                    "code": "respiratory_distress",
-                    "title": "Respiratory distress",
-                    "status": "active",
-                    "description": "Patient is tiring and oxygenation is worsening.",
-                    "severity": "high",
-                    "cause_kind": "illness",
-                }
-            ],
-            "recommended_interventions": [],
-            "interventions": [],
-            "vitals": [
-                {
-                    "vital_type": "respiratory_rate",
-                    "min_value": 28,
-                    "max_value": 34,
-                    "lock_value": False,
-                    "trend": "up",
-                },
-                {
-                    "vital_type": "spo2",
-                    "min_value": 84,
-                    "max_value": 89,
-                    "lock_value": False,
-                    "trend": "down",
-                },
-            ],
-            "patient_status": {
-                "respiratory_distress": True,
-                "impending_pneumothorax": True,
-                "narrative": "Breathing is worsening and the patient is moving toward a pneumothorax.",
-                "teaching_flags": ["watch chest rise", "prepare decompression"],
-            },
+        "patient_status": {
+            "respiratory_distress": True,
+            "impending_pneumothorax": True,
+            "narrative": "Breathing is worsening and the patient is moving toward a pneumothorax.",
+            "teaching_flags": ["watch chest rise", "prepare decompression"],
         },
         "instructor_intent": {
             "summary": "Expect worsening breathing over the next minute.",
@@ -1267,6 +1260,10 @@ class TestTrainerLabDictionaries:
         assert body["current_snapshot"]["problems"] == []
         assert body["current_snapshot"]["recommended_interventions"] == []
         assert body["current_snapshot"]["interventions"] == []
+        assert body["current_snapshot"]["assessment_findings"] == []
+        assert body["current_snapshot"]["diagnostic_results"] == []
+        assert body["current_snapshot"]["resources"] == []
+        assert body["current_snapshot"]["disposition"] is None
         assert body["current_snapshot"]["vitals"] == []
         assert body["pending_runtime_reasons"] == []
 
@@ -1383,7 +1380,13 @@ class TestTrainerLabDictionaries:
         monkeypatch,
     ):
         from apps.common.models import OutboxEvent
-        from apps.trainerlab.models import Illness, Injury, Intervention, Problem, TrainerSession
+        from apps.trainerlab.models import (
+            AssessmentFinding,
+            Injury,
+            Intervention,
+            Problem,
+            TrainerSession,
+        )
         from apps.trainerlab.services import apply_runtime_turn_output, process_runtime_turn_queue
 
         client = auth_client_factory(instructor_user)
@@ -1444,6 +1447,7 @@ class TestTrainerLabDictionaries:
                 output_payload=_inline_runtime_payload(
                     intervention_event_id=intervention.id,
                     target_event_id=problem.id,
+                    cause_id=injury.id,
                 ),
                 service_context={
                     "session_id": batch["session_id"],
@@ -1463,17 +1467,23 @@ class TestTrainerLabDictionaries:
 
         trainer_session.refresh_from_db()
         current_snapshot = trainer_session.runtime_state_json["current_snapshot"]
-        assert trainer_session.runtime_state_json["state_revision"] == 1
+        assert trainer_session.runtime_state_json["state_revision"] >= 4
         assert current_snapshot["patient_status"]["respiratory_distress"] is True
         assert current_snapshot["patient_status"]["impending_pneumothorax"] is True
         assert trainer_session.runtime_state_json["ai_plan"]["eta_seconds"] == 45
         assert trainer_session.runtime_state_json["pending_runtime_reasons"] == []
         assert trainer_session.runtime_state_json["currently_processing_reasons"] == []
-        assert Illness.objects.filter(
+        assert Problem.objects.filter(
             simulation_id=simulation_id,
-            name="Respiratory distress",
+            kind="respiratory_distress",
             is_active=True,
         ).exists()
+        assert AssessmentFinding.objects.filter(
+            simulation_id=simulation_id,
+            kind="diminished_breath_sounds",
+            is_active=True,
+        ).exists()
+        assert current_snapshot["recommended_interventions"]
         assert OutboxEvent.objects.filter(
             simulation_id=simulation_id,
             event_type="state.updated",

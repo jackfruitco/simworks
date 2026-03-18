@@ -6,15 +6,20 @@ import pytest
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
+    AssessmentFinding,
     BloodGlucoseLevel,
     BloodPressure,
+    DiagnosticResult,
+    DispositionState,
     HeartRate,
     Illness,
     Injury,
     Intervention,
     Problem,
     PulseAssessment,
+    RecommendationEvaluation,
     RecommendedIntervention,
+    ResourceState,
     RespiratoryRate,
     ScenarioBrief,
 )
@@ -209,6 +214,47 @@ def _initial_payload(*, include_performed: bool = False) -> dict:
                 "rationale": "Should be rejected by deterministic validation",
             },
         ],
+        "assessment_findings": [
+            {
+                "temp_id": "finding_bleeding",
+                "finding_kind": "active_bleeding",
+                "title": "Active bleeding",
+                "description": "Bright red bleeding continues from the left thigh wound.",
+                "status": "present",
+                "severity": "critical",
+                "target_problem_ref": "problem_hemorrhage",
+                "anatomical_location": "Left thigh",
+                "laterality": "left",
+            }
+        ],
+        "diagnostic_results": [
+            {
+                "temp_id": "diag_lactate",
+                "diagnostic_kind": "lactate",
+                "title": "Lactate pending",
+                "status": "pending",
+                "value_text": "",
+                "target_problem_ref": "problem_infection",
+            }
+        ],
+        "resources": [
+            {
+                "temp_id": "resource_binder",
+                "resource_kind": "pelvic_binder",
+                "title": "Pelvic binder",
+                "status": "available",
+                "quantity_available": 1,
+                "quantity_unit": "device",
+            }
+        ],
+        "disposition": {
+            "status": "hold",
+            "transport_mode": "ground",
+            "destination": "Role 2",
+            "eta_minutes": 20,
+            "handoff_ready": False,
+            "scene_constraints": ["sporadic hostile fire"],
+        },
         "measurements": {
             "heart_rate": {**base_measurement, "min_value": 110, "max_value": 130},
             "respiratory_rate": {**base_measurement, "min_value": 18, "max_value": 24},
@@ -268,6 +314,12 @@ class TestTrainerLabInitialPersistence:
             ).acount()
             == 3
         )
+        assert (
+            await RecommendationEvaluation.objects.filter(
+                simulation_id=context.simulation_id
+            ).acount()
+            == 4
+        )
         assert await Intervention.objects.filter(simulation_id=context.simulation_id).acount() == 0
         assert await HeartRate.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert (
@@ -282,6 +334,13 @@ class TestTrainerLabInitialPersistence:
         assert await BloodPressure.objects.filter(simulation_id=context.simulation_id).acount() == 1
         assert (
             await PulseAssessment.objects.filter(simulation_id=context.simulation_id).acount() == 8
+        )
+        assert (
+            await RecommendationEvaluation.objects.filter(
+                simulation_id=context.simulation_id,
+                validation_status="rejected",
+            ).acount()
+            == 1
         )
 
     async def test_one_cause_can_create_multiple_problems_for_injury_and_illness(self, context):
@@ -338,6 +397,22 @@ class TestTrainerLabInitialPersistence:
         assert event.payload["recommendation_source"] in {"ai", "merged"}
         assert event.payload["validation_status"] in {"accepted", "normalized"}
         assert "intervention_id" not in event.payload
+
+        evaluation_event = (
+            await OutboxEvent.objects.filter(
+                simulation_id=context.simulation_id,
+                event_type="trainerlab.recommendation_evaluation.created",
+            )
+            .order_by("created_at", "id")
+            .afirst()
+        )
+        assert evaluation_event is not None
+        assert evaluation_event.payload["validation_status"] in {
+            "accepted",
+            "normalized",
+            "rejected",
+        }
+        assert "target_problem_id" in evaluation_event.payload
 
     async def test_invalid_recommendation_is_rejected_and_free_text_is_normalized(self, context):
         schema = InitialScenarioSchema.model_validate(_initial_payload())
@@ -404,6 +479,24 @@ class TestTrainerLabInitialPersistence:
             "Ground evacuation",
             "Delayed rotary wing if weather clears",
         ]
+
+    async def test_initial_seed_supports_findings_diagnostics_resources_and_disposition(
+        self, context
+    ):
+        schema = InitialScenarioSchema.model_validate(_initial_payload())
+        await persist_schema(schema, context)
+
+        assert (
+            await AssessmentFinding.objects.filter(simulation_id=context.simulation_id).acount()
+            == 1
+        )
+        assert (
+            await DiagnosticResult.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        )
+        assert await ResourceState.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        assert (
+            await DispositionState.objects.filter(simulation_id=context.simulation_id).acount() == 1
+        )
 
 
 def test_initial_schema_uses_discriminated_cause_union():

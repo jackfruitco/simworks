@@ -1,6 +1,8 @@
 # trainerlab/orca/instructions/initial.py
 
 from apps.trainerlab.cause_dictionary import build_cause_dictionary_instruction
+from apps.trainerlab.diagnostic_dictionary import build_diagnostic_dictionary_instruction
+from apps.trainerlab.finding_dictionary import build_finding_dictionary_instruction
 from apps.trainerlab.injury_dictionary import build_injury_codebook_instruction
 from apps.trainerlab.intervention_dictionary import list_intervention_definitions
 from apps.trainerlab.problem_dictionary import build_problem_dictionary_instruction
@@ -46,6 +48,12 @@ class InitialResponseMixin(NsMixin, BaseInstruction):
         "one cause via `cause_ref`.\n"
         "- One cause may create multiple problems.\n"
         "- Recommended interventions are suggestions only. They must target a problem, not a cause.\n"
+        "- If useful, also generate structured `assessment_findings`, `diagnostic_results`, "
+        "`resources`, and `disposition` to support the simulation state.\n"
+        "- Findings should describe what an examiner can detect now.\n"
+        "- Diagnostic results should represent pending/available/reviewed tests or labs.\n"
+        "- Resources should capture meaningful supply constraints for care.\n"
+        "- Disposition should capture evacuation or transport readiness constraints.\n"
         "- `performed_interventions` must be omitted or an empty list unless trusted system "
         "context explicitly says a real intervention was already performed.\n"
         "- Never state or imply that an intervention was performed unless the input explicitly "
@@ -95,6 +103,8 @@ class InjuryCodebookMixin(NsMixin, BaseInstruction):
             build_cause_dictionary_instruction()
             + build_injury_codebook_instruction()
             + build_problem_dictionary_instruction()
+            + build_finding_dictionary_instruction()
+            + build_diagnostic_dictionary_instruction()
             + "### Intervention Dictionary\n"
             + "- Use canonical intervention kinds from this list when possible.\n"
             + f"- Intervention kinds: {interventions}\n"

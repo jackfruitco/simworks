@@ -126,6 +126,7 @@ class IllnessCreateIn(BaseModel):
 class ProblemCreateIn(BaseModel):
     cause_kind: Literal["injury", "illness"]
     cause_id: int
+    parent_problem_id: int | None = None
     kind: str
     code: str | None = None
     title: str = Field(min_length=1, max_length=120)
@@ -248,6 +249,54 @@ class SimulationNoteCreateIn(BaseModel):
         return stripped
 
 
+class AssessmentFindingCreateIn(BaseModel):
+    finding_kind: str
+    title: str = ""
+    description: str = ""
+    status: Literal["present", "stable", "improving", "worsening"] = "present"
+    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    target_problem_id: int | None = None
+    anatomical_location: str = ""
+    laterality: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
+class DiagnosticResultCreateIn(BaseModel):
+    diagnostic_kind: str
+    title: str = ""
+    description: str = ""
+    status: Literal["pending", "available", "reviewed"] = "pending"
+    value_text: str = ""
+    target_problem_id: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
+class ResourceStateCreateIn(BaseModel):
+    kind: str
+    code: str | None = None
+    title: str
+    display_name: str = ""
+    status: Literal["available", "limited", "depleted", "unavailable"] = "available"
+    quantity_available: int = 0
+    quantity_unit: str = ""
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
+class DispositionStateCreateIn(BaseModel):
+    status: Literal["hold", "ready", "en_route", "delayed", "complete"] = "hold"
+    transport_mode: str = ""
+    destination: str = ""
+    eta_minutes: int | None = None
+    handoff_ready: bool = False
+    scene_constraints: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
 class VitalCreateIn(BaseModel):
     vital_type: Literal[
         "heart_rate",
@@ -299,7 +348,7 @@ class RuntimeCauseStateOut(BaseModel):
     description: str | None = None
     anatomical_location: str | None = None
     laterality: str | None = None
-    recommended_interventions: list[dict[str, Any]] = Field(default_factory=list)
+    recommended_interventions: list["RecommendedInterventionStateOut"] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     source: str | None = None
     timestamp: str | None = None
@@ -344,11 +393,16 @@ class RuntimeProblemStateOut(BaseModel):
     anatomical_location: str | None = None
     laterality: str | None = None
     status: Literal["active", "treated", "controlled", "resolved"]
+    previous_status: str = ""
     treated_at: str | None = None
     controlled_at: str | None = None
     resolved_at: str | None = None
     cause_id: int
     cause_kind: Literal["injury", "illness"]
+    parent_problem_id: int | None = None
+    triggering_intervention_id: int | None = None
+    adjudication_reason: str = ""
+    adjudication_rule_id: str = ""
     recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     source: str | None = None
@@ -370,6 +424,10 @@ class RuntimeInterventionStateOut(BaseModel):
     initiated_by_id: int | None = None
     status: str = "active"
     clinical_effect: str = ""
+    target_problem_previous_status: str = ""
+    target_problem_current_status: str = ""
+    adjudication_reason: str = ""
+    adjudication_rule_id: str = ""
     source: str | None = None
     timestamp: str | None = None
 
@@ -394,14 +452,86 @@ class RuntimeVitalStateOut(BaseModel):
     timestamp: str | None = None
 
 
+class RuntimeAssessmentFindingStateOut(BaseModel):
+    finding_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    status: str
+    severity: str | None = None
+    target_problem_id: int | None = None
+    anatomical_location: str | None = None
+    laterality: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeDiagnosticResultStateOut(BaseModel):
+    diagnostic_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    status: str
+    value_text: str = ""
+    target_problem_id: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeResourceStateOut(BaseModel):
+    resource_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    status: str
+    quantity_available: int = 0
+    quantity_unit: str = ""
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeDispositionStateOut(BaseModel):
+    disposition_id: int
+    active: bool = True
+    status: str
+    transport_mode: str = ""
+    destination: str = ""
+    eta_minutes: int | None = None
+    handoff_ready: bool = False
+    scene_constraints: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
 class TrainerRuntimeSnapshotOut(BaseModel):
     causes: list[RuntimeCauseStateOut] = Field(default_factory=list)
     problems: list[RuntimeProblemStateOut] = Field(default_factory=list)
     recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
     interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
+    assessment_findings: list[RuntimeAssessmentFindingStateOut] = Field(default_factory=list)
+    diagnostic_results: list[RuntimeDiagnosticResultStateOut] = Field(default_factory=list)
+    resources: list[RuntimeResourceStateOut] = Field(default_factory=list)
+    disposition: RuntimeDispositionStateOut | None = None
     vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
     pulses: list[dict[str, Any]] = Field(default_factory=list)
     patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
+    scenario_brief: "ScenarioBriefOut | None" = None
 
 
 class ScenarioBriefOut(BaseModel):
@@ -409,9 +539,9 @@ class ScenarioBriefOut(BaseModel):
     environment: str = ""
     location_overview: str = ""
     threat_context: str = ""
-    evacuation_options: str = ""
+    evacuation_options: list[str] = Field(default_factory=list)
     evacuation_time: str = ""
-    special_considerations: str = ""
+    special_considerations: list[str] = Field(default_factory=list)
 
 
 class TrainerRuntimeStateOut(BaseModel):
@@ -720,10 +850,12 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     )
 
 
-def _join_if_list(value: Any) -> str:
+def _coerce_string_list(value: Any) -> list[str]:
     if isinstance(value, list):
-        return ", ".join(str(v) for v in value)
-    return str(value or "")
+        return [str(item) for item in value]
+    if not value:
+        return []
+    return [str(value)]
 
 
 def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
@@ -736,9 +868,9 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
         environment=str(raw_brief.get("environment") or ""),
         location_overview=str(raw_brief.get("location_overview") or ""),
         threat_context=str(raw_brief.get("threat_context") or ""),
-        evacuation_options=_join_if_list(raw_brief.get("evacuation_options", "")),
+        evacuation_options=_coerce_string_list(raw_brief.get("evacuation_options")),
         evacuation_time=str(raw_brief.get("evacuation_time") or ""),
-        special_considerations=_join_if_list(raw_brief.get("special_considerations", "")),
+        special_considerations=_coerce_string_list(raw_brief.get("special_considerations")),
     )
     # #3: Compute next_tick_at for trainer countdown visibility
     next_tick_at = None
@@ -798,3 +930,7 @@ def scenario_instruction_to_out(
         created_at=instruction.created_at,
         modified_at=instruction.modified_at,
     )
+
+
+RuntimeCauseStateOut.model_rebuild()
+TrainerRuntimeSnapshotOut.model_rebuild()

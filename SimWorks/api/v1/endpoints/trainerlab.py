@@ -19,7 +19,10 @@ from api.v1.schemas.events import EventEnvelope
 from api.v1.schemas.trainerlab import (
     AnnotationCreateIn,
     AnnotationOut,
+    AssessmentFindingCreateIn,
+    DiagnosticResultCreateIn,
     DictionaryItemOut,
+    DispositionStateCreateIn,
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
@@ -30,6 +33,7 @@ from api.v1.schemas.trainerlab import (
     ProblemCreateIn,
     ProblemStatusOut,
     ProblemStatusUpdateIn,
+    ResourceStateCreateIn,
     RunSummaryOut,
     ScenarioBriefDetailOut,
     ScenarioBriefUpdateIn,
@@ -62,6 +66,8 @@ from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
 from apps.trainerlab.adjudication import adjudicate_intervention
+from apps.trainerlab.diagnostic_dictionary import get_diagnostic_definition
+from apps.trainerlab.finding_dictionary import get_finding_definition
 from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
     list_intervention_definitions,
@@ -70,14 +76,18 @@ from apps.trainerlab.intervention_dictionary import (
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
+    AssessmentFinding,
     BloodGlucoseLevel,
     BloodPressure,
+    DiagnosticResult,
+    DispositionState,
     EventSource,
     HeartRate,
     Illness,
     Injury,
     Intervention,
     Problem,
+    ResourceState,
     RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
@@ -98,7 +108,9 @@ from apps.trainerlab.services import (
     get_or_create_command,
     get_session_annotations,
     pause_session,
+    recompute_active_recommendations,
     refresh_completed_run_review,
+    refresh_runtime_projection,
     resume_session,
     snapshot_before_preset,
     start_session,
@@ -1077,12 +1089,29 @@ def _create_problem(session: TrainerSession, body: ProblemCreateIn) -> Problem:
                 {"cause_id": "Active illness cause not found for this simulation."}
             )
 
+    parent_problem = None
+    if body.parent_problem_id:
+        parent_problem = (
+            Problem.objects.select_related("cause_injury", "cause_illness")
+            .filter(
+                pk=body.parent_problem_id,
+                simulation=session.simulation,
+                is_active=True,
+            )
+            .first()
+        )
+        if parent_problem is None:
+            raise ValidationError(
+                {"parent_problem_id": "Active parent problem not found for this simulation."}
+            )
+
     created = Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=old_problem,
         cause_injury=cause_injury,
         cause_illness=cause_illness,
+        parent_problem=parent_problem,
         problem_kind=(
             Problem.ProblemKind.INJURY
             if body.cause_kind == "injury"
@@ -1090,6 +1119,7 @@ def _create_problem(session: TrainerSession, body: ProblemCreateIn) -> Problem:
         ),
         kind=body.kind,
         code=body.code or body.kind,
+        slug="",
         title=body.title,
         display_name=body.display_name or body.title,
         description=body.description,
@@ -1102,6 +1132,146 @@ def _create_problem(session: TrainerSession, body: ProblemCreateIn) -> Problem:
     )
     created._deactivated_objects = [old_problem] if old_problem else []
     return created
+
+
+def _create_assessment_finding(
+    session: TrainerSession, body: AssessmentFindingCreateIn
+) -> AssessmentFinding:
+    definition = get_finding_definition(body.finding_kind)
+    supersedes = (
+        AssessmentFinding.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+        if body.supersedes_event_id
+        else None
+    )
+    target_problem = (
+        Problem.objects.filter(
+            pk=body.target_problem_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if body.target_problem_id
+        else None
+    )
+    obj = AssessmentFinding.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        target_problem=target_problem,
+        kind=definition.kind,
+        code=definition.code,
+        slug="",
+        title=body.title or definition.title,
+        display_name=body.title or definition.title,
+        description=body.description,
+        status=body.status,
+        severity=body.severity,
+        anatomical_location=body.anatomical_location,
+        laterality=body.laterality,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
+
+
+def _create_diagnostic_result(
+    session: TrainerSession, body: DiagnosticResultCreateIn
+) -> DiagnosticResult:
+    definition = get_diagnostic_definition(body.diagnostic_kind)
+    supersedes = (
+        DiagnosticResult.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+        if body.supersedes_event_id
+        else None
+    )
+    target_problem = (
+        Problem.objects.filter(
+            pk=body.target_problem_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if body.target_problem_id
+        else None
+    )
+    obj = DiagnosticResult.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        target_problem=target_problem,
+        kind=definition.kind,
+        code=definition.code,
+        slug="",
+        title=body.title or definition.title,
+        display_name=body.title or definition.title,
+        description=body.description,
+        status=body.status,
+        value_text=body.value_text,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
+
+
+def _create_resource_state(session: TrainerSession, body: ResourceStateCreateIn) -> ResourceState:
+    supersedes = (
+        ResourceState.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+        if body.supersedes_event_id
+        else None
+    )
+    obj = ResourceState.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        kind=body.kind,
+        code=body.code or body.kind,
+        slug="",
+        title=body.title,
+        display_name=body.display_name or body.title,
+        status=body.status,
+        quantity_available=body.quantity_available,
+        quantity_unit=body.quantity_unit,
+        description=body.description,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
+
+
+def _create_disposition_state(
+    session: TrainerSession, body: DispositionStateCreateIn
+) -> DispositionState:
+    supersedes = (
+        DispositionState.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if body.supersedes_event_id
+        else DispositionState.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    obj = DispositionState.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        status=body.status,
+        transport_mode=body.transport_mode,
+        destination=body.destination,
+        eta_minutes=body.eta_minutes,
+        handoff_ready=body.handoff_ready,
+        scene_constraints_json=body.scene_constraints,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
 
 
 def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
@@ -1232,9 +1402,13 @@ def _inject_event_core(
         "injury": "injury.created",
         "illness": "illness.created",
         "problem": "problem.created",
+        "assessment_finding": "trainerlab.assessment_finding.created",
+        "diagnostic_result": "trainerlab.diagnostic_result.created",
+        "resource": "trainerlab.resource.updated",
+        "disposition": "trainerlab.disposition.updated",
         "intervention": "intervention.created",
         "note": "note.created",
-        "vital": "vital.updated",
+        "vital": "trainerlab.vital.updated",
     }.get(event_kind, "event.created")
 
     send_to_ai = bool(payload_json.get("send_to_ai", False))
@@ -1262,7 +1436,16 @@ def _inject_event_core(
             action="superseded",
         )
 
-    if event_kind in {"injury", "illness", "problem", "intervention"}:
+    if event_kind in {
+        "injury",
+        "illness",
+        "problem",
+        "assessment_finding",
+        "diagnostic_result",
+        "resource",
+        "disposition",
+        "intervention",
+    }:
         emit_domain_runtime_event(
             session=session,
             event_type=event_type,
@@ -1306,6 +1489,18 @@ def _inject_event_core(
                 correlation_id=correlation_id,
                 idempotency_key=f"problem.updated:post-intervention:{refreshed_problem.id}:{domain_event.id}",
             )
+    if event_kind in {
+        "problem",
+        "assessment_finding",
+        "diagnostic_result",
+        "resource",
+        "disposition",
+        "intervention",
+    }:
+        recompute_active_recommendations(session=session, correlation_id=correlation_id)
+
+    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+
     should_queue_runtime = session.status != SessionStatus.COMPLETED and (
         event_kind != "note" or send_to_ai
     )
@@ -1416,6 +1611,86 @@ def create_intervention_event(
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "intervention", **body.model_dump()},
         create_fn=lambda session: _create_intervention(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/assessment-findings/",
+    response=TrainerCommandAck,
+    summary="Inject assessment finding event",
+)
+@api_rate_limit
+def create_assessment_finding_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: AssessmentFindingCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "assessment_finding", **body.model_dump()},
+        create_fn=lambda session: _create_assessment_finding(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/diagnostic-results/",
+    response=TrainerCommandAck,
+    summary="Inject diagnostic result event",
+)
+@api_rate_limit
+def create_diagnostic_result_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: DiagnosticResultCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "diagnostic_result", **body.model_dump()},
+        create_fn=lambda session: _create_diagnostic_result(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/resources/",
+    response=TrainerCommandAck,
+    summary="Inject resource state event",
+)
+@api_rate_limit
+def create_resource_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: ResourceStateCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "resource", **body.model_dump()},
+        create_fn=lambda session: _create_resource_state(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/disposition/",
+    response=TrainerCommandAck,
+    summary="Inject disposition state event",
+)
+@api_rate_limit
+def create_disposition_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: DispositionStateCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "disposition", **body.model_dump()},
+        create_fn=lambda session: _create_disposition_state(session, body),
     )
 
 

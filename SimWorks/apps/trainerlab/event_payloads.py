@@ -12,15 +12,20 @@ from .intervention_dictionary import get_intervention_label, get_intervention_si
 from .models import (
     ETCO2,
     SPO2,
+    AssessmentFinding,
     BloodGlucoseLevel,
     BloodPressure,
+    DiagnosticResult,
+    DispositionState,
     HeartRate,
     Illness,
     Injury,
     Intervention,
     Problem,
     PulseAssessment,
+    RecommendationEvaluation,
     RecommendedIntervention,
+    ResourceState,
     RespiratoryRate,
     ScenarioBrief,
     SimulationNote,
@@ -29,11 +34,15 @@ from .models import (
 __all__ = [
     "enrich_summary_payload",
     "enrich_trainer_payload",
+    "serialize_assessment_finding_summary",
     "serialize_cause_snapshot",
+    "serialize_diagnostic_result_summary",
+    "serialize_disposition_state_summary",
     "serialize_domain_event",
     "serialize_intervention_summary",
     "serialize_problem_snapshot",
     "serialize_recommendation_summary",
+    "serialize_resource_state_summary",
 ]
 
 
@@ -223,11 +232,16 @@ def serialize_problem_snapshot(problem: Problem) -> dict[str, Any]:
             "anatomical_location": problem.anatomical_location,
             "laterality": problem.laterality,
             "status": problem.status,
+            "previous_status": problem.previous_status,
             "treated_at": _datetime_iso(problem.treated_at),
             "controlled_at": _datetime_iso(problem.controlled_at),
             "resolved_at": _datetime_iso(problem.resolved_at),
             "cause_id": problem.cause_id,
             "cause_kind": problem.cause_kind,
+            "parent_problem_id": problem.parent_problem_id,
+            "triggering_intervention_id": problem.triggering_intervention_id,
+            "adjudication_reason": problem.adjudication_reason,
+            "adjudication_rule_id": problem.adjudication_rule_id,
             "recommended_interventions": [
                 serialize_recommendation_summary(item) for item in recommendations
             ],
@@ -286,6 +300,10 @@ def serialize_intervention_summary(obj: Intervention) -> dict[str, Any]:
             "initiated_by_id": obj.initiated_by_id,
             "status": obj.status,
             "effectiveness": obj.effectiveness,
+            "target_problem_previous_status": obj.target_problem_previous_status,
+            "target_problem_current_status": obj.target_problem_current_status,
+            "adjudication_reason": obj.adjudication_reason,
+            "adjudication_rule_id": obj.adjudication_rule_id,
             "notes": obj.notes,
             "site_code": obj.site_code,
             "details": dict(obj.details_json or {}),
@@ -294,6 +312,119 @@ def serialize_intervention_summary(obj: Intervention) -> dict[str, Any]:
             "timestamp": _event_timestamp_iso(obj),
         }
     )
+
+
+def serialize_assessment_finding_summary(obj: AssessmentFinding) -> dict[str, Any]:
+    return enrich_trainer_payload(
+        {
+            "finding_id": obj.id,
+            "active": obj.is_active,
+            "kind": obj.kind,
+            "code": obj.code,
+            "slug": obj.slug,
+            "title": obj.title,
+            "display_name": obj.display_name,
+            "description": obj.description,
+            "status": obj.status,
+            "severity": obj.severity,
+            "target_problem_id": obj.target_problem_id,
+            "anatomical_location": obj.anatomical_location,
+            "laterality": obj.laterality,
+            "metadata": dict(obj.metadata_json or {}),
+            "source": obj.source,
+            "timestamp": _event_timestamp_iso(obj),
+        }
+    )
+
+
+def serialize_diagnostic_result_summary(obj: DiagnosticResult) -> dict[str, Any]:
+    return enrich_trainer_payload(
+        {
+            "diagnostic_id": obj.id,
+            "active": obj.is_active,
+            "kind": obj.kind,
+            "code": obj.code,
+            "slug": obj.slug,
+            "title": obj.title,
+            "display_name": obj.display_name,
+            "description": obj.description,
+            "status": obj.status,
+            "value_text": obj.value_text,
+            "target_problem_id": obj.target_problem_id,
+            "metadata": dict(obj.metadata_json or {}),
+            "source": obj.source,
+            "timestamp": _event_timestamp_iso(obj),
+        }
+    )
+
+
+def serialize_resource_state_summary(obj: ResourceState) -> dict[str, Any]:
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "resource",
+        "resource_id": obj.id,
+        "active": obj.is_active,
+        "kind": obj.kind,
+        "code": obj.code,
+        "slug": obj.slug,
+        "title": obj.title,
+        "display_name": obj.display_name,
+        "status": obj.status,
+        "quantity_available": obj.quantity_available,
+        "quantity_unit": obj.quantity_unit,
+        "description": obj.description,
+        "metadata": dict(obj.metadata_json or {}),
+    }
+
+
+def serialize_disposition_state_summary(obj: DispositionState) -> dict[str, Any]:
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "disposition",
+        "disposition_id": obj.id,
+        "active": obj.is_active,
+        "status": obj.status,
+        "transport_mode": obj.transport_mode,
+        "destination": obj.destination,
+        "eta_minutes": obj.eta_minutes,
+        "handoff_ready": obj.handoff_ready,
+        "scene_constraints": list(obj.scene_constraints_json or []),
+        "metadata": dict(obj.metadata_json or {}),
+    }
+
+
+def serialize_recommendation_evaluation_summary(obj: RecommendationEvaluation) -> dict[str, Any]:
+    target_cause_kind = None
+    target_cause_id = None
+    if obj.target_injury_id:
+        target_cause_kind = "injury"
+        target_cause_id = obj.target_injury_id
+    elif obj.target_illness_id:
+        target_cause_kind = "illness"
+        target_cause_id = obj.target_illness_id
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "recommendation_evaluation",
+        "evaluation_id": obj.id,
+        "recommendation_id": obj.recommendation_id,
+        "target_problem_id": obj.target_problem_id,
+        "target_cause_id": target_cause_id,
+        "target_cause_kind": target_cause_kind,
+        "raw_kind": obj.raw_kind,
+        "raw_title": obj.raw_title,
+        "raw_site": obj.raw_site,
+        "normalized_kind": obj.normalized_kind,
+        "normalized_code": obj.normalized_code,
+        "title": obj.title,
+        "recommendation_source": obj.recommendation_source,
+        "validation_status": obj.validation_status,
+        "rationale": obj.rationale,
+        "priority": obj.priority,
+        "warnings": list(obj.warnings_json or []),
+        "contraindications": list(obj.contraindications_json or []),
+        "rejection_reason": obj.rejection_reason,
+        "metadata": dict(obj.metadata_json or {}),
+    }
 
 
 def _serialize_cause_event(obj: Injury | Illness) -> dict[str, Any]:
@@ -320,6 +451,22 @@ def _serialize_recommendation_event(obj: RecommendedIntervention) -> dict[str, A
     }
 
 
+def _serialize_assessment_finding_event(obj: AssessmentFinding) -> dict[str, Any]:
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "assessment_finding",
+        **serialize_assessment_finding_summary(obj),
+    }
+
+
+def _serialize_diagnostic_result_event(obj: DiagnosticResult) -> dict[str, Any]:
+    return {
+        **_base_domain_event_payload(obj),
+        "event_kind": "diagnostic_result",
+        **serialize_diagnostic_result_summary(obj),
+    }
+
+
 def _serialize_intervention_event(obj: Intervention) -> dict[str, Any]:
     return {
         **_base_domain_event_payload(obj),
@@ -339,6 +486,16 @@ def serialize_domain_event(
         payload = _serialize_cause_event(obj)
     elif isinstance(obj, RecommendedIntervention):
         payload = _serialize_recommendation_event(obj)
+    elif isinstance(obj, AssessmentFinding):
+        payload = _serialize_assessment_finding_event(obj)
+    elif isinstance(obj, DiagnosticResult):
+        payload = _serialize_diagnostic_result_event(obj)
+    elif isinstance(obj, ResourceState):
+        payload = serialize_resource_state_summary(obj)
+    elif isinstance(obj, DispositionState):
+        payload = serialize_disposition_state_summary(obj)
+    elif isinstance(obj, RecommendationEvaluation):
+        payload = serialize_recommendation_evaluation_summary(obj)
     elif isinstance(obj, Intervention):
         payload = _serialize_intervention_event(obj)
     elif isinstance(obj, ScenarioBrief):

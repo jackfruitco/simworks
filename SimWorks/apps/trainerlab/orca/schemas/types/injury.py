@@ -7,6 +7,11 @@ from pydantic import AliasChoices, Field, model_validator
 from slugify import slugify
 
 from apps.trainerlab.cause_dictionary import normalize_cause_kind
+from apps.trainerlab.diagnostic_dictionary import (
+    get_diagnostic_definition,
+    normalize_diagnostic_kind,
+)
+from apps.trainerlab.finding_dictionary import get_finding_definition, normalize_finding_kind
 from apps.trainerlab.injury_dictionary import (
     normalize_injury_category,
     normalize_injury_kind,
@@ -17,11 +22,15 @@ from apps.trainerlab.problem_dictionary import get_problem_definition, normalize
 from orchestrai_django.types import StrictBaseModel
 
 __all__ = [
+    "AssessmentFindingSeed",
+    "DiagnosticResultSeed",
+    "DispositionStateSeed",
     "IllnessSeed",
     "InjurySeed",
     "PerformedInterventionSeed",
     "ProblemSeed",
     "RecommendedInterventionSeed",
+    "ResourceStateSeed",
 ]
 
 
@@ -179,6 +188,103 @@ class RecommendedInterventionSeed(StrictBaseModel):
         if not self.title:
             self.title = self.intervention_kind
         return self
+
+
+class AssessmentFindingSeed(StrictBaseModel):
+    temp_id: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("temp_id", "external_id"),
+        serialization_alias="temp_id",
+    )
+    finding_kind: str = Field(
+        ...,
+        validation_alias=AliasChoices("finding_kind", "kind", "code"),
+        serialization_alias="finding_kind",
+    )
+    title: str = Field(default="", validation_alias=AliasChoices("title", "display_label"))
+    description: str = ""
+    status: Literal["present", "stable", "improving", "worsening"] = "present"
+    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    target_problem_ref: str | None = None
+    anatomical_location: str = ""
+    laterality: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _normalize_finding_seed(self):
+        definition = get_finding_definition(self.finding_kind)
+        self.finding_kind = normalize_finding_kind(definition.kind)
+        if not self.title:
+            self.title = definition.title
+        return self
+
+
+class DiagnosticResultSeed(StrictBaseModel):
+    temp_id: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("temp_id", "external_id"),
+        serialization_alias="temp_id",
+    )
+    diagnostic_kind: str = Field(
+        ...,
+        validation_alias=AliasChoices("diagnostic_kind", "kind", "code"),
+        serialization_alias="diagnostic_kind",
+    )
+    title: str = Field(default="", validation_alias=AliasChoices("title", "display_label"))
+    description: str = ""
+    status: Literal["pending", "available", "reviewed"] = "pending"
+    value_text: str = ""
+    target_problem_ref: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _normalize_diagnostic_seed(self):
+        definition = get_diagnostic_definition(self.diagnostic_kind)
+        self.diagnostic_kind = normalize_diagnostic_kind(definition.kind)
+        if not self.title:
+            self.title = definition.title
+        return self
+
+
+class ResourceStateSeed(StrictBaseModel):
+    temp_id: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("temp_id", "external_id"),
+        serialization_alias="temp_id",
+    )
+    kind: str = Field(..., validation_alias=AliasChoices("resource_kind", "kind", "code"))
+    code: str = ""
+    title: str = ""
+    display_name: str = ""
+    status: Literal["available", "limited", "depleted", "unavailable"] = "available"
+    quantity_available: int = 0
+    quantity_unit: str = ""
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _normalize_resource_seed(self):
+        self.kind = _normalized_slug(self.kind or self.code or self.title)
+        if not self.code:
+            self.code = self.kind
+        if not self.title:
+            self.title = self.display_name or self.kind.replace("_", " ").title()
+        if not self.display_name:
+            self.display_name = self.title
+        return self
+
+
+class DispositionStateSeed(StrictBaseModel):
+    status: Literal["hold", "ready", "en_route", "delayed", "complete"] = "hold"
+    transport_mode: str = ""
+    destination: str = ""
+    eta_minutes: int | None = None
+    handoff_ready: bool = False
+    scene_constraints: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PerformedInterventionSeed(StrictBaseModel):

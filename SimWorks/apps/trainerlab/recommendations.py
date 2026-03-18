@@ -27,8 +27,10 @@ _PROBLEM_INTERVENTION_COMPATIBILITY: dict[str, frozenset[str]] = {
     "open_wound": frozenset({"pressure_dressing", "wound_packing", "hemostatic_agent"}),
     "open_chest_wound": frozenset({"chest_seal"}),
     "airway_obstruction": frozenset({"npa", "opa", "advanced_airway", "surgical_cric"}),
+    "respiratory_distress": frozenset({"chest_seal", "needle_decompression", "advanced_airway"}),
     "tension_pneumothorax": frozenset({"needle_decompression", "chest_tube"}),
     "infectious_process": frozenset({"antibiotics"}),
+    "hypoperfusion_shock": frozenset({"fluid_resuscitation", "blood_transfusion"}),
 }
 
 
@@ -63,11 +65,118 @@ class RecommendationNormalizationResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class RuleRecommendationSeed:
+    problem_id: int
+    intervention_kind: str
+    title: str
+    rationale: str
+    priority: int | None = None
+    raw_site: str = ""
+    warnings: list[str] = field(default_factory=list)
+    contraindications: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 def is_recommendation_compatible(*, problem_kind: str, intervention_kind: str) -> bool:
     allowed = _PROBLEM_INTERVENTION_COMPATIBILITY.get(problem_kind)
     if allowed is None:
         return True
     return intervention_kind in allowed
+
+
+def _problem_tokens(problem: Problem) -> set[str]:
+    values = [
+        problem.anatomical_location,
+        problem.laterality,
+        problem.title,
+        problem.display_name,
+    ]
+    cause = problem.cause
+    if cause is not None:
+        values.extend(
+            [
+                getattr(cause, "anatomical_location", ""),
+                getattr(cause, "laterality", ""),
+                getattr(cause, "title", ""),
+                getattr(cause, "description", ""),
+            ]
+        )
+    tokens: set[str] = set()
+    for value in values:
+        tokens.update(slugify(value or "", separator="_").split("_"))
+    return {token for token in tokens if token}
+
+
+def _default_site_for_problem(*, problem: Problem, intervention_kind: str) -> str:
+    tokens = _problem_tokens(problem)
+    laterality = "left" if "left" in tokens else ("right" if "right" in tokens else "")
+
+    if intervention_kind in {"tourniquet", "pressure_dressing"}:
+        if {"leg", "thigh", "lower"} & tokens:
+            return f"{laterality.upper()}_LEG" if laterality else ""
+        if {"arm", "upper", "hand"} & tokens:
+            return f"{laterality.upper()}_ARM" if laterality else ""
+    if intervention_kind == "chest_seal":
+        if "posterior" in tokens:
+            return f"{laterality.upper()}_POSTERIOR_CHEST" if laterality else ""
+        return f"{laterality.upper()}_ANTERIOR_CHEST" if laterality else ""
+    if intervention_kind == "needle_decompression":
+        if "lateral" in tokens:
+            return f"{laterality.upper()}_LATERAL_CHEST" if laterality else ""
+        return f"{laterality.upper()}_ANTERIOR_CHEST" if laterality else ""
+    if intervention_kind == "npa":
+        return "RIGHT_NARE"
+    if intervention_kind == "opa":
+        return "ORAL"
+    return ""
+
+
+def generate_rule_based_recommendations(problem: Problem) -> list[RuleRecommendationSeed]:
+    if problem.status == Problem.Status.RESOLVED:
+        return []
+
+    defaults: dict[str, list[tuple[str, str, int | None]]] = {
+        "hemorrhage": [
+            ("tourniquet", "Control extremity hemorrhage.", 1),
+            (
+                "pressure_dressing",
+                "Control persistent bleeding if a tourniquet is not applicable.",
+                2,
+            ),
+        ],
+        "open_wound": [("pressure_dressing", "Protect and dress the wound.", 2)],
+        "open_chest_wound": [("chest_seal", "Seal the chest wound to improve ventilation.", 1)],
+        "airway_obstruction": [
+            ("npa", "Support airway patency.", 1),
+            ("opa", "Support airway patency if appropriate.", 2),
+        ],
+        "tension_pneumothorax": [
+            ("needle_decompression", "Relieve worsening tension physiology.", 1)
+        ],
+        "infectious_process": [("antibiotics", "Treat the infectious source.", 1)],
+        "hypoperfusion_shock": [
+            ("fluid_resuscitation", "Support perfusion while definitive treatment continues.", 2)
+        ],
+        "respiratory_distress": [
+            ("chest_seal", "Treat an open chest source if present.", 2),
+            ("needle_decompression", "Prepare decompression if tension physiology develops.", 3),
+        ],
+    }
+    items = defaults.get(problem.kind, [])
+    return [
+        RuleRecommendationSeed(
+            problem_id=problem.id,
+            intervention_kind=kind,
+            title=get_intervention_label(kind),
+            rationale=rationale,
+            priority=priority,
+            raw_site=_default_site_for_problem(problem=problem, intervention_kind=kind),
+            metadata={"generated_by": "rules"},
+        )
+        for kind, rationale, priority in items
+        if is_recommendation_compatible(problem_kind=problem.kind, intervention_kind=kind)
+    ]
 
 
 def validate_and_normalize_recommendation(
@@ -81,6 +190,10 @@ def validate_and_normalize_recommendation(
     warnings: list[str] | None = None,
     contraindications: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
+    contraindicated_interventions: set[str] | None = None,
+    unavailable_interventions: set[str] | None = None,
+    limited_interventions: set[str] | None = None,
+    source_override: str | None = None,
 ) -> RecommendationNormalizationResult:
     initial_metadata = dict(metadata or {})
     raw_value = raw_kind or raw_title
@@ -118,7 +231,7 @@ def validate_and_normalize_recommendation(
         )
 
     validation_status = RecommendedIntervention.ValidationStatus.ACCEPTED
-    recommendation_source = RecommendedIntervention.RecommendationSource.AI
+    recommendation_source = source_override or RecommendedIntervention.RecommendationSource.AI
 
     site_code = ""
     site_label = ""
@@ -135,6 +248,35 @@ def validate_and_normalize_recommendation(
     if _normalized_text(raw_value) != normalized_kind:
         validation_status = RecommendedIntervention.ValidationStatus.NORMALIZED
         recommendation_source = RecommendedIntervention.RecommendationSource.MERGED
+
+    if normalized_kind in (contraindicated_interventions or set()):
+        return RecommendationNormalizationResult(
+            accepted=False,
+            recommendation_source=RecommendedIntervention.RecommendationSource.MERGED,
+            validation_status=RecommendedIntervention.ValidationStatus.REJECTED,
+            metadata={
+                **initial_metadata,
+                "rejection_reason": f"{normalized_kind!r} is contraindicated in the current state",
+            },
+        )
+
+    if normalized_kind in (unavailable_interventions or set()):
+        return RecommendationNormalizationResult(
+            accepted=False,
+            recommendation_source=RecommendedIntervention.RecommendationSource.MERGED,
+            validation_status=RecommendedIntervention.ValidationStatus.REJECTED,
+            metadata={
+                **initial_metadata,
+                "rejection_reason": f"{normalized_kind!r} is unavailable in current resources",
+            },
+        )
+
+    if normalized_kind in (limited_interventions or set()):
+        validation_status = RecommendedIntervention.ValidationStatus.DOWNGRADED
+        recommendation_source = RecommendedIntervention.RecommendationSource.MERGED
+        normalization_warnings.append(
+            f"{normalized_kind!r} is limited in current resources; use judiciously"
+        )
 
     title = get_intervention_label(normalized_kind)
     display_name = raw_title or title

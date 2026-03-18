@@ -2416,6 +2416,194 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/assessment-findings/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_assessment_finding_event",
+        "summary": "Inject assessment finding event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentFindingCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/diagnostic-results/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_diagnostic_result_event",
+        "summary": "Inject diagnostic result event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticResultCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/resources/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_resource_event",
+        "summary": "Inject resource state event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceStateCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/disposition/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_disposition_event",
+        "summary": "Inject disposition state event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispositionStateCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/events/notes/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_note_event",
@@ -5262,6 +5450,148 @@
         "title": "RecommendedInterventionStateOut",
         "type": "object"
       },
+      "RuntimeAssessmentFindingStateOut": {
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "anatomical_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anatomical Location"
+          },
+          "laterality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laterality"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "finding_id",
+          "kind",
+          "code",
+          "title",
+          "status"
+        ],
+        "title": "RuntimeAssessmentFindingStateOut",
+        "type": "object"
+      },
       "RuntimeCauseStateOut": {
         "properties": {
           "id": {
@@ -5350,8 +5680,7 @@
           },
           "recommended_interventions": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/RecommendedInterventionStateOut"
             },
             "title": "Recommended Interventions",
             "type": "array"
@@ -5392,6 +5721,203 @@
           "title"
         ],
         "title": "RuntimeCauseStateOut",
+        "type": "object"
+      },
+      "RuntimeDiagnosticResultStateOut": {
+        "properties": {
+          "diagnostic_id": {
+            "title": "Diagnostic Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "value_text": {
+            "default": "",
+            "title": "Value Text",
+            "type": "string"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "diagnostic_id",
+          "kind",
+          "code",
+          "title",
+          "status"
+        ],
+        "title": "RuntimeDiagnosticResultStateOut",
+        "type": "object"
+      },
+      "RuntimeDispositionStateOut": {
+        "properties": {
+          "disposition_id": {
+            "title": "Disposition Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "transport_mode": {
+            "default": "",
+            "title": "Transport Mode",
+            "type": "string"
+          },
+          "destination": {
+            "default": "",
+            "title": "Destination",
+            "type": "string"
+          },
+          "eta_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Minutes"
+          },
+          "handoff_ready": {
+            "default": false,
+            "title": "Handoff Ready",
+            "type": "boolean"
+          },
+          "scene_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scene Constraints",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "disposition_id",
+          "status"
+        ],
+        "title": "RuntimeDispositionStateOut",
         "type": "object"
       },
       "RuntimeInstructorIntent": {
@@ -5537,6 +6063,26 @@
           "clinical_effect": {
             "default": "",
             "title": "Clinical Effect",
+            "type": "string"
+          },
+          "target_problem_previous_status": {
+            "default": "",
+            "title": "Target Problem Previous Status",
+            "type": "string"
+          },
+          "target_problem_current_status": {
+            "default": "",
+            "title": "Target Problem Current Status",
+            "type": "string"
+          },
+          "adjudication_reason": {
+            "default": "",
+            "title": "Adjudication Reason",
+            "type": "string"
+          },
+          "adjudication_rule_id": {
+            "default": "",
+            "title": "Adjudication Rule Id",
             "type": "string"
           },
           "source": {
@@ -5732,6 +6278,11 @@
             "title": "Status",
             "type": "string"
           },
+          "previous_status": {
+            "default": "",
+            "title": "Previous Status",
+            "type": "string"
+          },
           "treated_at": {
             "anyOf": [
               {
@@ -5775,6 +6326,38 @@
               "illness"
             ],
             "title": "Cause Kind",
+            "type": "string"
+          },
+          "parent_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Problem Id"
+          },
+          "triggering_intervention_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggering Intervention Id"
+          },
+          "adjudication_reason": {
+            "default": "",
+            "title": "Adjudication Reason",
+            "type": "string"
+          },
+          "adjudication_rule_id": {
+            "default": "",
+            "title": "Adjudication Rule Id",
             "type": "string"
           },
           "recommended_interventions": {
@@ -5822,6 +6405,108 @@
           "cause_kind"
         ],
         "title": "RuntimeProblemStateOut",
+        "type": "object"
+      },
+      "RuntimeResourceStateOut": {
+        "properties": {
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "quantity_available": {
+            "default": 0,
+            "title": "Quantity Available",
+            "type": "integer"
+          },
+          "quantity_unit": {
+            "default": "",
+            "title": "Quantity Unit",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "resource_id",
+          "kind",
+          "code",
+          "title",
+          "status"
+        ],
+        "title": "RuntimeResourceStateOut",
         "type": "object"
       },
       "RuntimeVitalStateOut": {
@@ -5943,9 +6628,11 @@
             "type": "string"
           },
           "evacuation_options": {
-            "default": "",
+            "items": {
+              "type": "string"
+            },
             "title": "Evacuation Options",
-            "type": "string"
+            "type": "array"
           },
           "evacuation_time": {
             "default": "",
@@ -5953,9 +6640,11 @@
             "type": "string"
           },
           "special_considerations": {
-            "default": "",
+            "items": {
+              "type": "string"
+            },
             "title": "Special Considerations",
-            "type": "string"
+            "type": "array"
           }
         },
         "title": "ScenarioBriefOut",
@@ -5991,6 +6680,37 @@
             "title": "Interventions",
             "type": "array"
           },
+          "assessment_findings": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeAssessmentFindingStateOut"
+            },
+            "title": "Assessment Findings",
+            "type": "array"
+          },
+          "diagnostic_results": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeDiagnosticResultStateOut"
+            },
+            "title": "Diagnostic Results",
+            "type": "array"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeResourceStateOut"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeDispositionStateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "vitals": {
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalStateOut"
@@ -6010,6 +6730,16 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/RuntimePatientStatus"
+              }
+            ]
+          },
+          "scenario_brief": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioBriefOut"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -6416,6 +7146,17 @@
             "title": "Cause Id",
             "type": "integer"
           },
+          "parent_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Problem Id"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -6618,6 +7359,296 @@
           "kind"
         ],
         "title": "InterventionDetailsIn",
+        "type": "object"
+      },
+      "AssessmentFindingCreateIn": {
+        "properties": {
+          "finding_kind": {
+            "title": "Finding Kind",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "status": {
+            "default": "present",
+            "enum": [
+              "present",
+              "stable",
+              "improving",
+              "worsening"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "default": "moderate",
+            "enum": [
+              "low",
+              "moderate",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "anatomical_location": {
+            "default": "",
+            "title": "Anatomical Location",
+            "type": "string"
+          },
+          "laterality": {
+            "default": "",
+            "title": "Laterality",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "finding_kind"
+        ],
+        "title": "AssessmentFindingCreateIn",
+        "type": "object"
+      },
+      "DiagnosticResultCreateIn": {
+        "properties": {
+          "diagnostic_kind": {
+            "title": "Diagnostic Kind",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "available",
+              "reviewed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "value_text": {
+            "default": "",
+            "title": "Value Text",
+            "type": "string"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "diagnostic_kind"
+        ],
+        "title": "DiagnosticResultCreateIn",
+        "type": "object"
+      },
+      "ResourceStateCreateIn": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "limited",
+              "depleted",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "quantity_available": {
+            "default": 0,
+            "title": "Quantity Available",
+            "type": "integer"
+          },
+          "quantity_unit": {
+            "default": "",
+            "title": "Quantity Unit",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "title": "ResourceStateCreateIn",
+        "type": "object"
+      },
+      "DispositionStateCreateIn": {
+        "properties": {
+          "status": {
+            "default": "hold",
+            "enum": [
+              "hold",
+              "ready",
+              "en_route",
+              "delayed",
+              "complete"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "transport_mode": {
+            "default": "",
+            "title": "Transport Mode",
+            "type": "string"
+          },
+          "destination": {
+            "default": "",
+            "title": "Destination",
+            "type": "string"
+          },
+          "eta_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Minutes"
+          },
+          "handoff_ready": {
+            "default": false,
+            "title": "Handoff Ready",
+            "type": "boolean"
+          },
+          "scene_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scene Constraints",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "title": "DispositionStateCreateIn",
         "type": "object"
       },
       "SimulationNoteCreateIn": {

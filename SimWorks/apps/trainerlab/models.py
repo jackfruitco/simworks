@@ -537,6 +537,17 @@ class Problem(BaseDomainEvent):
         related_name="problems",
         help_text="The underlying Illness cause. Null for injury-based or standalone problems.",
     )
+    parent_problem = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_problems",
+        help_text=(
+            "Optional parent problem for derived/systemic progression while preserving the direct "
+            "cause relationship."
+        ),
+    )
     supersedes = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -581,6 +592,16 @@ class Problem(BaseDomainEvent):
     treated_at = models.DateTimeField(blank=True, null=True)
     controlled_at = models.DateTimeField(blank=True, null=True)
     resolved_at = models.DateTimeField(blank=True, null=True)
+    previous_status = models.CharField(max_length=16, blank=True, default="")
+    triggering_intervention = models.ForeignKey(
+        "trainerlab.Intervention",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="triggered_problem_updates",
+    )
+    adjudication_reason = models.CharField(max_length=120, blank=True, default="")
+    adjudication_rule_id = models.CharField(max_length=120, blank=True, default="")
     metadata_json = models.JSONField(default=dict, blank=True)
 
     class Meta:
@@ -649,6 +670,22 @@ class Problem(BaseDomainEvent):
                     "cause_illness": "Problem must reference exactly one direct cause.",
                 }
             )
+        if self.parent_problem_id:
+            if self.parent_problem.simulation_id != self.simulation_id:
+                raise ValidationError(
+                    {"parent_problem": "parent_problem must belong to the same simulation."}
+                )
+            if self.parent_problem.cause_kind != self.cause_kind or (
+                self.parent_problem.cause_id != self.cause_id
+            ):
+                raise ValidationError(
+                    {
+                        "parent_problem": (
+                            "Derived problems must preserve the same direct cause as the parent "
+                            "problem."
+                        )
+                    }
+                )
         if not self.kind:
             if self.code:
                 self.kind = _normalized_slug(self.code)
@@ -805,6 +842,337 @@ class RecommendedIntervention(BaseDomainEvent):
 
 
 # ---------------------------------------------------------------------------
+# Domain event: AssessmentFinding
+# ---------------------------------------------------------------------------
+
+
+class AssessmentFinding(BaseDomainEvent):
+    class Status(models.TextChoices):
+        PRESENT = "present", _("Present")
+        STABLE = "stable", _("Stable")
+        IMPROVING = "improving", _("Improving")
+        WORSENING = "worsening", _("Worsening")
+
+    class Severity(models.TextChoices):
+        LOW = "low", _("Low")
+        MODERATE = "moderate", _("Moderate")
+        HIGH = "high", _("High")
+        CRITICAL = "critical", _("Critical")
+
+    kind = models.CharField(max_length=64, db_index=True)
+    code = models.CharField(max_length=64, db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="", db_index=True)
+    title = models.CharField(max_length=120)
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PRESENT,
+        db_index=True,
+    )
+    severity = models.CharField(
+        max_length=16,
+        choices=Severity.choices,
+        default=Severity.MODERATE,
+    )
+    anatomical_location = models.CharField(max_length=120, blank=True, default="")
+    laterality = models.CharField(max_length=16, blank=True, default="")
+    target_problem = models.ForeignKey(
+        "trainerlab.Problem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assessment_findings",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "kind"], name="idx_finding_sim_kind"),
+            models.Index(fields=["target_problem"], name="idx_finding_problem"),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+        if self.target_problem_id and self.target_problem.simulation_id != self.simulation_id:
+            errors["target_problem"] = "target_problem must belong to the same simulation"
+        if not self.slug:
+            self.slug = _normalized_slug(self.kind or self.code or self.title)
+        if not self.display_name:
+            self.display_name = self.title
+        if not self.code:
+            self.code = self.kind
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} [{self.status}]"
+
+
+# ---------------------------------------------------------------------------
+# Domain event: DiagnosticResult
+# ---------------------------------------------------------------------------
+
+
+class DiagnosticResult(BaseDomainEvent):
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        AVAILABLE = "available", _("Available")
+        REVIEWED = "reviewed", _("Reviewed")
+
+    kind = models.CharField(max_length=64, db_index=True)
+    code = models.CharField(max_length=64, db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="", db_index=True)
+    title = models.CharField(max_length=120)
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    value_text = models.CharField(max_length=255, blank=True, default="")
+    target_problem = models.ForeignKey(
+        "trainerlab.Problem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="diagnostic_results",
+    )
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "kind"], name="idx_diag_sim_kind"),
+            models.Index(fields=["target_problem"], name="idx_diag_problem"),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+        if self.target_problem_id and self.target_problem.simulation_id != self.simulation_id:
+            errors["target_problem"] = "target_problem must belong to the same simulation"
+        if not self.code:
+            self.code = self.kind
+        if not self.slug:
+            self.slug = _normalized_slug(self.kind or self.code or self.title)
+        if not self.display_name:
+            self.display_name = self.title
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} [{self.status}]"
+
+
+# ---------------------------------------------------------------------------
+# Domain event: ResourceState
+# ---------------------------------------------------------------------------
+
+
+class ResourceState(BaseDomainEvent):
+    class Status(models.TextChoices):
+        AVAILABLE = "available", _("Available")
+        LIMITED = "limited", _("Limited")
+        DEPLETED = "depleted", _("Depleted")
+        UNAVAILABLE = "unavailable", _("Unavailable")
+
+    kind = models.CharField(max_length=64, db_index=True)
+    code = models.CharField(max_length=64, db_index=True)
+    slug = models.SlugField(max_length=80, blank=True, default="", db_index=True)
+    title = models.CharField(max_length=120)
+    display_name = models.CharField(max_length=120, blank=True, default="")
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.AVAILABLE,
+        db_index=True,
+    )
+    quantity_available = models.IntegerField(default=0)
+    quantity_unit = models.CharField(max_length=32, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "code"], name="idx_resource_sim_code"),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if not self.code:
+            self.code = self.kind
+        if not self.slug:
+            self.slug = _normalized_slug(self.kind or self.code or self.title)
+        if not self.display_name:
+            self.display_name = self.title
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} [{self.status}]"
+
+
+# ---------------------------------------------------------------------------
+# Domain event: DispositionState
+# ---------------------------------------------------------------------------
+
+
+class DispositionState(BaseDomainEvent):
+    class Status(models.TextChoices):
+        HOLD = "hold", _("Hold")
+        READY = "ready", _("Ready")
+        EN_ROUTE = "en_route", _("En Route")
+        DELAYED = "delayed", _("Delayed")
+        COMPLETE = "complete", _("Complete")
+
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.HOLD,
+        db_index=True,
+    )
+    transport_mode = models.CharField(max_length=64, blank=True, default="")
+    destination = models.CharField(max_length=120, blank=True, default="")
+    eta_minutes = models.PositiveIntegerField(null=True, blank=True)
+    handoff_ready = models.BooleanField(default=False)
+    scene_constraints_json = models.JSONField(default=list, blank=True)
+    metadata_json = models.JSONField(default=dict, blank=True)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="superseded_by",
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "status"], name="idx_dispo_sim_status"),
+        ]
+
+    def __str__(self):
+        return f"Disposition [{self.status}]"
+
+
+# ---------------------------------------------------------------------------
+# Domain event: RecommendationEvaluation
+# ---------------------------------------------------------------------------
+
+
+class RecommendationEvaluation(BaseDomainEvent):
+    recommendation = models.ForeignKey(
+        "trainerlab.RecommendedIntervention",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="evaluations",
+    )
+    target_problem = models.ForeignKey(
+        "trainerlab.Problem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recommendation_evaluations",
+    )
+    target_injury = models.ForeignKey(
+        "trainerlab.Injury",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recommendation_evaluations",
+    )
+    target_illness = models.ForeignKey(
+        "trainerlab.Illness",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recommendation_evaluations",
+    )
+    raw_kind = models.CharField(max_length=120, blank=True, default="")
+    raw_title = models.CharField(max_length=120, blank=True, default="")
+    raw_site = models.CharField(max_length=120, blank=True, default="")
+    normalized_kind = models.CharField(max_length=64, blank=True, default="")
+    normalized_code = models.CharField(max_length=64, blank=True, default="")
+    title = models.CharField(max_length=120, blank=True, default="")
+    recommendation_source = models.CharField(
+        max_length=16,
+        choices=RecommendedIntervention.RecommendationSource.choices,
+        default=RecommendedIntervention.RecommendationSource.AI,
+    )
+    validation_status = models.CharField(
+        max_length=16,
+        choices=RecommendedIntervention.ValidationStatus.choices,
+        default=RecommendedIntervention.ValidationStatus.ACCEPTED,
+        db_index=True,
+    )
+    rationale = models.TextField(blank=True, default="")
+    priority = models.PositiveSmallIntegerField(null=True, blank=True)
+    warnings_json = models.JSONField(default=list, blank=True)
+    contraindications_json = models.JSONField(default=list, blank=True)
+    rejection_reason = models.CharField(max_length=255, blank=True, default="")
+    metadata_json = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["simulation", "validation_status"], name="idx_reval_sim_status"),
+            models.Index(fields=["target_problem"], name="idx_reval_problem"),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict[str, str] = {}
+        if self.rejection_reason:
+            self.rejection_reason = self.rejection_reason[:255]
+        if self.target_problem_id and self.target_problem.simulation_id != self.simulation_id:
+            errors["target_problem"] = "target_problem must belong to the same simulation"
+        if self.recommendation_id and self.recommendation.simulation_id != self.simulation_id:
+            errors["recommendation"] = "recommendation must belong to the same simulation"
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.rejection_reason:
+            self.rejection_reason = self.rejection_reason[:255]
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
 # Domain event: Intervention
 # ---------------------------------------------------------------------------
 
@@ -882,6 +1250,10 @@ class Intervention(BaseDomainEvent):
         db_index=True,
     )
     initiated_by_id = models.PositiveIntegerField(null=True, blank=True)
+    target_problem_previous_status = models.CharField(max_length=16, blank=True, default="")
+    target_problem_current_status = models.CharField(max_length=16, blank=True, default="")
+    adjudication_reason = models.CharField(max_length=120, blank=True, default="")
+    adjudication_rule_id = models.CharField(max_length=120, blank=True, default="")
 
     def sync_legacy_fields(self) -> None:
         if not self.intervention_type:

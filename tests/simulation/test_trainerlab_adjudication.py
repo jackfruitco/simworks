@@ -117,9 +117,14 @@ class TestTrainerLabAdjudication:
 
         hemorrhage.refresh_from_db()
         open_wound.refresh_from_db()
+        intervention.refresh_from_db()
         assert result.changed is True
         assert hemorrhage.status == Problem.Status.CONTROLLED
+        assert hemorrhage.triggering_intervention_id == intervention.id
+        assert hemorrhage.adjudication_rule_id == "intervention.tourniquet.targets.hemorrhage"
         assert open_wound.status == Problem.Status.ACTIVE
+        assert intervention.target_problem_previous_status == Problem.Status.ACTIVE
+        assert intervention.target_problem_current_status == Problem.Status.CONTROLLED
 
     def test_wrong_site_or_wrong_intervention_does_not_change_problem(self, simulation):
         cause = _injury(
@@ -225,9 +230,11 @@ class TestTrainerLabAdjudication:
         result = adjudicate_intervention(antibiotics)
 
         infection.refresh_from_db()
+        antibiotics.refresh_from_db()
         assert result.changed is True
         assert infection.status == Problem.Status.TREATED
         assert infection.resolved_at is None
+        assert antibiotics.target_problem_current_status == Problem.Status.TREATED
 
     def test_recommendation_normalization_accepts_free_text_and_rejects_invalid_kind(
         self, simulation
@@ -323,4 +330,4 @@ class TestTrainerLabAdjudication:
         assert snapshot["causes"]
         assert snapshot["problems"]
         assert snapshot["recommended_interventions"]
-        assert len(context) <= 15
+        assert len(context) <= 20

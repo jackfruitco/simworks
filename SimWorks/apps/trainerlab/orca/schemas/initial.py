@@ -17,8 +17,11 @@ from orchestrai.types import StrictBaseModel
 from .types import (
     ETCO2,
     SPO2,
+    AssessmentFindingSeed,
     BloodGlucoseLevel,
     BloodPressure,
+    DiagnosticResultSeed,
+    DispositionStateSeed,
     HeartRate,
     IllnessSeed,
     InjurySeed,
@@ -26,6 +29,7 @@ from .types import (
     ProblemSeed,
     PulseAssessmentItem,
     RecommendedInterventionSeed,
+    ResourceStateSeed,
     RespiratoryRate,
 )
 
@@ -83,6 +87,10 @@ class InitialScenarioSchema(StrictBaseModel):
     )
     recommended_interventions: list[RecommendedInterventionSeed] = Field(default_factory=list)
     performed_interventions: list[PerformedInterventionSeed] = Field(default_factory=list)
+    assessment_findings: list[AssessmentFindingSeed] = Field(default_factory=list)
+    diagnostic_results: list[DiagnosticResultSeed] = Field(default_factory=list)
+    resources: list[ResourceStateSeed] = Field(default_factory=list)
+    disposition: DispositionStateSeed | None = None
     measurements: MeasurementSchemaBlock = Field(..., description="Measurement schema block")
     pulses: list[PulseAssessmentItem] = Field(
         ...,
@@ -101,6 +109,10 @@ class InitialScenarioSchema(StrictBaseModel):
         "problems": _passthrough,
         "recommended_interventions": _passthrough,
         "performed_interventions": _passthrough,
+        "assessment_findings": _passthrough,
+        "diagnostic_results": _passthrough,
+        "resources": _passthrough,
+        "disposition": _passthrough,
         "measurements": _passthrough,
         "pulses": _passthrough,
     }
@@ -118,6 +130,18 @@ class InitialScenarioSchema(StrictBaseModel):
         recommendation_ids = [item.temp_id for item in self.recommended_interventions]
         if len(recommendation_ids) != len(set(recommendation_ids)):
             raise ValueError("Recommended intervention temp_id values must be unique.")
+
+        finding_ids = [item.temp_id for item in self.assessment_findings]
+        if len(finding_ids) != len(set(finding_ids)):
+            raise ValueError("Assessment finding temp_id values must be unique.")
+
+        diagnostic_ids = [item.temp_id for item in self.diagnostic_results]
+        if len(diagnostic_ids) != len(set(diagnostic_ids)):
+            raise ValueError("Diagnostic result temp_id values must be unique.")
+
+        resource_ids = [item.temp_id for item in self.resources]
+        if len(resource_ids) != len(set(resource_ids)):
+            raise ValueError("Resource temp_id values must be unique.")
 
         cause_refs = {item.temp_id for item in self.causes}
         recommendation_refs = {item.temp_id for item in self.recommended_interventions}
@@ -158,6 +182,20 @@ class InitialScenarioSchema(StrictBaseModel):
                     "Performed intervention references an unknown target_problem_ref: "
                     f"{performed.target_problem_ref!r}."
                 )
+
+        for finding in self.assessment_findings:
+            if finding.target_problem_ref and finding.target_problem_ref not in problem_refs:
+                raise ValueError(
+                    f"Assessment finding {finding.temp_id!r} references unknown problem "
+                    f"{finding.target_problem_ref!r}."
+                )
+
+        for diagnostic in self.diagnostic_results:
+            if diagnostic.target_problem_ref and diagnostic.target_problem_ref not in problem_refs:
+                raise ValueError(
+                    f"Diagnostic result {diagnostic.temp_id!r} references unknown problem "
+                    f"{diagnostic.target_problem_ref!r}."
+                )
         return self
 
     async def post_persist(self, _results: dict[str, Any], context: PersistContext) -> None:
@@ -165,8 +203,11 @@ class InitialScenarioSchema(StrictBaseModel):
         from apps.trainerlab.models import (
             ETCO2 as ETCO2Model,
             SPO2 as SPO2Model,
+            AssessmentFinding,
             BloodGlucoseLevel as BloodGlucoseModel,
             BloodPressure as BloodPressureModel,
+            DiagnosticResult,
+            DispositionState,
             EventSource,
             HeartRate as HeartRateModel,
             Illness,
@@ -174,7 +215,9 @@ class InitialScenarioSchema(StrictBaseModel):
             Intervention,
             Problem,
             PulseAssessment,
+            RecommendationEvaluation,
             RecommendedIntervention,
+            ResourceState,
             RespiratoryRate as RespiratoryRateModel,
             ScenarioBrief as ScenarioBriefModel,
         )
@@ -292,7 +335,110 @@ class InitialScenarioSchema(StrictBaseModel):
             problem_objects.append(problem)
             problems_by_ref[problem_seed.temp_id] = problem
 
+        finding_objects: list[AssessmentFinding] = []
+        for finding_seed in self.assessment_findings:
+            target_problem = (
+                problems_by_ref[finding_seed.target_problem_ref]
+                if finding_seed.target_problem_ref
+                else None
+            )
+            finding_objects.append(
+                await AssessmentFinding.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.AI,
+                    kind=finding_seed.finding_kind,
+                    code=finding_seed.finding_kind,
+                    slug=finding_seed.finding_kind,
+                    title=finding_seed.title,
+                    display_name=finding_seed.title,
+                    description=finding_seed.description,
+                    status=finding_seed.status,
+                    severity=finding_seed.severity,
+                    target_problem=target_problem,
+                    anatomical_location=finding_seed.anatomical_location,
+                    laterality=finding_seed.laterality,
+                    metadata_json=finding_seed.metadata,
+                )
+            )
+
+        diagnostic_objects: list[DiagnosticResult] = []
+        for diagnostic_seed in self.diagnostic_results:
+            target_problem = (
+                problems_by_ref[diagnostic_seed.target_problem_ref]
+                if diagnostic_seed.target_problem_ref
+                else None
+            )
+            diagnostic_objects.append(
+                await DiagnosticResult.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.AI,
+                    kind=diagnostic_seed.diagnostic_kind,
+                    code=diagnostic_seed.diagnostic_kind,
+                    slug=diagnostic_seed.diagnostic_kind,
+                    title=diagnostic_seed.title,
+                    display_name=diagnostic_seed.title,
+                    description=diagnostic_seed.description,
+                    status=diagnostic_seed.status,
+                    value_text=diagnostic_seed.value_text,
+                    target_problem=target_problem,
+                    metadata_json=diagnostic_seed.metadata,
+                )
+            )
+
+        resource_objects: list[ResourceState] = []
+        for resource_seed in self.resources:
+            resource_objects.append(
+                await ResourceState.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.AI,
+                    kind=resource_seed.kind,
+                    code=resource_seed.code,
+                    slug=resource_seed.kind,
+                    title=resource_seed.title,
+                    display_name=resource_seed.display_name,
+                    status=resource_seed.status,
+                    quantity_available=resource_seed.quantity_available,
+                    quantity_unit=resource_seed.quantity_unit,
+                    description=resource_seed.description,
+                    metadata_json=resource_seed.metadata,
+                )
+            )
+
+        disposition_obj = None
+        if self.disposition is not None:
+            disposition_obj = await DispositionState.objects.acreate(
+                simulation_id=context.simulation_id,
+                source=EventSource.AI,
+                status=self.disposition.status,
+                transport_mode=self.disposition.transport_mode,
+                destination=self.disposition.destination,
+                eta_minutes=self.disposition.eta_minutes,
+                handoff_ready=self.disposition.handoff_ready,
+                scene_constraints_json=self.disposition.scene_constraints,
+                metadata_json=self.disposition.metadata,
+            )
+
+        contraindicated_interventions = {
+            str(item)
+            for obj in [*finding_objects, *diagnostic_objects]
+            for item in obj.metadata_json.get("contraindicated_interventions", [])
+        }
+        unavailable_interventions: set[str] = set()
+        limited_interventions: set[str] = set()
+        for resource in resource_objects:
+            code = resource.code or resource.kind
+            if (
+                resource.status in {ResourceState.Status.UNAVAILABLE, ResourceState.Status.DEPLETED}
+                or resource.quantity_available <= 0
+            ):
+                unavailable_interventions.add(code)
+            elif (
+                resource.status == ResourceState.Status.LIMITED or resource.quantity_available <= 1
+            ):
+                limited_interventions.add(code)
+
         recommendation_objects: list[RecommendedIntervention] = []
+        recommendation_evaluations: list[RecommendationEvaluation] = []
         for recommendation_seed in self.recommended_interventions:
             problem = problems_by_ref[recommendation_seed.target_problem_ref]
             normalization = validate_and_normalize_recommendation(
@@ -305,6 +451,14 @@ class InitialScenarioSchema(StrictBaseModel):
                 warnings=recommendation_seed.warnings,
                 contraindications=recommendation_seed.contraindications,
                 metadata=recommendation_seed.metadata,
+                contraindicated_interventions=contraindicated_interventions,
+                unavailable_interventions=unavailable_interventions,
+                limited_interventions=limited_interventions,
+            )
+            cause_obj = (
+                causes_by_ref[recommendation_seed.target_cause_ref]
+                if recommendation_seed.target_cause_ref
+                else problem.cause
             )
             if not normalization.accepted:
                 logger.info(
@@ -313,12 +467,30 @@ class InitialScenarioSchema(StrictBaseModel):
                     problem.id,
                     normalization.metadata.get("rejection_reason"),
                 )
+                recommendation_evaluations.append(
+                    await RecommendationEvaluation.objects.acreate(
+                        simulation_id=context.simulation_id,
+                        source=EventSource.SYSTEM,
+                        target_problem=problem,
+                        target_injury=cause_obj if isinstance(cause_obj, Injury) else None,
+                        target_illness=cause_obj if isinstance(cause_obj, Illness) else None,
+                        raw_kind=recommendation_seed.intervention_kind,
+                        raw_title=recommendation_seed.title,
+                        raw_site=recommendation_seed.site,
+                        normalized_kind=normalization.kind,
+                        normalized_code=normalization.code,
+                        title=normalization.title or recommendation_seed.title,
+                        recommendation_source=normalization.recommendation_source,
+                        validation_status=normalization.validation_status,
+                        rationale=normalization.rationale,
+                        priority=normalization.priority,
+                        warnings_json=normalization.warnings,
+                        contraindications_json=normalization.contraindications,
+                        rejection_reason=str(normalization.metadata.get("rejection_reason", "")),
+                        metadata_json=normalization.metadata,
+                    )
+                )
                 continue
-            cause_obj = (
-                causes_by_ref[recommendation_seed.target_cause_ref]
-                if recommendation_seed.target_cause_ref
-                else problem.cause
-            )
             recommendation = await RecommendedIntervention.objects.acreate(
                 simulation_id=context.simulation_id,
                 source=EventSource.AI,
@@ -344,6 +516,29 @@ class InitialScenarioSchema(StrictBaseModel):
                 metadata_json=normalization.metadata,
             )
             recommendation_objects.append(recommendation)
+            recommendation_evaluations.append(
+                await RecommendationEvaluation.objects.acreate(
+                    simulation_id=context.simulation_id,
+                    source=EventSource.SYSTEM,
+                    recommendation=recommendation,
+                    target_problem=problem,
+                    target_injury=cause_obj if isinstance(cause_obj, Injury) else None,
+                    target_illness=cause_obj if isinstance(cause_obj, Illness) else None,
+                    raw_kind=recommendation_seed.intervention_kind,
+                    raw_title=recommendation_seed.title,
+                    raw_site=recommendation_seed.site,
+                    normalized_kind=normalization.kind,
+                    normalized_code=normalization.code,
+                    title=normalization.title,
+                    recommendation_source=normalization.recommendation_source,
+                    validation_status=normalization.validation_status,
+                    rationale=normalization.rationale,
+                    priority=normalization.priority,
+                    warnings_json=normalization.warnings,
+                    contraindications_json=normalization.contraindications,
+                    metadata_json=normalization.metadata,
+                )
+            )
 
         recommendations_by_problem_id: dict[int, list[RecommendedIntervention]] = {}
         recommendations_by_cause_key: dict[tuple[str, int], list[RecommendedIntervention]] = {}
@@ -422,8 +617,39 @@ class InitialScenarioSchema(StrictBaseModel):
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
+            event_type="trainerlab.assessment_finding.created",
+            objects=finding_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="trainerlab.diagnostic_result.created",
+            objects=diagnostic_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="trainerlab.resource.updated",
+            objects=resource_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        if disposition_obj is not None:
+            await broadcast_domain_objects(
+                event_type="trainerlab.disposition.updated",
+                objects=[disposition_obj],
+                context=context,
+                payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+            )
+        await broadcast_domain_objects(
             event_type="recommended_intervention.created",
             objects=recommendation_objects,
+            context=context,
+            payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
+        )
+        await broadcast_domain_objects(
+            event_type="trainerlab.recommendation_evaluation.created",
+            objects=recommendation_evaluations,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )

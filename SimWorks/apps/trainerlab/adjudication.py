@@ -74,6 +74,7 @@ class AdjudicationResult:
     previous_status: str
     current_status: str
     reason: str = ""
+    rule_id: str = ""
 
 
 _INTERVENTION_STATUS_RULES: dict[str, tuple[tuple[str, str], ...]] = {
@@ -98,6 +99,18 @@ def adjudicate_intervention(intervention: Intervention) -> AdjudicationResult:
     rules = _INTERVENTION_STATUS_RULES.get(intervention.intervention_type, ())
     matching_status = next((status for kind, status in rules if kind == problem.kind), None)
     if matching_status is None:
+        intervention.target_problem_previous_status = previous_status
+        intervention.target_problem_current_status = previous_status
+        intervention.adjudication_reason = "intervention_not_applicable_to_problem_kind"
+        intervention.adjudication_rule_id = ""
+        intervention.save(
+            update_fields=[
+                "target_problem_previous_status",
+                "target_problem_current_status",
+                "adjudication_reason",
+                "adjudication_rule_id",
+            ]
+        )
         return AdjudicationResult(
             changed=False,
             previous_status=previous_status,
@@ -106,6 +119,18 @@ def adjudicate_intervention(intervention: Intervention) -> AdjudicationResult:
         )
 
     if not _site_matches_problem(problem=problem, intervention=intervention):
+        intervention.target_problem_previous_status = previous_status
+        intervention.target_problem_current_status = previous_status
+        intervention.adjudication_reason = "intervention_site_does_not_match_problem"
+        intervention.adjudication_rule_id = ""
+        intervention.save(
+            update_fields=[
+                "target_problem_previous_status",
+                "target_problem_current_status",
+                "adjudication_reason",
+                "adjudication_rule_id",
+            ]
+        )
         return AdjudicationResult(
             changed=False,
             previous_status=previous_status,
@@ -113,28 +138,64 @@ def adjudicate_intervention(intervention: Intervention) -> AdjudicationResult:
             reason="intervention_site_does_not_match_problem",
         )
 
+    rule_id = f"intervention.{intervention.intervention_type}.targets.{problem.kind}"
     next_status = _promote_status(problem.status, matching_status)
     if next_status == problem.status:
+        intervention.target_problem_previous_status = previous_status
+        intervention.target_problem_current_status = previous_status
+        intervention.adjudication_reason = "problem_status_already_at_or_beyond_rule"
+        intervention.adjudication_rule_id = rule_id
+        intervention.save(
+            update_fields=[
+                "target_problem_previous_status",
+                "target_problem_current_status",
+                "adjudication_reason",
+                "adjudication_rule_id",
+            ]
+        )
         return AdjudicationResult(
             changed=False,
             previous_status=previous_status,
             current_status=previous_status,
             reason="problem_status_already_at_or_beyond_rule",
+            rule_id=rule_id,
         )
 
+    problem.previous_status = previous_status
     problem.status = next_status
+    problem.triggering_intervention = intervention
+    problem.adjudication_reason = "intervention_adjudicated"
+    problem.adjudication_rule_id = rule_id
     problem.save(
         update_fields=[
+            "previous_status",
             "status",
             "is_treated",
             "is_resolved",
             "treated_at",
             "controlled_at",
             "resolved_at",
+            "triggering_intervention",
+            "adjudication_reason",
+            "adjudication_rule_id",
+        ]
+    )
+    intervention.target_problem_previous_status = previous_status
+    intervention.target_problem_current_status = problem.status
+    intervention.adjudication_reason = "intervention_adjudicated"
+    intervention.adjudication_rule_id = rule_id
+    intervention.save(
+        update_fields=[
+            "target_problem_previous_status",
+            "target_problem_current_status",
+            "adjudication_reason",
+            "adjudication_rule_id",
         ]
     )
     return AdjudicationResult(
         changed=True,
         previous_status=previous_status,
         current_status=problem.status,
+        reason="intervention_adjudicated",
+        rule_id=rule_id,
     )

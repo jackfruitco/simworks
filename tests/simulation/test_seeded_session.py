@@ -211,7 +211,7 @@ class TestSeededSessionEmitsEvents:
 
         vital_events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="vital.created",
+            event_type="trainerlab.vital.created",
         ).count()
         cause_events = (
             RuntimeEvent.objects.filter(
@@ -322,7 +322,7 @@ class TestEmitSeededVitalEvents:
 
         events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="vital.created",
+            event_type="trainerlab.vital.created",
         )
         assert events.count() >= 1
 

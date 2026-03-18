@@ -73,6 +73,20 @@ PROBLEM_DEFINITIONS: tuple[ProblemDefinition, ...] = (
         synonyms=("tension pneumo", "pneumothorax"),
     ),
     ProblemDefinition(
+        kind="hypoxia",
+        code="hypoxia",
+        title="Hypoxia",
+        default_march_category="R",
+        synonyms=("low oxygen", "oxygen deficit"),
+    ),
+    ProblemDefinition(
+        kind="hypoperfusion_shock",
+        code="hypoperfusion_shock",
+        title="Hypoperfusion / Shock",
+        default_march_category="C",
+        synonyms=("shock", "hemorrhagic shock", "poor perfusion"),
+    ),
+    ProblemDefinition(
         kind="infectious_process",
         code="infectious_process",
         title="Infectious Process",

@@ -57,3 +57,52 @@ class RuntimeInstructorIntent(StrictBaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     upcoming_changes: list[str] = Field(default_factory=list)
     monitoring_focus: list[str] = Field(default_factory=list)
+
+
+class AssessmentFindingState(StrictBaseModel):
+    finding_id: int | None = None
+    kind: str
+    code: str
+    title: str
+    description: str = ""
+    status: str = "present"
+    severity: str | None = None
+    target_problem_id: int | None = None
+    anatomical_location: str = ""
+    laterality: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
+class DiagnosticResultState(StrictBaseModel):
+    diagnostic_id: int | None = None
+    kind: str
+    code: str
+    title: str
+    description: str = ""
+    status: str = "pending"
+    value_text: str = ""
+    target_problem_id: int | None = None
+    metadata: dict = Field(default_factory=dict)
+
+
+class ResourceStateSnapshot(StrictBaseModel):
+    resource_id: int | None = None
+    kind: str
+    code: str
+    title: str
+    status: str = "available"
+    quantity_available: int = 0
+    quantity_unit: str = ""
+    description: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
+class DispositionStateSnapshot(StrictBaseModel):
+    disposition_id: int | None = None
+    status: str = "hold"
+    transport_mode: str = ""
+    destination: str = ""
+    eta_minutes: int | None = None
+    handoff_ready: bool = False
+    scene_constraints: list[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
