@@ -78,7 +78,13 @@ def make_json_safe(value: Any) -> Any:
 
     # Pydantic models -> use mode="json" for proper serialization
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        if hasattr(value, "model_dump"):
+            return value.model_dump(mode="json")
+        if hasattr(value, "dict"):
+            return value.dict()
+        if hasattr(value, "__dict__"):
+            return make_json_safe(value.__dict__)
+        return make_json_safe(dict(value))
 
     # dict -> recursive with string keys
     if isinstance(value, dict):

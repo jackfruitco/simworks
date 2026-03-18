@@ -58,9 +58,8 @@ def test_task_run_executes_inline():
     assert sync_call.dispatch["service"] == SyncTaskService.identity.as_str
 
 
-@pytest.mark.asyncio
-async def test_task_arun_executes_inline():
-    async_call = await AsyncTaskService().task.arun(bar=2)
+def test_task_arun_executes_inline():
+    async_call = asyncio.run(AsyncTaskService().task.arun(bar=2))
 
     assert isinstance(async_call, ServiceCall)
     assert async_call.status == "succeeded"
@@ -117,11 +116,10 @@ def test_call_returns_service_call_and_injects_call_into_payload():
     assert call.started_at is not None and call.finished_at is not None
 
 
-@pytest.mark.asyncio
-async def test_acall_returns_service_call_and_injects_call_into_payload():
+def test_acall_returns_service_call_and_injects_call_into_payload():
     service = EchoLifecycleService()
 
-    call = await service.acall(payload={"value": 7})
+    call = asyncio.run(service.acall(payload={"value": 7}))
 
     assert isinstance(call, ServiceCall)
     assert call.status == "succeeded"

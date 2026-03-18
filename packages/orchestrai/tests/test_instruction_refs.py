@@ -13,6 +13,7 @@ Covers:
 
 from __future__ import annotations
 
+import textwrap
 from types import SimpleNamespace
 from typing import ClassVar
 
@@ -22,6 +23,7 @@ from orchestrai._state import push_current_app
 from orchestrai.components.instructions.base import BaseInstruction
 from orchestrai.components.instructions.collector import collect_instructions
 from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN
+from orchestrai.instructions.yaml_loader import load_yaml_instructions
 from orchestrai.registry import ComponentStore
 
 # ---------------------------------------------------------------------------
@@ -275,24 +277,28 @@ def test_ordering_is_driven_by_instruction_order_not_list_position() -> None:
 
 
 @pytest.mark.unit
-def test_same_order_is_broken_by_class_name() -> None:
+def test_same_order_is_broken_by_class_name(tmp_path) -> None:
     """When two instructions share the same order, __name__ breaks the tie."""
 
-    class _Alpha(BaseInstruction):
-        abstract = False
-        namespace = "ns"
-        group = "g"
-        name = "Alpha"
-        order = 50
-        instruction = "Alpha."
+    yaml_path = tmp_path / "instructions.yaml"
+    yaml_path.write_text(
+        textwrap.dedent(
+            """
+            namespace: ns
+            group: g
 
-    class _Zeta(BaseInstruction):
-        abstract = False
-        namespace = "ns"
-        group = "g"
-        name = "Zeta"
-        order = 50
-        instruction = "Zeta."
+            instructions:
+              - name: Zeta
+                order: 50
+                instruction: "Zeta."
+              - name: Alpha
+                order: 50
+                instruction: "Alpha."
+            """
+        ),
+        encoding="utf-8",
+    )
+    zeta_cls, alpha_cls = load_yaml_instructions(yaml_path)
 
     class _Service:
         instruction_refs: ClassVar[list[str]] = [
@@ -300,7 +306,7 @@ def test_same_order_is_broken_by_class_name() -> None:
             "ns.g.Alpha",  # listed second
         ]
 
-    app = _make_app(_Alpha, _Zeta)
+    app = _make_app(alpha_cls, zeta_cls)
     with push_current_app(app):
         result = collect_instructions(_Service)
 

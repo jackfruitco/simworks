@@ -1,4 +1,6 @@
 import asyncio
+import importlib.util
+import inspect
 from pathlib import Path
 import sys
 import types
@@ -11,7 +13,7 @@ _PACKAGE_TEST_ROOT = Path(__file__).resolve().parent
 # Provide a minimal asgiref.sync stub when the dependency is unavailable in the
 # execution environment. This is sufficient for tests that rely on the sync
 # wrappers but do not require thread-sensitive behavior.
-if "asgiref" not in sys.modules:
+if "asgiref" not in sys.modules and importlib.util.find_spec("asgiref") is None:
     asgiref_mod = types.ModuleType("asgiref")
     sync_mod = types.ModuleType("asgiref.sync")
 
@@ -27,25 +29,29 @@ if "asgiref" not in sys.modules:
 
         return wrapper
 
+    def iscoroutinefunction(func):
+        return inspect.iscoroutinefunction(func)
+
     sync_mod.async_to_sync = async_to_sync
     sync_mod.sync_to_async = sync_to_async
+    sync_mod.iscoroutinefunction = iscoroutinefunction
     asgiref_mod.sync = sync_mod
 
     sys.modules["asgiref"] = asgiref_mod
     sys.modules["asgiref.sync"] = sync_mod
 
 
-if "logfire" not in sys.modules:
+if "logfire" not in sys.modules and importlib.util.find_spec("logfire") is None:
     logfire_mod = types.SimpleNamespace(error=lambda *args, **kwargs: None)
     sys.modules["logfire"] = logfire_mod
 
 
-if "slugify" not in sys.modules:
+if "slugify" not in sys.modules and importlib.util.find_spec("slugify") is None:
     slug_mod = types.SimpleNamespace(slugify=lambda value, **kwargs: str(value))
     sys.modules["slugify"] = slug_mod
 
 
-if "pydantic" not in sys.modules:
+if "pydantic" not in sys.modules and importlib.util.find_spec("pydantic") is None:
     pydantic_mod = types.ModuleType("pydantic")
 
     class ValidationError(Exception):

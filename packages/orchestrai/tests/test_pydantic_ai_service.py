@@ -1,10 +1,17 @@
 """Tests for BaseService and instruction composition."""
 
+import asyncio
+import textwrap
+
 from pydantic import BaseModel
 import pytest
 
+from orchestrai._state import push_current_app
 from orchestrai.components.instructions import BaseInstruction, collect_instructions
 from orchestrai.decorators import orca
+from orchestrai.identity.domains import INSTRUCTIONS_DOMAIN
+from orchestrai.instructions.yaml_loader import load_yaml_instructions
+from orchestrai.registry import ComponentStore
 
 
 class TestInstructionDecorator:
@@ -121,32 +128,51 @@ class TestBaseServiceIntegration:
         with pytest.raises(ValueError, match="Missing required context keys"):
             service.check_required_context()
 
-    def test_dynamic_instruction_registration_uses_decorator_style(self, monkeypatch):
+    def test_dynamic_instruction_registration_uses_yaml_definition(self, tmp_path):
         from orchestrai.components.services import BaseService
 
-        @orca.instruction(order=10)
-        class DynamicInstruction(BaseInstruction):
-            async def render_instruction(self) -> str:
-                return "dynamic"
+        yaml_path = tmp_path / "instructions.yaml"
+        yaml_path.write_text(
+            textwrap.dedent(
+                """
+                namespace: test
+                group: dynamic
 
-        class TestService(DynamicInstruction, BaseService):
-            abstract = False
-            model = "openai-responses:gpt-5-nano"
-
-        monkeypatch.setattr(
-            TestService,
-            "_build_model_with_api_key",
-            lambda self, _model: "test",
-            raising=False,
+                instructions:
+                  - name: DynamicInstruction
+                    order: 10
+                    instruction: "Hello ${name}!"
+                    required_variables: [name]
+                """
+            ),
+            encoding="utf-8",
         )
 
-        service = TestService()
-        agent = service.agent
+        (dynamic_instruction,) = load_yaml_instructions(yaml_path)
 
-        assert len(agent._system_prompt_functions) == 1
-        assert agent._system_prompt_dynamic_functions
+        class TestService(BaseService):
+            abstract = False
+            model = "openai-responses:gpt-5-nano"
+            instruction_refs = ["test.dynamic.DynamicInstruction"]
+
+        store = ComponentStore()
+        store.registry(INSTRUCTIONS_DOMAIN).register(dynamic_instruction)
+
+        class _App:
+            components = store
+
+        with push_current_app(_App()):
+            service = TestService(context={"name": "Taylor"})
+
+            assert service._instruction_classes == [dynamic_instruction]
+
+            instruction = dynamic_instruction.__new__(dynamic_instruction)
+            instruction.context = service.context
+            rendered = asyncio.run(instruction.render_instruction())
+            assert rendered == "Hello Taylor!"
 
     def test_native_output_is_strict_by_default(self, monkeypatch):
+        pytest.importorskip("pydantic_ai")
         from orchestrai.components.services import BaseService
 
         class TestSchema(BaseModel):
@@ -172,6 +198,7 @@ class TestBaseServiceIntegration:
         assert output_def.strict is True
 
     def test_native_output_strict_can_be_overridden(self, monkeypatch):
+        pytest.importorskip("pydantic_ai")
         from orchestrai.components.services import BaseService
 
         class TestSchema(BaseModel):
