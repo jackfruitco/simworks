@@ -16,7 +16,6 @@ class GenerateInitialResponse(DjangoBaseService):
 
     instruction_refs: ClassVar[list[str]] = [
         "chatlab.patient.PatientNameInstruction",
-        "common.shared.CharacterConsistencyInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
         "chatlab.patient.PatientSchemaContractInstruction",
@@ -37,7 +36,6 @@ class GenerateReplyResponse(PreviousResponseMixin, DjangoBaseService):
 
     instruction_refs: ClassVar[list[str]] = [
         "chatlab.patient.PatientNameInstruction",
-        "common.shared.CharacterConsistencyInstruction",
         "chatlab.patient.PatientSafetyBoundariesInstruction",
         "chatlab.patient.PatientConversationBehaviorInstruction",
         "chatlab.patient.PatientSchemaContractInstruction",

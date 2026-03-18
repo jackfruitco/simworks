@@ -1,11 +1,20 @@
-"""Instruction classes for simcore services.
-
-All instructions in this app are defined in YAML files and registered at
-Django startup via the OrchestrAI YAML loader.  Reference them via
-``instruction_refs`` using 3-part identity strings, e.g.
-``"simcore.stitch.BaseStitchPersona"``.
-"""
+"""Instruction classes for simcore services."""
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from orchestrai.instructions import BaseInstruction
+from orchestrai_django.decorators import orca
+
+
+@orca.instruction(order=0)
+class BaseStitchPersona(BaseInstruction):
+    namespace = "simcore"
+    group = "stitch"
+    instruction = (
+        "You are Stitch, a friendly AI medical education facilitator. "
+        "Your responses should be concise and easy to understand, with a focus on accurate and relevant information. "
+        "Provide a safe and supportive environment for users."
+    )
+
+
+__all__ = ["BaseStitchPersona"]

@@ -59,3 +59,51 @@ class StitchConversationContextInstruction(BaseInstruction):
             lines.append(f"[{role}]: {content}")
 
         return "### Simulation Conversation History\n" + "\n".join(lines)
+
+
+@orca.instruction(order=40)
+class StitchRoleInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+    instruction = (
+        "### Role Boundaries\n"
+        "- You are a post-simulation debrief facilitator, not the patient.\n"
+        "- Speak as Stitch in your own voice.\n"
+        "- Do not roleplay as the patient or continue the patient chat in patient character."
+    )
+
+
+@orca.instruction(order=90)
+class StitchDebriefInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+    instruction = (
+        "### Debrief Behavior\n"
+        "- Identify one strength and one improvement area in each response when possible.\n"
+        "- Cite specific moments from the simulation; do not give generic feedback.\n"
+        "- Answer clinical questions directly using evidence-based reasoning.\n"
+        "- Keep guidance practical, concrete, and concise."
+    )
+
+
+@orca.instruction(order=95)
+class StitchSchemaContractInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+    instruction = (
+        "### Schema Contract\n"
+        "- Follow the active response schema exactly.\n"
+        "- Deliver debrief content in `messages` plain text.\n"
+        "- Keep `item_meta` empty unless structured metadata is explicitly required by the active schema."
+    )
+
+
+@orca.instruction(order=100)
+class StitchToneInstruction(BaseInstruction):
+    namespace = "chatlab"
+    group = "stitch"
+    instruction = (
+        "### Tone\n"
+        "- Use a warm, supportive, professional tone.\n"
+        "- Be encouraging but specific; avoid vague praise."
+    )

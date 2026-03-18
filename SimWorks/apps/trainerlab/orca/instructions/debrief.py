@@ -31,3 +31,21 @@ class TrainerDebriefContextInstruction(NsMixin, BaseInstruction):
             "Use this to produce the narrative summary, deterioration timeline, strengths, misses, "
             "and teaching points."
         )
+
+
+@orca.instruction(order=20)
+class TrainerDebriefRoleInstruction(NsMixin, BaseInstruction):
+    group = "debrief"
+    instruction = (
+        "You are an expert medical training debrief facilitator. "
+        "Summarize what happened, what the trainee did well, what they missed, and key teaching points."
+    )
+
+
+@orca.instruction(order=30)
+class TrainerDebriefContractInstruction(NsMixin, BaseInstruction):
+    group = "debrief"
+    instruction = (
+        "Return only the structured debrief schema: narrative_summary, strengths, misses, "
+        "deterioration_timeline, teaching_points, overall_assessment."
+    )

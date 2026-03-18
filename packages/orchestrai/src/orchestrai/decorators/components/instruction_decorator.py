@@ -33,7 +33,7 @@ class InstructionDecorator(BaseDecorator):
             domain=resolved_domain,
             namespace=namespace,
             group=group,
-            name=name,
+            name=name or cls.__name__,
         )
 
     def get_registry(self) -> ComponentRegistry:
@@ -54,8 +54,7 @@ class InstructionDecorator(BaseDecorator):
         # applies token stripping (e.g. "PatientNameInstruction" must not
         # silently become "PatientName").  This keeps instruction_refs
         # deterministic and matching the Python/YAML source exactly.
-        if not getattr(cls, "name", None):
-            cls.name = cls.__name__
+        cls.name = cls.__name__
 
     def register(self, candidate: type[Any]) -> None:
         if not issubclass(candidate, BaseInstruction):
