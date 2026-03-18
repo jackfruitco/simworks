@@ -72,18 +72,29 @@ class TestStreamOutboxEvents:
             created_at=shared_created_at
         )
 
-        async def noop_sleep(_):
-            pass
+        clock = FakeClock()
+        monkeypatch.setattr("api.v1.sse.time.monotonic", clock.monotonic)
+        monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
 
-        monkeypatch.setattr("api.v1.sse.asyncio.sleep", noop_sleep)
+        response = await _stream(
+            simulation_id=7,
+            cursor=str(first.id),
+            heartbeat_interval_seconds=10.0,
+            poll_interval_seconds=1.0,
+        )
 
-        response = await _stream(simulation_id=7, cursor=str(first.id))
-        chunks = await collect_chunks(response.streaming_content, 4)
+        chunks: list[str] = []
+        async for chunk in response.streaming_content:
+            decoded = decode_chunk(chunk)
+            if decoded == ": keep-alive\n\n":
+                continue
+            chunks.append(decoded)
+            if len(chunks) >= 3:
+                break
 
-        assert chunks[0] == ": keep-alive\n\n"
-        assert chunks[1] == f"id: {second.id}\n"
-        assert chunks[2] == "event: simulation\n"
-        assert '"message_id": 2' in chunks[3]
+        assert chunks[0] == f"id: {second.id}\n"
+        assert chunks[1] == "event: simulation\n"
+        assert '"message_id": 2' in chunks[2]
 
     @pytest.mark.asyncio
     async def test_idle_heartbeats_emit_keep_alive_comment_on_cadence(self, monkeypatch):
@@ -115,7 +126,7 @@ class TestStreamOutboxEvents:
 
         assert chunks == [": keep-alive\n\n", ": keep-alive\n\n", ": keep-alive\n\n"]
         assert emission_times == pytest.approx([0.0, 10.0, 20.0])
-        assert max(b - a for a, b in pairwise(emission_times)) <= 10.0
+        assert [b - a for a, b in pairwise(emission_times)] == pytest.approx([10.0, 10.0])
 
     @pytest.mark.asyncio
     async def test_events_reset_idle_heartbeat_timer(self, monkeypatch):

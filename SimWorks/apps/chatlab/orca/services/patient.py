@@ -4,17 +4,6 @@
 import logging
 from typing import ClassVar
 
-from apps.chatlab.orca.instructions import (
-    ImageGenerationInstruction,
-    PatientBaseInstruction,
-    PatientInitialDetailInstruction,
-    PatientNameInstruction,
-    PatientRecentScenarioHistoryInstruction,
-    PatientReplyDetailInstruction,
-    PatientSafetyBoundariesInstruction,
-    PatientSchemaContractInstruction,
-)
-from apps.common.orca.instructions import CharacterConsistencyInstruction
 from orchestrai_django.components.services import DjangoBaseService, PreviousResponseMixin
 from orchestrai_django.decorators import orca
 
@@ -22,18 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 @orca.service
-class GenerateInitialResponse(
-    PatientNameInstruction,
-    CharacterConsistencyInstruction,
-    PatientSafetyBoundariesInstruction,
-    PatientBaseInstruction,
-    PatientSchemaContractInstruction,
-    PatientRecentScenarioHistoryInstruction,
-    PatientInitialDetailInstruction,
-    DjangoBaseService,
-):
+class GenerateInitialResponse(DjangoBaseService):
     """Generate the initial patient response."""
 
+    instruction_refs: ClassVar[list[str]] = [
+        "chatlab.patient.PatientNameInstruction",
+        "chatlab.patient.PatientSafetyBoundariesInstruction",
+        "chatlab.patient.PatientConversationBehaviorInstruction",
+        "chatlab.patient.PatientSchemaContractInstruction",
+        "chatlab.patient.PatientRecentScenarioHistoryInstruction",
+        "chatlab.patient.PatientInitialDetailInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
 
@@ -43,18 +31,16 @@ class GenerateInitialResponse(
 
 
 @orca.service
-class GenerateReplyResponse(
-    PreviousResponseMixin,
-    PatientNameInstruction,
-    CharacterConsistencyInstruction,
-    PatientSafetyBoundariesInstruction,
-    PatientBaseInstruction,
-    PatientSchemaContractInstruction,
-    PatientReplyDetailInstruction,
-    DjangoBaseService,
-):
+class GenerateReplyResponse(PreviousResponseMixin, DjangoBaseService):
     """Generate a reply to a user message."""
 
+    instruction_refs: ClassVar[list[str]] = [
+        "chatlab.patient.PatientNameInstruction",
+        "chatlab.patient.PatientSafetyBoundariesInstruction",
+        "chatlab.patient.PatientConversationBehaviorInstruction",
+        "chatlab.patient.PatientSchemaContractInstruction",
+        "chatlab.patient.PatientReplyDetailInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
 
@@ -86,12 +72,12 @@ class GenerateReplyResponse(
 
 
 @orca.service
-class GenerateImageResponse(
-    ImageGenerationInstruction,
-    DjangoBaseService,
-):
+class GenerateImageResponse(DjangoBaseService):
     """Generate a patient image via Pydantic AI."""
 
+    instruction_refs: ClassVar[list[str]] = [
+        "chatlab.image.ImageGenerationInstruction",
+    ]
     required_context_keys: ClassVar[tuple[str, ...]] = ("simulation_id",)
     use_native_output = True
 

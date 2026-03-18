@@ -1,0 +1,16 @@
+namespace: chatlab
+group: image
+
+instructions:
+  - name: ImageGenerationInstruction
+    order: 50
+    instruction: |
+      For this response only, generate an image based off the medical backend's request in the message(s).
+      Images must not be against OpenAI guidelines.
+      The image should be as if taken by the patient with a smartphone. The image should not show details
+      that would not normally be seen in an image. Do not overexaggerate the look of a sign or symptom.
+
+      ### Response Schema
+      - This service does not use a structured JSON response schema.
+      - Return only the image-generation response expected by the model/tooling layer.
+      - Do not emit extra JSON wrapper keys.

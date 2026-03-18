@@ -1,0 +1,27 @@
+namespace: chatlab
+group: lab_orders
+
+instructions:
+  - name: LabOrderSchemaContractInstruction
+    order: 20
+    instruction: |
+      ### Schema Contract
+      - Return `results` as a list of items. Each item must be either:
+        - `{"kind": "lab_result", "key": ..., "value": ..., "panel_name": ..., "result_unit": ..., "reference_range_low": ..., "reference_range_high": ..., "result_flag": "normal"|"abnormal", "result_comment": ...}`
+        - `{"kind": "rad_result", "key": ..., "value": ..., "result_flag": "normal"|"abnormal"|"critical"}`
+      - Use `kind="lab_result"` for blood/urine/culture panels and similar numeric tests.
+      - Use `kind="rad_result"` for imaging studies (X-ray, CT, MRI, ultrasound, ECG).
+      - Always include `llm_conditions_check` as concise key/value compliance checks.
+      - Do not include patient-facing messages — this schema has no `messages` field.
+
+  - name: LabOrderResultDetailInstruction
+    order: 30
+    instruction: |
+      ### Result Generation Guidance
+      - Generate results that are clinically plausible for the patient's presentation.
+      - Abnormal results should be consistent with the likely diagnosis.
+      - Normal results should be realistic for the patient's age and demographics.
+      - Include reference ranges and units for all numeric lab results.
+      - For radiology, provide a brief but specific impression (1-3 sentences).
+      - Set `result_flag` to 'abnormal' only when the result is clinically significant.
+      - Add a `result_comment` for critical or clinically important findings.

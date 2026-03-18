@@ -89,7 +89,7 @@ class DjangoInstructionDecorator(DjangoBaseDecoratorMixin, InstructionDecorator)
             domain=domain or INSTRUCTIONS_DOMAIN,
             namespace=namespace,
             group=group,
-            name=name,
+            name=name or cls.__name__,
         )
 
 

@@ -1,15 +1,11 @@
-"""Shared instruction mixins for SimWorks services."""
+"""Shared instruction classes for SimWorks services.
 
-from .feedback import FeedbackEducatorInstruction
-from .shared import (
-    CharacterConsistencyInstruction,
-    MedicalAccuracyInstruction,
-    SMSStyleInstruction,
-)
+All instructions in this app are defined in YAML files (shared.yaml,
+feedback.yaml) and registered at Django startup via the OrchestrAI YAML
+loader.  Reference them via ``instruction_refs`` using 3-part identity
+strings, e.g. ``"common.shared.CharacterConsistencyInstruction"``.
+"""
 
-__all__ = [
-    "CharacterConsistencyInstruction",
-    "FeedbackEducatorInstruction",
-    "MedicalAccuracyInstruction",
-    "SMSStyleInstruction",
-]
+from __future__ import annotations
+
+__all__: list[str] = []
