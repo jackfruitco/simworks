@@ -147,19 +147,14 @@ class TestStreamOutboxEvents:
             poll_interval_seconds=1.0,
         )
 
-        chunks: list[str] = []
-        async for chunk in response.streaming_content:
-            chunks.append(decode_chunk(chunk))
-            if len(chunks) >= 4:
-                break
+        chunks = await collect_chunks(response.streaming_content, 5)
 
-        non_keep_alive = [chunk for chunk in chunks if chunk != ": keep-alive\n\n"]
-
-        assert non_keep_alive[0] == f"id: {event.id}\n"
-        assert non_keep_alive[1] == "event: simulation\n"
-        assert '"trainerlab.session.seeded"' in non_keep_alive[2]
-        assert ": keep-alive\n\n" in chunks
-        assert clock.current == pytest.approx(0.0)
+        assert chunks[0] == ": keep-alive\n\n"
+        assert chunks[1] == f"id: {event.id}\n"
+        assert chunks[2] == "event: simulation\n"
+        assert '"trainerlab.session.seeded"' in chunks[3]
+        assert chunks[4] == ": keep-alive\n\n"
+        assert clock.current == pytest.approx(10.0)
 
     def test_invalid_cursor_returns_http_400(self):
         """Invalid cursor format is rejected."""

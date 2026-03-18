@@ -19,9 +19,10 @@ from api.v1.schemas.events import EventEnvelope
 from api.v1.schemas.trainerlab import (
     AnnotationCreateIn,
     AnnotationOut,
-    ConditionControlOut,
-    ConditionControlUpdateIn,
+    AssessmentFindingCreateIn,
+    DiagnosticResultCreateIn,
     DictionaryItemOut,
+    DispositionStateCreateIn,
     IllnessCreateIn,
     InjuryCreateIn,
     InterventionCreateIn,
@@ -29,6 +30,10 @@ from api.v1.schemas.trainerlab import (
     LabAccessOut,
     PresetApplyDiff,
     PresetApplyOut,
+    ProblemCreateIn,
+    ProblemStatusOut,
+    ProblemStatusUpdateIn,
+    ResourceStateCreateIn,
     RunSummaryOut,
     ScenarioBriefDetailOut,
     ScenarioBriefUpdateIn,
@@ -60,6 +65,9 @@ from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import require_instructor_membership
+from apps.trainerlab.adjudication import adjudicate_intervention
+from apps.trainerlab.diagnostic_dictionary import get_diagnostic_definition
+from apps.trainerlab.finding_dictionary import get_finding_definition
 from apps.trainerlab.injury_dictionary import get_injury_dictionary_choices
 from apps.trainerlab.intervention_dictionary import (
     list_intervention_definitions,
@@ -68,14 +76,18 @@ from apps.trainerlab.intervention_dictionary import (
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
+    AssessmentFinding,
     BloodGlucoseLevel,
     BloodPressure,
+    DiagnosticResult,
+    DispositionState,
     EventSource,
     HeartRate,
     Illness,
     Injury,
     Intervention,
     Problem,
+    ResourceState,
     RespiratoryRate,
     ScenarioInstruction,
     ScenarioInstructionPermission,
@@ -89,18 +101,22 @@ from apps.trainerlab.services import (
     compute_preset_diff,
     create_debrief_annotation,
     create_session_with_initial_generation,
+    deactivate_domain_object,
+    emit_domain_runtime_event,
     emit_runtime_event,
     enqueue_vitals_progression,
     get_or_create_command,
     get_session_annotations,
     pause_session,
+    recompute_active_recommendations,
     refresh_completed_run_review,
+    refresh_runtime_projection,
     resume_session,
     snapshot_before_preset,
     start_session,
     stop_session,
     trigger_manual_tick,
-    update_condition_control_state,
+    update_problem_status,
     update_scenario_brief,
 )
 
@@ -598,7 +614,7 @@ def apply_preset(
     # #5: Compute diff and return enriched response
     diff_data = compute_preset_diff(before=before_snapshot, session=session)
     diff = PresetApplyDiff(
-        conditions_added=diff_data.get("conditions_added", []),
+        causes_added=diff_data.get("causes_added", []),
         vitals_changed={
             vtype: {"before": v.get("before"), "after": v["after"]}
             for vtype, v in diff_data.get("vitals_changed", {}).items()
@@ -980,51 +996,68 @@ def _resolve_superseded_intervention(
     return Intervention.objects.filter(pk=supersedes_event_id, simulation_id=simulation_id).first()
 
 
-def _deactivate_superseded(event: Any | None) -> None:
-    if event is None:
-        return
-    if event.is_active:
-        event.is_active = False
-        event.save(update_fields=["is_active"])
+def _problem_identity_from_context(
+    *, march_category: str, label: str, fallback: str
+) -> dict[str, str]:
+    kind = {
+        "M": "hemorrhage",
+        "A": "airway_obstruction",
+        "R": "respiratory_distress",
+        "H1": "heat_illness",
+    }.get(march_category, fallback)
+    return {
+        "kind": kind,
+        "code": kind,
+        "title": label,
+        "display_name": label,
+    }
 
 
-def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Problem:
-    old_problem: Problem | None = None
+def _create_injury(session: TrainerSession, body: InjuryCreateIn) -> Injury:
+    old_injury: Injury | None = None
     if body.supersedes_event_id:
-        old_problem = (
-            Problem.objects.select_related("cause_injury", "cause_illness")
-            .filter(pk=body.supersedes_event_id, simulation=session.simulation)
-            .first()
-        )
-        if old_problem:
-            _deactivate_superseded(old_problem)
-            # Deactivate whichever cause is set — handles cross-kind replacements.
-            old_cause = old_problem.cause_injury or old_problem.cause_illness
-            if old_cause:
-                _deactivate_superseded(old_cause)
+        old_injury = Injury.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
 
     new_injury = Injury.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        # supersedes is a same-kind self-FK; only set when the old cause was also an Injury.
-        supersedes=old_problem.cause_injury if old_problem else None,
+        supersedes=old_injury,
         injury_location=body.injury_location,
         injury_kind=body.injury_kind,
         injury_description=body.injury_description,
+        description=body.description,
+        metadata_json=body.metadata,
     )
-    return Problem.objects.create(
+    new_injury._deactivated_objects = [old_injury] if old_injury else []
+    return new_injury
+
+
+def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Illness:
+    old_illness: Illness | None = None
+    if body.supersedes_event_id:
+        old_illness = Illness.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+
+    new_illness = Illness.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
-        supersedes=old_problem,
-        cause_injury=new_injury,
-        problem_kind=Problem.ProblemKind.INJURY,
-        march_category=body.march_category,
-        severity=body.severity,
+        supersedes=old_illness,
+        name=body.name,
         description=body.description,
+        anatomical_location=body.anatomical_location,
+        laterality=body.laterality,
+        metadata_json=body.metadata,
     )
+    new_illness._deactivated_objects = [old_illness] if old_illness else []
+    return new_illness
 
 
-def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
+def _create_problem(session: TrainerSession, body: ProblemCreateIn) -> Problem:
     old_problem: Problem | None = None
     if body.supersedes_event_id:
         old_problem = (
@@ -1032,30 +1065,213 @@ def _create_illness(session: TrainerSession, body: IllnessCreateIn) -> Problem:
             .filter(pk=body.supersedes_event_id, simulation=session.simulation)
             .first()
         )
-        if old_problem:
-            _deactivate_superseded(old_problem)
-            # Deactivate whichever cause is set — handles cross-kind replacements.
-            old_cause = old_problem.cause_illness or old_problem.cause_injury
-            if old_cause:
-                _deactivate_superseded(old_cause)
 
-    new_illness = Illness.objects.create(
-        simulation=session.simulation,
-        source=EventSource.INSTRUCTOR,
-        # supersedes is a same-kind self-FK; only set when the old cause was also an Illness.
-        supersedes=old_problem.cause_illness if old_problem else None,
-        name=body.name,
-        description=body.description,
-    )
-    return Problem.objects.create(
+    cause_injury: Injury | None = None
+    cause_illness: Illness | None = None
+    if body.cause_kind == "injury":
+        cause_injury = Injury.objects.filter(
+            pk=body.cause_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if cause_injury is None:
+            raise ValidationError(
+                {"cause_id": "Active injury cause not found for this simulation."}
+            )
+    else:
+        cause_illness = Illness.objects.filter(
+            pk=body.cause_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if cause_illness is None:
+            raise ValidationError(
+                {"cause_id": "Active illness cause not found for this simulation."}
+            )
+
+    parent_problem = None
+    if body.parent_problem_id:
+        parent_problem = (
+            Problem.objects.select_related("cause_injury", "cause_illness")
+            .filter(
+                pk=body.parent_problem_id,
+                simulation=session.simulation,
+                is_active=True,
+            )
+            .first()
+        )
+        if parent_problem is None:
+            raise ValidationError(
+                {"parent_problem_id": "Active parent problem not found for this simulation."}
+            )
+
+    created = Problem.objects.create(
         simulation=session.simulation,
         source=EventSource.INSTRUCTOR,
         supersedes=old_problem,
-        cause_illness=new_illness,
-        problem_kind=Problem.ProblemKind.ILLNESS,
+        cause_injury=cause_injury,
+        cause_illness=cause_illness,
+        parent_problem=parent_problem,
+        problem_kind=(
+            Problem.ProblemKind.INJURY
+            if body.cause_kind == "injury"
+            else Problem.ProblemKind.ILLNESS
+        ),
+        kind=body.kind,
+        code=body.code or body.kind,
+        slug="",
+        title=body.title,
+        display_name=body.display_name or body.title,
+        description=body.description,
         march_category=body.march_category,
         severity=body.severity,
+        anatomical_location=body.anatomical_location,
+        laterality=body.laterality,
+        status=body.status,
+        metadata_json=body.metadata,
     )
+    created._deactivated_objects = [old_problem] if old_problem else []
+    return created
+
+
+def _create_assessment_finding(
+    session: TrainerSession, body: AssessmentFindingCreateIn
+) -> AssessmentFinding:
+    definition = get_finding_definition(body.finding_kind)
+    supersedes = (
+        AssessmentFinding.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+        if body.supersedes_event_id
+        else None
+    )
+    target_problem = (
+        Problem.objects.filter(
+            pk=body.target_problem_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if body.target_problem_id
+        else None
+    )
+    obj = AssessmentFinding.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        target_problem=target_problem,
+        kind=definition.kind,
+        code=definition.code,
+        slug="",
+        title=body.title or definition.title,
+        display_name=body.title or definition.title,
+        description=body.description,
+        status=body.status,
+        severity=body.severity,
+        anatomical_location=body.anatomical_location,
+        laterality=body.laterality,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
+
+
+def _create_diagnostic_result(
+    session: TrainerSession, body: DiagnosticResultCreateIn
+) -> DiagnosticResult:
+    definition = get_diagnostic_definition(body.diagnostic_kind)
+    supersedes = (
+        DiagnosticResult.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+        if body.supersedes_event_id
+        else None
+    )
+    target_problem = (
+        Problem.objects.filter(
+            pk=body.target_problem_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if body.target_problem_id
+        else None
+    )
+    obj = DiagnosticResult.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        target_problem=target_problem,
+        kind=definition.kind,
+        code=definition.code,
+        slug="",
+        title=body.title or definition.title,
+        display_name=body.title or definition.title,
+        description=body.description,
+        status=body.status,
+        value_text=body.value_text,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
+
+
+def _create_resource_state(session: TrainerSession, body: ResourceStateCreateIn) -> ResourceState:
+    supersedes = (
+        ResourceState.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+        ).first()
+        if body.supersedes_event_id
+        else None
+    )
+    obj = ResourceState.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        kind=body.kind,
+        code=body.code or body.kind,
+        slug="",
+        title=body.title,
+        display_name=body.display_name or body.title,
+        status=body.status,
+        quantity_available=body.quantity_available,
+        quantity_unit=body.quantity_unit,
+        description=body.description,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
+
+
+def _create_disposition_state(
+    session: TrainerSession, body: DispositionStateCreateIn
+) -> DispositionState:
+    supersedes = (
+        DispositionState.objects.filter(
+            pk=body.supersedes_event_id,
+            simulation=session.simulation,
+            is_active=True,
+        ).first()
+        if body.supersedes_event_id
+        else DispositionState.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    obj = DispositionState.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=supersedes,
+        status=body.status,
+        transport_mode=body.transport_mode,
+        destination=body.destination,
+        eta_minutes=body.eta_minutes,
+        handoff_ready=body.handoff_ready,
+        scene_constraints_json=body.scene_constraints,
+        metadata_json=body.metadata,
+    )
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    return obj
 
 
 def _create_intervention(session: TrainerSession, body: InterventionCreateIn) -> Intervention:
@@ -1063,7 +1279,6 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         simulation_id=session.simulation_id,
         supersedes_event_id=body.supersedes_event_id,
     )
-    _deactivate_superseded(supersedes)
 
     obj = Intervention(
         simulation=session.simulation,
@@ -1076,11 +1291,12 @@ def _create_intervention(session: TrainerSession, body: InterventionCreateIn) ->
         effectiveness=body.effectiveness,
         notes=body.notes,
         details_json=body.details.model_dump(exclude_none=True),
-        performed_by_role=body.performed_by_role,
+        initiated_by_type=body.initiated_by_type,
+        initiated_by_id=body.initiated_by_id,
     )
-    obj.sync_legacy_fields()
-    obj.full_clean()
     obj.save()
+    obj._deactivated_objects = [supersedes] if supersedes else []
+    obj._adjudication_result = adjudicate_intervention(obj)
     return obj
 
 
@@ -1111,7 +1327,9 @@ def _create_vital(session: TrainerSession, body: VitalCreateIn) -> Any:
         if body.supersedes_event_id and vital_model
         else None
     )
-    _deactivate_superseded(supersedes)
+    if supersedes is not None and supersedes.is_active:
+        supersedes.is_active = False
+        supersedes.save(update_fields=["is_active"])
 
     common = {
         "simulation": session.simulation,
@@ -1180,41 +1398,23 @@ def _inject_event_core(
         _mark_command_failed(command, str(exc))
         raise HttpError(409, str(exc)) from None
 
-    if event_kind in {"injury", "illness"}:
-        event_type = "condition.created"
-    elif event_kind == "vital":
-        event_type = "vital.updated"
-    elif event_kind == "intervention":
-        event_type = "intervention.recorded"
-    elif event_kind == "note":
-        event_type = "note.created"
-    else:
-        event_type = "event.created"
+    event_type = {
+        "injury": "injury.created",
+        "illness": "illness.created",
+        "problem": "problem.created",
+        "assessment_finding": "trainerlab.assessment_finding.created",
+        "diagnostic_result": "trainerlab.diagnostic_result.created",
+        "resource": "trainerlab.resource.updated",
+        "disposition": "trainerlab.disposition.updated",
+        "intervention": "intervention.created",
+        "note": "note.created",
+        "vital": "trainerlab.vital.updated",
+    }.get(event_kind, "event.created")
 
     send_to_ai = bool(payload_json.get("send_to_ai", False))
     from apps.trainerlab.event_payloads import serialize_domain_event
 
-    if event_kind in {"injury", "illness"}:
-        # domain_event is a Problem for condition events
-        event_payload = serialize_domain_event(domain_event)
-    elif event_kind == "intervention":
-        event_payload = {
-            "domain_event_id": domain_event.id,
-            "domain_event_type": domain_event.__class__.__name__,
-            "source": domain_event.source,
-            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_id,
-            "intervention_type": getattr(domain_event, "intervention_type", "") or None,
-            "site_code": getattr(domain_event, "site_code", "") or None,
-            "code": getattr(domain_event, "code", ""),
-            "description": getattr(domain_event, "description", ""),
-            "target": getattr(domain_event, "target", ""),
-            "anatomic_location": getattr(domain_event, "anatomic_location", ""),
-            "effectiveness": getattr(domain_event, "effectiveness", "unknown"),
-            "notes": getattr(domain_event, "notes", ""),
-            "performed_by_role": getattr(domain_event, "performed_by_role", ""),
-        }
-    elif event_kind == "note":
+    if event_kind == "note":
         event_payload = {
             "domain_event_id": domain_event.id,
             "domain_event_type": domain_event.__class__.__name__,
@@ -1225,21 +1425,82 @@ def _inject_event_core(
             "created_by_role": payload_json.get("performed_by_role", "instructor"),
         }
     else:
-        event_payload = {
-            "domain_event_id": domain_event.id,
-            "domain_event_type": domain_event.__class__.__name__,
-            "source": domain_event.source,
-            "timestamp": domain_event.timestamp.astimezone(UTC).isoformat(),
-            "supersedes_event_id": domain_event.supersedes_id,
-        }
-    emit_runtime_event(
-        session=session,
-        event_type=event_type,
-        payload=event_payload,
-        created_by=user,
-        correlation_id=correlation_id,
-        idempotency_key=f"{event_type}:{domain_event.id}",
-    )
+        event_payload = serialize_domain_event(domain_event)
+
+    for deactivated in getattr(domain_event, "_deactivated_objects", []):
+        deactivate_domain_object(
+            session=session,
+            obj=deactivated,
+            correlation_id=correlation_id,
+            created_by=user,
+            action="superseded",
+        )
+
+    if event_kind in {
+        "injury",
+        "illness",
+        "problem",
+        "assessment_finding",
+        "diagnostic_result",
+        "resource",
+        "disposition",
+        "intervention",
+    }:
+        emit_domain_runtime_event(
+            session=session,
+            event_type=event_type,
+            obj=domain_event,
+            created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"{event_type}:{domain_event.id}",
+        )
+    elif event_kind == "note":
+        emit_runtime_event(
+            session=session,
+            event_type=event_type,
+            payload=event_payload,
+            created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"{event_type}:{domain_event.id}",
+        )
+    else:
+        emit_runtime_event(
+            session=session,
+            event_type=event_type,
+            payload=event_payload,
+            created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"{event_type}:{domain_event.id}",
+        )
+
+    if event_kind == "intervention" and getattr(domain_event, "_adjudication_result", None):
+        adjudication_result = domain_event._adjudication_result
+        refreshed_problem = Problem.objects.filter(pk=domain_event.target_problem_id).first()
+        if refreshed_problem is not None and adjudication_result.changed:
+            emit_domain_runtime_event(
+                session=session,
+                event_type=(
+                    "problem.resolved"
+                    if refreshed_problem.status == Problem.Status.RESOLVED
+                    else "problem.updated"
+                ),
+                obj=refreshed_problem,
+                created_by=user,
+                correlation_id=correlation_id,
+                idempotency_key=f"problem.updated:post-intervention:{refreshed_problem.id}:{domain_event.id}",
+            )
+    if event_kind in {
+        "problem",
+        "assessment_finding",
+        "diagnostic_result",
+        "resource",
+        "disposition",
+        "intervention",
+    }:
+        recompute_active_recommendations(session=session, correlation_id=correlation_id)
+
+    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+
     should_queue_runtime = session.status != SessionStatus.COMPLETED and (
         event_kind != "note" or send_to_ai
     )
@@ -1314,6 +1575,26 @@ def create_illness_event(
 
 
 @router.post(
+    "/simulations/{simulation_id}/events/problems/",
+    response=TrainerCommandAck,
+    summary="Inject problem event",
+)
+@api_rate_limit
+def create_problem_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: ProblemCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "problem", **body.model_dump()},
+        create_fn=lambda session: _create_problem(session, body),
+    )
+
+
+@router.post(
     "/simulations/{simulation_id}/events/interventions/",
     response=TrainerCommandAck,
     summary="Inject intervention event",
@@ -1330,6 +1611,86 @@ def create_intervention_event(
         command_type=TrainerCommand.CommandType.INJECT_EVENT,
         payload_json={"event_kind": "intervention", **body.model_dump()},
         create_fn=lambda session: _create_intervention(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/assessment-findings/",
+    response=TrainerCommandAck,
+    summary="Inject assessment finding event",
+)
+@api_rate_limit
+def create_assessment_finding_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: AssessmentFindingCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "assessment_finding", **body.model_dump()},
+        create_fn=lambda session: _create_assessment_finding(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/diagnostic-results/",
+    response=TrainerCommandAck,
+    summary="Inject diagnostic result event",
+)
+@api_rate_limit
+def create_diagnostic_result_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: DiagnosticResultCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "diagnostic_result", **body.model_dump()},
+        create_fn=lambda session: _create_diagnostic_result(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/resources/",
+    response=TrainerCommandAck,
+    summary="Inject resource state event",
+)
+@api_rate_limit
+def create_resource_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: ResourceStateCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "resource", **body.model_dump()},
+        create_fn=lambda session: _create_resource_state(session, body),
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/events/disposition/",
+    response=TrainerCommandAck,
+    summary="Inject disposition state event",
+)
+@api_rate_limit
+def create_disposition_event(
+    request: HttpRequest,
+    simulation_id: int,
+    body: DispositionStateCreateIn,
+) -> TrainerCommandAck:
+    return _inject_event_core(
+        request=request,
+        simulation_id=simulation_id,
+        command_type=TrainerCommand.CommandType.INJECT_EVENT,
+        payload_json={"event_kind": "disposition", **body.model_dump()},
+        create_fn=lambda session: _create_disposition_state(session, body),
     )
 
 
@@ -1491,7 +1852,7 @@ def trigger_vitals_tick(
     Immediately enqueue a vitals-only AI progression turn.
 
     Unlike the full runtime tick, this service only updates vital sign ranges
-    and does not modify conditions or interventions.
+    and does not modify causes, problems, or interventions.
     """
     user = request.auth
     require_instructor_membership(user)
@@ -1509,29 +1870,24 @@ def trigger_vitals_tick(
 
 
 # ---------------------------------------------------------------------------
-# #2 — Condition control state mutation
+# #2 — Problem status mutation
 # ---------------------------------------------------------------------------
 
 
 @router.patch(
-    "/simulations/{simulation_id}/conditions/{condition_id}/",
-    response=ConditionControlOut,
-    summary="Update treatment/resolution state of a condition",
+    "/simulations/{simulation_id}/problems/{problem_id}/",
+    response=ProblemStatusOut,
+    summary="Update treatment/resolution state of a problem",
 )
 @api_rate_limit
-def update_condition(
+def update_problem(
     request: HttpRequest,
     simulation_id: int,
-    condition_id: int,
-    body: ConditionControlUpdateIn,
-) -> ConditionControlOut:
+    problem_id: int,
+    body: ProblemStatusUpdateIn,
+) -> ProblemStatusOut:
     """
-    Set the instructor-controlled treatment or resolution state of an Injury or Illness.
-
-    - `is_treated=true` → marks the condition as `controlled` (treatment applied)
-    - `is_resolved=true` → marks the condition as `resolved` (no longer active clinically)
-
-    Creates a superseding event record preserving full history.
+    Set the instructor-controlled treatment or resolution state of a Problem.
     """
     from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -1541,10 +1897,9 @@ def update_condition(
     correlation_id = _get_correlation_id(request)
 
     try:
-        condition = update_condition_control_state(
+        problem = update_problem_status(
             session=session,
-            condition_id=condition_id,
-            kind=body.kind,
+            problem_id=problem_id,
             is_treated=body.is_treated,
             is_resolved=body.is_resolved,
             correlation_id=correlation_id,
@@ -1552,29 +1907,13 @@ def update_condition(
     except DjangoValidationError as exc:
         raise HttpError(404, str(exc)) from None
 
-    is_treated = getattr(condition, "is_treated", False)
-    is_resolved = getattr(condition, "is_resolved", False)
-    if is_resolved:
-        control_state = "resolved"
-    elif is_treated:
-        control_state = "controlled"
-    else:
-        control_state = "uncontrolled"
-
-    if isinstance(condition, Injury):
-        label = condition.injury_description
-        kind = "injury"
-    else:
-        label = condition.name
-        kind = "illness"
-
-    return ConditionControlOut(
-        condition_id=condition.id,
-        kind=kind,
-        is_treated=is_treated,
-        is_resolved=is_resolved,
-        control_state=control_state,
-        label=label,
+    return ProblemStatusOut(
+        problem_id=problem.id,
+        is_treated=problem.is_treated,
+        is_controlled=problem.is_controlled,
+        is_resolved=problem.is_resolved,
+        status=problem.status,
+        label=problem.display_name or problem.title,
     )
 
 

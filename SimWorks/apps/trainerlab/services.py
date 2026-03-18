@@ -15,12 +15,27 @@ from apps.simcore.models import Simulation
 from apps.simcore.utils import generate_fake_name
 from config.logging import get_logger
 
+from .event_payloads import (
+    serialize_assessment_finding_summary,
+    serialize_cause_snapshot,
+    serialize_diagnostic_result_summary,
+    serialize_disposition_state_summary,
+    serialize_domain_event,
+    serialize_intervention_summary,
+    serialize_problem_snapshot,
+    serialize_recommendation_summary,
+    serialize_resource_state_summary,
+)
+from .finding_dictionary import get_finding_definition
 from .models import (
     ETCO2,
     SPO2,
+    AssessmentFinding,
     BloodGlucoseLevel,
     BloodPressure,
     DebriefAnnotation,
+    DiagnosticResult,
+    DispositionState,
     EventSource,
     HeartRate,
     Illness,
@@ -28,6 +43,9 @@ from .models import (
     Intervention,
     Problem,
     PulseAssessment,
+    RecommendationEvaluation,
+    RecommendedIntervention,
+    ResourceState,
     RespiratoryRate,
     RuntimeEvent,
     ScenarioBrief,
@@ -36,6 +54,11 @@ from .models import (
     TrainerCommand,
     TrainerRunSummary,
     TrainerSession,
+)
+from .problem_dictionary import get_problem_definition, normalize_problem_kind
+from .recommendations import (
+    generate_rule_based_recommendations,
+    validate_and_normalize_recommendation,
 )
 
 MIN_TICK_INTERVAL = 5
@@ -100,11 +123,18 @@ def build_runtime_state_defaults(
             "special_considerations": [],
         },
         "current_snapshot": {
-            "conditions": [],
+            "causes": [],
+            "problems": [],
+            "recommended_interventions": [],
             "interventions": [],
+            "assessment_findings": [],
+            "diagnostic_results": [],
+            "resources": [],
+            "disposition": None,
             "vitals": [],
             "pulses": [],
             "patient_status": {},
+            "scenario_brief": None,
         },
         "snapshot_annotations": {"patient_status": {}},
         "ai_plan": {
@@ -117,6 +147,7 @@ def build_runtime_state_defaults(
             "monitoring_focus": [],
         },
         "ai_rationale_notes": [],
+        "llm_conditions_check": [],
         "pending_runtime_reasons": [],
         "currently_processing_reasons": [],
         "runtime_processing": False,
@@ -239,53 +270,90 @@ def emit_runtime_event(
     return runtime_event
 
 
+def emit_domain_runtime_event(
+    *,
+    session: TrainerSession,
+    event_type: str,
+    obj: Any,
+    extra: dict[str, Any] | None = None,
+    created_by=None,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
+) -> RuntimeEvent:
+    return emit_runtime_event(
+        session=session,
+        event_type=event_type,
+        payload=serialize_domain_event(obj, extra=extra),
+        created_by=created_by,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+    )
+
+
+def _domain_deactivation_event_type(obj: Any) -> str | None:
+    if isinstance(obj, Injury):
+        return "injury.updated"
+    if isinstance(obj, Illness):
+        return "illness.updated"
+    if isinstance(obj, Problem):
+        return "problem.updated"
+    if isinstance(obj, RecommendedIntervention):
+        return "recommended_intervention.removed"
+    if isinstance(obj, AssessmentFinding):
+        return "trainerlab.assessment_finding.removed"
+    if isinstance(obj, DiagnosticResult):
+        return "trainerlab.diagnostic_result.updated"
+    if isinstance(obj, ResourceState):
+        return "trainerlab.resource.updated"
+    if isinstance(obj, DispositionState):
+        return "trainerlab.disposition.updated"
+    if isinstance(obj, Intervention):
+        return "intervention.updated"
+    return None
+
+
+def deactivate_domain_object(
+    *,
+    session: TrainerSession,
+    obj: Any | None,
+    correlation_id: str | None = None,
+    created_by=None,
+    action: str = "deactivated",
+) -> None:
+    if obj is None or not getattr(obj, "is_active", False):
+        return
+    obj.is_active = False
+    obj.save(update_fields=["is_active"])
+    if isinstance(obj, Problem | Injury | Illness):
+        for recommendation in obj.recommended_interventions.filter(is_active=True):
+            deactivate_domain_object(
+                session=session,
+                obj=recommendation,
+                correlation_id=correlation_id,
+                created_by=created_by,
+                action="superseded",
+            )
+    event_type = _domain_deactivation_event_type(obj)
+    if event_type is None:
+        return
+    emit_domain_runtime_event(
+        session=session,
+        event_type=event_type,
+        obj=obj,
+        extra={"action": action},
+        created_by=created_by,
+        correlation_id=correlation_id,
+        idempotency_key=f"{event_type}:{type(obj).__name__.lower()}:{obj.id}:inactive",
+    )
+
+
 def _problem_control_state(problem: Problem) -> str:
-    if problem.is_resolved:
-        return "resolved"
-    if problem.is_treated:
-        return "controlled"
-    return "uncontrolled"
+    return problem.status
 
 
 def _serialize_condition(problem: Problem, cause: Injury | Illness | None) -> dict[str, Any]:
-    """Serialize a Problem (lifecycle record) with its underlying cause."""
-    payload = {
-        "domain_event_id": problem.id,
-        "problem_id": problem.id,
-        "cause_event_id": problem.cause_id,
-        "source": problem.source,
-        "supersedes_event_id": problem.supersedes_id,
-        "timestamp": _iso_or_none(problem.timestamp),
-        "kind": problem.problem_kind,
-        "march_category": problem.march_category,
-        "severity": problem.severity,
-        "is_treated": problem.is_treated,
-        "is_resolved": problem.is_resolved,
-        "control_state": _problem_control_state(problem),
-        "status": "resolved" if problem.is_resolved else "active",
-        "description": problem.description,
-    }
-    if isinstance(cause, Injury):
-        payload.update(
-            {
-                "label": cause.injury_description,
-                "injury_location": cause.injury_location,
-                "injury_kind": cause.injury_kind,
-                "injury_location_label": cause.get_injury_location_display(),
-                "injury_kind_label": cause.get_injury_kind_display(),
-            }
-        )
-    elif isinstance(cause, Illness):
-        payload.update(
-            {
-                "label": cause.name,
-                "name": cause.name,
-                "illness_description": cause.description,
-            }
-        )
-    else:
-        payload["label"] = problem.description or "Unknown condition"
-    return payload
+    del cause
+    return serialize_problem_snapshot(problem)
 
 
 def _serialize_intervention(
@@ -294,22 +362,10 @@ def _serialize_intervention(
     intervention_effects: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     effect = dict((intervention_effects or {}).get(str(obj.id), {}))
-    return {
-        "domain_event_id": obj.id,
-        "intervention_type": obj.intervention_type or None,
-        "site_code": obj.site_code or None,
-        "effectiveness": obj.effectiveness,
-        "notes": obj.notes,
-        "code": obj.code,
-        "description": obj.description,
-        "target": obj.target,
-        "anatomic_location": obj.anatomic_location,
-        "performed_by_role": obj.performed_by_role,
-        "source": obj.source,
-        "timestamp": _iso_or_none(obj.timestamp),
-        "status": effect.get("status", "active"),
-        "clinical_effect": effect.get("clinical_effect", ""),
-    }
+    payload = serialize_intervention_summary(obj)
+    payload["domain_event_id"] = obj.id
+    payload["clinical_effect"] = effect.get("clinical_effect", "")
+    return payload
 
 
 def _serialize_vital(vital_type: str, obj: Any) -> dict[str, Any]:
@@ -361,23 +417,87 @@ def project_current_snapshot(
         )
     )
 
-    problems = list(
-        Problem.objects.select_related("cause_injury", "cause_illness")
+    recommendation_objects = list(
+        RecommendedIntervention.objects.select_related(
+            "target_problem",
+            "target_injury",
+            "target_illness",
+        )
         .filter(simulation=session.simulation, is_active=True)
         .order_by("timestamp", "id")
     )
-    conditions = [_serialize_condition(p, p.cause) for p in problems]
+    recommendations = [serialize_recommendation_summary(item) for item in recommendation_objects]
+
+    problems = list(
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .prefetch_related("recommended_interventions")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    problem_items = [_serialize_condition(p, p.cause) for p in problems]
+
+    injury_objects = list(
+        Injury.objects.prefetch_related("recommended_interventions")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    illness_objects = list(
+        Illness.objects.prefetch_related("recommended_interventions")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    causes = [
+        serialize_cause_snapshot(item)
+        for item in sorted(
+            [*injury_objects, *illness_objects],
+            key=lambda item: (item.timestamp, item.id),
+        )
+    ]
 
     interventions = [
         _serialize_intervention(
             item,
             intervention_effects=dict(state.get("intervention_effects") or {}),
         )
-        for item in Intervention.objects.filter(
+        for item in Intervention.objects.select_related("target_problem")
+        .filter(
             simulation=session.simulation,
             is_active=True,
+        )
+        .order_by("timestamp", "id")
+    ]
+
+    assessment_findings = [
+        serialize_assessment_finding_summary(item)
+        for item in AssessmentFinding.objects.select_related("target_problem")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    ]
+
+    diagnostic_results = [
+        serialize_diagnostic_result_summary(item)
+        for item in DiagnosticResult.objects.select_related("target_problem")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    ]
+
+    resources = [
+        serialize_resource_state_summary(item)
+        for item in ResourceState.objects.filter(
+            simulation=session.simulation, is_active=True
         ).order_by("timestamp", "id")
     ]
+
+    disposition_obj = (
+        DispositionState.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    disposition = (
+        serialize_disposition_state_summary(disposition_obj)
+        if disposition_obj is not None
+        else None
+    )
 
     vitals: list[dict[str, Any]] = []
     for vital_type, model in VITAL_TYPE_MODEL_MAP.items():
@@ -421,8 +541,14 @@ def project_current_snapshot(
     ]
 
     return {
-        "conditions": conditions,
+        "causes": causes,
+        "problems": problem_items,
+        "recommended_interventions": recommendations,
         "interventions": interventions,
+        "assessment_findings": assessment_findings,
+        "diagnostic_results": diagnostic_results,
+        "resources": resources,
+        "disposition": disposition,
         "vitals": vitals,
         "pulses": pulses,
         "patient_status": dict(
@@ -606,7 +732,7 @@ def _run_initial_generation_inline(*, session: TrainerSession, call_id: str) -> 
         )
         return
 
-    # Emit TrainerRuntimeEvent records so vitals/conditions are queryable via the event stream.
+    # Emit TrainerRuntimeEvent records so vitals and domain objects are queryable via the event stream.
     # OutboxEvents for SSE delivery were already created by post_persist() →
     # broadcast_domain_objects(); these records serve the catch-up API consumers.
     try:
@@ -631,9 +757,9 @@ def _emit_seeded_vital_events(session: TrainerSession) -> None:
         if obj is not None:
             emit_runtime_event(
                 session=session,
-                event_type="vital.created",
+                event_type="trainerlab.vital.created",
                 payload=_serialize_vital(vital_type, obj),
-                idempotency_key=f"vital.created:seeded:{session.id}:{vital_type}",
+                idempotency_key=f"trainerlab.vital.created:seeded:{session.id}:{vital_type}",
             )
 
 
@@ -650,17 +776,140 @@ def _emit_seeded_pulse_events(session: TrainerSession) -> None:
 
 
 def _emit_seeded_condition_events(session: TrainerSession) -> None:
+    scenario_brief = (
+        ScenarioBrief.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    injuries = list(
+        Injury.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
+    illnesses = list(
+        Illness.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
     problems = list(
         Problem.objects.select_related("cause_injury", "cause_illness")
+        .prefetch_related("recommended_interventions")
         .filter(simulation=session.simulation, is_active=True)
         .order_by("timestamp", "id")
     )
-    for problem in problems:
-        emit_runtime_event(
+    recommendations = list(
+        RecommendedIntervention.objects.select_related(
+            "target_problem",
+            "target_injury",
+            "target_illness",
+        )
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    findings = list(
+        AssessmentFinding.objects.select_related("target_problem")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    diagnostics = list(
+        DiagnosticResult.objects.select_related("target_problem")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    resources = list(
+        ResourceState.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
+    )
+    disposition = (
+        DispositionState.objects.filter(simulation=session.simulation, is_active=True)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+    recommendation_evaluations = list(
+        RecommendationEvaluation.objects.select_related("recommendation", "target_problem")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    if scenario_brief is not None:
+        emit_domain_runtime_event(
             session=session,
-            event_type="condition.created",
-            payload=_serialize_condition(problem, problem.cause),
-            idempotency_key=f"condition.created:seeded:{session.id}:{problem.id}",
+            event_type="trainerlab.scenario_brief.created",
+            obj=scenario_brief,
+            idempotency_key=f"trainerlab.scenario_brief.created:seeded:{session.id}:{scenario_brief.id}",
+        )
+    for injury in injuries:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="injury.created",
+            obj=injury,
+            idempotency_key=f"injury.created:seeded:{session.id}:{injury.id}",
+        )
+    for illness in illnesses:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="illness.created",
+            obj=illness,
+            idempotency_key=f"illness.created:seeded:{session.id}:{illness.id}",
+        )
+    for problem in problems:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="problem.created",
+            obj=problem,
+            idempotency_key=f"problem.created:seeded:{session.id}:{problem.id}",
+        )
+    for recommendation in recommendations:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="recommended_intervention.created",
+            obj=recommendation,
+            idempotency_key=(
+                f"recommended_intervention.created:seeded:{session.id}:{recommendation.id}"
+            ),
+        )
+    for finding in findings:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="trainerlab.assessment_finding.created",
+            obj=finding,
+            idempotency_key=(
+                f"trainerlab.assessment_finding.created:seeded:{session.id}:{finding.id}"
+            ),
+        )
+    for diagnostic in diagnostics:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="trainerlab.diagnostic_result.created",
+            obj=diagnostic,
+            idempotency_key=(
+                f"trainerlab.diagnostic_result.created:seeded:{session.id}:{diagnostic.id}"
+            ),
+        )
+    for resource in resources:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="trainerlab.resource.updated",
+            obj=resource,
+            idempotency_key=f"trainerlab.resource.updated:seeded:{session.id}:{resource.id}",
+        )
+    if disposition is not None:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="trainerlab.disposition.updated",
+            obj=disposition,
+            idempotency_key=(
+                f"trainerlab.disposition.updated:seeded:{session.id}:{disposition.id}"
+            ),
+        )
+    for evaluation in recommendation_evaluations:
+        emit_domain_runtime_event(
+            session=session,
+            event_type="trainerlab.recommendation_evaluation.created",
+            obj=evaluation,
+            idempotency_key=(
+                f"trainerlab.recommendation_evaluation.created:seeded:{session.id}:{evaluation.id}"
+            ),
         )
 
 
@@ -903,34 +1152,6 @@ def clear_runtime_processing(
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
 
-def _event_payload_for_condition(
-    problem: Problem,
-    cause: Injury | Illness | None,
-    *,
-    action: str,
-) -> dict[str, Any]:
-    payload = _serialize_condition(problem, cause)
-    payload["action"] = action
-    return payload
-
-
-def _emit_condition_change(
-    *,
-    session: TrainerSession,
-    problem: Problem,
-    cause: Injury | Illness | None,
-    action: str,
-    correlation_id: str | None,
-) -> None:
-    emit_runtime_event(
-        session=session,
-        event_type=f"condition.{action}",
-        payload=_event_payload_for_condition(problem, cause, action=action),
-        correlation_id=correlation_id,
-        idempotency_key=f"condition.{action}:{problem.id}",
-    )
-
-
 def _resolve_superseded_event(
     *,
     session: TrainerSession,
@@ -952,120 +1173,840 @@ def _deactivate_event(event: Any | None) -> None:
     event.save(update_fields=["is_active"])
 
 
-def _apply_condition_change(
+_SEVERITY_ORDER = {
+    Problem.Severity.LOW: 0,
+    Problem.Severity.MODERATE: 1,
+    Problem.Severity.HIGH: 2,
+    Problem.Severity.CRITICAL: 3,
+}
+
+
+def _severity_rank(value: str | None) -> int:
+    return _SEVERITY_ORDER.get(value or Problem.Severity.MODERATE, 1)
+
+
+def _next_worse_severity(value: str | None) -> str:
+    for candidate in (
+        Problem.Severity.LOW,
+        Problem.Severity.MODERATE,
+        Problem.Severity.HIGH,
+        Problem.Severity.CRITICAL,
+    ):
+        if _severity_rank(candidate) > _severity_rank(value):
+            return candidate
+    return Problem.Severity.CRITICAL
+
+
+def _next_better_severity(value: str | None) -> str:
+    ordered = (
+        Problem.Severity.LOW,
+        Problem.Severity.MODERATE,
+        Problem.Severity.HIGH,
+        Problem.Severity.CRITICAL,
+    )
+    current_rank = _severity_rank(value)
+    for candidate in reversed(ordered):
+        if _severity_rank(candidate) < current_rank:
+            return candidate
+    return Problem.Severity.LOW
+
+
+def _problem_age_seconds(problem: Problem) -> int:
+    return max(0, int((timezone.now() - problem.timestamp).total_seconds()))
+
+
+def _resolve_active_cause(
+    *,
+    session: TrainerSession,
+    cause_kind: str,
+    cause_id: int,
+) -> Injury | Illness | None:
+    if cause_kind == "injury":
+        return Injury.objects.filter(
+            simulation=session.simulation,
+            pk=cause_id,
+            is_active=True,
+        ).first()
+    return Illness.objects.filter(
+        simulation=session.simulation,
+        pk=cause_id,
+        is_active=True,
+    ).first()
+
+
+def _existing_problem_for_observation(
+    *,
+    session: TrainerSession,
+    cause: Injury | Illness,
+    kind: str,
+    parent_problem: Problem | None,
+) -> Problem | None:
+    filters = {
+        "simulation": session.simulation,
+        "is_active": True,
+        "kind": kind,
+        "parent_problem": parent_problem,
+    }
+    if isinstance(cause, Injury):
+        filters["cause_injury"] = cause
+    else:
+        filters["cause_illness"] = cause
+    return (
+        Problem.objects.select_related("cause_injury", "cause_illness", "parent_problem")
+        .filter(**filters)
+        .order_by("-timestamp", "-id")
+        .first()
+    )
+
+
+def _create_problem_domain_event(
+    *,
+    session: TrainerSession,
+    cause: Injury | Illness,
+    kind: str,
+    title: str,
+    description: str,
+    march_category: str | None,
+    severity: str | None,
+    anatomical_location: str,
+    laterality: str,
+    parent_problem: Problem | None,
+    supersedes: Problem | None = None,
+    previous_status: str = "",
+    adjudication_reason: str = "",
+    adjudication_rule_id: str = "",
+) -> Problem:
+    definition = get_problem_definition(kind)
+    return Problem.objects.create(
+        simulation=session.simulation,
+        source=EventSource.SYSTEM,
+        supersedes=supersedes,
+        cause_injury=cause if isinstance(cause, Injury) else None,
+        cause_illness=cause if isinstance(cause, Illness) else None,
+        parent_problem=parent_problem,
+        problem_kind=(
+            Problem.ProblemKind.INJURY if isinstance(cause, Injury) else Problem.ProblemKind.ILLNESS
+        ),
+        kind=definition.kind,
+        code=definition.code,
+        slug=definition.slug,
+        title=title or definition.title,
+        display_name=title or definition.title,
+        description=description,
+        march_category=march_category
+        or definition.default_march_category
+        or Problem.MARCHCategory.C,
+        severity=severity or Problem.Severity.MODERATE,
+        anatomical_location=anatomical_location,
+        laterality=laterality,
+        status=supersedes.status if supersedes is not None else Problem.Status.ACTIVE,
+        previous_status=previous_status,
+        adjudication_reason=adjudication_reason,
+        adjudication_rule_id=adjudication_rule_id,
+    )
+
+
+def _apply_problem_observation(
+    *,
+    session: TrainerSession,
+    observation: dict[str, Any],
+    correlation_id: str | None,
+) -> None:
+    normalized_kind = normalize_problem_kind(observation.get("problem_kind"))
+    definition = get_problem_definition(normalized_kind)
+    parent_problem = (
+        Problem.objects.filter(
+            simulation=session.simulation,
+            pk=observation.get("parent_problem_id"),
+            is_active=True,
+        ).first()
+        if observation.get("parent_problem_id")
+        else None
+    )
+
+    if observation.get("observation") == "new_problem":
+        cause = _resolve_active_cause(
+            session=session,
+            cause_kind=str(observation.get("cause_kind")),
+            cause_id=int(observation.get("cause_id")),
+        )
+        if cause is None:
+            return
+        existing = _existing_problem_for_observation(
+            session=session,
+            cause=cause,
+            kind=definition.kind,
+            parent_problem=parent_problem,
+        )
+        if existing is not None:
+            observation = {
+                **observation,
+                "target_problem_id": existing.id,
+                "observation": "worsening",
+            }
+        else:
+            created = _create_problem_domain_event(
+                session=session,
+                cause=cause,
+                kind=definition.kind,
+                title=str(observation.get("title") or definition.title),
+                description=str(observation.get("description") or ""),
+                march_category=observation.get("march_category"),
+                severity=observation.get("severity"),
+                anatomical_location=str(
+                    observation.get("anatomical_location")
+                    or getattr(cause, "anatomical_location", "")
+                    or ""
+                ),
+                laterality=str(
+                    observation.get("laterality") or getattr(cause, "laterality", "") or ""
+                ),
+                parent_problem=parent_problem,
+                adjudication_reason="runtime_observation",
+                adjudication_rule_id="runtime.observation.new_problem",
+            )
+            emit_domain_runtime_event(
+                session=session,
+                event_type="problem.created",
+                obj=created,
+                extra={"action": "created"},
+                correlation_id=correlation_id,
+                idempotency_key=f"problem.created:runtime:{created.id}",
+            )
+            return
+
+    target_problem = (
+        Problem.objects.select_related("cause_injury", "cause_illness", "parent_problem")
+        .filter(
+            simulation=session.simulation,
+            pk=observation.get("target_problem_id"),
+            is_active=True,
+        )
+        .first()
+    )
+    if target_problem is None:
+        return
+
+    next_severity = observation.get("severity") or target_problem.severity
+    if observation.get("observation") == "worsening" and not observation.get("severity"):
+        next_severity = _next_worse_severity(target_problem.severity)
+    elif observation.get("observation") == "improving" and not observation.get("severity"):
+        next_severity = _next_better_severity(target_problem.severity)
+
+    next_description = str(observation.get("description") or target_problem.description)
+    next_location = str(
+        observation.get("anatomical_location") or target_problem.anatomical_location
+    )
+    next_laterality = str(observation.get("laterality") or target_problem.laterality)
+    next_title = str(observation.get("title") or target_problem.title)
+    next_march = observation.get("march_category") or target_problem.march_category
+
+    if (
+        next_severity == target_problem.severity
+        and next_description == target_problem.description
+        and next_location == target_problem.anatomical_location
+        and next_laterality == target_problem.laterality
+        and next_title == target_problem.title
+        and next_march == target_problem.march_category
+    ):
+        return
+
+    _deactivate_event(target_problem)
+    updated = _create_problem_domain_event(
+        session=session,
+        cause=target_problem.cause,
+        kind=target_problem.kind,
+        title=next_title,
+        description=next_description,
+        march_category=next_march,
+        severity=next_severity,
+        anatomical_location=next_location,
+        laterality=next_laterality,
+        parent_problem=target_problem.parent_problem,
+        supersedes=target_problem,
+        previous_status=target_problem.status,
+        adjudication_reason="runtime_observation",
+        adjudication_rule_id=f"runtime.observation.{observation.get('observation', 'stable')}",
+    )
+    emit_domain_runtime_event(
+        session=session,
+        event_type="problem.updated",
+        obj=updated,
+        extra={"action": "updated"},
+        correlation_id=correlation_id,
+        idempotency_key=f"problem.updated:runtime:{updated.id}",
+    )
+
+
+def _ensure_secondary_problem(
+    *,
+    session: TrainerSession,
+    parent_problem: Problem,
+    kind: str,
+    severity: str,
+    description: str,
+    rule_id: str,
+    correlation_id: str | None,
+) -> None:
+    existing = _existing_problem_for_observation(
+        session=session,
+        cause=parent_problem.cause,
+        kind=kind,
+        parent_problem=parent_problem,
+    )
+    if existing is not None:
+        if _severity_rank(existing.severity) >= _severity_rank(severity):
+            return
+        _deactivate_event(existing)
+        updated = _create_problem_domain_event(
+            session=session,
+            cause=parent_problem.cause,
+            kind=kind,
+            title=get_problem_definition(kind).title,
+            description=description,
+            march_category=get_problem_definition(kind).default_march_category,
+            severity=severity,
+            anatomical_location=parent_problem.anatomical_location,
+            laterality=parent_problem.laterality,
+            parent_problem=parent_problem,
+            supersedes=existing,
+            previous_status=existing.status,
+            adjudication_reason="deterministic_progression",
+            adjudication_rule_id=rule_id,
+        )
+        emit_domain_runtime_event(
+            session=session,
+            event_type="problem.updated",
+            obj=updated,
+            extra={"action": "updated"},
+            correlation_id=correlation_id,
+            idempotency_key=f"problem.updated:{rule_id}:{updated.id}",
+        )
+        return
+
+    created = _create_problem_domain_event(
+        session=session,
+        cause=parent_problem.cause,
+        kind=kind,
+        title=get_problem_definition(kind).title,
+        description=description,
+        march_category=get_problem_definition(kind).default_march_category,
+        severity=severity,
+        anatomical_location=parent_problem.anatomical_location,
+        laterality=parent_problem.laterality,
+        parent_problem=parent_problem,
+        adjudication_reason="deterministic_progression",
+        adjudication_rule_id=rule_id,
+    )
+    emit_domain_runtime_event(
+        session=session,
+        event_type="problem.created",
+        obj=created,
+        extra={"action": "created"},
+        correlation_id=correlation_id,
+        idempotency_key=f"problem.created:{rule_id}:{created.id}",
+    )
+
+
+def _apply_progression_catalogs(
+    *,
+    session: TrainerSession,
+    correlation_id: str | None,
+) -> None:
+    problems = list(
+        Problem.objects.select_related("cause_injury", "cause_illness", "parent_problem")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    for problem in problems:
+        if not problem.is_active:
+            continue
+        age_seconds = _problem_age_seconds(problem)
+        if problem.kind == "hemorrhage" and problem.status == Problem.Status.ACTIVE:
+            if (
+                _severity_rank(problem.severity) >= _severity_rank(Problem.Severity.HIGH)
+                and age_seconds >= 90
+            ):
+                _ensure_secondary_problem(
+                    session=session,
+                    parent_problem=problem,
+                    kind="hypoperfusion_shock",
+                    severity=Problem.Severity.HIGH,
+                    description="Progressive shock from untreated hemorrhage.",
+                    rule_id="progression.hemorrhage_to_shock",
+                    correlation_id=correlation_id,
+                )
+        elif problem.kind == "open_chest_wound" and problem.status in {
+            Problem.Status.ACTIVE,
+            Problem.Status.TREATED,
+        }:
+            if age_seconds >= 60:
+                _ensure_secondary_problem(
+                    session=session,
+                    parent_problem=problem,
+                    kind="respiratory_distress",
+                    severity=Problem.Severity.HIGH,
+                    description="Respiratory distress from ongoing chest injury.",
+                    rule_id="progression.open_chest_wound_to_respiratory_distress",
+                    correlation_id=correlation_id,
+                )
+        elif problem.kind == "respiratory_distress" and problem.status == Problem.Status.ACTIVE:
+            if age_seconds >= 120:
+                _ensure_secondary_problem(
+                    session=session,
+                    parent_problem=problem,
+                    kind="tension_pneumothorax",
+                    severity=Problem.Severity.CRITICAL,
+                    description="Worsening respiratory distress progressing to tension physiology.",
+                    rule_id="progression.respiratory_distress_to_tension_pneumothorax",
+                    correlation_id=correlation_id,
+                )
+        elif problem.kind == "airway_obstruction" and problem.status == Problem.Status.ACTIVE:
+            if age_seconds >= 45:
+                _ensure_secondary_problem(
+                    session=session,
+                    parent_problem=problem,
+                    kind="hypoxia",
+                    severity=Problem.Severity.HIGH,
+                    description="Hypoxia from persistent airway obstruction.",
+                    rule_id="progression.airway_obstruction_to_hypoxia",
+                    correlation_id=correlation_id,
+                )
+        elif (
+            problem.kind == "infectious_process"
+            and problem.status == Problem.Status.ACTIVE
+            and age_seconds >= 300
+            and _severity_rank(problem.severity) < _severity_rank(Problem.Severity.HIGH)
+        ):
+            _deactivate_event(problem)
+            updated = _create_problem_domain_event(
+                session=session,
+                cause=problem.cause,
+                kind=problem.kind,
+                title=problem.title,
+                description=problem.description or "Untreated infectious process is worsening.",
+                march_category=problem.march_category,
+                severity=Problem.Severity.HIGH,
+                anatomical_location=problem.anatomical_location,
+                laterality=problem.laterality,
+                parent_problem=problem.parent_problem,
+                supersedes=problem,
+                previous_status=problem.status,
+                adjudication_reason="deterministic_progression",
+                adjudication_rule_id="progression.infectious_process_worsening",
+            )
+            emit_domain_runtime_event(
+                session=session,
+                event_type="problem.updated",
+                obj=updated,
+                extra={"action": "updated"},
+                correlation_id=correlation_id,
+                idempotency_key=f"problem.updated:progression:{updated.id}",
+            )
+
+
+def _apply_finding_update(
     *,
     session: TrainerSession,
     change: dict[str, Any],
     correlation_id: str | None,
 ) -> None:
-    action = change.get("action")
-    condition_kind = change.get("condition_kind")
-    target_event_id = change.get("target_event_id")
+    target_finding = (
+        AssessmentFinding.objects.select_related("target_problem")
+        .filter(
+            simulation=session.simulation,
+            pk=change.get("target_finding_id"),
+            is_active=True,
+        )
+        .first()
+        if change.get("target_finding_id")
+        else None
+    )
+    if change.get("action") == "remove":
+        deactivate_domain_object(
+            session=session,
+            obj=target_finding,
+            correlation_id=correlation_id,
+            action="removed",
+        )
+        return
 
-    # target_event_id now references a Problem (not Injury/Illness directly).
-    source_problem: Problem | None = None
-    if target_event_id:
-        source_problem = Problem.objects.filter(
-            pk=target_event_id, simulation=session.simulation
+    definition = get_finding_definition(change.get("finding_kind"))
+    target_problem = (
+        Problem.objects.filter(
+            simulation=session.simulation,
+            pk=change.get("target_problem_id"),
+            is_active=True,
         ).first()
+        if change.get("target_problem_id")
+        else getattr(target_finding, "target_problem", None)
+    )
+    if target_finding is not None:
+        _deactivate_event(target_finding)
 
-    if action in {"update", "resolve"}:
-        _deactivate_event(source_problem)
-
-    emit_action = (
-        "resolved" if action == "resolve" else ("updated" if action == "update" else "created")
+    finding = AssessmentFinding.objects.create(
+        simulation=session.simulation,
+        source=EventSource.SYSTEM,
+        supersedes=target_finding,
+        target_problem=target_problem,
+        kind=definition.kind,
+        code=definition.code,
+        slug=definition.slug,
+        title=str(change.get("title") or definition.title),
+        display_name=str(change.get("title") or definition.title),
+        description=str(change.get("description") or getattr(target_finding, "description", "")),
+        status=str(
+            change.get("status")
+            or getattr(target_finding, "status", AssessmentFinding.Status.PRESENT)
+        ),
+        severity=str(
+            change.get("severity")
+            or getattr(target_finding, "severity", AssessmentFinding.Severity.MODERATE)
+        ),
+        anatomical_location=str(
+            change.get("anatomical_location") or getattr(target_finding, "anatomical_location", "")
+        ),
+        laterality=str(change.get("laterality") or getattr(target_finding, "laterality", "")),
+        metadata_json=dict(change.get("metadata") or getattr(target_finding, "metadata_json", {})),
+    )
+    emit_domain_runtime_event(
+        session=session,
+        event_type=(
+            "trainerlab.assessment_finding.updated"
+            if target_finding is not None
+            else "trainerlab.assessment_finding.created"
+        ),
+        obj=finding,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.assessment_finding:{finding.id}",
     )
 
-    if condition_kind == "injury":
-        if action == "resolve" and source_problem is None:
-            return
 
-        # For resolve: keep existing cause; only create a new Problem record.
-        # For create/update: create a new Injury cause.
-        old_cause_injury: Injury | None = source_problem.cause_injury if source_problem else None
+def _contraindicated_interventions(session: TrainerSession) -> set[str]:
+    values: set[str] = set()
+    for model in (AssessmentFinding, DiagnosticResult):
+        for obj in model.objects.filter(simulation=session.simulation, is_active=True):
+            for item in obj.metadata_json.get("contraindicated_interventions", []):
+                values.add(str(item))
+    return values
 
-        if action == "resolve":
-            new_injury = old_cause_injury
-        else:
-            if action == "update" and old_cause_injury:
-                _deactivate_event(old_cause_injury)
-            new_injury = Injury.objects.create(
-                simulation=session.simulation,
-                source=EventSource.AI,
-                supersedes=old_cause_injury,
-                injury_location=change.get("injury_location")
-                or getattr(
-                    old_cause_injury,
-                    "injury_location",
-                    Injury.InjuryLocation.THORAX_LEFT_ANTERIOR,
-                ),
-                injury_kind=change.get("injury_kind")
-                or getattr(old_cause_injury, "injury_kind", Injury.InjuryKind.LACERATION),
-                injury_description=change.get("injury_description")
-                or getattr(old_cause_injury, "injury_description", "Updated injury"),
-            )
 
-        new_problem = Problem.objects.create(
-            simulation=session.simulation,
-            source=EventSource.AI,
-            supersedes=source_problem,
-            cause_injury=new_injury,
-            problem_kind=Problem.ProblemKind.INJURY,
-            march_category=change.get("march_category")
-            or getattr(source_problem, "march_category", Problem.MARCHCategory.M),
-            severity=change.get("severity")
-            or getattr(source_problem, "severity", Problem.Severity.MODERATE),
-            is_treated=getattr(source_problem, "is_treated", False),
-            is_resolved=action == "resolve",
+def _resource_constraints(session: TrainerSession) -> tuple[set[str], set[str]]:
+    unavailable: set[str] = set()
+    limited: set[str] = set()
+    for resource in ResourceState.objects.filter(simulation=session.simulation, is_active=True):
+        code = resource.code or resource.kind
+        if (
+            resource.status in {ResourceState.Status.UNAVAILABLE, ResourceState.Status.DEPLETED}
+            or resource.quantity_available <= 0
+        ):
+            unavailable.add(code)
+        elif resource.status == ResourceState.Status.LIMITED or resource.quantity_available <= 1:
+            limited.add(code)
+    return unavailable, limited
+
+
+def _recommendation_key(payload: dict[str, Any]) -> tuple[int, str, str]:
+    return (
+        int(payload["target_problem_id"]),
+        str(payload["kind"]),
+        str(payload.get("site_code") or ""),
+    )
+
+
+def _record_recommendation_evaluation(
+    *,
+    session: TrainerSession,
+    problem: Problem,
+    suggestion: dict[str, Any],
+    normalization,
+    recommendation: RecommendedIntervention | None,
+    correlation_id: str | None,
+) -> None:
+    evaluation = RecommendationEvaluation.objects.create(
+        simulation=session.simulation,
+        source=EventSource.SYSTEM,
+        recommendation=recommendation,
+        target_problem=problem,
+        target_injury=problem.cause if isinstance(problem.cause, Injury) else None,
+        target_illness=problem.cause if isinstance(problem.cause, Illness) else None,
+        raw_kind=str(suggestion.get("intervention_kind") or ""),
+        raw_title=str(suggestion.get("title") or ""),
+        raw_site=str(suggestion.get("site") or ""),
+        normalized_kind=normalization.kind,
+        normalized_code=normalization.code,
+        title=normalization.title or str(suggestion.get("title") or ""),
+        recommendation_source=normalization.recommendation_source,
+        validation_status=normalization.validation_status,
+        rationale=normalization.rationale or str(suggestion.get("rationale") or ""),
+        priority=normalization.priority,
+        warnings_json=list(normalization.warnings),
+        contraindications_json=list(normalization.contraindications),
+        rejection_reason=str(normalization.metadata.get("rejection_reason", "")),
+        metadata_json=dict(normalization.metadata or {}),
+    )
+    emit_domain_runtime_event(
+        session=session,
+        event_type="trainerlab.recommendation_evaluation.created",
+        obj=evaluation,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.recommendation_evaluation.created:{evaluation.id}",
+    )
+
+
+def recompute_active_recommendations(
+    *,
+    session: TrainerSession,
+    ai_suggestions: list[dict[str, Any]] | None = None,
+    correlation_id: str | None = None,
+) -> None:
+    problems = list(
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .filter(simulation=session.simulation, is_active=True)
+        .order_by("timestamp", "id")
+    )
+    current = {
+        _recommendation_key(serialize_recommendation_summary(item)): item
+        for item in RecommendedIntervention.objects.select_related(
+            "target_problem", "target_injury", "target_illness"
+        ).filter(simulation=session.simulation, is_active=True)
+    }
+    unavailable_interventions, limited_interventions = _resource_constraints(session)
+    contraindicated_interventions = _contraindicated_interventions(session)
+
+    desired: dict[tuple[int, str, str], dict[str, Any]] = {}
+    for suggestion in ai_suggestions or []:
+        problem = next(
+            (item for item in problems if item.id == suggestion.get("target_problem_id")), None
         )
-        _emit_condition_change(
+        if problem is None:
+            continue
+        normalization = validate_and_normalize_recommendation(
+            problem=problem,
+            raw_kind=str(suggestion.get("intervention_kind") or ""),
+            raw_title=str(suggestion.get("title") or ""),
+            raw_site=str(suggestion.get("site") or ""),
+            rationale=str(suggestion.get("rationale") or ""),
+            priority=suggestion.get("priority"),
+            warnings=list(suggestion.get("warnings") or []),
+            contraindications=list(suggestion.get("contraindications") or []),
+            metadata=dict(suggestion.get("metadata") or {}),
+            contraindicated_interventions=contraindicated_interventions,
+            unavailable_interventions=unavailable_interventions,
+            limited_interventions=limited_interventions,
+            source_override=RecommendedIntervention.RecommendationSource.AI,
+        )
+        if normalization.accepted:
+            desired[(problem.id, normalization.kind, normalization.site_code)] = {
+                "problem": problem,
+                "source": normalization.recommendation_source,
+                "validation_status": normalization.validation_status,
+                "kind": normalization.kind,
+                "code": normalization.code,
+                "slug": normalization.slug,
+                "title": normalization.title,
+                "display_name": normalization.display_name,
+                "site_code": normalization.site_code,
+                "site_label": normalization.site_label,
+                "rationale": normalization.rationale,
+                "priority": normalization.priority,
+                "warnings": normalization.warnings,
+                "contraindications": normalization.contraindications,
+                "metadata": normalization.metadata,
+            }
+        _record_recommendation_evaluation(
             session=session,
-            problem=new_problem,
-            cause=new_injury,
-            action=emit_action,
+            problem=problem,
+            suggestion=suggestion,
+            normalization=normalization,
+            recommendation=None,
             correlation_id=correlation_id,
         )
-        return
 
-    # illness branch
-    if action == "resolve" and source_problem is None:
-        return
+    for problem in problems:
+        for seed in generate_rule_based_recommendations(problem):
+            normalization = validate_and_normalize_recommendation(
+                problem=problem,
+                raw_kind=seed.intervention_kind,
+                raw_title=seed.title,
+                raw_site=seed.raw_site,
+                rationale=seed.rationale,
+                priority=seed.priority,
+                warnings=seed.warnings,
+                contraindications=seed.contraindications,
+                metadata=seed.metadata,
+                contraindicated_interventions=contraindicated_interventions,
+                unavailable_interventions=unavailable_interventions,
+                limited_interventions=limited_interventions,
+                source_override=RecommendedIntervention.RecommendationSource.RULES,
+            )
+            key = (problem.id, normalization.kind, normalization.site_code)
+            recommendation_obj = None
+            if normalization.accepted:
+                existing = desired.get(key)
+                if existing:
+                    existing["source"] = RecommendedIntervention.RecommendationSource.MERGED
+                    existing["validation_status"] = (
+                        RecommendedIntervention.ValidationStatus.NORMALIZED
+                        if normalization.validation_status
+                        != RecommendedIntervention.ValidationStatus.ACCEPTED
+                        or existing["validation_status"]
+                        != RecommendedIntervention.ValidationStatus.ACCEPTED
+                        else RecommendedIntervention.ValidationStatus.ACCEPTED
+                    )
+                    existing["warnings"] = list(
+                        {*(existing["warnings"] or []), *(normalization.warnings or [])}
+                    )
+                    if existing["priority"] is None or (
+                        normalization.priority is not None
+                        and normalization.priority < existing["priority"]
+                    ):
+                        existing["priority"] = normalization.priority
+                else:
+                    desired[key] = {
+                        "problem": problem,
+                        "source": normalization.recommendation_source,
+                        "validation_status": normalization.validation_status,
+                        "kind": normalization.kind,
+                        "code": normalization.code,
+                        "slug": normalization.slug,
+                        "title": normalization.title,
+                        "display_name": normalization.display_name,
+                        "site_code": normalization.site_code,
+                        "site_label": normalization.site_label,
+                        "rationale": normalization.rationale,
+                        "priority": normalization.priority,
+                        "warnings": normalization.warnings,
+                        "contraindications": normalization.contraindications,
+                        "metadata": normalization.metadata,
+                    }
+            _record_recommendation_evaluation(
+                session=session,
+                problem=problem,
+                suggestion={
+                    "intervention_kind": seed.intervention_kind,
+                    "title": seed.title,
+                    "site": seed.raw_site,
+                    "rationale": seed.rationale,
+                    "priority": seed.priority,
+                    "metadata": seed.metadata,
+                },
+                normalization=normalization,
+                recommendation=recommendation_obj,
+                correlation_id=correlation_id,
+            )
 
-    old_cause_illness: Illness | None = source_problem.cause_illness if source_problem else None
+    for key, existing in current.items():
+        if key not in desired:
+            deactivate_domain_object(
+                session=session,
+                obj=existing,
+                correlation_id=correlation_id,
+                action="removed",
+            )
 
-    if action == "resolve":
-        new_illness = old_cause_illness
-    else:
-        if action == "update" and old_cause_illness:
-            _deactivate_event(old_cause_illness)
-        new_illness = Illness.objects.create(
+    for key, payload in desired.items():
+        existing = current.get(key)
+        needs_update = existing is None or any(
+            [
+                existing.recommendation_source != payload["source"],
+                existing.validation_status != payload["validation_status"],
+                existing.display_name != payload["display_name"],
+                existing.rationale != payload["rationale"],
+                existing.priority != payload["priority"],
+                list(existing.warnings_json or []) != list(payload["warnings"] or []),
+                list(existing.contraindications_json or [])
+                != list(payload["contraindications"] or []),
+            ]
+        )
+        if not needs_update:
+            continue
+        if existing is not None:
+            _deactivate_event(existing)
+        recommendation = RecommendedIntervention.objects.create(
             simulation=session.simulation,
-            source=EventSource.AI,
-            supersedes=old_cause_illness,
-            name=change.get("name") or getattr(old_cause_illness, "name", "Emergent condition"),
-            description=change.get("description") or getattr(old_cause_illness, "description", ""),
+            source=EventSource.SYSTEM,
+            supersedes=existing,
+            kind=payload["kind"],
+            code=payload["code"],
+            slug=payload["slug"],
+            title=payload["title"],
+            display_name=payload["display_name"],
+            description="",
+            target_problem=payload["problem"],
+            target_injury=payload["problem"].cause
+            if isinstance(payload["problem"].cause, Injury)
+            else None,
+            target_illness=payload["problem"].cause
+            if isinstance(payload["problem"].cause, Illness)
+            else None,
+            recommendation_source=payload["source"],
+            validation_status=payload["validation_status"],
+            normalized_kind=payload["kind"],
+            normalized_code=payload["code"],
+            rationale=payload["rationale"],
+            priority=payload["priority"],
+            site_code=payload["site_code"],
+            site_label=payload["site_label"],
+            contraindications_json=payload["contraindications"],
+            warnings_json=payload["warnings"],
+            metadata_json=payload["metadata"],
+        )
+        emit_domain_runtime_event(
+            session=session,
+            event_type=(
+                "recommended_intervention.updated"
+                if existing is not None
+                else "recommended_intervention.created"
+            ),
+            obj=recommendation,
+            correlation_id=correlation_id,
+            idempotency_key=f"recommended_intervention:{recommendation.id}",
         )
 
-    new_problem = Problem.objects.create(
-        simulation=session.simulation,
-        source=EventSource.AI,
-        supersedes=source_problem,
-        cause_illness=new_illness,
-        problem_kind=Problem.ProblemKind.ILLNESS,
-        march_category=change.get("march_category")
-        or getattr(source_problem, "march_category", Problem.MARCHCategory.R),
-        severity=change.get("severity")
-        or getattr(source_problem, "severity", Problem.Severity.MODERATE),
-        is_treated=getattr(source_problem, "is_treated", False),
-        is_resolved=action == "resolve",
+
+def _derive_patient_status_annotations(
+    *,
+    session: TrainerSession,
+    base_status: dict[str, Any] | None,
+) -> dict[str, Any]:
+    patient_status = dict(base_status or {})
+    active_problems = list(
+        Problem.objects.filter(simulation=session.simulation, is_active=True).order_by(
+            "timestamp", "id"
+        )
     )
-    _emit_condition_change(
-        session=session,
-        problem=new_problem,
-        cause=new_illness,
-        action=emit_action,
-        correlation_id=correlation_id,
+    active_kinds = {problem.kind for problem in active_problems}
+    patient_status["respiratory_distress"] = bool(
+        patient_status.get("respiratory_distress")
+        or {"respiratory_distress", "tension_pneumothorax", "hypoxia"} & active_kinds
     )
+    patient_status["hemodynamic_instability"] = bool(
+        patient_status.get("hemodynamic_instability")
+        or {"hemorrhage", "hypoperfusion_shock"} & active_kinds
+    )
+    patient_status["tension_pneumothorax"] = bool(
+        patient_status.get("tension_pneumothorax") or "tension_pneumothorax" in active_kinds
+    )
+    patient_status["impending_pneumothorax"] = bool(
+        patient_status.get("impending_pneumothorax")
+        or ("open_chest_wound" in active_kinds and "tension_pneumothorax" not in active_kinds)
+    )
+    if not patient_status.get("narrative"):
+        if "hypoperfusion_shock" in active_kinds:
+            patient_status["narrative"] = (
+                "Patient is decompensating with evolving shock physiology."
+            )
+        elif "tension_pneumothorax" in active_kinds:
+            patient_status["narrative"] = (
+                "Patient is in critical respiratory compromise with tension physiology."
+            )
+        elif "infectious_process" in active_kinds:
+            patient_status["narrative"] = "Patient remains ill with an active infectious process."
+        else:
+            patient_status["narrative"] = "Patient status is being actively reassessed."
+    patient_status.setdefault("teaching_flags", [])
+    return patient_status
 
 
 def _apply_vital_change(
@@ -1088,7 +2029,7 @@ def _apply_vital_change(
 
     common = {
         "simulation": session.simulation,
-        "source": EventSource.AI,
+        "source": EventSource.SYSTEM,
         "supersedes": existing,
         "min_value": change.get("min_value"),
         "max_value": change.get("max_value"),
@@ -1108,10 +2049,10 @@ def _apply_vital_change(
     payload["trend"] = change.get("trend", "stable")
     emit_runtime_event(
         session=session,
-        event_type="vital.updated",
+        event_type="trainerlab.vital.updated",
         payload=payload,
         correlation_id=correlation_id,
-        idempotency_key=f"vital.updated:{created.id}",
+        idempotency_key=f"trainerlab.vital.updated:{created.id}",
     )
 
 
@@ -1138,7 +2079,7 @@ def _apply_pulse_change(
 
     created = PulseAssessment.objects.create(
         simulation=session.simulation,
-        source=EventSource.AI,
+        source=EventSource.SYSTEM,
         supersedes=existing,
         location=location,
         present=bool(change.get("present", True)),
@@ -1179,34 +2120,28 @@ def _apply_intervention_effect(
     if intervention is None:
         return
 
+    intervention.effectiveness = change.get("effectiveness", intervention.effectiveness)
+    if change.get("notes"):
+        intervention.notes = str(change.get("notes"))
+    intervention.save(update_fields=["effectiveness", "notes"])
+
     effects = dict(state.get("intervention_effects") or {})
     effects[str(intervention.id)] = {
         "status": change.get("status", "active"),
         "clinical_effect": change.get("clinical_effect", ""),
-        "notes": change.get("notes", ""),
+        "notes": intervention.notes,
     }
     state["intervention_effects"] = effects
 
     emit_runtime_event(
         session=session,
-        event_type="intervention.created",
-        payload={
-            "domain_event_id": intervention.id,
-            "intervention_type": intervention.intervention_type or None,
-            "site_code": intervention.site_code or None,
-            "status": intervention.status,
-            "effectiveness": intervention.effectiveness,
-            "notes": intervention.notes,
-            "supersedes_event_id": intervention.supersedes_id,
-            "code": intervention.code,
-            "description": intervention.description,
-            "target": intervention.target,
-            "anatomic_location": intervention.anatomic_location,
-            "performed_by_role": intervention.performed_by_role,
-            "effect": effects[str(intervention.id)],
-        },
+        event_type="intervention.updated",
+        payload=serialize_domain_event(
+            intervention,
+            extra={"effect": effects[str(intervention.id)]},
+        ),
         correlation_id=correlation_id,
-        idempotency_key=f"intervention.created:{intervention.id}:{effects[str(intervention.id)]['status']}",
+        idempotency_key=f"intervention.updated:{intervention.id}:{effects[str(intervention.id)]['status']}",
     )
 
     # #6: Emit structured assessment event so clients get a closed-loop feedback signal
@@ -1243,28 +2178,37 @@ def apply_runtime_turn_output(
             return state
         processed_reasons = list(state.get("currently_processing_reasons") or [])
 
-        for change in output_payload.get("state_changes", {}).get("conditions", []):
-            _apply_condition_change(
+        state_changes = dict(output_payload.get("state_changes") or {})
+
+        for observation in state_changes.get("problem_observations", []):
+            _apply_problem_observation(
                 session=session,
-                change=change,
+                observation=observation,
                 correlation_id=correlation_id,
             )
 
-        for change in output_payload.get("state_changes", {}).get("vitals", []):
+        for change in state_changes.get("vital_updates", []):
             _apply_vital_change(
                 session=session,
                 change=change,
                 correlation_id=correlation_id,
             )
 
-        for change in output_payload.get("state_changes", {}).get("pulses", []):
+        for change in state_changes.get("pulse_updates", []):
             _apply_pulse_change(
                 session=session,
                 change=change,
                 correlation_id=correlation_id,
             )
 
-        for change in output_payload.get("state_changes", {}).get("interventions", []):
+        for change in state_changes.get("finding_updates", []):
+            _apply_finding_update(
+                session=session,
+                change=change,
+                correlation_id=correlation_id,
+            )
+
+        for change in state_changes.get("intervention_assessments", []):
             _apply_intervention_effect(
                 session=session,
                 change=change,
@@ -1272,11 +2216,23 @@ def apply_runtime_turn_output(
                 correlation_id=correlation_id,
             )
 
-        snapshot = dict(output_payload.get("snapshot") or {})
-        patient_status = dict(snapshot.get("patient_status") or {})
+        _apply_progression_catalogs(
+            session=session,
+            correlation_id=correlation_id,
+        )
+        recompute_active_recommendations(
+            session=session,
+            ai_suggestions=list(state_changes.get("recommendation_suggestions") or []),
+            correlation_id=correlation_id,
+        )
+        patient_status = _derive_patient_status_annotations(
+            session=session,
+            base_status=dict(output_payload.get("patient_status") or {}),
+        )
         state["runtime_processing"] = False
         state["currently_processing_reasons"] = []
         state["last_runtime_error"] = ""
+        state["llm_conditions_check"] = list(output_payload.get("llm_conditions_check") or [])
         state["snapshot_annotations"] = {
             **dict(state.get("snapshot_annotations") or {}),
             "patient_status": patient_status,
@@ -1666,75 +2622,77 @@ def enqueue_vitals_progression(
 # ---------------------------------------------------------------------------
 
 
-def update_condition_control_state(
+def update_problem_status(
     *,
     session: TrainerSession,
-    condition_id: int,
-    kind: str,
+    problem_id: int,
     is_treated: bool | None = None,
     is_resolved: bool | None = None,
     correlation_id: str | None = None,
-) -> Injury | Illness:
+) -> Problem:
     """
-    Update the instructor-controlled treatment/resolution state of an Injury or Illness.
+    Update the instructor-controlled treatment/resolution state of a Problem.
 
     Creates a superseding event record (immutable event log) and deactivates the old one
-    so the full condition history is preserved.
+    so the full problem history is preserved.
     """
-    # Use kind to do a direct typed lookup — avoids PK collisions between the
-    # independent auto-increment sequences on Injury and Illness tables.
-    model_cls = Injury if kind == "injury" else Illness
-    original: Injury | Illness | None = model_cls.objects.filter(
-        pk=condition_id, simulation=session.simulation, is_active=True
-    ).first()
+    original: Problem | None = (
+        Problem.objects.select_related("cause_injury", "cause_illness")
+        .filter(
+            pk=problem_id,
+            simulation=session.simulation,
+            is_active=True,
+        )
+        .first()
+    )
     if original is None:
-        raise ValidationError(f"Active condition {condition_id} not found for this simulation.")
+        raise ValidationError(f"Active problem {problem_id} not found for this simulation.")
 
-    _deactivate_event(original)
-
-    if isinstance(original, Injury):
-        created: Injury | Illness = Injury.objects.create(
-            simulation=session.simulation,
-            source=EventSource.INSTRUCTOR,
-            supersedes=original,
-            injury_category=original.injury_category,
-            injury_location=original.injury_location,
-            injury_kind=original.injury_kind,
-            injury_description=original.injury_description,
-            parent_injury=original.parent_injury,
-            is_treated=is_treated if is_treated is not None else original.is_treated,
-            is_resolved=is_resolved if is_resolved is not None else original.is_resolved,
-        )
-    else:
-        created = Illness.objects.create(
-            simulation=session.simulation,
-            source=EventSource.INSTRUCTOR,
-            supersedes=original,
-            name=original.name,
-            description=original.description,
-            severity=original.severity,
-            is_resolved=is_resolved if is_resolved is not None else original.is_resolved,
-        )
-
-    is_treated_val = getattr(created, "is_treated", False)
-    is_resolved_val = getattr(created, "is_resolved", False)
-    if is_resolved_val:
-        control_state = "resolved"
-    elif is_treated_val:
-        control_state = "controlled"
-    else:
-        control_state = "uncontrolled"
-
-    payload = _serialize_condition(created)
-    payload["control_state"] = control_state
-    payload["action"] = "control_state_updated"
-
-    emit_runtime_event(
+    deactivate_domain_object(
         session=session,
-        event_type="trainerlab.condition.control_state_updated",
-        payload=payload,
+        obj=original,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.condition.control_state_updated:{created.id}",
+    )
+
+    next_status = original.status
+    if is_resolved is True:
+        next_status = Problem.Status.RESOLVED
+    elif is_treated is True and original.status == Problem.Status.ACTIVE:
+        next_status = Problem.Status.TREATED
+    elif is_treated is False and original.status == Problem.Status.TREATED:
+        next_status = Problem.Status.ACTIVE
+
+    created = Problem.objects.create(
+        simulation=session.simulation,
+        source=EventSource.INSTRUCTOR,
+        supersedes=original,
+        cause_injury=original.cause_injury,
+        cause_illness=original.cause_illness,
+        problem_kind=original.problem_kind,
+        kind=original.kind,
+        code=original.code,
+        slug=original.slug,
+        title=original.title,
+        display_name=original.display_name,
+        description=original.description,
+        march_category=original.march_category,
+        severity=original.severity,
+        anatomical_location=original.anatomical_location,
+        laterality=original.laterality,
+        status=next_status,
+        metadata_json=original.metadata_json,
+    )
+
+    status_event_type = (
+        "problem.resolved" if created.status == Problem.Status.RESOLVED else "problem.updated"
+    )
+    emit_domain_runtime_event(
+        session=session,
+        event_type=status_event_type,
+        obj=created,
+        extra={"action": "status_updated"},
+        correlation_id=correlation_id,
+        idempotency_key=f"{status_event_type}:manual-status:{created.id}",
     )
 
     refresh_runtime_projection(session=session, correlation_id=correlation_id)
@@ -1834,12 +2792,12 @@ def get_session_annotations(*, session: TrainerSession) -> list[DebriefAnnotatio
 
 
 def snapshot_before_preset(session: TrainerSession) -> dict[str, Any]:
-    """Capture a lightweight snapshot of active conditions and vitals before preset application."""
+    """Capture a lightweight snapshot of active causes and vitals before preset application."""
     state = get_runtime_state(session)
-    conditions = []
+    causes = []
     for model in (Injury, Illness):
         for obj in model.objects.filter(simulation=session.simulation, is_active=True):
-            conditions.append(
+            causes.append(
                 {
                     "id": obj.id,
                     "kind": "illness" if isinstance(obj, Illness) else "injury",
@@ -1859,7 +2817,7 @@ def snapshot_before_preset(session: TrainerSession) -> dict[str, Any]:
                 "max_value": obj.max_value,
             }
     return {
-        "conditions": conditions,
+        "causes": causes,
         "vitals": vitals,
         "state_revision": int(state.get("state_revision", 0)),
     }
@@ -1871,18 +2829,18 @@ def compute_preset_diff(
     session: TrainerSession,
 ) -> dict[str, Any]:
     """Compare before/after snapshots and build a human-readable diff."""
-    after_conditions = []
+    after_causes = []
     for model in (Injury, Illness):
         for obj in model.objects.filter(simulation=session.simulation, is_active=True):
-            after_conditions.append(
+            after_causes.append(
                 {
                     "id": obj.id,
                     "kind": "illness" if isinstance(obj, Illness) else "injury",
                     "label": getattr(obj, "name", None) or getattr(obj, "injury_description", ""),
                 }
             )
-    before_ids = {c["id"] for c in before.get("conditions", [])}
-    added_conditions = [c for c in after_conditions if c["id"] not in before_ids]
+    before_ids = {cause["id"] for cause in before.get("causes", [])}
+    added_causes = [cause for cause in after_causes if cause["id"] not in before_ids]
 
     after_vitals: dict[str, Any] = {}
     for vital_type, model in VITAL_TYPE_MODEL_MAP.items():
@@ -1904,7 +2862,7 @@ def compute_preset_diff(
             changed_vitals[vtype] = {"before": before_val, "after": after_val}
 
     return {
-        "conditions_added": added_conditions,
+        "causes_added": added_causes,
         "vitals_changed": changed_vitals,
         "state_revision_before": before.get("state_revision"),
     }
@@ -1932,25 +2890,22 @@ def emit_intervention_assessed(
     if intervention is None:
         return
 
-    target_condition_id: int | None = None
-    target_condition_label: str | None = None
-    target_condition_control_state: str | None = None
+    target_problem_id: int | None = None
+    target_problem_title: str | None = None
+    target_problem_status: str | None = None
     if intervention.target_problem_id:
         problem = Problem.objects.filter(pk=intervention.target_problem_id).first()
         if problem:
-            target_condition_id = problem.pk
-            # Derive label from the underlying cause (Injury/Illness)
-            cause = problem.cause
-            if cause:
-                injury = Injury.objects.filter(pk=cause.pk).first()
-                if injury:
-                    target_condition_label = injury.injury_description
+            target_problem_id = problem.pk
+            target_problem_title = problem.display_name or problem.title
             if problem.is_resolved:
-                target_condition_control_state = "resolved"
+                target_problem_status = "resolved"
+            elif problem.is_controlled:
+                target_problem_status = "controlled"
             elif problem.is_treated:
-                target_condition_control_state = "controlled"
+                target_problem_status = "treated"
             else:
-                target_condition_control_state = "uncontrolled"
+                target_problem_status = "active"
 
     emit_runtime_event(
         session=session,
@@ -1962,9 +2917,9 @@ def emit_intervention_assessed(
             "effectiveness": effectiveness,
             "clinical_effect": clinical_effect,
             "status": status,
-            "target_condition_id": target_condition_id,
-            "target_condition_label": target_condition_label,
-            "target_condition_control_state": target_condition_control_state,
+            "target_problem_id": target_problem_id,
+            "target_problem_title": target_problem_title,
+            "target_problem_status": target_problem_status,
         },
         correlation_id=correlation_id,
         idempotency_key=f"trainerlab.intervention.assessed:{intervention_id}:{status}",

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SimWorks API",
-    "version": "1.0.0",
+    "version": "0.10.0",
     "description": "REST API for SimWorks medical training platform"
   },
   "paths": {
@@ -2322,6 +2322,53 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/problems/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_problem_event",
+        "summary": "Inject problem event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_create_intervention_event",
@@ -2357,6 +2404,194 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/InterventionCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/assessment-findings/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_assessment_finding_event",
+        "summary": "Inject assessment finding event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentFindingCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/diagnostic-results/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_diagnostic_result_event",
+        "summary": "Inject diagnostic result event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticResultCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/resources/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_resource_event",
+        "summary": "Inject resource state event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResourceStateCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/trainerlab/simulations/{simulation_id}/events/disposition/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_create_disposition_event",
+        "summary": "Inject disposition state event",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerCommandAck"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispositionStateCreateIn"
               }
             }
           },
@@ -2642,7 +2877,7 @@
             }
           }
         },
-        "description": "Immediately enqueue a vitals-only AI progression turn.\n\nUnlike the full runtime tick, this service only updates vital sign ranges\nand does not modify conditions or interventions.",
+        "description": "Immediately enqueue a vitals-only AI progression turn.\n\nUnlike the full runtime tick, this service only updates vital sign ranges\nand does not modify causes, problems, or interventions.",
         "tags": [
           "trainerlab"
         ],
@@ -2653,10 +2888,10 @@
         ]
       }
     },
-    "/api/v1/trainerlab/simulations/{simulation_id}/conditions/{condition_id}/": {
+    "/api/v1/trainerlab/simulations/{simulation_id}/problems/{problem_id}/": {
       "patch": {
-        "operationId": "api_v1_endpoints_trainerlab_update_condition",
-        "summary": "Update treatment/resolution state of a condition",
+        "operationId": "api_v1_endpoints_trainerlab_update_problem",
+        "summary": "Update treatment/resolution state of a problem",
         "parameters": [
           {
             "in": "path",
@@ -2669,9 +2904,9 @@
           },
           {
             "in": "path",
-            "name": "condition_id",
+            "name": "problem_id",
             "schema": {
-              "title": "Condition Id",
+              "title": "Problem Id",
               "type": "integer"
             },
             "required": true
@@ -2683,13 +2918,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConditionControlOut"
+                  "$ref": "#/components/schemas/ProblemStatusOut"
                 }
               }
             }
           }
         },
-        "description": "Set the instructor-controlled treatment or resolution state of an Injury or Illness.\n\n- `is_treated=true` \u2192 marks the condition as `controlled` (treatment applied)\n- `is_resolved=true` \u2192 marks the condition as `resolved` (no longer active clinically)\n\nCreates a superseding event record preserving full history.",
+        "description": "Set the instructor-controlled treatment or resolution state of a Problem.",
         "tags": [
           "trainerlab"
         ],
@@ -2697,7 +2932,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConditionControlUpdateIn"
+                "$ref": "#/components/schemas/ProblemStatusUpdateIn"
               }
             }
           },
@@ -4711,7 +4946,7 @@
         "title": "ScenarioInstructionUnshareIn",
         "type": "object"
       },
-      "PresetApplyConditionItem": {
+      "PresetApplyCauseItem": {
         "properties": {
           "id": {
             "title": "Id",
@@ -4731,16 +4966,16 @@
           "kind",
           "label"
         ],
-        "title": "PresetApplyConditionItem",
+        "title": "PresetApplyCauseItem",
         "type": "object"
       },
       "PresetApplyDiff": {
         "properties": {
-          "conditions_added": {
+          "causes_added": {
             "items": {
-              "$ref": "#/components/schemas/PresetApplyConditionItem"
+              "$ref": "#/components/schemas/PresetApplyCauseItem"
             },
-            "title": "Conditions Added",
+            "title": "Causes Added",
             "type": "array"
           },
           "vitals_changed": {
@@ -5030,9 +5265,67 @@
         "title": "PaginatedResponse[TrainerRunOut]",
         "type": "object"
       },
-      "RuntimeConditionStateOut": {
+      "RecommendedInterventionStateOut": {
         "properties": {
-          "domain_event_id": {
+          "recommendation_id": {
+            "title": "Recommendation Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "target_problem_id": {
+            "title": "Target Problem Id",
+            "type": "integer"
+          },
+          "target_cause_id": {
             "anyOf": [
               {
                 "type": "integer"
@@ -5041,24 +5334,230 @@
                 "type": "null"
               }
             ],
-            "title": "Domain Event Id"
+            "title": "Target Cause Id"
+          },
+          "target_cause_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "injury",
+                  "illness"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Cause Kind"
+          },
+          "recommendation_source": {
+            "enum": [
+              "ai",
+              "rules",
+              "merged"
+            ],
+            "title": "Recommendation Source",
+            "type": "string"
+          },
+          "validation_status": {
+            "enum": [
+              "accepted",
+              "normalized",
+              "downgraded",
+              "rejected"
+            ],
+            "title": "Validation Status",
+            "type": "string"
+          },
+          "normalized_kind": {
+            "title": "Normalized Kind",
+            "type": "string"
+          },
+          "normalized_code": {
+            "title": "Normalized Code",
+            "type": "string"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "site_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Code"
+          },
+          "site_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Label"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "contraindications": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contraindications",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "recommendation_id",
+          "kind",
+          "code",
+          "title",
+          "target_problem_id",
+          "recommendation_source",
+          "validation_status",
+          "normalized_kind",
+          "normalized_code"
+        ],
+        "title": "RecommendedInterventionStateOut",
+        "type": "object"
+      },
+      "RuntimeAssessmentFindingStateOut": {
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
           },
           "kind": {
-            "enum": [
-              "injury",
-              "illness",
-              "other"
-            ],
             "title": "Kind",
             "type": "string"
           },
-          "label": {
-            "title": "Label",
+          "code": {
+            "title": "Code",
             "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "anatomical_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anatomical Location"
+          },
+          "laterality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laterality"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "source": {
             "anyOf": [
@@ -5081,8 +5580,46 @@
               }
             ],
             "title": "Timestamp"
+          }
+        },
+        "required": [
+          "finding_id",
+          "kind",
+          "code",
+          "title",
+          "status"
+        ],
+        "title": "RuntimeAssessmentFindingStateOut",
+        "type": "object"
+      },
+      "RuntimeCauseStateOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
           },
-          "march_category": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "cause_kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Cause Kind",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
             "anyOf": [
               {
                 "type": "string"
@@ -5091,9 +5628,13 @@
                 "type": "null"
               }
             ],
-            "title": "March Category"
+            "title": "Slug"
           },
-          "injury_location": {
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
             "anyOf": [
               {
                 "type": "string"
@@ -5102,18 +5643,7 @@
                 "type": "null"
               }
             ],
-            "title": "Injury Location"
-          },
-          "injury_kind": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Injury Kind"
+            "title": "Display Name"
           },
           "description": {
             "anyOf": [
@@ -5126,7 +5656,7 @@
             ],
             "title": "Description"
           },
-          "severity": {
+          "anatomical_location": {
             "anyOf": [
               {
                 "type": "string"
@@ -5135,30 +5665,259 @@
                 "type": "null"
               }
             ],
-            "title": "Severity"
+            "title": "Anatomical Location"
           },
-          "is_treated": {
-            "default": false,
-            "title": "Is Treated",
-            "type": "boolean"
+          "laterality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laterality"
           },
-          "is_resolved": {
-            "default": false,
-            "title": "Is Resolved",
-            "type": "boolean"
+          "recommended_interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedInterventionStateOut"
+            },
+            "title": "Recommended Interventions",
+            "type": "array"
           },
-          "control_state": {
-            "default": "uncontrolled",
-            "title": "Control State",
-            "type": "string"
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
           }
         },
         "required": [
+          "id",
+          "cause_kind",
           "kind",
-          "label",
+          "code",
+          "title"
+        ],
+        "title": "RuntimeCauseStateOut",
+        "type": "object"
+      },
+      "RuntimeDiagnosticResultStateOut": {
+        "properties": {
+          "diagnostic_id": {
+            "title": "Diagnostic Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "value_text": {
+            "default": "",
+            "title": "Value Text",
+            "type": "string"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "diagnostic_id",
+          "kind",
+          "code",
+          "title",
           "status"
         ],
-        "title": "RuntimeConditionStateOut",
+        "title": "RuntimeDiagnosticResultStateOut",
+        "type": "object"
+      },
+      "RuntimeDispositionStateOut": {
+        "properties": {
+          "disposition_id": {
+            "title": "Disposition Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "transport_mode": {
+            "default": "",
+            "title": "Transport Mode",
+            "type": "string"
+          },
+          "destination": {
+            "default": "",
+            "title": "Destination",
+            "type": "string"
+          },
+          "eta_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Minutes"
+          },
+          "handoff_ready": {
+            "default": false,
+            "title": "Handoff Ready",
+            "type": "boolean"
+          },
+          "scene_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scene Constraints",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "disposition_id",
+          "status"
+        ],
+        "title": "RuntimeDispositionStateOut",
         "type": "object"
       },
       "RuntimeInstructorIntent": {
@@ -5218,27 +5977,26 @@
       },
       "RuntimeInterventionStateOut": {
         "properties": {
-          "domain_event_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Domain Event Id"
+          "intervention_id": {
+            "title": "Intervention Id",
+            "type": "integer"
           },
-          "intervention_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Intervention Type"
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
           },
           "site_code": {
             "anyOf": [
@@ -5261,30 +6019,41 @@
             "title": "Notes",
             "type": "string"
           },
-          "code": {
-            "default": "",
-            "title": "Code",
-            "type": "string"
-          },
           "description": {
             "default": "",
             "title": "Description",
             "type": "string"
           },
-          "target": {
-            "default": "",
-            "title": "Target",
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "initiated_by_type": {
+            "enum": [
+              "user",
+              "instructor",
+              "system"
+            ],
+            "title": "Initiated By Type",
             "type": "string"
           },
-          "anatomic_location": {
-            "default": "",
-            "title": "Anatomic Location",
-            "type": "string"
-          },
-          "performed_by_role": {
-            "default": "trainee",
-            "title": "Performed By Role",
-            "type": "string"
+          "initiated_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By Id"
           },
           "status": {
             "default": "active",
@@ -5294,6 +6063,26 @@
           "clinical_effect": {
             "default": "",
             "title": "Clinical Effect",
+            "type": "string"
+          },
+          "target_problem_previous_status": {
+            "default": "",
+            "title": "Target Problem Previous Status",
+            "type": "string"
+          },
+          "target_problem_current_status": {
+            "default": "",
+            "title": "Target Problem Current Status",
+            "type": "string"
+          },
+          "adjudication_reason": {
+            "default": "",
+            "title": "Adjudication Reason",
+            "type": "string"
+          },
+          "adjudication_rule_id": {
+            "default": "",
+            "title": "Adjudication Rule Id",
             "type": "string"
           },
           "source": {
@@ -5319,6 +6108,13 @@
             "title": "Timestamp"
           }
         },
+        "required": [
+          "intervention_id",
+          "kind",
+          "code",
+          "title",
+          "initiated_by_type"
+        ],
         "title": "RuntimeInterventionStateOut",
         "type": "object"
       },
@@ -5370,6 +6166,347 @@
           }
         },
         "title": "RuntimePatientStatus",
+        "type": "object"
+      },
+      "RuntimeProblemStateOut": {
+        "properties": {
+          "problem_id": {
+            "title": "Problem Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "march_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "March Category"
+          },
+          "anatomical_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anatomical Location"
+          },
+          "laterality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Laterality"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "treated",
+              "controlled",
+              "resolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "previous_status": {
+            "default": "",
+            "title": "Previous Status",
+            "type": "string"
+          },
+          "treated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Treated At"
+          },
+          "controlled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controlled At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "cause_id": {
+            "title": "Cause Id",
+            "type": "integer"
+          },
+          "cause_kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Cause Kind",
+            "type": "string"
+          },
+          "parent_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Problem Id"
+          },
+          "triggering_intervention_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggering Intervention Id"
+          },
+          "adjudication_reason": {
+            "default": "",
+            "title": "Adjudication Reason",
+            "type": "string"
+          },
+          "adjudication_rule_id": {
+            "default": "",
+            "title": "Adjudication Rule Id",
+            "type": "string"
+          },
+          "recommended_interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedInterventionStateOut"
+            },
+            "title": "Recommended Interventions",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "problem_id",
+          "kind",
+          "code",
+          "title",
+          "status",
+          "cause_id",
+          "cause_kind"
+        ],
+        "title": "RuntimeProblemStateOut",
+        "type": "object"
+      },
+      "RuntimeResourceStateOut": {
+        "properties": {
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "integer"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "quantity_available": {
+            "default": 0,
+            "title": "Quantity Available",
+            "type": "integer"
+          },
+          "quantity_unit": {
+            "default": "",
+            "title": "Quantity Unit",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "timestamp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp"
+          }
+        },
+        "required": [
+          "resource_id",
+          "kind",
+          "code",
+          "title",
+          "status"
+        ],
+        "title": "RuntimeResourceStateOut",
         "type": "object"
       },
       "RuntimeVitalStateOut": {
@@ -5491,9 +6628,11 @@
             "type": "string"
           },
           "evacuation_options": {
-            "default": "",
+            "items": {
+              "type": "string"
+            },
             "title": "Evacuation Options",
-            "type": "string"
+            "type": "array"
           },
           "evacuation_time": {
             "default": "",
@@ -5501,9 +6640,11 @@
             "type": "string"
           },
           "special_considerations": {
-            "default": "",
+            "items": {
+              "type": "string"
+            },
             "title": "Special Considerations",
-            "type": "string"
+            "type": "array"
           }
         },
         "title": "ScenarioBriefOut",
@@ -5511,11 +6652,25 @@
       },
       "TrainerRuntimeSnapshotOut": {
         "properties": {
-          "conditions": {
+          "causes": {
             "items": {
-              "$ref": "#/components/schemas/RuntimeConditionStateOut"
+              "$ref": "#/components/schemas/RuntimeCauseStateOut"
             },
-            "title": "Conditions",
+            "title": "Causes",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeProblemStateOut"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "recommended_interventions": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendedInterventionStateOut"
+            },
+            "title": "Recommended Interventions",
             "type": "array"
           },
           "interventions": {
@@ -5525,6 +6680,37 @@
             "title": "Interventions",
             "type": "array"
           },
+          "assessment_findings": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeAssessmentFindingStateOut"
+            },
+            "title": "Assessment Findings",
+            "type": "array"
+          },
+          "diagnostic_results": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeDiagnosticResultStateOut"
+            },
+            "title": "Diagnostic Results",
+            "type": "array"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeResourceStateOut"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeDispositionStateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "vitals": {
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalStateOut"
@@ -5532,10 +6718,28 @@
             "title": "Vitals",
             "type": "array"
           },
+          "pulses": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pulses",
+            "type": "array"
+          },
           "patient_status": {
             "allOf": [
               {
                 "$ref": "#/components/schemas/RuntimePatientStatus"
+              }
+            ]
+          },
+          "scenario_brief": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioBriefOut"
+              },
+              {
+                "type": "null"
               }
             ]
           }
@@ -5852,6 +7056,138 @@
             "title": "Injury Description",
             "type": "string"
           },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the Injury being superseded by this new cause record",
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "injury_location",
+          "injury_kind",
+          "injury_description"
+        ],
+        "title": "InjuryCreateIn",
+        "type": "object"
+      },
+      "IllnessCreateIn": {
+        "properties": {
+          "illness_name": {
+            "title": "Illness Name",
+            "type": "string"
+          },
+          "illness_description": {
+            "default": "",
+            "title": "Illness Description",
+            "type": "string"
+          },
+          "anatomical_location": {
+            "default": "",
+            "title": "Anatomical Location",
+            "type": "string"
+          },
+          "laterality": {
+            "default": "",
+            "title": "Laterality",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the Illness being superseded by this new cause record",
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "illness_name"
+        ],
+        "title": "IllnessCreateIn",
+        "type": "object"
+      },
+      "ProblemCreateIn": {
+        "properties": {
+          "cause_kind": {
+            "enum": [
+              "injury",
+              "illness"
+            ],
+            "title": "Cause Kind",
+            "type": "string"
+          },
+          "cause_id": {
+            "title": "Cause Id",
+            "type": "integer"
+          },
+          "parent_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Problem Id"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
           "march_category": {
             "description": "MARCH triage category code (M, A, R, C, H1, H2, PC)",
             "title": "March Category",
@@ -5868,60 +7204,31 @@
             "title": "Severity",
             "type": "string"
           },
-          "description": {
+          "anatomical_location": {
             "default": "",
-            "description": "Optional plain-text problem description (supplements injury_description)",
-            "title": "Description",
+            "title": "Anatomical Location",
             "type": "string"
           },
-          "supersedes_event_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "ID of the Problem being superseded by this new injury record",
-            "title": "Supersedes Event Id"
-          }
-        },
-        "required": [
-          "injury_location",
-          "injury_kind",
-          "injury_description",
-          "march_category"
-        ],
-        "title": "InjuryCreateIn",
-        "type": "object"
-      },
-      "IllnessCreateIn": {
-        "properties": {
-          "illness_name": {
-            "title": "Illness Name",
-            "type": "string"
-          },
-          "illness_description": {
+          "laterality": {
             "default": "",
-            "title": "Illness Description",
+            "title": "Laterality",
             "type": "string"
           },
-          "march_category": {
-            "description": "MARCH triage category (R, C, etc.) that this illness maps to",
-            "title": "March Category",
-            "type": "string"
-          },
-          "severity": {
-            "default": "moderate",
+          "status": {
+            "default": "active",
             "enum": [
-              "low",
-              "moderate",
-              "high",
-              "critical"
+              "active",
+              "treated",
+              "controlled",
+              "resolved"
             ],
-            "title": "Severity",
+            "title": "Status",
             "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
           },
           "supersedes_event_id": {
             "anyOf": [
@@ -5932,15 +7239,18 @@
                 "type": "null"
               }
             ],
-            "description": "ID of the Problem being superseded by this new illness record",
+            "description": "ID of the Problem being superseded by this new problem record",
             "title": "Supersedes Event Id"
           }
         },
         "required": [
-          "illness_name",
+          "cause_kind",
+          "cause_id",
+          "kind",
+          "title",
           "march_category"
         ],
-        "title": "IllnessCreateIn",
+        "title": "ProblemCreateIn",
         "type": "object"
       },
       "InterventionCreateIn": {
@@ -5956,15 +7266,8 @@
             "type": "string"
           },
           "target_problem_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Problem Id"
+            "title": "Target Problem Id",
+            "type": "integer"
           },
           "status": {
             "default": "applied",
@@ -5997,15 +7300,26 @@
             "$ref": "#/components/schemas/InterventionDetailsIn",
             "description": "Typed intervention-specific details. `details.kind` must match `intervention_type`."
           },
-          "performed_by_role": {
-            "default": "trainee",
+          "initiated_by_type": {
+            "default": "user",
             "enum": [
-              "trainee",
+              "user",
               "instructor",
-              "ai"
+              "system"
             ],
-            "title": "Performed By Role",
+            "title": "Initiated By Type",
             "type": "string"
+          },
+          "initiated_by_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By Id"
           },
           "supersedes_event_id": {
             "anyOf": [
@@ -6022,6 +7336,7 @@
         "required": [
           "intervention_type",
           "site_code",
+          "target_problem_id",
           "details"
         ],
         "title": "InterventionCreateIn",
@@ -6046,6 +7361,296 @@
         "title": "InterventionDetailsIn",
         "type": "object"
       },
+      "AssessmentFindingCreateIn": {
+        "properties": {
+          "finding_kind": {
+            "title": "Finding Kind",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "status": {
+            "default": "present",
+            "enum": [
+              "present",
+              "stable",
+              "improving",
+              "worsening"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "severity": {
+            "default": "moderate",
+            "enum": [
+              "low",
+              "moderate",
+              "high",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "anatomical_location": {
+            "default": "",
+            "title": "Anatomical Location",
+            "type": "string"
+          },
+          "laterality": {
+            "default": "",
+            "title": "Laterality",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "finding_kind"
+        ],
+        "title": "AssessmentFindingCreateIn",
+        "type": "object"
+      },
+      "DiagnosticResultCreateIn": {
+        "properties": {
+          "diagnostic_kind": {
+            "title": "Diagnostic Kind",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "status": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "available",
+              "reviewed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "value_text": {
+            "default": "",
+            "title": "Value Text",
+            "type": "string"
+          },
+          "target_problem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Problem Id"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "diagnostic_kind"
+        ],
+        "title": "DiagnosticResultCreateIn",
+        "type": "object"
+      },
+      "ResourceStateCreateIn": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "limited",
+              "depleted",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "quantity_available": {
+            "default": 0,
+            "title": "Quantity Available",
+            "type": "integer"
+          },
+          "quantity_unit": {
+            "default": "",
+            "title": "Quantity Unit",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ],
+        "title": "ResourceStateCreateIn",
+        "type": "object"
+      },
+      "DispositionStateCreateIn": {
+        "properties": {
+          "status": {
+            "default": "hold",
+            "enum": [
+              "hold",
+              "ready",
+              "en_route",
+              "delayed",
+              "complete"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "transport_mode": {
+            "default": "",
+            "title": "Transport Mode",
+            "type": "string"
+          },
+          "destination": {
+            "default": "",
+            "title": "Destination",
+            "type": "string"
+          },
+          "eta_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Minutes"
+          },
+          "handoff_ready": {
+            "default": false,
+            "title": "Handoff Ready",
+            "type": "boolean"
+          },
+          "scene_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scene Constraints",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "supersedes_event_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Event Id"
+          }
+        },
+        "title": "DispositionStateCreateIn",
+        "type": "object"
+      },
       "SimulationNoteCreateIn": {
         "properties": {
           "content": {
@@ -6064,7 +7669,7 @@
             "enum": [
               "trainee",
               "instructor",
-              "ai"
+              "system"
             ],
             "title": "Performed By Role",
             "type": "string"
@@ -6245,35 +7850,32 @@
         "title": "RunSummaryOut",
         "type": "object"
       },
-      "ConditionControlOut": {
+      "ProblemStatusOut": {
         "properties": {
-          "condition_id": {
-            "title": "Condition Id",
+          "problem_id": {
+            "title": "Problem Id",
             "type": "integer"
-          },
-          "kind": {
-            "enum": [
-              "injury",
-              "illness"
-            ],
-            "title": "Kind",
-            "type": "string"
           },
           "is_treated": {
             "title": "Is Treated",
+            "type": "boolean"
+          },
+          "is_controlled": {
+            "title": "Is Controlled",
             "type": "boolean"
           },
           "is_resolved": {
             "title": "Is Resolved",
             "type": "boolean"
           },
-          "control_state": {
+          "status": {
             "enum": [
-              "uncontrolled",
+              "active",
+              "treated",
               "controlled",
               "resolved"
             ],
-            "title": "Control State",
+            "title": "Status",
             "type": "string"
           },
           "label": {
@@ -6282,26 +7884,18 @@
           }
         },
         "required": [
-          "condition_id",
-          "kind",
+          "problem_id",
           "is_treated",
+          "is_controlled",
           "is_resolved",
-          "control_state",
+          "status",
           "label"
         ],
-        "title": "ConditionControlOut",
+        "title": "ProblemStatusOut",
         "type": "object"
       },
-      "ConditionControlUpdateIn": {
+      "ProblemStatusUpdateIn": {
         "properties": {
-          "kind": {
-            "enum": [
-              "injury",
-              "illness"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
           "is_treated": {
             "anyOf": [
               {
@@ -6325,10 +7919,7 @@
             "title": "Is Resolved"
           }
         },
-        "required": [
-          "kind"
-        ],
-        "title": "ConditionControlUpdateIn",
+        "title": "ProblemStatusUpdateIn",
         "type": "object"
       },
       "AnnotationOut": {

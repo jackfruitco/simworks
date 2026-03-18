@@ -46,13 +46,72 @@ def test_trainerlab_event_contract_includes_friendly_labels():
     assert "injury_kind_label?: string;" in source
     assert "intervention_label?: string;" in source
     assert "site_label?: string;" in source
-    assert "details: InterventionDetails;" in source
-    assert "type: 'trainerlab.event.created';" in source
-    assert "type: 'trainerlab.condition.created';" in source
-    assert "march_category: string;" in source
-    assert "injury_location?: string;" in source
-    assert "injury_kind?: string;" in source
-    assert "intervention_code?: string;" not in source
-    assert "legacy_code?: string;" not in source
-    assert "type: 'injury.created';" not in source
-    assert "type: 'intervention.created';" not in source
+    assert "type: 'injury.created' | 'injury.updated';" in source
+    assert "type: 'illness.created' | 'illness.updated';" in source
+    assert "type: 'problem.created';" in source
+    assert "type: 'recommended_intervention.created'" in source
+    assert "type: 'intervention.created' | 'intervention.updated';" in source
+    assert "type: 'state.updated';" in source
+    assert "type: 'ai.intent.updated';" in source
+    assert "type: 'trainerlab.assessment_finding.created'" in source
+    assert "type: 'trainerlab.diagnostic_result.created'" in source
+    assert "type: 'trainerlab.resource.updated';" in source
+    assert "type: 'trainerlab.disposition.updated';" in source
+    assert "type: 'trainerlab.vital.created' | 'trainerlab.vital.updated';" in source
+    assert "type: 'trainerlab.pulse.created' | 'trainerlab.pulse.updated';" in source
+    assert "cause_kind: 'injury' | 'illness';" in source
+    assert "recommended_interventions?: TrainerLabRecommendedInterventionFields[];" in source
+    assert "active?: boolean;" in source
+    assert "initiated_by_type: 'user' | 'instructor' | 'system';" in source
+    assert "type: 'trainerlab.condition.created';" not in source
+    assert "type: 'trainerlab.event.created';" not in source
+
+
+def test_trainerlab_typescript_contract_covers_backend_event_surface():
+    source = _read("SimWorks/apps/common/static/common/js/simulation-events.d.ts")
+    backend_event_types = {
+        "adjustment.accepted",
+        "adjustment.applied",
+        "ai.intent.updated",
+        "illness.created",
+        "illness.updated",
+        "injury.created",
+        "injury.updated",
+        "intervention.created",
+        "intervention.updated",
+        "note.created",
+        "problem.created",
+        "problem.updated",
+        "problem.resolved",
+        "recommended_intervention.created",
+        "recommended_intervention.updated",
+        "recommended_intervention.removed",
+        "run.paused",
+        "run.resumed",
+        "run.started",
+        "run.stopped",
+        "runtime.failed",
+        "session.seeded",
+        "state.updated",
+        "summary.ready",
+        "summary.updated",
+        "trainerlab.annotation.created",
+        "trainerlab.assessment_finding.created",
+        "trainerlab.assessment_finding.updated",
+        "trainerlab.assessment_finding.removed",
+        "trainerlab.diagnostic_result.created",
+        "trainerlab.diagnostic_result.updated",
+        "trainerlab.disposition.updated",
+        "trainerlab.intervention.assessed",
+        "trainerlab.pulse.created",
+        "trainerlab.pulse.updated",
+        "trainerlab.recommendation_evaluation.created",
+        "trainerlab.resource.updated",
+        "trainerlab.scenario_brief.created",
+        "trainerlab.scenario_brief.updated",
+        "trainerlab.tick.triggered",
+        "trainerlab.vital.created",
+        "trainerlab.vital.updated",
+    }
+    for event_type in backend_event_types:
+        assert f"'{event_type}'" in source

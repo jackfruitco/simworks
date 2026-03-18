@@ -307,16 +307,36 @@ def _full_initial_payload() -> dict:
             "evacuation_time": "10 minutes",
             "special_considerations": [],
         },
-        "conditions": [
+        "causes": [
             {
-                "kind": "injury",
-                "march_category": "M",
-                "severity": "moderate",
+                "temp_id": "cause_test_laceration",
+                "cause_kind": "injury",
+                "kind": "laceration",
+                "code": "LAC",
+                "title": "Test laceration",
+                "display_name": "Test laceration",
+                "description": "Test laceration",
+                "anatomical_location": "Left anterior head",
+                "laterality": "left",
                 "injury_location": "HLA",
                 "injury_kind": "LAC",
                 "injury_description": "Test laceration",
             }
         ],
+        "problems": [
+            {
+                "temp_id": "problem_test_laceration",
+                "kind": "open_wound",
+                "code": "open_wound",
+                "title": "Open wound",
+                "display_name": "Open wound",
+                "description": "Test laceration problem",
+                "severity": "moderate",
+                "march_category": "M",
+                "cause_ref": "cause_test_laceration",
+            }
+        ],
+        "recommended_interventions": [],
         "measurements": {
             "heart_rate": {**base_measurement, "min_value": 80, "max_value": 100},
             "respiratory_rate": {**base_measurement, "min_value": 14, "max_value": 20},

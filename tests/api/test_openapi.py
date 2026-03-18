@@ -112,7 +112,7 @@ class TestOpenAPISchemaContent:
     def test_schema_has_api_info(self, schema):
         """Test that the schema contains API metadata."""
         assert schema["info"]["title"] == "SimWorks API"
-        assert schema["info"]["version"] == "1.0.0"
+        assert schema["info"]["version"] == "0.10.0"
         assert "description" in schema["info"]
 
     def test_schema_has_health_endpoints(self, schema):

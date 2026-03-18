@@ -217,7 +217,7 @@ class TestEnqueueEvent:
         """Async enqueue_event also normalizes UUID payload values."""
         call_id = uuid4()
         event = await enqueue_event(
-            event_type="trainerlab.condition.created",
+            event_type="problem.created",
             simulation_id=1,
             payload={"call_id": call_id, "nested": {"ids": [call_id]}},
             idempotency_key="uuid-async:1",

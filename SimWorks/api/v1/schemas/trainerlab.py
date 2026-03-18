@@ -89,26 +89,12 @@ class InjuryCreateIn(BaseModel):
         description="Injury kind code or friendly label (normalized to canonical code)",
     )
     injury_description: str = Field(..., max_length=500)
-    march_category: str = Field(
-        ...,
-        description="MARCH triage category code (M, A, R, C, H1, H2, PC)",
-    )
-    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
-    description: str = Field(
-        default="",
-        description="Optional plain-text problem description (supplements injury_description)",
-    )
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
     supersedes_event_id: int | None = Field(
         default=None,
-        description="ID of the Problem being superseded by this new injury record",
+        description="ID of the Injury being superseded by this new cause record",
     )
-
-    @field_validator("march_category")
-    @classmethod
-    def _normalize_march_category(cls, value: str) -> str:
-        from apps.trainerlab.injury_dictionary import normalize_injury_category
-
-        return normalize_injury_category(value)
 
     @field_validator("injury_location")
     @classmethod
@@ -128,22 +114,67 @@ class IllnessCreateIn(BaseModel):
     description: str = Field(
         default="", validation_alias=AliasChoices("illness_description", "description")
     )
-    march_category: str = Field(
-        ...,
-        description="MARCH triage category (R, C, etc.) that this illness maps to",
-    )
-    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    anatomical_location: str = ""
+    laterality: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
     supersedes_event_id: int | None = Field(
         default=None,
-        description="ID of the Problem being superseded by this new illness record",
+        description="ID of the Illness being superseded by this new cause record",
+    )
+
+
+class ProblemCreateIn(BaseModel):
+    cause_kind: Literal["injury", "illness"]
+    cause_id: int
+    parent_problem_id: int | None = None
+    kind: str
+    code: str | None = None
+    title: str = Field(min_length=1, max_length=120)
+    display_name: str = ""
+    description: str = ""
+    march_category: str = Field(
+        ...,
+        description="MARCH triage category code (M, A, R, C, H1, H2, PC)",
+    )
+    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    anatomical_location: str = ""
+    laterality: str = ""
+    status: Literal["active", "treated", "controlled", "resolved"] = "active"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = Field(
+        default=None,
+        description="ID of the Problem being superseded by this new problem record",
     )
 
     @field_validator("march_category")
     @classmethod
-    def _normalize_march_category(cls, value: str) -> str:
+    def _normalize_problem_march_category(cls, value: str) -> str:
         from apps.trainerlab.injury_dictionary import normalize_injury_category
 
         return normalize_injury_category(value)
+
+    @field_validator("kind")
+    @classmethod
+    def _normalize_problem_kind(cls, value: str) -> str:
+        normalized = value.strip().lower().replace(" ", "_")
+        if not normalized:
+            raise ValueError("kind must not be blank")
+        return normalized
+
+    @field_validator("code")
+    @classmethod
+    def _normalize_problem_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower().replace(" ", "_")
+        return normalized or None
+
+    @model_validator(mode="after")
+    def _default_problem_code(self) -> "ProblemCreateIn":
+        self.code = self.code or self.kind
+        if not self.display_name:
+            self.display_name = self.title
+        return self
 
 
 class InterventionDetailsIn(BaseModel):
@@ -162,7 +193,7 @@ class InterventionCreateIn(BaseModel):
         ...,
         description="Intervention site code or friendly label, normalized per intervention type",
     )
-    target_problem_id: int | None = None
+    target_problem_id: int
     status: Literal["applied", "adjusted", "reassessed", "removed"] = "applied"
     effectiveness: Literal[
         "unknown",
@@ -177,7 +208,8 @@ class InterventionCreateIn(BaseModel):
             "Typed intervention-specific details. `details.kind` must match `intervention_type`."
         ),
     )
-    performed_by_role: Literal["trainee", "instructor", "ai"] = "trainee"
+    initiated_by_type: Literal["user", "instructor", "system"] = "user"
+    initiated_by_id: int | None = None
     supersedes_event_id: int | None = None
 
     @field_validator("intervention_type")
@@ -206,7 +238,7 @@ class InterventionCreateIn(BaseModel):
 class SimulationNoteCreateIn(BaseModel):
     content: str = Field(min_length=1, max_length=2000)
     send_to_ai: bool = False
-    performed_by_role: Literal["trainee", "instructor", "ai"] = "instructor"
+    performed_by_role: Literal["trainee", "instructor", "system"] = "instructor"
 
     @field_validator("content")
     @classmethod
@@ -215,6 +247,54 @@ class SimulationNoteCreateIn(BaseModel):
         if not stripped:
             raise ValueError("content must not be blank")
         return stripped
+
+
+class AssessmentFindingCreateIn(BaseModel):
+    finding_kind: str
+    title: str = ""
+    description: str = ""
+    status: Literal["present", "stable", "improving", "worsening"] = "present"
+    severity: Literal["low", "moderate", "high", "critical"] = "moderate"
+    target_problem_id: int | None = None
+    anatomical_location: str = ""
+    laterality: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
+class DiagnosticResultCreateIn(BaseModel):
+    diagnostic_kind: str
+    title: str = ""
+    description: str = ""
+    status: Literal["pending", "available", "reviewed"] = "pending"
+    value_text: str = ""
+    target_problem_id: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
+class ResourceStateCreateIn(BaseModel):
+    kind: str
+    code: str | None = None
+    title: str
+    display_name: str = ""
+    status: Literal["available", "limited", "depleted", "unavailable"] = "available"
+    quantity_available: int = 0
+    quantity_unit: str = ""
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
+
+
+class DispositionStateCreateIn(BaseModel):
+    status: Literal["hold", "ready", "en_route", "delayed", "complete"] = "hold"
+    transport_mode: str = ""
+    destination: str = ""
+    eta_minutes: int | None = None
+    handoff_ready: bool = False
+    scene_constraints: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    supersedes_event_id: int | None = None
 
 
 class VitalCreateIn(BaseModel):
@@ -256,36 +336,98 @@ class RunSummaryOut(BaseModel):
     ai_debrief: dict[str, Any] | None = None
 
 
-class RuntimeConditionStateOut(BaseModel):
-    domain_event_id: int | None = None
-    kind: Literal["injury", "illness", "other"]
-    label: str
-    status: str
+class RuntimeCauseStateOut(BaseModel):
+    id: int
+    active: bool = True
+    cause_kind: Literal["injury", "illness"]
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    anatomical_location: str | None = None
+    laterality: str | None = None
+    recommended_interventions: list["RecommendedInterventionStateOut"] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     source: str | None = None
     timestamp: str | None = None
-    march_category: str | None = None
-    injury_location: str | None = None
-    injury_kind: str | None = None
+
+
+class RecommendedInterventionStateOut(BaseModel):
+    recommendation_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    target_problem_id: int
+    target_cause_id: int | None = None
+    target_cause_kind: Literal["injury", "illness"] | None = None
+    recommendation_source: Literal["ai", "rules", "merged"]
+    validation_status: Literal["accepted", "normalized", "downgraded", "rejected"]
+    normalized_kind: str
+    normalized_code: str
+    rationale: str = ""
+    priority: int | None = None
+    site_code: str | None = None
+    site_label: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    contraindications: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuntimeProblemStateOut(BaseModel):
+    problem_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
     description: str | None = None
     severity: str | None = None
-    is_treated: bool = False
-    is_resolved: bool = False
-    control_state: str = "uncontrolled"
+    march_category: str | None = None
+    anatomical_location: str | None = None
+    laterality: str | None = None
+    status: Literal["active", "treated", "controlled", "resolved"]
+    previous_status: str = ""
+    treated_at: str | None = None
+    controlled_at: str | None = None
+    resolved_at: str | None = None
+    cause_id: int
+    cause_kind: Literal["injury", "illness"]
+    parent_problem_id: int | None = None
+    triggering_intervention_id: int | None = None
+    adjudication_reason: str = ""
+    adjudication_rule_id: str = ""
+    recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
 
 
 class RuntimeInterventionStateOut(BaseModel):
-    domain_event_id: int | None = None
-    intervention_type: str | None = None
+    intervention_id: int
+    active: bool = True
+    kind: str
+    code: str
+    title: str
     site_code: str | None = None
     effectiveness: str = "unknown"
     notes: str = ""
-    code: str = ""
     description: str = ""
-    target: str = ""
-    anatomic_location: str = ""
-    performed_by_role: str = "trainee"
+    target_problem_id: int | None = None
+    initiated_by_type: Literal["user", "instructor", "system"]
+    initiated_by_id: int | None = None
     status: str = "active"
     clinical_effect: str = ""
+    target_problem_previous_status: str = ""
+    target_problem_current_status: str = ""
+    adjudication_reason: str = ""
+    adjudication_rule_id: str = ""
     source: str | None = None
     timestamp: str | None = None
 
@@ -310,11 +452,86 @@ class RuntimeVitalStateOut(BaseModel):
     timestamp: str | None = None
 
 
+class RuntimeAssessmentFindingStateOut(BaseModel):
+    finding_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    status: str
+    severity: str | None = None
+    target_problem_id: int | None = None
+    anatomical_location: str | None = None
+    laterality: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeDiagnosticResultStateOut(BaseModel):
+    diagnostic_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    description: str | None = None
+    status: str
+    value_text: str = ""
+    target_problem_id: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeResourceStateOut(BaseModel):
+    resource_id: int
+    active: bool = True
+    kind: str
+    code: str
+    slug: str | None = None
+    title: str
+    display_name: str | None = None
+    status: str
+    quantity_available: int = 0
+    quantity_unit: str = ""
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
+class RuntimeDispositionStateOut(BaseModel):
+    disposition_id: int
+    active: bool = True
+    status: str
+    transport_mode: str = ""
+    destination: str = ""
+    eta_minutes: int | None = None
+    handoff_ready: bool = False
+    scene_constraints: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source: str | None = None
+    timestamp: str | None = None
+
+
 class TrainerRuntimeSnapshotOut(BaseModel):
-    conditions: list[RuntimeConditionStateOut] = Field(default_factory=list)
+    causes: list[RuntimeCauseStateOut] = Field(default_factory=list)
+    problems: list[RuntimeProblemStateOut] = Field(default_factory=list)
+    recommended_interventions: list[RecommendedInterventionStateOut] = Field(default_factory=list)
     interventions: list[RuntimeInterventionStateOut] = Field(default_factory=list)
+    assessment_findings: list[RuntimeAssessmentFindingStateOut] = Field(default_factory=list)
+    diagnostic_results: list[RuntimeDiagnosticResultStateOut] = Field(default_factory=list)
+    resources: list[RuntimeResourceStateOut] = Field(default_factory=list)
+    disposition: RuntimeDispositionStateOut | None = None
     vitals: list[RuntimeVitalStateOut] = Field(default_factory=list)
+    pulses: list[dict[str, Any]] = Field(default_factory=list)
     patient_status: RuntimePatientStatus = Field(default_factory=RuntimePatientStatus)
+    scenario_brief: "ScenarioBriefOut | None" = None
 
 
 class ScenarioBriefOut(BaseModel):
@@ -322,9 +539,9 @@ class ScenarioBriefOut(BaseModel):
     environment: str = ""
     location_overview: str = ""
     threat_context: str = ""
-    evacuation_options: str = ""
+    evacuation_options: list[str] = Field(default_factory=list)
     evacuation_time: str = ""
-    special_considerations: str = ""
+    special_considerations: list[str] = Field(default_factory=list)
 
 
 class TrainerRuntimeStateOut(BaseModel):
@@ -462,28 +679,27 @@ class InterventionDictionaryItemOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# #2 — Condition control state
+# #2 — Problem status control
 # ---------------------------------------------------------------------------
 
 
-class ConditionControlUpdateIn(BaseModel):
-    kind: Literal["injury", "illness"]
+class ProblemStatusUpdateIn(BaseModel):
     is_treated: bool | None = None
     is_resolved: bool | None = None
 
     @model_validator(mode="after")
-    def _at_least_one(self) -> "ConditionControlUpdateIn":
+    def _at_least_one(self) -> "ProblemStatusUpdateIn":
         if self.is_treated is None and self.is_resolved is None:
             raise ValueError("At least one of is_treated or is_resolved must be provided.")
         return self
 
 
-class ConditionControlOut(BaseModel):
-    condition_id: int
-    kind: Literal["injury", "illness"]
+class ProblemStatusOut(BaseModel):
+    problem_id: int
     is_treated: bool
+    is_controlled: bool
     is_resolved: bool
-    control_state: Literal["uncontrolled", "controlled", "resolved"]
+    status: Literal["active", "treated", "controlled", "resolved"]
     label: str
 
 
@@ -548,7 +764,7 @@ def annotation_to_out(obj: DebriefAnnotation) -> AnnotationOut:
 # ---------------------------------------------------------------------------
 
 
-class PresetApplyConditionItem(BaseModel):
+class PresetApplyCauseItem(BaseModel):
     id: int
     kind: str
     label: str
@@ -560,7 +776,7 @@ class PresetApplyVitalChange(BaseModel):
 
 
 class PresetApplyDiff(BaseModel):
-    conditions_added: list[PresetApplyConditionItem] = Field(default_factory=list)
+    causes_added: list[PresetApplyCauseItem] = Field(default_factory=list)
     vitals_changed: dict[str, PresetApplyVitalChange] = Field(default_factory=dict)
     state_revision_before: int | None = None
 
@@ -634,10 +850,12 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     )
 
 
-def _join_if_list(value: Any) -> str:
+def _coerce_string_list(value: Any) -> list[str]:
     if isinstance(value, list):
-        return ", ".join(str(v) for v in value)
-    return str(value or "")
+        return [str(item) for item in value]
+    if not value:
+        return []
+    return [str(value)]
 
 
 def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
@@ -650,9 +868,9 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
         environment=str(raw_brief.get("environment") or ""),
         location_overview=str(raw_brief.get("location_overview") or ""),
         threat_context=str(raw_brief.get("threat_context") or ""),
-        evacuation_options=_join_if_list(raw_brief.get("evacuation_options", "")),
+        evacuation_options=_coerce_string_list(raw_brief.get("evacuation_options")),
         evacuation_time=str(raw_brief.get("evacuation_time") or ""),
-        special_considerations=_join_if_list(raw_brief.get("special_considerations", "")),
+        special_considerations=_coerce_string_list(raw_brief.get("special_considerations")),
     )
     # #3: Compute next_tick_at for trainer countdown visibility
     next_tick_at = None
@@ -712,3 +930,7 @@ def scenario_instruction_to_out(
         created_at=instruction.created_at,
         modified_at=instruction.modified_at,
     )
+
+
+RuntimeCauseStateOut.model_rebuild()
+TrainerRuntimeSnapshotOut.model_rebuild()

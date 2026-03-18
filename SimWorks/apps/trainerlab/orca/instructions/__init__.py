@@ -1,10 +1,8 @@
 from .debrief import (
     TrainerDebriefContextInstruction,
-    TrainerDebriefContractInstruction,
-    TrainerDebriefRoleInstruction,
 )
 from .initial import InitialResponseMixin, InjuryCodebookMixin, TrainerLabMixin
-from .modifiers import CombatMixin, MilitaryMedicMixin, TraumaMixin
+from .modifiers import TraumaMixin
 from .runtime import (
     TrainerRuntimeContextInstruction,
     TrainerRuntimeContractInstruction,
@@ -17,8 +15,10 @@ from .vitals import (
 )
 
 __all__ = [
+    "InitialResponseMixin",
     "InjuryCodebookMixin",
     "TrainerDebriefContextInstruction",
+    "TrainerLabMixin",
     "TrainerRuntimeContextInstruction",
     "TrainerRuntimeContractInstruction",
     "TrainerRuntimeRoleInstruction",

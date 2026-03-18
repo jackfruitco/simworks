@@ -5,14 +5,8 @@ instructions:
   - name: TrainerLabMixin
     order: 5
     instruction: |
-      The user is a medical training instruction proctoring a live, simulation medical scenario lane for a student.
-      Your primary role is to assist with generating the patient scenario for the lane, which will be displayed
-      on a screen to the instructor to guide the student through.
-      Your secondary role is to track the student's progress, logging key events, and generating a summary
-      and feedback as needed.
-      Your secondary role is to provide feedback and guidance to the instructor, ensuring that the student
-      is engaged and learning effectively. Your goal is to support the user in providing high-quality
-      medical training scenarios.
+      The user is a medical training instruction proctoring a live simulation medical scenario lane for a student.
+      Assist with generating the patient scenario and provide concise instructor support.
 
   - name: InitialResponseMixin
     order: 10
@@ -20,20 +14,43 @@ instructions:
       First, generate a scenario_brief that the instructor will read out loud to the trainee before the
       simulation begins. The brief should include a concise spoken read-aloud opening plus structured context
       about the environment, approximate location, scene or enemy threat if applicable, evacuation options
-      if applicable, expected evacuation time if applicable, and any other special considerations that
-      matter to the lane.
+      if applicable, expected evacuation time if applicable, and any other special considerations that matter
+      to the lane.
 
-      Then, generate the initial scenario by providing one or more conditions. Each condition must include
-      march_category (MARCH triage code) and severity ('low'|'moderate'|'high'|'critical').
-      - For an injury: also provide injury_location (anatomic code), injury_kind (mechanism code), and
-        injury_description (brief text).
-      - For an illness: also provide name (illness name) and description (optional).
+      Then, generate explicit `causes`, `problems`, and `recommended_interventions`.
+      - Causes are immutable source records only. Use `cause_kind='injury'` or `cause_kind='illness'` and do
+        not embed problem lifecycle fields on causes.
+      - Problems are the actionable clinical entities. Every problem must reference exactly one cause via
+        `cause_ref`.
+      - One cause may create multiple problems.
+      - Recommended interventions are suggestions only. They must target a problem, not a cause.
+      - If useful, also generate structured `assessment_findings`, `diagnostic_results`, `resources`, and
+        `disposition` to support the simulation state.
+      - Findings should describe what an examiner can detect now.
+      - Diagnostic results should represent pending/available/reviewed tests or labs.
+      - Resources should capture meaningful supply constraints for care.
+      - Disposition should capture evacuation or transport readiness constraints.
+      - `performed_interventions` must be omitted or an empty list unless trusted system context explicitly
+        says a real intervention was already performed.
+      - Never state or imply that an intervention was performed unless the input explicitly provides that action.
+      - Never mark a problem treated, controlled, or resolved because of an intervention unless that
+        intervention was explicitly provided and will be adjudicated by engine rules.
+
+      Prefer medically meaningful decomposition.
+      Good examples:
+      - Cause: GSW left thigh
+      - Problem: Massive hemorrhage from left thigh
+      - Recommended intervention: Tourniquet to left thigh
+      Bad examples:
+      - GSW treated with tourniquet
+      - Bleeding controlled
+      - Needle decompression performed
 
       Then, provide an initial set of vital sign measurements that match the patient's status clinically,
       including: heart rate, blood pressure, respiratory rate, SPO2, ETCO2, blood glucose level.
 
-      Then, provide pulse assessments for all clinically relevant anatomic sites. For each site, include
-      both sides (left and right) for: radial, femoral, carotid, pedal. For each assessment provide:
+      Then, provide pulse assessments for all clinically relevant anatomic sites. For each site, include both
+      sides (left and right) for: radial, femoral, carotid, pedal. For each assessment provide:
       - present: whether the pulse is palpable (bool)
       - description: pulse quality — one of: strong, bounding, weak, absent, thready
       - color_normal: whether skin color is normal (bool)

@@ -45,9 +45,50 @@ export type SimulationEventType =
     | 'feedback.retrying'
 
     // TrainerLab events
-    | 'trainerlab.condition.created'
+    | 'injury.created'
+    | 'injury.updated'
+    | 'illness.created'
+    | 'illness.updated'
+    | 'problem.created'
+    | 'problem.updated'
+    | 'problem.resolved'
+    | 'recommended_intervention.created'
+    | 'recommended_intervention.updated'
+    | 'recommended_intervention.removed'
+    | 'intervention.created'
+    | 'intervention.updated'
+    | 'note.created'
+    | 'trainerlab.assessment_finding.created'
+    | 'trainerlab.assessment_finding.updated'
+    | 'trainerlab.assessment_finding.removed'
+    | 'trainerlab.diagnostic_result.created'
+    | 'trainerlab.diagnostic_result.updated'
+    | 'trainerlab.resource.updated'
+    | 'trainerlab.disposition.updated'
     | 'trainerlab.vital.created'
-    | 'trainerlab.event.created';
+    | 'trainerlab.vital.updated'
+    | 'trainerlab.pulse.created'
+    | 'trainerlab.pulse.updated'
+    | 'trainerlab.recommendation_evaluation.created'
+    | 'trainerlab.scenario_brief.created'
+    | 'trainerlab.scenario_brief.updated'
+    | 'trainerlab.intervention.assessed'
+    | 'trainerlab.annotation.created'
+    | 'trainerlab.tick.triggered'
+    | 'state.updated'
+    | 'ai.intent.updated'
+    | 'run.started'
+    | 'run.paused'
+    | 'run.resumed'
+    | 'run.stopped'
+    | 'runtime.failed'
+    | 'summary.ready'
+    | 'summary.updated'
+    | 'session.seeded'
+    | 'adjustment.accepted'
+    | 'adjustment.applied'
+    | 'preset.applied'
+    | 'command.accepted';
 
 // ============================================================================
 // Event Payloads
@@ -222,26 +263,24 @@ export interface TrainerLabDomainEventBase {
     timestamp: string;
 }
 
-export interface TrainerLabConditionFields {
-    problem_id: number;
-    cause_event_id?: number | null;
-    kind: 'injury' | 'illness' | 'other';
-    label?: string;
-    march_category: string;
-    march_category_label?: string;
-    severity?: 'low' | 'moderate' | 'high' | 'critical';
-    is_treated?: boolean;
-    is_resolved?: boolean;
-    control_state?: 'uncontrolled' | 'controlled' | 'resolved';
+export interface TrainerLabCauseFields {
+    id: number;
+    active?: boolean;
+    cause_kind: 'injury' | 'illness';
+    kind: string;
+    code: string;
+    slug?: string;
+    title: string;
+    display_name?: string;
     description?: string;
-    // injury-specific fields (present when kind='injury')
+    anatomical_location?: string;
+    laterality?: string;
     injury_location?: string;
     injury_kind?: string;
     injury_location_label?: string;
     injury_kind_label?: string;
-    // illness-specific fields (present when kind='illness')
-    name?: string;
-    illness_description?: string;
+    recommended_interventions?: TrainerLabRecommendedInterventionFields[];
+    metadata?: Record<string, unknown>;
 }
 
 export interface InterventionDetailsBase {
@@ -296,15 +335,80 @@ export type InterventionDetails =
 
 export interface TrainerLabInterventionFields {
     intervention_id: number;
-    intervention_type: string;
+    active?: boolean;
+    kind: string;
+    code: string;
+    title: string;
     intervention_label?: string;
-    site_code: string;
+    site_code?: string;
     site_label?: string;
     target_problem_id?: number | null;
-    status: 'applied' | 'adjusted' | 'reassessed' | 'removed';
-    effectiveness: 'unknown' | 'effective' | 'partially_effective' | 'ineffective';
+    initiated_by_type: 'user' | 'instructor' | 'system';
+    initiated_by_id?: number | null;
+    status: string;
+    effectiveness?: 'unknown' | 'effective' | 'partially_effective' | 'ineffective';
+    clinical_effect?: string;
+    target_problem_previous_status?: string;
+    target_problem_current_status?: string;
+    adjudication_reason?: string;
+    adjudication_rule_id?: string;
     notes?: string;
-    details: InterventionDetails;
+    details?: InterventionDetails | Record<string, unknown>;
+    description?: string;
+}
+
+export interface TrainerLabProblemFields {
+    problem_id: number;
+    active?: boolean;
+    kind: string;
+    code: string;
+    slug?: string;
+    title: string;
+    display_name?: string;
+    description?: string;
+    severity?: 'low' | 'moderate' | 'high' | 'critical';
+    march_category?: string;
+    march_category_label?: string;
+    anatomical_location?: string;
+    laterality?: string;
+    status: 'active' | 'treated' | 'controlled' | 'resolved';
+    previous_status?: string;
+    treated_at?: string | null;
+    controlled_at?: string | null;
+    resolved_at?: string | null;
+    cause_id: number;
+    cause_kind: 'injury' | 'illness';
+    parent_problem_id?: number | null;
+    triggering_intervention_id?: number | null;
+    adjudication_reason?: string;
+    adjudication_rule_id?: string;
+    recommended_interventions?: TrainerLabRecommendedInterventionFields[];
+    metadata?: Record<string, unknown>;
+}
+
+export interface TrainerLabRecommendedInterventionFields {
+    recommendation_id: number;
+    active?: boolean;
+    kind: string;
+    code: string;
+    slug?: string;
+    title: string;
+    display_name?: string;
+    description?: string;
+    target_problem_id: number;
+    target_cause_id?: number | null;
+    target_cause_kind?: 'injury' | 'illness';
+    recommendation_source: 'ai' | 'rules' | 'merged';
+    validation_status: 'accepted' | 'normalized' | 'downgraded' | 'rejected';
+    normalized_kind: string;
+    normalized_code: string;
+    rationale?: string;
+    priority?: number | null;
+    site_code?: string;
+    site_label?: string;
+    warnings?: string[];
+    contraindications?: string[];
+    metadata?: Record<string, unknown>;
 }
 
 export interface TrainerLabVitalFields {
@@ -315,37 +419,295 @@ export interface TrainerLabVitalFields {
     lock_value?: boolean;
     min_value_diastolic?: number;
     max_value_diastolic?: number;
+    trend?: 'up' | 'down' | 'stable' | 'variable';
 }
 
-export interface TrainerLabConditionCreatedEvent extends TrainerLabDomainEventBase, TrainerLabConditionFields {
-    type: 'trainerlab.condition.created';
-    event_kind: 'condition';
+export interface TrainerLabPulseFields {
+    event_kind?: 'pulse_assessment';
+    vital_type?: 'pulse_assessment';
+    location: string;
+    present: boolean;
+    description: 'strong' | 'bounding' | 'weak' | 'absent' | 'thready';
+    color_normal: boolean;
+    color_description: 'pink' | 'pale' | 'mottled' | 'cyanotic' | 'flushed';
+    condition_normal: boolean;
+    condition_description: 'dry' | 'moist' | 'diaphoretic' | 'clammy';
+    temperature_normal: boolean;
+    temperature_description: 'warm' | 'cool' | 'cold' | 'hot';
+}
+
+export interface TrainerLabAssessmentFindingFields {
+    finding_id: number;
+    active?: boolean;
+    kind: string;
+    code: string;
+    slug?: string;
+    title: string;
+    display_name?: string;
+    description?: string;
+    status: 'present' | 'stable' | 'improving' | 'worsening';
+    severity?: 'low' | 'moderate' | 'high' | 'critical';
+    target_problem_id?: number | null;
+    anatomical_location?: string;
+    laterality?: string;
+    metadata?: Record<string, unknown>;
+}
+
+export interface TrainerLabDiagnosticResultFields {
+    diagnostic_id: number;
+    active?: boolean;
+    kind: string;
+    code: string;
+    slug?: string;
+    title: string;
+    display_name?: string;
+    description?: string;
+    status: 'pending' | 'available' | 'reviewed';
+    value_text?: string;
+    target_problem_id?: number | null;
+    metadata?: Record<string, unknown>;
+}
+
+export interface TrainerLabResourceFields {
+    resource_id: number;
+    active?: boolean;
+    kind: string;
+    code: string;
+    slug?: string;
+    title: string;
+    display_name?: string;
+    status: 'available' | 'limited' | 'depleted' | 'unavailable';
+    quantity_available?: number;
+    quantity_unit?: string;
+    description?: string;
+    metadata?: Record<string, unknown>;
+}
+
+export interface TrainerLabDispositionFields {
+    disposition_id: number;
+    active?: boolean;
+    status: 'hold' | 'ready' | 'en_route' | 'delayed' | 'complete';
+    transport_mode?: string;
+    destination?: string;
+    eta_minutes?: number | null;
+    handoff_ready?: boolean;
+    scene_constraints?: string[];
+    metadata?: Record<string, unknown>;
+}
+
+export interface TrainerLabRecommendationEvaluationFields {
+    evaluation_id: number;
+    recommendation_id?: number | null;
+    target_problem_id?: number | null;
+    target_cause_id?: number | null;
+    target_cause_kind?: 'injury' | 'illness';
+    raw_kind?: string;
+    raw_title?: string;
+    raw_site?: string;
+    normalized_kind?: string;
+    normalized_code?: string;
+    title?: string;
+    recommendation_source: 'ai' | 'rules' | 'merged';
+    validation_status: 'accepted' | 'normalized' | 'downgraded' | 'rejected';
+    rationale?: string;
+    priority?: number | null;
+    warnings?: string[];
+    contraindications?: string[];
+    rejection_reason?: string;
+    metadata?: Record<string, unknown>;
+}
+
+export interface TrainerLabPatientStatus {
+    avpu?: string | null;
+    respiratory_distress?: boolean;
+    hemodynamic_instability?: boolean;
+    impending_pneumothorax?: boolean;
+    tension_pneumothorax?: boolean;
+    narrative?: string;
+    teaching_flags?: string[];
+}
+
+export interface TrainerLabAiIntent {
+    summary?: string;
+    rationale?: string;
+    trigger?: string;
+    eta_seconds?: number | null;
+    confidence?: number;
+    upcoming_changes?: string[];
+    monitoring_focus?: string[];
+}
+
+export interface TrainerLabScenarioBriefFields {
+    read_aloud_brief: string;
+    environment?: string;
+    location_overview?: string;
+    threat_context?: string;
+    evacuation_options?: string[];
+    evacuation_time?: string;
+    special_considerations?: string[];
+}
+
+export interface TrainerLabSnapshot {
+    causes: TrainerLabCauseFields[];
+    problems: TrainerLabProblemFields[];
+    recommended_interventions: TrainerLabRecommendedInterventionFields[];
+    interventions: TrainerLabInterventionFields[];
+    assessment_findings: TrainerLabAssessmentFindingFields[];
+    diagnostic_results: TrainerLabDiagnosticResultFields[];
+    resources: TrainerLabResourceFields[];
+    disposition?: TrainerLabDispositionFields | null;
+    vitals: TrainerLabVitalFields[];
+    pulses: TrainerLabPulseFields[];
+    patient_status: TrainerLabPatientStatus;
+    scenario_brief?: TrainerLabScenarioBriefFields | null;
+}
+
+export interface TrainerLabInjuryCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
+    type: 'injury.created' | 'injury.updated';
+    event_kind: 'cause';
     origin?: string;
     call_id?: string;
     correlation_id?: string | null;
 }
 
-export interface TrainerLabVitalCreatedEvent extends TrainerLabDomainEventBase, TrainerLabVitalFields {
-    type: 'trainerlab.vital.created';
-    event_kind: 'vital';
+export interface TrainerLabIllnessCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
+    type: 'illness.created' | 'illness.updated';
+    event_kind: 'cause';
     origin?: string;
     call_id?: string;
     correlation_id?: string | null;
 }
 
-export interface TrainerLabEventCreatedConditionEvent extends TrainerLabDomainEventBase, TrainerLabConditionFields {
-    type: 'trainerlab.event.created';
-    event_kind: 'condition';
+export interface TrainerLabProblemCreatedEvent extends TrainerLabDomainEventBase, TrainerLabProblemFields {
+    type: 'problem.created';
+    event_kind: 'problem';
 }
 
-export interface TrainerLabEventCreatedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabInterventionFields {
-    type: 'trainerlab.event.created';
+export interface TrainerLabProblemUpdatedEvent extends TrainerLabDomainEventBase, TrainerLabProblemFields {
+    type: 'problem.updated' | 'problem.resolved';
+    event_kind: 'problem';
+}
+
+export interface TrainerLabRecommendedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabRecommendedInterventionFields {
+    type: 'recommended_intervention.created' | 'recommended_intervention.updated' | 'recommended_intervention.removed';
+    event_kind: 'recommended_intervention';
+}
+
+export interface TrainerLabPerformedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabInterventionFields {
+    type: 'intervention.created' | 'intervention.updated';
     event_kind: 'intervention';
 }
 
-export interface TrainerLabEventCreatedVitalEvent extends TrainerLabDomainEventBase, TrainerLabVitalFields {
-    type: 'trainerlab.event.created';
+export interface TrainerLabVitalCreatedEvent extends TrainerLabDomainEventBase, TrainerLabVitalFields {
+    type: 'trainerlab.vital.created' | 'trainerlab.vital.updated';
     event_kind: 'vital';
+}
+
+export interface TrainerLabPulseEvent extends TrainerLabDomainEventBase, TrainerLabPulseFields {
+    type: 'trainerlab.pulse.created' | 'trainerlab.pulse.updated';
+    event_kind: 'pulse_assessment';
+}
+
+export interface TrainerLabAssessmentFindingEvent extends TrainerLabDomainEventBase, TrainerLabAssessmentFindingFields {
+    type: 'trainerlab.assessment_finding.created' | 'trainerlab.assessment_finding.updated' | 'trainerlab.assessment_finding.removed';
+    event_kind: 'assessment_finding';
+}
+
+export interface TrainerLabDiagnosticResultEvent extends TrainerLabDomainEventBase, TrainerLabDiagnosticResultFields {
+    type: 'trainerlab.diagnostic_result.created' | 'trainerlab.diagnostic_result.updated';
+    event_kind: 'diagnostic_result';
+}
+
+export interface TrainerLabResourceEvent extends TrainerLabDomainEventBase, TrainerLabResourceFields {
+    type: 'trainerlab.resource.updated';
+    event_kind: 'resource';
+}
+
+export interface TrainerLabDispositionEvent extends TrainerLabDomainEventBase, TrainerLabDispositionFields {
+    type: 'trainerlab.disposition.updated';
+    event_kind: 'disposition';
+}
+
+export interface TrainerLabRecommendationEvaluationEvent extends TrainerLabDomainEventBase, TrainerLabRecommendationEvaluationFields {
+    type: 'trainerlab.recommendation_evaluation.created';
+    event_kind: 'recommendation_evaluation';
+}
+
+export interface TrainerLabScenarioBriefEvent extends TrainerLabDomainEventBase, TrainerLabScenarioBriefFields {
+    type: 'trainerlab.scenario_brief.created' | 'trainerlab.scenario_brief.updated';
+    event_kind: 'scenario_brief';
+}
+
+export interface TrainerLabNoteEvent extends TrainerLabDomainEventBase {
+    type: 'note.created';
+    event_kind: 'note';
+    content: string;
+    created_by_role?: 'trainee' | 'instructor' | 'system';
+}
+
+export interface TrainerLabInterventionAssessedEvent extends BaseEvent {
+    type: 'trainerlab.intervention.assessed';
+    intervention_id: number;
+    intervention_type?: string | null;
+    site_code?: string | null;
+    effectiveness: 'unknown' | 'effective' | 'partially_effective' | 'ineffective';
+    clinical_effect?: string;
+    status: string;
+    target_problem_id?: number | null;
+    target_problem_title?: string | null;
+    target_problem_status?: string | null;
+}
+
+export interface TrainerLabStateUpdatedEvent extends BaseEvent {
+    type: 'state.updated';
+    state_revision: number;
+    active_elapsed_seconds: number;
+    scenario_brief?: TrainerLabScenarioBriefFields | null;
+    current_snapshot: TrainerLabSnapshot;
+    processed_reasons: Array<Record<string, unknown>>;
+}
+
+export interface TrainerLabAiIntentUpdatedEvent extends BaseEvent {
+    type: 'ai.intent.updated';
+    state_revision: number;
+    ai_plan: TrainerLabAiIntent;
+}
+
+export interface TrainerLabRunLifecycleEvent extends BaseEvent {
+    type: 'run.started' | 'run.paused' | 'run.resumed' | 'run.stopped';
+    status: string;
+    discarded_runtime_reason_count?: number;
+}
+
+export interface TrainerLabRuntimeFailedEvent extends BaseEvent {
+    type: 'runtime.failed';
+    error: string;
+    reasons: Array<Record<string, unknown>>;
+}
+
+export interface TrainerLabSummaryEvent extends BaseEvent {
+    type: 'summary.ready' | 'summary.updated';
+    summary_id: number;
+    ai_debrief?: Record<string, unknown>;
+    ai_debrief_revision?: number;
+}
+
+export interface TrainerLabSessionSeededEvent extends BaseEvent {
+    type: 'session.seeded';
+    status: string;
+    scenario_spec: Record<string, unknown>;
+    state_revision: number;
+}
+
+export interface TrainerLabSimplePayloadEvent extends BaseEvent {
+    type:
+        | 'trainerlab.annotation.created'
+        | 'trainerlab.tick.triggered'
+        | 'adjustment.accepted'
+        | 'adjustment.applied'
+        | 'preset.applied'
+        | 'command.accepted';
+    [key: string]: unknown;
 }
 
 // ============================================================================
@@ -370,11 +732,30 @@ export type SimulationEvent =
     | FeedbackCreatedEvent
     | FeedbackContinuationEvent
     | MetadataResultsCreatedEvent
-    | TrainerLabConditionCreatedEvent
+    | TrainerLabInjuryCreatedEvent
+    | TrainerLabIllnessCreatedEvent
+    | TrainerLabProblemCreatedEvent
+    | TrainerLabProblemUpdatedEvent
+    | TrainerLabRecommendedInterventionEvent
+    | TrainerLabPerformedInterventionEvent
     | TrainerLabVitalCreatedEvent
-    | TrainerLabEventCreatedConditionEvent
-    | TrainerLabEventCreatedInterventionEvent
-    | TrainerLabEventCreatedVitalEvent;
+    | TrainerLabPulseEvent
+    | TrainerLabAssessmentFindingEvent
+    | TrainerLabDiagnosticResultEvent
+    | TrainerLabResourceEvent
+    | TrainerLabDispositionEvent
+    | TrainerLabRecommendationEvaluationEvent
+    | TrainerLabScenarioBriefEvent
+    | TrainerLabNoteEvent
+    | TrainerLabInterventionAssessedEvent
+    | TrainerLabStateUpdatedEvent
+    | TrainerLabAiIntentUpdatedEvent
+    | TrainerLabRunLifecycleEvent
+    | TrainerLabRuntimeFailedEvent
+    | TrainerLabSummaryEvent
+    | TrainerLabSessionSeededEvent
+    | TrainerLabSimplePayloadEvent
+    ;
 
 // ============================================================================
 // Client Commands (sent TO server)

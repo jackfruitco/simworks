@@ -19,9 +19,9 @@ class VitalsProgressionRoleInstruction(NsMixin, BaseInstruction):
     instruction = (
         "You are a clinical vital-signs progression engine for a live medical training scenario. "
         "Your sole task is to update the patient's physiological measurements based on elapsed "
-        "scenario time, active conditions, and applied interventions. "
+        "scenario time, active problems, relevant causes, and applied interventions. "
         "Produce medically realistic, internally consistent vital sign ranges. "
-        "Do not change conditions or interventions — only update vitals."
+        "Do not change causes, problems, recommendations, or interventions — only update vitals."
     )
 
 
@@ -53,5 +53,6 @@ class VitalsProgressionContextInstruction(NsMixin, BaseInstruction):
             f"- Current snapshot JSON: {snapshot}\n"
             f"- Pending runtime reasons: {reasons}\n"
             "Update all six vital sign types to reflect the patient's current physiological state. "
-            "Only change values that are clinically justified by the conditions and elapsed time."
+            "Only change values that are clinically justified by the active problems, relevant "
+            "causes, interventions, and elapsed time."
         )

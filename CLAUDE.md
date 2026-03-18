@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SimWorks is a Django-based medical training platform that delivers chat-driven clinical simulations. It uses the **OrchestrAI framework** (a custom-built, provider-agnostic AI orchestration layer) to manage AI services, prompts, response processors, and response schemas across the application.
+MedSim (formerly SimWorks) is a Django-based medical training platform that delivers chat-driven clinical simulations. It uses the **OrchestrAI framework** (a provider-agnostic AI orchestration layer) to manage AI services, prompts, response processors, and response schemas across the application.
 
 This is a **uv-managed monorepo workspace** with three main components:
+
+> MedSim is the product name; legacy `SimWorks` naming remains in repository paths and module identifiers.
 - Main Django project at `/SimWorks`
 - `orchestrai` package at `/packages/orchestrai` (core AI orchestration framework)
 - `orchestrai_django` package at `/packages/orchestrai_django` (Django integration layer)
