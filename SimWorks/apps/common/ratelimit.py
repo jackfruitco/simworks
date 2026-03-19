@@ -62,9 +62,7 @@ def get_client_ip(request: HttpRequest) -> str:
         if x_forwarded_for:
             # Rightmost non-empty entry is appended by our trusted proxy;
             # the client can only prepend earlier entries to the chain.
-            forwarded_chain = [
-                ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()
-            ]
+            forwarded_chain = [ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()]
             if forwarded_chain:
                 return forwarded_chain[-1]
 
