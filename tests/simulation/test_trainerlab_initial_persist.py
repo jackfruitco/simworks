@@ -453,17 +453,34 @@ class TestTrainerLabInitialPersistence:
         await persist_schema(schema, context)
 
         assert await Intervention.objects.filter(simulation_id=simulation.id).acount() == 1
-        hemorrhage = await Problem.objects.filter(
-            simulation_id=simulation.id,
-            kind="hemorrhage",
-        ).afirst()
+        hemorrhage_active = (
+            await Problem.objects.filter(
+                simulation_id=simulation.id,
+                kind="hemorrhage",
+                is_active=True,
+            )
+            .order_by("-timestamp", "-id")
+            .afirst()
+        )
+        hemorrhage_original = (
+            await Problem.objects.filter(
+                simulation_id=simulation.id,
+                kind="hemorrhage",
+                is_active=False,
+            )
+            .order_by("-timestamp", "-id")
+            .afirst()
+        )
         open_wound = await Problem.objects.filter(
             simulation_id=simulation.id,
             kind="open_wound",
+            is_active=True,
         ).afirst()
-        assert hemorrhage is not None
+        assert hemorrhage_active is not None
+        assert hemorrhage_original is not None
         assert open_wound is not None
-        assert hemorrhage.status == Problem.Status.CONTROLLED
+        assert hemorrhage_active.status == Problem.Status.CONTROLLED
+        assert hemorrhage_active.supersedes_id == hemorrhage_original.id
         assert open_wound.status == Problem.Status.ACTIVE
 
     async def test_scenario_brief_and_vitals_persist(self, context):

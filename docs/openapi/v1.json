@@ -1986,6 +1986,43 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/control-plane/": {
+      "get": {
+        "operationId": "api_v1_endpoints_trainerlab_get_control_plane_debug",
+        "summary": "Get TrainerLab control-plane debug state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlPlaneDebugOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/run/start/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_start_trainer_run",
@@ -6861,6 +6898,73 @@
           "ai_plan"
         ],
         "title": "TrainerRuntimeStateOut",
+        "type": "object"
+      },
+      "ControlPlaneDebugOut": {
+        "properties": {
+          "execution_plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Execution Plan",
+            "type": "array"
+          },
+          "current_step_index": {
+            "default": 0,
+            "title": "Current Step Index",
+            "type": "integer"
+          },
+          "queued_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Queued Reasons",
+            "type": "array"
+          },
+          "currently_processing_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Currently Processing Reasons",
+            "type": "array"
+          },
+          "last_processed_reasons": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Last Processed Reasons",
+            "type": "array"
+          },
+          "last_failed_step": {
+            "default": "",
+            "title": "Last Failed Step",
+            "type": "string"
+          },
+          "last_failed_error": {
+            "default": "",
+            "title": "Last Failed Error",
+            "type": "string"
+          },
+          "last_patch_evaluation_summary": {
+            "additionalProperties": true,
+            "title": "Last Patch Evaluation Summary",
+            "type": "object"
+          },
+          "last_rejected_or_normalized_summary": {
+            "additionalProperties": true,
+            "title": "Last Rejected Or Normalized Summary",
+            "type": "object"
+          },
+          "status_flags": {
+            "additionalProperties": true,
+            "title": "Status Flags",
+            "type": "object"
+          }
+        },
+        "title": "ControlPlaneDebugOut",
         "type": "object"
       },
       "TrainerCommandAck": {

@@ -118,10 +118,15 @@ class TestTrainerLabAdjudication:
         hemorrhage.refresh_from_db()
         open_wound.refresh_from_db()
         intervention.refresh_from_db()
+        adjudicated_problem = Problem.objects.get(pk=intervention.target_problem_id)
         assert result.changed is True
-        assert hemorrhage.status == Problem.Status.CONTROLLED
-        assert hemorrhage.triggering_intervention_id == intervention.id
-        assert hemorrhage.adjudication_rule_id == "intervention.tourniquet.targets.hemorrhage"
+        assert hemorrhage.is_active is False
+        assert adjudicated_problem.status == Problem.Status.CONTROLLED
+        assert adjudicated_problem.triggering_intervention_id == intervention.id
+        assert (
+            adjudicated_problem.adjudication_rule_id == "intervention.tourniquet.targets.hemorrhage"
+        )
+        assert adjudicated_problem.supersedes_id == hemorrhage.id
         assert open_wound.status == Problem.Status.ACTIVE
         assert intervention.target_problem_previous_status == Problem.Status.ACTIVE
         assert intervention.target_problem_current_status == Problem.Status.CONTROLLED
@@ -201,8 +206,10 @@ class TestTrainerLabAdjudication:
 
         open_chest_wound.refresh_from_db()
         respiratory_distress.refresh_from_db()
+        adjudicated_problem = Problem.objects.get(pk=intervention.target_problem_id)
         assert result.changed is True
-        assert open_chest_wound.status == Problem.Status.CONTROLLED
+        assert open_chest_wound.is_active is False
+        assert adjudicated_problem.status == Problem.Status.CONTROLLED
         assert respiratory_distress.status == Problem.Status.ACTIVE
 
     def test_antibiotics_mark_infectious_problem_treated_but_not_resolved(self, simulation):
@@ -231,9 +238,11 @@ class TestTrainerLabAdjudication:
 
         infection.refresh_from_db()
         antibiotics.refresh_from_db()
+        adjudicated_problem = Problem.objects.get(pk=antibiotics.target_problem_id)
         assert result.changed is True
-        assert infection.status == Problem.Status.TREATED
-        assert infection.resolved_at is None
+        assert infection.is_active is False
+        assert adjudicated_problem.status == Problem.Status.TREATED
+        assert adjudicated_problem.resolved_at is None
         assert antibiotics.target_problem_current_status == Problem.Status.TREATED
 
     def test_recommendation_normalization_accepts_free_text_and_rejects_invalid_kind(
