@@ -220,8 +220,11 @@ class InitialScenarioSchema(StrictBaseModel):
             ResourceState,
             RespiratoryRate as RespiratoryRateModel,
             ScenarioBrief as ScenarioBriefModel,
+            TrainerSession,
         )
-        from apps.trainerlab.services import refresh_projection_from_domain_state
+        from apps.trainerlab.services import (
+            commit_non_ai_mutation_side_effects,
+        )
 
         allow_seeded_performed = bool(context.extra.get("allow_seeded_performed_interventions"))
         if self.performed_interventions and not allow_seeded_performed:
@@ -540,38 +543,6 @@ class InitialScenarioSchema(StrictBaseModel):
                 )
             )
 
-        recommendations_by_problem_id: dict[int, list[RecommendedIntervention]] = {}
-        recommendations_by_cause_key: dict[tuple[str, int], list[RecommendedIntervention]] = {}
-        for recommendation in recommendation_objects:
-            recommendations_by_problem_id.setdefault(recommendation.target_problem_id, []).append(
-                recommendation
-            )
-            if recommendation.target_injury_id:
-                recommendations_by_cause_key.setdefault(
-                    ("injury", recommendation.target_injury_id), []
-                ).append(recommendation)
-            elif recommendation.target_illness_id:
-                recommendations_by_cause_key.setdefault(
-                    ("illness", recommendation.target_illness_id), []
-                ).append(recommendation)
-
-        for problem in problem_objects:
-            problem._prefetched_objects_cache = {
-                "recommended_interventions": recommendations_by_problem_id.get(problem.id, [])
-            }
-        for injury in injury_objects:
-            injury._prefetched_objects_cache = {
-                "recommended_interventions": recommendations_by_cause_key.get(
-                    ("injury", injury.id), []
-                )
-            }
-        for illness in illness_objects:
-            illness._prefetched_objects_cache = {
-                "recommended_interventions": recommendations_by_cause_key.get(
-                    ("illness", illness.id), []
-                )
-            }
-
         intervention_objects: list[Intervention] = []
         for performed_seed in self.performed_interventions:
             target_problem = problems_by_ref[performed_seed.target_problem_ref]
@@ -672,7 +643,17 @@ class InitialScenarioSchema(StrictBaseModel):
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
 
-        await sync_to_async(refresh_projection_from_domain_state, thread_sensitive=True)(
-            simulation_id=context.simulation_id,
-            correlation_id=context.correlation_id,
+        session = (
+            await TrainerSession.objects.select_related("simulation")
+            .filter(simulation_id=context.simulation_id)
+            .afirst()
         )
+        if session is not None:
+            await sync_to_async(commit_non_ai_mutation_side_effects, thread_sensitive=True)(
+                session=session,
+                event_kind="initial_seed",
+                correlation_id=context.correlation_id,
+                worker_kind="initial_seed",
+                domains=["physiology", "causes", "problems", "recommendations"],
+                source_call_id=str(context.call_id),
+            )

@@ -161,31 +161,41 @@ def adjudicate_intervention(intervention: Intervention) -> AdjudicationResult:
             rule_id=rule_id,
         )
 
-    problem.previous_status = previous_status
-    problem.status = next_status
-    problem.triggering_intervention = intervention
-    problem.adjudication_reason = "intervention_adjudicated"
-    problem.adjudication_rule_id = rule_id
-    problem.save(
-        update_fields=[
-            "previous_status",
-            "status",
-            "is_treated",
-            "is_resolved",
-            "treated_at",
-            "controlled_at",
-            "resolved_at",
-            "triggering_intervention",
-            "adjudication_reason",
-            "adjudication_rule_id",
-        ]
+    problem.is_active = False
+    problem.save(update_fields=["is_active"])
+    superseding_problem = Problem.objects.create(
+        simulation=problem.simulation,
+        source=problem.source,
+        supersedes=problem,
+        cause_injury=problem.cause_injury,
+        cause_illness=problem.cause_illness,
+        parent_problem=problem.parent_problem,
+        problem_kind=problem.problem_kind,
+        kind=problem.kind,
+        code=problem.code,
+        slug=problem.slug,
+        title=problem.title,
+        display_name=problem.display_name,
+        description=problem.description,
+        march_category=problem.march_category,
+        severity=problem.severity,
+        anatomical_location=problem.anatomical_location,
+        laterality=problem.laterality,
+        status=next_status,
+        previous_status=previous_status,
+        triggering_intervention=intervention,
+        adjudication_reason="intervention_adjudicated",
+        adjudication_rule_id=rule_id,
+        metadata_json=problem.metadata_json,
     )
+    intervention.target_problem = superseding_problem
     intervention.target_problem_previous_status = previous_status
-    intervention.target_problem_current_status = problem.status
+    intervention.target_problem_current_status = superseding_problem.status
     intervention.adjudication_reason = "intervention_adjudicated"
     intervention.adjudication_rule_id = rule_id
     intervention.save(
         update_fields=[
+            "target_problem",
             "target_problem_previous_status",
             "target_problem_current_status",
             "adjudication_reason",
@@ -195,7 +205,7 @@ def adjudicate_intervention(intervention: Intervention) -> AdjudicationResult:
     return AdjudicationResult(
         changed=True,
         previous_status=previous_status,
-        current_status=problem.status,
+        current_status=superseding_problem.status,
         reason="intervention_adjudicated",
         rule_id=rule_id,
     )

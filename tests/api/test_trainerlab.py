@@ -1275,6 +1275,25 @@ class TestTrainerLabDictionaries:
         assert body["current_snapshot"]["vitals"] == []
         assert body["pending_runtime_reasons"] == []
 
+    def test_control_plane_debug_endpoint_returns_defaults(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="control-plane-defaults-session")
+        response = client.get(
+            f"/api/v1/trainerlab/simulations/{session['simulation_id']}/control-plane/"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["execution_plan"] == ["core_runtime", "vitals", "recommendation", "narrative"]
+        assert body["current_step_index"] == 0
+        assert body["queued_reasons"] == []
+        assert body["currently_processing_reasons"] == []
+        assert body["last_processed_reasons"] == []
+
     def test_intervention_event_captures_structured_fields_and_queues_reason(
         self,
         auth_client_factory,
