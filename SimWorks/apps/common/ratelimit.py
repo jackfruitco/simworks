@@ -60,11 +60,13 @@ def get_client_ip(request: HttpRequest) -> str:
     if behind_proxy:
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
         if x_forwarded_for:
-            # Rightmost entry is appended by our trusted proxy; cannot be
-            # spoofed by the client (who can only prepend to the chain).
-            return x_forwarded_for.split(",")[-1].strip()
+            # Rightmost non-empty entry is appended by our trusted proxy;
+            # the client can only prepend earlier entries to the chain.
+            forwarded_chain = [ip.strip() for ip in x_forwarded_for.split(",") if ip.strip()]
+            if forwarded_chain:
+                return forwarded_chain[-1]
 
-    return request.META.get("REMOTE_ADDR", "unknown")
+    return request.META.get("REMOTE_ADDR") or "unknown"
 
 
 def get_rate_limit_key(
