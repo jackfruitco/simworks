@@ -6,6 +6,7 @@ import importlib
 import importlib.util
 import logging
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING
 
 from orchestrai.components.instructions.base import BaseInstruction
@@ -124,7 +125,7 @@ def _resolve_single_ref(ref: str, registry, *, app) -> type[BaseInstruction]:  #
         )
         cls = registry.try_get(identity)
         if cls is None:
-            _attempt_lazy_python_import(namespace=namespace)
+            _attempt_lazy_python_import(namespace=namespace, group=group)
             cls = registry.try_get(identity)
         if cls is None:
             _attempt_lazy_yaml_load(namespace=namespace, group=group, app=app)
@@ -158,14 +159,69 @@ def _resolve_single_ref(ref: str, registry, *, app) -> type[BaseInstruction]:  #
     )
 
 
-def _attempt_lazy_python_import(*, namespace: str) -> None:
-    """Attempt to import the package-level Python instruction registration surface."""
+def _attempt_lazy_python_import(*, namespace: str, group: str) -> None:
+    """Attempt lazy Python registration for a group module, then its package surface."""
 
-    module_name = f"apps.{namespace}.orca.instructions"
+    package_name = f"apps.{namespace}.orca.instructions"
+    for module_name in (f"{package_name}.{group}", package_name):
+        try:
+            if module_name.endswith(f".{group}") and _load_group_module_from_package_path(
+                package_name=package_name,
+                module_name=module_name,
+                group=group,
+            ):
+                return
+            importlib.import_module(module_name)
+            return
+        except ModuleNotFoundError as exc:
+            if exc.name == module_name:
+                continue
+            logger.debug("Failed lazy instruction import for %s", module_name, exc_info=True)
+        except Exception:
+            logger.debug("Failed lazy instruction import for %s", module_name, exc_info=True)
+
+
+def _load_group_module_from_package_path(
+    *, package_name: str, module_name: str, group: str
+) -> bool:
+    """Load a group module directly from the package path without importing __init__."""
+
+    if module_name in sys.modules:
+        return True
+
     try:
-        importlib.import_module(module_name)
+        package_spec = importlib.util.find_spec(package_name)
+    except ModuleNotFoundError as exc:
+        if exc.name == package_name:
+            return False
+        logger.debug("Failed to inspect instruction package %s", package_name, exc_info=True)
+        return False
     except Exception:
-        return
+        logger.debug("Failed to inspect instruction package %s", package_name, exc_info=True)
+        return False
+
+    if package_spec is None or package_spec.submodule_search_locations is None:
+        return False
+
+    for location in package_spec.submodule_search_locations:
+        module_path = Path(location) / f"{group}.py"
+        if not module_path.exists():
+            continue
+
+        module_spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if module_spec is None or module_spec.loader is None:
+            return False
+
+        module = importlib.util.module_from_spec(module_spec)
+        sys.modules[module_name] = module
+        try:
+            module_spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
+        return True
+
+    return False
 
 
 def _attempt_lazy_yaml_load(*, namespace: str, group: str, app) -> None:

@@ -51,6 +51,18 @@ class TestGetClientIP:
         # Rightmost IP is appended by our trusted proxy; cannot be spoofed by client
         assert ip == "203.0.113.5"
 
+    def test_falls_back_to_remote_addr_when_forwarded_chain_is_empty(self):
+        """Test that empty XFF values do not override REMOTE_ADDR behind a proxy."""
+        request = RequestFactory().get("/")
+        request.META["HTTP_X_FORWARDED_FOR"] = " , , "
+        request.META["REMOTE_ADDR"] = "203.0.113.5"
+
+        with patch("apps.common.ratelimit.settings") as mock_settings:
+            mock_settings.DJANGO_BEHIND_PROXY = True
+            ip = get_client_ip(request)
+
+        assert ip == "203.0.113.5"
+
     def test_returns_unknown_when_no_ip_available(self):
         """Test fallback to 'unknown' when no IP info available."""
         request = RequestFactory().get("/")

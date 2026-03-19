@@ -200,6 +200,61 @@ def test_three_part_ref_lazy_imports_python_instruction_package(monkeypatch, tmp
 
 
 @pytest.mark.unit
+def test_three_part_ref_prefers_group_module_when_package_import_is_broken(
+    monkeypatch, tmp_path
+) -> None:
+    """A group module can resolve even if the package import surface is broken."""
+
+    package_root = tmp_path / "apps" / "demo"
+    instructions_dir = package_root / "orca" / "instructions"
+    _write_package_file(tmp_path / "apps" / "__init__.py", "")
+    _write_package_file(package_root / "__init__.py", "")
+    _write_package_file(package_root / "orca" / "__init__.py", "")
+    _write_package_file(
+        instructions_dir / "__init__.py",
+        """
+        from .broken import BrokenInstruction
+        from .runtime import DynamicInstruction
+        """,
+    )
+    _write_package_file(
+        instructions_dir / "broken.py",
+        """
+        raise RuntimeError("boom")
+        """,
+    )
+    _write_package_file(
+        instructions_dir / "runtime.py",
+        """
+        from orchestrai.components.instructions.base import BaseInstruction
+        from orchestrai.decorators.components.instruction_decorator import InstructionDecorator
+
+        instruction = InstructionDecorator()
+
+        @instruction(namespace="demo", group="runtime", order=40)
+        class DynamicInstruction(BaseInstruction):
+            instruction = "Dynamic instruction."
+        """,
+    )
+
+    _clear_demo_modules("apps")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    try:
+
+        class _Service:
+            instruction_refs: ClassVar[list[str]] = ["demo.runtime.DynamicInstruction"]
+
+        app = _make_app()
+        with push_current_app(app):
+            result = collect_instructions(_Service)
+    finally:
+        _clear_demo_modules("apps")
+
+    assert [cls.name for cls in result] == ["DynamicInstruction"]
+
+
+@pytest.mark.unit
 def test_three_part_ref_supports_mixed_lazy_python_and_yaml_resolution(
     monkeypatch, tmp_path
 ) -> None:
@@ -260,6 +315,48 @@ def test_three_part_ref_supports_mixed_lazy_python_and_yaml_resolution(
         _clear_demo_modules("apps")
 
     assert [cls.name for cls in result] == ["StaticInstruction", "DynamicInstruction"]
+
+
+@pytest.mark.unit
+def test_three_part_ref_falls_back_to_yaml_when_python_lazy_import_cannot_resolve(
+    monkeypatch, tmp_path
+) -> None:
+    """YAML fallback still resolves a group ref when Python lazy import finds nothing."""
+
+    package_root = tmp_path / "apps" / "demo"
+    instructions_dir = package_root / "orca" / "instructions"
+    _write_package_file(tmp_path / "apps" / "__init__.py", "")
+    _write_package_file(package_root / "__init__.py", "")
+    _write_package_file(package_root / "orca" / "__init__.py", "")
+    _write_package_file(instructions_dir / "__init__.py", "")
+    _write_package_file(
+        instructions_dir / "runtime.yaml",
+        """
+        namespace: demo
+        group: runtime
+
+        instructions:
+          - name: StaticInstruction
+            order: 10
+            instruction: Static instruction.
+        """,
+    )
+
+    _clear_demo_modules("apps")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    try:
+
+        class _Service:
+            instruction_refs: ClassVar[list[str]] = ["demo.runtime.StaticInstruction"]
+
+        app = _make_app()
+        with push_current_app(app):
+            result = collect_instructions(_Service)
+    finally:
+        _clear_demo_modules("apps")
+
+    assert [cls.name for cls in result] == ["StaticInstruction"]
 
 
 # ---------------------------------------------------------------------------
