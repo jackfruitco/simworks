@@ -563,6 +563,19 @@ class TrainerRuntimeStateOut(BaseModel):
     last_ai_tick_at: datetime | None = None
 
 
+class ControlPlaneDebugOut(BaseModel):
+    execution_plan: list[str] = Field(default_factory=list)
+    current_step_index: int = 0
+    queued_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    currently_processing_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    last_processed_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    last_failed_step: str = ""
+    last_failed_error: str = ""
+    last_patch_evaluation_summary: dict[str, Any] = Field(default_factory=dict)
+    last_rejected_or_normalized_summary: dict[str, Any] = Field(default_factory=dict)
+    status_flags: dict[str, Any] = Field(default_factory=dict)
+
+
 class SSEEnvelope(BaseModel):
     event_id: str
     event_type: str
@@ -896,6 +909,35 @@ def trainer_state_to_out(session: TrainerSession) -> TrainerRuntimeStateOut:
         currently_processing_reasons=list(runtime_state.get("currently_processing_reasons") or []),
         last_runtime_error=str(runtime_state.get("last_runtime_error") or ""),
         last_ai_tick_at=session.last_ai_tick_at,
+    )
+
+
+def control_plane_debug_to_out(session: TrainerSession) -> ControlPlaneDebugOut:
+    runtime_state = dict(session.runtime_state_json or {})
+    debug = dict(runtime_state.get("control_plane_debug") or {})
+    return ControlPlaneDebugOut(
+        execution_plan=list(debug.get("execution_plan") or []),
+        current_step_index=int(debug.get("current_step_index", 0) or 0),
+        queued_reasons=list(
+            debug.get("queued_reasons") or runtime_state.get("pending_runtime_reasons") or []
+        ),
+        currently_processing_reasons=list(
+            debug.get("currently_processing_reasons")
+            or runtime_state.get("currently_processing_reasons")
+            or []
+        ),
+        last_processed_reasons=list(
+            debug.get("last_processed_reasons")
+            or runtime_state.get("last_processed_runtime_reasons")
+            or []
+        ),
+        last_failed_step=str(debug.get("last_failed_step") or ""),
+        last_failed_error=str(
+            debug.get("last_failed_error") or runtime_state.get("last_runtime_error") or ""
+        ),
+        last_patch_evaluation_summary=dict(debug.get("last_patch_evaluation") or {}),
+        last_rejected_or_normalized_summary=dict(debug.get("last_rejected_or_normalized") or {}),
+        status_flags=dict(debug.get("status_flags") or {}),
     )
 
 

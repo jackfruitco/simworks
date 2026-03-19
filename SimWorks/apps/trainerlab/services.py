@@ -159,6 +159,18 @@ def build_runtime_state_defaults(
         "last_discarded_runtime_reasons": [],
         "last_runtime_discarded_at": None,
         "summary_feedback": {},
+        "control_plane_debug": {
+            "execution_plan": ["core_runtime", "vitals", "recommendation", "narrative"],
+            "current_step_index": 0,
+            "queued_reasons": [],
+            "currently_processing_reasons": [],
+            "last_processed_reasons": [],
+            "last_failed_step": "",
+            "last_failed_error": "",
+            "last_patch_evaluation": {},
+            "last_rejected_or_normalized": {},
+            "status_flags": {"runtime_processing": False},
+        },
     }
     merged = dict(baseline)
     if state:
@@ -180,6 +192,36 @@ def build_runtime_state_defaults(
             **dict(state.get("scenario_brief") or {}),
         }
     return merged
+
+
+def record_patch_evaluation_summary(
+    *,
+    session: TrainerSession,
+    correlation_id: str | None,
+    summary: dict[str, Any],
+) -> None:
+    state = get_runtime_state(session)
+    debug = dict(state.get("control_plane_debug") or {})
+    debug["last_patch_evaluation"] = summary
+    if summary.get("rejected") or summary.get("normalized"):
+        debug["last_rejected_or_normalized"] = {
+            "rejected": summary.get("rejected", []),
+            "normalized": summary.get("normalized", []),
+        }
+    debug["status_flags"] = {
+        **dict(debug.get("status_flags") or {}),
+        "runtime_processing": bool(state.get("runtime_processing")),
+    }
+    state["control_plane_debug"] = debug
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+    emit_runtime_event(
+        session=session,
+        event_type="trainerlab.control_plane.patch_evaluated",
+        payload=summary,
+        correlation_id=correlation_id,
+        idempotency_key=f"trainerlab.control_plane.patch_evaluated:{session.id}:{state.get('state_revision', 0)}",
+    )
 
 
 def get_runtime_state(session: TrainerSession) -> dict[str, Any]:
@@ -1045,6 +1087,14 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         state["currently_processing_reasons"] = reasons
         state["runtime_processing"] = True
         state["last_runtime_enqueued_at"] = timezone.now().astimezone(UTC).isoformat()
+        debug = dict(state.get("control_plane_debug") or {})
+        debug["execution_plan"] = ["core_runtime", "vitals", "recommendation", "narrative"]
+        debug["current_step_index"] = 0
+        debug["queued_reasons"] = remaining
+        debug["currently_processing_reasons"] = reasons
+        debug["last_failed_step"] = ""
+        debug["last_failed_error"] = ""
+        state["control_plane_debug"] = debug
         session.runtime_state_json = state
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
@@ -2180,18 +2230,37 @@ def apply_runtime_turn_output(
 
         state_changes = dict(output_payload.get("state_changes") or {})
 
+        evaluation_summary = {
+            "worker_kind": "core_runtime",
+            "accepted": [],
+            "normalized": [],
+            "rejected": [],
+            "source_call_id": str(service_context.get("call_id") or ""),
+            "correlation_id": correlation_id,
+        }
         for observation in state_changes.get("problem_observations", []):
             _apply_problem_observation(
                 session=session,
                 observation=observation,
                 correlation_id=correlation_id,
             )
+            evaluation_summary["accepted"].append(
+                {"domain": "problem", "kind": "problem_observation"}
+            )
 
+        # Deterministic step 2: vitals worker owns physiology.
         for change in state_changes.get("vital_updates", []):
             _apply_vital_change(
                 session=session,
                 change=change,
                 correlation_id=correlation_id,
+            )
+            evaluation_summary["normalized"].append(
+                {
+                    "domain": "physiology",
+                    "kind": "vital_update",
+                    "reason": "routed_to_vitals_step",
+                }
             )
 
         for change in state_changes.get("pulse_updates", []):
@@ -2200,6 +2269,13 @@ def apply_runtime_turn_output(
                 change=change,
                 correlation_id=correlation_id,
             )
+            evaluation_summary["normalized"].append(
+                {
+                    "domain": "physiology",
+                    "kind": "pulse_update",
+                    "reason": "routed_to_vitals_step",
+                }
+            )
 
         for change in state_changes.get("finding_updates", []):
             _apply_finding_update(
@@ -2207,6 +2283,7 @@ def apply_runtime_turn_output(
                 change=change,
                 correlation_id=correlation_id,
             )
+            evaluation_summary["accepted"].append({"domain": "finding", "kind": "finding_update"})
 
         for change in state_changes.get("intervention_assessments", []):
             _apply_intervention_effect(
@@ -2215,20 +2292,41 @@ def apply_runtime_turn_output(
                 state=state,
                 correlation_id=correlation_id,
             )
+            evaluation_summary["accepted"].append(
+                {"domain": "intervention", "kind": "intervention_assessment"}
+            )
 
         _apply_progression_catalogs(
             session=session,
             correlation_id=correlation_id,
         )
+        # Deterministic step 3: recommendation worker owns recommendation output.
         recompute_active_recommendations(
             session=session,
             ai_suggestions=list(state_changes.get("recommendation_suggestions") or []),
             correlation_id=correlation_id,
         )
+        if state_changes.get("recommendation_suggestions"):
+            evaluation_summary["normalized"].append(
+                {
+                    "domain": "recommendation",
+                    "kind": "recommendation_suggestion",
+                    "reason": "routed_to_recommendation_step",
+                }
+            )
+        # Deterministic step 4: narrative worker runs last and consumes canonical state.
         patient_status = _derive_patient_status_annotations(
             session=session,
             base_status=dict(output_payload.get("patient_status") or {}),
         )
+        if output_payload.get("patient_status") or output_payload.get("instructor_intent"):
+            evaluation_summary["normalized"].append(
+                {
+                    "domain": "narrative",
+                    "kind": "patient_status_or_intent",
+                    "reason": "routed_to_narrative_step",
+                }
+            )
         state["runtime_processing"] = False
         state["currently_processing_reasons"] = []
         state["last_runtime_error"] = ""
@@ -2248,6 +2346,22 @@ def apply_runtime_turn_output(
             snapshot_annotations={"patient_status": patient_status},
             processed_reasons=processed_reasons,
             update_tick_timestamp=True,
+        )
+        debug = dict(refreshed.get("control_plane_debug") or {})
+        debug["current_step_index"] = 3
+        debug["currently_processing_reasons"] = []
+        debug["last_processed_reasons"] = processed_reasons
+        debug["status_flags"] = {
+            **dict(debug.get("status_flags") or {}),
+            "runtime_processing": False,
+        }
+        refreshed["control_plane_debug"] = debug
+        session.runtime_state_json = refreshed
+        session.save(update_fields=["runtime_state_json", "modified_at"])
+        record_patch_evaluation_summary(
+            session=session,
+            correlation_id=correlation_id,
+            summary=evaluation_summary,
         )
 
     if refreshed.get("pending_runtime_reasons"):
@@ -2923,6 +3037,44 @@ def emit_intervention_assessed(
         },
         correlation_id=correlation_id,
         idempotency_key=f"trainerlab.intervention.assessed:{intervention_id}:{status}",
+    )
+
+
+# Shared non-AI committer path for initial seeding/manual injections.
+def commit_non_ai_mutation_side_effects(
+    *,
+    session: TrainerSession,
+    event_kind: str,
+    correlation_id: str | None,
+    worker_kind: str,
+    domains: list[str] | None = None,
+    source_call_id: str | None = None,
+) -> None:
+    if event_kind in {
+        "problem",
+        "assessment_finding",
+        "diagnostic_result",
+        "resource",
+        "disposition",
+        "intervention",
+        "initial_seed",
+    }:
+        recompute_active_recommendations(session=session, correlation_id=correlation_id)
+    refresh_runtime_projection(session=session, correlation_id=correlation_id)
+    record_patch_evaluation_summary(
+        session=session,
+        correlation_id=correlation_id,
+        summary={
+            "worker_kind": worker_kind,
+            "domains": list(domains or []),
+            "driver_reason_kinds": [event_kind],
+            "driver_intervention_ids": [],
+            "source_call_id": source_call_id or "",
+            "correlation_id": correlation_id or "",
+            "accepted": [{"event_kind": event_kind}],
+            "normalized": [],
+            "rejected": [],
+        },
     )
 
 
