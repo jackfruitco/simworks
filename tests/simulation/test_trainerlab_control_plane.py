@@ -1,5 +1,6 @@
 import pytest
 
+from apps.accounts.models import UserRole
 from apps.trainerlab.models import SessionStatus
 from apps.trainerlab.orca.schemas.runtime import RuntimeProblemObservation
 from apps.trainerlab.services import (
@@ -10,7 +11,13 @@ from apps.trainerlab.services import (
 
 
 @pytest.mark.django_db
-def test_control_plane_execution_plan_progresses(user):
+def test_control_plane_execution_plan_progresses(django_user_model):
+    role = UserRole.objects.create(title="TrainerLab CP Test Role")
+    user = django_user_model.objects.create_user(
+        email="cp-test@example.com",
+        password="pass12345",
+        role=role,
+    )
     session = create_session(
         user=user,
         scenario_spec={},
