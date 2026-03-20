@@ -17,6 +17,7 @@ from apps.trainerlab.services import (
     create_session,
     create_session_with_initial_generation,
     fail_initial_scenario_generation,
+    retry_initial_scenario_generation,
 )
 from orchestrai_django.models import CallStatus, ServiceCall
 from orchestrai_django.persistence import PersistContext, persist_schema
@@ -194,6 +195,13 @@ class TestSeedingSessionLifecycle:
         assert (
             RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
+                event_type="session.seeding",
+            ).count()
+            == 1
+        )
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
                 event_type="session.seeded",
             ).count()
             == 0
@@ -321,9 +329,7 @@ class TestSeedingSessionLifecycle:
             }
         ]
 
-    def test_process_pending_persistence_marks_seeded_and_emits_runtime_and_outbox_once(
-        self, user
-    ):
+    def test_process_pending_persistence_marks_seeded_and_emits_runtime_and_outbox_once(self, user):
         from apps.common.models import OutboxEvent
         from apps.trainerlab.models import RuntimeEvent, SessionStatus
 
@@ -438,6 +444,8 @@ class TestSeedingSessionLifecycle:
         )
 
     def test_fail_initial_scenario_generation_marks_failed(self, user, monkeypatch):
+        from apps.trainerlab.models import RuntimeEvent
+
         monkeypatch.setattr(
             "apps.trainerlab.services.enqueue_initial_scenario_generation",
             lambda **kwargs: "fake-call-id-failed",
@@ -466,6 +474,48 @@ class TestSeedingSessionLifecycle:
         assert (
             session.simulation.terminal_reason_code
             == "trainerlab_initial_generation_provider_timeout"
+        )
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.failed",
+            ).count()
+            == 1
+        )
+
+    def test_retry_initial_scenario_generation_re_emits_session_seeding(self, user, monkeypatch):
+        from apps.trainerlab.models import RuntimeEvent
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            lambda **kwargs: "fake-call-id-retry",
+        )
+
+        session, _ = create_session_with_initial_generation(
+            user=user,
+            scenario_spec={"diagnosis": "undifferentiated trauma"},
+            directives=None,
+            modifiers=[],
+        )
+        fail_initial_scenario_generation(
+            simulation_id=session.simulation_id,
+            reason_code="provider_timeout",
+            reason_text="Timed out waiting for initial scenario generation.",
+            retryable=True,
+        )
+
+        session.refresh_from_db()
+        retry_initial_scenario_generation(session=session, correlation_id="corr-retry")
+
+        session.refresh_from_db()
+        assert session.status == "seeding"
+        assert session.runtime_state_json["phase"] == "seeding"
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeding",
+            ).count()
+            == 2
         )
 
     def test_ai_response_failed_signal_marks_failed(self, user, monkeypatch):

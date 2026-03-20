@@ -689,6 +689,7 @@ def create_session(
     modifiers: list[str] | None,
     status: str = SessionStatus.SEEDED,
     emit_seeded_event: bool = True,
+    correlation_id: str | None = None,
 ) -> TrainerSession:
     scenario_spec = scenario_spec or {}
     modifiers = modifiers or []
@@ -718,16 +719,19 @@ def create_session(
         tick_interval_seconds=_normalize_tick_interval(scenario_spec.get("tick_interval_seconds")),
     )
 
-    if emit_seeded_event:
+    if status == SessionStatus.SEEDING:
+        _emit_session_seeding_event(
+            session,
+            created_by=user,
+            correlation_id=correlation_id,
+        )
+    elif emit_seeded_event:
         emit_runtime_event(
             session=session,
             event_type="session.seeded",
-            payload={
-                "status": session.status,
-                "scenario_spec": session.scenario_spec_json,
-                "state_revision": initial_state["state_revision"],
-            },
+            payload=_build_session_lifecycle_payload(session, state=initial_state),
             created_by=user,
+            correlation_id=correlation_id,
         )
 
     return session
@@ -754,6 +758,43 @@ def _set_session_phase(
     session.runtime_state_json = state
     session.save(update_fields=["runtime_state_json", "modified_at"])
     return session
+
+
+def _build_session_lifecycle_payload(
+    session: TrainerSession,
+    *,
+    state: dict[str, Any],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "status": session.status,
+        "scenario_spec": session.scenario_spec_json,
+        "state_revision": state["state_revision"],
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
+def _emit_session_seeding_event(
+    session: TrainerSession,
+    *,
+    correlation_id: str | None = None,
+    created_by=None,
+) -> None:
+    state = get_runtime_state(session)
+    emit_runtime_event(
+        session=session,
+        event_type="session.seeding",
+        payload=_build_session_lifecycle_payload(
+            session,
+            state=state,
+            extra={"retry_count": session.simulation.initial_retry_count},
+        ),
+        created_by=created_by,
+        correlation_id=correlation_id,
+        idempotency_key=f"session.seeding:{session.id}:{session.simulation.initial_retry_count}",
+    )
 
 
 def fail_initial_scenario_generation(
@@ -843,12 +884,11 @@ def complete_initial_scenario_generation(
         emit_runtime_event(
             session=session,
             event_type="session.seeded",
-            payload={
-                "status": session.status,
-                "scenario_spec": session.scenario_spec_json,
-                "state_revision": state["state_revision"],
-                "call_id": call_id,
-            },
+            payload=_build_session_lifecycle_payload(
+                session,
+                state=state,
+                extra={"call_id": call_id},
+            ),
             correlation_id=correlation_id,
             idempotency_key=f"session.seeded:{session.id}",
         )
@@ -929,6 +969,7 @@ def retry_initial_scenario_generation(
     session.status = SessionStatus.SEEDING
     session.runtime_state_json = state
     session.save(update_fields=["status", "runtime_state_json", "modified_at"])
+    _emit_session_seeding_event(session, correlation_id=correlation_id)
 
     retryable = has_user_retries_remaining(session.simulation.initial_retry_count)
     return enqueue_initial_scenario_generation(
@@ -953,6 +994,7 @@ def create_session_with_initial_generation(
         modifiers=modifiers,
         status=SessionStatus.SEEDING,
         emit_seeded_event=False,
+        correlation_id=correlation_id,
     )
     call_id = enqueue_initial_scenario_generation(
         session=session,
