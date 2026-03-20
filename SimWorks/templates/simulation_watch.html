@@ -136,121 +136,161 @@
             No events match the current filter.
           </div>
 
-          <template x-for="ev in filteredEvents" :key="ev.event_id">
+          <template x-for="group in filteredEventGroups" :key="group.key">
             <div
               class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
             >
-              {# Row header (clickable) #}
-              <button
-                @click="ev.expanded = !ev.expanded"
-                class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+              <template x-if="group.kind === 'correlation'">
+                <button
+                  @click="toggleGroup(group.key)"
+                  class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                >
+                  <span
+                    class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
+                    :class="statusDotClass(group.lead_event.status)"
+                  ></span>
+                  <span
+                    class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20"
+                    x-text="formatTime(group.lead_event.created_at)"
+                  ></span>
+                  <span
+                    class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate"
+                    x-text="group.correlation_id"
+                  ></span>
+                  <span
+                    class="hidden sm:block flex-shrink-0 text-xs text-gray-400 dark:text-gray-500"
+                    x-text="formatEventCount(group.events.length)"
+                  ></span>
+                  <iconify-icon
+                    icon="mdi:chevron-down"
+                    width="16"
+                    class="flex-shrink-0 text-gray-400 transition-transform duration-200"
+                    :class="isGroupExpanded(group.key) ? 'rotate-180' : ''"
+                  ></iconify-icon>
+                </button>
+              </template>
+
+              <div
+                x-show="group.kind === 'single' || isGroupExpanded(group.key)"
+                x-collapse
               >
-                {# Status dot #}
-                <span
-                  class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
-                  :class="{
-                    'bg-yellow-400': ev.status === 'pending',
-                    'bg-emerald-500': ev.status === 'delivered',
-                    'bg-red-500': ev.status === 'failed',
-                    'bg-gray-400': !ev.status
-                  }"
-                ></span>
-
-                {# Timestamp #}
-                <span
-                  class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20"
-                  x-text="formatTime(ev.created_at)"
-                ></span>
-
-                {# Category badge #}
-                <span
-                  class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded"
-                  :class="categoryBadgeClass(ev.event_type)"
-                  x-text="categoryLabel(ev.event_type)"
-                ></span>
-
-                {# Event type #}
-                <span
-                  class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate"
-                  x-text="ev.event_type"
-                ></span>
-
-                {# Payload preview #}
-                <span
-                  class="hidden sm:block text-xs text-gray-400 dark:text-gray-500 truncate max-w-xs"
-                  x-text="payloadPreview(ev.payload)"
-                ></span>
-
-                {# Correlation ID #}
-                <span
-                  x-show="ev.correlation_id"
-                  class="hidden md:block flex-shrink-0 text-xs font-mono text-gray-300 dark:text-gray-600 truncate max-w-[8rem]"
-                  x-text="ev.correlation_id ? ev.correlation_id.slice(0, 8) + '…' : ''"
-                ></span>
-
-                {# Chevron #}
-                <iconify-icon
-                  icon="mdi:chevron-down"
-                  width="16"
-                  class="flex-shrink-0 text-gray-400 transition-transform duration-200"
-                  :class="ev.expanded ? 'rotate-180' : ''"
-                ></iconify-icon>
-              </button>
-
-              {# Expanded detail #}
-              <div x-show="ev.expanded" x-collapse>
-                <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-2">
-
-                  {# Meta row #}
-                  <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                    <div class="flex gap-1.5">
-                      <dt class="font-medium">Event ID:</dt>
-                      <dd class="font-mono" x-text="ev.event_id"></dd>
-                    </div>
-                    <div class="flex gap-1.5" x-show="ev.correlation_id">
-                      <dt class="font-medium">Correlation:</dt>
-                      <dd class="font-mono" x-text="ev.correlation_id"></dd>
-                    </div>
-                    <div class="flex gap-1.5">
-                      <dt class="font-medium">Status:</dt>
-                      <dd x-text="ev.status || 'unknown'"></dd>
-                    </div>
-                    <div class="flex gap-1.5" x-show="ev.delivery_attempts > 0">
-                      <dt class="font-medium">Attempts:</dt>
-                      <dd x-text="ev.delivery_attempts"></dd>
-                    </div>
-                    <div class="flex gap-1.5" x-show="ev.last_error">
-                      <dt class="font-medium text-red-600">Error:</dt>
-                      <dd class="text-red-600" x-text="ev.last_error"></dd>
-                    </div>
-                    <div class="flex gap-1.5">
-                      <dt class="font-medium">Created:</dt>
-                      <dd x-text="formatDatetime(ev.created_at)"></dd>
-                    </div>
-                  </dl>
-
-                  {# Copy entire event button #}
-                  <div class="flex justify-end">
-                    <button
-                      @click.stop="copyText(JSON.stringify({event_id:ev.event_id,event_type:ev.event_type,created_at:ev.created_at,correlation_id:ev.correlation_id,payload:ev.payload,status:ev.status,delivery_attempts:ev.delivery_attempts,last_error:ev.last_error,idempotency_key:ev.idempotency_key},null,2),$el)"
-                      class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-                    >Copy event</button>
-                  </div>
-
-                  {# Payload JSON #}
-                  <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Payload</p>
+                <div :class="group.kind === 'correlation' ? 'border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700' : ''">
+                  <template x-for="ev in group.events" :key="ev.event_id">
+                    <div>
                       <button
-                        @click.stop="copyText(JSON.stringify(ev.payload,null,2),$el)"
-                        class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-                      >Copy</button>
+                        @click="ev.expanded = !ev.expanded"
+                        class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                      >
+                        <span
+                          class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
+                          :class="statusDotClass(ev.status)"
+                        ></span>
+                        <span
+                          class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20"
+                          x-text="formatTime(ev.created_at)"
+                        ></span>
+                        <span
+                          class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded"
+                          :class="categoryBadgeClass(ev.event_type)"
+                          x-text="categoryLabel(ev.event_type)"
+                        ></span>
+                        <span
+                          class="flex-1 min-w-0 text-xs font-mono text-gray-800 dark:text-gray-200 truncate"
+                          x-text="ev.event_type"
+                        ></span>
+                        <span
+                          class="hidden sm:block min-w-0 text-xs text-gray-400 dark:text-gray-500 truncate max-w-xs"
+                          x-text="payloadPreview(ev.payload)"
+                        ></span>
+                        <span
+                          class="hidden md:block flex-shrink-0 text-xs font-mono text-gray-300 dark:text-gray-600"
+                          x-text="maskEventId(ev.event_id)"
+                        ></span>
+                        <iconify-icon
+                          icon="mdi:chevron-down"
+                          width="16"
+                          class="flex-shrink-0 text-gray-400 transition-transform duration-200"
+                          :class="ev.expanded ? 'rotate-180' : ''"
+                        ></iconify-icon>
+                      </button>
+
+                      <div x-show="ev.expanded" x-collapse>
+                        <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                          <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                              <div class="flex gap-1.5">
+                                <dt class="font-medium">Event ID:</dt>
+                                <dd class="font-mono" x-text="ev.event_id"></dd>
+                              </div>
+                              <div class="flex gap-1.5" x-show="ev.correlation_id">
+                                <dt class="font-medium">Correlation:</dt>
+                                <dd class="font-mono" x-text="ev.correlation_id"></dd>
+                              </div>
+                              <div class="flex gap-1.5">
+                                <dt class="font-medium">Status:</dt>
+                                <dd x-text="ev.status || 'unknown'"></dd>
+                              </div>
+                              <div class="flex gap-1.5" x-show="ev.delivery_attempts > 0">
+                                <dt class="font-medium">Attempts:</dt>
+                                <dd x-text="ev.delivery_attempts"></dd>
+                              </div>
+                              <div class="flex gap-1.5" x-show="ev.last_error">
+                                <dt class="font-medium text-red-600">Error:</dt>
+                                <dd class="text-red-600" x-text="ev.last_error"></dd>
+                              </div>
+                              <div class="flex gap-1.5">
+                                <dt class="font-medium">Created:</dt>
+                                <dd x-text="formatDatetime(ev.created_at)"></dd>
+                              </div>
+                            </dl>
+
+                            <div class="flex flex-wrap items-center gap-2">
+                              <button
+                                @click.stop="copyJson(eventJson(ev), $el)"
+                                class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 transition-colors"
+                              >
+                                <iconify-icon icon="fa6-regular:copy" width="12"></iconify-icon>
+                                <span>Copy Event</span>
+                              </button>
+                              <button
+                                @click.stop="downloadJson(eventFilename(ev), eventJson(ev), $el)"
+                                class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 transition-colors"
+                              >
+                                <iconify-icon icon="bi:download" width="12"></iconify-icon>
+                                <span>Download Event</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Payload</p>
+                            <div class="relative">
+                              <div class="absolute right-2 top-2 flex flex-wrap items-center gap-1.5">
+                                <button
+                                  @click.stop="copyJson(ev.payload, $el)"
+                                  class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 rounded px-2 py-1 transition-colors"
+                                >
+                                  <iconify-icon icon="fa6-regular:copy" width="12"></iconify-icon>
+                                  <span>Copy JSON</span>
+                                </button>
+                                <button
+                                  @click.stop="downloadJson(eventFilename(ev, 'payload'), ev.payload, $el)"
+                                  class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 rounded px-2 py-1 transition-colors"
+                                >
+                                  <iconify-icon icon="bi:download" width="12"></iconify-icon>
+                                  <span>Download JSON</span>
+                                </button>
+                              </div>
+                              <pre
+                                class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 pt-12 overflow-x-auto leading-relaxed text-gray-800 dark:text-gray-200"
+                                x-text="prettyJson(ev.payload)"
+                              ></pre>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <pre
-                      class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto leading-relaxed text-gray-800 dark:text-gray-200"
-                      x-text="JSON.stringify(ev.payload, null, 2)"
-                    ></pre>
-                  </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -363,6 +403,7 @@
         autoScroll: true,
         connected: false,
         categories: CATEGORIES,
+        groupExpanded: {},
         leftWidth: 50,
         _es: null,
         _reconnectTimer: null,
@@ -466,6 +507,39 @@
           return result;
         },
 
+        get filteredEventGroups() {
+          const groups = [];
+          const correlationGroups = new Map();
+
+          for (const ev of this.filteredEvents) {
+            if (ev.correlation_id) {
+              if (!correlationGroups.has(ev.correlation_id)) {
+                const group = {
+                  key: `corr:${ev.correlation_id}`,
+                  kind: "correlation",
+                  correlation_id: ev.correlation_id,
+                  events: [],
+                  lead_event: ev,
+                };
+                correlationGroups.set(ev.correlation_id, group);
+                groups.push(group);
+              }
+
+              correlationGroups.get(ev.correlation_id).events.push(ev);
+              continue;
+            }
+
+            groups.push({
+              key: `event:${ev.event_id}`,
+              kind: "single",
+              events: [ev],
+              lead_event: ev,
+            });
+          }
+
+          return groups;
+        },
+
         countForCategory(catKey) {
           if (catKey === "all") return this.events.length;
           if (catKey === "other") {
@@ -481,6 +555,63 @@
 
         categoryBadgeClass(eventType) {
           return BADGE_CLASSES[categoryKeyForType(eventType)] || BADGE_CLASSES.other;
+        },
+
+        statusDotClass(status) {
+          return {
+            "bg-yellow-400": status === "pending",
+            "bg-emerald-500": status === "delivered",
+            "bg-red-500": status === "failed",
+            "bg-gray-400": !status,
+          };
+        },
+
+        toggleGroup(key) {
+          this.groupExpanded[key] = !this.groupExpanded[key];
+        },
+
+        isGroupExpanded(key) {
+          return !!this.groupExpanded[key];
+        },
+
+        formatEventCount(count) {
+          return `${count} event${count === 1 ? "" : "s"}`;
+        },
+
+        maskEventId(eventId) {
+          return eventId ? `**${eventId.slice(-6)}` : "";
+        },
+
+        eventJson(ev) {
+          return {
+            event_id: ev.event_id,
+            event_type: ev.event_type,
+            created_at: ev.created_at,
+            correlation_id: ev.correlation_id,
+            payload: ev.payload,
+            status: ev.status,
+            delivery_attempts: ev.delivery_attempts,
+            last_error: ev.last_error,
+            idempotency_key: ev.idempotency_key,
+          };
+        },
+
+        jsonFilename(prefix, id) {
+          return `${prefix}-${id}.json`;
+        },
+
+        eventFilename(ev, scope = "event") {
+          return scope === "payload"
+            ? this.jsonFilename("event-payload", ev.event_id)
+            : this.jsonFilename("event", ev.event_id);
+        },
+
+        prettyJson(value) {
+          try {
+            return JSON.stringify(value ?? null, null, 2);
+          } catch {
+            return String(value ?? "");
+          }
         },
 
         payloadPreview(payload) {
@@ -524,15 +655,62 @@
           }
         },
 
+        flashActionState(el, label) {
+          if (!el) return;
+          const originalHtml = el.dataset.originalHtml || el.innerHTML;
+          el.dataset.originalHtml = originalHtml;
+          clearTimeout(el._flashTimer);
+          el.disabled = true;
+          el.innerHTML = `<span>${label}</span>`;
+          el._flashTimer = setTimeout(() => {
+            el.innerHTML = originalHtml;
+            el.disabled = false;
+            delete el.dataset.originalHtml;
+          }, 1500);
+        },
+
         async copyText(text, el) {
           try {
-            await navigator.clipboard.writeText(text);
-            const orig = el.textContent.trim();
-            el.textContent = "✓";
-            setTimeout(() => { el.textContent = orig; }, 1500);
+            if (window.copyToClipboard) {
+              await window.copyToClipboard(text);
+            } else if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(text);
+            } else {
+              const textarea = document.createElement("textarea");
+              textarea.value = text;
+              textarea.style.position = "fixed";
+              textarea.style.opacity = "0";
+              document.body.appendChild(textarea);
+              textarea.focus();
+              textarea.select();
+              document.execCommand("copy");
+              document.body.removeChild(textarea);
+            }
+            this.flashActionState(el, "Copied");
           } catch {
             // Clipboard API unavailable — silently ignore
           }
+        },
+
+        copyJson(value, el) {
+          return this.copyText(this.prettyJson(value), el);
+        },
+
+        downloadText(filename, text, el) {
+          const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 0);
+          this.flashActionState(el, "Downloaded");
+        },
+
+        downloadJson(filename, value, el) {
+          this.downloadText(filename, this.prettyJson(value), el);
         },
 
         startResize(e) {
