@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
+from typing import ClassVar
 
 from . import policies
 
@@ -21,12 +20,23 @@ class PrivacyAnalytics:
     - no direct email/name identifiers
     """
 
-    forbidden_keys = {"email", "name", "full_name", "message", "content", "payload"}
+    forbidden_keys: ClassVar[set[str]] = {
+        "email",
+        "name",
+        "full_name",
+        "message",
+        "content",
+        "payload",
+    }
 
     @classmethod
-    def build_event(cls, *, event_name: str, subject_id: str, properties: dict) -> PrivacyAnalyticsEvent:
+    def build_event(
+        cls, *, event_name: str, subject_id: str, properties: dict
+    ) -> PrivacyAnalyticsEvent:
         cleaned = {k: v for k, v in properties.items() if k not in cls.forbidden_keys}
-        return PrivacyAnalyticsEvent(event_name=event_name, subject_id=subject_id, properties=cleaned)
+        return PrivacyAnalyticsEvent(
+            event_name=event_name, subject_id=subject_id, properties=cleaned
+        )
 
     @classmethod
     def emit(cls, *, event_name: str, subject_id: str, properties: dict, consented: bool) -> bool:

@@ -94,7 +94,9 @@ class PrivacyTests(TestCase):
             response_provider_raw={"raw": True},
         )
         ServiceCall.objects.filter(id=call.id).update(created_at=timezone.now() - timedelta(days=5))
-        ServiceCallAttempt.objects.filter(id=attempt.id).update(created_at=timezone.now() - timedelta(days=5))
+        ServiceCallAttempt.objects.filter(id=attempt.id).update(
+            created_at=timezone.now() - timedelta(days=5)
+        )
 
         RetentionService.purge_expired_chat_messages()
         RetentionService.purge_expired_raw_ai_payloads()
@@ -135,7 +137,9 @@ class PrivacyTests(TestCase):
         )
 
     def test_chat_input_warning_renders(self):
-        response = self.client.get(reverse("chatlab:run_simulation", kwargs={"simulation_id": self.sim.id}))
+        response = self.client.get(
+            reverse("chatlab:run_simulation", kwargs={"simulation_id": self.sim.id})
+        )
         self.assertContains(response, "Privacy reminder")
 
     @override_settings(PRIVACY_CHAT_RETENTION_DAYS=1)
