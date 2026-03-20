@@ -796,6 +796,26 @@ class SimulationFeedback(SimulationMetadata):
         return f"Sim#{self.simulation.pk} {self.__class__.__name__} Metafield (id:{self.pk}): {self.key}"
 
 
+class SimulationSummary(models.Model):
+    simulation = models.OneToOneField(
+        Simulation,
+        on_delete=models.CASCADE,
+        related_name="summary",
+    )
+    summary_text = models.TextField(blank=True, default="")
+    chief_complaint = models.CharField(max_length=255, blank=True, default="")
+    diagnosis = models.CharField(max_length=255, blank=True, default="")
+    strengths = models.JSONField(default=list, blank=True)
+    improvement_areas = models.JSONField(default=list, blank=True)
+    learning_points = models.JSONField(default=list, blank=True)
+    recommended_study_topics = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"SimulationSummary(simulation_id={self.simulation_id})"
+
+
 class SimulationImage(models.Model):
     """Store image for the specified simulation."""
 
