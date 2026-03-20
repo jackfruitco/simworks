@@ -1,7 +1,7 @@
 import types
 
 from orchestrai_django import tasks
-from orchestrai_django.signals import ai_response_failed
+from orchestrai_django.signals import ai_response_failed, service_call_succeeded
 
 
 class DummyAttempt:
@@ -94,6 +94,7 @@ class DummyCall:
     def mark_attempt_successful(self, attempt, output_data, provider_response_id=None):
         self.mark_attempt_args = (attempt, output_data, provider_response_id)
         self.output_data = output_data
+        self.provider_response_id = provider_response_id
         self.status = "completed"
 
 
@@ -191,6 +192,101 @@ def test_run_service_call_stores_output_and_schema(monkeypatch):
     assert call.mark_attempt_args[2] == "resp-123"
     assert call.schema_fqn == "tests.schema.FakeSchema"
     assert any("schema_fqn" in fields for fields in call.saved_fields if fields)
+
+
+def test_run_service_call_emits_generic_success_signal(monkeypatch):
+    call = DummyCall()
+    received: list[dict] = []
+
+    class DummyService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def arun(self, **payload):
+            return FakeRunResult()
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _receiver(sender, **payload):
+        received.append(payload)
+
+    service_call_succeeded.connect(_receiver)
+    try:
+        monkeypatch.setattr(
+            tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService)
+        )
+        monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+        monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+        monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
+
+        result = tasks.run_service_call(call.id)
+
+        assert result["status"] == "completed"
+        assert received == [
+            {
+                "signal": service_call_succeeded,
+                "call": call,
+                "call_id": call.id,
+                "attempt": 1,
+                "service_identity": call.service_identity,
+                "provider_response_id": "resp-123",
+                "output_data": {"answer": "ok"},
+                "context": {"_service_call_attempt_id": "attempt-1"},
+            }
+        ]
+    finally:
+        service_call_succeeded.disconnect(_receiver)
+
+
+def test_run_service_call_emits_generic_dispatch_signal(monkeypatch):
+    call = DummyCall()
+    call.context = {
+        "simulation_id": 77,
+        "correlation_id": "corr-77",
+        "user_msg": 42,
+    }
+
+    class DummyService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def arun(self, **payload):
+            return FakeRunResult()
+
+    dispatched = []
+
+    def _capture_dispatch(emit_call, *, attempt):
+        dispatched.append((emit_call, attempt))
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService)
+    )
+    monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+    monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+    monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
+    monkeypatch.setattr(tasks, "emit_service_call_dispatched", _capture_dispatch)
+
+    tasks.run_service_call(call.id)
+
+    assert dispatched == [(call, 1)]
 
 
 def test_inline_persist_uses_output_data_even_if_empty(monkeypatch):

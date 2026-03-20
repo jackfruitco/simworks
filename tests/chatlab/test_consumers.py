@@ -303,6 +303,63 @@ class TestSimulationMetadataResultsCreatedHandler:
         await communicator.disconnect()
 
 
+class TestOutboxEventHandler:
+    """Tests for durable outbox event forwarding."""
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_outbox_event_forwards_metadata_results_envelope(self):
+        """Outbox-delivered metadata results events are forwarded unchanged."""
+        simulation, user = await create_simulation_and_user()
+
+        communicator = WebsocketCommunicator(
+            ChatConsumer.as_asgi(),
+            f"/ws/simulation/{simulation.id}/",
+        )
+        communicator.scope["url_route"] = {"kwargs": {"simulation_id": simulation.id}}
+        communicator.scope["user"] = user
+
+        connected, _ = await communicator.connect()
+        assert connected is True
+
+        await communicator.receive_json_from()
+
+        consumer = ChatConsumer()
+        consumer.simulation = simulation
+
+        sent_messages = []
+
+        async def mock_send(text_data):
+            sent_messages.append(text_data)
+
+        consumer.send = mock_send
+
+        await consumer.outbox_event(
+            {
+                "event": {
+                    "event_id": "event-123",
+                    "event_type": "simulation.metadata.results_created",
+                    "created_at": "2026-01-16T10:30:00Z",
+                    "correlation_id": "corr-123",
+                    "payload": {
+                        "tool": "patient_results",
+                        "results": [{"id": 1, "key": "lab_results_available"}],
+                    },
+                }
+            }
+        )
+
+        assert len(sent_messages) == 1
+        import json
+
+        sent_data = json.loads(sent_messages[0])
+        assert sent_data["event_type"] == "simulation.metadata.results_created"
+        assert sent_data["payload"]["tool"] == "patient_results"
+        assert sent_data["payload"]["results"][0]["key"] == "lab_results_available"
+
+        await communicator.disconnect()
+
+
 class TestTypingEventHandlers:
     """Tests for typing event handlers."""
 

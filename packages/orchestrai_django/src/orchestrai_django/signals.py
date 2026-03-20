@@ -106,11 +106,33 @@ class OutboxDispatchPayload(TypedDict, total=False):
     context: dict[str, Any] | None
 
 
+class ServiceCallDispatchedPayload(TypedDict, total=False):
+    call: Any
+    call_id: str | UUID | None
+    attempt: int | None
+    service_identity: str | None
+    simulation_id: int | None
+    correlation_id: Any | None
+    context: dict[str, Any] | None
+
+
+class ServiceCallSucceededPayload(TypedDict, total=False):
+    call: Any
+    call_id: str | UUID | None
+    attempt: int | None
+    service_identity: str | None
+    provider_response_id: str | None
+    output_data: dict[str, Any] | None
+    context: dict[str, Any] | None
+
+
 ai_request_sent = Signal()
 ai_response_received = Signal()
 ai_response_ready = Signal()
 ai_response_failed = Signal()
 ai_outbox_dispatch = Signal()
+service_call_dispatched = Signal()
+service_call_succeeded = Signal()
 domain_object_created = Signal()  # Emitted after persistence handler creates domain object
 
 
@@ -219,22 +241,66 @@ class DjangoSignalEmitter:
         return None
 
 
+def emit_service_call_dispatched(
+    call: Any,
+    *,
+    attempt: int | None = None,
+) -> None:
+    """Emit a generic hook when a service call has been dispatched to a backend."""
+
+    context = dict(getattr(call, "context", None) or {})
+    payload: ServiceCallDispatchedPayload = {
+        "call": call,
+        "call_id": getattr(call, "id", None) or getattr(call, "pk", None),
+        "attempt": attempt,
+        "service_identity": getattr(call, "service_identity", None),
+        "simulation_id": context.get("simulation_id"),
+        "correlation_id": context.get("correlation_id"),
+        "context": context,
+    }
+    service_call_dispatched.send_robust(sender=type(call), **payload)
+
+
+def emit_service_call_succeeded(
+    call: Any,
+    *,
+    attempt: int | None = None,
+) -> None:
+    """Emit a generic hook when a service call completes successfully."""
+
+    context = dict(getattr(call, "context", None) or {})
+    payload: ServiceCallSucceededPayload = {
+        "call": call,
+        "call_id": getattr(call, "id", None) or getattr(call, "pk", None),
+        "attempt": attempt,
+        "service_identity": getattr(call, "service_identity", None),
+        "provider_response_id": getattr(call, "provider_response_id", None),
+        "output_data": getattr(call, "output_data", None),
+        "context": context,
+    }
+    service_call_succeeded.send_robust(sender=type(call), **payload)
+
+
 # shared instance used by default in DjangoBaseService
 emitter = DjangoSignalEmitter()
 
 __all__ = [
     "OutboxDispatchPayload",
-    # payload contracts
     "RequestSentPayload",
     "ResponseFailedPayload",
     "ResponseReadyPayload",
     "ResponseReceivedPayload",
+    "ServiceCallDispatchedPayload",
+    "ServiceCallSucceededPayload",
     "ai_outbox_dispatch",
-    # signals
     "ai_request_sent",
     "ai_response_failed",
     "ai_response_ready",
     "ai_response_received",
     "domain_object_created",
+    "emit_service_call_dispatched",
+    "emit_service_call_succeeded",
     "emitter",
+    "service_call_dispatched",
+    "service_call_succeeded",
 ]
