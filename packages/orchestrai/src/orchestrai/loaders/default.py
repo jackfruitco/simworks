@@ -63,10 +63,6 @@ class DefaultLoader(BaseLoader):
                 )
                 continue
             if spec.submodule_search_locations is None:
-                logger.warning(
-                    "Instruction discovery root %r is not a package; skipping YAML instruction discovery",
-                    module_path,
-                )
                 continue
             for location in spec.submodule_search_locations:
                 base_path = Path(location)

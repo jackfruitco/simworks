@@ -183,7 +183,11 @@ def test_run_service_call_stores_output_and_schema(monkeypatch):
     )
     monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
     monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
-    monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
+    monkeypatch.setattr(
+        tasks,
+        "_inline_persist_service_call",
+        lambda call: setattr(call, "domain_persisted", True),
+    )
 
     result = tasks.run_service_call(call.id)
 
@@ -225,7 +229,11 @@ def test_run_service_call_emits_generic_success_signal(monkeypatch):
         )
         monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
         monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
-        monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
+        monkeypatch.setattr(
+            tasks,
+            "_inline_persist_service_call",
+            lambda call: setattr(call, "domain_persisted", True),
+        )
 
         result = tasks.run_service_call(call.id)
 
@@ -242,6 +250,47 @@ def test_run_service_call_emits_generic_success_signal(monkeypatch):
                 "context": {"_service_call_attempt_id": "attempt-1"},
             }
         ]
+    finally:
+        service_call_succeeded.disconnect(_receiver)
+
+
+def test_run_service_call_defers_generic_success_signal_until_persistence(monkeypatch):
+    call = DummyCall()
+    received: list[dict] = []
+
+    class DummyService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def arun(self, **payload):
+            return FakeRunResult()
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _receiver(sender, **payload):
+        received.append(payload)
+
+    service_call_succeeded.connect(_receiver)
+    try:
+        monkeypatch.setattr(
+            tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService)
+        )
+        monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+        monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+        monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
+
+        result = tasks.run_service_call(call.id)
+
+        assert result["status"] == "completed"
+        assert received == []
     finally:
         service_call_succeeded.disconnect(_receiver)
 
@@ -281,7 +330,11 @@ def test_run_service_call_emits_generic_dispatch_signal(monkeypatch):
     )
     monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
     monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
-    monkeypatch.setattr(tasks, "_inline_persist_service_call", lambda call: None)
+    monkeypatch.setattr(
+        tasks,
+        "_inline_persist_service_call",
+        lambda call: setattr(call, "domain_persisted", True),
+    )
     monkeypatch.setattr(tasks, "emit_service_call_dispatched", _capture_dispatch)
 
     tasks.run_service_call(call.id)
@@ -343,6 +396,75 @@ def test_inline_persist_uses_output_data_even_if_empty(monkeypatch):
     assert calls["persist_context"].extra["conversation_id"] == 456
     assert calls["persist_context"].extra["service_call_attempt_id"] == "attempt-1"
     assert call.domain_persisted is True
+
+
+def test_process_pending_persistence_emits_generic_success_signal_after_persist(monkeypatch):
+    call = DummyCall()
+    call.status = "completed"
+    call.schema_fqn = "tests.schema.FakeSchema"
+    call.domain_persisted = False
+    call.domain_persist_attempts = 0
+
+    received: list[dict] = []
+
+    class PendingQuery:
+        def __init__(self, items):
+            self._items = items
+
+        def exclude(self, **kwargs):
+            return self
+
+        def select_for_update(self, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def __getitem__(self, item):
+            return self._items
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _receiver(sender, **payload):
+        received.append(payload)
+
+    service_call_succeeded.connect(_receiver)
+    try:
+        monkeypatch.setattr(
+            tasks.ServiceCallModel.objects,
+            "filter",
+            lambda **kwargs: PendingQuery([call]),
+        )
+        monkeypatch.setattr(tasks.ServiceCallModel.objects, "bulk_update", lambda calls, fields: None)
+        monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+        monkeypatch.setattr(
+            tasks,
+            "_inline_persist_service_call",
+            lambda pending_call: setattr(pending_call, "domain_persisted", True),
+        )
+
+        stats = tasks.process_pending_persistence.call()
+
+        assert stats["processed"] == 1
+        assert received == [
+            {
+                "signal": service_call_succeeded,
+                "call": call,
+                "call_id": call.id,
+                "attempt": None,
+                "service_identity": call.service_identity,
+                "provider_response_id": None,
+                "output_data": None,
+                "context": {},
+            }
+        ]
+    finally:
+        service_call_succeeded.disconnect(_receiver)
 
 
 def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkeypatch):

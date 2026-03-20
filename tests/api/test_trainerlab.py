@@ -1,6 +1,8 @@
 """Tests for TrainerLab API v1 endpoints."""
 
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.test import Client
 import pytest
@@ -117,23 +119,50 @@ def auth_client_factory():
     return _build
 
 
-def _create_session(client: Client, *, idempotency_key: str = "sess-create-1") -> dict:
-    response = client.post(
-        "/api/v1/trainerlab/simulations/",
-        data={
-            "scenario_spec": {
-                "diagnosis": "Heat stroke",
-                "chief_complaint": "Altered mental status",
-                "tick_interval_seconds": 10,
-            },
-            "directives": "Initial directives",
-            "modifiers": ["altitude", "dehydration"],
-        },
-        content_type="application/json",
-        HTTP_IDEMPOTENCY_KEY=idempotency_key,
+def _create_session(
+    client: Client,
+    *,
+    idempotency_key: str = "sess-create-1",
+    ready: bool = True,
+    stub_enqueue: bool = True,
+) -> dict:
+    from apps.trainerlab.models import SessionStatus, TrainerSession
+
+    context = (
+        patch(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            return_value="test-call-id",
+        )
+        if stub_enqueue
+        else nullcontext()
     )
+    with context:
+        response = client.post(
+            "/api/v1/trainerlab/simulations/",
+            data={
+                "scenario_spec": {
+                    "diagnosis": "Heat stroke",
+                    "chief_complaint": "Altered mental status",
+                    "tick_interval_seconds": 10,
+                },
+                "directives": "Initial directives",
+                "modifiers": ["altitude", "dehydration"],
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
+        )
     assert response.status_code in (200, 201)
-    return response.json()
+    payload = response.json()
+    if ready:
+        session = TrainerSession.objects.get(simulation_id=payload["simulation_id"])
+        state = dict(session.runtime_state_json or {})
+        state["phase"] = "seeded"
+        state["last_runtime_error"] = ""
+        session.status = SessionStatus.SEEDED
+        session.runtime_state_json = state
+        session.save(update_fields=["status", "runtime_state_json", "modified_at"])
+        payload["status"] = SessionStatus.SEEDED.value
+    return payload
 
 
 def _post_injury_event(
@@ -379,8 +408,13 @@ class TestTrainerLabSessionLifecycle:
 
         client = auth_client_factory(instructor_user)
 
-        first = _create_session(client, idempotency_key="session-create-a")
-        assert first["status"] == "seeded"
+        first = _create_session(
+            client,
+            idempotency_key="session-create-a",
+            ready=False,
+            stub_enqueue=False,
+        )
+        assert first["status"] == "seeding"
 
         second_response = client.post(
             "/api/v1/trainerlab/simulations/",
@@ -438,8 +472,8 @@ class TestTrainerLabSessionLifecycle:
     ):
         captured: dict[str, int] = {}
 
-        def _fake_enqueue(*, simulation):
-            captured["simulation_id"] = simulation.id
+        def _fake_enqueue(*, session, correlation_id=None, retryable=None):
+            captured["simulation_id"] = session.simulation_id
             return "call-test-123"
 
         monkeypatch.setattr(
@@ -448,9 +482,187 @@ class TestTrainerLabSessionLifecycle:
         )
 
         client = auth_client_factory(instructor_user)
-        created = _create_session(client, idempotency_key="session-create-enqueue")
+        created = _create_session(
+            client,
+            idempotency_key="session-create-enqueue",
+            ready=False,
+            stub_enqueue=False,
+        )
 
         assert captured["simulation_id"] == created["simulation_id"]
+
+    def test_create_session_returns_seeding_and_blocks_mutations_until_ready(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(
+            client,
+            idempotency_key="session-create-seeding-blocked",
+            ready=False,
+        )
+        simulation_id = session["simulation_id"]
+
+        start = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="session-create-seeding-start",
+        )
+        assert start.status_code == 409
+        assert "still generating" in start.content.decode("utf-8")
+
+        note = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/notes/",
+            data={"content": "Blocked until initial seeding completes."},
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="session-create-seeding-note",
+        )
+        assert note.status_code == 409
+        assert "still generating" in note.content.decode("utf-8")
+
+    def test_retry_initial_endpoint_requeues_failed_trainerlab_session(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.trainerlab.models import TrainerSession
+        from apps.trainerlab.services import fail_initial_scenario_generation
+
+        captured: dict[str, int | None] = {"simulation_id": None}
+
+        def _fake_enqueue(*, session, correlation_id=None, retryable=None):
+            captured["simulation_id"] = session.simulation_id
+            return "retry-call-123"
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            _fake_enqueue,
+        )
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(
+            client,
+            idempotency_key="session-create-initial-failure",
+            ready=False,
+            stub_enqueue=False,
+        )
+        simulation_id = session["simulation_id"]
+
+        fail_initial_scenario_generation(
+            simulation_id=simulation_id,
+            reason_code="provider_timeout",
+            reason_text="Timed out waiting for initial scenario generation.",
+            retryable=True,
+        )
+
+        failed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/")
+        assert failed.status_code == 200
+        assert failed.json()["status"] == "failed"
+        assert failed.json()["retryable"] is True
+
+        response = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/retry-initial/",
+            content_type="application/json",
+        )
+
+        assert response.status_code == 202
+        body = response.json()
+        assert body["status"] == "seeding"
+        assert captured["simulation_id"] == simulation_id
+
+        trainer_session = TrainerSession.objects.get(simulation_id=simulation_id)
+        trainer_session.simulation.refresh_from_db()
+        assert trainer_session.status == "seeding"
+        assert trainer_session.runtime_state_json["phase"] == "seeding"
+        assert trainer_session.simulation.initial_retry_count == 1
+        assert trainer_session.simulation.terminal_reason_code == ""
+
+    def test_retry_initial_endpoint_rejects_non_retryable_initial_failure(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.services import fail_initial_scenario_generation
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(
+            client,
+            idempotency_key="session-create-non-retryable-failure",
+            ready=False,
+        )
+        simulation_id = session["simulation_id"]
+
+        fail_initial_scenario_generation(
+            simulation_id=simulation_id,
+            reason_code="provider_auth_or_request_error",
+            reason_text="Provider rejected the request.",
+            retryable=False,
+        )
+
+        failed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/")
+        assert failed.status_code == 200
+        assert failed.json()["status"] == "failed"
+        assert failed.json()["retryable"] is False
+
+        retry = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/retry-initial/",
+            content_type="application/json",
+        )
+        assert retry.status_code == 409
+
+    def test_create_session_returns_failed_payload_when_enqueue_fails(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+        monkeypatch,
+    ):
+        from apps.trainerlab.services import fail_initial_scenario_generation
+
+        def _fail_enqueue(*, session, correlation_id=None, retryable=None):
+            fail_initial_scenario_generation(
+                simulation_id=session.simulation_id,
+                reason_code="provider_auth_or_request_error",
+                reason_text="Provider rejected the request.",
+                retryable=False,
+                correlation_id=correlation_id,
+            )
+            return None
+
+        monkeypatch.setattr(
+            "apps.trainerlab.services.enqueue_initial_scenario_generation",
+            _fail_enqueue,
+        )
+
+        client = auth_client_factory(instructor_user)
+        response = client.post(
+            "/api/v1/trainerlab/simulations/",
+            data={
+                "scenario_spec": {
+                    "diagnosis": "Heat stroke",
+                    "chief_complaint": "Altered mental status",
+                    "tick_interval_seconds": 10,
+                },
+                "directives": "Initial directives",
+                "modifiers": ["altitude", "dehydration"],
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="session-create-inline-enqueue-failure",
+        )
+
+        assert response.status_code == 201
+        body = response.json()
+        assert body["status"] == "failed"
+        assert body["retryable"] is False
+        assert (
+            body["terminal_reason_code"]
+            == "trainerlab_initial_generation_provider_auth_or_request_error"
+        )
 
     def test_run_state_machine_and_summary(
         self,
@@ -499,6 +711,38 @@ class TestTrainerLabSessionLifecycle:
         body = summary.json()
         assert body["simulation_id"] == simulation_id
         assert body["status"] == "completed"
+
+    def test_summary_returns_404_until_generated(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="summary-not-ready-session")
+        simulation_id = session["simulation_id"]
+
+        before_stop = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/summary/")
+        assert before_stop.status_code == 404
+        assert "Summary not generated" in before_stop.content.decode("utf-8")
+
+        start = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/start/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="summary-not-ready-start",
+        )
+        assert start.status_code == 200
+
+        stop = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/run/stop/",
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="summary-not-ready-stop",
+        )
+        assert stop.status_code == 200
+
+        after_stop = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/summary/")
+        assert after_stop.status_code == 200
+        assert after_stop.json()["simulation_id"] == simulation_id
 
     def test_stop_clears_runtime_work_and_ignores_late_runtime_output(
         self,
@@ -981,6 +1225,79 @@ class TestTrainerLabEvents:
         assert response.status_code == 422
         assert "content" in response.content.decode("utf-8")
 
+    def test_intervention_event_requires_target_problem_id_and_details(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import Injury, Problem
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="intervention-required-fields-session")
+        simulation_id = session["simulation_id"]
+
+        response = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data={
+                "intervention_type": "tourniquet",
+                "site_code": "left_arm",
+                "status": "applied",
+                "effectiveness": "unknown",
+                "notes": "Missing required contract fields",
+                "initiated_by_type": "user",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="intervention-required-fields-1",
+        )
+
+        assert response.status_code == 422
+        content = response.content.decode("utf-8")
+        assert "target_problem_id" in content
+
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-required-fields-injury",
+            injury_location="LUL",
+            injury_kind="GSW",
+            injury_description="GSW to the left thigh",
+        )
+        assert injury_resp.status_code == 200
+        cause = Injury.objects.get(injury_description="GSW to the left thigh")
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="intervention-required-fields-problem",
+            cause_kind="injury",
+            cause_id=cause.id,
+            kind="hemorrhage",
+            title="Massive hemorrhage from left thigh",
+            march_category="M",
+            severity="critical",
+            anatomical_location=cause.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+        problem = Problem.objects.filter(simulation_id=simulation_id).latest("timestamp")
+
+        missing_details = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data={
+                "intervention_type": "tourniquet",
+                "site_code": "left_arm",
+                "target_problem_id": problem.id,
+                "status": "applied",
+                "effectiveness": "unknown",
+                "notes": "Missing details payload",
+                "initiated_by_type": "user",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="intervention-required-fields-2",
+        )
+
+        assert missing_details.status_code == 422
+        assert "details" in missing_details.content.decode("utf-8")
+
     def test_completed_session_allows_post_stop_notes_and_rejects_other_mutations(
         self,
         auth_client_factory,
@@ -1206,7 +1523,7 @@ class TestTrainerLabEvents:
         from apps.common.models import OutboxEvent
         from tests.helpers.sse import collect_streaming_chunks
 
-        def _fake_enqueue(*, simulation):
+        def _fake_enqueue(*, session, correlation_id=None, retryable=None):
             return "call-test-idle-keepalive"
 
         monkeypatch.setattr(
@@ -1373,6 +1690,62 @@ class TestTrainerLabDictionaries:
         assert outbox_event.payload["site_code"] == "LEFT_ARM"
         assert outbox_event.payload["effectiveness"] == "unknown"
         assert "effective" not in outbox_event.payload
+
+    def test_tourniquet_details_require_application_mode(
+        self,
+        auth_client_factory,
+        instructor_user,
+        instructor_membership,
+    ):
+        from apps.trainerlab.models import Injury, Problem
+
+        client = auth_client_factory(instructor_user)
+        session = _create_session(client, idempotency_key="tourniquet-detail-validation")
+        simulation_id = session["simulation_id"]
+
+        injury_resp = _post_injury_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="tourniquet-detail-validation-injury",
+            injury_location="LUL",
+            injury_kind="GSW",
+            injury_description="GSW to the left thigh",
+        )
+        assert injury_resp.status_code == 200
+        cause = Injury.objects.get(injury_description="GSW to the left thigh")
+        problem_resp = _post_problem_event(
+            client,
+            simulation_id=simulation_id,
+            idempotency_key="tourniquet-detail-validation-problem",
+            cause_kind="injury",
+            cause_id=cause.id,
+            kind="hemorrhage",
+            title="Massive hemorrhage from left thigh",
+            march_category="M",
+            severity="critical",
+            anatomical_location=cause.anatomical_location,
+        )
+        assert problem_resp.status_code == 200
+        problem = Problem.objects.filter(simulation_id=simulation_id).latest("timestamp")
+
+        response = client.post(
+            f"/api/v1/trainerlab/simulations/{simulation_id}/events/interventions/",
+            data={
+                "intervention_type": "tourniquet",
+                "site_code": "left_arm",
+                "target_problem_id": problem.id,
+                "status": "applied",
+                "effectiveness": "unknown",
+                "notes": "Missing tourniquet application mode",
+                "details": {"kind": "tourniquet", "version": 1},
+                "initiated_by_type": "user",
+            },
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY="tourniquet-detail-validation-1",
+        )
+
+        assert response.status_code == 422
+        assert "application_mode" in response.content.decode("utf-8")
 
     def test_intervention_dictionary_endpoint_returns_structured_definitions(
         self,

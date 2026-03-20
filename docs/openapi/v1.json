@@ -2023,6 +2023,53 @@
         ]
       }
     },
+    "/api/v1/trainerlab/simulations/{simulation_id}/retry-initial/": {
+      "post": {
+        "operationId": "api_v1_endpoints_trainerlab_retry_trainer_initial_generation",
+        "summary": "Retry initial TrainerLab scenario generation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainerRunOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "trainerlab"
+        ],
+        "security": [
+          {
+            "JWTAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/simulations/{simulation_id}/run/start/": {
       "post": {
         "operationId": "api_v1_endpoints_trainerlab_start_trainer_run",
@@ -2827,8 +2874,19 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
+        "description": "Returns 404 when the run summary has not been generated yet.",
         "tags": [
           "trainerlab"
         ],
@@ -5109,6 +5167,14 @@
             "type": "integer"
           },
           "status": {
+            "enum": [
+              "seeding",
+              "seeded",
+              "running",
+              "paused",
+              "completed",
+              "failed"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -5216,6 +5282,17 @@
               }
             ],
             "title": "Terminal Reason Text"
+          },
+          "retryable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retryable"
           }
         },
         "required": [
@@ -6795,6 +6872,14 @@
             "type": "integer"
           },
           "status": {
+            "enum": [
+              "seeding",
+              "seeded",
+              "running",
+              "paused",
+              "completed",
+              "failed"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -6965,6 +7050,81 @@
           }
         },
         "title": "ControlPlaneDebugOut",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "RFC 7807-inspired error response format.\n\nAll API errors should return this format for consistency.",
+        "properties": {
+          "type": {
+            "description": "Error type identifier (e.g., 'validation_error', 'not_found')",
+            "examples": [
+              "validation_error"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "description": "Short human-readable error title",
+            "examples": [
+              "Invalid input"
+            ],
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "description": "HTTP status code",
+            "examples": [
+              422
+            ],
+            "title": "Status",
+            "type": "integer"
+          },
+          "detail": {
+            "description": "Detailed error explanation",
+            "examples": [
+              "Field 'content' is required"
+            ],
+            "title": "Detail",
+            "type": "string"
+          },
+          "instance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "URI reference identifying the specific occurrence",
+            "examples": [
+              "/api/v1/messages/"
+            ],
+            "title": "Instance"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request correlation ID for tracing",
+            "examples": [
+              "550e8400-e29b-41d4-a716-446655440000"
+            ],
+            "title": "Correlation Id"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "ErrorResponse",
         "type": "object"
       },
       "TrainerCommandAck": {

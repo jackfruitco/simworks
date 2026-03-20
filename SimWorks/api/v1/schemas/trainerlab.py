@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from apps.common.retries import has_user_retries_remaining
 from apps.trainerlab.injury_dictionary import (
     normalize_injury_kind,
     normalize_injury_location,
@@ -37,7 +38,7 @@ class TrainerSessionCreateIn(BaseModel):
 
 class TrainerRunOut(BaseModel):
     simulation_id: int
-    status: str
+    status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     scenario_spec: dict[str, Any]
     runtime_state: dict[str, Any]
     initial_directives: str | None
@@ -50,6 +51,7 @@ class TrainerRunOut(BaseModel):
     modified_at: datetime
     terminal_reason_code: str | None = None
     terminal_reason_text: str | None = None
+    retryable: bool | None = None
 
 
 class TrainerCommandAck(BaseModel):
@@ -547,7 +549,7 @@ class ScenarioBriefOut(BaseModel):
 class TrainerRuntimeStateOut(BaseModel):
     simulation_id: int
     session_id: int
-    status: str
+    status: Literal["seeding", "seeded", "running", "paused", "completed", "failed"]
     state_revision: int
     active_elapsed_seconds: int
     tick_interval_seconds: int = 15
@@ -843,8 +845,19 @@ class ScenarioBriefDetailOut(BaseModel):
 
 def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
     simulation = session.simulation
+    state = session.runtime_state_json or {}
     terminal_reason_code = getattr(simulation, "terminal_reason_code", "") or None
     terminal_reason_text = getattr(simulation, "terminal_reason_text", "") or None
+    retryable = None
+    if terminal_reason_code:
+        stored_retryable = state.get("initial_generation_retryable")
+        if terminal_reason_code.startswith("trainerlab_initial_generation_"):
+            if stored_retryable is None:
+                retryable = has_user_retries_remaining(simulation.initial_retry_count)
+            else:
+                retryable = bool(stored_retryable) and has_user_retries_remaining(
+                    simulation.initial_retry_count
+                )
     return TrainerRunOut(
         simulation_id=session.simulation_id,
         status=session.status,
@@ -860,6 +873,7 @@ def trainer_run_to_out(session: TrainerSession) -> TrainerRunOut:
         modified_at=session.modified_at,
         terminal_reason_code=terminal_reason_code,
         terminal_reason_text=terminal_reason_text,
+        retryable=retryable,
     )
 
 

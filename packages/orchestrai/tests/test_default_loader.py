@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from orchestrai.conf.defaults import DEFAULTS
@@ -83,3 +84,19 @@ def test_default_loader_discovers_python_and_yaml_instructions(monkeypatch, tmp_
     assert "demo_orca_pkg.orca.instructions" in imported
     assert sys.modules["demo_orca_pkg.orca.instructions"].DYNAMIC_IMPORTED is True
     assert loaded_yaml_paths == ["patient.yaml"]
+
+
+def test_default_loader_skips_yaml_warning_for_non_package_module(monkeypatch, tmp_path, caplog):
+    module_path = tmp_path / "demo_module.py"
+    module_path.write_text("IMPORTED = True\n", encoding="utf-8")
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, "demo_module", raising=False)
+
+    loader = DefaultLoader()
+    with caplog.at_level(logging.WARNING):
+        imported = loader.autodiscover(None, ["demo_module"])
+
+    assert imported == ["demo_module"]
+    assert sys.modules["demo_module"].IMPORTED is True
+    assert not any("not a package" in record.message for record in caplog.records)
