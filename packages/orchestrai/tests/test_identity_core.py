@@ -118,3 +118,23 @@ def test_decorators_apply_domain_defaults_per_component_type():
     assert DemoService.identity.as_str == "services.demo.svc.svc"
     assert DemoInstruction.identity.as_str == "instructions.demo.instruction.section"
     assert DemoSchema.__name__ == "DemoSchema"
+
+
+def test_service_identity_ignores_inherited_instruction_name():
+    class NoopServiceDecorator(ServiceDecorator):
+        def register(self, candidate):  # type: ignore[override]
+            return None
+
+    class NamedInstructionMixin(BaseInstruction):
+        abstract = False
+        namespace = "demo"
+        group = "role"
+        name = "InheritedInstructionName"
+        instruction = "hi"
+
+    @NoopServiceDecorator()(namespace="demo")
+    class DemoService(NamedInstructionMixin, BaseService):
+        abstract = False
+
+    assert DemoService.identity.name == "demo"
+    assert DemoService.identity.name != "InheritedInstructionName"

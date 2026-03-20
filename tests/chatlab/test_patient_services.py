@@ -1,6 +1,8 @@
 """Integration tests for chatlab patient services."""
 
 from datetime import timedelta
+import threading
+import traceback
 
 from asgiref.sync import async_to_sync
 from django.utils import timezone
@@ -24,6 +26,23 @@ from apps.chatlab.orca.services.patient import (
     GenerateInitialResponse,
     GenerateReplyResponse,
 )
+
+
+def _instantiate_service_in_thread(service_cls, *, context):
+    result = {}
+
+    def worker():
+        try:
+            result["service"] = service_cls(context=context)
+        except Exception:
+            result["traceback"] = traceback.format_exc()
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    assert "traceback" not in result, result.get("traceback")
+    return result["service"]
 
 
 @pytest.fixture
@@ -88,6 +107,14 @@ class TestGenerateInitialResponseService:
         service = GenerateInitialResponse(context={"simulation_id": 1})
         names = [cls.__name__ for cls in service._instruction_classes]
         assert len(names) == len(set(names))
+
+    def test_service_instantiates_in_fresh_thread(self):
+        service = _instantiate_service_in_thread(
+            GenerateInitialResponse,
+            context={"simulation_id": 1},
+        )
+
+        assert PatientNameInstruction in service._instruction_classes
 
     def test_safety_instruction_blocks_out_of_character_admission(self):
         text = PatientSafetyBoundariesInstruction.instruction or ""

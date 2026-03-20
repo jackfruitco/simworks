@@ -1,10 +1,30 @@
+import threading
+import traceback
+
 from apps.simcore.orca.instructions import BaseStitchPersona
 from apps.trainerlab.orca.instructions import (
     InitialResponseMixin,
     InjuryCodebookMixin,
     TrainerLabMixin,
 )
-from apps.trainerlab.orca.services import GenerateInitialScenario
+from apps.trainerlab.orca.services import GenerateInitialScenario, GenerateVitalsProgression
+
+
+def _instantiate_service_in_thread(service_cls, *, context):
+    result = {}
+
+    def worker():
+        try:
+            result["service"] = service_cls(context=context)
+        except Exception:
+            result["traceback"] = traceback.format_exc()
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    thread.join()
+
+    assert "traceback" not in result, result.get("traceback")
+    return result["service"]
 
 
 class TestGenerateInitialScenarioService:
@@ -40,3 +60,16 @@ class TestGenerateInitialScenarioService:
         assert "scenario_brief" in instruction
         assert "read out loud to the trainee" in instruction
         assert "evacuation options" in instruction
+
+    def test_service_instantiates_in_fresh_thread(self):
+        service = _instantiate_service_in_thread(
+            GenerateInitialScenario,
+            context={"simulation_id": 1},
+        )
+
+        assert InjuryCodebookMixin in service._instruction_classes
+
+    def test_vitals_service_uses_derived_service_identity(self):
+        assert GenerateVitalsProgression.identity.as_str == (
+            "services.trainerlab.default.vitals-progression"
+        )
