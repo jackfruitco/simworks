@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock, patch
 
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 import pytest
 
 from apps.common.ratelimit import (
@@ -12,74 +12,61 @@ from apps.common.ratelimit import (
     get_client_ip,
     get_rate_limit_key,
     rate_limit,
+    resolve_rate_limit_config,
 )
 
 
 class TestGetClientIP:
-    """Tests for client IP extraction."""
-
     def test_returns_remote_addr_when_no_forwarded_header(self):
-        """Test that REMOTE_ADDR is used when X-Forwarded-For is absent."""
         request = RequestFactory().get("/")
         request.META["REMOTE_ADDR"] = "192.168.1.1"
 
         ip = get_client_ip(request)
         assert ip == "192.168.1.1"
 
+    @override_settings(DJANGO_BEHIND_PROXY=False)
     def test_ignores_forwarded_header_when_not_behind_proxy(self):
-        """Test that X-Forwarded-For is ignored when DJANGO_BEHIND_PROXY is False."""
         request = RequestFactory().get("/")
         request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 127.0.0.1"
         request.META["REMOTE_ADDR"] = "203.0.113.5"
 
-        with patch("apps.common.ratelimit.settings") as mock_settings:
-            mock_settings.DJANGO_BEHIND_PROXY = False
-            ip = get_client_ip(request)
+        ip = get_client_ip(request)
 
-        # XFF is client-supplied when not behind proxy; use REMOTE_ADDR instead
         assert ip == "203.0.113.5"
 
+    @override_settings(DJANGO_BEHIND_PROXY=True)
     def test_returns_rightmost_forwarded_ip_when_behind_proxy(self):
-        """Test that the rightmost XFF IP is used when behind a trusted proxy."""
         request = RequestFactory().get("/")
         request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 203.0.113.5"
         request.META["REMOTE_ADDR"] = "127.0.0.1"
 
-        with patch("apps.common.ratelimit.settings") as mock_settings:
-            mock_settings.DJANGO_BEHIND_PROXY = True
-            ip = get_client_ip(request)
+        ip = get_client_ip(request)
 
-        # Rightmost IP is appended by our trusted proxy; cannot be spoofed by client
         assert ip == "203.0.113.5"
 
-    def test_ignores_truthy_non_boolean_proxy_setting(self):
-        """Test that only a real boolean enables trusted proxy parsing."""
+    def test_ignores_truthy_non_boolean_proxy_setting(self, settings):
         request = RequestFactory().get("/")
         request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 203.0.113.5"
         request.META["REMOTE_ADDR"] = "127.0.0.1"
 
-        with patch("apps.common.ratelimit.settings") as mock_settings:
-            mock_settings.DJANGO_BEHIND_PROXY = MagicMock()
-            ip = get_client_ip(request)
+        settings.DJANGO_BEHIND_PROXY = MagicMock()
+
+        ip = get_client_ip(request)
 
         assert ip == "127.0.0.1"
 
+    @override_settings(DJANGO_BEHIND_PROXY=True)
     def test_falls_back_to_remote_addr_when_forwarded_chain_is_empty(self):
-        """Test that empty XFF values do not override REMOTE_ADDR behind a proxy."""
         request = RequestFactory().get("/")
         request.META["HTTP_X_FORWARDED_FOR"] = " , , "
         request.META["REMOTE_ADDR"] = "203.0.113.5"
 
-        with patch("apps.common.ratelimit.settings") as mock_settings:
-            mock_settings.DJANGO_BEHIND_PROXY = True
-            ip = get_client_ip(request)
+        ip = get_client_ip(request)
 
         assert ip == "203.0.113.5"
 
     def test_returns_unknown_when_no_ip_available(self):
-        """Test fallback to 'unknown' when no IP info available."""
         request = RequestFactory().get("/")
-        # Remove REMOTE_ADDR if present
         request.META.pop("REMOTE_ADDR", None)
 
         ip = get_client_ip(request)
@@ -96,7 +83,6 @@ class TestGetRateLimitKey:
 
         key = get_rate_limit_key(request, "ip", "test")
         assert key.startswith("ratelimit:test:ip:")
-        # IP should be hashed, not plain
         assert "192.168.1.1" not in key
 
     def test_user_key_includes_user_id_when_authenticated(self):
@@ -137,7 +123,7 @@ class TestCheckRateLimit:
         mock_redis.pipeline.return_value.__enter__ = lambda s: s
         mock_redis.pipeline.return_value.__exit__ = lambda s, *args: None
         mock_pipe = mock_redis.pipeline.return_value
-        mock_pipe.execute.return_value = [None, 0, None, None]  # zcard returns 0
+        mock_pipe.execute.return_value = [None, 0, None, None]
 
         is_allowed, count, retry_after = check_rate_limit(
             mock_redis, "test:key", limit=10, period=60
@@ -153,9 +139,8 @@ class TestCheckRateLimit:
         mock_redis.pipeline.return_value.__enter__ = lambda s: s
         mock_redis.pipeline.return_value.__exit__ = lambda s, *args: None
         mock_pipe = mock_redis.pipeline.return_value
-        mock_pipe.execute.return_value = [None, 10, None, None]  # zcard returns 10 (at limit)
+        mock_pipe.execute.return_value = [None, 10, None, None]
 
-        # Mock zrange for getting oldest entry
         mock_redis.zrange.return_value = [(b"12345:123", time.time() - 30)]
 
         is_allowed, count, retry_after = check_rate_limit(
@@ -178,10 +163,13 @@ class TestRateLimitDecorator:
             return "ok"
 
         assert hasattr(my_endpoint, "_rate_limit_config")
-        assert my_endpoint._rate_limit_config["key"] == "ip"
-        assert my_endpoint._rate_limit_config["limit"] == 5
-        assert my_endpoint._rate_limit_config["period"] == 60
-        assert my_endpoint._rate_limit_config["prefix"] == "test"
+
+        resolved = resolve_rate_limit_config(my_endpoint._rate_limit_config)
+        assert resolved["key"] == "ip"
+        assert resolved["limit"] == 5
+        assert resolved["period"] == 60
+        assert resolved["prefix"] == "test"
+        assert resolved["fail_closed"] is False
 
     def test_allows_request_when_redis_unavailable(self):
         """Test that requests are allowed when Redis is unavailable (fail open)."""
@@ -202,7 +190,7 @@ class TestRateLimitDecorator:
         mock_redis.pipeline.return_value.__enter__ = lambda s: s
         mock_redis.pipeline.return_value.__exit__ = lambda s, *args: None
         mock_pipe = mock_redis.pipeline.return_value
-        mock_pipe.execute.return_value = [None, 5, None, None]  # At limit
+        mock_pipe.execute.return_value = [None, 5, None, None]
         mock_redis.zrange.return_value = [(b"12345:123", time.time() - 30)]
 
         with patch("apps.common.ratelimit.get_redis_client", return_value=mock_redis):
@@ -235,6 +223,43 @@ class TestRateLimitExceeded:
         assert exc.retry_after == 30
 
 
+class TestConfiguredRateLimiters:
+    @override_settings(RATE_LIMIT_AUTH_REQUESTS=1)
+    def test_auth_rate_limit_uses_runtime_setting(self):
+        from apps.common import ratelimit as ratelimit_module
+
+        mock_redis = MagicMock()
+        mock_redis.ping.return_value = True
+        mock_redis.pipeline.return_value.__enter__ = lambda s: s
+        mock_redis.pipeline.return_value.__exit__ = lambda s, *args: None
+        mock_pipe = mock_redis.pipeline.return_value
+        mock_pipe.execute.side_effect = [
+            [None, 0, None, None],
+            [None, 1, None, None],
+        ]
+        mock_redis.zrange.return_value = [(b"12345:123", time.time() - 1)]
+
+        auth_rate_limit = ratelimit_module.rate_limit(
+            key="ip",
+            limit=lambda: ratelimit_module._get_limit("RATE_LIMIT_AUTH_REQUESTS", 5),
+            period=60,
+            prefix="auth",
+            fail_closed=True,
+        )
+
+        @auth_rate_limit
+        def my_endpoint(request):
+            return "ok"
+
+        request = RequestFactory().get("/")
+        request.META["REMOTE_ADDR"] = "192.168.1.1"
+
+        with patch("apps.common.ratelimit.get_redis_client", return_value=mock_redis):
+            assert my_endpoint(request) == "ok"
+            with pytest.raises(RateLimitExceeded):
+                my_endpoint(request)
+
+
 @pytest.mark.django_db
 class TestRateLimitAPIIntegration:
     """Integration tests for rate limiting on API endpoints."""
@@ -251,24 +276,29 @@ class TestRateLimitAPIIntegration:
         from api.v1.endpoints.auth import obtain_token, refresh_token
 
         assert hasattr(obtain_token, "_rate_limit_config")
-        assert obtain_token._rate_limit_config["limit"] == 5
-        assert obtain_token._rate_limit_config["period"] == 60
+        obtain_token_config = resolve_rate_limit_config(obtain_token._rate_limit_config)
+        assert obtain_token_config["limit"] == 5
+        assert obtain_token_config["period"] == 60
 
         assert hasattr(refresh_token, "_rate_limit_config")
-        assert refresh_token._rate_limit_config["limit"] == 5
+        refresh_token_config = resolve_rate_limit_config(refresh_token._rate_limit_config)
+        assert refresh_token_config["limit"] == 5
 
     def test_message_endpoint_has_rate_limit_config(self):
         """Test that message endpoints have rate limit configuration."""
         from api.v1.endpoints.messages import create_message, get_message, list_messages
 
         assert hasattr(create_message, "_rate_limit_config")
-        assert create_message._rate_limit_config["limit"] == 30  # message limit
+        create_message_config = resolve_rate_limit_config(create_message._rate_limit_config)
+        assert create_message_config["limit"] == 30
 
         assert hasattr(list_messages, "_rate_limit_config")
-        assert list_messages._rate_limit_config["limit"] == 100  # api limit
+        list_messages_config = resolve_rate_limit_config(list_messages._rate_limit_config)
+        assert list_messages_config["limit"] == 100
 
         assert hasattr(get_message, "_rate_limit_config")
-        assert get_message._rate_limit_config["limit"] == 100  # api limit
+        get_message_config = resolve_rate_limit_config(get_message._rate_limit_config)
+        assert get_message_config["limit"] == 100
 
     def test_simulation_endpoints_have_rate_limit_config(self):
         """Test that simulation endpoints have rate limit configuration."""
@@ -281,29 +311,25 @@ class TestRateLimitAPIIntegration:
 
         for endpoint in [list_simulations, get_simulation, create_simulation, end_simulation]:
             assert hasattr(endpoint, "_rate_limit_config")
-            assert endpoint._rate_limit_config["limit"] == 100
+            endpoint_config = resolve_rate_limit_config(endpoint._rate_limit_config)
+            assert endpoint_config["limit"] == 100
 
     def test_modifiers_endpoint_has_rate_limit_config(self):
         """Test that modifiers endpoint has rate limit configuration."""
         from api.v1.endpoints.modifiers import list_modifier_groups
 
         assert hasattr(list_modifier_groups, "_rate_limit_config")
-        assert list_modifier_groups._rate_limit_config["limit"] == 100
-        assert list_modifier_groups._rate_limit_config["key"] == "ip"
+        modifiers_config = resolve_rate_limit_config(list_modifier_groups._rate_limit_config)
+        assert modifiers_config["limit"] == 100
+        assert modifiers_config["key"] == "ip"
 
     def test_rate_limit_error_response_format(self, client):
         """Test that rate limit errors return the correct response format."""
-        # This test verifies the exception handler is registered correctly
-        # We can't easily trigger a real rate limit in tests without Redis,
-        # but we can verify the error response schema is defined
-
         from api.v1.api import api
 
-        # Check that RateLimitExceeded handler is registered
         assert RateLimitExceeded in api._exception_handlers
 
     def test_health_endpoint_not_rate_limited(self, client):
         """Test that health endpoint works without rate limiting."""
-        # Health check should always work even under load
         response = client.get("/api/v1/health")
         assert response.status_code == 200
