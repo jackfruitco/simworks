@@ -94,7 +94,7 @@ class IdentityMixin:
                 domain=getattr(cls, "domain", None),
                 namespace=getattr(cls, "namespace", None),
                 group=getattr(cls, "group", None) or getattr(cls, "kind", None),
-                name=getattr(cls, "name", None),
+                name=getattr(cls, "__dict__", {}).get("name"),
             )
             from orchestrai.identity.resolvers import resolve_identity as _resolve_identity
 
