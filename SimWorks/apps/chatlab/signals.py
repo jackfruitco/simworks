@@ -1,9 +1,9 @@
 # SimWorks/chatlab/signals.py
 """
-ChatLab signal receivers for side effects (WebSocket broadcasting).
+ChatLab signal receivers for durable side effects.
 
 Domain persistence is now handled by persistence handlers in chatlab/orca/persist/.
-These signals only handle non-critical side effects like WebSocket notifications.
+These signals handle non-critical side effects and outbox-backed notifications.
 
 Messages are now broadcast via the outbox pattern for:
 1. Durability - events are persisted before broadcast
@@ -13,7 +13,6 @@ Messages are now broadcast via the outbox pattern for:
 
 import logging
 
-from asgiref.sync import async_to_sync
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -276,7 +275,7 @@ def handle_ai_response_failed(
 @receiver(post_save, sender=SimulationMetadata)
 def broadcast_metadata_update(sender, instance, created, **kwargs):
     """
-    Broadcast newly created SimulationMetadata via WebSocket.
+    Broadcast newly created SimulationMetadata via an outbox-backed notification.
 
     This notifies connected clients when patient results (labs, rads, metadata)
     are created, allowing the frontend to refresh tool panels via HTMX-get.
@@ -285,8 +284,8 @@ def broadcast_metadata_update(sender, instance, created, **kwargs):
     """
     if created:
         try:
-            async_to_sync(broadcast_patient_results)(instance)
-            logger.debug(f"Broadcasted SimulationMetadata {instance.id} to WebSocket clients")
+            broadcast_patient_results(instance)
+            logger.debug("Enqueued SimulationMetadata %s for patient results delivery", instance.id)
         except Exception as exc:
             logger.warning(
                 f"WebSocket broadcast failed for SimulationMetadata {instance.id}: {exc}"

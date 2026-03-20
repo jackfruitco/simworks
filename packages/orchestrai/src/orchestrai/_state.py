@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-import importlib.util
 
 from .registry.active_app import set_active_registry_app
 from .utils.proxy import Proxy
@@ -41,18 +40,6 @@ def get_current_app():
         set_current_app(app)
     with suppress(Exception):
         set_active_registry_app(app)
-    django_ready = False
-    if importlib.util.find_spec("django") is not None:
-        from django.apps import apps as django_apps
-        from django.conf import settings
-
-        django_ready = settings.configured and django_apps.ready
-
-    if django_ready and importlib.util.find_spec("orchestrai_django") is not None:
-        from orchestrai.components.services.django import use_django_task_proxy
-
-        with suppress(Exception):
-            use_django_task_proxy()
     return app
 
 

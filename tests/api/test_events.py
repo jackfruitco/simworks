@@ -111,3 +111,35 @@ def test_events_catchup_enriches_chat_media_payload(
     assert len(event["payload"]["media_list"]) == 1
     assert event["payload"]["media_list"][0]["original_url"].startswith("http://testserver/")
     assert event["payload"]["media_list"][0]["thumbnail_url"].startswith("http://testserver/")
+
+
+@pytest.mark.django_db
+def test_events_catchup_preserves_metadata_results_payload(auth_client, simulation):
+    from apps.common.models import OutboxEvent
+
+    OutboxEvent.objects.create(
+        event_type="simulation.metadata.results_created",
+        simulation_id=simulation.id,
+        payload={
+            "tool": "patient_results",
+            "results": [
+                {
+                    "id": 501,
+                    "key": "lab_results_available",
+                    "value": "true",
+                }
+            ],
+        },
+        idempotency_key=f"simulation.metadata.results_created:{simulation.id}:501",
+        correlation_id="corr-501",
+    )
+
+    response = auth_client.get(f"/api/v1/simulations/{simulation.id}/events/")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"]
+
+    event = payload["items"][0]
+    assert event["event_type"] == "simulation.metadata.results_created"
+    assert event["payload"]["tool"] == "patient_results"
+    assert event["payload"]["results"][0]["key"] == "lab_results_available"
