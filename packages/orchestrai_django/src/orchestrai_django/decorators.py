@@ -50,7 +50,7 @@ class DjangoBaseDecoratorMixin:
 
 
 class DjangoServiceDecorator(DjangoBaseDecoratorMixin, ServiceDecorator):
-    """Django-aware service decorator (core behavior + Django identity)."""
+    """Service decorator with Django identity defaults."""
 
     def derive_identity(
         self,
@@ -72,7 +72,7 @@ class DjangoServiceDecorator(DjangoBaseDecoratorMixin, ServiceDecorator):
 
 
 class DjangoInstructionDecorator(DjangoBaseDecoratorMixin, InstructionDecorator):
-    """Django-aware instruction decorator (core behavior + Django identity)."""
+    """Instruction decorator with Django identity defaults."""
 
     def derive_identity(
         self,

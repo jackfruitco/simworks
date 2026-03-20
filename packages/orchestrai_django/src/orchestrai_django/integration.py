@@ -89,27 +89,13 @@ def configure_from_django_settings(
     *,
     namespace: str = "ORCHESTRAI",
 ) -> Settings:
-    """Load OrchestrAI configuration from ``django.conf.settings`` using the current API.
-
-    Configuration layering:
-    1. Core OrchestrAI defaults (e.g., API_KEY_ENVVARS with standard env vars)
-    2. Django-specific defaults (e.g., API_KEY_ENVVARS with ORCA_ prefixed env vars)
-    3. User settings via ORCHESTRAI Django setting
-
-    Django's responsibility here is to:
-    - Apply Django-specific defaults (namespaced env vars, etc.)
-    - Compute DISCOVERY_PATHS from INSTALLED_APPS
-    - Inject configuration into core Settings
-
-    Core OrchestrAI discovery imports modules uniformly via app.autodiscover_components().
-    """
+    """Load OrchestrAI settings from Django settings and installed apps."""
     from django.conf import settings as dj_settings  # type: ignore[attr-defined]
 
     from orchestrai_django.conf.defaults import DJANGO_DEFAULTS
 
     user_mapping = _collect_mapping_from_settings(dj_settings, namespace)
 
-    # Layer: core defaults → Django defaults → user settings
     conf = Settings()
     conf.update_from_mapping(DJANGO_DEFAULTS)
     conf.update_from_mapping(user_mapping)
@@ -126,19 +112,13 @@ def configure_from_django_settings(
     discovery_paths.extend(_build_discovery_paths(getattr(dj_settings, "INSTALLED_APPS", ())))
     conf["DISCOVERY_PATHS"] = tuple(_dedupe_preserve_order(discovery_paths))
 
-    # No Django-specific fixups needed (persistence is declarative via __persist__)
-
     if app is not None and hasattr(app, "configure"):
         app.configure(conf.as_dict())
     return conf
 
 
 class DjangoAdapter:
-    """Adapter wiring Django settings into an OrchestrAI app.
-
-    Note: We do NOT import modules here. We only populate Settings (incl. DISCOVERY_PATHS).
-    Core OrchestrAI will import those paths during its normal autodiscover_components() flow.
-    """
+    """Wire Django settings into an OrchestrAI app."""
 
     def __init__(self, app: Any, *, namespace: str = "ORCHESTRAI") -> None:
         self.app = app
