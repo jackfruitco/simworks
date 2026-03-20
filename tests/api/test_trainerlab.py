@@ -126,7 +126,7 @@ def _create_session(
     ready: bool = True,
     stub_enqueue: bool = True,
 ) -> dict:
-    from apps.trainerlab.models import SessionStatus, TrainerSession
+    from apps.trainerlab.services import complete_initial_scenario_generation
 
     context = (
         patch(
@@ -154,14 +154,9 @@ def _create_session(
     assert response.status_code in (200, 201)
     payload = response.json()
     if ready:
-        session = TrainerSession.objects.get(simulation_id=payload["simulation_id"])
-        state = dict(session.runtime_state_json or {})
-        state["phase"] = "seeded"
-        state["last_runtime_error"] = ""
-        session.status = SessionStatus.SEEDED
-        session.runtime_state_json = state
-        session.save(update_fields=["status", "runtime_state_json", "modified_at"])
-        payload["status"] = SessionStatus.SEEDED.value
+        session = complete_initial_scenario_generation(simulation_id=payload["simulation_id"])
+        assert session is not None
+        payload["status"] = session.status
     return payload
 
 
@@ -1492,7 +1487,7 @@ class TestTrainerLabEvents:
             event_type="session.seeded",
             simulation_id=simulation_id,
             payload={"status": "seeded"},
-            idempotency_key=f"session.seeded:{simulation_id}",
+            idempotency_key=f"session.seeded:{simulation_id}:streamed",
         )
 
         response = client.get(
@@ -1741,7 +1736,7 @@ class TestTrainerLabDictionaries:
                 "initiated_by_type": "user",
             },
             content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY="tourniquet-detail-validation-1",
+            HTTP_IDEMPOTENCY_KEY="tourniquet-mode-required",
         )
 
         assert response.status_code == 422
