@@ -8,7 +8,6 @@ import pytest
 
 from apps.common.ratelimit import (
     RateLimitExceeded,
-    auth_rate_limit,
     check_rate_limit,
     get_client_ip,
     get_rate_limit_key,
