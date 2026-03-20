@@ -190,9 +190,9 @@ def build_chatlab_transport_envelope(
         scheme=scheme,
         host=host,
     )
-    envelope["created_at"] = event.created_at.astimezone(UTC).isoformat(
-        timespec="milliseconds"
-    ).replace("+00:00", "Z")
+    envelope["created_at"] = (
+        event.created_at.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    )
     return envelope
 
 

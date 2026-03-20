@@ -16,6 +16,8 @@ LabOrRadItem = Annotated[
     LabResultItem | RadResultItem,
     Field(discriminator="kind"),
 ]
+
+
 class LabOrderResultsOutputSchema(BaseModel):
     """Output schema for the GenerateLabResults service.
 

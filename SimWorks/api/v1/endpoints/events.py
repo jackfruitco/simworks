@@ -86,7 +86,9 @@ def list_events(
     # Determine next cursor
     next_cursor = str(events[-1].id) if has_more and events else None
 
-    items = [EventEnvelope(**build_chatlab_event_envelope(event, request=request)) for event in events]
+    items = [
+        EventEnvelope(**build_chatlab_event_envelope(event, request=request)) for event in events
+    ]
 
     logger.debug(
         "events.catch_up",

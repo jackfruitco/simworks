@@ -194,7 +194,11 @@ async def _create_orm_instance(
         kwargs["simulation_id"] = context.simulation_id
 
     attempt_id = (context.extra or {}).get("service_call_attempt_id")
-    if "service_call_attempt" in model_field_names and attempt_id and "service_call_attempt" not in kwargs:
+    if (
+        "service_call_attempt" in model_field_names
+        and attempt_id
+        and "service_call_attempt" not in kwargs
+    ):
         kwargs["service_call_attempt_id"] = attempt_id
 
     return await model_cls.objects.acreate(**kwargs)
