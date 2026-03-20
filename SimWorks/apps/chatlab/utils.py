@@ -232,64 +232,127 @@ async def broadcast_event(
     return
 
 
-async def broadcast_patient_results(
+def _serialize_patient_result(result: LabResult | RadResult | SimulationMetadata) -> dict:
+    """Return a durable payload for a single patient result row."""
+
+    try:
+        serialized = result.serialize()
+    except AttributeError:
+        serialized = {
+            "id": result.id,
+            "key": getattr(result, "key", None),
+            "value": getattr(result, "value", None),
+            "attribute": type(result).__name__,
+            "type": type(result).__name__,
+        }
+
+        # Preserve common subclass fields when available so catch-up clients
+        # can render the same information as live clients.
+        for field_name in (
+            "panel_name",
+            "result_unit",
+            "reference_range_low",
+            "reference_range_high",
+            "result_flag",
+            "result_comment",
+            "is_resolved",
+            "duration",
+        ):
+            field_value = getattr(result, field_name, None)
+            if field_value not in (None, ""):
+                serialized[field_name] = field_value
+
+    return serialized
+
+
+def _patient_results_idempotency_key(
+    simulation_id: int,
+    result_ids: list[int],
+    *,
+    status: str | None = None,
+) -> str:
+    ordered_ids = "-".join(str(result_id) for result_id in sorted(result_ids))
+    status_suffix = f":{status}" if status else ""
+    return f"simulation.metadata.results_created:{simulation_id}:{ordered_ids}{status_suffix}"
+
+
+def _enqueue_patient_results_outbox(
+    *,
+    simulation_id: int,
+    results: list[dict],
+    result_ids: list[int],
+    status: str | None = None,
+) -> None:
+    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+
+    payload = {"tool": "patient_results", "results": results}
+    if status is not None:
+        payload["status"] = status
+
+    event = enqueue_event_sync(
+        event_type="simulation.metadata.results_created",
+        simulation_id=simulation_id,
+        payload=payload,
+        idempotency_key=_patient_results_idempotency_key(simulation_id, result_ids, status=status),
+    )
+    if event:
+        logger.debug(
+            "Enqueued patient results outbox event for simulation %s (%s results, event %s)",
+            simulation_id,
+            len(results),
+            event.id,
+        )
+        poke_drain_sync()
+
+
+def broadcast_patient_results(
     __source: list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
     __status: str | None = None,
 ) -> None:
-    """Broadcasts a patient results event to the specified group layer.
+    """Persist a patient-results notification as an outbox event."""
 
-    Uses `socket_send` to send the event payload to the specified group.
-
-    :param __source: Result source. One of: int (pk), QuerySet, list, LabResult, RadResult.
-    :param __status:
-    :return:
-    """
     if not __source:
-        logger.warning("No source instances provided. Skipping broadcast...")
+        logger.warning("No source instances provided. Skipping patient results notification...")
         return
 
-    # Get the instance if provided ID as the source
     if isinstance(__source, int):
-        __source = await SimulationMetadata.objects.aget(id=__source)
+        __source = SimulationMetadata.objects.get(id=__source)
 
-    # Convert to list if not already a list, tuple, or QuerySet
     if not isinstance(__source, (list, tuple, QuerySet)):
         __source = [__source]
 
-    # Debug logging
-    logger.debug(f"Received {len(__source)} patient results to broadcast to all connected clients.")
+    logger.debug("Received %d patient results to enqueue for delivery.", len(__source))
 
-    # Group results by simulation ID and serialize them before broadcasting
-    grouped_results = {}
+    grouped_results: dict[int, list[dict]] = {}
+    grouped_result_ids: dict[int, list[int]] = {}
     skipped = 0
 
     for result in list(__source):
         sim_id = result.simulation_id
-
-        # Serialize the result object and add it to the group layer results list
         try:
-            serialized = result.serialize()
-        except AttributeError as e:
-            logger.error(f"{type(result).__name__} object has no .serialize() method: {e}")
+            serialized = _serialize_patient_result(result)
+        except Exception as exc:
+            logger.error(
+                "%s object could not be serialized for results delivery: %s",
+                type(result).__name__,
+                exc,
+            )
             skipped += 1
             continue
 
         grouped_results.setdefault(sim_id, []).append(serialized)
+        grouped_result_ids.setdefault(sim_id, []).append(result.id)
 
     if skipped:
-        logger.warning(f"Skipped {skipped} results due to missing .serialize() method.")
+        logger.warning("Skipped %d patient results due to serialization failures.", skipped)
 
-    # Broadcast results to each simulation group layer
-    for sim_id in grouped_results:
-        payload = {"tool": "patient_results", "results": grouped_results[sim_id]}
-
-        # Send event to the group layer
-        logger.debug(f"Broadcasting {len(grouped_results[sim_id])} results to simulation_{sim_id}")
-        await socket_send(
-            __type="simulation.metadata.results_created",
-            __payload=payload,
-            __status=__status,
-            __simulation_id=sim_id,
+    for sim_id, results in grouped_results.items():
+        logger.debug("Enqueuing %d patient results for simulation %s", len(results), sim_id)
+        _enqueue_patient_results_outbox(
+            simulation_id=sim_id,
+            results=results,
+            result_ids=grouped_result_ids.get(sim_id, []),
+            status=__status,
         )
     return
 

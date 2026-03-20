@@ -180,6 +180,35 @@ class TestMessageBroadcastSignal:
 
 
 @pytest.mark.django_db
+class TestMetadataResultsBroadcastSignal:
+    """Tests for durable metadata-results broadcast behavior."""
+
+    def test_simulation_metadata_creates_outbox_event(self, simulation):
+        """Saving simulation metadata enqueues a durable patient-results event."""
+        from apps.common.models import OutboxEvent
+        from apps.simcore.models import SimulationMetadata
+
+        initial_count = OutboxEvent.objects.count()
+
+        with patch("apps.common.outbox.poke_drain_sync"):
+            metadata = SimulationMetadata.objects.create(
+                simulation=simulation,
+                key="lab_results_available",
+                value="true",
+            )
+
+        assert OutboxEvent.objects.count() == initial_count + 1
+
+        event = OutboxEvent.objects.latest("created_at")
+        assert event.event_type == "simulation.metadata.results_created"
+        assert event.simulation_id == simulation.id
+        assert event.payload["tool"] == "patient_results"
+        assert event.payload["results"][0]["id"] == metadata.id
+        assert event.payload["results"][0]["key"] == "lab_results_available"
+        assert event.payload["results"][0]["value"] == "true"
+
+
+@pytest.mark.django_db
 class TestOutboxEnvelopeFormat:
     """Tests for the WebSocket envelope format."""
 

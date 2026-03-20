@@ -3,10 +3,10 @@ import asyncio
 import pytest
 
 from orchestrai import get_current_app
-from orchestrai.components.services.django import DjangoTaskProxy, use_django_task_proxy
 from orchestrai.components.services.service import BaseService
 from orchestrai.identity import Identity
 from orchestrai.registry.services import ensure_service_registry
+from orchestrai_django.task_proxy import DjangoTaskProxy, use_django_task_proxy
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

@@ -27,6 +27,7 @@ from orchestrai_django.models import (
     CallStatus,
     ServiceCall as ServiceCallModel,
 )
+from orchestrai_django.signals import emit_service_call_dispatched, emit_service_call_succeeded
 from orchestrai_django.utils.serialization import pydantic_model_to_dict
 
 logger = logging.getLogger(__name__)
@@ -323,61 +324,6 @@ class ErrorClassification:
     reason_code: str
 
 
-def _emit_message_delivered_status(call: ServiceCallModel) -> None:
-    """Emit delivered status when the service attempt is dispatched.
-
-    Delivered means backend has successfully prepared and dispatched the provider call.
-    """
-    context = call.context or {}
-    user_msg_id = context.get("user_msg") or context.get("user_msg_id")
-    simulation_id = context.get("simulation_id")
-    if not user_msg_id or not simulation_id:
-        return
-
-    try:
-        from apps.chatlab.models import Message
-        from apps.common.outbox import enqueue_event_sync, poke_drain_sync
-
-        try:
-            message = Message.objects.get(pk=user_msg_id)
-            message.delivery_status = Message.DeliveryStatus.DELIVERED
-            message.delivery_error_code = ""
-            message.delivery_error_text = ""
-            message.save(
-                update_fields=[
-                    "delivery_status",
-                    "delivery_error_code",
-                    "delivery_error_text",
-                ]
-            )
-        except Exception:
-            logger.debug(
-                "Could not update delivery status on message %s", user_msg_id, exc_info=True
-            )
-
-        event = enqueue_event_sync(
-            event_type="message_status_update",
-            simulation_id=int(simulation_id),
-            payload={
-                "id": int(user_msg_id),
-                "status": "delivered",
-                "retryable": False,
-                "error_code": None,
-                "error_text": None,
-            },
-            idempotency_key=f"message_status_update:{user_msg_id}:delivered",
-        )
-        if event:
-            poke_drain_sync()
-    except Exception:
-        logger.debug(
-            "Failed to emit delivered status for call=%s user_msg=%s",
-            call.id,
-            user_msg_id,
-            exc_info=True,
-        )
-
-
 @task
 def run_service_call_task(call_id: str):
     """
@@ -539,7 +485,7 @@ def run_service_call(call_id: str):
 
         # Mark attempt as dispatched before calling the service
         attempt_record.mark_dispatched()
-        _emit_message_delivered_status(call)
+        emit_service_call_dispatched(call, attempt=attempt_record.attempt)
 
         # Execute service inside a parent OTEL span so that instrumented child spans
         # (e.g. openai.responses.create from logfire.instrument_openai) are grouped
@@ -812,6 +758,8 @@ def run_service_call(call_id: str):
                 call_id,
                 exc_info=True,
             )
+
+        emit_service_call_succeeded(call, attempt=current_attempt)
 
         return call.to_jsonable()
 
