@@ -5,9 +5,11 @@ from __future__ import annotations
 from uuid import uuid4
 
 from asgiref.sync import async_to_sync
+from django.utils import timezone
 import pytest
 
 from apps.trainerlab.orca.schemas import InitialScenarioSchema
+from apps.trainerlab.orca.services import GenerateInitialScenario
 from apps.trainerlab.services import (
     _emit_seeded_condition_events,
     _emit_seeded_vital_events,
@@ -19,6 +21,7 @@ from apps.trainerlab.services import (
 from orchestrai_django.models import CallStatus, ServiceCall
 from orchestrai_django.persistence import PersistContext, persist_schema
 from orchestrai_django.signals import ai_response_failed, service_call_succeeded
+from orchestrai_django.tasks import process_pending_persistence
 
 
 @pytest.fixture
@@ -145,6 +148,22 @@ def _persist_initial_payload(*, simulation_id: int, call_id: str) -> None:
     async_to_sync(persist_schema)(schema, ctx)
 
 
+def _create_pending_initial_service_call(*, session, call_id=None) -> ServiceCall:
+    return ServiceCall.objects.create(
+        id=call_id or uuid4(),
+        service_identity=GenerateInitialScenario.identity.as_str,
+        status=CallStatus.COMPLETED,
+        finished_at=timezone.now(),
+        schema_fqn=f"{InitialScenarioSchema.__module__}.{InitialScenarioSchema.__qualname__}",
+        output_data=_make_initial_payload(),
+        context={
+            "simulation_id": session.simulation_id,
+            "correlation_id": f"corr-{uuid4()}",
+        },
+        related_object_id=str(session.simulation_id),
+    )
+
+
 class TestGenerateInitialScenarioSchemaValid:
     @pytest.mark.unit
     def test_schema_importable_and_valid(self):
@@ -186,6 +205,14 @@ class TestSeedingSessionLifecycle:
         from apps.trainerlab.models import RuntimeEvent
 
         monkeypatch.setattr(
+            "apps.trainerlab.orca.schemas.initial._complete_initial_generation_after_persist",
+            lambda context: None,
+        )
+        monkeypatch.setattr(
+            "apps.trainerlab.signals._is_initial_generation_service",
+            lambda service_identity: False,
+        )
+        monkeypatch.setattr(
             "apps.trainerlab.services.enqueue_initial_scenario_generation",
             lambda **kwargs: "fake-call-id-complete",
         )
@@ -198,6 +225,16 @@ class TestSeedingSessionLifecycle:
         )
         _persist_initial_payload(
             simulation_id=session.simulation_id, call_id=call_id or str(uuid4())
+        )
+        session.refresh_from_db()
+        assert session.status == "seeding"
+        assert session.runtime_state_json["phase"] == "seeding"
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 0
         )
 
         completed = complete_initial_scenario_generation(
@@ -241,37 +278,159 @@ class TestSeedingSessionLifecycle:
             >= 1
         )
 
-    def test_service_call_succeeded_signal_marks_seeded(self, user, monkeypatch):
-        from apps.trainerlab.models import RuntimeEvent
-
+    def test_service_call_succeeded_signal_accepts_canonical_identity(self, user, monkeypatch):
         monkeypatch.setattr(
             "apps.trainerlab.services.enqueue_initial_scenario_generation",
             lambda **kwargs: str(uuid4()),
         )
 
-        session, call_id = create_session_with_initial_generation(
+        session, _ = create_session_with_initial_generation(
             user=user,
             scenario_spec={"diagnosis": "undifferentiated trauma"},
             directives=None,
             modifiers=[],
         )
-        _persist_initial_payload(
-            simulation_id=session.simulation_id, call_id=call_id or str(uuid4())
+        captured = []
+        monkeypatch.setattr(
+            "apps.trainerlab.signals.complete_initial_scenario_generation",
+            lambda **kwargs: captured.append(kwargs),
         )
 
         service_call_succeeded.send(
             sender=self.__class__,
-            call=type("Call", (), {"domain_persisted": True})(),
-            call_id=call_id,
-            service_identity="apps.trainerlab.orca.services.GenerateInitialScenario",
-            context={"simulation_id": session.simulation_id},
+            call=type(
+                "Call",
+                (),
+                {
+                    "domain_persisted": True,
+                    "context": {
+                        "simulation_id": session.simulation_id,
+                        "correlation_id": "corr-signal",
+                    },
+                },
+            )(),
+            service_identity=GenerateInitialScenario.identity.as_str,
+            context={"simulation_id": session.simulation_id, "correlation_id": "corr-signal"},
         )
 
+        assert captured == [
+            {
+                "simulation_id": session.simulation_id,
+                "correlation_id": "corr-signal",
+                "call_id": None,
+            }
+        ]
+
+    def test_process_pending_persistence_marks_seeded_and_emits_runtime_and_outbox_once(
+        self, user
+    ):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.models import RuntimeEvent, SessionStatus
+
+        session = create_session(
+            user=user,
+            scenario_spec={"diagnosis": "undifferentiated trauma"},
+            directives=None,
+            modifiers=[],
+            status=SessionStatus.SEEDING,
+            emit_seeded_event=False,
+        )
+        call = _create_pending_initial_service_call(session=session)
+
+        stats = process_pending_persistence.call()
+
+        call.refresh_from_db()
         session.refresh_from_db()
-        assert session.status == "seeded"
+        assert stats["claimed"] == 1
+        assert stats["processed"] == 1
+        assert call.domain_persisted is True
+        assert session.status == SessionStatus.SEEDED
         assert session.runtime_state_json["phase"] == "seeded"
         assert (
             RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 1
+        )
+        assert (
+            OutboxEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 1
+        )
+
+    def test_process_pending_persistence_uses_authoritative_post_persist_when_signal_ignored(
+        self, user, monkeypatch
+    ):
+        from apps.trainerlab.models import RuntimeEvent, SessionStatus
+
+        monkeypatch.setattr(
+            "apps.trainerlab.signals._is_initial_generation_service",
+            lambda service_identity: False,
+        )
+
+        session = create_session(
+            user=user,
+            scenario_spec={"diagnosis": "undifferentiated trauma"},
+            directives=None,
+            modifiers=[],
+            status=SessionStatus.SEEDING,
+            emit_seeded_event=False,
+        )
+        call = _create_pending_initial_service_call(session=session)
+
+        stats = process_pending_persistence.call()
+
+        call.refresh_from_db()
+        session.refresh_from_db()
+        assert stats["processed"] == 1
+        assert call.domain_persisted is True
+        assert session.status == SessionStatus.SEEDED
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 1
+        )
+
+    def test_duplicate_success_trigger_is_idempotent_after_deferred_completion(self, user):
+        from apps.common.models import OutboxEvent
+        from apps.trainerlab.models import RuntimeEvent, SessionStatus
+
+        session = create_session(
+            user=user,
+            scenario_spec={"diagnosis": "undifferentiated trauma"},
+            directives=None,
+            modifiers=[],
+            status=SessionStatus.SEEDING,
+            emit_seeded_event=False,
+        )
+        call = _create_pending_initial_service_call(session=session)
+
+        process_pending_persistence.call()
+        call.refresh_from_db()
+        service_call_succeeded.send(
+            sender=self.__class__,
+            call=call,
+            call_id=call.id,
+            service_identity=GenerateInitialScenario.identity.as_str,
+            context=call.context,
+        )
+
+        session.refresh_from_db()
+        assert session.status == SessionStatus.SEEDED
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 1
+        )
+        assert (
+            OutboxEvent.objects.filter(
                 simulation_id=session.simulation_id,
                 event_type="session.seeded",
             ).count()
@@ -322,7 +481,7 @@ class TestSeedingSessionLifecycle:
             modifiers=[],
         )
         call = ServiceCall.objects.create(
-            service_identity="apps.trainerlab.orca.services.GenerateInitialScenario",
+            service_identity=GenerateInitialScenario.identity.as_str,
             status=CallStatus.FAILED,
             context={"simulation_id": session.simulation_id},
             error="Timed out waiting for provider response",

@@ -54,6 +54,20 @@ def _initial_extra(context: PersistContext) -> dict[str, Any]:
     }
 
 
+def _complete_initial_generation_after_persist(context: PersistContext) -> None:
+    from apps.trainerlab.services import complete_initial_scenario_generation
+
+    logger.info(
+        "TrainerLab initial generation post-persist completion handoff for simulation %s",
+        context.simulation_id,
+    )
+    complete_initial_scenario_generation(
+        simulation_id=context.simulation_id,
+        correlation_id=context.correlation_id,
+        call_id=str(context.call_id),
+    )
+
+
 class MeasurementSchemaBlock(StrictBaseModel):
     heart_rate: HeartRate
     respiratory_rate: RespiratoryRate
@@ -656,4 +670,7 @@ class InitialScenarioSchema(StrictBaseModel):
                 worker_kind="initial_seed",
                 domains=["physiology", "causes", "problems", "recommendations"],
                 source_call_id=str(context.call_id),
+            )
+            await sync_to_async(_complete_initial_generation_after_persist, thread_sensitive=True)(
+                context
             )

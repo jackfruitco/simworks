@@ -808,49 +808,60 @@ def complete_initial_scenario_generation(
     correlation_id: str | None = None,
     call_id: str | None = None,
 ) -> TrainerSession | None:
-    session = (
-        TrainerSession.objects.select_related("simulation")
-        .filter(simulation_id=simulation_id)
-        .first()
-    )
-    if session is None:
-        return None
+    with transaction.atomic():
+        session = (
+            TrainerSession.objects.select_related("simulation")
+            .select_for_update()
+            .filter(simulation_id=simulation_id)
+            .first()
+        )
+        if session is None:
+            return None
 
-    if session.status == SessionStatus.FAILED:
+        if session.status == SessionStatus.FAILED:
+            logger.info(
+                "Skipping TrainerLab initial-generation completion for failed simulation %s",
+                simulation_id,
+            )
+            return session
+
+        state = get_runtime_state(session)
+        if session.status == SessionStatus.SEEDED and state.get("phase") == "seeded":
+            logger.info(
+                "TrainerLab initial-generation completion already applied for simulation %s",
+                simulation_id,
+            )
+            return session
+
+        state["phase"] = "seeded"
+        state["last_runtime_error"] = ""
+        state["initial_generation_retryable"] = None
+        session.status = SessionStatus.SEEDED
+        session.runtime_state_json = state
+        session.save(update_fields=["status", "runtime_state_json", "modified_at"])
+
+        emit_runtime_event(
+            session=session,
+            event_type="session.seeded",
+            payload={
+                "status": session.status,
+                "scenario_spec": session.scenario_spec_json,
+                "state_revision": state["state_revision"],
+                "call_id": call_id,
+            },
+            correlation_id=correlation_id,
+            idempotency_key=f"session.seeded:{session.id}",
+        )
+
+        _emit_seeded_vital_events(session)
+        _emit_seeded_condition_events(session)
+        _emit_seeded_pulse_events(session)
+
         logger.info(
-            "Skipping TrainerLab initial-generation completion for failed simulation %s",
+            "TrainerLab initial-generation completion applied for simulation %s",
             simulation_id,
         )
         return session
-
-    state = get_runtime_state(session)
-    if session.status == SessionStatus.SEEDED and state.get("phase") == "seeded":
-        return session
-
-    state["phase"] = "seeded"
-    state["last_runtime_error"] = ""
-    state["initial_generation_retryable"] = None
-    session.status = SessionStatus.SEEDED
-    session.runtime_state_json = state
-    session.save(update_fields=["status", "runtime_state_json", "modified_at"])
-
-    emit_runtime_event(
-        session=session,
-        event_type="session.seeded",
-        payload={
-            "status": session.status,
-            "scenario_spec": session.scenario_spec_json,
-            "state_revision": state["state_revision"],
-            "call_id": call_id,
-        },
-        correlation_id=correlation_id,
-        idempotency_key=f"session.seeded:{session.id}",
-    )
-
-    _emit_seeded_vital_events(session)
-    _emit_seeded_condition_events(session)
-    _emit_seeded_pulse_events(session)
-    return session
 
 
 def is_initial_generation_retryable(session: TrainerSession) -> bool:
