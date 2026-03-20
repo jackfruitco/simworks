@@ -43,7 +43,9 @@ def get_current_app():
     return app
 
 
-def set_current_app(app: object) -> None:
+def set_current_app(app: object | None) -> None:
+    global _default_app
+    _default_app = app
     _current_app.set(app)
 
 

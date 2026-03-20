@@ -51,7 +51,7 @@ class DjangoIdentityMixin(IdentityMixin):
                 "domain": getattr(cls, "domain", None),
                 "namespace": getattr(cls, "namespace", None),
                 "group": getattr(cls, "group", None),
-                "name": getattr(cls, "name", None),
+                "name": getattr(cls, "__dict__", {}).get("name"),
             }
             ident, meta = resolve_identity_django(cls, **hints, context=None)
             cls._IdentityMixin__identity_cached = ident  # type: ignore[attr-defined]

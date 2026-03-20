@@ -11,7 +11,7 @@ trace span using the returned metadata.
 Key behaviors
 -------------
 - Explicit vs derived name:
-  * If `name` provided via decorator arg or class attribute → preserve (trim &
+  * If `name` provided via decorator arg or defined directly on the class → preserve (trim &
     normalize separators only), **no token stripping**.
   * Otherwise derive from class name and perform **segment-aware** token
     stripping (case-insensitive; removes tokens at prefix, middle, suffix),
@@ -57,6 +57,12 @@ __all__ = [
 
 def _is_nonempty_str(value: str | None) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _class_attr(cls: type, attr: str) -> Any:
+    """Return an attribute only when it is defined directly on ``cls``."""
+
+    return getattr(cls, "__dict__", {}).get(attr)
 
 
 def _split_camel_and_separators(name: str) -> list[str]:
@@ -203,7 +209,7 @@ class IdentityResolver:
         name_res = self._resolve_name(
             cls,
             name,
-            getattr(cls, "name", None),
+            _class_attr(cls, "name"),
             tokens_list,
         )
 

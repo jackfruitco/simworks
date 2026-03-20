@@ -1,4 +1,5 @@
 import sys
+import threading
 from types import ModuleType
 
 from orchestrai import OrchestrAI, get_current_app
@@ -21,6 +22,26 @@ def test_as_current_context_manager():
     assert get_current_app() is app
     previous.set_as_current()
     assert get_current_app() is previous
+
+
+def test_current_app_fallback_reused_across_threads():
+    set_current_app(None)
+    app = OrchestrAI("threaded")
+    app.set_as_current()
+
+    seen = []
+
+    def worker():
+        seen.append(get_current_app())
+
+    try:
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join()
+    finally:
+        set_current_app(None)
+
+    assert seen == [app]
 
 
 def test_setup_is_idempotent():
