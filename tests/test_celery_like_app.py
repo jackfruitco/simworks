@@ -9,39 +9,47 @@ from orchestrai.fixups.base import FixupStage
 
 
 def test_current_app_default_created():
-    set_current_app(None)
-    app = get_current_app()
-    assert isinstance(app, OrchestrAI)
+    original = get_current_app()
+    try:
+        set_current_app(None)
+        app = get_current_app()
+        assert isinstance(app, OrchestrAI)
+    finally:
+        original.set_as_current()
 
 
 def test_as_current_context_manager():
-    set_current_app(None)
-    app = OrchestrAI("ctx")
-    previous = get_current_app()
-    app.set_as_current()
-    assert get_current_app() is app
-    previous.set_as_current()
-    assert get_current_app() is previous
+    original = get_current_app()
+    try:
+        set_current_app(None)
+        app = OrchestrAI("ctx")
+        previous = get_current_app()
+        app.set_as_current()
+        assert get_current_app() is app
+        previous.set_as_current()
+        assert get_current_app() is previous
+    finally:
+        original.set_as_current()
 
 
 def test_current_app_fallback_reused_across_threads():
-    set_current_app(None)
-    app = OrchestrAI("threaded")
-    app.set_as_current()
-
-    seen = []
-
-    def worker():
-        seen.append(get_current_app())
-
+    original = get_current_app()
     try:
+        set_current_app(None)
+        app = OrchestrAI("threaded")
+        app.set_as_current()
+
+        seen = []
+
+        def worker():
+            seen.append(get_current_app())
+
         thread = threading.Thread(target=worker)
         thread.start()
         thread.join()
+        assert seen == [app]
     finally:
-        set_current_app(None)
-
-    assert seen == [app]
+        original.set_as_current()
 
 
 def test_setup_is_idempotent():
