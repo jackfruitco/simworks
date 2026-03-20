@@ -1,4 +1,5 @@
 # chatlab/views.py
+from functools import partial
 import json
 import logging
 
@@ -13,6 +14,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from api.v1.sse import stream_outbox_events
+from apps.chatlab.events import build_chatlab_transport_envelope
 from apps.chatlab.utils import (
     create_new_simulation,
     maybe_start_simulation,
@@ -317,6 +319,7 @@ def watch_stream(request, simulation_id):
         simulation_id=simulation_id,
         cursor=cursor,
         event_type_prefix=event_type_prefix,
+        envelope_builder=partial(build_chatlab_transport_envelope, request=request),
         heartbeat_interval_seconds=10.0,
     )
 

@@ -18,7 +18,8 @@ class EventEnvelope(BaseModel):
     **Supported Event Types**:
     - ``chat.message_created`` - New chat message from patient or user
     - ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)
-    - ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)
+    - ``simulation.metadata.results_created`` - Canonical ChatLab metadata/result refresh event
+    - ``metadata.created`` - Legacy ChatLab per-row metadata compatibility alias
     - ``feedback.created`` - Simulation feedback/hotwash item created
     - ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events
     - ``typing.started`` / ``typing.stopped`` - Typing indicators
@@ -37,6 +38,10 @@ class EventEnvelope(BaseModel):
     - ``image_requested`` (bool, optional): Whether images were requested
     - ``media_list`` (list, optional): Canonical media metadata with absolute URLs
     - ``mediaList`` (list, optional): Compatibility alias for web clients
+
+    ``simulation.metadata.results_created``:
+    - ``tool`` (str): Refresh target identifier (currently ``patient_results``)
+    - ``results`` (list): Durable serialized metadata/result rows for refresh and replay parity
 
     ``metadata.created``:
     - ``metadata_id`` (int): Metadata database ID
@@ -58,11 +63,16 @@ class EventEnvelope(BaseModel):
     event_type: str = Field(
         ...,
         description=(
-            "Event type: chat.message_created, message_status_update, metadata.created, "
+            "Event type: chat.message_created, message_status_update, "
+            "simulation.metadata.results_created, metadata.created, "
             "feedback.created, feedback.failed, feedback.retrying, "
             "typing.started, typing.stopped, simulation.ended, simulation.state_changed"
         ),
-        examples=["chat.message_created", "message_status_update", "simulation.state_changed"],
+        examples=[
+            "chat.message_created",
+            "simulation.metadata.results_created",
+            "simulation.state_changed",
+        ],
     )
     created_at: datetime = Field(
         ...,

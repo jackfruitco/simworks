@@ -146,6 +146,22 @@ Use this to close UI streams or finalize partial persistence.
 
 ---
 
+## Generic Lifecycle Hooks
+
+In addition to the request/response emitter methods above, `orchestrai_django`
+also exposes package-level lifecycle hooks that app code can subscribe to
+without adding product-specific logic to shared task infrastructure.
+
+- `service_call_dispatched`: a service call was handed to a backend
+- `service_call_succeeded`: a service call completed successfully
+- `ai_response_failed`: retries are exhausted and the call failed terminally
+- `domain_object_created`: declarative domain persistence completed
+
+These hooks are a good fit for app-owned side effects such as durable outbox
+events, delivery-state transitions, and UI notifications.
+
+---
+
 ## Connecting Receivers
 
 Add receivers in any `apps.py` `ready()` or module import path:

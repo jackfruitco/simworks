@@ -1268,7 +1268,7 @@
             }
           }
         },
-        "description": "Submits a list of signed lab orders to the AI engine. The AI generates clinically plausible results for each ordered test based on the patient's presentation. Results are persisted as structured metadata and broadcast to connected WebSocket clients via `metadata.created` events. Returns 202 Accepted immediately; results arrive asynchronously.",
+        "description": "Submits a list of signed lab orders to the AI engine. The AI generates clinically plausible results for each ordered test based on the patient's presentation. Results are persisted as structured metadata and broadcast to connected clients via durable `simulation.metadata.results_created` events (with temporary `metadata.created` compatibility aliases). Returns 202 Accepted immediately; results arrive asynchronously.",
         "tags": [
           "lab-orders"
         ],
@@ -3988,7 +3988,7 @@
         "type": "object"
       },
       "EventEnvelope": {
-        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``metadata.created`` - Metadata created (labs, radiology, demographics, assessments)\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
+        "description": "WebSocket event envelope format.\n\nMatches the standardized envelope format defined in CLAUDE.md.\nUsed for both WebSocket delivery and catch-up API responses.\n\n**Supported Event Types**:\n- ``chat.message_created`` - New chat message from patient or user\n- ``message_status_update`` - Outgoing message status changed (sent/delivered/failed)\n- ``simulation.metadata.results_created`` - Canonical ChatLab metadata/result refresh event\n- ``metadata.created`` - Legacy ChatLab per-row metadata compatibility alias\n- ``feedback.created`` - Simulation feedback/hotwash item created\n- ``feedback.failed`` / ``feedback.retrying`` - Feedback generation lifecycle events\n- ``typing.started`` / ``typing.stopped`` - Typing indicators\n- ``simulation.ended`` - Simulation completed\n- ``simulation.state_changed`` - Simulation status changed\n\n**Event Payload Structures**:\n\n``chat.message_created``:\n- ``message_id`` (int): Message database ID\n- ``content`` (str): Message text content\n- ``role`` (str): Message role (user, assistant, etc.)\n- ``is_from_ai`` (bool): Whether message is AI-generated\n- ``display_name`` (str): Display name for sender\n- ``timestamp`` (str): ISO timestamp\n- ``image_requested`` (bool, optional): Whether images were requested\n- ``media_list`` (list, optional): Canonical media metadata with absolute URLs\n- ``mediaList`` (list, optional): Compatibility alias for web clients\n\n``simulation.metadata.results_created``:\n- ``tool`` (str): Refresh target identifier (currently ``patient_results``)\n- ``results`` (list): Durable serialized metadata/result rows for refresh and replay parity\n\n``metadata.created``:\n- ``metadata_id`` (int): Metadata database ID\n- ``kind`` (str): Metadata type (lab_result, rad_result, patient_demographics, etc.)\n- ``key`` (str): Metadata key\n- ``value`` (str): Metadata value\n\n``feedback.created``:\n- ``feedback_id`` (int): Feedback database ID\n- ``key`` (str): Feedback key (e.g., hotwash_correct_diagnosis)\n- ``value`` (str): Feedback value",
         "properties": {
           "event_id": {
             "description": "Unique event identifier (UUID) for deduplication",
@@ -3999,10 +3999,10 @@
             "type": "string"
           },
           "event_type": {
-            "description": "Event type: chat.message_created, message_status_update, metadata.created, feedback.created, feedback.failed, feedback.retrying, typing.started, typing.stopped, simulation.ended, simulation.state_changed",
+            "description": "Event type: chat.message_created, message_status_update, simulation.metadata.results_created, metadata.created, feedback.created, feedback.failed, feedback.retrying, typing.started, typing.stopped, simulation.ended, simulation.state_changed",
             "examples": [
               "chat.message_created",
-              "message_status_update",
+              "simulation.metadata.results_created",
               "simulation.state_changed"
             ],
             "title": "Event Type",

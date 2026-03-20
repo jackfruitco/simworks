@@ -82,10 +82,8 @@ def broadcast_new_message(sender, instance, created, **kwargs):
     **Hybrid Approach**: This signal handler now only broadcasts messages that
     are NOT created via AI schemas (e.g., admin edits, bulk imports, manual creates).
 
-    AI-generated messages are broadcast via schema post_persist() hooks for:
-    - Better cohesion (broadcast logic lives with persistence logic)
-    - Context awareness (correlation_id, audit_id available)
-    - Testability (test persistence + broadcast together)
+    AI-generated messages are emitted by app-owned orchestration subscribers
+    once generic domain persistence completes.
 
     Uses the outbox pattern for:
     1. Durability - event is persisted before broadcast
@@ -93,41 +91,25 @@ def broadcast_new_message(sender, instance, created, **kwargs):
     3. Exactly-once delivery - idempotency_key prevents duplicates
 
     Note: This handler serves as a safety net for non-AI message creates.
-    AI responses are handled in chatlab/orca/schemas/patient.py post_persist().
     """
-    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
-    # Skip AI messages - they're broadcast via schema post_persist() hooks
+    # Skip AI messages - they're broadcast by app-owned orchestration subscribers
     # This signal only handles non-AI messages (admin edits, manual creates, etc.)
     if created and instance.is_from_ai:
         logger.debug(
-            "Skipping signal broadcast for AI message %d (handled by schema post_persist)",
+            "Skipping signal broadcast for AI message %d (handled by subscribers)",
             instance.id,
         )
         return
 
     if created and not instance.is_from_ai:
         try:
-            from apps.chatlab.media_payloads import build_chat_message_event_payload
+            from apps.chatlab.events import emit_chat_message_created_sync
 
-            # Resolve conversation type slug (avoid N+1 via cached FK)
-            payload = build_chat_message_event_payload(instance, status=instance.delivery_status)
-
-            # Create outbox event with idempotency key based on message ID
-            event = enqueue_event_sync(
-                event_type="chat.message_created",
-                simulation_id=instance.simulation_id,
-                payload=payload,
-                idempotency_key=f"chat.message_created:{instance.id}",
-            )
-
-            if event:
-                # Trigger immediate delivery
-                poke_drain_sync()
+            if emit_chat_message_created_sync(instance, status=instance.delivery_status):
                 logger.debug(
-                    "Non-AI message %d enqueued to outbox (event %s)",
+                    "Non-AI message %d enqueued to outbox",
                     instance.id,
-                    event.id,
                 )
             else:
                 logger.debug(
@@ -283,6 +265,12 @@ def broadcast_metadata_update(sender, instance, created, **kwargs):
     This is a non-critical side effect that can fail safely.
     """
     if created:
+        if instance.service_call_attempt_id:
+            logger.debug(
+                "Skipping post_save metadata broadcast for AI-managed metadata %s",
+                instance.id,
+            )
+            return
         try:
             broadcast_patient_results(instance)
             logger.debug("Enqueued SimulationMetadata %s for patient results delivery", instance.id)

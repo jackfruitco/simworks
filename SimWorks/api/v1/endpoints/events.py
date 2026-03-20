@@ -12,6 +12,7 @@ from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.sse import stream_outbox_events
 from api.v1.utils import get_simulation_for_user
+from apps.chatlab.events import build_chatlab_event_envelope, build_chatlab_transport_envelope
 from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
@@ -85,49 +86,7 @@ def list_events(
     # Determine next cursor
     next_cursor = str(events[-1].id) if has_more and events else None
 
-    # Enrich chat.message_created payloads with canonical media metadata
-    from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
-    from apps.chatlab.models import Message
-
-    message_ids = []
-    for event in events:
-        if event.event_type != "chat.message_created":
-            continue
-        payload = event.payload or {}
-        msg_id = payload_message_id(payload)
-        if msg_id is not None:
-            message_ids.append(msg_id)
-
-    messages_by_id = {}
-    if message_ids:
-        for msg in Message.objects.filter(
-            simulation_id=simulation_id,
-            id__in=message_ids,
-        ).prefetch_related("media"):
-            messages_by_id[msg.id] = msg
-
-    # Convert to envelope format
-    items = []
-    for event in events:
-        payload = dict(event.payload or {})
-        if event.event_type == "chat.message_created":
-            msg_id = payload_message_id(payload)
-            msg = messages_by_id.get(msg_id) if msg_id is not None else None
-            if msg is not None:
-                payload.update(build_message_media_payload(msg, request=request))
-            else:
-                payload.setdefault("media_list", [])
-                payload.setdefault("mediaList", [])
-
-        items.append(
-            EventEnvelope(
-                event_id=str(event.id),
-                event_type=event.event_type,
-                created_at=event.created_at,
-                correlation_id=event.correlation_id,
-                payload=payload,
-            )
-        )
+    items = [EventEnvelope(**build_chatlab_event_envelope(event, request=request)) for event in events]
 
     logger.debug(
         "events.catch_up",
@@ -168,6 +127,7 @@ def stream_events(
         simulation_id=simulation_id,
         cursor=cursor,
         event_type_prefix=event_prefix,
+        envelope_builder=lambda event: build_chatlab_transport_envelope(event, request=request),
         sse_event_name="simulation",
         heartbeat_interval_seconds=10.0,
         heartbeat_comment=": keep-alive\n\n",

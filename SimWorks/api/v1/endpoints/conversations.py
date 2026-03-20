@@ -31,9 +31,8 @@ STITCH_GREETING_MESSAGE = (
 
 def _create_feedback_starter_message(sim, conversation):
     """Create the initial Stitch greeting message for new feedback conversations."""
-    from apps.chatlab.media_payloads import build_chat_message_event_payload
+    from apps.chatlab.events import emit_chat_message_created_sync
     from apps.chatlab.models import Message, RoleChoices
-    from apps.common.outbox import enqueue_event_sync, poke_drain_sync
     from apps.common.utils.accounts import get_system_user
 
     stitch_user = get_system_user("Stitch")
@@ -47,20 +46,11 @@ def _create_feedback_starter_message(sim, conversation):
         is_from_ai=True,
         display_name="Stitch",
     )
-
-    payload = build_chat_message_event_payload(
+    emit_chat_message_created_sync(
         message,
-        conversation_type=conversation.conversation_type.slug,
         status="completed",
+        fallback_conversation_type=conversation.conversation_type.slug,
     )
-    event = enqueue_event_sync(
-        event_type="chat.message_created",
-        simulation_id=sim.id,
-        payload=payload,
-        idempotency_key=f"chat.message_created:{message.id}",
-    )
-    if event:
-        poke_drain_sync()
 
 
 @router.get(

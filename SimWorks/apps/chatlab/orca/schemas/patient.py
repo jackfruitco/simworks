@@ -19,24 +19,6 @@ from .mixins import PatientResponseBaseMixin
 logger = logging.getLogger(__name__)
 
 
-def _metadata_kind(meta) -> str:
-    """Resolve metadata kind without touching lazy ORM relations in async context."""
-    model_name = getattr(getattr(meta, "_meta", None), "model_name", "") or ""
-    kind_by_model = {
-        "labresult": "lab_result",
-        "radresult": "rad_result",
-        "patienthistory": "patient_history",
-        "patientdemographics": "patient_demographics",
-        "simulationfeedback": "simulation_feedback",
-        "simulationmetadata": "generic",
-    }
-    if model_name in kind_by_model:
-        return kind_by_model[model_name]
-
-    class_name = meta.__class__.__name__.lower()
-    return kind_by_model.get(class_name, "generic")
-
-
 class PatientInitialOutputSchema(PatientResponseBaseMixin):
     """Output for the initial patient response turn.
 
@@ -55,10 +37,10 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
 
     Each item type includes required fields matching the Django model structure.
 
-    **WebSocket Broadcasting**:
-    - Broadcasts ``chat.message_created`` events for patient messages
-    - Broadcasts ``metadata.created`` events for demographics/history/results
-    - Enables real-time UI updates when initial response is generated
+    **Durable Events**:
+    - ChatLab emits outbox-backed events after generic domain persistence completes
+    - ``simulation.metadata.results_created`` is the canonical metadata refresh event
+    - ``metadata.created`` remains a temporary compatibility alias
     """
 
     metadata: list[MetadataItem] = Field(
@@ -70,47 +52,8 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
-        """Broadcast message and metadata creation to WebSocket clients.
-
-        Creates outbox events for:
-        1. Message objects (chat.message_created) - patient initial response
-        2. Metadata objects (metadata.created) - demographics, history, etc.
-
-        Args:
-            results: Dict of persisted objects from __persist__ declarations
-            context: PersistContext with simulation_id, correlation_id, etc.
-        """
-        from apps.chatlab.media_payloads import build_chat_message_event_payload
-        from apps.common.outbox.helpers import broadcast_domain_objects
-
-        # Broadcast messages
-        messages = results.get("messages", [])
-        if messages:
-            await broadcast_domain_objects(
-                event_type="chat.message_created",
-                objects=messages,
-                context=context,
-                payload_builder=lambda msg: build_chat_message_event_payload(
-                    msg,
-                    fallback_conversation_type="simulated_patient",
-                    status="completed",
-                ),
-            )
-
-        # Broadcast metadata
-        metadata = results.get("metadata", [])
-        if metadata:
-            await broadcast_domain_objects(
-                event_type="metadata.created",
-                objects=metadata,
-                context=context,
-                payload_builder=lambda meta: {
-                    "metadata_id": meta.id,
-                    "kind": _metadata_kind(meta),
-                    "key": meta.key,
-                    "value": meta.value,
-                },
-            )
+        """Reserved hook for persistence-only follow-ups."""
+        return None
 
 
 class PatientReplyOutputSchema(PatientResponseBaseMixin):
@@ -122,10 +65,10 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     - image_request.requested → sets Message.image_requested flag and enqueues image task
     - llm_conditions_check → NOT PERSISTED
 
-    **WebSocket Broadcasting**:
-    - Broadcasts ``chat.message_created`` events for patient reply messages
-    - Broadcasts ``metadata.created`` events for metadata updates
-    - Enables real-time UI updates when patient responds
+    **Durable Events**:
+    - ChatLab emits outbox-backed events after generic domain persistence completes
+    - ``simulation.metadata.results_created`` is the canonical metadata refresh event
+    - ``metadata.created`` remains a temporary compatibility alias
     """
 
     class ImageRequest(BaseModel):
@@ -178,20 +121,17 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
         return self.image_request is not None and bool(self.image_request.requested)
 
     async def post_persist(self, results, context):
-        """Update Message records and broadcast to WebSocket clients.
+        """Update Message records and run persistence-local follow-ups.
 
         Handles:
         1. Update Message.image_requested flag if images referenced
-        2. Broadcast chat.message_created events for real-time delivery
-        3. Broadcast metadata.created events for metadata upserts
+        2. Enqueue image generation follow-up when requested
 
         Args:
             results: Dict of persisted objects from __persist__ declarations
             context: PersistContext with simulation_id, correlation_id, etc.
         """
-        from apps.chatlab.media_payloads import build_chat_message_event_payload
         from apps.chatlab.models import Message
-        from apps.common.outbox.helpers import broadcast_domain_objects
 
         messages = results.get("messages", [])
 
@@ -205,19 +145,6 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
                 if isinstance(msg, Message):
                     msg.image_requested = True
                     await msg.asave(update_fields=["image_requested"])
-
-        # Broadcast messages
-        if messages:
-            await broadcast_domain_objects(
-                event_type="chat.message_created",
-                objects=messages,
-                context=context,
-                payload_builder=lambda msg: build_chat_message_event_payload(
-                    msg,
-                    fallback_conversation_type="simulated_patient",
-                    status="completed",
-                ),
-            )
 
         if self.should_generate_image and messages:
             source_msg = next(
@@ -255,19 +182,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
                     exc,
                 )
 
-        metadata = results.get("metadata", [])
-        if metadata:
-            await broadcast_domain_objects(
-                event_type="metadata.created",
-                objects=metadata,
-                context=context,
-                payload_builder=lambda meta: {
-                    "metadata_id": meta.id,
-                    "kind": _metadata_kind(meta),
-                    "key": meta.key,
-                    "value": meta.value,
-                },
-            )
+        return None
 
 
 class PatientResultsOutputSchema(BaseModel):
@@ -287,9 +202,10 @@ class PatientResultsOutputSchema(BaseModel):
     - ``kind="patient_demographics"`` → simulation.PatientDemographics
     - ``kind="generic"`` → simcore.SimulationMetadata (fallback)
 
-    **WebSocket Broadcasting**:
-    - Broadcasts ``metadata.created`` events for results/assessments
-    - Enables real-time UI updates when scores/observations are ready
+    **Durable Events**:
+    - ChatLab emits outbox-backed events after generic domain persistence completes
+    - ``simulation.metadata.results_created`` is the canonical metadata refresh event
+    - ``metadata.created`` remains a temporary compatibility alias
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -306,27 +222,5 @@ class PatientResultsOutputSchema(BaseModel):
     __persist_primary__ = "metadata"
 
     async def post_persist(self, results, context):
-        """Broadcast metadata creation to WebSocket clients.
-
-        Creates outbox events for metadata objects (labs, radiology results,
-        scored observations, assessments) to enable real-time UI updates.
-
-        Args:
-            results: Dict of persisted objects from __persist__ declarations
-            context: PersistContext with simulation_id, correlation_id, etc.
-        """
-        from apps.common.outbox.helpers import broadcast_domain_objects
-
-        metadata = results.get("metadata", [])
-        if metadata:
-            await broadcast_domain_objects(
-                event_type="metadata.created",
-                objects=metadata,
-                context=context,
-                payload_builder=lambda meta: {
-                    "metadata_id": meta.id,
-                    "kind": _metadata_kind(meta),
-                    "key": meta.key,
-                    "value": meta.value,
-                },
-            )
+        """Reserved hook for persistence-only follow-ups."""
+        return None

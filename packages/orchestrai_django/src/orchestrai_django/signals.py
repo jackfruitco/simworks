@@ -126,6 +126,14 @@ class ServiceCallSucceededPayload(TypedDict, total=False):
     context: dict[str, Any] | None
 
 
+class DomainObjectCreatedPayload(TypedDict, total=False):
+    call: Any
+    call_id: str | UUID | None
+    service_identity: str | None
+    domain_obj: Any
+    context: dict[str, Any] | None
+
+
 ai_request_sent = Signal()
 ai_response_received = Signal()
 ai_response_ready = Signal()
@@ -281,10 +289,29 @@ def emit_service_call_succeeded(
     service_call_succeeded.send_robust(sender=type(call), **payload)
 
 
+def emit_domain_object_created(
+    call: Any,
+    *,
+    domain_obj: Any,
+) -> None:
+    """Emit a generic hook when domain persistence has completed."""
+
+    context = dict(getattr(call, "context", None) or {})
+    payload: DomainObjectCreatedPayload = {
+        "call": call,
+        "call_id": getattr(call, "id", None) or getattr(call, "pk", None),
+        "service_identity": getattr(call, "service_identity", None),
+        "domain_obj": domain_obj,
+        "context": context,
+    }
+    domain_object_created.send_robust(sender=type(call), **payload)
+
+
 # shared instance used by default in DjangoBaseService
 emitter = DjangoSignalEmitter()
 
 __all__ = [
+    "DomainObjectCreatedPayload",
     "OutboxDispatchPayload",
     "RequestSentPayload",
     "ResponseFailedPayload",
@@ -298,6 +325,7 @@ __all__ = [
     "ai_response_ready",
     "ai_response_received",
     "domain_object_created",
+    "emit_domain_object_created",
     "emit_service_call_dispatched",
     "emit_service_call_succeeded",
     "emitter",

@@ -18,9 +18,8 @@ class StitchReplyOutputSchema(BaseModel):
     **Persistence** (declarative):
     - messages → chatlab.Message via ``persist_stitch_messages``
 
-    **WebSocket Broadcasting**:
-    - Broadcasts ``chat.message_created`` events for Stitch messages
-    - Enables real-time UI updates when Stitch responds
+    **Durable Events**:
+    - ChatLab emits outbox-backed message events after generic domain persistence completes
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -35,19 +34,5 @@ class StitchReplyOutputSchema(BaseModel):
     __persist_primary__ = "messages"
 
     async def post_persist(self, results, context):
-        """Broadcast Stitch message creation to WebSocket clients."""
-        from apps.chatlab.media_payloads import build_chat_message_event_payload
-        from apps.common.outbox.helpers import broadcast_domain_objects
-
-        messages = results.get("messages", [])
-        if messages:
-            await broadcast_domain_objects(
-                event_type="chat.message_created",
-                objects=messages,
-                context=context,
-                payload_builder=lambda msg: build_chat_message_event_payload(
-                    msg,
-                    fallback_conversation_type="simulated_feedback",
-                    status="completed",
-                ),
-            )
+        """Reserved hook for persistence-only follow-ups."""
+        return None

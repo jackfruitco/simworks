@@ -9,10 +9,8 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.tasks import task
 
-from apps.common.outbox import enqueue_event_sync, poke_drain_sync
-
+from .events import emit_chat_message_created_sync
 from .image_generation import ImageGenerationError, generate_patient_image
-from .media_payloads import build_chat_message_event_payload
 
 logger = logging.getLogger(__name__)
 
@@ -59,19 +57,12 @@ def _image_extension_for_mime(mime_type: str) -> str:
 
 
 def _emit_chat_message_created(message, correlation_id: str | None = None) -> None:
-    event = enqueue_event_sync(
-        event_type="chat.message_created",
-        simulation_id=message.simulation_id,
-        payload=build_chat_message_event_payload(
-            message,
-            fallback_conversation_type="simulated_patient",
-            status="completed",
-        ),
-        idempotency_key=f"chat.message_created:{message.id}",
+    emit_chat_message_created_sync(
+        message,
         correlation_id=correlation_id,
+        status="completed",
+        fallback_conversation_type="simulated_patient",
     )
-    if event:
-        poke_drain_sync()
 
 
 def _create_fallback_message(

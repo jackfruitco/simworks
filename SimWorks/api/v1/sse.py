@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import UTC
 import json
 import time
 from typing import Any
 import uuid
 
+from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
 from ninja.errors import HttpError
 
@@ -17,6 +19,10 @@ from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from config.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _format_created_at(timestamp) -> str:
+    return timestamp.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def build_transport_envelope(event) -> dict[str, Any]:
@@ -36,6 +42,7 @@ def stream_outbox_events(
     simulation_id: int,
     cursor: str | None = None,
     event_type_prefix: str | None = None,
+    envelope_builder: Callable[[Any], dict[str, Any]] | None = None,
     sse_event_name: str = "simulation",
     heartbeat_interval_seconds: float | None = None,
     poll_interval_seconds: float = 1.0,
@@ -103,8 +110,11 @@ def stream_outbox_events(
                     break
 
                 for event in events:
-                    data = build_transport_envelope(event)
-                    data["created_at"] = event.created_at.astimezone(UTC).isoformat()
+                    if envelope_builder:
+                        data = await sync_to_async(envelope_builder, thread_sensitive=True)(event)
+                    else:
+                        data = build_transport_envelope(event)
+                    data["created_at"] = _format_created_at(event.created_at)
 
                     yield f"id: {event.id}\n"
                     yield f"event: {sse_event_name}\n"

@@ -11,7 +11,7 @@ class ChatLabConfig(AppConfig):
         # Import signals to register receivers
         from apps.simcore.history_registry import register_history_provider
 
-        from . import signals  # noqa: F401
+        from . import signals, subscribers  # noqa: F401
         from .models import Message
 
         def chatlab_history(simulation):

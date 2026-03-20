@@ -176,6 +176,7 @@ async def persist_metadata_upsert(metadata_items: list[Any], ctx: PersistContext
 
     from apps.simcore.models import SimulationMetadata
 
+    attempt_id = (ctx.extra or {}).get("service_call_attempt_id")
     persisted = []
     for item in metadata_items:
         model_ref = getattr(type(item), "__orm_model__", None)
@@ -190,6 +191,8 @@ async def persist_metadata_upsert(metadata_items: list[Any], ctx: PersistContext
                 continue
             if field_name in model_field_names:
                 kwargs[field_name] = _coerce_orm_value(getattr(item, field_name))
+        if "service_call_attempt" in model_field_names and attempt_id:
+            kwargs["service_call_attempt_id"] = attempt_id
 
         key = kwargs.get("key")
         if not key:

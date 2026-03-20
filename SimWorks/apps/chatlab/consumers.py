@@ -513,10 +513,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         func_name = inspect.currentframe().f_code.co_name
         ChatConsumer.log(func_name)
 
-        envelope = event.get("event", {})
+        outbox_envelope = event.get("event", {})
 
         # Validate envelope has required fields
-        if not envelope.get("event_type"):
+        if not outbox_envelope.get("event_type"):
             ChatConsumer.log(
                 func_name,
                 msg="outbox event missing event_type",
@@ -524,31 +524,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             return
 
-        if envelope.get("event_type") == "chat.message_created":
-            from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
+        from apps.chatlab.events import build_chatlab_transport_envelope
+        from apps.common.models import OutboxEvent
 
-            payload = dict(envelope.get("payload") or {})
-            msg_id = payload_message_id(payload)
-            if msg_id is not None:
-                try:
-                    message = await Message.objects.prefetch_related("media").aget(
-                        id=msg_id,
-                        simulation_id=self.simulation_id,
-                    )
-                    headers = dict(self.scope.get("headers", []))
-                    host = headers.get(b"host", b"").decode() or None
-                    scheme = self.scope.get("scheme", "http")
-                    payload.update(
-                        build_message_media_payload(
-                            message,
-                            scheme=scheme,
-                            host=host,
-                        )
-                    )
-                except Message.DoesNotExist:
-                    payload.setdefault("media_list", [])
-                    payload.setdefault("mediaList", [])
-            envelope = {**envelope, "payload": payload}
+        scope = getattr(self, "scope", {}) or {}
+        headers = dict(scope.get("headers", []))
+        host = headers.get(b"host", b"").decode() or None
+        scheme = scope.get("scheme", "http")
+        simulation_id = self.simulation_id or getattr(getattr(self, "simulation", None), "id", None)
+        try:
+            transport_event = OutboxEvent(
+                id=uuid.UUID(str(outbox_envelope["event_id"])),
+                event_type=outbox_envelope["event_type"],
+                created_at=datetime.fromisoformat(outbox_envelope["created_at"]),
+                correlation_id=outbox_envelope.get("correlation_id"),
+                payload=outbox_envelope.get("payload") or {},
+                simulation_id=int(simulation_id),
+            )
+        except (KeyError, TypeError, ValueError):
+            # Older tests and a few generic callers still pass fully serialized
+            # envelopes rather than raw OutboxEvent-backed payloads.
+            envelope = outbox_envelope
+        else:
+            envelope = await sync_to_async(
+                build_chatlab_transport_envelope,
+                thread_sensitive=True,
+            )(
+                transport_event,
+                scheme=scheme,
+                host=host,
+            )
 
         # Forward the envelope to the client
         await self.send(text_data=json.dumps(envelope, default=json_default))

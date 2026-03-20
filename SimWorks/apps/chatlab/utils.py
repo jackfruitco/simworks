@@ -267,21 +267,23 @@ def _serialize_patient_result(result: LabResult | RadResult | SimulationMetadata
 
 def _patient_results_idempotency_key(
     simulation_id: int,
-    result_ids: list[int],
+    results: list[LabResult | RadResult | SimulationMetadata],
     *,
     status: str | None = None,
 ) -> str:
-    ordered_ids = "-".join(str(result_id) for result_id in sorted(result_ids))
-    status_suffix = f":{status}" if status else ""
-    return f"simulation.metadata.results_created:{simulation_id}:{ordered_ids}{status_suffix}"
+    from apps.chatlab.events import results_event_version_digest
+
+    digest = results_event_version_digest(results, status=status)
+    return f"simulation.metadata.results_created:{simulation_id}:{digest}"
 
 
 def _enqueue_patient_results_outbox(
     *,
     simulation_id: int,
+    source_results: list[LabResult | RadResult | SimulationMetadata],
     results: list[dict],
-    result_ids: list[int],
     status: str | None = None,
+    correlation_id: str | None = None,
 ) -> None:
     from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
@@ -293,7 +295,12 @@ def _enqueue_patient_results_outbox(
         event_type="simulation.metadata.results_created",
         simulation_id=simulation_id,
         payload=payload,
-        idempotency_key=_patient_results_idempotency_key(simulation_id, result_ids, status=status),
+        idempotency_key=_patient_results_idempotency_key(
+            simulation_id,
+            source_results,
+            status=status,
+        ),
+        correlation_id=correlation_id,
     )
     if event:
         logger.debug(
@@ -308,6 +315,8 @@ def _enqueue_patient_results_outbox(
 def broadcast_patient_results(
     __source: list[LabResult | RadResult | SimulationMetadata] | LabResult | RadResult | int,
     __status: str | None = None,
+    *,
+    correlation_id: str | None = None,
 ) -> None:
     """Persist a patient-results notification as an outbox event."""
 
@@ -324,7 +333,7 @@ def broadcast_patient_results(
     logger.debug("Received %d patient results to enqueue for delivery.", len(__source))
 
     grouped_results: dict[int, list[dict]] = {}
-    grouped_result_ids: dict[int, list[int]] = {}
+    grouped_sources: dict[int, list[LabResult | RadResult | SimulationMetadata]] = {}
     skipped = 0
 
     for result in list(__source):
@@ -341,7 +350,7 @@ def broadcast_patient_results(
             continue
 
         grouped_results.setdefault(sim_id, []).append(serialized)
-        grouped_result_ids.setdefault(sim_id, []).append(result.id)
+        grouped_sources.setdefault(sim_id, []).append(result)
 
     if skipped:
         logger.warning("Skipped %d patient results due to serialization failures.", skipped)
@@ -350,9 +359,10 @@ def broadcast_patient_results(
         logger.debug("Enqueuing %d patient results for simulation %s", len(results), sim_id)
         _enqueue_patient_results_outbox(
             simulation_id=sim_id,
+            source_results=grouped_sources.get(sim_id, []),
             results=results,
-            result_ids=grouped_result_ids.get(sim_id, []),
             status=__status,
+            correlation_id=correlation_id,
         )
     return
 

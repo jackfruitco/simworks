@@ -27,7 +27,11 @@ from orchestrai_django.models import (
     CallStatus,
     ServiceCall as ServiceCallModel,
 )
-from orchestrai_django.signals import emit_service_call_dispatched, emit_service_call_succeeded
+from orchestrai_django.signals import (
+    emit_domain_object_created,
+    emit_service_call_dispatched,
+    emit_service_call_succeeded,
+)
 from orchestrai_django.utils.serialization import pydantic_model_to_dict
 
 logger = logging.getLogger(__name__)
@@ -1072,6 +1076,8 @@ def _inline_persist_service_call(call: ServiceCallModel):
 
     call.domain_persisted = True
     call.save(update_fields=["domain_persisted"])
+
+    emit_domain_object_created(call, domain_obj=domain_obj)
 
     if domain_obj is not None:
         logger.info(

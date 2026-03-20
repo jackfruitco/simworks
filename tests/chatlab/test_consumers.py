@@ -12,6 +12,7 @@ Note: These tests use transaction=True for database isolation with async operati
 import asyncio
 from uuid import uuid4
 
+from asgiref.sync import sync_to_async
 from channels.testing import WebsocketCommunicator
 import pytest
 
@@ -337,7 +338,7 @@ class TestOutboxEventHandler:
         await consumer.outbox_event(
             {
                 "event": {
-                    "event_id": "event-123",
+                    "event_id": "00000000-0000-0000-0000-000000000123",
                     "event_type": "simulation.metadata.results_created",
                     "created_at": "2026-01-16T10:30:00Z",
                     "correlation_id": "corr-123",
@@ -358,6 +359,82 @@ class TestOutboxEventHandler:
         assert sent_data["payload"]["results"][0]["key"] == "lab_results_available"
 
         await communicator.disconnect()
+
+    @pytest.mark.django_db(transaction=True)
+    @pytest.mark.asyncio
+    async def test_outbox_event_matches_chatlab_transport_envelope_for_messages(self):
+        """Live WebSocket forwarding should use the same envelope serializer as replay paths."""
+        import json
+
+        from apps.chatlab.events import build_chatlab_transport_envelope
+        from apps.chatlab.models import Message, RoleChoices
+        from apps.common.models import OutboxEvent
+
+        simulation, user = await create_simulation_and_user()
+        from apps.simcore.models import Conversation, ConversationType
+
+        conversation_type, _ = await ConversationType.objects.aget_or_create(
+            slug="simulated_patient",
+            defaults={
+                "display_name": "Simulated Patient",
+                "ai_persona": "patient",
+                "locks_with_simulation": True,
+                "available_in": ["chatlab"],
+                "sort_order": 0,
+            },
+        )
+        conversation = await Conversation.objects.acreate(
+            simulation=simulation,
+            conversation_type=conversation_type,
+            display_name="Test Patient",
+            display_initials="TP",
+        )
+        message = await Message.objects.acreate(
+            simulation=simulation,
+            conversation=conversation,
+            sender=user,
+            content="Parity message",
+            role=RoleChoices.ASSISTANT,
+            is_from_ai=True,
+            display_name="Test Patient",
+        )
+        event = await OutboxEvent.objects.acreate(
+            event_type="chat.message_created",
+            simulation_id=simulation.id,
+            payload={"message_id": message.id, "content": message.content},
+            idempotency_key=f"chat.message_created:{message.id}:consumer",
+        )
+
+        consumer = ChatConsumer()
+        consumer.scope = {"headers": [(b"host", b"testserver")], "scheme": "http"}
+        consumer.simulation_id = simulation.id
+
+        sent_messages = []
+
+        async def mock_send(text_data):
+            sent_messages.append(text_data)
+
+        consumer.send = mock_send
+
+        await consumer.outbox_event(
+            {
+                "event": {
+                    "event_id": str(event.id),
+                    "event_type": event.event_type,
+                    "created_at": event.created_at.isoformat(),
+                    "correlation_id": event.correlation_id,
+                    "payload": event.payload,
+                }
+            }
+        )
+
+        assert len(sent_messages) == 1
+        expected = await sync_to_async(build_chatlab_transport_envelope)(
+            event,
+            scheme="http",
+            host="testserver",
+        )
+        assert json.loads(sent_messages[0]) == expected
 
 
 class TestTypingEventHandlers:

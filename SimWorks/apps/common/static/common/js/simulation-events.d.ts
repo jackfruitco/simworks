@@ -36,6 +36,7 @@ export type SimulationEventType =
     // Simulation state events
     | 'simulation.feedback_created'
     | 'feedback.created'
+    | 'metadata.created'
     | 'simulation.hotwash.created'
     | 'simulation.feedback.continue_conversation'
     | 'simulation.hotwash.continue_conversation'
@@ -248,6 +249,17 @@ export interface MetadataResultsCreatedEvent extends BaseEvent {
     type: 'simulation.metadata.results_created';
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
+}
+
+/**
+ * Legacy ChatLab metadata-created compatibility event.
+ */
+export interface MetadataCreatedEvent extends BaseEvent {
+    type: 'metadata.created';
+    metadata_id: number;
+    kind: string;
+    key: string;
+    value: string;
 }
 
 // ============================================================================
@@ -731,6 +743,7 @@ export type SimulationEvent =
     | FeedbackRetryingEvent
     | FeedbackCreatedEvent
     | FeedbackContinuationEvent
+    | MetadataCreatedEvent
     | MetadataResultsCreatedEvent
     | TrainerLabInjuryCreatedEvent
     | TrainerLabIllnessCreatedEvent

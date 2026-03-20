@@ -12,6 +12,7 @@ Tests:
 from unittest.mock import patch
 from uuid import uuid4
 
+from asgiref.sync import sync_to_async
 import pytest
 
 from apps.chatlab.models import Message, RoleChoices
@@ -25,6 +26,7 @@ from apps.simcore.orca.schemas.feedback import (
     GenerateInitialSimulationFeedback,
 )
 from orchestrai_django.persistence import PersistContext, persist_schema
+from orchestrai_django.signals import domain_object_created
 
 
 @pytest.fixture
@@ -80,6 +82,38 @@ def context(simulation, patient_conversation):
         simulation_id=simulation.id,
         call_id=str(uuid4()),
         extra={"conversation_id": patient_conversation.id},
+    )
+
+
+@pytest.fixture
+def context_with_attempt(simulation, patient_conversation):
+    from orchestrai_django.models import CallStatus, ServiceCall, ServiceCallAttempt
+
+    correlation_id = str(uuid4())
+    call = ServiceCall.objects.create(
+        id=str(uuid4()),
+        service_identity="apps.chatlab.orca.services.patient.GenerateReplyResponse",
+        status=CallStatus.COMPLETED,
+        context={
+            "simulation_id": simulation.id,
+            "conversation_id": patient_conversation.id,
+        },
+        correlation_id=correlation_id,
+    )
+    attempt = ServiceCallAttempt.objects.create(service_call=call, attempt=1)
+    call.context["_service_call_attempt_id"] = attempt.id
+    call.save(update_fields=["context"])
+    return (
+        PersistContext(
+            simulation_id=simulation.id,
+            call_id=call.id,
+            correlation_id=correlation_id,
+            extra={
+                "conversation_id": patient_conversation.id,
+                "service_call_attempt_id": attempt.id,
+            },
+        ),
+        call,
     )
 
 
@@ -157,8 +191,11 @@ class TestPatientInitialPersistence:
             assert "condition_a" not in meta.key
             assert "condition_b" not in meta.key
 
-    async def test_creates_outbox_events_for_messages_and_metadata(self, context):
-        """PatientInitialOutputSchema should create outbox events for both messages and metadata."""
+    async def test_domain_hook_emits_outbox_events_for_messages_and_metadata(
+        self, context_with_attempt
+    ):
+        """Generic domain hooks should emit ChatLab outbox events after persistence."""
+        context, call = context_with_attempt
         schema = PatientInitialOutputSchema.model_validate(
             {
                 "messages": [
@@ -176,7 +213,15 @@ class TestPatientInitialPersistence:
             }
         )
 
-        await persist_schema(schema, context)
+        result = await persist_schema(schema, context)
+        await sync_to_async(domain_object_created.send)(
+            sender=type(call),
+            call=call,
+            call_id=call.id,
+            service_identity=call.service_identity,
+            domain_obj=result,
+            context=call.context,
+        )
 
         # Check message outbox events
         from apps.common.models import OutboxEvent
@@ -195,7 +240,18 @@ class TestPatientInitialPersistence:
         assert "content" in msg_event.payload
         assert msg_event.payload["content"] == "Hello, I have chest pain."
 
-        # Check metadata outbox events
+        metadata_refresh_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="simulation.metadata.results_created",
+        )
+        metadata_refresh_count = await metadata_refresh_events.acount()
+        assert metadata_refresh_count == 1
+
+        refresh_event = await metadata_refresh_events.afirst()
+        assert refresh_event.event_type == "simulation.metadata.results_created"
+        assert refresh_event.payload["tool"] == "patient_results"
+        assert len(refresh_event.payload["results"]) == 2
+
         metadata_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
             event_type="metadata.created",
@@ -261,8 +317,9 @@ class TestPatientReplyPersistence:
 
         assert any("Image requested" in r.message for r in caplog.records)
 
-    async def test_creates_outbox_events_for_messages(self, context):
-        """PatientReplyOutputSchema should create outbox events for messages."""
+    async def test_domain_hook_emits_outbox_events_for_messages(self, context_with_attempt):
+        """Reply persistence should emit durable message events via generic hooks."""
+        context, call = context_with_attempt
         schema = PatientReplyOutputSchema.model_validate(
             {
                 "image_request": {"requested": True, "prompt": "photo of sharp chest pain"},
@@ -279,7 +336,15 @@ class TestPatientReplyPersistence:
         )
 
         with patch("apps.chatlab.tasks.enqueue_generate_patient_image_task"):
-            await persist_schema(schema, context)
+            result = await persist_schema(schema, context)
+        await sync_to_async(domain_object_created.send)(
+            sender=type(call),
+            call=call,
+            call_id=call.id,
+            service_identity=call.service_identity,
+            domain_obj=result,
+            context=call.context,
+        )
 
         # Check message outbox events
         from apps.common.models import OutboxEvent
@@ -431,8 +496,9 @@ class TestPatientResultsPersistence:
         assert meta.key == "communication_score"
         assert meta.value == "Good communication skills"
 
-    async def test_creates_outbox_events_for_metadata(self, context):
-        """PatientResultsOutputSchema should create outbox events for metadata."""
+    async def test_domain_hook_emits_outbox_events_for_metadata(self, context_with_attempt):
+        """Result persistence should emit durable metadata events via generic hooks."""
+        context, call = context_with_attempt
         schema = PatientResultsOutputSchema.model_validate(
             {
                 "metadata": [
@@ -451,10 +517,30 @@ class TestPatientResultsPersistence:
             }
         )
 
-        await persist_schema(schema, context)
+        result = await persist_schema(schema, context)
+        await sync_to_async(domain_object_created.send)(
+            sender=type(call),
+            call=call,
+            call_id=call.id,
+            service_identity=call.service_identity,
+            domain_obj=result,
+            context=call.context,
+        )
 
         # Check metadata outbox events
         from apps.common.models import OutboxEvent
+
+        metadata_refresh_events = OutboxEvent.objects.filter(
+            simulation_id=context.simulation_id,
+            event_type="simulation.metadata.results_created",
+        )
+        metadata_refresh_count = await metadata_refresh_events.acount()
+        assert metadata_refresh_count == 1
+
+        refresh_event = await metadata_refresh_events.afirst()
+        assert refresh_event.event_type == "simulation.metadata.results_created"
+        assert refresh_event.payload["tool"] == "patient_results"
+        assert len(refresh_event.payload["results"]) == 2
 
         metadata_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,

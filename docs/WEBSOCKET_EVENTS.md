@@ -14,25 +14,27 @@ MedSim uses a **reliable event delivery pattern** combining:
 ### Event Flow
 
 ```
-AI Service → persist_schema() → post_persist() hook
-                                      ↓
-                             OutboxEvent (database)
-                                      ↓
-                          Drain Worker (periodic + immediate)
-                                      ↓
-                     channel_layer.group_send("simulation_{id}")
-                                      ↓
-                        ChatConsumer.outbox_event()
-                                      ↓
-                            WebSocket Client
+AI Service → persist_schema() → generic lifecycle signal
+                                        ↓
+                        ChatLab app-owned subscriber emits outbox events
+                                        ↓
+                               OutboxEvent (database)
+                                        ↓
+                            Drain Worker (periodic + immediate)
+                                        ↓
+                       channel_layer.group_send("simulation_{id}")
+                                        ↓
+                          ChatConsumer.outbox_event()
+                                        ↓
+                              WebSocket Client
 ```
 
 ### Key Components
 
-**Schema `post_persist()` Hooks**:
-- Called after domain persistence completes
-- Creates outbox events via `broadcast_domain_objects()` helper
-- Has access to correlation_id, simulation_id, and persisted objects
+**Generic Lifecycle Signals + App Subscribers**:
+- `orchestrai_django` emits generic hooks such as `service_call_succeeded`, `ai_response_failed`, and `domain_object_created`
+- ChatLab registers app-owned subscribers in `apps.chatlab` to emit outbox events and delivery-state reactions
+- Schema `post_persist()` hooks are now reserved for persistence-local follow-ups, not transport broadcasting
 
 **Outbox Table**:
 - Stores events durably before delivery
@@ -81,30 +83,36 @@ AI Service → persist_schema() → post_persist() hook
 
 ---
 
-### 2. metadata.created
+### 2. simulation.metadata.results_created
 
-**Triggered when**: Labs, radiology, demographics, or assessments are persisted
+**Triggered when**: ChatLab metadata or result rows are persisted or updated
 
 **Payload**:
 ```json
 {
   "event_id": "uuid",
-  "event_type": "metadata.created",
+  "event_type": "simulation.metadata.results_created",
   "created_at": "2026-02-22T12:35:00.123Z",
   "simulation_id": "123",
   "correlation_id": "abc-xyz",
   "payload": {
-    "metadata_id": 789,
-    "kind": "lab_result",
-    "key": "wbc_count",
-    "value": "12.5"
+    "tool": "patient_results",
+    "results": [
+      {
+        "id": 789,
+        "key": "wbc_count",
+        "value": "12.5"
+      }
+    ]
   }
 }
 ```
 
 **Frontend Action**: Refresh metadata panels (labs, radiology, demographics)
 
-**Source**: `PatientInitialOutputSchema`, `PatientResultsOutputSchema` (post_persist)
+**Source**: ChatLab app-owned subscribers reacting to generic persistence hooks
+
+**Compatibility Alias**: `metadata.created` is still emitted temporarily for legacy consumers that expect one event per metadata row.
 
 **Metadata Kinds**:
 - `lab_result` - Laboratory test results
@@ -215,7 +223,7 @@ function handleEvent(envelope) {
       handleNewMessage(envelope.payload);
       break;
 
-    case 'metadata.created':
+    case 'simulation.metadata.results_created':
       handleNewMetadata(envelope.payload);
       break;
 
@@ -423,10 +431,10 @@ Search logs for: `"Outbox event created"`, `"Delivered outbox event"`
 
 ### For Backend Developers
 
-✅ **Use `broadcast_domain_objects()` helper in post_persist()**
+✅ **Emit durable ChatLab events from app-owned subscribers**
 ✅ **Include correlation_id in all events**
 ✅ **Document new event types in this file**
-✅ **Test outbox event creation in persistence tests**
+✅ **Test parity across WebSocket, catch-up, and SSE**
 
 ❌ **Don't broadcast directly to WebSocket**
 ❌ **Don't skip outbox pattern**
@@ -434,26 +442,20 @@ Search logs for: `"Outbox event created"`, `"Delivered outbox event"`
 
 ## Adding New Event Types
 
-1. **Implement `post_persist()` in schema**:
+1. **Persist the domain object(s)** using declarative persistence or an explicit persister:
    ```python
-   async def post_persist(self, results, context):
-       from apps.common.outbox.helpers import broadcast_domain_objects
-
-       await broadcast_domain_objects(
-           event_type="your.new_event",
-           objects=results.get("field", []),
-           context=context,
-           payload_builder=lambda obj: {"id": obj.id, ...},
-       )
+   __persist__ = {"field": your_persister}
    ```
 
-2. **Add tests** in `tests/*/test_persist_schema.py`
+2. **Subscribe in app code** (for example from `apps.py:ready()`) to a generic lifecycle hook such as `domain_object_created`
 
-3. **Document event type** in this file
+3. **Add tests** for both the subscriber path and replay parity
 
-4. **Update frontend** to handle new event type
+4. **Document event type** in this file
 
-5. **Update OpenAPI docs** in `api/v1/schemas/events.py`
+5. **Update frontend** to handle new event type
+
+6. **Update OpenAPI docs** in `api/v1/schemas/events.py`
 
 ## References
 
