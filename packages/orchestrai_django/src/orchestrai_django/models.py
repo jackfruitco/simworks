@@ -452,6 +452,7 @@ class ServiceCall(TimestampedModel):
             ]
         )
 
+
 class ServiceCallAttempt(TimestampedModel):
     """One provider execution attempt for a `ServiceCall`."""
 
