@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 _SIM_DEBUG_CACHE_KEY = "orca:sim_debug:{}"
 
 
+def _privacy_flag(name: str, default: bool = False) -> bool:
+    return bool(getattr(settings, name, default))
+
+
 def _is_sim_debug(simulation_id) -> bool:
     """Check if verbose debug logging is enabled for this simulation (via cache toggle)."""
     if not simulation_id:
@@ -634,10 +638,12 @@ def run_service_call(call_id: str):
                         provider_response_id = value
                         break
 
-            attempt_record.response_raw = result_json
-            attempt_record.response_provider_raw = (
-                provider_meta.get("raw") if isinstance(provider_meta, dict) else None
-            )
+            if _privacy_flag("PRIVACY_PERSIST_RAW_AI_RESPONSES"):
+                attempt_record.response_raw = result_json
+            if _privacy_flag("PRIVACY_PERSIST_PROVIDER_RAW"):
+                attempt_record.response_provider_raw = (
+                    provider_meta.get("raw") if isinstance(provider_meta, dict) else None
+                )
             prev_provider_response_id = None
             if call.context:
                 prev_provider_response_id = call.context.get(
@@ -722,63 +728,75 @@ def run_service_call(call_id: str):
 
             # Capture Agent configuration for debugging
             agent_config = _extract_agent_config(service)
-            if agent_config:
+            if agent_config and _privacy_flag("PRIVACY_PERSIST_RAW_AI_REQUESTS"):
                 attempt_record.agent_config = agent_config
 
             # Capture Pydantic AI Request object (raw)
-            if request_obj is not None:
+            if request_obj is not None and _privacy_flag("PRIVACY_PERSIST_RAW_AI_REQUESTS"):
                 pydantic_request_json = pydantic_model_to_dict(request_obj)
                 attempt_record.request_pydantic = pydantic_request_json
 
-            if request_json:
+            if (
+                request_obj is not None
+                and hasattr(request_obj, "response_schema")
+                and request_obj.response_schema
+            ):
+                schema_cls = _resolve_response_schema(request_obj.response_schema)
+                if schema_cls is not None:
+                    identity = getattr(getattr(schema_cls, "identity", None), "as_str", None)
+                    if identity is None:
+                        identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
+                    attempt_record.schema_fqn = identity
+                    call.schema_fqn = identity
+
+            if request_obj is not None:
+                attempt_record.request_model = getattr(request_obj, "model", None)
+            elif request_json:
+                attempt_record.request_model = request_json.get("model")
+
+            if request_json and _privacy_flag("PRIVACY_PERSIST_RAW_AI_REQUESTS"):
                 attempt_record.request_input = request_json
-                attempt_record.request_provider = request_json
+                if _privacy_flag("PRIVACY_PERSIST_PROVIDER_RAW"):
+                    attempt_record.request_provider = request_json
 
                 # Extract messages for easier querying
-                messages_json = []
-                if request_obj is not None and hasattr(request_obj, "input") and request_obj.input:
-                    for item in request_obj.input:
-                        try:
-                            messages_json.append(item.model_dump(mode="json"))
-                        except (TypeError, AttributeError):
-                            messages_json.append(str(item))
-                else:
-                    req_input = request_json.get("input")
-                    if isinstance(req_input, list):
-                        messages_json = req_input
-                attempt_record.request_messages = messages_json
+                if _privacy_flag("PRIVACY_PERSIST_AI_MESSAGE_HISTORY"):
+                    messages_json = []
+                    if (
+                        request_obj is not None
+                        and hasattr(request_obj, "input")
+                        and request_obj.input
+                    ):
+                        for item in request_obj.input:
+                            try:
+                                messages_json.append(item.model_dump(mode="json"))
+                            except (TypeError, AttributeError):
+                                messages_json.append(str(item))
+                    else:
+                        req_input = request_json.get("input")
+                        if isinstance(req_input, list):
+                            messages_json = req_input
+                    attempt_record.request_messages = messages_json
 
                 # Extract tools for easier querying
-                if request_obj is not None and hasattr(request_obj, "tools") and request_obj.tools:
-                    try:
-                        attempt_record.request_tools = [
-                            t.model_dump(mode="json") for t in request_obj.tools
-                        ]
-                    except (TypeError, AttributeError):
-                        attempt_record.request_tools = [str(t) for t in request_obj.tools]
-                else:
-                    req_tools = request_json.get("tools")
-                    if isinstance(req_tools, list):
-                        attempt_record.request_tools = req_tools
+                if _privacy_flag("PRIVACY_PERSIST_RAW_AI_REQUESTS"):
+                    if (
+                        request_obj is not None
+                        and hasattr(request_obj, "tools")
+                        and request_obj.tools
+                    ):
+                        try:
+                            attempt_record.request_tools = [
+                                t.model_dump(mode="json") for t in request_obj.tools
+                            ]
+                        except (TypeError, AttributeError):
+                            attempt_record.request_tools = [str(t) for t in request_obj.tools]
+                    else:
+                        req_tools = request_json.get("tools")
+                        if isinstance(req_tools, list):
+                            attempt_record.request_tools = req_tools
 
-                # Get response schema identity if available
-                if (
-                    request_obj is not None
-                    and hasattr(request_obj, "response_schema")
-                    and request_obj.response_schema
-                ):
-                    schema_cls = _resolve_response_schema(request_obj.response_schema)
-                    if schema_cls is not None:
-                        identity = getattr(getattr(schema_cls, "identity", None), "as_str", None)
-                        if identity is None:
-                            identity = f"{schema_cls.__module__}.{schema_cls.__name__}"
-                        attempt_record.schema_fqn = identity
-                        call.schema_fqn = identity
-
-                attempt_record.request_model = getattr(
-                    request_obj, "model", None
-                ) or request_json.get("model")
-                attempt_record.save()
+            attempt_record.save()
 
             # Store attempt ID in context for persistence handlers
             if call.context is None:
@@ -787,7 +805,11 @@ def run_service_call(call_id: str):
             update_fields = ["context"]
             if call.schema_fqn:
                 update_fields.append("schema_fqn")
-            if request_json is not None and (call.request is None or call.request == request_json):
+            if (
+                request_json is not None
+                and _privacy_flag("PRIVACY_PERSIST_RAW_AI_REQUESTS")
+                and (call.request is None or call.request == request_json)
+            ):
                 call.request = request_json
             if call.request is not None:
                 update_fields.append("request")

@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.simcore",
     "apps.chatlab",
+    "apps.privacy",
     "apps.trainerlab",
     "channels",  # For WebSocket support
 ]
@@ -60,10 +61,24 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.privacy.context_processors.privacy_flags",
             ],
         },
     },
 ]
+
+PRIVACY_ENABLE_PII_WARNING = True
+PRIVACY_ENABLE_BASIC_PII_SCAN = True
+PRIVACY_CHAT_RETENTION_DAYS = 30
+PRIVACY_RAW_AI_RETENTION_DAYS = 14
+PRIVACY_DERIVED_FEEDBACK_RETENTION_DAYS = 3650
+PRIVACY_PERSIST_RAW_AI_REQUESTS = False
+PRIVACY_PERSIST_RAW_AI_RESPONSES = False
+PRIVACY_PERSIST_AI_MESSAGE_HISTORY = False
+PRIVACY_PERSIST_PROVIDER_RAW = False
+PRIVACY_ANALYTICS_ENABLED = False
+PRIVACY_ANALYTICS_REQUIRE_CONSENT = True
+PRIVACY_DELETE_EXPORT_TOKEN_TTL_SECONDS = 600
 
 # Channels configuration for WebSocket tests
 CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}

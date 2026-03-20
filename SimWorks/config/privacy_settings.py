@@ -1,0 +1,26 @@
+"""Privacy and GDPR-oriented data handling settings."""
+
+from .settings_parsers import bool_from_env, int_from_env
+
+PRIVACY_ENABLE_PII_WARNING = bool_from_env("PRIVACY_ENABLE_PII_WARNING", default=True)
+PRIVACY_ENABLE_BASIC_PII_SCAN = bool_from_env("PRIVACY_ENABLE_BASIC_PII_SCAN", default=True)
+
+PRIVACY_CHAT_RETENTION_DAYS = int_from_env("PRIVACY_CHAT_RETENTION_DAYS", default=30, minimum=1)
+PRIVACY_RAW_AI_RETENTION_DAYS = int_from_env("PRIVACY_RAW_AI_RETENTION_DAYS", default=14, minimum=1)
+PRIVACY_DERIVED_FEEDBACK_RETENTION_DAYS = int_from_env(
+    "PRIVACY_DERIVED_FEEDBACK_RETENTION_DAYS", default=3650, minimum=1
+)
+
+PRIVACY_PERSIST_RAW_AI_REQUESTS = bool_from_env("PRIVACY_PERSIST_RAW_AI_REQUESTS", default=False)
+PRIVACY_PERSIST_RAW_AI_RESPONSES = bool_from_env("PRIVACY_PERSIST_RAW_AI_RESPONSES", default=False)
+PRIVACY_PERSIST_AI_MESSAGE_HISTORY = bool_from_env(
+    "PRIVACY_PERSIST_AI_MESSAGE_HISTORY", default=False
+)
+PRIVACY_PERSIST_PROVIDER_RAW = bool_from_env("PRIVACY_PERSIST_PROVIDER_RAW", default=False)
+
+PRIVACY_ANALYTICS_ENABLED = bool_from_env("PRIVACY_ANALYTICS_ENABLED", default=False)
+PRIVACY_ANALYTICS_REQUIRE_CONSENT = bool_from_env("PRIVACY_ANALYTICS_REQUIRE_CONSENT", default=True)
+
+PRIVACY_DELETE_EXPORT_TOKEN_TTL_SECONDS = int_from_env(
+    "PRIVACY_DELETE_EXPORT_TOKEN_TTL_SECONDS", default=600, minimum=60
+)
