@@ -25,6 +25,15 @@ from config.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _pii_scan_result(content: str) -> dict:
+    from apps.privacy import policies
+    from apps.privacy.services.classification import scan_text_for_pii
+
+    if not policies.basic_pii_scan_enabled():
+        return {"has_pii": False, "matches": {}}
+    return scan_text_for_pii(content)
+
+
 def _emit_message_status(
     *,
     simulation_id: int,
@@ -366,6 +375,7 @@ def create_message(
         raise HttpError(400, "AI replies are not available for this conversation yet")
 
     with transaction.atomic():
+        pii_scan = _pii_scan_result(body.content)
         # Create the user message
         message = Message.objects.create(
             simulation=sim,
@@ -387,6 +397,7 @@ def create_message(
             simulation_id=simulation_id,
             conversation_id=conversation.pk,
             message_type=body.message_type,
+            pii_flagged=pii_scan["has_pii"],
         )
 
         # Enqueue only after the user message transaction commits.

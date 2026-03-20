@@ -18,6 +18,20 @@ from .auth_settings import (
     SOCIALACCOUNT_PROVIDERS,
 )
 from .logging import LOGGING
+from .privacy_settings import (
+    PRIVACY_ANALYTICS_ENABLED,
+    PRIVACY_ANALYTICS_REQUIRE_CONSENT,
+    PRIVACY_CHAT_RETENTION_DAYS,
+    PRIVACY_DELETE_EXPORT_TOKEN_TTL_SECONDS,
+    PRIVACY_DERIVED_FEEDBACK_RETENTION_DAYS,
+    PRIVACY_ENABLE_BASIC_PII_SCAN,
+    PRIVACY_ENABLE_PII_WARNING,
+    PRIVACY_PERSIST_AI_MESSAGE_HISTORY,
+    PRIVACY_PERSIST_PROVIDER_RAW,
+    PRIVACY_PERSIST_RAW_AI_REQUESTS,
+    PRIVACY_PERSIST_RAW_AI_RESPONSES,
+    PRIVACY_RAW_AI_RETENTION_DAYS,
+)
 from .security_settings import (
     ALLOWED_HOSTS,
     CSRF_COOKIE_SECURE,
@@ -92,6 +106,7 @@ INSTALLED_APPS = [
     "apps.common",
     "apps.simcore",
     "apps.chatlab",
+    "apps.privacy",
     "apps.trainerlab",
     "orchestrai_django",
     "imagekit",
@@ -127,6 +142,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.common.context_processors.debug_flag",
+                "apps.privacy.context_processors.privacy_flags",
             ],
         },
     },

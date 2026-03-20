@@ -1,8 +1,9 @@
 import pytest
 
-from orchestrai.components.services.django.task_proxy import DjangoServiceSpec, DjangoTaskProxy
 from orchestrai.components.services.service import BaseService
+from orchestrai.components.services.task_proxy import ServiceSpec
 from orchestrai.identity import Identity
+from orchestrai_django.task_proxy import DjangoTaskProxy
 
 
 class _DummyService(BaseService):
@@ -13,7 +14,7 @@ class _DummyService(BaseService):
 
 
 def test_django_service_spec_using_splits_dispatch_kwargs():
-    spec = DjangoServiceSpec(_DummyService, {}, {})
+    spec = ServiceSpec(_DummyService, {}, {})
     proxy = DjangoTaskProxy(spec.using(queue="priority", backend="celery", context={"x": 1}))
 
     service = proxy._build()

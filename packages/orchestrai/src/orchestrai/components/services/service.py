@@ -11,7 +11,7 @@ Key features:
 - Class-based instruction composition via MRO
 - Native Pydantic model validation with automatic LLM retry
 - Multi-provider support via Pydantic AI
-- Task descriptor for Django task execution
+- Task descriptor for queued task execution
 
 Identity
 --------
@@ -25,12 +25,10 @@ Usage:
     from pydantic import BaseModel
     from orchestrai.components.services import BaseService
     from orchestrai.components.instructions import BaseInstruction
-    from orchestrai_django.decorators import orca
 
     class PatientResponse(BaseModel):
         messages: list[str]
 
-    @orca.instruction(order=10)
     class BaseInstructions(BaseInstruction):
         instruction = "You are a helpful medical assistant..."
 
@@ -141,17 +139,38 @@ _BUILTIN_PROVIDER_FACTORIES: dict[str, Callable[[str, str | None], Any]] = {
 }
 
 
+_task_proxy_factory: Callable[[Any], Any] | None = None
+
+
+def register_task_proxy_factory(factory: Callable[[Any], Any] | None) -> None:
+    """Register a task proxy factory used for service `.task` access."""
+
+    global _task_proxy_factory
+    _task_proxy_factory = factory
+
+
+def resolve_task_proxy(spec: Any) -> Any:
+    """Return the configured task proxy for ``spec`` or the core default."""
+
+    factory = _task_proxy_factory
+    if factory is not None:
+        proxy = factory(spec)
+        if proxy is not None:
+            return proxy
+    return CoreTaskProxy(spec)
+
+
 class TaskDescriptor:
     """Descriptor that provides a task proxy for service execution.
 
     When accessed on a class, returns a CoreTaskProxy that can be used
     for inline execution or task enqueueing.
 
-    The proxy is configured by the Django layer to use DjangoTaskProxy
-    when orchestrai_django is installed, enabling background task dispatch.
+    External integration layers can register a custom task proxy factory
+    while the core package remains framework-neutral.
     """
 
-    def __get__(self, instance: Any, owner: type | None = None) -> CoreTaskProxy:
+    def __get__(self, instance: Any, owner: type | None = None) -> Any:
         from orchestrai.components.services.task_proxy import ServiceSpec
 
         service_cls = owner or type(instance)
@@ -163,15 +182,11 @@ class TaskDescriptor:
                     kwargs["context"] = dict(context)
                 except Exception:
                     kwargs["context"] = context
-        return CoreTaskProxy(ServiceSpec(service_cls, kwargs))
+        return resolve_task_proxy(ServiceSpec(service_cls, kwargs))
 
 
 class CoreTaskProxy:
-    """Proxy for executing a service inline via its lifecycle helpers.
-
-    This is the core implementation - the Django layer replaces this with
-    DjangoTaskProxy for persistence and background execution support.
-    """
+    """Proxy for executing a service inline via its lifecycle helpers."""
 
     def __init__(self, spec: ServiceSpec):
         self._spec = spec
@@ -180,9 +195,7 @@ class CoreTaskProxy:
         return self._spec.service_cls(**self._spec.service_kwargs)
 
     def using(self, **service_kwargs: Any) -> CoreTaskProxy:
-        if "queue" in service_kwargs:
-            raise ValueError("queue dispatch is not supported for inline tasks")
-        return CoreTaskProxy(self._spec.using(**service_kwargs))
+        return resolve_task_proxy(self._spec.using(**service_kwargs))
 
     def run(self, **payload: Any):
         service = self._build()
@@ -214,10 +227,24 @@ class CoreTaskProxy:
             dispatch=self._dispatch_meta(service),
         )
 
+    def enqueue(self, **payload: Any) -> str:
+        """Execute inline and return the generated call ID."""
+
+        return self.run(**payload).id
+
+    async def aenqueue(self, **payload: Any) -> str:
+        """Async variant of :meth:`enqueue`."""
+
+        return (await self.arun(**payload)).id
+
     def _dispatch_meta(self, service: ServiceCallMixin) -> dict[str, Any]:
         identity = getattr(service, "identity", None)
         ident_str = getattr(identity, "as_str", None)
-        return {"service": ident_str or service.__class__.__name__}
+        dispatch = {"service": ident_str or service.__class__.__name__}
+        spec_dispatch = getattr(self._spec, "dispatch_kwargs", None)
+        if spec_dispatch:
+            dispatch.update(spec_dispatch)
+        return dispatch
 
 
 class BaseService[T: BaseModel](
@@ -412,7 +439,7 @@ class BaseService[T: BaseModel](
 
         Configuration layering:
         - Standalone OrchestrAI: Uses standard env vars (OPENAI_API_KEY, etc.)
-        - Django integration: Uses namespaced env vars (ORCA_OPENAI_API_KEY, etc.)
+        - Integration layers: May choose namespaced env vars (for example ORCA_OPENAI_API_KEY)
         - User override: Via ORCHESTRAI["API_KEY_ENVVARS"]
 
         Args:
@@ -734,4 +761,6 @@ __all__ = [
     "BaseService",
     "CoreTaskProxy",
     "TaskDescriptor",
+    "register_task_proxy_factory",
+    "resolve_task_proxy",
 ]

@@ -64,9 +64,8 @@ class DjangoBaseService(BaseService, ABC):
 
     abstract: ClassVar[bool] = True
 
-    # Task proxy inherits from BaseService - Django layer patches it via use_django_task_proxy()
-    # in the OrchestrAIDjangoConfig.ready() method to provide DjangoTaskProxy with
-    # persistence and background execution support.
+    # BaseService.task remains framework-neutral in core; the Django integration
+    # installs the Django-aware proxy factory during app startup.
 
     def __init__(
         self,

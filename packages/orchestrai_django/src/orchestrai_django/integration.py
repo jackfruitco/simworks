@@ -101,7 +101,7 @@ def configure_from_django_settings(
     conf.update_from_mapping(user_mapping)
 
     try:
-        from orchestrai.components.services.django import use_django_task_proxy
+        from orchestrai_django.task_proxy import use_django_task_proxy
 
         use_django_task_proxy()
     except Exception:

@@ -34,9 +34,9 @@ from django.apps import AppConfig
 from django.conf import settings as dj_settings
 
 from orchestrai._state import get_current_app, set_current_app
-from orchestrai.components.services.django import use_django_task_proxy
 from orchestrai.tracing import service_span_sync
 from orchestrai_django.integration import DjangoAdapter
+from orchestrai_django.task_proxy import use_django_task_proxy
 
 logger = logging.getLogger(__name__)
 
