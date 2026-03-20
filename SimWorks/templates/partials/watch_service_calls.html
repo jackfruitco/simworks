@@ -77,54 +77,65 @@
       <div x-show="$store.scState.isOpen('{{ sc.id }}')" x-collapse>
         <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
 
-          {# Meta #}
-          <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-            <div class="flex gap-1.5">
-              <dt class="font-medium">ID:</dt>
-              <dd class="font-mono">{{ sc.id }}</dd>
-            </div>
-            {% if sc.correlation_id %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Correlation:</dt>
-              <dd class="font-mono">{{ sc.correlation_id }}</dd>
-            </div>
-            {% endif %}
-            {% if sc.started_at %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Started:</dt>
-              <dd>{{ sc.started_at|date:"H:i:s" }}</dd>
-            </div>
-            {% endif %}
-            {% if sc.finished_at %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Finished:</dt>
-              <dd>{{ sc.finished_at|date:"H:i:s" }}</dd>
-            </div>
-            {% endif %}
-            {% if sc.total_tokens %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Tokens:</dt>
-              <dd>{{ sc.input_tokens }} in / {{ sc.output_tokens }} out / {{ sc.reasoning_tokens }} reasoning</dd>
-            </div>
-            {% endif %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Domain persisted:</dt>
-              <dd>{{ sc.domain_persisted|yesno:"yes,no" }}</dd>
-            </div>
-            {% if sc.domain_persist_attempts %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Persist attempts:</dt>
-              <dd>{{ sc.domain_persist_attempts }}</dd>
-            </div>
-            {% endif %}
-          </dl>
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            {# Meta #}
+            <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <div class="flex gap-1.5">
+                <dt class="font-medium">ID:</dt>
+                <dd class="font-mono">{{ sc.id }}</dd>
+              </div>
+              {% if sc.correlation_id %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Correlation:</dt>
+                <dd class="font-mono">{{ sc.correlation_id }}</dd>
+              </div>
+              {% endif %}
+              {% if sc.started_at %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Started:</dt>
+                <dd>{{ sc.started_at|date:"H:i:s" }}</dd>
+              </div>
+              {% endif %}
+              {% if sc.finished_at %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Finished:</dt>
+                <dd>{{ sc.finished_at|date:"H:i:s" }}</dd>
+              </div>
+              {% endif %}
+              {% if sc.total_tokens %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Tokens:</dt>
+                <dd>{{ sc.input_tokens }} in / {{ sc.output_tokens }} out / {{ sc.reasoning_tokens }} reasoning</dd>
+              </div>
+              {% endif %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Domain persisted:</dt>
+                <dd>{{ sc.domain_persisted|yesno:"yes,no" }}</dd>
+              </div>
+              {% if sc.domain_persist_attempts %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Persist attempts:</dt>
+                <dd>{{ sc.domain_persist_attempts }}</dd>
+              </div>
+              {% endif %}
+            </dl>
 
-          {# Copy entire service call button #}
-          <div class="flex justify-end">
-            <button
-              @click.stop="copyText(document.getElementById('sc-full-{{ sc.id }}')?.textContent??'',$el)"
-              class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-            >Copy call</button>
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                @click.stop="copyText(document.getElementById('sc-full-{{ sc.id }}')?.textContent ?? '', $el)"
+                class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 transition-colors"
+              >
+                <iconify-icon icon="fa6-regular:copy" width="12"></iconify-icon>
+                <span>Copy JSON</span>
+              </button>
+              <button
+                @click.stop="downloadText(jsonFilename('service-call', '{{ sc.id }}'), document.getElementById('sc-full-{{ sc.id }}')?.textContent ?? '', $el)"
+                class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 rounded px-2 py-1 transition-colors"
+              >
+                <iconify-icon icon="bi:download" width="12"></iconify-icon>
+                <span>Download JSON</span>
+              </button>
+            </div>
           </div>
 
           {# Hidden full-call JSON for copy — includes metadata, input, and output.
@@ -161,28 +172,52 @@
           {# Input JSON #}
           {% if sc.input %}
           <div>
-            <div class="flex items-center justify-between mb-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Input</p>
-              <button
-                @click.stop="copyText(document.getElementById('sc-input-{{ sc.id }}')?.textContent??'',$el)"
-                class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-              >Copy</button>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Input</p>
+            <div class="relative">
+              <div class="absolute right-2 top-2 flex flex-wrap items-center gap-1.5">
+                <button
+                  @click.stop="copyText(document.getElementById('sc-input-{{ sc.id }}')?.textContent ?? '', $el)"
+                  class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 rounded px-2 py-1 transition-colors"
+                >
+                  <iconify-icon icon="fa6-regular:copy" width="12"></iconify-icon>
+                  <span>Copy JSON</span>
+                </button>
+                <button
+                  @click.stop="downloadText(jsonFilename('service-call-input', '{{ sc.id }}'), document.getElementById('sc-input-{{ sc.id }}')?.textContent ?? '', $el)"
+                  class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 rounded px-2 py-1 transition-colors"
+                >
+                  <iconify-icon icon="bi:download" width="12"></iconify-icon>
+                  <span>Download JSON</span>
+                </button>
+              </div>
+              <pre id="sc-input-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 pt-12 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.input|json_pretty }}</pre>
             </div>
-            <pre id="sc-input-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.input|json_pretty }}</pre>
           </div>
           {% endif %}
 
           {# Output JSON #}
           {% if sc.output_data %}
           <div>
-            <div class="flex items-center justify-between mb-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Output</p>
-              <button
-                @click.stop="copyText(document.getElementById('sc-output-{{ sc.id }}')?.textContent??'',$el)"
-                class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-              >Copy</button>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Output</p>
+            <div class="relative">
+              <div class="absolute right-2 top-2 flex flex-wrap items-center gap-1.5">
+                <button
+                  @click.stop="copyText(document.getElementById('sc-output-{{ sc.id }}')?.textContent ?? '', $el)"
+                  class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 rounded px-2 py-1 transition-colors"
+                >
+                  <iconify-icon icon="fa6-regular:copy" width="12"></iconify-icon>
+                  <span>Copy JSON</span>
+                </button>
+                <button
+                  @click.stop="downloadText(jsonFilename('service-call-output', '{{ sc.id }}'), document.getElementById('sc-output-{{ sc.id }}')?.textContent ?? '', $el)"
+                  class="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 border border-gray-200 dark:border-gray-600 bg-white/90 dark:bg-gray-800/90 rounded px-2 py-1 transition-colors"
+                >
+                  <iconify-icon icon="bi:download" width="12"></iconify-icon>
+                  <span>Download JSON</span>
+                </button>
+              </div>
+              <pre id="sc-output-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 pt-12 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.output_data|json_pretty }}</pre>
             </div>
-            <pre id="sc-output-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.output_data|json_pretty }}</pre>
           </div>
           {% endif %}
 
