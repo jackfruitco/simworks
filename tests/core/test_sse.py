@@ -1,5 +1,6 @@
 """Tests for SSE streaming helper behavior."""
 
+import asyncio
 from datetime import timedelta
 from itertools import pairwise
 import uuid
@@ -155,6 +156,41 @@ class TestStreamOutboxEvents:
         assert '"trainerlab.session.seeded"' in chunks[3]
         assert chunks[4] == ": keep-alive\n\n"
         assert clock.current == pytest.approx(10.0)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_disconnect_exits_cleanly(self, monkeypatch):
+        async def _cancel_sleep(_seconds: float) -> None:
+            raise asyncio.CancelledError
+
+        debug_calls: list[tuple[str, dict]] = []
+        exception_calls: list[tuple[str, dict]] = []
+        info_calls: list[tuple[str, dict]] = []
+
+        def _debug(message: str, **kwargs) -> None:
+            debug_calls.append((message, kwargs))
+
+        def _info(message: str, **kwargs) -> None:
+            info_calls.append((message, kwargs))
+
+        def _exception(message: str, **kwargs) -> None:
+            exception_calls.append((message, kwargs))
+
+        monkeypatch.setattr("api.v1.sse.asyncio.sleep", _cancel_sleep)
+        monkeypatch.setattr("api.v1.sse.logger.debug", _debug)
+        monkeypatch.setattr("api.v1.sse.logger.exception", _exception)
+        monkeypatch.setattr("api.v1.sse.logger.info", _info)
+
+        response = await _stream(
+            simulation_id=123,
+            heartbeat_interval_seconds=10.0,
+            poll_interval_seconds=1.0,
+        )
+
+        chunks = [decode_chunk(chunk) async for chunk in response.streaming_content]
+
+        assert chunks == [": keep-alive\n\n"]
+        assert ("sse_stream_closed", {"simulation_id": 123}) in info_calls
+        assert exception_calls == []
 
     def test_invalid_cursor_returns_http_400(self):
         """Invalid cursor format is rejected."""

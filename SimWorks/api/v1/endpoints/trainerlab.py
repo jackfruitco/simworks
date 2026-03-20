@@ -14,7 +14,7 @@ from ninja import Query, Router
 from ninja.errors import HttpError
 
 from api.v1.auth import JWTAuth
-from api.v1.schemas.common import PaginatedResponse
+from api.v1.schemas.common import ErrorResponse, PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.schemas.trainerlab import (
     AnnotationCreateIn,
@@ -113,6 +113,7 @@ from apps.trainerlab.services import (
     pause_session,
     refresh_completed_run_review,
     resume_session,
+    retry_initial_scenario_generation,
     snapshot_before_preset,
     start_session,
     stop_session,
@@ -157,10 +158,11 @@ def _reject_terminal_mutation(
     session: TrainerSession,
     allow_post_stop_note: bool = False,
 ) -> None:
-    if session.status == SessionStatus.COMPLETED and allow_post_stop_note:
+    if session.status == SessionStatus.SEEDING:
+        error = "Initial scenario is still generating; try again once seeding completes."
+    elif session.status == SessionStatus.COMPLETED and allow_post_stop_note:
         return
-
-    if session.status == SessionStatus.COMPLETED:
+    elif session.status == SessionStatus.COMPLETED:
         error = "Simulation is completed; only notes may be added."
     elif session.status == SessionStatus.FAILED:
         error = "Simulation has failed; no further changes are allowed."
@@ -657,6 +659,7 @@ def create_trainer_session(
         scenario_spec=body.scenario_spec,
         directives=body.directives,
         modifiers=body.modifiers,
+        correlation_id=_get_correlation_id(request),
     )
 
     TrainerCommand.objects.create(
@@ -783,6 +786,13 @@ def _process_run_command(
     if not created and command.status == TrainerCommand.CommandStatus.PROCESSED:
         return trainer_run_to_out(session)
 
+    if session.status == SessionStatus.SEEDING:
+        _mark_command_failed(
+            command,
+            "Initial scenario is still generating; try again once seeding completes.",
+        )
+        raise HttpError(409, command.error)
+
     try:
         if command_type == TrainerCommand.CommandType.START:
             session = start_session(session=session, user=user, correlation_id=correlation_id)
@@ -803,6 +813,33 @@ def _process_run_command(
     command.save(update_fields=["status", "processed_at"])
 
     return trainer_run_to_out(session)
+
+
+@router.post(
+    "/simulations/{simulation_id}/retry-initial/",
+    response={202: TrainerRunOut, 409: ErrorResponse},
+    summary="Retry initial TrainerLab scenario generation",
+)
+@api_rate_limit
+def retry_trainer_initial_generation(
+    request: HttpRequest,
+    simulation_id: int,
+) -> tuple[int, TrainerRunOut]:
+    user = request.auth
+    require_instructor_membership(user)
+    session = _get_session_for_simulation(simulation_id, user)
+
+    try:
+        call_id = retry_initial_scenario_generation(
+            session=session,
+            correlation_id=_get_correlation_id(request),
+        )
+    except ValidationError as exc:
+        raise HttpError(409, str(exc)) from None
+
+    if not call_id and session.status != SessionStatus.FAILED:
+        session.refresh_from_db()
+    return 202, trainer_run_to_out(session)
 
 
 @router.post(
@@ -1802,8 +1839,9 @@ def list_trainer_events(
 
 @router.get(
     "/simulations/{simulation_id}/summary/",
-    response=RunSummaryOut,
+    response={200: RunSummaryOut, 404: ErrorResponse},
     summary="Get run summary",
+    description="Returns 404 when the run summary has not been generated yet.",
 )
 @api_rate_limit
 def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:

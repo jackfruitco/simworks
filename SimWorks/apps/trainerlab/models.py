@@ -22,6 +22,7 @@ from .intervention_dictionary import (
 
 
 class SessionStatus(models.TextChoices):
+    SEEDING = "seeding", _("Seeding")
     SEEDED = "seeded", _("Seeded")
     RUNNING = "running", _("Running")
     PAUSED = "paused", _("Paused")

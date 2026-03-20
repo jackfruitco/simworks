@@ -781,7 +781,13 @@ def run_service_call(call_id: str):
                 exc_info=True,
             )
 
-        emit_service_call_succeeded(call, attempt=current_attempt)
+        if call.domain_persisted:
+            emit_service_call_succeeded(call, attempt=current_attempt)
+        else:
+            logger.debug(
+                "Service call %s completed before domain persistence; success signal deferred",
+                call_id,
+            )
 
         return call.to_jsonable()
 
@@ -995,6 +1001,8 @@ def process_pending_persistence():
     for call in pending_calls:
         try:
             _inline_persist_service_call(call)
+            if call.domain_persisted:
+                emit_service_call_succeeded(call)
             stats["processed"] += 1
         except Exception as exc:
             stats["failed"] += 1

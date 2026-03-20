@@ -94,7 +94,8 @@ def stream_outbox_events(
 
                     events = [e async for e in queryset[:100]]
                 except (asyncio.CancelledError, GeneratorExit):
-                    raise
+                    logger.debug("sse_stream_cancelled", simulation_id=simulation_id)
+                    return
                 except Exception:
                     logger.exception(
                         "sse_stream_db_error",
@@ -124,8 +125,8 @@ def stream_outbox_events(
 
                 await asyncio.sleep(poll_interval_seconds)
         except (asyncio.CancelledError, GeneratorExit):
-            logger.info("sse_stream_cancelled", simulation_id=simulation_id)
-            raise
+            logger.debug("sse_stream_cancelled", simulation_id=simulation_id)
+            return
         finally:
             logger.info("sse_stream_closed", simulation_id=simulation_id)
 

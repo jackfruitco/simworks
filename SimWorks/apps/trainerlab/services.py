@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+from apps.common.retries import has_user_retries_remaining
 from apps.simcore.models import Simulation
 from apps.simcore.utils import generate_fake_name
 from config.logging import get_logger
@@ -104,17 +105,23 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
 def build_runtime_state_defaults(
     *,
     directives: str = "",
+    phase: str = "seeded",
     state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     baseline = {
-        "phase": "seeded",
+        "phase": phase,
         "last_instruction": directives,
         "tick_count": 0,
         "state_revision": 0,
+        "initial_generation_retryable": None,
         "active_elapsed_seconds": 0,
         "active_elapsed_anchor_started_at": None,
         "scenario_brief": {
-            "read_aloud_brief": "Scenario brief pending.",
+            "read_aloud_brief": (
+                "Initial scenario is generating."
+                if phase == "seeding"
+                else "Scenario brief pending."
+            ),
             "environment": "",
             "location_overview": "",
             "threat_context": "",
@@ -680,6 +687,8 @@ def create_session(
     scenario_spec: dict[str, Any] | None,
     directives: str | None,
     modifiers: list[str] | None,
+    status: str = SessionStatus.SEEDED,
+    emit_seeded_event: bool = True,
 ) -> TrainerSession:
     scenario_spec = scenario_spec or {}
     modifiers = modifiers or []
@@ -695,15 +704,135 @@ def create_session(
         chief_complaint=chief_complaint,
     )
 
-    initial_state = build_runtime_state_defaults(directives=directives or "")
+    initial_phase = "seeded" if status == SessionStatus.SEEDED else "seeding"
+    initial_state = build_runtime_state_defaults(
+        directives=directives or "",
+        phase=initial_phase,
+    )
     session = TrainerSession.objects.create(
         simulation=simulation,
-        status=SessionStatus.SEEDED,
+        status=status,
         scenario_spec_json={**scenario_spec, "modifiers": modifiers},
         initial_directives=directives or "",
         runtime_state_json=initial_state,
         tick_interval_seconds=_normalize_tick_interval(scenario_spec.get("tick_interval_seconds")),
     )
+
+    if emit_seeded_event:
+        emit_runtime_event(
+            session=session,
+            event_type="session.seeded",
+            payload={
+                "status": session.status,
+                "scenario_spec": session.scenario_spec_json,
+                "state_revision": initial_state["state_revision"],
+            },
+            created_by=user,
+        )
+
+    return session
+
+
+def _normalize_initial_generation_reason(reason_code: str | None) -> str:
+    normalized = reason_code or "failed"
+    if normalized.startswith("trainerlab_initial_generation_"):
+        return normalized
+    return f"trainerlab_initial_generation_{normalized}"
+
+
+def _set_session_phase(
+    session: TrainerSession,
+    *,
+    phase: str,
+    error: str = "",
+    initial_generation_retryable: bool | None = None,
+) -> TrainerSession:
+    state = get_runtime_state(session)
+    state["phase"] = phase
+    state["last_runtime_error"] = error
+    state["initial_generation_retryable"] = initial_generation_retryable
+    session.runtime_state_json = state
+    session.save(update_fields=["runtime_state_json", "modified_at"])
+    return session
+
+
+def fail_initial_scenario_generation(
+    *,
+    simulation_id: int,
+    reason_code: str | None,
+    reason_text: str,
+    retryable: bool,
+    correlation_id: str | None = None,
+) -> TrainerSession | None:
+    session = (
+        TrainerSession.objects.select_related("simulation")
+        .filter(simulation_id=simulation_id)
+        .first()
+    )
+    if session is None:
+        return None
+
+    normalized_reason = _normalize_initial_generation_reason(reason_code)
+    retryable = retryable and has_user_retries_remaining(session.simulation.initial_retry_count)
+    _set_session_phase(
+        session,
+        phase="failed",
+        error=reason_text,
+        initial_generation_retryable=retryable,
+    )
+    session.status = SessionStatus.FAILED
+    session.save(update_fields=["status", "modified_at"])
+    session.simulation.mark_failed(
+        reason_code=normalized_reason,
+        reason_text=reason_text,
+        retryable=retryable,
+    )
+    emit_runtime_event(
+        session=session,
+        event_type="session.failed",
+        payload={
+            "status": session.status,
+            "reason_code": normalized_reason,
+            "reason_text": reason_text,
+            "retryable": retryable,
+        },
+        correlation_id=correlation_id,
+        idempotency_key=f"session.failed:{session.id}:{normalized_reason}",
+    )
+    return session
+
+
+def complete_initial_scenario_generation(
+    *,
+    simulation_id: int,
+    correlation_id: str | None = None,
+    call_id: str | None = None,
+) -> TrainerSession | None:
+    session = (
+        TrainerSession.objects.select_related("simulation")
+        .filter(simulation_id=simulation_id)
+        .first()
+    )
+    if session is None:
+        return None
+
+    if session.status == SessionStatus.FAILED:
+        logger.info(
+            "Skipping TrainerLab initial-generation completion for failed simulation %s",
+            simulation_id,
+        )
+        return session
+
+    state = get_runtime_state(session)
+    if session.status == SessionStatus.SEEDED and state.get("phase") == "seeded":
+        return session
+
+    state["phase"] = "seeded"
+    state["last_runtime_error"] = ""
+    state["initial_generation_retryable"] = None
+    session.status = SessionStatus.SEEDED
+    session.runtime_state_json = state
+    session.save(update_fields=["status", "runtime_state_json", "modified_at"])
 
     emit_runtime_event(
         session=session,
@@ -711,31 +840,91 @@ def create_session(
         payload={
             "status": session.status,
             "scenario_spec": session.scenario_spec_json,
-            "state_revision": initial_state["state_revision"],
+            "state_revision": state["state_revision"],
+            "call_id": call_id,
         },
-        created_by=user,
+        correlation_id=correlation_id,
+        idempotency_key=f"session.seeded:{session.id}",
     )
 
+    _emit_seeded_vital_events(session)
+    _emit_seeded_condition_events(session)
+    _emit_seeded_pulse_events(session)
     return session
 
 
-def enqueue_initial_scenario_generation(*, simulation: Simulation) -> str | None:
+def is_initial_generation_retryable(session: TrainerSession) -> bool:
+    reason_code = getattr(session.simulation, "terminal_reason_code", "") or ""
+    if not reason_code.startswith("trainerlab_initial_generation_"):
+        return False
+    state = get_runtime_state(session)
+    retryable = state.get("initial_generation_retryable")
+    if retryable is None:
+        retryable = True
+    return bool(retryable) and has_user_retries_remaining(session.simulation.initial_retry_count)
+
+
+def enqueue_initial_scenario_generation(
+    *,
+    session: TrainerSession,
+    correlation_id: str | None = None,
+    retryable: bool | None = None,
+) -> str | None:
     from .orca.services import GenerateInitialScenario
 
     try:
         return GenerateInitialScenario.task.using(
-            context={"simulation_id": simulation.id},
+            context={
+                "simulation_id": session.simulation_id,
+                "correlation_id": correlation_id,
+            },
         ).enqueue(
             user_message="Generate the initial TrainerLab scenario state.",
         )
     except Exception:
-        logger.exception("Initial generation enqueue failed for simulation %s", simulation.id)
-        simulation.mark_failed(
+        logger.exception(
+            "Initial generation enqueue failed for simulation %s", session.simulation_id
+        )
+        fail_initial_scenario_generation(
+            simulation_id=session.simulation_id,
             reason_code="trainerlab_initial_generation_enqueue_failed",
             reason_text="We could not start this simulation. Please try again.",
-            retryable=True,
+            retryable=True if retryable is None else retryable,
+            correlation_id=correlation_id,
         )
         return None
+
+
+def retry_initial_scenario_generation(
+    *,
+    session: TrainerSession,
+    correlation_id: str | None = None,
+) -> str | None:
+    if session.status != SessionStatus.FAILED:
+        raise ValidationError("Initial generation retry is only available for failed simulations")
+
+    if not is_initial_generation_retryable(session):
+        raise ValidationError("Initial generation retry is not available for this failure")
+
+    session.simulation.initial_retry_count += 1
+    session.simulation.save(update_fields=["initial_retry_count"])
+    session.simulation.mark_in_progress()
+
+    state = get_runtime_state(session)
+    state["phase"] = "seeding"
+    state["last_runtime_error"] = ""
+    state["initial_generation_retryable"] = None
+    state["currently_processing_reasons"] = []
+    session.status = SessionStatus.SEEDING
+    session.runtime_state_json = state
+    session.save(update_fields=["status", "runtime_state_json", "modified_at"])
+
+    retryable = has_user_retries_remaining(session.simulation.initial_retry_count)
+    return enqueue_initial_scenario_generation(
+        session=session,
+        correlation_id=correlation_id,
+        retryable=retryable,
+    )
 
 
 def create_session_with_initial_generation(
@@ -744,49 +933,23 @@ def create_session_with_initial_generation(
     scenario_spec: dict[str, Any] | None,
     directives: str | None,
     modifiers: list[str] | None,
+    correlation_id: str | None = None,
 ) -> tuple[TrainerSession, str | None]:
     session = create_session(
         user=user,
         scenario_spec=scenario_spec,
         directives=directives,
         modifiers=modifiers,
+        status=SessionStatus.SEEDING,
+        emit_seeded_event=False,
     )
-    call_id = enqueue_initial_scenario_generation(simulation=session.simulation)
-    if call_id:
-        _run_initial_generation_inline(session=session, call_id=call_id)
-    return session, call_id
-
-
-def _run_initial_generation_inline(*, session: TrainerSession, call_id: str) -> None:
-    """Run initial scenario generation synchronously so the session is fully seeded on return.
-
-    The background task dispatched by enqueue_initial_scenario_generation() will see
-    the call already completed and return early — run_service_call() is idempotent.
-    """
-    from orchestrai_django.tasks import run_service_call
-
-    try:
-        run_service_call(call_id)
-    except Exception:
-        logger.exception(
-            "Inline initial generation failed for simulation %s",
-            session.simulation_id,
-        )
-        return
-
-    # Emit TrainerRuntimeEvent records so vitals and domain objects are queryable via the event stream.
-    # OutboxEvents for SSE delivery were already created by post_persist() →
-    # broadcast_domain_objects(); these records serve the catch-up API consumers.
-    try:
+    call_id = enqueue_initial_scenario_generation(
+        session=session,
+        correlation_id=correlation_id,
+    )
+    if call_id is None:
         session.refresh_from_db()
-        _emit_seeded_vital_events(session)
-        _emit_seeded_condition_events(session)
-        _emit_seeded_pulse_events(session)
-    except Exception:
-        logger.exception(
-            "Failed to emit seeded runtime events for simulation %s",
-            session.simulation_id,
-        )
+    return session, call_id
 
 
 def _emit_seeded_vital_events(session: TrainerSession) -> None:
