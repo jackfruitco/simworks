@@ -43,6 +43,7 @@ class TestGetClientIP:
         """Test that the rightmost XFF IP is used when behind a trusted proxy."""
         request = RequestFactory().get("/")
         request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 203.0.113.5"
+        request.META["REMOTE_ADDR"] = "127.0.0.1"
 
         with patch("apps.common.ratelimit.settings") as mock_settings:
             mock_settings.DJANGO_BEHIND_PROXY = True
@@ -50,6 +51,18 @@ class TestGetClientIP:
 
         # Rightmost IP is appended by our trusted proxy; cannot be spoofed by client
         assert ip == "203.0.113.5"
+
+    def test_ignores_truthy_non_boolean_proxy_setting(self):
+        """Test that only a real boolean enables trusted proxy parsing."""
+        request = RequestFactory().get("/")
+        request.META["HTTP_X_FORWARDED_FOR"] = "10.0.0.1, 192.168.1.1, 203.0.113.5"
+        request.META["REMOTE_ADDR"] = "127.0.0.1"
+
+        with patch("apps.common.ratelimit.settings") as mock_settings:
+            mock_settings.DJANGO_BEHIND_PROXY = MagicMock()
+            ip = get_client_ip(request)
+
+        assert ip == "127.0.0.1"
 
     def test_falls_back_to_remote_addr_when_forwarded_chain_is_empty(self):
         """Test that empty XFF values do not override REMOTE_ADDR behind a proxy."""

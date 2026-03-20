@@ -47,6 +47,12 @@ def get_redis_client() -> redis.Redis | None:
     )
 
 
+def _is_behind_trusted_proxy() -> bool:
+    """Return True only when proxy trust is explicitly enabled with a boolean."""
+    behind_proxy = getattr(settings, "DJANGO_BEHIND_PROXY", False)
+    return isinstance(behind_proxy, bool) and behind_proxy
+
+
 def get_client_ip(request: HttpRequest) -> str:
     """Extract client IP address from request.
 
@@ -55,9 +61,7 @@ def get_client_ip(request: HttpRequest) -> str:
     client).  When not behind a proxy, uses REMOTE_ADDR directly and ignores
     X-Forwarded-For entirely to prevent IP spoofing via header injection.
     """
-    behind_proxy = getattr(settings, "DJANGO_BEHIND_PROXY", False)
-
-    if behind_proxy:
+    if _is_behind_trusted_proxy():
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
         if x_forwarded_for:
             # Rightmost non-empty entry is appended by our trusted proxy;
