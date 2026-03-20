@@ -1122,7 +1122,7 @@ wheels = [
 
 [[package]]
 name = "medsim"
-version = "0.10.0"
+version = "0.10.2"
 source = { virtual = "." }
 dependencies = [
     { name = "celery" },
@@ -1507,7 +1507,7 @@ wheels = [
 
 [[package]]
 name = "orchestrai"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "packages/orchestrai" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -1539,7 +1539,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "orchestrai-django"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "packages/orchestrai_django" }
 dependencies = [
     { name = "django" },

@@ -172,10 +172,13 @@ class TestSeedingSessionLifecycle:
         assert call_id == "fake-call-id-seeding"
         assert session.status == "seeding"
         assert session.runtime_state_json["phase"] == "seeding"
-        assert RuntimeEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type="session.seeded",
-        ).count() == 0
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 0
+        )
 
     def test_complete_initial_scenario_generation_marks_seeded_and_emits_events(
         self, user, monkeypatch
@@ -193,7 +196,9 @@ class TestSeedingSessionLifecycle:
             directives=None,
             modifiers=[],
         )
-        _persist_initial_payload(simulation_id=session.simulation_id, call_id=call_id or str(uuid4()))
+        _persist_initial_payload(
+            simulation_id=session.simulation_id, call_id=call_id or str(uuid4())
+        )
 
         completed = complete_initial_scenario_generation(
             simulation_id=session.simulation_id,
@@ -204,14 +209,20 @@ class TestSeedingSessionLifecycle:
         session.refresh_from_db()
         assert session.status == "seeded"
         assert session.runtime_state_json["phase"] == "seeded"
-        assert RuntimeEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type="session.seeded",
-        ).count() == 1
-        assert RuntimeEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type="trainerlab.vital.created",
-        ).count() >= 1
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 1
+        )
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="trainerlab.vital.created",
+            ).count()
+            >= 1
+        )
         assert (
             RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
@@ -222,10 +233,13 @@ class TestSeedingSessionLifecycle:
                 event_type="illness.created",
             ).count()
         ) >= 1
-        assert RuntimeEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type="problem.created",
-        ).count() >= 1
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="problem.created",
+            ).count()
+            >= 1
+        )
 
     def test_service_call_succeeded_signal_marks_seeded(self, user, monkeypatch):
         from apps.trainerlab.models import RuntimeEvent
@@ -241,7 +255,9 @@ class TestSeedingSessionLifecycle:
             directives=None,
             modifiers=[],
         )
-        _persist_initial_payload(simulation_id=session.simulation_id, call_id=call_id or str(uuid4()))
+        _persist_initial_payload(
+            simulation_id=session.simulation_id, call_id=call_id or str(uuid4())
+        )
 
         service_call_succeeded.send(
             sender=self.__class__,
@@ -254,10 +270,13 @@ class TestSeedingSessionLifecycle:
         session.refresh_from_db()
         assert session.status == "seeded"
         assert session.runtime_state_json["phase"] == "seeded"
-        assert RuntimeEvent.objects.filter(
-            simulation_id=session.simulation_id,
-            event_type="session.seeded",
-        ).count() == 1
+        assert (
+            RuntimeEvent.objects.filter(
+                simulation_id=session.simulation_id,
+                event_type="session.seeded",
+            ).count()
+            == 1
+        )
 
     def test_fail_initial_scenario_generation_marks_failed(self, user, monkeypatch):
         monkeypatch.setattr(

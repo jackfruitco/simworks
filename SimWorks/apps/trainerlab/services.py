@@ -118,7 +118,9 @@ def build_runtime_state_defaults(
         "active_elapsed_anchor_started_at": None,
         "scenario_brief": {
             "read_aloud_brief": (
-                "Initial scenario is generating." if phase == "seeding" else "Scenario brief pending."
+                "Initial scenario is generating."
+                if phase == "seeding"
+                else "Scenario brief pending."
             ),
             "environment": "",
             "location_overview": "",
@@ -880,7 +882,9 @@ def enqueue_initial_scenario_generation(
             user_message="Generate the initial TrainerLab scenario state.",
         )
     except Exception:
-        logger.exception("Initial generation enqueue failed for simulation %s", session.simulation_id)
+        logger.exception(
+            "Initial generation enqueue failed for simulation %s", session.simulation_id
+        )
         fail_initial_scenario_generation(
             simulation_id=session.simulation_id,
             reason_code="trainerlab_initial_generation_enqueue_failed",

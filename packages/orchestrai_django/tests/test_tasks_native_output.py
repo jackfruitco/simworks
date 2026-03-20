@@ -440,7 +440,9 @@ def test_process_pending_persistence_emits_generic_success_signal_after_persist(
             "filter",
             lambda **kwargs: PendingQuery([call]),
         )
-        monkeypatch.setattr(tasks.ServiceCallModel.objects, "bulk_update", lambda calls, fields: None)
+        monkeypatch.setattr(
+            tasks.ServiceCallModel.objects, "bulk_update", lambda calls, fields: None
+        )
         monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
         monkeypatch.setattr(
             tasks,

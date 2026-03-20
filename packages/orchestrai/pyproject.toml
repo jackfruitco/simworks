@@ -1,6 +1,6 @@
 [project]
 name = "orchestrai"
-version = "0.5.0"
+version = "0.5.1"
 description = "Provider-agnostic AI engine (pure Python)."
 readme = "README.md"
 requires-python = ">=3.14"
