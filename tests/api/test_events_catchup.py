@@ -360,7 +360,7 @@ class TestStreamEvents:
             idempotency_key=f"session.seeded:{simulation.pk}:{uuid.uuid4()}",
         )
         OutboxEvent.objects.create(
-            event_type="chat.message_created",
+            event_type="message.item.created",
             simulation_id=simulation.pk,
             payload={"content": "hello"},
             idempotency_key=f"chat.message:{simulation.pk}:{uuid.uuid4()}",
@@ -376,4 +376,4 @@ class TestStreamEvents:
 
         assert ": keep-alive" in payload or "event: simulation" in payload
         assert "session.seeded" in payload
-        assert "chat.message_created" not in payload
+        assert "message.item.created" not in payload

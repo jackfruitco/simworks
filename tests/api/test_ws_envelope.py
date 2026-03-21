@@ -25,7 +25,7 @@ class TestBuildEnvelopeHelper:
     def test_build_envelope_has_required_fields(self):
         """Envelope contains all required fields."""
         envelope = ChatConsumer.build_envelope(
-            event_type="message.created",
+            event_type="message.item.created",
             payload={"message_id": 123, "content": "Hello"},
         )
 
@@ -119,7 +119,7 @@ class TestOutboxBuildWSEnvelope:
         from apps.common.models import OutboxEvent
 
         event = OutboxEvent.objects.create(
-            event_type="message.created",
+            event_type="message.item.created",
             simulation_id=1,
             payload={"message_id": 123},
             idempotency_key="test:1",
@@ -135,7 +135,7 @@ class TestOutboxBuildWSEnvelope:
         assert "correlation_id" in envelope
         assert "payload" in envelope
 
-        assert envelope["event_type"] == "message.created"
+        assert envelope["event_type"] == "message.item.created"
         assert envelope["payload"] == {"message_id": 123}
         assert envelope["correlation_id"] == "corr-789"
 
@@ -162,12 +162,12 @@ class TestChatConsumerOutboxEventHandler:
                 "type": "outbox.event",
                 "event": {
                     "event_id": "test-event-123",
-                    "event_type": "message.created",
+                    "event_type": "simulation.status.updated",
                     "created_at": "2024-01-15T10:30:00Z",
                     "correlation_id": "corr-123",
                     "payload": {
-                        "message_id": 456,
-                        "content": "Hello from outbox",
+                        "simulation_id": 456,
+                        "status": "completed",
                     },
                 },
             }
@@ -177,10 +177,10 @@ class TestChatConsumerOutboxEventHandler:
         sent_data = json.loads(sent_messages[0])
 
         assert sent_data["event_id"] == "test-event-123"
-        assert sent_data["event_type"] == "message.created"
+        assert sent_data["event_type"] == "simulation.status.updated"
         assert sent_data["created_at"] == "2024-01-15T10:30:00Z"
         assert sent_data["correlation_id"] == "corr-123"
-        assert sent_data["payload"]["message_id"] == 456
+        assert sent_data["payload"]["simulation_id"] == 456
 
     @pytest.mark.asyncio
     async def test_outbox_event_drops_invalid_envelope(self):

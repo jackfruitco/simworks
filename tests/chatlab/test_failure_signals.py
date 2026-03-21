@@ -71,7 +71,7 @@ class TestFailureSignals:
         assert simulation.terminal_reason_code == "chatlab_initial_generation_provider_timeout"
 
         event = OutboxEvent.objects.filter(
-            event_type="simulation.state_changed",
+            event_type="simulation.status.updated",
             simulation_id=simulation.id,
         ).latest("created_at")
         assert event.payload["status"] == simulation.SimulationStatus.FAILED
@@ -118,7 +118,7 @@ class TestFailureSignals:
         assert message.delivery_retryable is True
 
         event = OutboxEvent.objects.filter(
-            event_type="message_status_update",
+            event_type="message.delivery.updated",
             simulation_id=simulation.id,
         ).latest("created_at")
         assert event.payload["id"] == message.id

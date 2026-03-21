@@ -183,13 +183,13 @@ class TestPatientInitialPersistence:
 
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="chat.message_created",
+            event_type="message.item.created",
         )
         message_event_count = await message_events.acount()
         assert message_event_count == 1  # One message
 
         msg_event = await message_events.afirst()
-        assert msg_event.event_type == "chat.message_created"
+        assert msg_event.event_type == "message.item.created"
         assert msg_event.correlation_id == context.correlation_id
         assert "message_id" in msg_event.payload
         assert "content" in msg_event.payload
@@ -286,13 +286,13 @@ class TestPatientReplyPersistence:
 
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="chat.message_created",
+            event_type="message.item.created",
         )
         message_event_count = await message_events.acount()
         assert message_event_count == 1
 
         msg_event = await message_events.afirst()
-        assert msg_event.event_type == "chat.message_created"
+        assert msg_event.event_type == "message.item.created"
         assert msg_event.correlation_id == context.correlation_id
         assert "message_id" in msg_event.payload
         assert "content" in msg_event.payload

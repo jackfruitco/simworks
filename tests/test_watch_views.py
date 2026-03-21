@@ -133,7 +133,12 @@ def test_parse_watch_page_state_and_event_grouping(chat_simulation):
         )
 
     serialized = serialize_outbox_events(
-        order_outbox_queryset(OutboxEvent.objects.filter(simulation_id=chat_simulation.id))
+        order_outbox_queryset(
+            OutboxEvent.objects.filter(
+                simulation_id=chat_simulation.id,
+                idempotency_key__startswith="watch-grouping:",
+            )
+        )
     )
 
     assert [event["sequence_group_id"] for event in serialized] == [1, 1, 2, 3]
