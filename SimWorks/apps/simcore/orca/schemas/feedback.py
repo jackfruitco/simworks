@@ -8,6 +8,7 @@ Pydantic AI handles validation natively - no @schema decorator needed.
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from apps.common.outbox import event_types as outbox_events
 from apps.simcore.orca.persist.feedback_block import (
     persist_continuation_feedback_block,
     persist_initial_feedback_block,
@@ -24,7 +25,7 @@ class GenerateInitialSimulationFeedback(BaseModel):
     - llm_conditions_check → NOT PERSISTED
 
     **WebSocket Broadcasting**:
-    - Broadcasts ``feedback.created`` events via outbox pattern in ``post_persist``
+    - Broadcasts ``feedback.item.created`` events via outbox pattern in ``post_persist``
     - Event payload includes feedback_id, key, value for each feedback item
     - Enables real-time UI updates when feedback is generated
     """
@@ -58,7 +59,7 @@ class GenerateInitialSimulationFeedback(BaseModel):
         WebSocket Event Structure:
             {
                 "event_id": "uuid",
-                "event_type": "feedback.created",
+                "event_type": "feedback.item.created",
                 "created_at": "2026-02-22T...",
                 "simulation_id": "123",
                 "correlation_id": "abc-xyz",
@@ -72,7 +73,7 @@ class GenerateInitialSimulationFeedback(BaseModel):
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         await broadcast_domain_objects(
-            event_type="feedback.created",
+            event_type=outbox_events.FEEDBACK_CREATED,
             objects=results.get("metadata", []),
             context=context,
             payload_builder=lambda fb: {
@@ -117,7 +118,7 @@ class GenerateFeedbackContinuationResponse(BaseModel):
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         await broadcast_domain_objects(
-            event_type="feedback.created",
+            event_type=outbox_events.FEEDBACK_CREATED,
             objects=results.get("metadata", []),
             context=context,
             payload_builder=lambda fb: {

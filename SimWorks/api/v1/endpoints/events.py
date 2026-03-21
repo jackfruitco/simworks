@@ -12,6 +12,7 @@ from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.sse import stream_outbox_events
 from api.v1.utils import get_simulation_for_user
+from apps.common.outbox import event_types as outbox_events
 from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
@@ -85,13 +86,13 @@ def list_events(
     # Determine next cursor
     next_cursor = str(events[-1].id) if has_more and events else None
 
-    # Enrich chat.message_created payloads with canonical media metadata
+    # Enrich message.item.created payloads with canonical media metadata
     from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
     from apps.chatlab.models import Message
 
     message_ids = []
     for event in events:
-        if event.event_type != "chat.message_created":
+        if outbox_events.canonical_event_type(event.event_type) != outbox_events.MESSAGE_CREATED:
             continue
         payload = event.payload or {}
         msg_id = payload_message_id(payload)
@@ -110,7 +111,7 @@ def list_events(
     items = []
     for event in events:
         payload = dict(event.payload or {})
-        if event.event_type == "chat.message_created":
+        if outbox_events.canonical_event_type(event.event_type) == outbox_events.MESSAGE_CREATED:
             msg_id = payload_message_id(payload)
             msg = messages_by_id.get(msg_id) if msg_id is not None else None
             if msg is not None:
@@ -159,7 +160,7 @@ def stream_events(
     cursor: str | None = Query(default=None, description="Outbox event cursor UUID"),
     event_prefix: str | None = Query(
         default=None,
-        description="Optional event_type prefix filter (e.g. trainerlab.)",
+        description="Optional event_type prefix filter (e.g. patient. or simulation.)",
     ),
 ):
     user = request.auth

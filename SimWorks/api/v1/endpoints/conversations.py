@@ -16,6 +16,7 @@ from api.v1.schemas.conversations import (
     conversation_to_out,
 )
 from api.v1.utils import get_simulation_for_user
+from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
 
@@ -54,10 +55,10 @@ def _create_feedback_starter_message(sim, conversation):
         status="completed",
     )
     event = enqueue_event_sync(
-        event_type="chat.message_created",
+        event_type=outbox_events.MESSAGE_CREATED,
         simulation_id=sim.id,
         payload=payload,
-        idempotency_key=f"chat.message_created:{message.id}",
+        idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{message.id}",
     )
     if event:
         poke_drain_sync()

@@ -27,7 +27,7 @@ router = Router(tags=["lab-orders"], auth=DualAuth())
         "Submits a list of signed lab orders to the AI engine. "
         "The AI generates clinically plausible results for each ordered test based on the "
         "patient's presentation. Results are persisted as structured metadata and broadcast "
-        "to connected WebSocket clients via `metadata.created` events. "
+        "to connected WebSocket clients via `patient.metadata.created` events. "
         "Returns 202 Accepted immediately; results arrive asynchronously."
     ),
 )

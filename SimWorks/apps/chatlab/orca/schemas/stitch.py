@@ -8,6 +8,7 @@ no metadata or conditions checks.
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from apps.common.outbox import event_types as outbox_events
 from apps.chatlab.orca.persisters import persist_stitch_messages
 from orchestrai.types import ResultMessageItem
 
@@ -19,7 +20,7 @@ class StitchReplyOutputSchema(BaseModel):
     - messages → chatlab.Message via ``persist_stitch_messages``
 
     **WebSocket Broadcasting**:
-    - Broadcasts ``chat.message_created`` events for Stitch messages
+    - Broadcasts ``message.item.created`` events for Stitch messages
     - Enables real-time UI updates when Stitch responds
     """
 
@@ -42,7 +43,7 @@ class StitchReplyOutputSchema(BaseModel):
         messages = results.get("messages", [])
         if messages:
             await broadcast_domain_objects(
-                event_type="chat.message_created",
+                event_type=outbox_events.MESSAGE_CREATED,
                 objects=messages,
                 context=context,
                 payload_builder=lambda msg: build_chat_message_event_payload(

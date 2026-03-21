@@ -19,7 +19,7 @@ Usage:
     def broadcast_message(sender, instance, created, **kwargs):
         if created:
             enqueue_event_sync(
-                event_type="message.created",
+                event_type="message.item.created",
                 simulation_id=instance.simulation_id,
                 payload={"message_id": instance.id},
             )
@@ -30,7 +30,7 @@ Usage:
 
     async def post_persist(self, results, context):
         await broadcast_domain_objects(
-            event_type="feedback.created",
+            event_type="feedback.item.created",
             objects=results.get("metadata", []),
             context=context,
             payload_builder=lambda obj: {"id": obj.id},
@@ -47,6 +47,7 @@ from .outbox import (
     poke_drain,
     poke_drain_sync,
 )
+from . import event_types
 
 # Note: broadcast_domain_objects is NOT exported here to avoid import issues
 # during Django startup. It requires orchestrai_django.persistence.PersistContext
@@ -56,6 +57,7 @@ from .outbox import (
 __all__ = [
     "apply_outbox_cursor",
     "build_ws_envelope",
+    "event_types",
     # common outbox functions
     "enqueue_event",
     "enqueue_event_sync",

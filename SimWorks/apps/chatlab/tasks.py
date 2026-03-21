@@ -10,6 +10,7 @@ from django.db import transaction
 from django.tasks import task
 
 from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+from apps.common.outbox import event_types as outbox_events
 
 from .image_generation import ImageGenerationError, generate_patient_image
 from .media_payloads import build_chat_message_event_payload
@@ -60,14 +61,14 @@ def _image_extension_for_mime(mime_type: str) -> str:
 
 def _emit_chat_message_created(message, correlation_id: str | None = None) -> None:
     event = enqueue_event_sync(
-        event_type="chat.message_created",
+        event_type=outbox_events.MESSAGE_CREATED,
         simulation_id=message.simulation_id,
         payload=build_chat_message_event_payload(
             message,
             fallback_conversation_type="simulated_patient",
             status="completed",
         ),
-        idempotency_key=f"chat.message_created:{message.id}",
+        idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{message.id}",
         correlation_id=correlation_id,
     )
     if event:

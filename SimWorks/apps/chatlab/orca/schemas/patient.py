@@ -11,6 +11,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from apps.common.outbox import event_types as outbox_events
 from apps.simcore.orca.schemas.metadata_items import MetadataItem
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
 
@@ -56,8 +57,8 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
     Each item type includes required fields matching the Django model structure.
 
     **WebSocket Broadcasting**:
-    - Broadcasts ``chat.message_created`` events for patient messages
-    - Broadcasts ``metadata.created`` events for demographics/history/results
+    - Broadcasts ``message.item.created`` events for patient messages
+    - Broadcasts ``patient.metadata.created`` events for demographics/history/results
     - Enables real-time UI updates when initial response is generated
     """
 
@@ -73,8 +74,8 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
         """Broadcast message and metadata creation to WebSocket clients.
 
         Creates outbox events for:
-        1. Message objects (chat.message_created) - patient initial response
-        2. Metadata objects (metadata.created) - demographics, history, etc.
+        1. Message objects (message.item.created) - patient initial response
+        2. Metadata objects (patient.metadata.created) - demographics, history, etc.
 
         Args:
             results: Dict of persisted objects from __persist__ declarations
@@ -87,7 +88,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
         messages = results.get("messages", [])
         if messages:
             await broadcast_domain_objects(
-                event_type="chat.message_created",
+                event_type=outbox_events.MESSAGE_CREATED,
                 objects=messages,
                 context=context,
                 payload_builder=lambda msg: build_chat_message_event_payload(
@@ -101,7 +102,7 @@ class PatientInitialOutputSchema(PatientResponseBaseMixin):
         metadata = results.get("metadata", [])
         if metadata:
             await broadcast_domain_objects(
-                event_type="metadata.created",
+                event_type=outbox_events.METADATA_CREATED,
                 objects=metadata,
                 context=context,
                 payload_builder=lambda meta: {
@@ -123,8 +124,8 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
     - llm_conditions_check → NOT PERSISTED
 
     **WebSocket Broadcasting**:
-    - Broadcasts ``chat.message_created`` events for patient reply messages
-    - Broadcasts ``metadata.created`` events for metadata updates
+    - Broadcasts ``message.item.created`` events for patient reply messages
+    - Broadcasts ``patient.metadata.created`` events for metadata updates
     - Enables real-time UI updates when patient responds
     """
 
@@ -182,8 +183,8 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
 
         Handles:
         1. Update Message.image_requested flag if images referenced
-        2. Broadcast chat.message_created events for real-time delivery
-        3. Broadcast metadata.created events for metadata upserts
+        2. Broadcast message.item.created events for real-time delivery
+        3. Broadcast patient.metadata.created events for metadata upserts
 
         Args:
             results: Dict of persisted objects from __persist__ declarations
@@ -209,7 +210,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
         # Broadcast messages
         if messages:
             await broadcast_domain_objects(
-                event_type="chat.message_created",
+                event_type=outbox_events.MESSAGE_CREATED,
                 objects=messages,
                 context=context,
                 payload_builder=lambda msg: build_chat_message_event_payload(
@@ -258,7 +259,7 @@ class PatientReplyOutputSchema(PatientResponseBaseMixin):
         metadata = results.get("metadata", [])
         if metadata:
             await broadcast_domain_objects(
-                event_type="metadata.created",
+                event_type=outbox_events.METADATA_CREATED,
                 objects=metadata,
                 context=context,
                 payload_builder=lambda meta: {
@@ -288,7 +289,7 @@ class PatientResultsOutputSchema(BaseModel):
     - ``kind="generic"`` → simcore.SimulationMetadata (fallback)
 
     **WebSocket Broadcasting**:
-    - Broadcasts ``metadata.created`` events for results/assessments
+    - Broadcasts ``patient.metadata.created`` events for results/assessments
     - Enables real-time UI updates when scores/observations are ready
     """
 
@@ -320,7 +321,7 @@ class PatientResultsOutputSchema(BaseModel):
         metadata = results.get("metadata", [])
         if metadata:
             await broadcast_domain_objects(
-                event_type="metadata.created",
+                event_type=outbox_events.METADATA_CREATED,
                 objects=metadata,
                 context=context,
                 payload_builder=lambda meta: {

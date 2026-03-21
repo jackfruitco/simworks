@@ -18,6 +18,7 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
+from apps.common.outbox import event_types as outbox_events
 from apps.common.models import PersistModel
 
 from .utils import randomize_display_name
@@ -373,7 +374,12 @@ class Simulation(models.Model):
             return int(self.time_limit.total_seconds() * 1000)
         return 0
 
-    def _broadcast_state_change(self, retryable: bool | None = None) -> None:
+    def _broadcast_state_change(
+        self,
+        *,
+        previous_status: str | None = None,
+        retryable: bool | None = None,
+    ) -> None:
         """Broadcast simulation state transitions via outbox.
 
         Broadcast is a non-critical side effect and should not break state changes.
@@ -389,8 +395,11 @@ class Simulation(models.Model):
                 "retryable": retryable,
                 "terminal_at": self.terminal_at.isoformat() if self.terminal_at else None,
             }
+            if previous_status is not None:
+                payload["from"] = previous_status
+                payload["to"] = self.status
             event = enqueue_event_sync(
-                event_type="simulation.state_changed",
+                event_type=outbox_events.SIMULATION_STATUS_UPDATED,
                 simulation_id=self.pk,
                 payload=payload,
             )
@@ -400,6 +409,7 @@ class Simulation(models.Model):
             logger.exception("Failed to broadcast simulation state change for sim=%s", self.pk)
 
     def mark_in_progress(self) -> None:
+        previous_status = self.status
         self.end_timestamp = None
         self.status = self.SimulationStatus.IN_PROGRESS
         self.terminal_reason_code = ""
@@ -414,9 +424,10 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(retryable=True)
+        self._broadcast_state_change(previous_status=previous_status, retryable=True)
 
     def mark_completed(self) -> None:
+        previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
         self.status = self.SimulationStatus.COMPLETED
@@ -432,9 +443,10 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(retryable=False)
+        self._broadcast_state_change(previous_status=previous_status, retryable=False)
 
     def mark_timed_out(self) -> None:
+        previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
         self.status = self.SimulationStatus.TIMED_OUT
@@ -450,7 +462,7 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(retryable=False)
+        self._broadcast_state_change(previous_status=previous_status, retryable=False)
 
     def mark_failed(
         self,
@@ -459,6 +471,7 @@ class Simulation(models.Model):
         reason_text: str,
         retryable: bool = True,
     ) -> None:
+        previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
         self.status = self.SimulationStatus.FAILED
@@ -474,11 +487,12 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(retryable=retryable)
+        self._broadcast_state_change(previous_status=previous_status, retryable=retryable)
 
     def mark_canceled(
         self, *, reason_code: str = "canceled_by_user", reason_text: str = "Canceled by user"
     ) -> None:
+        previous_status = self.status
         timestamp = now()  # type: ignore[assignment]
         self.end_timestamp = timestamp
         self.status = self.SimulationStatus.CANCELED
@@ -494,7 +508,7 @@ class Simulation(models.Model):
                 "terminal_at",
             ]
         )
-        self._broadcast_state_change(retryable=False)
+        self._broadcast_state_change(previous_status=previous_status, retryable=False)
 
     def end(self) -> None:
         self.mark_completed()

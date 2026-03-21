@@ -18,6 +18,7 @@ from api.v1.schemas.messages import (
     message_to_out,
 )
 from api.v1.utils import get_simulation_for_user
+from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
 from apps.common.retries import has_user_retries_remaining
 from config.logging import get_logger
@@ -53,10 +54,13 @@ def _emit_message_status(
         "error_text": error_text,
     }
     event = enqueue_event_sync(
-        event_type="message_status_update",
+        event_type=outbox_events.MESSAGE_DELIVERY_UPDATED,
         simulation_id=simulation_id,
         payload=payload,
-        idempotency_key=f"message_status_update:{message_id}:{status}:{retryable}:{error_code or 'none'}",
+        idempotency_key=(
+            f"{outbox_events.MESSAGE_DELIVERY_UPDATED}:"
+            f"{message_id}:{status}:{retryable}:{error_code or 'none'}"
+        ),
     )
     if event:
         poke_drain_sync()

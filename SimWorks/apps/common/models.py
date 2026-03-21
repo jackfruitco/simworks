@@ -179,13 +179,13 @@ class OutboxEvent(models.Model):
     idempotency_key = models.CharField(
         max_length=255,
         unique=True,
-        help_text="Unique key to prevent duplicate events (e.g., 'message.created:{message_id}')",
+        help_text="Unique key to prevent duplicate events (e.g., 'message.item.created:{message_id}')",
     )
 
     event_type = models.CharField(
         max_length=100,
         db_index=True,
-        help_text="Event type (e.g., 'message.created', 'simulation.ended')",
+        help_text="Event type (e.g., 'message.item.created', 'simulation.status.updated')",
     )
 
     payload = models.JSONField(

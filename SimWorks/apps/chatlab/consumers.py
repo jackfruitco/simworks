@@ -10,6 +10,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.common.outbox import event_types as outbox_events
 from apps.simcore.models import Simulation
 from apps.simcore.utils import get_user_initials
 from orchestrai.utils.json import json_default
@@ -524,7 +525,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             return
 
-        if envelope.get("event_type") == "chat.message_created":
+        if (
+            outbox_events.canonical_event_type(str(envelope.get("event_type") or ""))
+            == outbox_events.MESSAGE_CREATED
+        ):
             from apps.chatlab.media_payloads import build_message_media_payload, payload_message_id
 
             payload = dict(envelope.get("payload") or {})
@@ -567,7 +571,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         client-side deduplication.
 
         Args:
-            event_type: Event type (e.g., 'message.created', 'typing')
+            event_type: Event type (e.g., 'message.item.created', 'typing')
             payload: Event payload data
             event_id: Unique event ID (generated if not provided)
             correlation_id: Request correlation ID for tracing

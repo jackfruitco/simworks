@@ -5,6 +5,7 @@ from typing import Annotated, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from apps.common.outbox import event_types as outbox_events
 from apps.simcore.orca.schemas.metadata_items import LabResultItem, RadResultItem
 from apps.simcore.orca.schemas.output_items import LLMConditionsCheckItem
 
@@ -39,7 +40,7 @@ class LabOrderResultsOutputSchema(BaseModel):
     - llm_conditions_check → NOT PERSISTED
 
     **WebSocket Broadcasting**:
-    - Broadcasts ``metadata.created`` events for each persisted result
+    - Broadcasts ``patient.metadata.created`` events for each persisted result
     - Enables real-time UI updates as lab results arrive
     """
 
@@ -59,13 +60,13 @@ class LabOrderResultsOutputSchema(BaseModel):
     __persist_primary__ = "results"
 
     async def post_persist(self, results, context):
-        """Broadcast metadata.created events for each persisted lab/rad result."""
+        """Broadcast patient.metadata.created events for each persisted lab/rad result."""
         from apps.common.outbox.helpers import broadcast_domain_objects
 
         persisted = results.get("results", [])
         if persisted:
             await broadcast_domain_objects(
-                event_type="metadata.created",
+                event_type=outbox_events.METADATA_CREATED,
                 objects=persisted,
                 context=context,
                 payload_builder=lambda meta: {

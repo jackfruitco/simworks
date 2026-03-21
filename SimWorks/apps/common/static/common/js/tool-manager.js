@@ -20,18 +20,18 @@
  *   // Declarative configuration
  *   toolManager.configure({
  *       'patient_history': {
- *           refreshOn: ['chat.message_created'],
+ *           refreshOn: ['message.item.created'],
  *           refreshMode: 'checksum',  // or 'always' or 'html_inject'
  *       },
  *       'simulation_feedback': {
- *           refreshOn: ['simulation.feedback_created'],
+ *           refreshOn: ['feedback.item.created'],
  *           refreshMode: 'html_inject',
  *       },
  *   });
  *
  *   // Or register individual tools
  *   toolManager.registerTool('patient_results', {
- *       refreshOn: ['simulation.metadata.results_created'],
+ *       refreshOn: ['patient.results.updated'],
  *       refreshMode: 'html_inject',
  *   });
  *

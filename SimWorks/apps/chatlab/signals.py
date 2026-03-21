@@ -16,6 +16,7 @@ import logging
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from apps.common.outbox import event_types as outbox_events
 from apps.common.retries import has_user_retries_remaining
 from apps.simcore.models import Simulation, SimulationMetadata
 from orchestrai_django.signals import ai_response_failed
@@ -45,10 +46,12 @@ def _emit_message_status(
         "error_text": error_text,
     }
     event = enqueue_event_sync(
-        event_type="message_status_update",
+        event_type=outbox_events.MESSAGE_DELIVERY_UPDATED,
         simulation_id=simulation_id,
         payload=payload,
-        idempotency_key=f"message_status_update:{message_id}:{status}:{retryable}:{error_code or 'none'}",
+        idempotency_key=(
+            f"{outbox_events.MESSAGE_DELIVERY_UPDATED}:{message_id}:{status}:{retryable}:{error_code or 'none'}"
+        ),
     )
     if event:
         poke_drain_sync()
@@ -60,7 +63,7 @@ def _emit_feedback_failure(
     from apps.common.outbox import enqueue_event_sync, poke_drain_sync
 
     event = enqueue_event_sync(
-        event_type="feedback.failed",
+        event_type=outbox_events.FEEDBACK_GENERATION_FAILED,
         simulation_id=simulation_id,
         payload={
             "simulation_id": simulation_id,
@@ -115,10 +118,10 @@ def broadcast_new_message(sender, instance, created, **kwargs):
 
             # Create outbox event with idempotency key based on message ID
             event = enqueue_event_sync(
-                event_type="chat.message_created",
+                event_type=outbox_events.MESSAGE_CREATED,
                 simulation_id=instance.simulation_id,
                 payload=payload,
-                idempotency_key=f"chat.message_created:{instance.id}",
+                idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{instance.id}",
             )
 
             if event:

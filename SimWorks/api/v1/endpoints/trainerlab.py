@@ -63,6 +63,7 @@ from api.v1.schemas.trainerlab import (
 )
 from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
+from apps.common.outbox import event_types as outbox_events
 from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
 from apps.simcore.models import Simulation
@@ -590,14 +591,17 @@ def apply_preset(
 
     emit_runtime_event(
         session=session,
-        event_type="preset.applied",
+        event_type=outbox_events.SIMULATION_PRESET_APPLIED,
         payload={
             "preset_id": instruction.id,
             "title": instruction.title,
+            "status": "applied",
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=(f"preset.applied:{session.id}:{instruction.id}:{command.id}"),
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_PRESET_APPLIED}:{session.id}:{instruction.id}:{command.id}"
+        ),
     )
     append_pending_runtime_reason(
         session=session,
@@ -919,14 +923,15 @@ def steer_prompt(
 
     emit_runtime_event(
         session=session,
-        event_type="command.accepted",
+        event_type=outbox_events.SIMULATION_COMMAND_ACCEPTED,
         payload={
             "command": "steer_prompt",
             "prompt": body.prompt,
+            "status": "accepted",
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"command.accepted:{command.id}",
+        idempotency_key=f"{outbox_events.SIMULATION_COMMAND_ACCEPTED}:{command.id}",
     )
     append_pending_runtime_reason(
         session=session,
@@ -1006,19 +1011,19 @@ def adjust_simulation(
 
     emit_runtime_event(
         session=session,
-        event_type="adjustment.accepted",
-        payload=adjustment_entry,
+        event_type=outbox_events.SIMULATION_ADJUSTMENT_ACCEPTED,
+        payload={**adjustment_entry, "status": "accepted"},
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"adjustment.accepted:{command.id}",
+        idempotency_key=f"{outbox_events.SIMULATION_ADJUSTMENT_ACCEPTED}:{command.id}:accepted",
     )
     emit_runtime_event(
         session=session,
-        event_type="adjustment.applied",
-        payload=adjustment_entry,
+        event_type=outbox_events.SIMULATION_ADJUSTMENT_APPLIED,
+        payload={**adjustment_entry, "status": "applied"},
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"adjustment.applied:{command.id}",
+        idempotency_key=f"{outbox_events.SIMULATION_ADJUSTMENT_APPLIED}:{command.id}:applied",
     )
     append_pending_runtime_reason(
         session=session,
@@ -1450,17 +1455,17 @@ def _inject_event_core(
         raise HttpError(409, str(exc)) from None
 
     event_type = {
-        "injury": "injury.created",
-        "illness": "illness.created",
-        "problem": "problem.created",
-        "assessment_finding": "trainerlab.assessment_finding.created",
-        "diagnostic_result": "trainerlab.diagnostic_result.created",
-        "resource": "trainerlab.resource.updated",
-        "disposition": "trainerlab.disposition.updated",
-        "intervention": "intervention.created",
-        "note": "note.created",
-        "vital": "trainerlab.vital.updated",
-    }.get(event_kind, "event.created")
+        "injury": outbox_events.PATIENT_INJURY_CREATED,
+        "illness": outbox_events.PATIENT_ILLNESS_CREATED,
+        "problem": outbox_events.PATIENT_PROBLEM_CREATED,
+        "assessment_finding": outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED,
+        "diagnostic_result": outbox_events.PATIENT_DIAGNOSTIC_RESULT_CREATED,
+        "resource": outbox_events.PATIENT_RESOURCE_UPDATED,
+        "disposition": outbox_events.PATIENT_DISPOSITION_UPDATED,
+        "intervention": outbox_events.PATIENT_INTERVENTION_CREATED,
+        "note": outbox_events.SIMULATION_NOTE_CREATED,
+        "vital": outbox_events.PATIENT_VITAL_UPDATED,
+    }.get(event_kind, outbox_events.SIMULATION_COMMAND_ACCEPTED)
 
     send_to_ai = bool(payload_json.get("send_to_ai", False))
     from apps.trainerlab.event_payloads import serialize_domain_event
@@ -1530,15 +1535,14 @@ def _inject_event_core(
         if refreshed_problem is not None and adjudication_result.changed:
             emit_domain_runtime_event(
                 session=session,
-                event_type=(
-                    "problem.resolved"
-                    if refreshed_problem.status == Problem.Status.RESOLVED
-                    else "problem.updated"
-                ),
+                event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
                 obj=refreshed_problem,
                 created_by=user,
                 correlation_id=correlation_id,
-                idempotency_key=f"problem.updated:post-intervention:{refreshed_problem.id}:{domain_event.id}",
+                idempotency_key=(
+                    f"{outbox_events.PATIENT_PROBLEM_UPDATED}:"
+                    f"post-intervention:{refreshed_problem.id}:{domain_event.id}"
+                ),
             )
     commit_non_ai_mutation_side_effects(
         session=session,
@@ -2083,7 +2087,7 @@ def update_scenario_brief_endpoint(
     their current values. This is useful for correcting or customising the
     read-aloud brief before delivering it to students.
 
-    Emits a `trainerlab.scenario_brief.updated` SSE event.
+    Emits a `simulation.brief.updated` SSE event.
     """
     user = request.auth
     require_instructor_membership(user)

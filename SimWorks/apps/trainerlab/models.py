@@ -168,7 +168,8 @@ class RuntimeEvent(models.Model):
 
     Replaces TrainerRuntimeEvent.  Every domain state change (vital update,
     condition created, intervention recorded…) and every session lifecycle
-    event (session.seeded, run.started, state.updated…) produces one row here.
+    event (`simulation.status.updated`, `simulation.snapshot.updated`, etc.)
+    produces one row here.
 
     Domain model rows (Injury, Problem, Intervention, vitals…) are the source
     of truth for current state.  RuntimeEvent is the append-only audit log and
