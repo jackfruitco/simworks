@@ -84,7 +84,9 @@ export type SimulationEventType =
     | 'runtime.failed'
     | 'summary.ready'
     | 'summary.updated'
+    | 'session.seeding'
     | 'session.seeded'
+    | 'session.failed'
     | 'adjustment.accepted'
     | 'adjustment.applied'
     | 'preset.applied'
@@ -692,11 +694,27 @@ export interface TrainerLabSummaryEvent extends BaseEvent {
     ai_debrief_revision?: number;
 }
 
+export interface TrainerLabSessionSeedingEvent extends BaseEvent {
+    type: 'session.seeding';
+    status: string;
+    scenario_spec: Record<string, unknown>;
+    state_revision: number;
+    retry_count?: number;
+}
+
 export interface TrainerLabSessionSeededEvent extends BaseEvent {
     type: 'session.seeded';
     status: string;
     scenario_spec: Record<string, unknown>;
     state_revision: number;
+}
+
+export interface TrainerLabSessionFailedEvent extends BaseEvent {
+    type: 'session.failed';
+    status: string;
+    reason_code: string;
+    reason_text: string;
+    retryable: boolean;
 }
 
 export interface TrainerLabSimplePayloadEvent extends BaseEvent {
@@ -753,7 +771,9 @@ export type SimulationEvent =
     | TrainerLabRunLifecycleEvent
     | TrainerLabRuntimeFailedEvent
     | TrainerLabSummaryEvent
+    | TrainerLabSessionSeedingEvent
     | TrainerLabSessionSeededEvent
+    | TrainerLabSessionFailedEvent
     | TrainerLabSimplePayloadEvent
     ;
 

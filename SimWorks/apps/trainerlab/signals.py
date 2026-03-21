@@ -14,8 +14,15 @@ from .services import (
 logger = get_logger(__name__)
 
 
+CANONICAL_INITIAL_GENERATION_SERVICE_IDENTITY = "services.trainerlab.default.initial-scenario"
+LEGACY_INITIAL_GENERATION_SERVICE_SUFFIX = ".GenerateInitialScenario"
+
+
 def _is_initial_generation_service(service_identity: str | None) -> bool:
-    return "GenerateInitialScenario" in (service_identity or "")
+    normalized = service_identity or ""
+    return normalized == CANONICAL_INITIAL_GENERATION_SERVICE_IDENTITY or normalized.endswith(
+        LEGACY_INITIAL_GENERATION_SERVICE_SUFFIX
+    )
 
 
 @receiver(service_call_succeeded)
@@ -28,28 +35,41 @@ def handle_initial_generation_succeeded(
     context: dict | None = None,
     **kwargs,
 ) -> None:
-    if not _is_initial_generation_service(service_identity):
-        return
-
     service_call = call
+    call_context = dict(context or {})
+    resolved_service_identity = service_identity or getattr(service_call, "service_identity", None)
     if service_call is None and call_id:
         try:
-            service_call = ServiceCall.objects.only("domain_persisted", "context").get(pk=call_id)
+            service_call = ServiceCall.objects.only(
+                "domain_persisted",
+                "context",
+                "service_identity",
+            ).get(pk=call_id)
         except ServiceCall.DoesNotExist:
             service_call = None
+    if service_call is not None:
+        resolved_service_identity = resolved_service_identity or service_call.service_identity
+        call_context = {**dict(service_call.context or {}), **call_context}
+
+    if not _is_initial_generation_service(resolved_service_identity):
+        return
 
     if service_call is not None and not service_call.domain_persisted:
         logger.info("TrainerLab initial generation success deferred until persistence completes")
         return
 
-    simulation_id = (context or {}).get("simulation_id")
+    simulation_id = call_context.get("simulation_id")
     if not simulation_id:
         logger.warning("TrainerLab initial generation succeeded without simulation_id")
         return
 
+    logger.info(
+        "TrainerLab initial generation completion via success signal fallback for simulation %s",
+        simulation_id,
+    )
     complete_initial_scenario_generation(
         simulation_id=int(simulation_id),
-        correlation_id=(context or {}).get("correlation_id"),
+        correlation_id=call_context.get("correlation_id"),
         call_id=str(call_id) if call_id else None,
     )
 
@@ -91,6 +111,10 @@ def handle_initial_generation_failed(
         logger.warning("TrainerLab initial generation failed without simulation_id")
         return
 
+    logger.info(
+        "TrainerLab initial generation failure via terminal failure signal for simulation %s",
+        simulation_id,
+    )
     fail_initial_scenario_generation(
         simulation_id=int(simulation_id),
         reason_code=reason_code,
