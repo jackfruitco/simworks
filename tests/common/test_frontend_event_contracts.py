@@ -91,6 +91,8 @@ def test_trainerlab_typescript_contract_covers_backend_event_surface():
         "run.started",
         "run.stopped",
         "runtime.failed",
+        "session.failed",
+        "session.seeding",
         "session.seeded",
         "state.updated",
         "summary.ready",

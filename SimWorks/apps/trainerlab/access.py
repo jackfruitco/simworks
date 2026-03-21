@@ -20,6 +20,23 @@ def get_membership(user, *, lab_slug: str = LAB_SLUG) -> LabMembership | None:
     )
 
 
+def has_instructor_access(user, *, lab_slug: str = LAB_SLUG) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+
+    if user.is_superuser:
+        return True
+
+    membership = get_membership(user, lab_slug=lab_slug)
+    if membership is None:
+        return False
+
+    return (
+        ACCESS_RANK.get(membership.access_level, 0)
+        >= ACCESS_RANK[LabMembership.AccessLevel.INSTRUCTOR]
+    )
+
+
 def require_instructor_membership(user, *, lab_slug: str = LAB_SLUG) -> LabMembership:
     if user.is_superuser:
         # Superusers bypass explicit membership for operational access.
