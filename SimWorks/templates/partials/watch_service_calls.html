@@ -1,196 +1,288 @@
-{% load core_filters %}
-<div id="service-calls-table">
+{% load core_filters core_tags %}
+<section
+  id="service-calls-section"
+  x-init="$store.scState.prune({{ service_call_ids_json|safe }})"
+  hx-get="{{ service_calls_partial_url }}"
+  x-bind:hx-get="serviceCallsPartialUrl()"
+  hx-trigger="every 10s"
+  hx-target="#service-calls-section"
+  hx-swap="outerHTML"
+>
+  <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+      AI Service Calls
+    </h2>
 
-{% if not service_calls %}
-  <p class="text-sm text-gray-400 dark:text-gray-500 py-4 text-center">
-    No AI service calls recorded yet.
-  </p>
-{% else %}
-  <div class="space-y-1">
-    {% for sc in service_calls %}
-    <div
-      class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+    <button
+      type="button"
+      hx-get="{{ service_calls_partial_url }}"
+      x-bind:hx-get="serviceCallsPartialUrl()"
+      hx-target="#service-calls-section"
+      hx-swap="outerHTML"
+      class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
     >
-      {# Row header #}
-      <button
-        @click="$store.scState.toggle('{{ sc.id }}')"
-        class="w-full flex flex-wrap items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+      <iconify-icon icon="mdi:refresh" width="14"></iconify-icon>
+      Refresh
+    </button>
+  </div>
+
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800">
+        {% for size in watch_page_size_options %}
+        <a
+          hx-get="{% url_with_query service_calls_url request.GET sc_page=1 sc_page_size=size %}"
+          x-bind:hx-get="serviceCallsPartialUrl({ sc_page: 1, sc_page_size: {{ size }} })"
+          hx-target="#service-calls-section"
+          hx-swap="outerHTML"
+          hx-push-url="{% url_with_query watch_url request.GET sc_page=1 sc_page_size=size %}"
+          x-bind:hx-push-url="watchUrl({ sc_page: 1, sc_page_size: {{ size }} })"
+          href="{% url_with_query watch_url request.GET sc_page=1 sc_page_size=size %}"
+          class="rounded-full px-2 py-0.5 text-xs font-medium transition-colors {% if watch_state.sc_page_size == size %}bg-blue-600 text-white{% else %}text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700{% endif %}"
+        >{{ size }}</a>
+        {% endfor %}
+      </div>
+
+      <span class="text-xs text-gray-400 dark:text-gray-500">
+        {{ service_calls_page.paginator.count }} calls
+      </span>
+    </div>
+
+    <div class="flex items-center gap-1">
+      {% if service_calls_page.has_previous %}
+      <a
+        hx-get="{% url_with_query service_calls_url request.GET sc_page=service_calls_page.previous_page_number %}"
+        x-bind:hx-get="serviceCallsPartialUrl({ sc_page: {{ service_calls_page.previous_page_number }} })"
+        hx-target="#service-calls-section"
+        hx-swap="outerHTML"
+        hx-push-url="{% url_with_query watch_url request.GET sc_page=service_calls_page.previous_page_number %}"
+        x-bind:hx-push-url="watchUrl({ sc_page: {{ service_calls_page.previous_page_number }} })"
+        href="{% url_with_query watch_url request.GET sc_page=service_calls_page.previous_page_number %}"
+        class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
       >
-        {# Status dot #}
-        <span class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5
-          {% if sc.status == 'completed' %}bg-emerald-500
-          {% elif sc.status == 'failed' %}bg-red-500
-          {% elif sc.status == 'in_progress' %}bg-blue-500 animate-pulse
-          {% else %}bg-yellow-400{% endif %}">
-        </span>
+        <iconify-icon icon="mdi:chevron-left" width="16"></iconify-icon>
+      </a>
+      {% else %}
+      <span class="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded border border-gray-200 bg-white text-gray-300 opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600">
+        <iconify-icon icon="mdi:chevron-left" width="16"></iconify-icon>
+      </span>
+      {% endif %}
 
-        {# Started time #}
-        <span class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20">
-          {% if sc.started_at %}{{ sc.started_at|date:"H:i:s" }}{% else %}—{% endif %}
-        </span>
+      <span class="min-w-[6.5rem] text-center text-xs text-gray-500 dark:text-gray-400">
+        Page {{ service_calls_page.number }} of {{ service_calls_page.paginator.num_pages }}
+      </span>
 
-        {# Status badge #}
-        <span class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded
-          {% if sc.status == 'completed' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
-          {% elif sc.status == 'failed' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
-          {% elif sc.status == 'in_progress' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
-          {% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300{% endif %}">
-          {{ sc.get_status_display }}
-        </span>
+      {% if service_calls_page.has_next %}
+      <a
+        hx-get="{% url_with_query service_calls_url request.GET sc_page=service_calls_page.next_page_number %}"
+        x-bind:hx-get="serviceCallsPartialUrl({ sc_page: {{ service_calls_page.next_page_number }} })"
+        hx-target="#service-calls-section"
+        hx-swap="outerHTML"
+        hx-push-url="{% url_with_query watch_url request.GET sc_page=service_calls_page.next_page_number %}"
+        x-bind:hx-push-url="watchUrl({ sc_page: {{ service_calls_page.next_page_number }} })"
+        href="{% url_with_query watch_url request.GET sc_page=service_calls_page.next_page_number %}"
+        class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+      >
+        <iconify-icon icon="mdi:chevron-right" width="16"></iconify-icon>
+      </a>
+      {% else %}
+      <span class="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded border border-gray-200 bg-white text-gray-300 opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600">
+        <iconify-icon icon="mdi:chevron-right" width="16"></iconify-icon>
+      </span>
+      {% endif %}
+    </div>
+  </div>
 
-        {# Service identity #}
-        <span class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate">
-          {{ sc.service_identity }}
-        </span>
+  {% if not service_calls %}
+    <p class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+      No AI service calls recorded yet.
+    </p>
+  {% else %}
+    <div class="space-y-2">
+      {% for sc in service_calls %}
+      <div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+        <button
+          type="button"
+          @click="$store.scState.toggle('{{ sc.id }}')"
+          class="flex w-full flex-wrap items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          <span class="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full
+            {% if sc.status == 'completed' %}bg-emerald-500
+            {% elif sc.status == 'failed' %}bg-red-500
+            {% elif sc.status == 'in_progress' %}bg-blue-500 animate-pulse
+            {% else %}bg-yellow-400{% endif %}">
+          </span>
 
-        {# Model #}
-        {% if sc.model_name %}
-        <span class="hidden sm:block flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">
-          {{ sc.model_name }}
-        </span>
-        {% endif %}
+          <span class="w-20 flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400">
+            {% if sc.started_at %}{{ sc.started_at|date:"H:i:s" }}{% else %}-{% endif %}
+          </span>
 
-        {# Tokens #}
-        {% if sc.total_tokens %}
-        <span class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden md:block">
-          ↑{{ sc.input_tokens }} ↓{{ sc.output_tokens }}
-        </span>
-        {% endif %}
+          <span class="flex-shrink-0 rounded px-1.5 py-0.5 text-xs font-medium
+            {% if sc.status == 'completed' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
+            {% elif sc.status == 'failed' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
+            {% elif sc.status == 'in_progress' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
+            {% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300{% endif %}">
+            {{ sc.get_status_display }}
+          </span>
 
-        {# Cost #}
-        {% if sc.total_cost_usd %}
-        <span class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden md:block">
-          ${{ sc.total_cost_usd }}
-        </span>
-        {% endif %}
+          <span class="min-w-0 flex-1 truncate text-xs font-mono text-gray-800 dark:text-gray-200">
+            {{ sc.service_identity }}
+          </span>
 
-        {# Chevron #}
-        <iconify-icon
-          icon="mdi:chevron-down"
-          width="16"
-          class="flex-shrink-0 text-gray-400 transition-transform duration-200"
-          :class="$store.scState.isOpen('{{ sc.id }}') ? 'rotate-180' : ''"
-        ></iconify-icon>
-      </button>
+          {% if sc.model_name %}
+          <span class="hidden flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 sm:block">
+            {{ sc.model_name }}
+          </span>
+          {% endif %}
 
-      {# Expanded detail #}
-      <div x-show="$store.scState.isOpen('{{ sc.id }}')" x-collapse>
-        <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
+          {% if sc.total_tokens %}
+          <span class="hidden flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 md:block">
+            ↑{{ sc.input_tokens }} ↓{{ sc.output_tokens }}
+          </span>
+          {% endif %}
 
-          {# Meta #}
-          <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-            <div class="flex gap-1.5">
-              <dt class="font-medium">ID:</dt>
-              <dd class="font-mono">{{ sc.id }}</dd>
+          {% if sc.total_cost_usd %}
+          <span class="hidden flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 md:block">
+            ${{ sc.total_cost_usd }}
+          </span>
+          {% endif %}
+
+          <iconify-icon
+            icon="mdi:chevron-down"
+            width="16"
+            class="flex-shrink-0 text-gray-400 transition-transform duration-200"
+            :class="$store.scState.isOpen('{{ sc.id }}') ? 'rotate-180' : ''"
+          ></iconify-icon>
+        </button>
+
+        <div x-show="$store.scState.isOpen('{{ sc.id }}')" x-collapse>
+          <div class="space-y-3 border-t border-gray-100 px-3 pb-3 pt-2 dark:border-gray-700">
+            <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <div class="flex gap-1.5">
+                <dt class="font-medium">ID:</dt>
+                <dd class="font-mono">{{ sc.id }}</dd>
+              </div>
+              {% if sc.correlation_id %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Correlation:</dt>
+                <dd class="font-mono">{{ sc.correlation_id }}</dd>
+              </div>
+              {% endif %}
+              {% if sc.started_at %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Started:</dt>
+                <dd>{{ sc.started_at|date:"H:i:s" }}</dd>
+              </div>
+              {% endif %}
+              {% if sc.finished_at %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Finished:</dt>
+                <dd>{{ sc.finished_at|date:"H:i:s" }}</dd>
+              </div>
+              {% endif %}
+              {% if sc.total_tokens %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Tokens:</dt>
+                <dd>{{ sc.input_tokens }} in / {{ sc.output_tokens }} out / {{ sc.reasoning_tokens }} reasoning</dd>
+              </div>
+              {% endif %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Domain persisted:</dt>
+                <dd>{{ sc.domain_persisted|yesno:"yes,no" }}</dd>
+              </div>
+              {% if sc.domain_persist_attempts %}
+              <div class="flex gap-1.5">
+                <dt class="font-medium">Persist attempts:</dt>
+                <dd>{{ sc.domain_persist_attempts }}</dd>
+              </div>
+              {% endif %}
+            </dl>
+
+            <div class="flex justify-end gap-2">
+              <button
+                type="button"
+                @click.stop="downloadText(document.getElementById('sc-full-{{ sc.id }}')?.textContent ?? '', 'service-call-{{ sc.id }}.json', $el)"
+                class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+              >Download call</button>
+              <button
+                type="button"
+                @click.stop="copyText(document.getElementById('sc-full-{{ sc.id }}')?.textContent ?? '', $el)"
+                class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+              >Copy call</button>
             </div>
-            {% if sc.correlation_id %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Correlation:</dt>
-              <dd class="font-mono">{{ sc.correlation_id }}</dd>
-            </div>
-            {% endif %}
-            {% if sc.started_at %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Started:</dt>
-              <dd>{{ sc.started_at|date:"H:i:s" }}</dd>
-            </div>
-            {% endif %}
-            {% if sc.finished_at %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Finished:</dt>
-              <dd>{{ sc.finished_at|date:"H:i:s" }}</dd>
-            </div>
-            {% endif %}
-            {% if sc.total_tokens %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Tokens:</dt>
-              <dd>{{ sc.input_tokens }} in / {{ sc.output_tokens }} out / {{ sc.reasoning_tokens }} reasoning</dd>
-            </div>
-            {% endif %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Domain persisted:</dt>
-              <dd>{{ sc.domain_persisted|yesno:"yes,no" }}</dd>
-            </div>
-            {% if sc.domain_persist_attempts %}
-            <div class="flex gap-1.5">
-              <dt class="font-medium">Persist attempts:</dt>
-              <dd>{{ sc.domain_persist_attempts }}</dd>
-            </div>
-            {% endif %}
-          </dl>
 
-          {# Copy entire service call button #}
-          <div class="flex justify-end">
-            <button
-              @click.stop="copyText(document.getElementById('sc-full-{{ sc.id }}')?.textContent??'',$el)"
-              class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-            >Copy call</button>
-          </div>
-
-          {# Hidden full-call JSON for copy — includes metadata, input, and output.
-             |safe is required on all values: script raw-text is not HTML-decoded,
-             so auto-escaped entities like &quot; would corrupt the copied JSON. #}
-          <script id="sc-full-{{ sc.id }}" type="application/json">{
+            <script id="sc-full-{{ sc.id }}" type="application/json">{
   "id": "{{ sc.id|safe }}",
   "service_identity": "{{ sc.service_identity|escapejs|safe }}",
   "status": "{{ sc.status|escapejs|safe }}",
+  "correlation_id": {% if sc.correlation_id %}"{{ sc.correlation_id|escapejs|safe }}"{% else %}null{% endif %},
   "started_at": {% if sc.started_at %}"{{ sc.started_at|date:"c"|safe }}"{% else %}null{% endif %},
   "finished_at": {% if sc.finished_at %}"{{ sc.finished_at|date:"c"|safe }}"{% else %}null{% endif %},
+  "model_name": {% if sc.model_name %}"{{ sc.model_name|escapejs|safe }}"{% else %}null{% endif %},
   "input_tokens": {{ sc.input_tokens|default:0 }},
   "output_tokens": {{ sc.output_tokens|default:0 }},
+  "reasoning_tokens": {{ sc.reasoning_tokens|default:0 }},
+  "domain_persisted": {{ sc.domain_persisted|yesno:"true,false" }},
+  "domain_persist_attempts": {{ sc.domain_persist_attempts|default:0 }},
+  "error": {% if sc.error %}"{{ sc.error|escapejs|safe }}"{% else %}null{% endif %},
+  "domain_persist_error": {% if sc.domain_persist_error %}"{{ sc.domain_persist_error|escapejs|safe }}"{% else %}null{% endif %},
   "input": {% if sc.input %}{{ sc.input|json_pretty|safe }}{% else %}null{% endif %},
   "output": {% if sc.output_data %}{{ sc.output_data|json_pretty|safe }}{% else %}null{% endif %}
 }</script>
 
-          {# Error #}
-          {% if sc.error %}
-          <div>
-            <p class="text-xs font-medium text-red-600 mb-1">Error</p>
-            <pre class="text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded p-2 overflow-x-auto text-red-700 dark:text-red-400 whitespace-pre-wrap">{{ sc.error }}</pre>
-          </div>
-          {% endif %}
-
-          {# Domain persist error #}
-          {% if sc.domain_persist_error %}
-          <div>
-            <p class="text-xs font-medium text-orange-600 mb-1">Domain Persist Error</p>
-            <pre class="text-xs bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900 rounded p-2 overflow-x-auto text-orange-700 dark:text-orange-400 whitespace-pre-wrap">{{ sc.domain_persist_error }}</pre>
-          </div>
-          {% endif %}
-
-          {# Input JSON #}
-          {% if sc.input %}
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Input</p>
-              <button
-                @click.stop="copyText(document.getElementById('sc-input-{{ sc.id }}')?.textContent??'',$el)"
-                class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-              >Copy</button>
+            {% if sc.error %}
+            <div>
+              <p class="mb-1 text-xs font-medium text-red-600">Error</p>
+              <pre class="overflow-x-auto whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">{{ sc.error }}</pre>
             </div>
-            <pre id="sc-input-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.input|json_pretty }}</pre>
-          </div>
-          {% endif %}
+            {% endif %}
 
-          {# Output JSON #}
-          {% if sc.output_data %}
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Output</p>
-              <button
-                @click.stop="copyText(document.getElementById('sc-output-{{ sc.id }}')?.textContent??'',$el)"
-                class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-              >Copy</button>
+            {% if sc.domain_persist_error %}
+            <div>
+              <p class="mb-1 text-xs font-medium text-orange-600">Domain Persist Error</p>
+              <pre class="overflow-x-auto whitespace-pre-wrap rounded border border-orange-200 bg-orange-50 p-2 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-400">{{ sc.domain_persist_error }}</pre>
             </div>
-            <pre id="sc-output-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.output_data|json_pretty }}</pre>
-          </div>
-          {% endif %}
+            {% endif %}
 
+            {% if sc.input %}
+            <div>
+              <div class="mb-1 flex items-center justify-between">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Input</p>
+                <button
+                  type="button"
+                  @click.stop="copyText(document.getElementById('sc-input-{{ sc.id }}')?.textContent ?? '', $el)"
+                  class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                >Copy</button>
+              </div>
+              <pre
+                id="sc-input-{{ sc.id }}"
+                x-show="payloadVisible"
+                class="max-h-48 overflow-x-auto rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              >{{ sc.input|json_pretty }}</pre>
+            </div>
+            {% endif %}
+
+            {% if sc.output_data %}
+            <div>
+              <div class="mb-1 flex items-center justify-between">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Output</p>
+                <button
+                  type="button"
+                  @click.stop="copyText(document.getElementById('sc-output-{{ sc.id }}')?.textContent ?? '', $el)"
+                  class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                >Copy</button>
+              </div>
+              <pre
+                id="sc-output-{{ sc.id }}"
+                x-show="payloadVisible"
+                class="max-h-48 overflow-x-auto rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+              >{{ sc.output_data|json_pretty }}</pre>
+            </div>
+            {% endif %}
+          </div>
         </div>
       </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-  </div>
-{% endif %}
-
-</div>
+  {% endif %}
+</section>

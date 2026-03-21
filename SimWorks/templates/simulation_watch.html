@@ -7,49 +7,73 @@
 <div
   x-data="watchView()"
   x-init="init()"
-  class="tw-root min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col"
+  class="tw-root flex min-h-screen flex-col bg-gray-50 dark:bg-gray-900"
 >
-
-  {# ── Header ────────────────────────────────────────────────────────────── #}
-  <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex flex-wrap items-center gap-3">
-    <div class="flex items-center gap-3 flex-1 min-w-0">
+  <header class="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+    <div class="flex min-w-0 flex-1 items-center gap-3">
+      {% if can_go_to_simulation %}
       <a
         href="{{ back_url }}"
-        class="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 transition-colors"
+        class="text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
         title="Back to simulation"
       >
         <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
       </a>
+      {% else %}
+      <span
+        class="cursor-not-allowed text-gray-300 dark:text-gray-600"
+        title="You do not have access to this simulation run view."
+      >
+        <iconify-icon icon="mdi:arrow-left" width="20"></iconify-icon>
+      </span>
+      {% endif %}
       <div class="min-w-0">
-        <h1 class="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">
+        <h1 class="truncate text-base font-semibold text-gray-900 dark:text-gray-100">
           {{ lab_name }} · Watch · Sim #{{ simulation.id }}
         </h1>
-        <p class="text-xs text-gray-500 dark:text-gray-400 truncate">
+        <p class="truncate text-xs text-gray-500 dark:text-gray-400">
           {{ simulation.sim_patient_full_name }}
           {% if simulation.chief_complaint %}· {{ simulation.chief_complaint }}{% endif %}
         </p>
       </div>
     </div>
 
-    <div class="flex items-center gap-4 flex-shrink-0">
-      {# Status badge #}
-      <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full
+    <div class="flex flex-shrink-0 flex-wrap items-center gap-3">
+      {% if can_go_to_simulation %}
+      <a
+        href="{{ go_to_simulation_url }}"
+        class="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/60"
+      >
+        <iconify-icon icon="mdi:open-in-new" width="14"></iconify-icon>
+        Go to simulation
+      </a>
+      {% else %}
+      <span
+        class="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500"
+        title="You do not have access to this simulation run view."
+      >
+        <iconify-icon icon="mdi:lock-outline" width="14"></iconify-icon>
+        Go to simulation
+      </span>
+      {% endif %}
+
+      <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium
         {% if simulation.status == 'in_progress' %}bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300
         {% elif simulation.status == 'completed' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
         {% else %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300{% endif %}">
         {{ simulation.get_status_display }}
       </span>
-      {# Started #}
-      <span class="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
+
+      <span class="hidden text-xs text-gray-500 dark:text-gray-400 sm:block">
         Started {{ simulation.start_timestamp|date:"H:i:s" }}
       </span>
-      {# Live indicator #}
+
       <span
         class="inline-flex items-center gap-1.5 text-xs font-medium"
         :class="connected ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'"
       >
         <span
-          class="w-2 h-2 rounded-full"
+          class="h-2 w-2 rounded-full"
           :class="connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"
         ></span>
         <span x-text="connected ? 'LIVE' : 'DISCONNECTED'"></span>
@@ -57,16 +81,14 @@
     </div>
   </header>
 
-  {# ── Toolbar ────────────────────────────────────────────────────────────── #}
-  <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex flex-wrap items-center gap-2">
-
-    {# Category filter tabs #}
-    <div class="flex items-center gap-1 flex-wrap">
+  <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-800">
+    <div class="flex flex-wrap items-center gap-1">
       <template x-for="cat in categories" :key="cat.key">
         <button
+          type="button"
           @click="filter = cat.key"
           :class="[
-            'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+            'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
             filter === cat.key
               ? cat.activeClass
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
@@ -78,180 +100,356 @@
 
     <div class="flex-1"></div>
 
-    {# Search box #}
     <input
       type="text"
       x-model="searchText"
-      placeholder="Search events…"
-      class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 w-40"
+      placeholder="Search events..."
+      class="w-40 rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
     >
 
-    {# Sort #}
     <select
       x-model="sortOrder"
-      class="text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none"
+      class="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
     >
       <option value="desc">Newest first</option>
       <option value="asc">Oldest first</option>
     </select>
 
-    {# Auto-scroll #}
-    <label class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
-      <input type="checkbox" x-model="autoScroll" class="rounded">
-      Auto-scroll
-    </label>
+    <button
+      type="button"
+      role="switch"
+      :aria-checked="payloadVisible.toString()"
+      @click="payloadVisible = !payloadVisible"
+      class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+    >
+      <span>Payload previews</span>
+      <span
+        class="relative inline-flex h-5 w-9 rounded-full transition-colors"
+        :class="payloadVisible ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+      >
+        <span
+          class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+          :class="payloadVisible ? 'translate-x-4' : 'translate-x-0.5'"
+        ></span>
+      </span>
+    </button>
 
-    {# Event count #}
-    <span class="text-xs text-gray-400 dark:text-gray-500 ml-1">
+    <button
+      type="button"
+      role="switch"
+      :aria-checked="autoScroll.toString()"
+      @click="autoScroll = !autoScroll"
+      class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+    >
+      <span>Auto-scroll</span>
+      <span
+        class="relative inline-flex h-5 w-9 rounded-full transition-colors"
+        :class="autoScroll ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'"
+      >
+        <span
+          class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+          :class="autoScroll ? 'translate-x-4' : 'translate-x-0.5'"
+        ></span>
+      </span>
+    </button>
+
+    <span class="ml-1 text-xs text-gray-400 dark:text-gray-500">
       <span x-text="filteredEvents.length"></span>/<span x-text="events.length"></span> events
     </span>
   </div>
 
-  {# ── Main content: side-by-side panels with resizable divider ───────────── #}
-  <div class="flex-1 flex overflow-hidden" x-ref="mainContent">
+  <div class="flex flex-1 overflow-hidden" x-ref="mainContent">
+    <div class="flex min-w-0 flex-col overflow-auto p-4" :style="`width:${leftWidth}%`" x-ref="eventScrollPanel">
+      <section class="flex min-h-0 flex-1 flex-col">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Outbox Events
+          </h2>
 
-    {# ── Left panel: Outbox Events ─────────────────────────────────────────── #}
-    <div class="overflow-auto p-4 flex flex-col min-w-0" :style="`width:${leftWidth}%`">
-      <section class="flex-1 flex flex-col min-h-0">
-        <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex-shrink-0">
-          Outbox Events
-        </h2>
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800">
+              {% for size in watch_page_size_options %}
+              <button
+                type="button"
+                @click="setEventPageSize({{ size }})"
+                :class="eventPageSize === {{ size }} ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'"
+                class="rounded-full px-2 py-0.5 text-xs font-medium transition-colors"
+              >{{ size }}</button>
+              {% endfor %}
+            </div>
 
-        <div
-          x-ref="eventList"
-          class="space-y-1"
-        >
-          {# Empty state #}
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                @click="goToEventPage(eventPage - 1)"
+                :disabled="eventPage <= 1"
+                :class="eventPage <= 1 ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
+                class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-500 transition-colors dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <iconify-icon icon="mdi:chevron-left" width="16"></iconify-icon>
+              </button>
+
+              <span class="min-w-[6.5rem] text-center text-xs text-gray-500 dark:text-gray-400">
+                <span x-text="'Page ' + eventPage + ' of ' + eventPageCount"></span>
+              </span>
+
+              <button
+                type="button"
+                @click="goToEventPage(eventPage + 1)"
+                :disabled="eventPage >= eventPageCount"
+                :class="eventPage >= eventPageCount ? 'cursor-not-allowed opacity-40' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
+                class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-500 transition-colors dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              >
+                <iconify-icon icon="mdi:chevron-right" width="16"></iconify-icon>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div x-ref="eventList" class="space-y-2">
           <div
             x-show="events.length === 0"
-            class="text-center py-10 text-gray-400 dark:text-gray-500 text-sm"
+            class="py-10 text-center text-sm text-gray-400 dark:text-gray-500"
           >
-            No events yet. Waiting for activity…
+            No events yet. Waiting for activity...
           </div>
 
           <div
             x-show="filteredEvents.length === 0 && events.length > 0"
-            class="text-center py-6 text-gray-400 dark:text-gray-500 text-sm"
+            class="py-6 text-center text-sm text-gray-400 dark:text-gray-500"
           >
             No events match the current filter.
           </div>
 
-          <template x-for="ev in filteredEvents" :key="ev.event_id">
-            <div
-              class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
-            >
-              {# Row header (clickable) #}
+          <template x-for="block in pagedEventBlocks" :key="block.key">
+            <div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
               <button
-                @click="ev.expanded = !ev.expanded"
-                class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                type="button"
+                @click="toggleEventBlock(block)"
+                class="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                {# Status dot #}
                 <span
-                  class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
-                  :class="{
-                    'bg-yellow-400': ev.status === 'pending',
-                    'bg-emerald-500': ev.status === 'delivered',
-                    'bg-red-500': ev.status === 'failed',
-                    'bg-gray-400': !ev.status
-                  }"
+                  class="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full"
+                  :class="statusDotClass(block.headEvent.status)"
                 ></span>
 
-                {# Timestamp #}
                 <span
-                  class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20"
-                  x-text="formatTime(ev.created_at)"
+                  class="w-28 flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400"
+                  x-text="blockTimeLabel(block)"
                 ></span>
 
-                {# Category badge #}
                 <span
-                  class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded"
-                  :class="categoryBadgeClass(ev.event_type)"
-                  x-text="categoryLabel(ev.event_type)"
+                  class="flex-shrink-0 rounded px-1.5 py-0.5 text-xs font-medium"
+                  :class="categoryBadgeClass(block.eventType)"
+                  x-text="categoryLabel(block.eventType)"
                 ></span>
 
-                {# Event type #}
+                <span class="min-w-0 flex-1 truncate text-xs font-mono text-gray-800 dark:text-gray-200" x-text="block.eventType"></span>
+
                 <span
-                  class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate"
-                  x-text="ev.event_type"
+                  x-show="block.isGroup"
+                  class="hidden rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300 sm:inline-flex"
+                  x-text="block.members.length + ' events'"
                 ></span>
 
-                {# Payload preview #}
                 <span
-                  class="hidden sm:block text-xs text-gray-400 dark:text-gray-500 truncate max-w-xs"
-                  x-text="payloadPreview(ev.payload)"
+                  x-show="payloadVisible"
+                  class="hidden max-w-xs truncate text-xs text-gray-400 dark:text-gray-500 sm:block"
+                  x-text="blockPayloadPreview(block)"
                 ></span>
 
-                {# Correlation ID #}
                 <span
-                  x-show="ev.correlation_id"
-                  class="hidden md:block flex-shrink-0 text-xs font-mono text-gray-300 dark:text-gray-600 truncate max-w-[8rem]"
-                  x-text="ev.correlation_id ? ev.correlation_id.slice(0, 8) + '…' : ''"
+                  x-show="block.headEvent.correlation_id"
+                  class="hidden max-w-[8rem] flex-shrink-0 truncate text-xs font-mono text-gray-300 dark:text-gray-600 md:block"
+                  x-text="truncateCorrelation(block.headEvent.correlation_id)"
                 ></span>
 
-                {# Chevron #}
                 <iconify-icon
                   icon="mdi:chevron-down"
                   width="16"
                   class="flex-shrink-0 text-gray-400 transition-transform duration-200"
-                  :class="ev.expanded ? 'rotate-180' : ''"
+                  :class="isGroupOpen(block) ? 'rotate-180' : ''"
                 ></iconify-icon>
               </button>
 
-              {# Expanded detail #}
-              <div x-show="ev.expanded" x-collapse>
-                <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-2">
+              <div x-show="isGroupOpen(block)" x-collapse>
+                <template x-if="block.isGroup">
+                  <div class="border-t border-gray-100 dark:border-gray-700">
+                    <div class="flex items-center justify-between gap-3 px-3 pb-1 pt-2">
+                      <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <span x-text="block.members.length"></span> consecutive events
+                      </p>
+                      <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                        Inspect one event at a time
+                      </p>
+                    </div>
 
-                  {# Meta row #}
-                  <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                    <div class="flex gap-1.5">
-                      <dt class="font-medium">Event ID:</dt>
-                      <dd class="font-mono" x-text="ev.event_id"></dd>
-                    </div>
-                    <div class="flex gap-1.5" x-show="ev.correlation_id">
-                      <dt class="font-medium">Correlation:</dt>
-                      <dd class="font-mono" x-text="ev.correlation_id"></dd>
-                    </div>
-                    <div class="flex gap-1.5">
-                      <dt class="font-medium">Status:</dt>
-                      <dd x-text="ev.status || 'unknown'"></dd>
-                    </div>
-                    <div class="flex gap-1.5" x-show="ev.delivery_attempts > 0">
-                      <dt class="font-medium">Attempts:</dt>
-                      <dd x-text="ev.delivery_attempts"></dd>
-                    </div>
-                    <div class="flex gap-1.5" x-show="ev.last_error">
-                      <dt class="font-medium text-red-600">Error:</dt>
-                      <dd class="text-red-600" x-text="ev.last_error"></dd>
-                    </div>
-                    <div class="flex gap-1.5">
-                      <dt class="font-medium">Created:</dt>
-                      <dd x-text="formatDatetime(ev.created_at)"></dd>
-                    </div>
-                  </dl>
+                    <div class="space-y-2 px-2 pb-2">
+                      <template x-for="member in block.members" :key="member.event_id">
+                        <div class="overflow-hidden rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                          <button
+                            type="button"
+                            @click="openEvent(member.event_id)"
+                            class="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                          >
+                            <span
+                              class="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full"
+                              :class="statusDotClass(member.status)"
+                            ></span>
 
-                  {# Copy entire event button #}
-                  <div class="flex justify-end">
-                    <button
-                      @click.stop="copyText(JSON.stringify({event_id:ev.event_id,event_type:ev.event_type,created_at:ev.created_at,correlation_id:ev.correlation_id,payload:ev.payload,status:ev.status,delivery_attempts:ev.delivery_attempts,last_error:ev.last_error,idempotency_key:ev.idempotency_key},null,2),$el)"
-                      class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-                    >Copy event</button>
+                            <span
+                              class="w-20 flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400"
+                              x-text="formatTime(member.created_at)"
+                            ></span>
+
+                            <span class="min-w-0 flex-1 truncate text-xs font-mono text-gray-700 dark:text-gray-200" x-text="member.event_id"></span>
+
+                            <span
+                              x-show="payloadVisible"
+                              class="hidden max-w-xs truncate text-xs text-gray-400 dark:text-gray-500 sm:block"
+                              x-text="payloadPreview(member.payload)"
+                            ></span>
+
+                            <iconify-icon
+                              icon="mdi:chevron-down"
+                              width="16"
+                              class="flex-shrink-0 text-gray-400 transition-transform duration-200"
+                              :class="isEventOpen(member.event_id) ? 'rotate-180' : ''"
+                            ></iconify-icon>
+                          </button>
+
+                          <div x-show="isEventOpen(member.event_id)" x-collapse>
+                            <div class="space-y-2 border-t border-gray-200 px-3 pb-3 pt-2 dark:border-gray-700">
+                              <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                <div class="flex gap-1.5">
+                                  <dt class="font-medium">Event ID:</dt>
+                                  <dd class="font-mono" x-text="member.event_id"></dd>
+                                </div>
+                                <div class="flex gap-1.5">
+                                  <dt class="font-medium">Type:</dt>
+                                  <dd class="font-mono" x-text="member.event_type"></dd>
+                                </div>
+                                <div class="flex gap-1.5" x-show="member.correlation_id">
+                                  <dt class="font-medium">Correlation:</dt>
+                                  <dd class="font-mono" x-text="member.correlation_id"></dd>
+                                </div>
+                                <div class="flex gap-1.5">
+                                  <dt class="font-medium">Status:</dt>
+                                  <dd x-text="member.status || 'unknown'"></dd>
+                                </div>
+                                <div class="flex gap-1.5" x-show="member.delivery_attempts > 0">
+                                  <dt class="font-medium">Attempts:</dt>
+                                  <dd x-text="member.delivery_attempts"></dd>
+                                </div>
+                                <div class="flex gap-1.5" x-show="member.last_error">
+                                  <dt class="font-medium text-red-600">Error:</dt>
+                                  <dd class="text-red-600" x-text="member.last_error"></dd>
+                                </div>
+                                <div class="flex gap-1.5">
+                                  <dt class="font-medium">Created:</dt>
+                                  <dd x-text="formatDatetime(member.created_at)"></dd>
+                                </div>
+                              </dl>
+
+                              <div class="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  @click.stop="downloadText(eventExport(member), eventFilename(member), $el)"
+                                  class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                                >Download event</button>
+                                <button
+                                  type="button"
+                                  @click.stop="copyText(eventExport(member), $el)"
+                                  class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                                >Copy event</button>
+                              </div>
+
+                              <div>
+                                <div class="mb-1 flex items-center justify-between">
+                                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Payload</p>
+                                  <button
+                                    type="button"
+                                    @click.stop="copyText(JSON.stringify(member.payload, null, 2), $el)"
+                                    class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                                  >Copy</button>
+                                </div>
+                                <pre
+                                  x-show="payloadVisible"
+                                  class="overflow-x-auto rounded border border-gray-200 bg-white p-2 text-xs leading-relaxed text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                                  x-text="JSON.stringify(member.payload, null, 2)"
+                                ></pre>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
                   </div>
+                </template>
 
-                  {# Payload JSON #}
-                  <div>
-                    <div class="flex items-center justify-between mb-1">
-                      <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Payload</p>
+                <template x-if="!block.isGroup">
+                  <div class="space-y-2 border-t border-gray-100 px-3 pb-3 pt-2 dark:border-gray-700">
+                    <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                      <div class="flex gap-1.5">
+                        <dt class="font-medium">Event ID:</dt>
+                        <dd class="font-mono" x-text="block.headEvent.event_id"></dd>
+                      </div>
+                      <div class="flex gap-1.5">
+                        <dt class="font-medium">Type:</dt>
+                        <dd class="font-mono" x-text="block.headEvent.event_type"></dd>
+                      </div>
+                      <div class="flex gap-1.5" x-show="block.headEvent.correlation_id">
+                        <dt class="font-medium">Correlation:</dt>
+                        <dd class="font-mono" x-text="block.headEvent.correlation_id"></dd>
+                      </div>
+                      <div class="flex gap-1.5">
+                        <dt class="font-medium">Status:</dt>
+                        <dd x-text="block.headEvent.status || 'unknown'"></dd>
+                      </div>
+                      <div class="flex gap-1.5" x-show="block.headEvent.delivery_attempts > 0">
+                        <dt class="font-medium">Attempts:</dt>
+                        <dd x-text="block.headEvent.delivery_attempts"></dd>
+                      </div>
+                      <div class="flex gap-1.5" x-show="block.headEvent.last_error">
+                        <dt class="font-medium text-red-600">Error:</dt>
+                        <dd class="text-red-600" x-text="block.headEvent.last_error"></dd>
+                      </div>
+                      <div class="flex gap-1.5">
+                        <dt class="font-medium">Created:</dt>
+                        <dd x-text="formatDatetime(block.headEvent.created_at)"></dd>
+                      </div>
+                    </dl>
+
+                    <div class="flex justify-end gap-2">
                       <button
-                        @click.stop="copyText(JSON.stringify(ev.payload,null,2),$el)"
-                        class="text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded px-2 py-0.5 transition-colors"
-                      >Copy</button>
+                        type="button"
+                        @click.stop="downloadText(eventExport(block.headEvent), eventFilename(block.headEvent), $el)"
+                        class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                      >Download event</button>
+                      <button
+                        type="button"
+                        @click.stop="copyText(eventExport(block.headEvent), $el)"
+                        class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                      >Copy event</button>
                     </div>
-                    <pre
-                      class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 overflow-x-auto leading-relaxed text-gray-800 dark:text-gray-200"
-                      x-text="JSON.stringify(ev.payload, null, 2)"
-                    ></pre>
+
+                    <div>
+                      <div class="mb-1 flex items-center justify-between">
+                        <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Payload</p>
+                        <button
+                          type="button"
+                          @click.stop="copyText(JSON.stringify(block.headEvent.payload, null, 2), $el)"
+                          class="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400 transition-colors hover:text-gray-700 dark:border-gray-600 dark:hover:text-gray-200"
+                        >Copy</button>
+                      </div>
+                      <pre
+                        x-show="payloadVisible"
+                        class="overflow-x-auto rounded border border-gray-200 bg-gray-50 p-2 text-xs leading-relaxed text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                        x-text="JSON.stringify(block.headEvent.payload, null, 2)"
+                      ></pre>
+                    </div>
                   </div>
-                </div>
+                </template>
               </div>
             </div>
           </template>
@@ -259,79 +457,52 @@
       </section>
     </div>
 
-    {# ── Drag handle ──────────────────────────────────────────────────────── #}
     <div
-      class="w-1.5 flex-shrink-0 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-600 cursor-col-resize select-none transition-colors"
+      class="w-1.5 flex-shrink-0 cursor-col-resize select-none bg-gray-200 transition-colors hover:bg-blue-400 dark:bg-gray-700 dark:hover:bg-blue-600"
       @mousedown.prevent="startResize($event)"
     ></div>
 
-    {# ── Right panel: AI Service Calls ─────────────────────────────────────── #}
-    <div class="overflow-auto p-4 flex-1 min-w-0">
-      <section
-        id="service-calls-section"
-        {% if service_calls_url %}
-        hx-get="{{ service_calls_url }}"
-        hx-trigger="every 10s"
-        hx-target="#service-calls-table"
-        hx-swap="outerHTML"
-        {% endif %}
-      >
-        <div class="flex items-center justify-between mb-2">
-          <h2 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-            AI Service Calls
-          </h2>
-          <button
-            {% if service_calls_url %}
-            hx-get="{{ service_calls_url }}"
-            hx-target="#service-calls-table"
-            hx-swap="outerHTML"
-            hx-trigger="click"
-            {% endif %}
-            class="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
-          >
-            <iconify-icon icon="mdi:refresh" width="14"></iconify-icon>
-            Refresh
-          </button>
-        </div>
-
-        {% include "partials/watch_service_calls.html" %}
-      </section>
+    <div class="min-w-0 flex-1 overflow-auto p-4">
+      {% include "partials/watch_service_calls.html" %}
     </div>
-
-  </div>{# /main content #}
-</div>{# /x-data #}
+  </div>
+</div>
 {% endblock content %}
 
 {% block scripts %}
 {{ block.super }}
 <script>
   (function () {
-    // ── Initial data from server (pre-serialized as valid JSON in view) ─────
     const INITIAL_EVENTS = {{ outbox_events_json|safe }};
-
     const STREAM_URL = "{{ stream_url }}";
+    const WATCH_URL = "{{ watch_url }}";
+    const SERVICE_CALLS_URL = "{{ service_calls_url }}";
+    const INITIAL_WATCH_STATE = {{ watch_state_json|safe }};
 
     const CATEGORIES = [
-      { key: "all",        label: "All",        prefix: null,          activeClass: "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900" },
-      { key: "chat",       label: "Chat",       prefix: "chat.",       activeClass: "bg-blue-600 text-white" },
+      { key: "all", label: "All", prefix: null, activeClass: "bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900" },
+      { key: "chat", label: "Chat", prefix: "chat.", activeClass: "bg-blue-600 text-white" },
       { key: "simulation", label: "Simulation", prefix: "simulation.", activeClass: "bg-purple-600 text-white" },
-      { key: "metadata",   label: "Metadata",   prefix: "metadata.",   activeClass: "bg-emerald-600 text-white" },
-      { key: "feedback",   label: "Feedback",   prefix: "feedback.",   activeClass: "bg-orange-600 text-white" },
-      { key: "typing",     label: "Typing",     prefix: "typing.",     activeClass: "bg-gray-500 text-white" },
-      { key: "trainer",    label: "Trainer",
+      { key: "metadata", label: "Metadata", prefix: "metadata.", activeClass: "bg-emerald-600 text-white" },
+      { key: "feedback", label: "Feedback", prefix: "feedback.", activeClass: "bg-orange-600 text-white" },
+      { key: "typing", label: "Typing", prefix: "typing.", activeClass: "bg-gray-500 text-white" },
+      {
+        key: "trainer",
+        label: "Trainer",
         prefixes: ["preset.", "command.", "adjustment.", "condition.", "vital.", "intervention.", "note.", "event."],
-        activeClass: "bg-teal-600 text-white" },
-      { key: "other",      label: "Other",      prefix: "__other__",   activeClass: "bg-yellow-500 text-white" },
+        activeClass: "bg-teal-600 text-white",
+      },
+      { key: "other", label: "Other", prefix: "__other__", activeClass: "bg-yellow-500 text-white" },
     ];
 
     const BADGE_CLASSES = {
-      chat:       "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+      chat: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
       simulation: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-      metadata:   "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-      feedback:   "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-      typing:     "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
-      trainer:    "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
-      other:      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+      metadata: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+      feedback: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+      typing: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
+      trainer: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
+      other: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
     };
 
     function categoryKeyForType(eventType) {
@@ -339,83 +510,190 @@
         if (!cat.prefix && !cat.prefixes) continue;
         if (cat.prefix === "__other__") continue;
         if (cat.prefix && eventType.startsWith(cat.prefix)) return cat.key;
-        if (cat.prefixes && cat.prefixes.some(p => eventType.startsWith(p))) return cat.key;
+        if (cat.prefixes && cat.prefixes.some((prefix) => eventType.startsWith(prefix))) return cat.key;
       }
       return "other";
     }
 
-    // ── Global Alpine store for service call expanded state ─────────────────
-    // Registered before watchView() so it persists across HTMX swaps.
+    function parsePositiveInt(value, fallback) {
+      const parsed = Number.parseInt(value, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    }
+
     document.addEventListener("alpine:init", () => {
       Alpine.store("scState", {
-        expanded: {},
-        toggle(id) { this.expanded[id] = !this.expanded[id]; },
-        isOpen(id)  { return !!this.expanded[id]; },
+        activeId: null,
+        toggle(id) {
+          this.activeId = this.activeId === id ? null : id;
+        },
+        isOpen(id) {
+          return this.activeId === id;
+        },
+        prune(ids) {
+          if (!ids.includes(this.activeId)) {
+            this.activeId = null;
+          }
+        },
       });
     });
 
     window.watchView = function () {
       return {
         events: INITIAL_EVENTS,
-        filter: "all",
-        searchText: "",
-        sortOrder: "desc",
+        filter: INITIAL_WATCH_STATE.events_filter,
+        searchText: INITIAL_WATCH_STATE.events_q,
+        sortOrder: INITIAL_WATCH_STATE.events_sort,
+        eventPage: INITIAL_WATCH_STATE.events_page,
+        eventPageSize: INITIAL_WATCH_STATE.events_page_size,
+        payloadVisible: true,
         autoScroll: true,
+        activeEventId: null,
         connected: false,
         categories: CATEGORIES,
         leftWidth: 50,
         _es: null,
         _reconnectTimer: null,
         _reconnectDelay: 1000,
+        _lastSequenceGroupId: 0,
+        _syncPaused: false,
 
         init() {
+          this._lastSequenceGroupId = this.events.reduce(
+            (max, event) => Math.max(max, Number.parseInt(event.sequence_group_id, 10) || 0),
+            0
+          );
+          this.clampEventPage();
+
+          this.$watch("filter", () => this.handleEventControlChange(true));
+          this.$watch("searchText", () => this.handleEventControlChange(true));
+          this.$watch("sortOrder", () => this.handleEventControlChange(true));
+          this.$watch("eventPageSize", () => this.handleEventControlChange(true));
+          this.$watch("eventPage", () => this.handleEventControlChange(false));
+
+          this._popstateHandler = () => this.applyUrlState(new URLSearchParams(window.location.search));
+          window.addEventListener("popstate", this._popstateHandler);
+
           this.connect();
         },
 
+        handleEventControlChange(resetPage) {
+          if (resetPage) {
+            this.eventPage = 1;
+          }
+          this.clampEventPage();
+          this.pruneActiveEvent();
+          this.syncUrlState();
+        },
+
+        applyUrlState(params) {
+          this._syncPaused = true;
+          this.filter = (params.get("events_filter") || INITIAL_WATCH_STATE.events_filter || "all").trim() || "all";
+          this.searchText = (params.get("events_q") || "").trim();
+          this.sortOrder = (params.get("events_sort") || INITIAL_WATCH_STATE.events_sort || "desc").toLowerCase() === "asc" ? "asc" : "desc";
+          this.eventPageSize = [25, 50, 100].includes(parsePositiveInt(params.get("events_page_size"), INITIAL_WATCH_STATE.events_page_size))
+            ? parsePositiveInt(params.get("events_page_size"), INITIAL_WATCH_STATE.events_page_size)
+            : INITIAL_WATCH_STATE.events_page_size;
+          this.eventPage = parsePositiveInt(params.get("events_page"), INITIAL_WATCH_STATE.events_page);
+          this._syncPaused = false;
+          this.clampEventPage();
+          this.pruneActiveEvent();
+        },
+
+        syncUrlState() {
+          if (this._syncPaused) return;
+          const params = new URLSearchParams(window.location.search);
+          params.set("events_filter", this.filter);
+          params.set("events_sort", this.sortOrder);
+          params.set("events_page", String(this.eventPage));
+          params.set("events_page_size", String(this.eventPageSize));
+
+          const trimmedSearch = this.searchText.trim();
+          if (trimmedSearch) {
+            params.set("events_q", trimmedSearch);
+          } else {
+            params.delete("events_q");
+          }
+
+          const queryString = params.toString();
+          history.replaceState({}, "", queryString ? `${WATCH_URL}?${queryString}` : WATCH_URL);
+        },
+
+        currentParams() {
+          return new URLSearchParams(window.location.search);
+        },
+
+        applyUrlOverrides(params, overrides = {}) {
+          Object.entries(overrides).forEach(([key, value]) => {
+            if (value === null || value === undefined || value === "") {
+              params.delete(key);
+              return;
+            }
+            params.set(key, String(value));
+          });
+        },
+
+        watchUrl(overrides = {}) {
+          const params = this.currentParams();
+          this.applyUrlOverrides(params, overrides);
+          const queryString = params.toString();
+          return queryString ? `${WATCH_URL}?${queryString}` : WATCH_URL;
+        },
+
+        serviceCallsPartialUrl(overrides = {}) {
+          const params = this.currentParams();
+          this.applyUrlOverrides(params, overrides);
+          const queryString = params.toString();
+          return queryString ? `${SERVICE_CALLS_URL}?${queryString}` : SERVICE_CALLS_URL;
+        },
+
         connect() {
-          const lastId = this.events.length
-            ? this.events[this.events.length - 1].event_id
-            : null;
+          const lastId = this.events.length ? this.events[this.events.length - 1].event_id : null;
           const url = lastId ? `${STREAM_URL}?cursor=${lastId}` : STREAM_URL;
 
-          console.debug("[WatchView] Opening SSE stream:", url);
           const es = new EventSource(url);
           this._es = es;
 
-          es.addEventListener("simulation", (e) => {
+          es.addEventListener("simulation", (event) => {
             try {
-              const envelope = JSON.parse(e.data);
+              const envelope = JSON.parse(event.data);
               this.addEvent(envelope);
             } catch (err) {
-              console.error("[WatchView] Failed to parse SSE event:", err, e.data);
+              console.error("[WatchView] Failed to parse SSE event:", err, event.data);
             }
           });
 
           es.addEventListener("error", () => {
-            console.warn("[WatchView] SSE connection error — scheduling reconnect");
             this.connected = false;
             es.close();
-            this._scheduleReconnect();
+            this.scheduleReconnect();
           });
 
           es.addEventListener("open", () => {
-            console.debug("[WatchView] SSE connected");
             this.connected = true;
             this._reconnectDelay = 1000;
           });
         },
 
-        _scheduleReconnect() {
+        scheduleReconnect() {
           clearTimeout(this._reconnectTimer);
           const delay = this._reconnectDelay;
           this._reconnectDelay = Math.min(delay * 2, 30000);
-          console.debug(`[WatchView] Reconnecting in ${delay}ms`);
           this._reconnectTimer = setTimeout(() => this.connect(), delay);
         },
 
         addEvent(envelope) {
-          // Normalise fields — SSE envelope may differ slightly from initial data
-          const ev = {
+          if (this.events.some((event) => event.event_id === envelope.event_id)) return;
+
+          const lastEvent = this.events[this.events.length - 1] || null;
+          let sequenceGroupId = this._lastSequenceGroupId || 0;
+          if (lastEvent && lastEvent.event_type === envelope.event_type) {
+            sequenceGroupId = lastEvent.sequence_group_id;
+          } else {
+            sequenceGroupId += 1;
+            this._lastSequenceGroupId = sequenceGroupId;
+          }
+
+          const event = {
             event_id: envelope.event_id,
             event_type: envelope.event_type,
             created_at: envelope.created_at,
@@ -425,15 +703,19 @@
             delivery_attempts: envelope.delivery_attempts || 0,
             last_error: envelope.last_error || null,
             idempotency_key: envelope.idempotency_key || "",
-            expanded: false,
+            sequence_group_id: sequenceGroupId,
           };
-          // Deduplication
-          if (this.events.some((e) => e.event_id === ev.event_id)) return;
-          this.events.push(ev);
+
+          this.events.push(event);
+          this.clampEventPage();
+
           if (this.autoScroll && this.sortOrder === "desc") {
+            this.eventPage = 1;
             this.$nextTick(() => {
-              const list = this.$refs.eventList;
-              if (list) list.scrollIntoView({ behavior: "smooth", block: "end" });
+              const panel = this.$refs.eventScrollPanel;
+              if (panel) {
+                panel.scrollTo({ top: 0, behavior: "smooth" });
+              }
             });
           }
         },
@@ -441,106 +723,257 @@
         get filteredEvents() {
           let result = this.events.slice();
 
-          // Category filter
           if (this.filter !== "all") {
-            result = result.filter((ev) => categoryKeyForType(ev.event_type) === this.filter);
+            result = result.filter((event) => categoryKeyForType(event.event_type) === this.filter);
           }
 
-          // Text search
-          if (this.searchText.trim()) {
-            const q = this.searchText.trim().toLowerCase();
+          const trimmedSearch = this.searchText.trim().toLowerCase();
+          if (trimmedSearch) {
             result = result.filter(
-              (ev) =>
-                ev.event_type.toLowerCase().includes(q) ||
-                JSON.stringify(ev.payload).toLowerCase().includes(q) ||
-                (ev.correlation_id || "").toLowerCase().includes(q)
+              (event) =>
+                event.event_type.toLowerCase().includes(trimmedSearch) ||
+                JSON.stringify(event.payload).toLowerCase().includes(trimmedSearch) ||
+                (event.correlation_id || "").toLowerCase().includes(trimmedSearch)
             );
           }
 
-          // Sort
-          result.sort((a, b) => {
-            const diff = new Date(a.created_at) - new Date(b.created_at);
+          result.sort((left, right) => {
+            const diff = new Date(left.created_at) - new Date(right.created_at);
             return this.sortOrder === "asc" ? diff : -diff;
           });
 
           return result;
         },
 
-        countForCategory(catKey) {
-          if (catKey === "all") return this.events.length;
-          if (catKey === "other") {
-            return this.events.filter((ev) => categoryKeyForType(ev.event_type) === "other").length;
+        get eventPageCount() {
+          return Math.max(1, Math.ceil(this.filteredEvents.length / this.eventPageSize));
+        },
+
+        get pagedEvents() {
+          const startIndex = (this.eventPage - 1) * this.eventPageSize;
+          return this.filteredEvents.slice(startIndex, startIndex + this.eventPageSize);
+        },
+
+        get pagedEventBlocks() {
+          const blocks = [];
+          for (const event of this.pagedEvents) {
+            const previous = blocks[blocks.length - 1];
+            if (previous && previous.groupId === event.sequence_group_id) {
+              previous.members.push(event);
+              continue;
+            }
+            blocks.push({
+              key: `group-${event.sequence_group_id}`,
+              groupId: event.sequence_group_id,
+              eventType: event.event_type,
+              headEvent: event,
+              members: [event],
+            });
           }
-          return this.events.filter((ev) => categoryKeyForType(ev.event_type) === catKey).length;
+          return blocks.map((block) => ({
+            ...block,
+            isGroup: block.members.length > 1,
+          }));
+        },
+
+        clampEventPage() {
+          this.eventPage = Math.min(this.eventPageCount, Math.max(1, this.eventPage));
+        },
+
+        pruneActiveEvent() {
+          if (!this.pagedEvents.some((event) => event.event_id === this.activeEventId)) {
+            this.activeEventId = null;
+          }
+        },
+
+        setEventPageSize(size) {
+          this.eventPageSize = size;
+        },
+
+        goToEventPage(page) {
+          this.eventPage = page;
+        },
+
+        toggleEventBlock(block) {
+          const firstEventId = block.members[0]?.event_id || null;
+          if (!firstEventId) return;
+
+          if (block.isGroup) {
+            this.activeEventId = this.isGroupOpen(block) ? null : firstEventId;
+            return;
+          }
+
+          this.activeEventId = this.activeEventId === firstEventId ? null : firstEventId;
+        },
+
+        openEvent(eventId) {
+          this.activeEventId = this.activeEventId === eventId ? null : eventId;
+        },
+
+        isGroupOpen(block) {
+          return block.members.some((event) => event.event_id === this.activeEventId);
+        },
+
+        isEventOpen(eventId) {
+          return this.activeEventId === eventId;
+        },
+
+        countForCategory(categoryKey) {
+          if (categoryKey === "all") return this.events.length;
+          return this.events.filter((event) => categoryKeyForType(event.event_type) === categoryKey).length;
         },
 
         categoryLabel(eventType) {
           const key = categoryKeyForType(eventType);
-          return CATEGORIES.find((c) => c.key === key)?.label || "Other";
+          return CATEGORIES.find((category) => category.key === key)?.label || "Other";
         },
 
         categoryBadgeClass(eventType) {
           return BADGE_CLASSES[categoryKeyForType(eventType)] || BADGE_CLASSES.other;
         },
 
+        statusDotClass(status) {
+          if (status === "pending") return "bg-yellow-400";
+          if (status === "delivered" || status === "completed") return "bg-emerald-500";
+          if (status === "failed") return "bg-red-500";
+          if (status === "in_progress") return "bg-blue-500 animate-pulse";
+          return "bg-gray-400";
+        },
+
         payloadPreview(payload) {
           const keys = Object.keys(payload || {});
           if (!keys.length) return "{}";
-          const preview = keys.slice(0, 3).map((k) => {
-            const v = payload[k];
-            const repr =
-              typeof v === "string"
-                ? `"${v.slice(0, 30)}${v.length > 30 ? "…" : ""}"`
-                : typeof v === "object" && v !== null
-                  ? "{…}"
-                  : String(v);
-            return `${k}: ${repr}`;
+
+          const preview = keys.slice(0, 3).map((key) => {
+            const value = payload[key];
+            const representation =
+              typeof value === "string"
+                ? `"${value.slice(0, 30)}${value.length > 30 ? "..." : ""}"`
+                : typeof value === "object" && value !== null
+                  ? "{...}"
+                  : String(value);
+            return `${key}: ${representation}`;
           });
-          return `{ ${preview.join(", ")}${keys.length > 3 ? ", …" : ""} }`;
+
+          return `{ ${preview.join(", ")}${keys.length > 3 ? ", ..." : ""} }`;
         },
 
-        formatTime(iso) {
+        blockPayloadPreview(block) {
+          if (!block.members.length) return "";
+          if (!block.isGroup) return this.payloadPreview(block.headEvent.payload);
+          const firstPreview = this.payloadPreview(block.members[0].payload);
+          return `${firstPreview} (+${block.members.length - 1} more)`;
+        },
+
+        blockTimeLabel(block) {
+          const firstTime = this.formatTime(block.members[0].created_at);
+          const lastTime = this.formatTime(block.members[block.members.length - 1].created_at);
+          return firstTime === lastTime ? firstTime : `${firstTime} - ${lastTime}`;
+        },
+
+        truncateCorrelation(correlationId) {
+          return correlationId ? `${correlationId.slice(0, 8)}...` : "";
+        },
+
+        formatTime(isoString) {
           try {
-            return new Date(iso).toLocaleTimeString([], {
+            return new Date(isoString).toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
               second: "2-digit",
               hour12: false,
             });
           } catch {
-            return iso || "";
+            return isoString || "";
           }
         },
 
-        formatDatetime(iso) {
+        formatDatetime(isoString) {
           try {
-            return new Date(iso).toLocaleString([], {
+            return new Date(isoString).toLocaleString([], {
               dateStyle: "short",
               timeStyle: "medium",
               hour12: false,
             });
           } catch {
-            return iso || "";
+            return isoString || "";
           }
         },
 
-        async copyText(text, el) {
+        sanitizeFilenamePart(value) {
+          const normalized = String(value || "watch-item")
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]+/g, "-")
+            .replace(/^-+|-+$/g, "");
+          return normalized || "watch-item";
+        },
+
+        eventFilename(event) {
+          return `${this.sanitizeFilenamePart(event.event_type)}-${event.event_id}.json`;
+        },
+
+        eventExport(event) {
+          return JSON.stringify(
+            {
+              event_id: event.event_id,
+              event_type: event.event_type,
+              created_at: event.created_at,
+              correlation_id: event.correlation_id,
+              payload: event.payload,
+              status: event.status,
+              delivery_attempts: event.delivery_attempts,
+              last_error: event.last_error,
+              idempotency_key: event.idempotency_key,
+              sequence_group_id: event.sequence_group_id,
+            },
+            null,
+            2
+          );
+        },
+
+        async copyText(text, element) {
           try {
             await navigator.clipboard.writeText(text);
-            const orig = el.textContent.trim();
-            el.textContent = "✓";
-            setTimeout(() => { el.textContent = orig; }, 1500);
+            const originalLabel = element.textContent.trim();
+            element.textContent = "Copied";
+            setTimeout(() => {
+              element.textContent = originalLabel;
+            }, 1500);
           } catch {
-            // Clipboard API unavailable — silently ignore
+            // Clipboard API unavailable.
           }
         },
 
-        startResize(e) {
+        downloadText(text, filename, element) {
+          try {
+            const blob = new Blob([text], { type: "application/json;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+
+            if (element) {
+              const originalLabel = element.textContent.trim();
+              element.textContent = "Saved";
+              setTimeout(() => {
+                element.textContent = originalLabel;
+              }, 1500);
+            }
+          } catch {
+            // Download failed - leave the UI unchanged.
+          }
+        },
+
+        startResize(event) {
           const container = this.$refs.mainContent;
-          const onMove = (mv) => {
+          const onMove = (moveEvent) => {
             const rect = container.getBoundingClientRect();
-            const pct = ((mv.clientX - rect.left) / rect.width) * 100;
-            this.leftWidth = Math.min(80, Math.max(20, pct));
+            const percent = ((moveEvent.clientX - rect.left) / rect.width) * 100;
+            this.leftWidth = Math.min(80, Math.max(20, percent));
           };
           const onUp = () => {
             window.removeEventListener("mousemove", onMove);
