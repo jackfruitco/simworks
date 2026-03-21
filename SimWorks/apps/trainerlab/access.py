@@ -31,9 +31,10 @@ def has_instructor_access(user, *, lab_slug: str = LAB_SLUG) -> bool:
     if membership is None:
         return False
 
-    return ACCESS_RANK.get(membership.access_level, 0) >= ACCESS_RANK[
-        LabMembership.AccessLevel.INSTRUCTOR
-    ]
+    return (
+        ACCESS_RANK.get(membership.access_level, 0)
+        >= ACCESS_RANK[LabMembership.AccessLevel.INSTRUCTOR]
+    )
 
 
 def require_instructor_membership(user, *, lab_slug: str = LAB_SLUG) -> LabMembership:

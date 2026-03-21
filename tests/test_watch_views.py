@@ -140,7 +140,9 @@ def test_parse_watch_page_state_and_event_grouping(chat_simulation):
 
 
 @pytest.mark.django_db
-def test_chatlab_watch_view_uses_query_params_for_initial_state(client, chatlab_owner, chat_simulation):
+def test_chatlab_watch_view_uses_query_params_for_initial_state(
+    client, chatlab_owner, chat_simulation
+):
     client.force_login(chatlab_owner)
 
     response = client.get(
@@ -198,7 +200,9 @@ def test_chatlab_service_calls_partial_paginates_and_preserves_query_params(
 
 
 @pytest.mark.django_db
-def test_service_call_actions_only_show_download_for_full_call(client, chatlab_owner, chat_simulation):
+def test_service_call_actions_only_show_download_for_full_call(
+    client, chatlab_owner, chat_simulation
+):
     client.force_login(chatlab_owner)
 
     ServiceCall.objects.create(

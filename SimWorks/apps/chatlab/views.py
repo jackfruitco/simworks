@@ -275,7 +275,8 @@ def watch_simulation(request, simulation_id):
         watch_url=reverse("chatlab:watch_simulation", args=[simulation_id]),
         back_url=run_url,
         lab_name="ChatLab",
-        can_go_to_simulation=request.user.is_authenticated and simulation.user_id == request.user.id,
+        can_go_to_simulation=request.user.is_authenticated
+        and simulation.user_id == request.user.id,
         go_to_simulation_url=run_url,
     )
     return render(
