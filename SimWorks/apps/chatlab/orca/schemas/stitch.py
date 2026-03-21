@@ -8,8 +8,8 @@ no metadata or conditions checks.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.common.outbox import event_types as outbox_events
 from apps.chatlab.orca.persisters import persist_stitch_messages
+from apps.common.outbox import event_types as outbox_events
 from orchestrai.types import ResultMessageItem
 
 

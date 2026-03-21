@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-
 CANONICAL_ACTIONS = (
     "created",
     "updated",
@@ -161,7 +160,10 @@ EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
     EventTypeSpec(
         SIMULATION_PATCH_EVALUATION_COMPLETED,
         "A runtime patch evaluation completed.",
-        aliases=("trainerlab.control_plane.patch_evaluated", "simulation.patch_evaluation.completed"),
+        aliases=(
+            "trainerlab.control_plane.patch_evaluated",
+            "simulation.patch_evaluation.completed",
+        ),
     ),
     EventTypeSpec(
         SIMULATION_TICK_TRIGGERED,
@@ -326,9 +328,7 @@ EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
 
 EVENT_TYPE_BY_NAME = {spec.name: spec for spec in EVENT_TYPE_SPECS}
 LEGACY_EVENT_TYPE_TO_CANONICAL = {
-    alias: spec.name
-    for spec in EVENT_TYPE_SPECS
-    for alias in spec.aliases
+    alias: spec.name for spec in EVENT_TYPE_SPECS for alias in spec.aliases
 }
 ALL_EVENT_TYPES = tuple(spec.name for spec in EVENT_TYPE_SPECS)
 ALL_DOCUMENTED_EVENT_TYPES = tuple(
@@ -404,6 +404,5 @@ def event_type_description(*, include_aliases: bool = False) -> str:
         values.extend(LEGACY_EVENT_TYPE_TO_CANONICAL.keys())
     return (
         "Canonical event types use the strict domain.subject.action contract with "
-        "lowercase dot-separated segments. Supported canonical types: "
-        + ", ".join(values)
+        "lowercase dot-separated segments. Supported canonical types: " + ", ".join(values)
     )

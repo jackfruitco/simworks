@@ -92,7 +92,9 @@ async def enqueue_event(
     OutboxEvent = apps.get_model("common", "OutboxEvent")
     canonical_event_type = event_types.canonical_event_type(event_type)
     if canonical_event_type != event_type:
-        logger.info("Canonicalized legacy outbox event type %s -> %s", event_type, canonical_event_type)
+        logger.info(
+            "Canonicalized legacy outbox event type %s -> %s", event_type, canonical_event_type
+        )
     event_type = canonical_event_type
     if not event_types.is_valid_canonical_event_type(event_type):
         raise ValueError(f"Invalid canonical outbox event type: {event_type}")
@@ -149,7 +151,9 @@ def enqueue_event_sync(
     OutboxEvent = apps.get_model("common", "OutboxEvent")
     canonical_event_type = event_types.canonical_event_type(event_type)
     if canonical_event_type != event_type:
-        logger.info("Canonicalized legacy outbox event type %s -> %s", event_type, canonical_event_type)
+        logger.info(
+            "Canonicalized legacy outbox event type %s -> %s", event_type, canonical_event_type
+        )
     event_type = canonical_event_type
     if not event_types.is_valid_canonical_event_type(event_type):
         raise ValueError(f"Invalid canonical outbox event type: {event_type}")

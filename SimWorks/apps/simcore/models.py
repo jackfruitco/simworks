@@ -18,8 +18,8 @@ from imagekit.models import ImageSpecField
 from pilkit.processors import Thumbnail
 from polymorphic.models import PolymorphicModel
 
-from apps.common.outbox import event_types as outbox_events
 from apps.common.models import PersistModel
+from apps.common.outbox import event_types as outbox_events
 
 from .utils import randomize_display_name
 

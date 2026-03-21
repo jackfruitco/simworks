@@ -9,8 +9,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.tasks import task
 
-from apps.common.outbox import enqueue_event_sync, poke_drain_sync
-from apps.common.outbox import event_types as outbox_events
+from apps.common.outbox import enqueue_event_sync, event_types as outbox_events, poke_drain_sync
 
 from .image_generation import ImageGenerationError, generate_patient_image
 from .media_payloads import build_chat_message_event_payload

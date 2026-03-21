@@ -6,9 +6,9 @@ from django.test import SimpleTestCase, TestCase
 from pydantic import ValidationError
 
 from api.v1.schemas.trainerlab import VitalCreateIn
+from apps.accounts.models import UserRole
 from apps.common.models import OutboxEvent
 from apps.common.outbox import event_types as outbox_events
-from apps.accounts.models import UserRole
 from apps.trainerlab.models import RuntimeEvent, SessionStatus
 from apps.trainerlab.services import complete_initial_scenario_generation, create_session
 
@@ -58,7 +58,9 @@ class TrainerSessionLifecycleEventTests(TestCase):
         )
 
     @patch("apps.trainerlab.services.generate_fake_name", new_callable=AsyncMock)
-    def test_create_session_seeding_emits_canonical_status_updated(self, mock_name: AsyncMock) -> None:
+    def test_create_session_seeding_emits_canonical_status_updated(
+        self, mock_name: AsyncMock
+    ) -> None:
         mock_name.return_value = "Test User"
 
         session = create_session(
@@ -152,7 +154,9 @@ class TrainerSessionLifecycleEventTests(TestCase):
         self.assertEqual(seeded_event.payload["from"], SessionStatus.SEEDING)
         self.assertEqual(seeded_event.payload["to"], SessionStatus.SEEDED)
         self.assertEqual(seeded_event.payload["scenario_spec"]["modifiers"], ["military"])
-        self.assertEqual(seeded_event.payload["state_revision"], session.runtime_state_json["state_revision"])
+        self.assertEqual(
+            seeded_event.payload["state_revision"], session.runtime_state_json["state_revision"]
+        )
         self.assertEqual(seeded_event.payload["call_id"], "call-123")
         self.assertFalse(OutboxEvent.objects.filter(event_type="session.seeded").exists())
         self.assertFalse(RuntimeEvent.objects.filter(event_type="session.seeded").exists())

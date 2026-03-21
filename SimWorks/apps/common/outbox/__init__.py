@@ -37,6 +37,7 @@ Usage:
         )
 """
 
+from . import event_types
 from .outbox import (
     apply_outbox_cursor,
     build_ws_envelope,
@@ -47,7 +48,6 @@ from .outbox import (
     poke_drain,
     poke_drain_sync,
 )
-from . import event_types
 
 # Note: broadcast_domain_objects is NOT exported here to avoid import issues
 # during Django startup. It requires orchestrai_django.persistence.PersistContext
@@ -57,10 +57,10 @@ from . import event_types
 __all__ = [
     "apply_outbox_cursor",
     "build_ws_envelope",
-    "event_types",
     # common outbox functions
     "enqueue_event",
     "enqueue_event_sync",
+    "event_types",
     "get_events_for_simulation",
     "order_outbox_queryset",
     "poke_drain",

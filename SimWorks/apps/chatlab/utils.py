@@ -11,8 +11,8 @@ from django.utils.timezone import now
 
 from apps.chatlab.media_payloads import build_chat_message_event_payload
 from apps.chatlab.models import ChatSession, Message, MessageMediaLink
-from apps.common.outbox import event_types as outbox_events
 from apps.common.orm_mode import must_be_async
+from apps.common.outbox import event_types as outbox_events
 from apps.common.utils import remove_null_keys
 from apps.simcore.models import (
     LabResult,

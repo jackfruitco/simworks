@@ -10,8 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from apps.common.outbox import enqueue_event_sync, poke_drain_sync
-from apps.common.outbox import event_types as outbox_events
+from apps.common.outbox import enqueue_event_sync, event_types as outbox_events, poke_drain_sync
 from apps.common.retries import has_user_retries_remaining
 from apps.simcore.models import Simulation
 from apps.simcore.utils import generate_fake_name
