@@ -731,6 +731,7 @@ def create_session(
     modifiers: list[str] | None,
     status: str = SessionStatus.SEEDED,
     emit_seeded_event: bool = True,
+    correlation_id: str | None = None,
 ) -> TrainerSession:
     scenario_spec = scenario_spec or {}
     modifiers = modifiers or []
@@ -760,11 +761,24 @@ def create_session(
         tick_interval_seconds=_normalize_tick_interval(scenario_spec.get("tick_interval_seconds")),
     )
 
-    if emit_seeded_event:
+    if status == SessionStatus.SEEDING:
         emit_simulation_status_event(
             session=session,
             previous_status=None,
             created_by=user,
+            correlation_id=correlation_id,
+            idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:seeding",
+            extra={
+                "scenario_spec": session.scenario_spec_json,
+                "state_revision": initial_state["state_revision"],
+            },
+        )
+    elif emit_seeded_event:
+        emit_simulation_status_event(
+            session=session,
+            previous_status=None,
+            created_by=user,
+            correlation_id=correlation_id,
             idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:seeded",
             extra={
                 "scenario_spec": session.scenario_spec_json,
@@ -982,6 +996,7 @@ def create_session_with_initial_generation(
         modifiers=modifiers,
         status=SessionStatus.SEEDING,
         emit_seeded_event=False,
+        correlation_id=correlation_id,
     )
     call_id = enqueue_initial_scenario_generation(
         session=session,
