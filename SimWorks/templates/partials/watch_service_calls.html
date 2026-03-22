@@ -60,7 +60,51 @@
         href="{% url_with_query watch_url request.GET sc_page=service_calls_page.previous_page_number %}"
         class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
       >
-        {# Status dot #}
+        <iconify-icon icon="mdi:chevron-left" width="16"></iconify-icon>
+      </a>
+      {% else %}
+      <span class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-gray-100 text-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600">
+        <iconify-icon icon="mdi:chevron-left" width="16"></iconify-icon>
+      </span>
+      {% endif %}
+
+      <span class="min-w-[6.5rem] text-center text-xs text-gray-500 dark:text-gray-400">
+        Page {{ service_calls_page.number }} of {{ service_calls_page.paginator.num_pages }}
+      </span>
+
+      {% if service_calls_page.has_next %}
+      <a
+        hx-get="{% url_with_query service_calls_url request.GET sc_page=service_calls_page.next_page_number %}"
+        x-bind:hx-get="serviceCallsPartialUrl({ sc_page: {{ service_calls_page.next_page_number }} })"
+        hx-target="#service-calls-section"
+        hx-swap="outerHTML"
+        hx-push-url="{% url_with_query watch_url request.GET sc_page=service_calls_page.next_page_number %}"
+        x-bind:hx-push-url="watchUrl({ sc_page: {{ service_calls_page.next_page_number }} })"
+        href="{% url_with_query watch_url request.GET sc_page=service_calls_page.next_page_number %}"
+        class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-white text-gray-500 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+      >
+        <iconify-icon icon="mdi:chevron-right" width="16"></iconify-icon>
+      </a>
+      {% else %}
+      <span class="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-200 bg-gray-100 text-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600">
+        <iconify-icon icon="mdi:chevron-right" width="16"></iconify-icon>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if service_calls_page.object_list %}
+  <div class="space-y-2">
+    {% for sc in service_calls_page.object_list %}
+    <div
+      class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"
+      x-data
+    >
+      <button
+        type="button"
+        @click="$store.scState.toggle('{{ sc.id }}')"
+        class="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+      >
         <span class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5
           {% if sc.status == 'completed' %}bg-emerald-500
           {% elif sc.status == 'failed' %}bg-red-500
@@ -68,12 +112,10 @@
           {% else %}bg-yellow-400{% endif %}">
         </span>
 
-        {# Started time #}
         <span class="flex-shrink-0 text-xs font-mono text-gray-500 dark:text-gray-400 w-20">
           {% if sc.started_at %}{{ sc.started_at|date:"H:i:s" }}{% else %}—{% endif %}
         </span>
 
-        {# Status badge #}
         <span class="flex-shrink-0 text-xs font-medium px-1.5 py-0.5 rounded
           {% if sc.status == 'completed' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
           {% elif sc.status == 'failed' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
@@ -82,33 +124,28 @@
           {{ sc.get_status_display }}
         </span>
 
-        {# Service identity #}
         <span class="flex-1 text-xs font-mono text-gray-800 dark:text-gray-200 truncate">
           {{ sc.service_identity }}
         </span>
 
-        {# Model #}
         {% if sc.model_name %}
         <span class="hidden sm:block flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">
           {{ sc.model_name }}
         </span>
         {% endif %}
 
-        {# Tokens #}
         {% if sc.total_tokens %}
         <span class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden md:block">
           ↑{{ sc.input_tokens }} ↓{{ sc.output_tokens }}
         </span>
         {% endif %}
 
-        {# Cost #}
         {% if sc.total_cost_usd %}
         <span class="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden md:block">
           ${{ sc.total_cost_usd }}
         </span>
         {% endif %}
 
-        {# Chevron #}
         <iconify-icon
           icon="mdi:chevron-down"
           width="16"
@@ -117,12 +154,9 @@
         ></iconify-icon>
       </button>
 
-      {# Expanded detail #}
       <div x-show="$store.scState.isOpen('{{ sc.id }}')" x-collapse>
         <div class="px-3 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
-
           <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            {# Meta #}
             <dl class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
               <div class="flex gap-1.5">
                 <dt class="font-medium">ID:</dt>
@@ -182,7 +216,7 @@
             </div>
           </div>
 
-            <script id="sc-full-{{ sc.id }}" type="application/json">{
+          <script id="sc-full-{{ sc.id }}" type="application/json">{
   "id": "{{ sc.id|safe }}",
   "service_identity": "{{ sc.service_identity|escapejs|safe }}",
   "status": "{{ sc.status|escapejs|safe }}",
@@ -201,21 +235,20 @@
   "output": {% if sc.output_data %}{{ sc.output_data|json_pretty|safe }}{% else %}null{% endif %}
 }</script>
 
-            {% if sc.error %}
-            <div>
-              <p class="mb-1 text-xs font-medium text-red-600">Error</p>
-              <pre class="overflow-x-auto whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">{{ sc.error }}</pre>
-            </div>
-            {% endif %}
+          {% if sc.error %}
+          <div>
+            <p class="mb-1 text-xs font-medium text-red-600">Error</p>
+            <pre class="overflow-x-auto whitespace-pre-wrap rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">{{ sc.error }}</pre>
+          </div>
+          {% endif %}
 
-            {% if sc.domain_persist_error %}
-            <div>
-              <p class="mb-1 text-xs font-medium text-orange-600">Domain Persist Error</p>
-              <pre class="overflow-x-auto whitespace-pre-wrap rounded border border-orange-200 bg-orange-50 p-2 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-400">{{ sc.domain_persist_error }}</pre>
-            </div>
-            {% endif %}
+          {% if sc.domain_persist_error %}
+          <div>
+            <p class="mb-1 text-xs font-medium text-orange-600">Domain Persist Error</p>
+            <pre class="overflow-x-auto whitespace-pre-wrap rounded border border-orange-200 bg-orange-50 p-2 text-xs text-orange-700 dark:border-orange-900 dark:bg-orange-950/30 dark:text-orange-400">{{ sc.domain_persist_error }}</pre>
+          </div>
+          {% endif %}
 
-          {# Input JSON #}
           {% if sc.input %}
           <div>
             <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Input</p>
@@ -241,7 +274,6 @@
           </div>
           {% endif %}
 
-          {# Output JSON #}
           {% if sc.output_data %}
           <div>
             <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Output</p>
@@ -265,9 +297,15 @@
               <pre id="sc-output-{{ sc.id }}" class="text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2 pt-12 overflow-x-auto text-gray-800 dark:text-gray-200 max-h-48">{{ sc.output_data|json_pretty }}</pre>
             </div>
           </div>
+          {% endif %}
         </div>
       </div>
-      {% endfor %}
     </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
+    No service calls yet.
+  </div>
   {% endif %}
 </section>
