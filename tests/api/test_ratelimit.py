@@ -228,17 +228,6 @@ class TestConfiguredRateLimiters:
     def test_auth_rate_limit_uses_runtime_setting(self):
         from apps.common import ratelimit as ratelimit_module
 
-        mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_redis.pipeline.return_value.__enter__ = lambda s: s
-        mock_redis.pipeline.return_value.__exit__ = lambda s, *args: None
-        mock_pipe = mock_redis.pipeline.return_value
-        mock_pipe.execute.side_effect = [
-            [None, 0, None, None],
-            [None, 1, None, None],
-        ]
-        mock_redis.zrange.return_value = [(b"12345:123", time.time() - 1)]
-
         auth_rate_limit = ratelimit_module.rate_limit(
             key="ip",
             limit=lambda: ratelimit_module._get_limit("RATE_LIMIT_AUTH_REQUESTS", 5),
@@ -254,10 +243,24 @@ class TestConfiguredRateLimiters:
         request = RequestFactory().get("/")
         request.META["REMOTE_ADDR"] = "192.168.1.1"
 
-        with patch("apps.common.ratelimit.get_redis_client", return_value=mock_redis):
+        mock_redis = MagicMock()
+        mock_redis.ping.return_value = True
+
+        with (
+            patch("apps.common.ratelimit.get_redis_client", return_value=mock_redis),
+            patch(
+                "apps.common.ratelimit.check_rate_limit",
+                return_value=(True, 1, 0),
+            ) as mock_check_rate_limit,
+        ):
             assert my_endpoint(request) == "ok"
-            with pytest.raises(RateLimitExceeded):
-                my_endpoint(request)
+
+        mock_check_rate_limit.assert_called_once_with(
+            mock_redis,
+            ratelimit_module.get_rate_limit_key(request, "ip", "auth"),
+            1,
+            60,
+        )
 
 
 @pytest.mark.django_db
