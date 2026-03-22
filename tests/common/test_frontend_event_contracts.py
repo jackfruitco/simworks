@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from apps.common.outbox import event_types as outbox_events
+
 
 def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
@@ -9,13 +11,13 @@ def _read(path: str) -> str:
 
 def test_event_bus_knows_feedback_created_event():
     source = _read("SimWorks/apps/common/static/common/js/simulation-event-bus.js")
-    assert "'feedback.created'" in source
+    assert f"'{outbox_events.FEEDBACK_CREATED}'" in source
 
 
 def test_chat_tool_config_listens_for_feedback_created():
     source = _read("SimWorks/apps/chatlab/static/chatlab/js/chat.js")
     assert "'simulation_feedback'" in source
-    assert "'feedback.created'" in source
+    assert f"'{outbox_events.FEEDBACK_CREATED}'" in source
 
 
 def test_new_message_button_is_nested_in_messages_panel_stack():
@@ -46,19 +48,34 @@ def test_trainerlab_event_contract_includes_friendly_labels():
     assert "injury_kind_label?: string;" in source
     assert "intervention_label?: string;" in source
     assert "site_label?: string;" in source
-    assert "type: 'injury.created' | 'injury.updated';" in source
-    assert "type: 'illness.created' | 'illness.updated';" in source
-    assert "type: 'problem.created';" in source
-    assert "type: 'recommended_intervention.created'" in source
-    assert "type: 'intervention.created' | 'intervention.updated';" in source
-    assert "type: 'state.updated';" in source
-    assert "type: 'ai.intent.updated';" in source
-    assert "type: 'trainerlab.assessment_finding.created'" in source
-    assert "type: 'trainerlab.diagnostic_result.created'" in source
-    assert "type: 'trainerlab.resource.updated';" in source
-    assert "type: 'trainerlab.disposition.updated';" in source
-    assert "type: 'trainerlab.vital.created' | 'trainerlab.vital.updated';" in source
-    assert "type: 'trainerlab.pulse.created' | 'trainerlab.pulse.updated';" in source
+    assert (
+        f"'{outbox_events.PATIENT_INJURY_CREATED}' | '{outbox_events.PATIENT_INJURY_UPDATED}'"
+        in source
+    )
+    assert (
+        f"'{outbox_events.PATIENT_ILLNESS_CREATED}' | '{outbox_events.PATIENT_ILLNESS_UPDATED}'"
+        in source
+    )
+    assert f"'{outbox_events.PATIENT_PROBLEM_CREATED}'" in source
+    assert f"'{outbox_events.PATIENT_RECOMMENDED_INTERVENTION_CREATED}'" in source
+    assert (
+        f"'{outbox_events.PATIENT_INTERVENTION_CREATED}'"
+        f" | '{outbox_events.PATIENT_INTERVENTION_UPDATED}'" in source
+    )
+    assert f"'{outbox_events.SIMULATION_SNAPSHOT_UPDATED}'" in source
+    assert f"'{outbox_events.SIMULATION_PLAN_UPDATED}'" in source
+    assert f"'{outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED}'" in source
+    assert f"'{outbox_events.PATIENT_DIAGNOSTIC_RESULT_CREATED}'" in source
+    assert f"'{outbox_events.PATIENT_RESOURCE_UPDATED}'" in source
+    assert f"'{outbox_events.PATIENT_DISPOSITION_UPDATED}'" in source
+    assert (
+        f"'{outbox_events.PATIENT_VITAL_CREATED}' | '{outbox_events.PATIENT_VITAL_UPDATED}'"
+        in source
+    )
+    assert (
+        f"'{outbox_events.PATIENT_PULSE_CREATED}' | '{outbox_events.PATIENT_PULSE_UPDATED}'"
+        in source
+    )
     assert "cause_kind: 'injury' | 'illness';" in source
     assert "recommended_interventions?: TrainerLabRecommendedInterventionFields[];" in source
     assert "active?: boolean;" in source
@@ -70,50 +87,42 @@ def test_trainerlab_event_contract_includes_friendly_labels():
 def test_trainerlab_typescript_contract_covers_backend_event_surface():
     source = _read("SimWorks/apps/common/static/common/js/simulation-events.d.ts")
     backend_event_types = {
-        "adjustment.accepted",
-        "adjustment.applied",
-        "ai.intent.updated",
-        "illness.created",
-        "illness.updated",
-        "injury.created",
-        "injury.updated",
-        "intervention.created",
-        "intervention.updated",
-        "note.created",
-        "problem.created",
-        "problem.updated",
-        "problem.resolved",
-        "recommended_intervention.created",
-        "recommended_intervention.updated",
-        "recommended_intervention.removed",
-        "run.paused",
-        "run.resumed",
-        "run.started",
-        "run.stopped",
-        "runtime.failed",
-        "session.failed",
-        "session.seeding",
-        "session.seeded",
-        "state.updated",
-        "summary.ready",
-        "summary.updated",
-        "trainerlab.annotation.created",
-        "trainerlab.assessment_finding.created",
-        "trainerlab.assessment_finding.updated",
-        "trainerlab.assessment_finding.removed",
-        "trainerlab.diagnostic_result.created",
-        "trainerlab.diagnostic_result.updated",
-        "trainerlab.disposition.updated",
-        "trainerlab.intervention.assessed",
-        "trainerlab.pulse.created",
-        "trainerlab.pulse.updated",
-        "trainerlab.recommendation_evaluation.created",
-        "trainerlab.resource.updated",
-        "trainerlab.scenario_brief.created",
-        "trainerlab.scenario_brief.updated",
-        "trainerlab.tick.triggered",
-        "trainerlab.vital.created",
-        "trainerlab.vital.updated",
+        outbox_events.SIMULATION_ADJUSTMENT_ACCEPTED,
+        outbox_events.SIMULATION_PLAN_UPDATED,
+        outbox_events.PATIENT_ILLNESS_CREATED,
+        outbox_events.PATIENT_ILLNESS_UPDATED,
+        outbox_events.PATIENT_INJURY_CREATED,
+        outbox_events.PATIENT_INJURY_UPDATED,
+        outbox_events.PATIENT_INTERVENTION_CREATED,
+        outbox_events.PATIENT_INTERVENTION_UPDATED,
+        outbox_events.SIMULATION_NOTE_CREATED,
+        outbox_events.PATIENT_PROBLEM_CREATED,
+        outbox_events.PATIENT_PROBLEM_UPDATED,
+        outbox_events.PATIENT_RECOMMENDED_INTERVENTION_CREATED,
+        outbox_events.PATIENT_RECOMMENDED_INTERVENTION_UPDATED,
+        outbox_events.PATIENT_RECOMMENDED_INTERVENTION_REMOVED,
+        outbox_events.SIMULATION_RUNTIME_FAILED,
+        outbox_events.SIMULATION_STATUS_UPDATED,
+        outbox_events.SIMULATION_SNAPSHOT_UPDATED,
+        outbox_events.SIMULATION_SUMMARY_UPDATED,
+        outbox_events.SIMULATION_ANNOTATION_CREATED,
+        outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED,
+        outbox_events.PATIENT_ASSESSMENT_FINDING_UPDATED,
+        outbox_events.PATIENT_ASSESSMENT_FINDING_REMOVED,
+        outbox_events.PATIENT_DIAGNOSTIC_RESULT_CREATED,
+        outbox_events.PATIENT_DIAGNOSTIC_RESULT_UPDATED,
+        outbox_events.PATIENT_DISPOSITION_UPDATED,
+        outbox_events.PATIENT_PULSE_CREATED,
+        outbox_events.PATIENT_PULSE_UPDATED,
+        outbox_events.PATIENT_RECOMMENDATION_EVALUATION_CREATED,
+        outbox_events.PATIENT_RESOURCE_UPDATED,
+        outbox_events.SIMULATION_BRIEF_CREATED,
+        outbox_events.SIMULATION_BRIEF_UPDATED,
+        outbox_events.SIMULATION_TICK_TRIGGERED,
+        outbox_events.PATIENT_VITAL_CREATED,
+        outbox_events.PATIENT_VITAL_UPDATED,
+        outbox_events.SIMULATION_PRESET_APPLIED,
+        outbox_events.SIMULATION_COMMAND_ACCEPTED,
     }
     for event_type in backend_event_types:
         assert f"'{event_type}'" in source

@@ -149,6 +149,7 @@ class TestCreateConversation:
         """New feedback conversation gets an initial Stitch greeting message."""
         from apps.chatlab.models import Message, RoleChoices
         from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import MESSAGE_CREATED
 
         response = auth_client.post(
             f"/api/v1/simulations/{simulation.pk}/conversations/",
@@ -176,8 +177,8 @@ class TestCreateConversation:
 
         assert OutboxEvent.objects.filter(
             simulation_id=simulation.pk,
-            event_type="chat.message_created",
-            idempotency_key=f"chat.message_created:{greeting.id}",
+            event_type=MESSAGE_CREATED,
+            idempotency_key=f"{MESSAGE_CREATED}:{greeting.id}",
         ).exists()
 
     def test_create_feedback_conversation_idempotent_does_not_duplicate_greeting(
@@ -186,6 +187,7 @@ class TestCreateConversation:
         """Idempotent create does not create a second Stitch greeting."""
         from apps.chatlab.models import Message
         from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import MESSAGE_CREATED
 
         first = auth_client.post(
             f"/api/v1/simulations/{simulation.pk}/conversations/",
@@ -220,8 +222,8 @@ class TestCreateConversation:
         assert (
             OutboxEvent.objects.filter(
                 simulation_id=simulation.pk,
-                event_type="chat.message_created",
-                idempotency_key=f"chat.message_created:{greeting.id}",
+                event_type=MESSAGE_CREATED,
+                idempotency_key=f"{MESSAGE_CREATED}:{greeting.id}",
             ).count()
             == 1
         )

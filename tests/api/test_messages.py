@@ -604,7 +604,7 @@ class TestCreateMessage:
 
         status_events = list(
             OutboxEvent.objects.filter(
-                event_type="message_status_update",
+                event_type="message.delivery.updated",
                 simulation_id=simulation.pk,
             ).order_by("created_at")
         )

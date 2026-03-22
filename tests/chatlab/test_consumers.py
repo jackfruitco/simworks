@@ -2,8 +2,8 @@
 
 Tests:
 - Connection handling
-- chat.message_created event delivery
-- simulation.metadata.results_created event delivery
+- message.item.created event delivery
+- patient.results.updated event delivery
 - Event handler routing
 
 Note: These tests use transaction=True for database isolation with async operations.
@@ -16,6 +16,7 @@ from channels.testing import WebsocketCommunicator
 import pytest
 
 from apps.chatlab.consumers import ChatConsumer
+from apps.common.outbox.event_types import MESSAGE_CREATED, PATIENT_RESULTS_UPDATED
 
 
 async def create_simulation_and_user():
@@ -131,7 +132,7 @@ class TestChatMessageCreatedHandler:
         # Test the handler directly
         await consumer.chat_message_created(
             {
-                "type": "chat.message_created",
+                "type": MESSAGE_CREATED,
                 "id": 123,
                 "role": "A",
                 "content": "Test message content",
@@ -146,7 +147,7 @@ class TestChatMessageCreatedHandler:
         import json
 
         sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == "chat.message_created"
+        assert sent_data["type"] == MESSAGE_CREATED
         assert sent_data["id"] == 123
         assert sent_data["content"] == "Test message content"
 
@@ -185,7 +186,7 @@ class TestChatMessageCreatedHandler:
         # Event without content or media
         await consumer.chat_message_created(
             {
-                "type": "chat.message_created",
+                "type": MESSAGE_CREATED,
                 "id": 456,
                 # No content, no media
             }
@@ -233,7 +234,7 @@ class TestSimulationMetadataResultsCreatedHandler:
         # Test metadata event
         await consumer.simulation_metadata_results_created(
             {
-                "type": "simulation.metadata.results_created",
+                "type": PATIENT_RESULTS_UPDATED,
                 "tool": "patient_results",
                 "results": [
                     {"key": "patient_name", "value": "John Smith"},
@@ -247,7 +248,7 @@ class TestSimulationMetadataResultsCreatedHandler:
         import json
 
         sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == "simulation.metadata.results_created"
+        assert sent_data["type"] == PATIENT_RESULTS_UPDATED
         assert sent_data["tool"] == "patient_results"
         assert len(sent_data["results"]) == 2
 
@@ -286,7 +287,7 @@ class TestSimulationMetadataResultsCreatedHandler:
         # Minimal event - no html (client will use HTMX-get)
         await consumer.simulation_metadata_results_created(
             {
-                "type": "simulation.metadata.results_created",
+                "type": PATIENT_RESULTS_UPDATED,
                 "tool": "simulation_metadata",
             }
         )
@@ -296,7 +297,7 @@ class TestSimulationMetadataResultsCreatedHandler:
         import json
 
         sent_data = json.loads(sent_messages[0])
-        assert sent_data["type"] == "simulation.metadata.results_created"
+        assert sent_data["type"] == PATIENT_RESULTS_UPDATED
         assert sent_data["tool"] == "simulation_metadata"
         assert "html" not in sent_data
 
@@ -338,7 +339,7 @@ class TestOutboxEventHandler:
             {
                 "event": {
                     "event_id": "event-123",
-                    "event_type": "simulation.metadata.results_created",
+                    "event_type": PATIENT_RESULTS_UPDATED,
                     "created_at": "2026-01-16T10:30:00Z",
                     "correlation_id": "corr-123",
                     "payload": {
@@ -353,7 +354,7 @@ class TestOutboxEventHandler:
         import json
 
         sent_data = json.loads(sent_messages[0])
-        assert sent_data["event_type"] == "simulation.metadata.results_created"
+        assert sent_data["event_type"] == PATIENT_RESULTS_UPDATED
         assert sent_data["payload"]["tool"] == "patient_results"
         assert sent_data["payload"]["results"][0]["key"] == "lab_results_available"
 

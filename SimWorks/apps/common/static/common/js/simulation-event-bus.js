@@ -5,7 +5,7 @@
  * Allows components to subscribe to events with wildcards and priority ordering.
  *
  * Features:
- * - Wildcard subscriptions: 'chat.*' matches all chat events
+ * - Wildcard subscriptions: 'message.*' matches all message events
  * - Priority-based handler ordering
  * - Clean unsubscribe via returned function
  *
@@ -14,7 +14,7 @@
  *   eventBus.attachSocket(socket);
  *
  *   // Subscribe to single event
- *   const unsubscribe = eventBus.on('chat.message_created', (data) => {
+ *   const unsubscribe = eventBus.on('message.item.created', (data) => {
  *       console.log('Message:', data);
  *   });
  *
@@ -81,14 +81,22 @@ class SimulationEventBus {
     _setupListeners() {
         const eventTypes = [
             'init_message',
+            'message.item.created',
             'chat.message_created',
             'typing',
             'stopped_typing',
+            'feedback.item.created',
             'simulation.feedback_created',
             'feedback.created',
             'simulation.hotwash.created',
             'simulation.feedback.continue_conversation',
             'simulation.hotwash.continue_conversation',
+            'patient.metadata.created',
+            'message.delivery.updated',
+            'simulation.status.updated',
+            'feedback.generation.failed',
+            'feedback.generation.updated',
+            'patient.results.updated',
             'simulation.metadata.results_created',
             'simulation.state_changed',
             'feedback.failed',

@@ -3,6 +3,7 @@ from django.urls import reverse
 import pytest
 
 from apps.common.models import OutboxEvent
+from apps.common.outbox.event_types import PATIENT_PULSE_CREATED, PATIENT_VITAL_UPDATED
 from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.watch import parse_watch_page_state, serialize_outbox_events
 from orchestrai_django.models import ServiceCall
@@ -119,10 +120,10 @@ def test_parse_watch_page_state_and_event_grouping(chat_simulation):
     assert state.sc_page_size == 100
 
     event_types = [
-        "trainerlab.pulse.created",
-        "trainerlab.pulse.created",
-        "trainerlab.vital.updated",
-        "trainerlab.pulse.created",
+        PATIENT_PULSE_CREATED,
+        PATIENT_PULSE_CREATED,
+        PATIENT_VITAL_UPDATED,
+        PATIENT_PULSE_CREATED,
     ]
     created_event_ids = []
     for index, event_type in enumerate(event_types, start=1):

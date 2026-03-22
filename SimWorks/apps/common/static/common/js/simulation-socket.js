@@ -5,9 +5,9 @@
  * or any other event listener. This provides a clean separation between
  * WebSocket communication and UI rendering.
  *
- * Supports both legacy format and new standardized envelope format:
+ * Supports both legacy format and the canonical envelope format:
  * - Legacy: { type: "chat.message_created", content: "..." }
- * - Envelope: { event_id: "uuid", event_type: "message.created", payload: {...} }
+ * - Envelope: { event_id: "uuid", event_type: "message.item.created", payload: {...} }
  *
  * Features:
  * - Automatic reconnection with exponential backoff
@@ -19,28 +19,46 @@
  *   const socket = new SimulationSocket(simulationId, options);
  *
  *   // Listen for events in Alpine.js:
- *   <div @sim:chat.message_created.window="handleMessage($event.detail)">
+ *   <div @sim:message.item.created.window="handleMessage($event.detail)">
  *
  *   // Or vanilla JS:
- *   window.addEventListener('sim:chat.message_created', (e) => {
+ *   window.addEventListener('sim:message.item.created', (e) => {
  *       console.log(e.detail);
  *   });
  *
  * Events dispatched:
  *   - sim:init_message
- *   - sim:chat.message_created
+ *   - sim:message.item.created
  *   - sim:typing
  *   - sim:stopped_typing
- *   - sim:simulation.feedback_created
- *   - sim:message_status_update
- *   - sim:simulation.state_changed
- *   - sim:feedback.failed
- *   - sim:feedback.retrying
- *   - sim:simulation.metadata.results_created
+ *   - sim:feedback.item.created
+ *   - sim:message.delivery.updated
+ *   - sim:simulation.status.updated
+ *   - sim:feedback.generation.failed
+ *   - sim:feedback.generation.updated
+ *   - sim:patient.results.updated
  *   - sim:error
  *   - sim:connected
  *   - sim:disconnected
  */
+const CANONICAL_EVENT_ALIASES = {
+    'message.item.created': ['chat.message_created'],
+    'message.delivery.updated': ['message_status_update'],
+    'simulation.status.updated': ['simulation.state_changed'],
+    'feedback.generation.failed': ['feedback.failed'],
+    'feedback.generation.updated': ['feedback.retrying'],
+    'feedback.item.created': ['simulation.feedback_created', 'feedback.created', 'simulation.hotwash.created'],
+    'patient.results.updated': ['simulation.metadata.results_created'],
+    'patient.metadata.created': ['metadata.created'],
+};
+
+const LEGACY_TO_CANONICAL_EVENT = Object.entries(CANONICAL_EVENT_ALIASES).reduce((acc, [canonicalType, aliases]) => {
+    for (const alias of aliases) {
+        acc[alias] = canonicalType;
+    }
+    return acc;
+}, {});
+
 class SimulationSocket {
     constructor(simulationId, options = {}) {
         this.simulationId = simulationId;
@@ -151,26 +169,29 @@ class SimulationSocket {
             this.detectGap(data.created_at);
 
             // Extract event type and merge payload with envelope metadata
-            const type = data.event_type;
+            const type = this.canonicalizeEventType(data.event_type);
             const detail = {
                 ...data.payload,
                 event_id: data.event_id,
-                event_type: data.event_type,
+                event_type: type,
+                original_event_type: data.event_type,
                 correlation_id: data.correlation_id,
                 created_at: data.created_at,
             };
 
-            // Dispatch with sim: prefix
-            this.dispatch(type, detail);
+            this.dispatchEventType(type, detail);
 
             // Debug logging
             console.debug('[SimulationSocket] Envelope event:', type, detail);
         } else {
             // Legacy format - use type field directly
-            const type = data.type || 'unknown';
+            const type = this.canonicalizeEventType(data.type || 'unknown');
 
-            // Dispatch with sim: prefix for all event types
-            this.dispatch(type, data);
+            this.dispatchEventType(type, {
+                ...data,
+                type,
+                original_type: data.type || 'unknown',
+            });
 
             // Debug logging
             console.debug('[SimulationSocket] Legacy event:', type, data);
@@ -363,6 +384,18 @@ class SimulationSocket {
         }
 
         return response.json();
+    }
+
+    canonicalizeEventType(type) {
+        return LEGACY_TO_CANONICAL_EVENT[type] || type;
+    }
+
+    dispatchEventType(type, detail) {
+        this.dispatch(type, detail);
+        const aliases = CANONICAL_EVENT_ALIASES[type] || [];
+        for (const alias of aliases) {
+            this.dispatch(alias, detail);
+        }
     }
 
     dispatch(type, detail) {

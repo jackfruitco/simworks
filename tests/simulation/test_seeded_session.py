@@ -8,6 +8,7 @@ from asgiref.sync import async_to_sync
 from django.utils import timezone
 import pytest
 
+from apps.common.outbox import event_types as outbox_events
 from apps.trainerlab.orca.schemas import InitialScenarioSchema
 from apps.trainerlab.orca.services import GenerateInitialScenario
 from apps.trainerlab.services import (
@@ -165,6 +166,12 @@ def _create_pending_initial_service_call(*, session, call_id=None) -> ServiceCal
     )
 
 
+def _phase_event_count(queryset, *, phase: str) -> int:
+    return sum(
+        1 for payload in queryset.values_list("payload", flat=True) if payload.get("phase") == phase
+    )
+
+
 class TestGenerateInitialScenarioSchemaValid:
     @pytest.mark.unit
     def test_schema_importable_and_valid(self):
@@ -192,20 +199,12 @@ class TestSeedingSessionLifecycle:
         assert call_id == "fake-call-id-seeding"
         assert session.status == "seeding"
         assert session.runtime_state_json["phase"] == "seeding"
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeding",
-            ).count()
-            == 1
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 0
-        )
+        assert _phase_event_count(runtime_status_events, phase="seeding") == 1
+        assert _phase_event_count(runtime_status_events, phase="seeded") == 0
 
     def test_complete_initial_scenario_generation_marks_seeded_and_emits_events(
         self, user, monkeypatch
@@ -237,13 +236,11 @@ class TestSeedingSessionLifecycle:
         session.refresh_from_db()
         assert session.status == "seeding"
         assert session.runtime_state_json["phase"] == "seeding"
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 0
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
+        assert _phase_event_count(runtime_status_events, phase="seeded") == 0
 
         completed = complete_initial_scenario_generation(
             simulation_id=session.simulation_id,
@@ -254,34 +251,32 @@ class TestSeedingSessionLifecycle:
         session.refresh_from_db()
         assert session.status == "seeded"
         assert session.runtime_state_json["phase"] == "seeded"
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 1
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
+        assert _phase_event_count(runtime_status_events, phase="seeded") == 1
         assert (
             RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
-                event_type="trainerlab.vital.created",
+                event_type=outbox_events.PATIENT_VITAL_CREATED,
             ).count()
             >= 1
         )
         assert (
             RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
-                event_type="injury.created",
+                event_type=outbox_events.PATIENT_INJURY_CREATED,
             ).count()
             + RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
-                event_type="illness.created",
+                event_type=outbox_events.PATIENT_ILLNESS_CREATED,
             ).count()
         ) >= 1
         assert (
             RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
-                event_type="problem.created",
+                event_type=outbox_events.PATIENT_PROBLEM_CREATED,
             ).count()
             >= 1
         )
@@ -352,20 +347,16 @@ class TestSeedingSessionLifecycle:
         assert call.domain_persisted is True
         assert session.status == SessionStatus.SEEDED
         assert session.runtime_state_json["phase"] == "seeded"
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 1
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
-        assert (
-            OutboxEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 1
+        outbox_status_events = OutboxEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
+        assert _phase_event_count(runtime_status_events, phase="seeded") == 1
+        assert _phase_event_count(outbox_status_events, phase="seeded") == 1
 
     def test_process_pending_persistence_uses_authoritative_post_persist_when_signal_ignored(
         self, user, monkeypatch
@@ -394,13 +385,11 @@ class TestSeedingSessionLifecycle:
         assert stats["processed"] == 1
         assert call.domain_persisted is True
         assert session.status == SessionStatus.SEEDED
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 1
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
+        assert _phase_event_count(runtime_status_events, phase="seeded") == 1
 
     def test_duplicate_success_trigger_is_idempotent_after_deferred_completion(self, user):
         from apps.common.models import OutboxEvent
@@ -428,20 +417,16 @@ class TestSeedingSessionLifecycle:
 
         session.refresh_from_db()
         assert session.status == SessionStatus.SEEDED
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 1
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
-        assert (
-            OutboxEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeded",
-            ).count()
-            == 1
+        outbox_status_events = OutboxEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
+        assert _phase_event_count(runtime_status_events, phase="seeded") == 1
+        assert _phase_event_count(outbox_status_events, phase="seeded") == 1
 
     def test_fail_initial_scenario_generation_marks_failed(self, user, monkeypatch):
         from apps.trainerlab.models import RuntimeEvent
@@ -476,14 +461,19 @@ class TestSeedingSessionLifecycle:
             == "trainerlab_initial_generation_provider_timeout"
         )
         assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.failed",
-            ).count()
+            _phase_event_count(
+                RuntimeEvent.objects.filter(
+                    simulation_id=session.simulation_id,
+                    event_type=outbox_events.SIMULATION_STATUS_UPDATED,
+                ),
+                phase="failed",
+            )
             == 1
         )
 
-    def test_retry_initial_scenario_generation_re_emits_session_seeding(self, user, monkeypatch):
+    def test_retry_initial_scenario_generation_resets_phase_without_duplicate_status_event(
+        self, user, monkeypatch
+    ):
         from apps.trainerlab.models import RuntimeEvent
 
         monkeypatch.setattr(
@@ -510,13 +500,12 @@ class TestSeedingSessionLifecycle:
         session.refresh_from_db()
         assert session.status == "seeding"
         assert session.runtime_state_json["phase"] == "seeding"
-        assert (
-            RuntimeEvent.objects.filter(
-                simulation_id=session.simulation_id,
-                event_type="session.seeding",
-            ).count()
-            == 2
+        runtime_status_events = RuntimeEvent.objects.filter(
+            simulation_id=session.simulation_id,
+            event_type=outbox_events.SIMULATION_STATUS_UPDATED,
         )
+        assert _phase_event_count(runtime_status_events, phase="seeding") == 1
+        assert _phase_event_count(runtime_status_events, phase="failed") == 1
 
     def test_ai_response_failed_signal_marks_failed(self, user, monkeypatch):
         monkeypatch.setattr(
@@ -571,7 +560,7 @@ class TestEmitSeededVitalEvents:
 
         events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="trainerlab.vital.created",
+            event_type=outbox_events.PATIENT_VITAL_CREATED,
         )
         assert events.count() >= 1
 
@@ -592,16 +581,16 @@ class TestEmitSeededVitalEvents:
         cause_events = (
             RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
-                event_type="injury.created",
+                event_type=outbox_events.PATIENT_INJURY_CREATED,
             ).count()
             + RuntimeEvent.objects.filter(
                 simulation_id=session.simulation_id,
-                event_type="illness.created",
+                event_type=outbox_events.PATIENT_ILLNESS_CREATED,
             ).count()
         )
         problem_events = RuntimeEvent.objects.filter(
             simulation_id=session.simulation_id,
-            event_type="problem.created",
+            event_type=outbox_events.PATIENT_PROBLEM_CREATED,
         ).count()
         assert cause_events >= 1
         assert problem_events >= 1

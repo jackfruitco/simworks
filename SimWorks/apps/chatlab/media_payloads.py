@@ -161,7 +161,7 @@ def build_chat_message_event_payload(
     fallback_conversation_type: str | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
-    """Build the canonical outbox/WebSocket payload for ``chat.message_created``."""
+    """Build the canonical outbox/WebSocket payload for ``message.item.created``."""
     resolved_conversation_type = conversation_type or resolve_message_conversation_type(
         message,
         fallback=fallback_conversation_type,

@@ -14,10 +14,10 @@ Usage:
 
         # Create outbox event (in same transaction ideally)
         await enqueue_event(
-            event_type="message.created",
+            event_type="message.item.created",
             simulation_id=message.simulation_id,
             payload={"message_id": message.pk, "content": message.content},
-            idempotency_key=f"message.created:{message.pk}",
+            idempotency_key=f"message.item.created:{message.pk}",
             correlation_id=request.correlation_id,
         )
 
@@ -37,6 +37,8 @@ from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+
+from . import event_types
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,7 @@ async def enqueue_event(
     """Create an outbox event atomically.
 
     Args:
-        event_type: Event type (e.g., 'message.created', 'simulation.ended')
+        event_type: Event type (e.g., 'message.item.created', 'simulation.status.updated')
         simulation_id: Simulation ID for routing to correct WebSocket group
         payload: Event payload as a dict (will be stored as JSON)
         idempotency_key: Unique key to prevent duplicate events.
@@ -79,15 +81,23 @@ async def enqueue_event(
 
     Example:
         event = await enqueue_event(
-            event_type="message.created",
+            event_type="message.item.created",
             simulation_id=123,
             payload={"message_id": 456, "content": "Hello"},
-            idempotency_key="message.created:456",
+            idempotency_key="message.item.created:456",
         )
     """
     from django.apps import apps
 
     OutboxEvent = apps.get_model("common", "OutboxEvent")
+    canonical_event_type = event_types.canonical_event_type(event_type)
+    if canonical_event_type != event_type:
+        logger.info(
+            "Canonicalized legacy outbox event type %s -> %s", event_type, canonical_event_type
+        )
+    event_type = canonical_event_type
+    if not event_types.is_valid_canonical_event_type(event_type):
+        raise ValueError(f"Invalid canonical outbox event type: {event_type}")
     payload = _normalize_payload(payload)
 
     if idempotency_key is None:
@@ -139,6 +149,14 @@ def enqueue_event_sync(
     from django.apps import apps
 
     OutboxEvent = apps.get_model("common", "OutboxEvent")
+    canonical_event_type = event_types.canonical_event_type(event_type)
+    if canonical_event_type != event_type:
+        logger.info(
+            "Canonicalized legacy outbox event type %s -> %s", event_type, canonical_event_type
+        )
+    event_type = canonical_event_type
+    if not event_types.is_valid_canonical_event_type(event_type):
+        raise ValueError(f"Invalid canonical outbox event type: {event_type}")
     payload = _normalize_payload(payload)
 
     if idempotency_key is None:
@@ -175,7 +193,7 @@ def build_ws_envelope(event: OutboxEvent) -> dict[str, Any]:
 
     {
         "event_id": "<uuid>",
-        "event_type": "message.created",
+        "event_type": "message.item.created",
         "created_at": "2024-01-01T12:00:00Z",
         "correlation_id": "<uuid>|null",
         "payload": { ... }

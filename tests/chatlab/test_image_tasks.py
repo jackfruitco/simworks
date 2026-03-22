@@ -87,6 +87,7 @@ def source_message(db, simulation, patient_conversation):
 def test_generate_patient_image_task_success(source_message):
     from apps.chatlab.image_generation import GeneratedImage
     from apps.common.models import OutboxEvent
+    from apps.common.outbox.event_types import MESSAGE_CREATED
 
     with patch(
         "apps.chatlab.tasks.generate_patient_image",
@@ -116,8 +117,8 @@ def test_generate_patient_image_task_success(source_message):
     assert link.media.provider_id == "img_123"
     assert link.media.mime_type == "image/png"
 
-    event = OutboxEvent.objects.get(idempotency_key=f"chat.message_created:{image_message.id}")
-    assert event.event_type == "chat.message_created"
+    event = OutboxEvent.objects.get(idempotency_key=f"{MESSAGE_CREATED}:{image_message.id}")
+    assert event.event_type == MESSAGE_CREATED
     assert event.payload["message_id"] == image_message.id
     assert event.payload["source_message_id"] == source_message.id
     assert len(event.payload["media_list"]) == 1

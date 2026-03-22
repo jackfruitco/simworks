@@ -15,6 +15,7 @@ from django.utils import timezone
 import pytest
 
 from api.v1.auth import create_access_token
+from apps.common.outbox.event_types import MESSAGE_CREATED, SIMULATION_STATUS_UPDATED
 
 
 @pytest.fixture
@@ -354,20 +355,20 @@ class TestStreamEvents:
         from tests.helpers.sse import collect_streaming_chunks
 
         OutboxEvent.objects.create(
-            event_type="session.seeded",
+            event_type=SIMULATION_STATUS_UPDATED,
             simulation_id=simulation.pk,
-            payload={"status": "seeded"},
-            idempotency_key=f"session.seeded:{simulation.pk}:{uuid.uuid4()}",
+            payload={"status": "seeded", "phase": "seeded"},
+            idempotency_key=f"{SIMULATION_STATUS_UPDATED}:{simulation.pk}:{uuid.uuid4()}",
         )
         OutboxEvent.objects.create(
-            event_type="chat.message_created",
+            event_type=MESSAGE_CREATED,
             simulation_id=simulation.pk,
             payload={"content": "hello"},
-            idempotency_key=f"chat.message:{simulation.pk}:{uuid.uuid4()}",
+            idempotency_key=f"{MESSAGE_CREATED}:{simulation.pk}:{uuid.uuid4()}",
         )
 
         response = auth_client.get(
-            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=session."
+            f"/api/v1/simulations/{simulation.pk}/events/stream/?event_prefix=simulation.status."
         )
 
         assert response.status_code == 200
@@ -375,5 +376,5 @@ class TestStreamEvents:
         payload = "".join(chunks)
 
         assert ": keep-alive" in payload or "event: simulation" in payload
-        assert "session.seeded" in payload
-        assert "chat.message_created" not in payload
+        assert SIMULATION_STATUS_UPDATED in payload
+        assert MESSAGE_CREATED not in payload

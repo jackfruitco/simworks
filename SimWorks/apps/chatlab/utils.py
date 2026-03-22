@@ -12,6 +12,7 @@ from django.utils.timezone import now
 from apps.chatlab.media_payloads import build_chat_message_event_payload
 from apps.chatlab.models import ChatSession, Message, MessageMediaLink
 from apps.common.orm_mode import must_be_async
+from apps.common.outbox import event_types as outbox_events
 from apps.common.utils import remove_null_keys
 from apps.simcore.models import (
     LabResult,
@@ -144,9 +145,9 @@ async def socket_send(
     :param kwargs: Additional keyword arguments to pass to the `group_send` method.
     """
     durable_event_types = {
-        "chat.message_created",
-        "message_status_update",
-        "simulation.state_changed",
+        outbox_events.MESSAGE_CREATED,
+        outbox_events.MESSAGE_DELIVERY_UPDATED,
+        outbox_events.SIMULATION_STATUS_UPDATED,
     }
     if __type in durable_event_types:
         logger.warning(
@@ -273,7 +274,7 @@ def _patient_results_idempotency_key(
 ) -> str:
     ordered_ids = "-".join(str(result_id) for result_id in sorted(result_ids))
     status_suffix = f":{status}" if status else ""
-    return f"simulation.metadata.results_created:{simulation_id}:{ordered_ids}{status_suffix}"
+    return f"{outbox_events.PATIENT_RESULTS_UPDATED}:{simulation_id}:{ordered_ids}{status_suffix}"
 
 
 def _enqueue_patient_results_outbox(
@@ -290,7 +291,7 @@ def _enqueue_patient_results_outbox(
         payload["status"] = status
 
     event = enqueue_event_sync(
-        event_type="simulation.metadata.results_created",
+        event_type=outbox_events.PATIENT_RESULTS_UPDATED,
         simulation_id=simulation_id,
         payload=payload,
         idempotency_key=_patient_results_idempotency_key(simulation_id, result_ids, status=status),
@@ -384,10 +385,10 @@ async def broadcast_message(
     )
     payload = await sync_to_async(remove_null_keys)(payload)
     event = await sync_to_async(enqueue_event_sync)(
-        event_type="chat.message_created",
+        event_type=outbox_events.MESSAGE_CREATED,
         simulation_id=message.simulation_id,
         payload=payload,
-        idempotency_key=f"chat.message_created:{message.id}",
+        idempotency_key=f"{outbox_events.MESSAGE_CREATED}:{message.id}",
     )
     if event:
         await sync_to_async(poke_drain_sync)()

@@ -20,6 +20,11 @@ from apps.chatlab.orca.schemas import (
     PatientReplyOutputSchema,
     PatientResultsOutputSchema,
 )
+from apps.common.outbox.event_types import (
+    FEEDBACK_CREATED,
+    MESSAGE_CREATED,
+    PATIENT_METADATA_CREATED,
+)
 from apps.simcore.orca.schemas.feedback import (
     GenerateFeedbackContinuationResponse,
     GenerateInitialSimulationFeedback,
@@ -183,13 +188,13 @@ class TestPatientInitialPersistence:
 
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="chat.message_created",
+            event_type=MESSAGE_CREATED,
         )
         message_event_count = await message_events.acount()
         assert message_event_count == 1  # One message
 
         msg_event = await message_events.afirst()
-        assert msg_event.event_type == "chat.message_created"
+        assert msg_event.event_type == MESSAGE_CREATED
         assert msg_event.correlation_id == context.correlation_id
         assert "message_id" in msg_event.payload
         assert "content" in msg_event.payload
@@ -198,13 +203,13 @@ class TestPatientInitialPersistence:
         # Check metadata outbox events
         metadata_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="metadata.created",
+            event_type=PATIENT_METADATA_CREATED,
         )
         metadata_event_count = await metadata_events.acount()
         assert metadata_event_count == 2  # Two metadata items
 
         meta_event = await metadata_events.afirst()
-        assert meta_event.event_type == "metadata.created"
+        assert meta_event.event_type == PATIENT_METADATA_CREATED
         assert "metadata_id" in meta_event.payload
         assert "kind" in meta_event.payload
         assert "key" in meta_event.payload
@@ -286,13 +291,13 @@ class TestPatientReplyPersistence:
 
         message_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="chat.message_created",
+            event_type=MESSAGE_CREATED,
         )
         message_event_count = await message_events.acount()
         assert message_event_count == 1
 
         msg_event = await message_events.afirst()
-        assert msg_event.event_type == "chat.message_created"
+        assert msg_event.event_type == MESSAGE_CREATED
         assert msg_event.correlation_id == context.correlation_id
         assert "message_id" in msg_event.payload
         assert "content" in msg_event.payload
@@ -458,13 +463,13 @@ class TestPatientResultsPersistence:
 
         metadata_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="metadata.created",
+            event_type=PATIENT_METADATA_CREATED,
         )
         metadata_event_count = await metadata_events.acount()
         assert metadata_event_count == 2  # Two metadata items
 
         meta_event = await metadata_events.afirst()
-        assert meta_event.event_type == "metadata.created"
+        assert meta_event.event_type == PATIENT_METADATA_CREATED
         assert meta_event.correlation_id == context.correlation_id
         assert "metadata_id" in meta_event.payload
         assert "kind" in meta_event.payload
@@ -532,7 +537,7 @@ class TestHotwashPersistence:
 
         events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="feedback.created",
+            event_type=FEEDBACK_CREATED,
         )
         event_count = await events.acount()
 
@@ -541,7 +546,7 @@ class TestHotwashPersistence:
 
         # Check event structure
         event = await events.afirst()
-        assert event.event_type == "feedback.created"
+        assert event.event_type == FEEDBACK_CREATED
         assert event.correlation_id == context.correlation_id
         assert "feedback_id" in event.payload
         assert "key" in event.payload
@@ -555,7 +560,7 @@ class TestHotwashPersistence:
 
         # Check all idempotency keys start with event type
         for key in idempotency_keys:
-            assert key.startswith("feedback.created:"), (
+            assert key.startswith(f"{FEEDBACK_CREATED}:"), (
                 f"Idempotency key should start with event type: {key}"
             )
 

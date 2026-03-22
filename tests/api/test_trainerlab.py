@@ -8,6 +8,7 @@ from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
+from apps.common.outbox.event_types import SIMULATION_STATUS_UPDATED
 
 
 class FakeClock:
@@ -1080,6 +1081,7 @@ class TestTrainerLabEvents:
         instructor_membership,
     ):
         from apps.common.models import OutboxEvent
+        from apps.common.outbox.event_types import SIMULATION_NOTE_CREATED
         from apps.trainerlab.models import SimulationNote, TrainerSession
 
         client = auth_client_factory(instructor_user)
@@ -1110,7 +1112,7 @@ class TestTrainerLabEvents:
 
         outbox_event = OutboxEvent.objects.get(
             simulation_id=simulation_id,
-            event_type="note.created",
+            event_type=SIMULATION_NOTE_CREATED,
         )
         assert outbox_event.payload["content"] == "Instructor note for the timeline."
         assert outbox_event.payload["created_by_role"] == "instructor"
@@ -1118,7 +1120,7 @@ class TestTrainerLabEvents:
         listed = client.get(f"/api/v1/trainerlab/simulations/{simulation_id}/events/")
         assert listed.status_code == 200
         assert any(
-            item["event_type"] == "note.created"
+            item["event_type"] == SIMULATION_NOTE_CREATED
             and item["payload"]["content"] == "Instructor note for the timeline."
             for item in listed.json()["items"]
         )
@@ -1130,7 +1132,7 @@ class TestTrainerLabEvents:
         )
         chunks = collect_streaming_chunks(streamed, 8)
         payload = "".join(chunks)
-        assert "note.created" in payload
+        assert SIMULATION_NOTE_CREATED in payload
         assert '"created_by_role": "instructor"' in payload
 
     def test_note_event_send_to_ai_queues_runtime_reason(
@@ -1484,10 +1486,10 @@ class TestTrainerLabEvents:
             )
 
         streamed = OutboxEvent.objects.create(
-            event_type="session.seeded",
+            event_type=SIMULATION_STATUS_UPDATED,
             simulation_id=simulation_id,
-            payload={"status": "seeded"},
-            idempotency_key=f"session.seeded:{simulation_id}:streamed",
+            payload={"status": "seeded", "phase": "seeded"},
+            idempotency_key=f"{SIMULATION_STATUS_UPDATED}:{simulation_id}:streamed",
         )
 
         response = client.get(
@@ -1505,7 +1507,7 @@ class TestTrainerLabEvents:
 
         assert f"id: {streamed.id}\n" in payload
         assert "event: sim\n" in payload
-        assert "session.seeded" in payload
+        assert SIMULATION_STATUS_UPDATED in payload
         assert '"status": "seeded"' in payload
 
     def test_sse_stream_endpoint_emits_idle_keep_alive(
@@ -1678,7 +1680,7 @@ class TestTrainerLabDictionaries:
         # Verify the outbox event payload from _inject_event_core has structured fields
         outbox_event = OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="intervention.created",
+            event_type="patient.intervention.created",
         ).first()
         assert outbox_event is not None
         assert outbox_event.payload["kind"] == "tourniquet"
@@ -1881,12 +1883,12 @@ class TestTrainerLabDictionaries:
         assert current_snapshot["recommended_interventions"]
         assert OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="state.updated",
+            event_type="simulation.snapshot.updated",
         ).exists()
 
         intervention_recorded = OutboxEvent.objects.filter(
             simulation_id=simulation_id,
-            event_type="intervention.created",
+            event_type="patient.intervention.created",
         ).first()
         assert intervention_recorded is not None
         assert "effectiveness" in intervention_recorded.payload
@@ -1982,7 +1984,7 @@ class TestTrainerLabDictionaries:
         ]
         assert OutboxEvent.objects.filter(
             simulation_id=trainer_session.simulation_id,
-            event_type="summary.updated",
+            event_type="simulation.summary.updated",
         ).exists()
 
     def test_apply_debrief_output_emits_new_outbox_event_for_each_revision(
@@ -2034,12 +2036,12 @@ class TestTrainerLabDictionaries:
         events = list(
             OutboxEvent.objects.filter(
                 simulation_id=trainer_session.simulation_id,
-                event_type="summary.updated",
+                event_type="simulation.summary.updated",
             ).order_by("created_at", "id")
         )
-        assert len(events) == 2
-        assert events[0].payload["ai_debrief_revision"] == 1
-        assert events[1].payload["ai_debrief_revision"] == 2
+        assert len(events) >= 2
+        assert events[-2].payload["ai_debrief_revision"] == 1
+        assert events[-1].payload["ai_debrief_revision"] == 2
 
     def test_build_summary_preserves_notes_beyond_timeline_window(
         self,

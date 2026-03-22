@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar
 from asgiref.sync import sync_to_async
 from pydantic import AliasChoices, Field, model_validator
 
+from apps.common.outbox import event_types as outbox_events
 from apps.trainerlab.adjudication import adjudicate_intervention
 from apps.trainerlab.event_payloads import serialize_domain_event
 from apps.trainerlab.recommendations import validate_and_normalize_recommendation
@@ -577,81 +578,81 @@ class InitialScenarioSchema(StrictBaseModel):
         extra = _initial_extra(context)
 
         await broadcast_domain_objects(
-            event_type="trainerlab.scenario_brief.created",
+            event_type=outbox_events.SIMULATION_BRIEF_CREATED,
             objects=[scenario_brief_obj],
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
 
         await broadcast_domain_objects(
-            event_type="injury.created",
+            event_type=outbox_events.PATIENT_INJURY_CREATED,
             objects=injury_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="illness.created",
+            event_type=outbox_events.PATIENT_ILLNESS_CREATED,
             objects=illness_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="problem.created",
+            event_type=outbox_events.PATIENT_PROBLEM_CREATED,
             objects=problem_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="trainerlab.assessment_finding.created",
+            event_type=outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED,
             objects=finding_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="trainerlab.diagnostic_result.created",
+            event_type=outbox_events.PATIENT_DIAGNOSTIC_RESULT_CREATED,
             objects=diagnostic_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="trainerlab.resource.updated",
+            event_type=outbox_events.PATIENT_RESOURCE_UPDATED,
             objects=resource_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         if disposition_obj is not None:
             await broadcast_domain_objects(
-                event_type="trainerlab.disposition.updated",
+                event_type=outbox_events.PATIENT_DISPOSITION_UPDATED,
                 objects=[disposition_obj],
                 context=context,
                 payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
             )
         await broadcast_domain_objects(
-            event_type="recommended_intervention.created",
+            event_type=outbox_events.PATIENT_RECOMMENDED_INTERVENTION_CREATED,
             objects=recommendation_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="trainerlab.recommendation_evaluation.created",
+            event_type=outbox_events.PATIENT_RECOMMENDATION_EVALUATION_CREATED,
             objects=recommendation_evaluations,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="intervention.created",
+            event_type=outbox_events.PATIENT_INTERVENTION_CREATED,
             objects=intervention_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="trainerlab.vital.created",
+            event_type=outbox_events.PATIENT_VITAL_CREATED,
             objects=vital_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),
         )
         await broadcast_domain_objects(
-            event_type="trainerlab.pulse.created",
+            event_type=outbox_events.PATIENT_PULSE_CREATED,
             objects=pulse_objects,
             context=context,
             payload_builder=lambda obj: serialize_domain_event(obj, extra=extra),

@@ -24,16 +24,17 @@ from apps.common.outbox import (
     enqueue_event_sync,
     get_events_for_simulation,
 )
+from apps.common.outbox.event_types import PATIENT_VITAL_CREATED
 
 
 @pytest.fixture
 def outbox_event(db):
     """Create a test outbox event."""
     return OutboxEvent.objects.create(
-        event_type="message.created",
+        event_type="message.item.created",
         simulation_id=1,
         payload={"message_id": 123, "content": "Test message"},
-        idempotency_key="message.created:123",
+        idempotency_key="message.item.created:123",
         correlation_id="test-correlation-id",
     )
 
@@ -45,7 +46,7 @@ class TestOutboxEventModel:
     def test_create_outbox_event(self):
         """Can create an outbox event with required fields."""
         event = OutboxEvent.objects.create(
-            event_type="message.created",
+            event_type="message.item.created",
             simulation_id=1,
             payload={"message_id": 1},
             idempotency_key="test:1",
@@ -60,7 +61,7 @@ class TestOutboxEventModel:
     def test_idempotency_key_unique(self):
         """Duplicate idempotency_key raises IntegrityError."""
         OutboxEvent.objects.create(
-            event_type="message.created",
+            event_type="message.item.created",
             simulation_id=1,
             payload={"message_id": 1},
             idempotency_key="unique:1",
@@ -68,7 +69,7 @@ class TestOutboxEventModel:
 
         with pytest.raises(IntegrityError):
             OutboxEvent.objects.create(
-                event_type="message.created",
+                event_type="message.item.created",
                 simulation_id=2,
                 payload={"message_id": 2},
                 idempotency_key="unique:1",  # Same key
@@ -111,7 +112,7 @@ class TestOutboxEventModel:
         result = str(outbox_event)
 
         assert str(outbox_event.id) in result
-        assert "message.created" in result
+        assert "message.item.created" in result
         assert "pending" in result
 
 
@@ -122,42 +123,42 @@ class TestEnqueueEvent:
     def test_enqueue_event_sync_creates_event(self):
         """enqueue_event_sync creates an event."""
         event = enqueue_event_sync(
-            event_type="simulation.ended",
+            event_type="simulation.status.updated",
             simulation_id=42,
             payload={"ended_at": "2024-01-01T12:00:00Z"},
-            idempotency_key="simulation.ended:42",
+            idempotency_key="simulation.status.updated:42",
             correlation_id="corr-123",
         )
 
         assert event is not None
-        assert event.event_type == "simulation.ended"
+        assert event.event_type == "simulation.status.updated"
         assert event.simulation_id == 42
         assert event.payload == {"ended_at": "2024-01-01T12:00:00Z"}
-        assert event.idempotency_key == "simulation.ended:42"
+        assert event.idempotency_key == "simulation.status.updated:42"
         assert event.correlation_id == "corr-123"
 
     def test_enqueue_event_sync_generates_idempotency_key(self):
         """If no idempotency_key provided, one is generated."""
         event = enqueue_event_sync(
-            event_type="test.event",
+            event_type="simulation.note.created",
             simulation_id=1,
             payload={},
         )
 
         assert event is not None
-        assert event.idempotency_key.startswith("test.event:")
+        assert event.idempotency_key.startswith("simulation.note.created:")
 
     def test_enqueue_event_sync_returns_none_for_duplicate(self):
         """Duplicate idempotency_key returns None."""
         enqueue_event_sync(
-            event_type="test.event",
+            event_type="simulation.note.created",
             simulation_id=1,
             payload={},
             idempotency_key="dup:1",
         )
 
         result = enqueue_event_sync(
-            event_type="test.event",
+            event_type="simulation.note.created",
             simulation_id=1,
             payload={},
             idempotency_key="dup:1",  # Same key
@@ -169,7 +170,7 @@ class TestEnqueueEvent:
         """UUID values in payload are normalized to strings."""
         call_id = uuid4()
         event = enqueue_event_sync(
-            event_type="trainerlab.vital.created",
+            event_type=PATIENT_VITAL_CREATED,
             simulation_id=1,
             payload={"call_id": call_id, "nested": {"ids": [call_id]}},
             idempotency_key="uuid-sync:1",
@@ -183,31 +184,31 @@ class TestEnqueueEvent:
     async def test_enqueue_event_async_creates_event(self):
         """Async enqueue_event creates an event."""
         event = await enqueue_event(
-            event_type="async.test",
+            event_type="simulation.note.created",
             simulation_id=99,
             payload={"async": True},
             idempotency_key="async:99",
         )
 
         assert event is not None
-        assert event.event_type == "async.test"
+        assert event.event_type == "simulation.note.created"
         assert event.simulation_id == 99
 
     @pytest.mark.asyncio
     async def test_enqueue_event_async_returns_none_for_duplicate(self):
         """Async duplicate returns None."""
         await enqueue_event(
-            event_type="async.dup",
+            event_type="simulation.note.created",
             simulation_id=1,
             payload={},
-            idempotency_key="async.dup:1",
+            idempotency_key="simulation.note.created:1",
         )
 
         result = await enqueue_event(
-            event_type="async.dup",
+            event_type="simulation.note.created",
             simulation_id=1,
             payload={},
-            idempotency_key="async.dup:1",
+            idempotency_key="simulation.note.created:1",
         )
 
         assert result is None
@@ -217,7 +218,7 @@ class TestEnqueueEvent:
         """Async enqueue_event also normalizes UUID payload values."""
         call_id = uuid4()
         event = await enqueue_event(
-            event_type="problem.created",
+            event_type="patient.problem.created",
             simulation_id=1,
             payload={"call_id": call_id, "nested": {"ids": [call_id]}},
             idempotency_key="uuid-async:1",
@@ -269,9 +270,9 @@ class TestGetEventsForSimulation:
     async def test_returns_events_for_simulation(self):
         """Returns events for the specified simulation."""
         # Create events for different simulations using async version
-        await enqueue_event("event1", 100, {"n": 1}, "e1:100")
-        await enqueue_event("event2", 100, {"n": 2}, "e2:100")
-        await enqueue_event("event3", 200, {"n": 3}, "e3:200")  # Different sim
+        await enqueue_event("simulation.note.created", 100, {"n": 1}, "e1:100")
+        await enqueue_event("simulation.note.created", 100, {"n": 2}, "e2:100")
+        await enqueue_event("simulation.note.created", 200, {"n": 3}, "e3:200")  # Different sim
 
         events, _, _ = await get_events_for_simulation(100)
 
@@ -282,7 +283,7 @@ class TestGetEventsForSimulation:
     async def test_respects_limit(self):
         """Respects limit parameter."""
         for i in range(5):
-            await enqueue_event(f"event{i}", 101, {"n": i}, f"e{i}:101")
+            await enqueue_event("simulation.note.created", 101, {"n": i}, f"e{i}:101")
 
         events, next_cursor, has_more = await get_events_for_simulation(101, limit=2)
 
@@ -294,7 +295,7 @@ class TestGetEventsForSimulation:
     async def test_cursor_pagination(self):
         """Cursor-based pagination works."""
         for i in range(5):
-            await enqueue_event(f"event{i}", 102, {"n": i}, f"e{i}:102")
+            await enqueue_event("simulation.note.created", 102, {"n": i}, f"e{i}:102")
 
         # Get first page
         events1, cursor, _ = await get_events_for_simulation(102, limit=2)
@@ -311,7 +312,7 @@ class TestGetEventsForSimulation:
     async def test_cursor_pagination_handles_same_created_at(self):
         """Timestamp ties should still page deterministically."""
         for i in range(3):
-            await enqueue_event(f"event{i}", 103, {"n": i}, f"e{i}:103")
+            await enqueue_event("simulation.note.created", 103, {"n": i}, f"e{i}:103")
 
         shared_timestamp = timezone.now()
         await sync_to_async(OutboxEvent.objects.filter(simulation_id=103).update)(
@@ -355,7 +356,7 @@ class TestDrainOutbox:
 
         # Create pending events
         event = enqueue_event_sync(
-            "test.drain",
+            "simulation.note.created",
             300,
             {"test": True},
             "drain:300",
@@ -382,7 +383,7 @@ class TestDrainOutbox:
 
         # Create and mark as delivered
         event = enqueue_event_sync(
-            "test.skip",
+            "simulation.note.created",
             301,
             {"test": True},
             "skip:301",
@@ -406,7 +407,7 @@ class TestDrainOutbox:
 
         # Create pending event
         event = enqueue_event_sync(
-            "test.fail",
+            "simulation.note.created",
             302,
             {"test": True},
             "fail:302",
@@ -431,7 +432,7 @@ class TestDrainOutbox:
 
         # Create event at max-1 attempts
         event = enqueue_event_sync(
-            "test.maxfail",
+            "simulation.note.created",
             303,
             {"test": True},
             "maxfail:303",
@@ -466,7 +467,7 @@ class TestCleanupDeliveredEvents:
 
         # Create old delivered event
         old_event = enqueue_event_sync(
-            "old.event",
+            "simulation.note.created",
             400,
             {},
             "old:400",
@@ -477,7 +478,7 @@ class TestCleanupDeliveredEvents:
 
         # Create recent delivered event
         recent_event = enqueue_event_sync(
-            "recent.event",
+            "simulation.note.created",
             401,
             {},
             "recent:401",
@@ -499,7 +500,7 @@ class TestCleanupDeliveredEvents:
 
         # Create old pending event
         event = enqueue_event_sync(
-            "pending.event",
+            "simulation.note.created",
             402,
             {},
             "pending:402",
@@ -521,7 +522,7 @@ class TestRetryFailedEvents:
 
         # Create failed event
         event = enqueue_event_sync(
-            "failed.event",
+            "simulation.note.created",
             500,
             {},
             "failed:500",
@@ -540,7 +541,7 @@ class TestRetryFailedEvents:
         from apps.common.tasks import retry_failed_events
 
         event = enqueue_event_sync(
-            "retry.event",
+            "simulation.note.created",
             501,
             {},
             "retry:501",
@@ -560,7 +561,7 @@ class TestRetryFailedEvents:
 
         # Create old failed event
         event = enqueue_event_sync(
-            "old.failed",
+            "simulation.note.created",
             502,
             {},
             "oldfailed:502",

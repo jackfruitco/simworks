@@ -1,5 +1,5 @@
 /**
- * WebSocket Event Schema for SimWorks Simulations
+ * WebSocket Event Schema for MedSim simulations.
  *
  * This file documents the event types consumed by web and mobile clients
  * via the SimulationSocket WebSocket connection.
@@ -12,14 +12,11 @@
  */
 
 // ============================================================================
-// common Event Types
+// Shared Event Types
 // ============================================================================
 
-/**
- * All possible simulation event types
- */
-export type SimulationEventType =
-    // Connection events (dispatched by SimulationSocket, not from server)
+export type TransientSimulationEventType =
+    // Connection events (dispatched by SimulationSocket, not durable outbox events)
     | 'connected'
     | 'disconnected'
 
@@ -27,24 +24,80 @@ export type SimulationEventType =
     | 'init_message'
     | 'error'
 
-    // Chat events
-    | 'chat.message_created'
     | 'typing'
     | 'stopped_typing'
-    | 'message_status_update'
 
-    // Simulation state events
+    // Compatibility / transient workflow events outside the canonical outbox contract
+    | 'simulation.feedback.continue_conversation'
+    | 'simulation.hotwash.continue_conversation';
+
+export type CanonicalOutboxEventType =
+    | 'message.item.created'
+    | 'message.delivery.updated'
+    | 'patient.metadata.created'
+    | 'patient.results.updated'
+    | 'feedback.item.created'
+    | 'feedback.generation.failed'
+    | 'feedback.generation.updated'
+    | 'simulation.status.updated'
+    | 'patient.injury.created'
+    | 'patient.injury.updated'
+    | 'patient.illness.created'
+    | 'patient.illness.updated'
+    | 'patient.problem.created'
+    | 'patient.problem.updated'
+    | 'patient.recommendedintervention.created'
+    | 'patient.recommendedintervention.updated'
+    | 'patient.recommendedintervention.removed'
+    | 'patient.intervention.created'
+    | 'patient.intervention.updated'
+    | 'simulation.note.created'
+    | 'patient.assessmentfinding.created'
+    | 'patient.assessmentfinding.updated'
+    | 'patient.assessmentfinding.removed'
+    | 'patient.diagnosticresult.created'
+    | 'patient.diagnosticresult.updated'
+    | 'patient.resource.updated'
+    | 'patient.disposition.updated'
+    | 'patient.recommendationevaluation.created'
+    | 'simulation.brief.created'
+    | 'simulation.brief.updated'
+    | 'patient.vital.created'
+    | 'patient.vital.updated'
+    | 'patient.pulse.created'
+    | 'patient.pulse.updated'
+    | 'simulation.annotation.created'
+    | 'simulation.tick.triggered'
+    | 'simulation.snapshot.updated'
+    | 'simulation.plan.updated'
+    | 'simulation.runtime.failed'
+    | 'simulation.summary.updated'
+    | 'simulation.adjustment.updated'
+    | 'simulation.preset.updated'
+    | 'simulation.command.updated'
+    | 'simulation.patch.completed';
+
+/**
+ * Canonical outbox contract plus transient socket-only events.
+ */
+export type CanonicalSimulationEventType =
+    | CanonicalOutboxEventType
+    | TransientSimulationEventType;
+
+/**
+ * Deprecated aliases accepted during the migration window.
+ */
+export type DeprecatedSimulationEventType =
+    | 'chat.message_created'
+    | 'message_status_update'
     | 'simulation.feedback_created'
     | 'feedback.created'
     | 'simulation.hotwash.created'
-    | 'simulation.feedback.continue_conversation'
-    | 'simulation.hotwash.continue_conversation'
+    | 'metadata.created'
     | 'simulation.metadata.results_created'
     | 'simulation.state_changed'
     | 'feedback.failed'
     | 'feedback.retrying'
-
-    // TrainerLab events
     | 'injury.created'
     | 'injury.updated'
     | 'illness.created'
@@ -90,7 +143,22 @@ export type SimulationEventType =
     | 'adjustment.accepted'
     | 'adjustment.applied'
     | 'preset.applied'
-    | 'command.accepted';
+    | 'command.accepted'
+    | 'simulation.patch_evaluation.completed'
+    | 'patient.assessment_finding.created'
+    | 'patient.assessment_finding.updated'
+    | 'patient.assessment_finding.removed'
+    | 'patient.diagnostic_result.created'
+    | 'patient.diagnostic_result.updated'
+    | 'patient.recommendation_evaluation.created'
+    | 'patient.recommended_intervention.created'
+    | 'patient.recommended_intervention.updated'
+    | 'patient.recommended_intervention.removed';
+
+/**
+ * All simulation event types accepted by clients.
+ */
+export type SimulationEventType = CanonicalSimulationEventType | DeprecatedSimulationEventType;
 
 // ============================================================================
 // Event Payloads
@@ -143,7 +211,7 @@ export interface ErrorEvent extends BaseEvent {
  * Chat message created event
  */
 export interface ChatMessageCreatedEvent extends BaseEvent {
-    type: 'chat.message_created';
+    type: 'message.item.created' | 'chat.message_created';
     id: number;
     message_id?: number;
     content: string;
@@ -194,7 +262,7 @@ export interface StoppedTypingEvent extends BaseEvent {
  * Message status update (delivery/read receipts)
  */
 export interface MessageStatusUpdateEvent extends BaseEvent {
-    type: 'message_status_update';
+    type: 'message.delivery.updated' | 'message_status_update';
     id: number;
     status: 'sent' | 'delivered' | 'failed';
     retryable?: boolean;
@@ -203,7 +271,7 @@ export interface MessageStatusUpdateEvent extends BaseEvent {
 }
 
 export interface SimulationStateChangedEvent extends BaseEvent {
-    type: 'simulation.state_changed';
+    type: 'simulation.status.updated' | 'simulation.state_changed';
     simulation_id: number;
     status: 'in_progress' | 'completed' | 'timed_out' | 'failed' | 'canceled';
     terminal_reason_code?: string;
@@ -212,7 +280,7 @@ export interface SimulationStateChangedEvent extends BaseEvent {
 }
 
 export interface FeedbackFailedEvent extends BaseEvent {
-    type: 'feedback.failed';
+    type: 'feedback.generation.failed' | 'feedback.failed';
     simulation_id: number;
     error_code?: string;
     error_text?: string;
@@ -221,8 +289,9 @@ export interface FeedbackFailedEvent extends BaseEvent {
 }
 
 export interface FeedbackRetryingEvent extends BaseEvent {
-    type: 'feedback.retrying';
+    type: 'feedback.generation.updated' | 'feedback.retrying';
     simulation_id: number;
+    status?: 'retrying';
     retryable?: boolean;
     retry_count?: number;
 }
@@ -231,7 +300,7 @@ export interface FeedbackRetryingEvent extends BaseEvent {
  * Feedback created event
  */
 export interface FeedbackCreatedEvent extends BaseEvent {
-    type: 'simulation.feedback_created' | 'feedback.created' | 'simulation.hotwash.created';
+    type: 'feedback.item.created' | 'simulation.feedback_created' | 'feedback.created' | 'simulation.hotwash.created';
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
 }
@@ -247,7 +316,7 @@ export interface FeedbackContinuationEvent extends BaseEvent {
  * Metadata results created event
  */
 export interface MetadataResultsCreatedEvent extends BaseEvent {
-    type: 'simulation.metadata.results_created';
+    type: 'patient.results.updated' | 'simulation.metadata.results_created';
     tool?: string;
     html?: string;  // Optional server-rendered HTML for web clients
 }
@@ -565,7 +634,7 @@ export interface TrainerLabSnapshot {
 }
 
 export interface TrainerLabInjuryCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
-    type: 'injury.created' | 'injury.updated';
+    type: 'patient.injury.created' | 'patient.injury.updated' | 'injury.created' | 'injury.updated';
     event_kind: 'cause';
     origin?: string;
     call_id?: string;
@@ -573,7 +642,7 @@ export interface TrainerLabInjuryCreatedEvent extends TrainerLabDomainEventBase,
 }
 
 export interface TrainerLabIllnessCreatedEvent extends TrainerLabDomainEventBase, TrainerLabCauseFields {
-    type: 'illness.created' | 'illness.updated';
+    type: 'patient.illness.created' | 'patient.illness.updated' | 'illness.created' | 'illness.updated';
     event_kind: 'cause';
     origin?: string;
     call_id?: string;
@@ -581,74 +650,74 @@ export interface TrainerLabIllnessCreatedEvent extends TrainerLabDomainEventBase
 }
 
 export interface TrainerLabProblemCreatedEvent extends TrainerLabDomainEventBase, TrainerLabProblemFields {
-    type: 'problem.created';
+    type: 'patient.problem.created' | 'problem.created';
     event_kind: 'problem';
 }
 
 export interface TrainerLabProblemUpdatedEvent extends TrainerLabDomainEventBase, TrainerLabProblemFields {
-    type: 'problem.updated' | 'problem.resolved';
+    type: 'patient.problem.updated' | 'problem.updated' | 'problem.resolved';
     event_kind: 'problem';
 }
 
 export interface TrainerLabRecommendedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabRecommendedInterventionFields {
-    type: 'recommended_intervention.created' | 'recommended_intervention.updated' | 'recommended_intervention.removed';
+    type: 'patient.recommendedintervention.created' | 'patient.recommendedintervention.updated' | 'patient.recommendedintervention.removed' | 'recommended_intervention.created' | 'recommended_intervention.updated' | 'recommended_intervention.removed';
     event_kind: 'recommended_intervention';
 }
 
 export interface TrainerLabPerformedInterventionEvent extends TrainerLabDomainEventBase, TrainerLabInterventionFields {
-    type: 'intervention.created' | 'intervention.updated';
+    type: 'patient.intervention.created' | 'patient.intervention.updated' | 'intervention.created' | 'intervention.updated';
     event_kind: 'intervention';
 }
 
 export interface TrainerLabVitalCreatedEvent extends TrainerLabDomainEventBase, TrainerLabVitalFields {
-    type: 'trainerlab.vital.created' | 'trainerlab.vital.updated';
+    type: 'patient.vital.created' | 'patient.vital.updated' | 'trainerlab.vital.created' | 'trainerlab.vital.updated';
     event_kind: 'vital';
 }
 
 export interface TrainerLabPulseEvent extends TrainerLabDomainEventBase, TrainerLabPulseFields {
-    type: 'trainerlab.pulse.created' | 'trainerlab.pulse.updated';
+    type: 'patient.pulse.created' | 'patient.pulse.updated' | 'trainerlab.pulse.created' | 'trainerlab.pulse.updated';
     event_kind: 'pulse_assessment';
 }
 
 export interface TrainerLabAssessmentFindingEvent extends TrainerLabDomainEventBase, TrainerLabAssessmentFindingFields {
-    type: 'trainerlab.assessment_finding.created' | 'trainerlab.assessment_finding.updated' | 'trainerlab.assessment_finding.removed';
+    type: 'patient.assessmentfinding.created' | 'patient.assessmentfinding.updated' | 'patient.assessmentfinding.removed' | 'trainerlab.assessment_finding.created' | 'trainerlab.assessment_finding.updated' | 'trainerlab.assessment_finding.removed';
     event_kind: 'assessment_finding';
 }
 
 export interface TrainerLabDiagnosticResultEvent extends TrainerLabDomainEventBase, TrainerLabDiagnosticResultFields {
-    type: 'trainerlab.diagnostic_result.created' | 'trainerlab.diagnostic_result.updated';
+    type: 'patient.diagnosticresult.created' | 'patient.diagnosticresult.updated' | 'trainerlab.diagnostic_result.created' | 'trainerlab.diagnostic_result.updated';
     event_kind: 'diagnostic_result';
 }
 
 export interface TrainerLabResourceEvent extends TrainerLabDomainEventBase, TrainerLabResourceFields {
-    type: 'trainerlab.resource.updated';
+    type: 'patient.resource.updated' | 'trainerlab.resource.updated';
     event_kind: 'resource';
 }
 
 export interface TrainerLabDispositionEvent extends TrainerLabDomainEventBase, TrainerLabDispositionFields {
-    type: 'trainerlab.disposition.updated';
+    type: 'patient.disposition.updated' | 'trainerlab.disposition.updated';
     event_kind: 'disposition';
 }
 
 export interface TrainerLabRecommendationEvaluationEvent extends TrainerLabDomainEventBase, TrainerLabRecommendationEvaluationFields {
-    type: 'trainerlab.recommendation_evaluation.created';
+    type: 'patient.recommendationevaluation.created' | 'trainerlab.recommendation_evaluation.created';
     event_kind: 'recommendation_evaluation';
 }
 
 export interface TrainerLabScenarioBriefEvent extends TrainerLabDomainEventBase, TrainerLabScenarioBriefFields {
-    type: 'trainerlab.scenario_brief.created' | 'trainerlab.scenario_brief.updated';
+    type: 'simulation.brief.created' | 'simulation.brief.updated' | 'trainerlab.scenario_brief.created' | 'trainerlab.scenario_brief.updated';
     event_kind: 'scenario_brief';
 }
 
 export interface TrainerLabNoteEvent extends TrainerLabDomainEventBase {
-    type: 'note.created';
+    type: 'simulation.note.created' | 'note.created';
     event_kind: 'note';
     content: string;
     created_by_role?: 'trainee' | 'instructor' | 'system';
 }
 
 export interface TrainerLabInterventionAssessedEvent extends BaseEvent {
-    type: 'trainerlab.intervention.assessed';
+    type: 'patient.intervention.updated' | 'trainerlab.intervention.assessed';
     intervention_id: number;
     intervention_type?: string | null;
     site_code?: string | null;
@@ -661,7 +730,7 @@ export interface TrainerLabInterventionAssessedEvent extends BaseEvent {
 }
 
 export interface TrainerLabStateUpdatedEvent extends BaseEvent {
-    type: 'state.updated';
+    type: 'simulation.snapshot.updated' | 'state.updated';
     state_revision: number;
     active_elapsed_seconds: number;
     scenario_brief?: TrainerLabScenarioBriefFields | null;
@@ -670,26 +739,29 @@ export interface TrainerLabStateUpdatedEvent extends BaseEvent {
 }
 
 export interface TrainerLabAiIntentUpdatedEvent extends BaseEvent {
-    type: 'ai.intent.updated';
+    type: 'simulation.plan.updated' | 'ai.intent.updated';
     state_revision: number;
     ai_plan: TrainerLabAiIntent;
 }
 
 export interface TrainerLabRunLifecycleEvent extends BaseEvent {
-    type: 'run.started' | 'run.paused' | 'run.resumed' | 'run.stopped';
+    type: 'simulation.status.updated' | 'run.started' | 'run.paused' | 'run.resumed' | 'run.stopped' | 'session.seeded' | 'session.failed';
     status: string;
+    from?: string;
+    to?: string;
     discarded_runtime_reason_count?: number;
 }
 
 export interface TrainerLabRuntimeFailedEvent extends BaseEvent {
-    type: 'runtime.failed';
+    type: 'simulation.runtime.failed' | 'runtime.failed';
     error: string;
     reasons: Array<Record<string, unknown>>;
 }
 
 export interface TrainerLabSummaryEvent extends BaseEvent {
-    type: 'summary.ready' | 'summary.updated';
+    type: 'simulation.summary.updated' | 'summary.ready' | 'summary.updated';
     summary_id: number;
+    status?: string;
     ai_debrief?: Record<string, unknown>;
     ai_debrief_revision?: number;
 }
@@ -703,8 +775,10 @@ export interface TrainerLabSessionSeedingEvent extends BaseEvent {
 }
 
 export interface TrainerLabSessionSeededEvent extends BaseEvent {
-    type: 'session.seeded';
+    type: 'simulation.status.updated' | 'session.seeded';
     status: string;
+    from?: string;
+    to?: string;
     scenario_spec: Record<string, unknown>;
     state_revision: number;
 }
@@ -719,6 +793,12 @@ export interface TrainerLabSessionFailedEvent extends BaseEvent {
 
 export interface TrainerLabSimplePayloadEvent extends BaseEvent {
     type:
+        | 'simulation.annotation.created'
+        | 'simulation.tick.triggered'
+        | 'simulation.adjustment.updated'
+        | 'simulation.preset.updated'
+        | 'simulation.command.updated'
+        | 'simulation.patch.completed'
         | 'trainerlab.annotation.created'
         | 'trainerlab.tick.triggered'
         | 'adjustment.accepted'

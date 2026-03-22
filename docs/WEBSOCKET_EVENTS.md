@@ -1,98 +1,153 @@
-# WebSocket Event Broadcasting
+# WebSocket Event Contract
 
-This document describes the WebSocket event system used for real-time updates in MedSim.
+This document describes the durable outbox-backed event contract used for real-time MedSim simulation updates.
 
-## Overview
+## Source of Truth
 
-MedSim uses a **reliable event delivery pattern** combining:
-1. **WebSocket hints** for real-time notifications
-2. **Outbox pattern** for durable event storage
-3. **Catch-up API** for event recovery after reconnection
+The canonical registry lives in `SimWorks/apps/common/outbox/event_types.py`.
 
-## Architecture
+- Server emitters must use registry constants.
+- Server envelopes emit only canonical event names.
+- Browser clients may temporarily accept deprecated aliases during rollout, but aliases are not canonical output.
 
-### Event Flow
+## Canonical Naming Rules
 
-```
-AI Service → persist_schema() → post_persist() hook
-                                      ↓
-                             OutboxEvent (database)
-                                      ↓
-                          Drain Worker (periodic + immediate)
-                                      ↓
-                     channel_layer.group_send("simulation_{id}")
-                                      ↓
-                        ChatConsumer.outbox_event()
-                                      ↓
-                            WebSocket Client
-```
+Canonical outbox event types must follow this exact contract:
 
-### Key Components
+- `domain.subject.action`
+- exactly 3 segments
+- lowercase letters with dot separators only
+- no underscores
+- domains limited to `simulation`, `patient`, `message`, `feedback`
+- actions limited to `created`, `updated`, `removed`, `triggered`, `completed`, `failed`
 
-**Schema `post_persist()` Hooks**:
-- Called after domain persistence completes
-- Creates outbox events via `broadcast_domain_objects()` helper
-- Has access to correlation_id, simulation_id, and persisted objects
+State transitions belong in payload metadata, not the event name.
 
-**Outbox Table**:
-- Stores events durably before delivery
-- Enables at-least-once delivery guarantees
-- Supports catch-up API for missed events
+Examples:
 
-**Drain Worker**:
-- Periodic task (runs every 10-30s)
-- Immediate poke after event creation (low latency)
-- Uses `select_for_update(skip_locked=True)` for concurrency safety
+- `simulation.status.updated` with payload `{ "status": "running", "from": "seeded", "to": "running" }`
+- `message.delivery.updated` with payload `{ "status": "delivered" }`
+- `feedback.generation.updated` with payload `{ "status": "retrying" }`
+- `patient.intervention.updated` with payload `{ "assessment_status": "effective" }`
 
-**WebSocket Consumer**:
-- `ChatConsumer.outbox_event()` receives events from drain worker
-- Forwards standardized envelope to connected clients
-- No business logic - pure passthrough
+## Transport Envelope
 
-## Event Types
+All durable events use the same envelope shape:
 
-### 1. chat.message_created
-
-**Triggered when**: Patient or AI generates a message
-
-**Payload**:
 ```json
 {
-  "event_id": "uuid",
-  "event_type": "chat.message_created",
-  "created_at": "2026-02-22T12:34:56.789Z",
-  "simulation_id": "123",
+  "event_id": "550e8400-e29b-41d4-a716-446655440000",
+  "event_type": "simulation.status.updated",
+  "created_at": "2026-03-21T12:34:56.789Z",
   "correlation_id": "abc-xyz",
   "payload": {
-    "message_id": 456,
-    "content": "Hello, I have chest pain",
-    "role": "assistant",
-    "is_from_ai": true,
-    "display_name": "Patient",
-    "timestamp": "2026-02-22T12:34:56.789Z",
-    "image_requested": false
+    "status": "running",
+    "from": "seeded",
+    "to": "running"
   }
 }
 ```
 
-**Frontend Action**: Append message to chat UI, scroll to bottom
+For `*.status.updated` events, payload should include:
 
-**Source**: `PatientInitialOutputSchema`, `PatientReplyOutputSchema` (post_persist)
+- `status`
+- `from` when applicable
+- `to` when applicable
 
----
+## Canonical Event Registry
 
-### 2. metadata.created
+### `message`
 
-**Triggered when**: Labs, radiology, demographics, or assessments are persisted
+- `message.item.created`
+- `message.delivery.updated`
 
-**Payload**:
+### `feedback`
+
+- `feedback.item.created`
+- `feedback.generation.updated`
+- `feedback.generation.failed`
+
+### `simulation`
+
+- `simulation.status.updated`
+- `simulation.brief.created`
+- `simulation.brief.updated`
+- `simulation.snapshot.updated`
+- `simulation.plan.updated`
+- `simulation.patch.completed`
+- `simulation.tick.triggered`
+- `simulation.summary.updated`
+- `simulation.runtime.failed`
+- `simulation.preset.updated`
+- `simulation.command.updated`
+- `simulation.adjustment.updated`
+- `simulation.note.created`
+- `simulation.annotation.created`
+
+### `patient`
+
+- `patient.metadata.created`
+- `patient.results.updated`
+- `patient.injury.created`
+- `patient.injury.updated`
+- `patient.illness.created`
+- `patient.illness.updated`
+- `patient.problem.created`
+- `patient.problem.updated`
+- `patient.recommendedintervention.created`
+- `patient.recommendedintervention.updated`
+- `patient.recommendedintervention.removed`
+- `patient.intervention.created`
+- `patient.intervention.updated`
+- `patient.assessmentfinding.created`
+- `patient.assessmentfinding.updated`
+- `patient.assessmentfinding.removed`
+- `patient.diagnosticresult.created`
+- `patient.diagnosticresult.updated`
+- `patient.resource.updated`
+- `patient.disposition.updated`
+- `patient.recommendationevaluation.created`
+- `patient.vital.created`
+- `patient.vital.updated`
+- `patient.pulse.created`
+- `patient.pulse.updated`
+
+## Representative Payloads
+
+### `message.item.created`
+
 ```json
 {
-  "event_id": "uuid",
-  "event_type": "metadata.created",
-  "created_at": "2026-02-22T12:35:00.123Z",
-  "simulation_id": "123",
-  "correlation_id": "abc-xyz",
+  "event_type": "message.item.created",
+  "payload": {
+    "message_id": 456,
+    "content": "I have chest pain.",
+    "role": "assistant",
+    "display_name": "Patient",
+    "status": "completed",
+    "media_list": []
+  }
+}
+```
+
+### `message.delivery.updated`
+
+```json
+{
+  "event_type": "message.delivery.updated",
+  "payload": {
+    "id": 456,
+    "status": "delivered",
+    "retryable": false
+  }
+}
+```
+
+### `patient.metadata.created`
+
+```json
+{
+  "event_type": "patient.metadata.created",
   "payload": {
     "metadata_id": 789,
     "kind": "lab_result",
@@ -102,362 +157,74 @@ AI Service → persist_schema() → post_persist() hook
 }
 ```
 
-**Frontend Action**: Refresh metadata panels (labs, radiology, demographics)
+### `feedback.generation.updated`
 
-**Source**: `PatientInitialOutputSchema`, `PatientResultsOutputSchema` (post_persist)
-
-**Metadata Kinds**:
-- `lab_result` - Laboratory test results
-- `rad_result` - Radiology findings
-- `patient_demographics` - Patient demographics
-- `patient_history` - Medical history
-- `generic` - Generic metadata
-
----
-
-### 3. feedback.created
-
-**Triggered when**: Simulation feedback (hotwash) is generated
-
-**Payload**:
 ```json
 {
-  "event_id": "uuid",
-  "event_type": "feedback.created",
-  "created_at": "2026-02-22T12:40:00.456Z",
-  "simulation_id": "123",
-  "correlation_id": "abc-xyz",
+  "event_type": "feedback.generation.updated",
   "payload": {
-    "feedback_id": 321,
-    "key": "hotwash_correct_diagnosis",
-    "value": "true"
+    "simulation_id": 123,
+    "status": "retrying",
+    "retry_count": 1
   }
 }
 ```
 
-**Frontend Action**: Update feedback panel, show completion badge
-
-**Source**: `GenerateInitialSimulationFeedback` (post_persist)
-
----
-
-### 4. typing.started / typing.stopped
-
-**Triggered when**: User or AI starts/stops typing
-
-**Payload**:
-```json
-{
-  "type": "user_typing",
-  "user": "user@example.com",
-  "display_initials": "JD"
-}
-```
-
-**Frontend Action**: Show/hide typing indicator
-
-**Source**: Manual broadcast via `handle_typing()` consumer method
-
----
-
-### 5. simulation.ended
-
-**Triggered when**: Simulation completes or times out
-
-**Payload**:
-```json
-{
-  "type": "simulation_ended",
-  "simulation_id": 123,
-  "reason": "completed"
-}
-```
-
-**Frontend Action**: Show completion modal, disable input
-
-**Source**: Manual broadcast via consumer methods
-
-## Client Implementation Guide
-
-### 1. WebSocket Connection
-
-```javascript
-const ws = new WebSocket(`wss://example.com/ws/simulation/${simulationId}/`);
-
-// Track seen events for deduplication
-const seenEventIds = new Set();
-let lastEventId = null;
-
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-
-  // Deduplicate by event_id
-  if (data.event_id) {
-    if (seenEventIds.has(data.event_id)) {
-      console.debug('Duplicate event, ignoring:', data.event_id);
-      return;
-    }
-    seenEventIds.add(data.event_id);
-    lastEventId = data.event_id;
-  }
-
-  // Route by event_type
-  handleEvent(data);
-};
-```
-
-### 2. Event Routing
-
-```javascript
-function handleEvent(envelope) {
-  switch (envelope.event_type) {
-    case 'chat.message_created':
-      handleNewMessage(envelope.payload);
-      break;
-
-    case 'metadata.created':
-      handleNewMetadata(envelope.payload);
-      break;
-
-    case 'feedback.created':
-      handleNewFeedback(envelope.payload);
-      break;
-
-    default:
-      console.warn('Unknown event type:', envelope.event_type);
-  }
-}
-```
-
-### 3. Catch-up After Reconnect
-
-```javascript
-async function catchUp(simulationId, lastEventId) {
-  let cursor = lastEventId;
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await fetch(
-      `/api/v1/events/${simulationId}/events/?cursor=${cursor}&limit=50`,
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      }
-    );
-
-    const data = await response.json();
-
-    // Process events
-    data.items.forEach(handleEvent);
-
-    // Update cursor
-    cursor = data.next_cursor;
-    hasMore = data.has_more;
-  }
-}
-
-// Usage:
-ws.onclose = async () => {
-  console.log('WebSocket closed, catching up...');
-  await catchUp(simulationId, lastEventId);
-  // Reconnect WebSocket
-};
-```
-
-### 4. Deduplication Strategy
-
-**Track by `event_id`**:
-- Events have unique UUIDs
-- Store in Set or Map for O(1) lookup
-- Clear old IDs after successful catch-up
-
-**Track by domain object ID**:
-- Messages: Track `message_id` in Set
-- Metadata: Track `metadata_id` in Set
-- Prevents duplicate rendering even if event_id missed
-
-```javascript
-const seenMessageIds = new Set();
-
-function handleNewMessage(payload) {
-  if (seenMessageIds.has(payload.message_id)) {
-    console.debug('Duplicate message, ignoring:', payload.message_id);
-    return;
-  }
-  seenMessageIds.add(payload.message_id);
-
-  // Render message...
-}
-```
-
-## Catch-up API
-
-### Endpoint
-
-```
-GET /api/v1/events/{simulation_id}/events/
-```
-
-### Parameters
-
-- `cursor` (optional): UUID of last seen event
-- `limit` (optional): Max events to return (1-100, default 50)
-
-### Response
+### `simulation.status.updated`
 
 ```json
 {
-  "items": [
-    {
-      "event_id": "uuid",
-      "event_type": "chat.message_created",
-      "created_at": "2026-02-22T12:34:56.789Z",
-      "correlation_id": "abc-xyz",
-      "payload": { ... }
-    }
-  ],
-  "next_cursor": "uuid-or-null",
-  "has_more": true
+  "event_type": "simulation.status.updated",
+  "payload": {
+    "status": "paused",
+    "from": "running",
+    "to": "paused"
+  }
 }
 ```
 
-### Usage
+### `patient.intervention.updated`
 
-1. Track `lastEventId` from WebSocket events
-2. On reconnect, call API with `cursor=lastEventId`
-3. Process returned events in order
-4. Continue fetching while `has_more` is true
-5. Resume WebSocket listening
-
-## Testing
-
-### Manual Testing
-
-1. **Start development server**: `uv run python MedSim/manage.py runserver`
-2. **Open browser console**: Connect to WebSocket
-3. **Trigger AI response**: Send message or generate feedback
-4. **Verify events**: Check console for outbox events
-
-### Integration Testing
-
-```python
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.asyncio
-async def test_outbox_events_created(context):
-    schema = PatientInitialOutputSchema.model_validate({...})
-    await persist_schema(schema, context)
-
-    # Verify outbox events created
-    from apps.common.models import OutboxEvent
-    events = await OutboxEvent.objects.filter(
-        simulation_id=context.simulation_id,
-        event_type="chat.message_created",
-    ).acount()
-    assert events > 0
+```json
+{
+  "event_type": "patient.intervention.updated",
+  "payload": {
+    "intervention_id": 42,
+    "status": "completed",
+    "assessment_status": "effective",
+    "effectiveness": "effective"
+  }
+}
 ```
 
-## Monitoring
+## Filtering
 
-### Key Metrics
+Prefix filtering works directly against canonical names. Useful filters include:
 
-- **Outbox event backlog**: `OutboxEvent.objects.filter(delivered_at__isnull=True).count()`
-- **Drain worker latency**: Time between `created_at` and `delivered_at`
-- **Failed deliveries**: `OutboxEvent.objects.filter(delivery_attempts__gt=3).count()`
+- `simulation.`
+- `patient.`
+- `patient.problem.`
+- `message.delivery.`
 
-### Logging
+## Realtime Model
 
-All outbox events are logged with:
-- `event_type`
-- `simulation_id`
-- `correlation_id`
-- Delivery status
+MedSim uses a reliable event delivery pattern:
 
-Search logs for: `"Outbox event created"`, `"Delivered outbox event"`
+1. Domain persistence creates an outbox row in the same transactional flow.
+2. The drain worker delivers outbox rows to the simulation WebSocket group.
+3. Clients use the WebSocket as a near-realtime hint channel.
+4. Clients recover missed durable events through the catch-up API.
 
-## Troubleshooting
+WebSocket delivery is not the source of truth. The API remains authoritative.
 
-### Events not arriving
+## Compatibility
 
-1. **Check outbox table**: Are events being created?
-   ```sql
-   SELECT * FROM core_outboxevent WHERE delivered_at IS NULL ORDER BY created_at DESC LIMIT 10;
-   ```
+During migration, some browser clients may still accept deprecated aliases such as:
 
-2. **Check drain worker**: Is Celery running?
-   ```bash
-   celery -A config inspect active
-   ```
+- `chat.message_created`
+- `message_status_update`
+- `simulation.state_changed`
+- `feedback.failed`
+- `feedback.retrying`
 
-3. **Check WebSocket connection**: Is client connected to correct room?
-   ```python
-   # In Django shell
-   from channels.layers import get_channel_layer
-   channel_layer = get_channel_layer()
-   ```
-
-### Duplicate events
-
-1. **Client-side**: Ensure event_id deduplication is implemented
-2. **Server-side**: Check for duplicate outbox creation (idempotency_key should prevent)
-
-### Missing events after reconnect
-
-1. **Verify catch-up API**: Test `/api/v1/events/{simulation_id}/events/`
-2. **Check cursor tracking**: Ensure lastEventId is persisted
-3. **Verify event retention**: Old events may be archived/deleted
-
-## Best Practices
-
-### For Frontend Developers
-
-✅ **Always implement event_id deduplication**
-✅ **Implement catch-up flow on reconnect**
-✅ **Handle unknown event types gracefully**
-✅ **Track message_id/metadata_id for domain-level deduplication**
-✅ **Log correlation_id for debugging**
-
-❌ **Don't assume WebSocket delivery is reliable**
-❌ **Don't use WebSocket as source of truth**
-❌ **Don't block UI on WebSocket events**
-
-### For Backend Developers
-
-✅ **Use `broadcast_domain_objects()` helper in post_persist()**
-✅ **Include correlation_id in all events**
-✅ **Document new event types in this file**
-✅ **Test outbox event creation in persistence tests**
-
-❌ **Don't broadcast directly to WebSocket**
-❌ **Don't skip outbox pattern**
-❌ **Don't add business logic to consumers**
-
-## Adding New Event Types
-
-1. **Implement `post_persist()` in schema**:
-   ```python
-   async def post_persist(self, results, context):
-       from apps.common.outbox.helpers import broadcast_domain_objects
-
-       await broadcast_domain_objects(
-           event_type="your.new_event",
-           objects=results.get("field", []),
-           context=context,
-           payload_builder=lambda obj: {"id": obj.id, ...},
-       )
-   ```
-
-2. **Add tests** in `tests/*/test_persist_schema.py`
-
-3. **Document event type** in this file
-
-4. **Update frontend** to handle new event type
-
-5. **Update OpenAPI docs** in `api/v1/schemas/events.py`
-
-## References
-
-- docs/architecture.md - Platform architecture and boundaries
-- SimWorks/core/outbox/ - Outbox pattern implementation
-- SimWorks/api/v1/endpoints/events.py - Catch-up API endpoint
-- SimWorks/chatlab/consumers.py - WebSocket consumer implementation
+Those aliases are compatibility inputs only. Canonical server output uses the registry names above.

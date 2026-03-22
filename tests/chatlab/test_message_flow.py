@@ -93,9 +93,9 @@ class TestMessageBroadcastSignal:
 
         # Verify event details
         event = OutboxEvent.objects.latest("created_at")
-        assert event.event_type == "chat.message_created"
+        assert event.event_type == "message.item.created"
         assert event.simulation_id == simulation.id
-        assert event.idempotency_key == f"chat.message_created:{message.id}"
+        assert event.idempotency_key == f"message.item.created:{message.id}"
 
     def test_user_message_outbox_payload_has_message_id(self, simulation, user, conversation):
         """Test that the outbox payload includes message_id for deduplication."""
@@ -145,7 +145,7 @@ class TestMessageBroadcastSignal:
         # Verify outbox event was created
         assert OutboxEvent.objects.count() == initial_count + 1
         event = OutboxEvent.objects.latest("created_at")
-        assert event.event_type == "chat.message_created"
+        assert event.event_type == "message.item.created"
         assert event.payload["isFromAi"] is False
 
     def test_duplicate_message_event_is_idempotent(self, simulation, user, conversation):
@@ -168,10 +168,10 @@ class TestMessageBroadcastSignal:
 
         # Try to create a duplicate event manually
         result = enqueue_event_sync(
-            event_type="chat.message_created",
+            event_type="message.item.created",
             simulation_id=simulation.id,
             payload={"id": message.id},
-            idempotency_key=f"chat.message_created:{message.id}",
+            idempotency_key=f"message.item.created:{message.id}",
         )
 
         # Should return None (duplicate)
@@ -200,7 +200,7 @@ class TestMetadataResultsBroadcastSignal:
         assert OutboxEvent.objects.count() == initial_count + 1
 
         event = OutboxEvent.objects.latest("created_at")
-        assert event.event_type == "simulation.metadata.results_created"
+        assert event.event_type == "patient.results.updated"
         assert event.simulation_id == simulation.id
         assert event.payload["tool"] == "patient_results"
         assert event.payload["results"][0]["id"] == metadata.id
@@ -218,7 +218,7 @@ class TestOutboxEnvelopeFormat:
         from apps.common.outbox import build_ws_envelope
 
         event = OutboxEvent.objects.create(
-            event_type="chat.message_created",
+            event_type="message.item.created",
             simulation_id=simulation.id,
             payload={"id": 123, "message_id": 123, "content": "Hello"},
             idempotency_key="test:123",
@@ -236,7 +236,7 @@ class TestOutboxEnvelopeFormat:
 
         # Verify values
         assert envelope["event_id"] == str(event.id)
-        assert envelope["event_type"] == "chat.message_created"
+        assert envelope["event_type"] == "message.item.created"
         assert envelope["correlation_id"] == "corr-123"
         assert envelope["payload"]["id"] == 123
         assert envelope["payload"]["message_id"] == 123
@@ -247,14 +247,14 @@ class TestOutboxEnvelopeFormat:
         from apps.common.outbox import build_ws_envelope
 
         event1 = OutboxEvent.objects.create(
-            event_type="chat.message_created",
+            event_type="message.item.created",
             simulation_id=simulation.id,
             payload={"id": 1},
             idempotency_key="test:1",
         )
 
         event2 = OutboxEvent.objects.create(
-            event_type="chat.message_created",
+            event_type="message.item.created",
             simulation_id=simulation.id,
             payload={"id": 2},
             idempotency_key="test:2",

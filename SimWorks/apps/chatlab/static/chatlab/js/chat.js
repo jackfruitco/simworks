@@ -361,16 +361,16 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
 
             // Subscribe to chat UI events only
             this.eventBus.on('init_message', (data) => this.handleInitMessage(data));
-            this.eventBus.on('chat.message_created', (data) => this.handleChatMessage(data));
+            this.eventBus.on('message.item.created', (data) => this.handleChatMessage(data));
             this.eventBus.on('typing', (data) => this.handleTyping(data, true));
             this.eventBus.on('stopped_typing', (data) => this.handleTyping(data, false));
-            this.eventBus.on('message_status_update', (data) => this.handleMessageStatusUpdate(data));
+            this.eventBus.on('message.delivery.updated', (data) => this.handleMessageStatusUpdate(data));
             this.eventBus.on('error', (data) => this.handleError(data));
             this.eventBus.on('connected', () => this.handleSocketConnected());
             this.eventBus.on('disconnected', () => this.handleSocketDisconnected());
-            this.eventBus.on('simulation.state_changed', (data) => this.handleSimulationStateChanged(data));
-            this.eventBus.on('feedback.failed', (data) => this.handleFeedbackFailed(data));
-            this.eventBus.on('feedback.retrying', (data) => this.handleFeedbackRetrying(data));
+            this.eventBus.on('simulation.status.updated', (data) => this.handleSimulationStateChanged(data));
+            this.eventBus.on('feedback.generation.failed', (data) => this.handleFeedbackFailed(data));
+            this.eventBus.on('feedback.generation.updated', (data) => this.handleFeedbackRetrying(data));
         },
 
         /**
@@ -382,23 +382,22 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
             // Declarative tool configuration - tools auto-refresh on events
             this.toolManager.configure({
                 'patient_history': {
-                    refreshOn: ['chat.message_created'],
+                    refreshOn: ['message.item.created'],
                     refreshMode: 'checksum',
                 },
                 'simulation_metadata': {
-                    refreshOn: ['chat.message_created'],
+                    refreshOn: ['message.item.created'],
                     refreshMode: 'checksum',
                 },
                 'simulation_feedback': {
                     refreshOn: [
-                        'simulation.feedback_created',
+                        'feedback.item.created',
                         'feedback.created',
-                        'simulation.hotwash.created',
                     ],
                     refreshMode: 'html_inject',
                 },
                 'patient_results': {
-                    refreshOn: ['simulation.metadata.results_created'],
+                    refreshOn: ['patient.results.updated'],
                     refreshMode: 'html_inject',
                 },
             });

@@ -10,7 +10,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from apps.common.outbox import enqueue_event_sync, poke_drain_sync
+from apps.common.outbox import enqueue_event_sync, event_types as outbox_events, poke_drain_sync
 from apps.common.retries import has_user_retries_remaining
 from apps.simcore.models import Simulation
 from apps.simcore.utils import generate_fake_name
@@ -224,10 +224,13 @@ def record_patch_evaluation_summary(
     session.save(update_fields=["runtime_state_json", "modified_at"])
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.control_plane.patch_evaluated",
+        event_type=outbox_events.SIMULATION_PATCH_EVALUATION_COMPLETED,
         payload=summary,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.control_plane.patch_evaluated:{session.id}:{state.get('state_revision', 0)}",
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_PATCH_EVALUATION_COMPLETED}:"
+            f"{session.id}:{state.get('state_revision', 0)}"
+        ),
     )
 
 
@@ -339,25 +342,59 @@ def emit_domain_runtime_event(
     )
 
 
+def emit_simulation_status_event(
+    *,
+    session: TrainerSession,
+    previous_status: str | None,
+    created_by=None,
+    correlation_id: str | None = None,
+    retryable: bool | None = None,
+    idempotency_key: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> RuntimeEvent:
+    state = get_runtime_state(session)
+    payload = {
+        "simulation_id": session.simulation_id,
+        "session_id": session.id,
+        "status": session.status,
+        "phase": state.get("phase"),
+    }
+    if previous_status is not None:
+        payload["from"] = previous_status
+        payload["to"] = session.status
+    if retryable is not None:
+        payload["retryable"] = retryable
+    if extra:
+        payload.update(extra)
+    return emit_runtime_event(
+        session=session,
+        event_type=outbox_events.SIMULATION_STATUS_UPDATED,
+        payload=payload,
+        created_by=created_by,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+    )
+
+
 def _domain_deactivation_event_type(obj: Any) -> str | None:
     if isinstance(obj, Injury):
-        return "injury.updated"
+        return outbox_events.PATIENT_INJURY_UPDATED
     if isinstance(obj, Illness):
-        return "illness.updated"
+        return outbox_events.PATIENT_ILLNESS_UPDATED
     if isinstance(obj, Problem):
-        return "problem.updated"
+        return outbox_events.PATIENT_PROBLEM_UPDATED
     if isinstance(obj, RecommendedIntervention):
-        return "recommended_intervention.removed"
+        return outbox_events.PATIENT_RECOMMENDED_INTERVENTION_REMOVED
     if isinstance(obj, AssessmentFinding):
-        return "trainerlab.assessment_finding.removed"
+        return outbox_events.PATIENT_ASSESSMENT_FINDING_REMOVED
     if isinstance(obj, DiagnosticResult):
-        return "trainerlab.diagnostic_result.updated"
+        return outbox_events.PATIENT_DIAGNOSTIC_RESULT_UPDATED
     if isinstance(obj, ResourceState):
-        return "trainerlab.resource.updated"
+        return outbox_events.PATIENT_RESOURCE_UPDATED
     if isinstance(obj, DispositionState):
-        return "trainerlab.disposition.updated"
+        return outbox_events.PATIENT_DISPOSITION_UPDATED
     if isinstance(obj, Intervention):
-        return "intervention.updated"
+        return outbox_events.PATIENT_INTERVENTION_UPDATED
     return None
 
 
@@ -656,7 +693,7 @@ def refresh_runtime_projection(
 
     emit_runtime_event(
         session=session,
-        event_type="state.updated",
+        event_type=outbox_events.SIMULATION_SNAPSHOT_UPDATED,
         payload={
             "state_revision": state["state_revision"],
             "active_elapsed_seconds": state["active_elapsed_seconds"],
@@ -665,18 +702,22 @@ def refresh_runtime_projection(
             "processed_reasons": processed_reasons or [],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"state.updated:{session.id}:{state['state_revision']}",
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_SNAPSHOT_UPDATED}:{session.id}:{state['state_revision']}"
+        ),
     )
 
     emit_runtime_event(
         session=session,
-        event_type="ai.intent.updated",
+        event_type=outbox_events.SIMULATION_PLAN_UPDATED,
         payload={
             "state_revision": state["state_revision"],
             "ai_plan": state["ai_plan"],
         },
         correlation_id=correlation_id,
-        idempotency_key=f"ai.intent.updated:{session.id}:{state['state_revision']}",
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_PLAN_UPDATED}:{session.id}:{state['state_revision']}"
+        ),
     )
     return state
 
@@ -720,18 +761,28 @@ def create_session(
     )
 
     if status == SessionStatus.SEEDING:
-        _emit_session_seeding_event(
-            session,
+        emit_simulation_status_event(
+            session=session,
+            previous_status=None,
             created_by=user,
             correlation_id=correlation_id,
+            idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:seeding",
+            extra={
+                "scenario_spec": session.scenario_spec_json,
+                "state_revision": initial_state["state_revision"],
+            },
         )
     elif emit_seeded_event:
-        emit_runtime_event(
+        emit_simulation_status_event(
             session=session,
-            event_type="session.seeded",
-            payload=_build_session_lifecycle_payload(session, state=initial_state),
+            previous_status=None,
             created_by=user,
             correlation_id=correlation_id,
+            idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:seeded",
+            extra={
+                "scenario_spec": session.scenario_spec_json,
+                "state_revision": initial_state["state_revision"],
+            },
         )
 
     return session
@@ -758,43 +809,6 @@ def _set_session_phase(
     session.runtime_state_json = state
     session.save(update_fields=["runtime_state_json", "modified_at"])
     return session
-
-
-def _build_session_lifecycle_payload(
-    session: TrainerSession,
-    *,
-    state: dict[str, Any],
-    extra: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    payload = {
-        "status": session.status,
-        "scenario_spec": session.scenario_spec_json,
-        "state_revision": state["state_revision"],
-    }
-    if extra:
-        payload.update(extra)
-    return payload
-
-
-def _emit_session_seeding_event(
-    session: TrainerSession,
-    *,
-    correlation_id: str | None = None,
-    created_by=None,
-) -> None:
-    state = get_runtime_state(session)
-    emit_runtime_event(
-        session=session,
-        event_type="session.seeding",
-        payload=_build_session_lifecycle_payload(
-            session,
-            state=state,
-            extra={"retry_count": session.simulation.initial_retry_count},
-        ),
-        created_by=created_by,
-        correlation_id=correlation_id,
-        idempotency_key=f"session.seeding:{session.id}:{session.simulation.initial_retry_count}",
-    )
 
 
 def fail_initial_scenario_generation(
@@ -828,17 +842,16 @@ def fail_initial_scenario_generation(
         reason_text=reason_text,
         retryable=retryable,
     )
-    emit_runtime_event(
+    emit_simulation_status_event(
         session=session,
-        event_type="session.failed",
-        payload={
-            "status": session.status,
+        previous_status=SessionStatus.SEEDING,
+        correlation_id=correlation_id,
+        retryable=retryable,
+        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:{normalized_reason}",
+        extra={
             "reason_code": normalized_reason,
             "reason_text": reason_text,
-            "retryable": retryable,
         },
-        correlation_id=correlation_id,
-        idempotency_key=f"session.failed:{session.id}:{normalized_reason}",
     )
     return session
 
@@ -849,59 +862,48 @@ def complete_initial_scenario_generation(
     correlation_id: str | None = None,
     call_id: str | None = None,
 ) -> TrainerSession | None:
-    with transaction.atomic():
-        session = (
-            TrainerSession.objects.select_related("simulation")
-            .select_for_update()
-            .filter(simulation_id=simulation_id)
-            .first()
-        )
-        if session is None:
-            return None
+    session = (
+        TrainerSession.objects.select_related("simulation")
+        .filter(simulation_id=simulation_id)
+        .first()
+    )
+    if session is None:
+        return None
 
-        if session.status == SessionStatus.FAILED:
-            logger.info(
-                "Skipping TrainerLab initial-generation completion for failed simulation %s",
-                simulation_id,
-            )
-            return session
-
-        state = get_runtime_state(session)
-        if session.status == SessionStatus.SEEDED and state.get("phase") == "seeded":
-            logger.info(
-                "TrainerLab initial-generation completion already applied for simulation %s",
-                simulation_id,
-            )
-            return session
-
-        state["phase"] = "seeded"
-        state["last_runtime_error"] = ""
-        state["initial_generation_retryable"] = None
-        session.status = SessionStatus.SEEDED
-        session.runtime_state_json = state
-        session.save(update_fields=["status", "runtime_state_json", "modified_at"])
-
-        emit_runtime_event(
-            session=session,
-            event_type="session.seeded",
-            payload=_build_session_lifecycle_payload(
-                session,
-                state=state,
-                extra={"call_id": call_id},
-            ),
-            correlation_id=correlation_id,
-            idempotency_key=f"session.seeded:{session.id}",
-        )
-
-        _emit_seeded_vital_events(session)
-        _emit_seeded_condition_events(session)
-        _emit_seeded_pulse_events(session)
-
+    if session.status == SessionStatus.FAILED:
         logger.info(
-            "TrainerLab initial-generation completion applied for simulation %s",
+            "Skipping TrainerLab initial-generation completion for failed simulation %s",
             simulation_id,
         )
         return session
+
+    state = get_runtime_state(session)
+    if session.status == SessionStatus.SEEDED and state.get("phase") == "seeded":
+        return session
+
+    state["phase"] = "seeded"
+    state["last_runtime_error"] = ""
+    state["initial_generation_retryable"] = None
+    session.status = SessionStatus.SEEDED
+    session.runtime_state_json = state
+    session.save(update_fields=["status", "runtime_state_json", "modified_at"])
+
+    emit_simulation_status_event(
+        session=session,
+        previous_status=SessionStatus.SEEDING,
+        correlation_id=correlation_id,
+        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:seeded",
+        extra={
+            "scenario_spec": session.scenario_spec_json,
+            "state_revision": state["state_revision"],
+            "call_id": call_id,
+        },
+    )
+
+    _emit_seeded_vital_events(session)
+    _emit_seeded_condition_events(session)
+    _emit_seeded_pulse_events(session)
+    return session
 
 
 def is_initial_generation_retryable(session: TrainerSession) -> bool:
@@ -969,7 +971,6 @@ def retry_initial_scenario_generation(
     session.status = SessionStatus.SEEDING
     session.runtime_state_json = state
     session.save(update_fields=["status", "runtime_state_json", "modified_at"])
-    _emit_session_seeding_event(session, correlation_id=correlation_id)
 
     retryable = has_user_retries_remaining(session.simulation.initial_retry_count)
     return enqueue_initial_scenario_generation(
@@ -1015,9 +1016,11 @@ def _emit_seeded_vital_events(session: TrainerSession) -> None:
         if obj is not None:
             emit_runtime_event(
                 session=session,
-                event_type="trainerlab.vital.created",
+                event_type=outbox_events.PATIENT_VITAL_CREATED,
                 payload=_serialize_vital(vital_type, obj),
-                idempotency_key=f"trainerlab.vital.created:seeded:{session.id}:{vital_type}",
+                idempotency_key=(
+                    f"{outbox_events.PATIENT_VITAL_CREATED}:seeded:{session.id}:{vital_type}"
+                ),
             )
 
 
@@ -1027,9 +1030,11 @@ def _emit_seeded_pulse_events(session: TrainerSession) -> None:
     ).order_by("location"):
         emit_runtime_event(
             session=session,
-            event_type="trainerlab.pulse.created",
+            event_type=outbox_events.PATIENT_PULSE_CREATED,
             payload=_serialize_pulse(obj),
-            idempotency_key=f"trainerlab.pulse.created:seeded:{session.id}:{obj.location}",
+            idempotency_key=(
+                f"{outbox_events.PATIENT_PULSE_CREATED}:seeded:{session.id}:{obj.location}"
+            ),
         )
 
 
@@ -1092,81 +1097,89 @@ def _emit_seeded_condition_events(session: TrainerSession) -> None:
     if scenario_brief is not None:
         emit_domain_runtime_event(
             session=session,
-            event_type="trainerlab.scenario_brief.created",
+            event_type=outbox_events.SIMULATION_BRIEF_CREATED,
             obj=scenario_brief,
-            idempotency_key=f"trainerlab.scenario_brief.created:seeded:{session.id}:{scenario_brief.id}",
+            idempotency_key=(
+                f"{outbox_events.SIMULATION_BRIEF_CREATED}:seeded:{session.id}:{scenario_brief.id}"
+            ),
         )
     for injury in injuries:
         emit_domain_runtime_event(
             session=session,
-            event_type="injury.created",
+            event_type=outbox_events.PATIENT_INJURY_CREATED,
             obj=injury,
-            idempotency_key=f"injury.created:seeded:{session.id}:{injury.id}",
+            idempotency_key=f"{outbox_events.PATIENT_INJURY_CREATED}:seeded:{session.id}:{injury.id}",
         )
     for illness in illnesses:
         emit_domain_runtime_event(
             session=session,
-            event_type="illness.created",
+            event_type=outbox_events.PATIENT_ILLNESS_CREATED,
             obj=illness,
-            idempotency_key=f"illness.created:seeded:{session.id}:{illness.id}",
+            idempotency_key=f"{outbox_events.PATIENT_ILLNESS_CREATED}:seeded:{session.id}:{illness.id}",
         )
     for problem in problems:
         emit_domain_runtime_event(
             session=session,
-            event_type="problem.created",
+            event_type=outbox_events.PATIENT_PROBLEM_CREATED,
             obj=problem,
-            idempotency_key=f"problem.created:seeded:{session.id}:{problem.id}",
+            idempotency_key=f"{outbox_events.PATIENT_PROBLEM_CREATED}:seeded:{session.id}:{problem.id}",
         )
     for recommendation in recommendations:
         emit_domain_runtime_event(
             session=session,
-            event_type="recommended_intervention.created",
+            event_type=outbox_events.PATIENT_RECOMMENDED_INTERVENTION_CREATED,
             obj=recommendation,
             idempotency_key=(
-                f"recommended_intervention.created:seeded:{session.id}:{recommendation.id}"
+                f"{outbox_events.PATIENT_RECOMMENDED_INTERVENTION_CREATED}:"
+                f"seeded:{session.id}:{recommendation.id}"
             ),
         )
     for finding in findings:
         emit_domain_runtime_event(
             session=session,
-            event_type="trainerlab.assessment_finding.created",
+            event_type=outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED,
             obj=finding,
             idempotency_key=(
-                f"trainerlab.assessment_finding.created:seeded:{session.id}:{finding.id}"
+                f"{outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED}:"
+                f"seeded:{session.id}:{finding.id}"
             ),
         )
     for diagnostic in diagnostics:
         emit_domain_runtime_event(
             session=session,
-            event_type="trainerlab.diagnostic_result.created",
+            event_type=outbox_events.PATIENT_DIAGNOSTIC_RESULT_CREATED,
             obj=diagnostic,
             idempotency_key=(
-                f"trainerlab.diagnostic_result.created:seeded:{session.id}:{diagnostic.id}"
+                f"{outbox_events.PATIENT_DIAGNOSTIC_RESULT_CREATED}:"
+                f"seeded:{session.id}:{diagnostic.id}"
             ),
         )
     for resource in resources:
         emit_domain_runtime_event(
             session=session,
-            event_type="trainerlab.resource.updated",
+            event_type=outbox_events.PATIENT_RESOURCE_UPDATED,
             obj=resource,
-            idempotency_key=f"trainerlab.resource.updated:seeded:{session.id}:{resource.id}",
+            idempotency_key=(
+                f"{outbox_events.PATIENT_RESOURCE_UPDATED}:seeded:{session.id}:{resource.id}"
+            ),
         )
     if disposition is not None:
         emit_domain_runtime_event(
             session=session,
-            event_type="trainerlab.disposition.updated",
+            event_type=outbox_events.PATIENT_DISPOSITION_UPDATED,
             obj=disposition,
             idempotency_key=(
-                f"trainerlab.disposition.updated:seeded:{session.id}:{disposition.id}"
+                f"{outbox_events.PATIENT_DISPOSITION_UPDATED}:seeded:{session.id}:{disposition.id}"
             ),
         )
     for evaluation in recommendation_evaluations:
         emit_domain_runtime_event(
             session=session,
-            event_type="trainerlab.recommendation_evaluation.created",
+            event_type=outbox_events.PATIENT_RECOMMENDATION_EVALUATION_CREATED,
             obj=evaluation,
             idempotency_key=(
-                f"trainerlab.recommendation_evaluation.created:seeded:{session.id}:{evaluation.id}"
+                f"{outbox_events.PATIENT_RECOMMENDATION_EVALUATION_CREATED}:"
+                f"seeded:{session.id}:{evaluation.id}"
             ),
         )
 
@@ -1384,13 +1397,15 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
         session = TrainerSession.objects.select_related("simulation").get(pk=session_id)
         emit_runtime_event(
             session=session,
-            event_type="runtime.failed",
+            event_type=outbox_events.SIMULATION_RUNTIME_FAILED,
             payload={
                 "error": str(exc),
                 "reasons": batch["reasons"],
             },
             correlation_id=batch.get("correlation_id"),
-            idempotency_key=f"runtime.failed:{session.id}:{timezone.now().timestamp()}",
+            idempotency_key=(
+                f"{outbox_events.SIMULATION_RUNTIME_FAILED}:{session.id}:{timezone.now().timestamp()}"
+            ),
         )
         raise
 
@@ -1633,11 +1648,11 @@ def _apply_problem_observation(
             )
             emit_domain_runtime_event(
                 session=session,
-                event_type="problem.created",
+                event_type=outbox_events.PATIENT_PROBLEM_CREATED,
                 obj=created,
                 extra={"action": "created"},
                 correlation_id=correlation_id,
-                idempotency_key=f"problem.created:runtime:{created.id}",
+                idempotency_key=f"{outbox_events.PATIENT_PROBLEM_CREATED}:runtime:{created.id}",
             )
             return
 
@@ -1696,11 +1711,11 @@ def _apply_problem_observation(
     )
     emit_domain_runtime_event(
         session=session,
-        event_type="problem.updated",
+        event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
         obj=updated,
         extra={"action": "updated"},
         correlation_id=correlation_id,
-        idempotency_key=f"problem.updated:runtime:{updated.id}",
+        idempotency_key=f"{outbox_events.PATIENT_PROBLEM_UPDATED}:runtime:{updated.id}",
     )
 
 
@@ -1742,11 +1757,11 @@ def _ensure_secondary_problem(
         )
         emit_domain_runtime_event(
             session=session,
-            event_type="problem.updated",
+            event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
             obj=updated,
             extra={"action": "updated"},
             correlation_id=correlation_id,
-            idempotency_key=f"problem.updated:{rule_id}:{updated.id}",
+            idempotency_key=f"{outbox_events.PATIENT_PROBLEM_UPDATED}:{rule_id}:{updated.id}",
         )
         return
 
@@ -1766,11 +1781,11 @@ def _ensure_secondary_problem(
     )
     emit_domain_runtime_event(
         session=session,
-        event_type="problem.created",
+        event_type=outbox_events.PATIENT_PROBLEM_CREATED,
         obj=created,
         extra={"action": "created"},
         correlation_id=correlation_id,
-        idempotency_key=f"problem.created:{rule_id}:{created.id}",
+        idempotency_key=f"{outbox_events.PATIENT_PROBLEM_CREATED}:{rule_id}:{created.id}",
     )
 
 
@@ -1863,11 +1878,11 @@ def _apply_progression_catalogs(
             )
             emit_domain_runtime_event(
                 session=session,
-                event_type="problem.updated",
+                event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
                 obj=updated,
                 extra={"action": "updated"},
                 correlation_id=correlation_id,
-                idempotency_key=f"problem.updated:progression:{updated.id}",
+                idempotency_key=f"{outbox_events.PATIENT_PROBLEM_UPDATED}:progression:{updated.id}",
             )
 
 
@@ -1938,13 +1953,13 @@ def _apply_finding_update(
     emit_domain_runtime_event(
         session=session,
         event_type=(
-            "trainerlab.assessment_finding.updated"
+            outbox_events.PATIENT_ASSESSMENT_FINDING_UPDATED
             if target_finding is not None
-            else "trainerlab.assessment_finding.created"
+            else outbox_events.PATIENT_ASSESSMENT_FINDING_CREATED
         ),
         obj=finding,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.assessment_finding:{finding.id}",
+        idempotency_key=f"patient.assessmentfinding:{finding.id}",
     )
 
 
@@ -2013,10 +2028,12 @@ def _record_recommendation_evaluation(
     )
     emit_domain_runtime_event(
         session=session,
-        event_type="trainerlab.recommendation_evaluation.created",
+        event_type=outbox_events.PATIENT_RECOMMENDATION_EVALUATION_CREATED,
         obj=evaluation,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.recommendation_evaluation.created:{evaluation.id}",
+        idempotency_key=(
+            f"{outbox_events.PATIENT_RECOMMENDATION_EVALUATION_CREATED}:{evaluation.id}"
+        ),
     )
 
 
@@ -2221,13 +2238,13 @@ def recompute_active_recommendations(
         emit_domain_runtime_event(
             session=session,
             event_type=(
-                "recommended_intervention.updated"
+                outbox_events.PATIENT_RECOMMENDED_INTERVENTION_UPDATED
                 if existing is not None
-                else "recommended_intervention.created"
+                else outbox_events.PATIENT_RECOMMENDED_INTERVENTION_CREATED
             ),
             obj=recommendation,
             correlation_id=correlation_id,
-            idempotency_key=f"recommended_intervention:{recommendation.id}",
+            idempotency_key=f"patient.recommendedintervention:{recommendation.id}",
         )
 
 
@@ -2315,10 +2332,10 @@ def _apply_vital_change(
     payload["trend"] = change.get("trend", "stable")
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.vital.updated",
+        event_type=outbox_events.PATIENT_VITAL_UPDATED,
         payload=payload,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.vital.updated:{created.id}",
+        idempotency_key=f"{outbox_events.PATIENT_VITAL_UPDATED}:{created.id}",
     )
 
 
@@ -2362,10 +2379,10 @@ def _apply_pulse_change(
     payload["action"] = "updated"
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.pulse.updated",
+        event_type=outbox_events.PATIENT_PULSE_UPDATED,
         payload=payload,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.pulse.updated:{created.id}",
+        idempotency_key=f"{outbox_events.PATIENT_PULSE_UPDATED}:{created.id}",
     )
 
 
@@ -2401,13 +2418,19 @@ def _apply_intervention_effect(
 
     emit_runtime_event(
         session=session,
-        event_type="intervention.updated",
+        event_type=outbox_events.PATIENT_INTERVENTION_UPDATED,
         payload=serialize_domain_event(
             intervention,
-            extra={"effect": effects[str(intervention.id)]},
+            extra={
+                "assessment_status": effects[str(intervention.id)]["status"],
+                "effect": effects[str(intervention.id)],
+            },
         ),
         correlation_id=correlation_id,
-        idempotency_key=f"intervention.updated:{intervention.id}:{effects[str(intervention.id)]['status']}",
+        idempotency_key=(
+            f"{outbox_events.PATIENT_INTERVENTION_UPDATED}:{intervention.id}:"
+            f"{effects[str(intervention.id)]['status']}"
+        ),
     )
 
     # #6: Emit structured assessment event so clients get a closed-loop feedback signal
@@ -2656,14 +2679,17 @@ def apply_debrief_output(
 
         emit_runtime_event(
             session=session,
-            event_type="summary.updated",
+            event_type=outbox_events.SIMULATION_SUMMARY_UPDATED,
             payload={
                 "summary_id": summary.id,
+                "status": "updated",
                 "ai_debrief": output_payload,
                 "ai_debrief_revision": next_revision,
             },
             correlation_id=correlation_id,
-            idempotency_key=f"summary.updated:{session.id}:{next_revision}",
+            idempotency_key=(
+                f"{outbox_events.SIMULATION_SUMMARY_UPDATED}:{session.id}:{next_revision}"
+            ),
         )
         return summary
 
@@ -2674,6 +2700,7 @@ def start_session(
     if session.status != SessionStatus.SEEDED:
         raise ValidationError("Session can only be started from seeded state")
 
+    previous_status = session.status
     now = timezone.now()
     state = _set_active_elapsed_anchor(session, state=get_runtime_state(session), now=now)
 
@@ -2693,12 +2720,17 @@ def start_session(
         ]
     )
 
-    emit_runtime_event(
+    emit_simulation_status_event(
         session=session,
-        event_type="run.started",
-        payload={"status": session.status},
+        previous_status=previous_status,
         created_by=user,
         correlation_id=correlation_id,
+        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:running",
+        extra={
+            "status": session.status,
+            "from": previous_status,
+            "to": session.status,
+        },
     )
     append_pending_runtime_reason(
         session=session,
@@ -2716,6 +2748,7 @@ def pause_session(
     if session.status != SessionStatus.RUNNING:
         raise ValidationError("Session can only be paused from running state")
 
+    previous_status = session.status
     now = timezone.now()
     state = _freeze_active_elapsed(session, state=get_runtime_state(session), now=now)
 
@@ -2724,12 +2757,17 @@ def pause_session(
     session.runtime_state_json = state
     session.save(update_fields=["status", "run_paused_at", "runtime_state_json", "modified_at"])
 
-    emit_runtime_event(
+    emit_simulation_status_event(
         session=session,
-        event_type="run.paused",
-        payload={"status": session.status},
+        previous_status=previous_status,
         created_by=user,
         correlation_id=correlation_id,
+        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:paused",
+        extra={
+            "status": session.status,
+            "from": previous_status,
+            "to": session.status,
+        },
     )
     return session
 
@@ -2740,6 +2778,7 @@ def resume_session(
     if session.status != SessionStatus.PAUSED:
         raise ValidationError("Session can only be resumed from paused state")
 
+    previous_status = session.status
     now = timezone.now()
     state = _set_active_elapsed_anchor(session, state=get_runtime_state(session), now=now)
 
@@ -2751,12 +2790,17 @@ def resume_session(
         update_fields=["status", "run_paused_at", "tick_nonce", "runtime_state_json", "modified_at"]
     )
 
-    emit_runtime_event(
+    emit_simulation_status_event(
         session=session,
-        event_type="run.resumed",
-        payload={"status": session.status},
+        previous_status=previous_status,
         created_by=user,
         correlation_id=correlation_id,
+        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:resumed",
+        extra={
+            "status": session.status,
+            "from": previous_status,
+            "to": session.status,
+        },
     )
     append_pending_runtime_reason(
         session=session,
@@ -2774,6 +2818,7 @@ def stop_session(
     if session.status not in {SessionStatus.RUNNING, SessionStatus.PAUSED, SessionStatus.SEEDED}:
         raise ValidationError("Session is already terminal")
 
+    previous_status = session.status
     terminal_at = timezone.now()
     state = _freeze_active_elapsed(session, state=get_runtime_state(session), now=terminal_at)
     state, discarded_reasons = discard_runtime_work(state, discarded_at=terminal_at)
@@ -2786,15 +2831,18 @@ def stop_session(
     if not session.simulation.is_complete:
         session.simulation.mark_completed()
 
-    emit_runtime_event(
+    emit_simulation_status_event(
         session=session,
-        event_type="run.stopped",
-        payload={
-            "status": session.status,
-            "discarded_runtime_reason_count": len(discarded_reasons),
-        },
+        previous_status=previous_status,
         created_by=user,
         correlation_id=correlation_id,
+        idempotency_key=f"{outbox_events.SIMULATION_STATUS_UPDATED}:{session.id}:completed",
+        extra={
+            "status": session.status,
+            "from": previous_status,
+            "to": session.status,
+            "discarded_runtime_reason_count": len(discarded_reasons),
+        },
     )
     build_summary(session=session, generated_by=user)
     enqueue_summary_debrief(session=session)
@@ -2864,10 +2912,10 @@ def build_summary(*, session: TrainerSession, generated_by=None) -> TrainerRunSu
 
     emit_runtime_event(
         session=session,
-        event_type="summary.ready",
-        payload={"summary_id": summary.id},
+        event_type=outbox_events.SIMULATION_SUMMARY_UPDATED,
+        payload={"summary_id": summary.id, "status": "ready"},
         created_by=generated_by,
-        idempotency_key=f"summary.ready:{summary.id}",
+        idempotency_key=f"{outbox_events.SIMULATION_SUMMARY_UPDATED}:{summary.id}:ready",
     )
 
     return summary
@@ -3013,16 +3061,13 @@ def update_problem_status(
         metadata_json=original.metadata_json,
     )
 
-    status_event_type = (
-        "problem.resolved" if created.status == Problem.Status.RESOLVED else "problem.updated"
-    )
     emit_domain_runtime_event(
         session=session,
-        event_type=status_event_type,
+        event_type=outbox_events.PATIENT_PROBLEM_UPDATED,
         obj=created,
         extra={"action": "status_updated"},
         correlation_id=correlation_id,
-        idempotency_key=f"{status_event_type}:manual-status:{created.id}",
+        idempotency_key=f"{outbox_events.PATIENT_PROBLEM_UPDATED}:manual-status:{created.id}",
     )
 
     refresh_runtime_projection(session=session, correlation_id=correlation_id)
@@ -3056,13 +3101,15 @@ def trigger_manual_tick(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.tick.triggered",
+        event_type=outbox_events.SIMULATION_TICK_TRIGGERED,
         payload={
             "trigger": "manual",
             "correlation_id": correlation_id,
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.tick.triggered:{session.id}:{reason['created_at']}",
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_TICK_TRIGGERED}:{session.id}:{reason['created_at']}"
+        ),
     )
     return reason
 
@@ -3096,7 +3143,7 @@ def create_debrief_annotation(
     )
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.annotation.created",
+        event_type=outbox_events.SIMULATION_ANNOTATION_CREATED,
         payload={
             "annotation_id": annotation.id,
             "learning_objective": annotation.learning_objective,
@@ -3107,7 +3154,7 @@ def create_debrief_annotation(
         },
         created_by=created_by,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.annotation.created:{annotation.id}",
+        idempotency_key=f"{outbox_events.SIMULATION_ANNOTATION_CREATED}:{annotation.id}",
     )
     return annotation
 
@@ -3212,7 +3259,7 @@ def emit_intervention_assessed(
     status: str,
     correlation_id: str | None = None,
 ) -> None:
-    """Emit trainerlab.intervention.assessed when the AI evaluates an intervention."""
+    """Emit patient.intervention.updated when the AI evaluates an intervention."""
     intervention = Intervention.objects.filter(
         pk=intervention_id,
         simulation=session.simulation,
@@ -3239,7 +3286,7 @@ def emit_intervention_assessed(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.intervention.assessed",
+        event_type=outbox_events.PATIENT_INTERVENTION_UPDATED,
         payload={
             "intervention_id": intervention_id,
             "intervention_type": intervention.intervention_type or None,
@@ -3247,12 +3294,13 @@ def emit_intervention_assessed(
             "effectiveness": effectiveness,
             "clinical_effect": clinical_effect,
             "status": status,
+            "assessment_status": status,
             "target_problem_id": target_problem_id,
             "target_problem_title": target_problem_title,
             "target_problem_status": target_problem_status,
         },
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.intervention.assessed:{intervention_id}:{status}",
+        idempotency_key=f"{outbox_events.PATIENT_INTERVENTION_UPDATED}:{intervention_id}:{status}",
     )
 
 
@@ -3360,7 +3408,7 @@ def update_scenario_brief(
 
     emit_runtime_event(
         session=session,
-        event_type="trainerlab.scenario_brief.updated",
+        event_type=outbox_events.SIMULATION_BRIEF_UPDATED,
         payload={
             "domain_event_id": new_brief.id,
             "read_aloud_brief": new_brief.read_aloud_brief,
@@ -3373,6 +3421,6 @@ def update_scenario_brief(
         },
         created_by=user,
         correlation_id=correlation_id,
-        idempotency_key=f"trainerlab.scenario_brief.updated:{new_brief.id}",
+        idempotency_key=f"{outbox_events.SIMULATION_BRIEF_UPDATED}:{new_brief.id}",
     )
     return new_brief

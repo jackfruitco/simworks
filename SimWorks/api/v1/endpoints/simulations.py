@@ -20,6 +20,7 @@ from api.v1.schemas.simulations import (
     SimulationQuickCreate,
     simulation_to_out,
 )
+from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit
 from apps.common.retries import (
     _sim_has_chatlab_session,
@@ -376,9 +377,10 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
 
     _emit_feedback_event(
         simulation_id=sim.id,
-        event_type="feedback.retrying",
+        event_type=outbox_events.FEEDBACK_GENERATION_UPDATED,
         payload={
             "simulation_id": sim.id,
+            "status": "retrying",
             "retryable": has_user_retries_remaining(sim.feedback_retry_count),
             "retry_count": sim.feedback_retry_count,
         },
@@ -389,7 +391,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
         retryable = has_user_retries_remaining(sim.feedback_retry_count)
         _emit_feedback_event(
             simulation_id=sim.id,
-            event_type="feedback.failed",
+            event_type=outbox_events.FEEDBACK_GENERATION_FAILED,
             payload={
                 "simulation_id": sim.id,
                 "error_code": "feedback_enqueue_failed",
