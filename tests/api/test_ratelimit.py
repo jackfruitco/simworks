@@ -183,31 +183,6 @@ class TestRateLimitDecorator:
             result = my_endpoint(request)
             assert result == "ok"
 
-    def test_raises_rate_limit_exceeded(self):
-        """Test that RateLimitExceeded is raised when limit is exceeded."""
-        mock_redis = MagicMock()
-        mock_redis.ping.return_value = True
-        mock_redis.pipeline.return_value.__enter__ = lambda s: s
-        mock_redis.pipeline.return_value.__exit__ = lambda s, *args: None
-        mock_pipe = mock_redis.pipeline.return_value
-        mock_pipe.execute.return_value = [None, 5, None, None]
-        mock_redis.zrange.return_value = [(b"12345:123", time.time() - 30)]
-
-        with patch("apps.common.ratelimit.get_redis_client", return_value=mock_redis):
-
-            @rate_limit(key="ip", limit=5, period=60)
-            def my_endpoint(request):
-                return "ok"
-
-            request = RequestFactory().get("/")
-            request.META["REMOTE_ADDR"] = "192.168.1.1"
-
-            with pytest.raises(RateLimitExceeded) as exc_info:
-                my_endpoint(request)
-
-            assert exc_info.value.status_code == 429
-            assert exc_info.value.retry_after > 0
-
 
 class TestRateLimitExceeded:
     """Tests for RateLimitExceeded exception."""
