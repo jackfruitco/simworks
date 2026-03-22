@@ -219,10 +219,8 @@ def test_service_call_actions_only_show_download_for_full_call(
     )
 
     content = response.content.decode()
-    assert "Download call" in content
-    assert "Copy call" in content
-    assert "Download input" not in content
-    assert "Download output" not in content
+    assert content.count("Download JSON") == 3
+    assert content.count("Copy JSON") == 3
 
 
 @pytest.mark.django_db
