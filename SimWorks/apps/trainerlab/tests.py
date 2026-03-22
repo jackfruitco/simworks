@@ -42,7 +42,9 @@ class VitalCreateInSchemaTests(SimpleTestCase):
 
 def test_apply_preset_outbox_idempotency_key_includes_command_id():
     source = Path("SimWorks/api/v1/endpoints/trainerlab.py").read_text()
-    (legacy_preset_alias,) = outbox_events.legacy_aliases_for(outbox_events.SIMULATION_PRESET_APPLIED)
+    (legacy_preset_alias,) = outbox_events.legacy_aliases_for(
+        outbox_events.SIMULATION_PRESET_APPLIED
+    )
 
     assert "outbox_events.SIMULATION_PRESET_APPLIED" in source
     assert ":{session.id}:{instruction.id}:{command.id}" in source

@@ -5,8 +5,8 @@ import pytest
 
 from apps.common.outbox.event_types import (
     PATIENT_PROBLEM_CREATED,
-    PATIENT_RECOMMENDED_INTERVENTION_CREATED,
     PATIENT_RECOMMENDATION_EVALUATION_CREATED,
+    PATIENT_RECOMMENDED_INTERVENTION_CREATED,
 )
 from apps.trainerlab.models import (
     ETCO2,
