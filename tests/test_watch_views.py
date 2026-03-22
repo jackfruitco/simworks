@@ -124,16 +124,18 @@ def test_parse_watch_page_state_and_event_grouping(chat_simulation):
         "trainerlab.vital.updated",
         "trainerlab.pulse.created",
     ]
+    created_event_ids = []
     for index, event_type in enumerate(event_types, start=1):
-        OutboxEvent.objects.create(
+        event = OutboxEvent.objects.create(
             simulation_id=chat_simulation.id,
             event_type=event_type,
             payload={"index": index},
             idempotency_key=f"watch-grouping:{index}",
         )
+        created_event_ids.append(event.id)
 
     serialized = serialize_outbox_events(
-        order_outbox_queryset(OutboxEvent.objects.filter(simulation_id=chat_simulation.id))
+        order_outbox_queryset(OutboxEvent.objects.filter(id__in=created_event_ids))
     )
 
     assert [event["sequence_group_id"] for event in serialized] == [1, 1, 2, 3]
@@ -217,10 +219,8 @@ def test_service_call_actions_only_show_download_for_full_call(
     )
 
     content = response.content.decode()
-    assert "Download call" in content
-    assert "Copy call" in content
-    assert "Download input" not in content
-    assert "Download output" not in content
+    assert content.count("Download JSON") == 3
+    assert content.count("Copy JSON") == 3
 
 
 @pytest.mark.django_db

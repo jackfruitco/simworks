@@ -392,6 +392,7 @@ function ChatManager(simulation_id, currentUserId, currentUserEmail) {
                 'simulation_feedback': {
                     refreshOn: [
                         'feedback.item.created',
+                        'feedback.created',
                     ],
                     refreshMode: 'html_inject',
                 },

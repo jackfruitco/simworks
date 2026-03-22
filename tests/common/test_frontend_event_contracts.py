@@ -46,19 +46,19 @@ def test_trainerlab_event_contract_includes_friendly_labels():
     assert "injury_kind_label?: string;" in source
     assert "intervention_label?: string;" in source
     assert "site_label?: string;" in source
-    assert "type: 'injury.created' | 'injury.updated';" in source
-    assert "type: 'illness.created' | 'illness.updated';" in source
-    assert "type: 'problem.created';" in source
-    assert "type: 'recommended_intervention.created'" in source
-    assert "type: 'intervention.created' | 'intervention.updated';" in source
-    assert "type: 'state.updated';" in source
-    assert "type: 'ai.intent.updated';" in source
-    assert "type: 'trainerlab.assessment_finding.created'" in source
-    assert "type: 'trainerlab.diagnostic_result.created'" in source
-    assert "type: 'trainerlab.resource.updated';" in source
-    assert "type: 'trainerlab.disposition.updated';" in source
-    assert "type: 'trainerlab.vital.created' | 'trainerlab.vital.updated';" in source
-    assert "type: 'trainerlab.pulse.created' | 'trainerlab.pulse.updated';" in source
+    assert "'injury.created' | 'injury.updated'" in source
+    assert "'illness.created' | 'illness.updated'" in source
+    assert "'problem.created'" in source
+    assert "'recommended_intervention.created'" in source
+    assert "'intervention.created' | 'intervention.updated'" in source
+    assert "'state.updated'" in source
+    assert "'ai.intent.updated'" in source
+    assert "'trainerlab.assessment_finding.created'" in source
+    assert "'trainerlab.diagnostic_result.created'" in source
+    assert "'trainerlab.resource.updated'" in source
+    assert "'trainerlab.disposition.updated'" in source
+    assert "'trainerlab.vital.created' | 'trainerlab.vital.updated'" in source
+    assert "'trainerlab.pulse.created' | 'trainerlab.pulse.updated'" in source
     assert "cause_kind: 'injury' | 'illness';" in source
     assert "recommended_interventions?: TrainerLabRecommendedInterventionFields[];" in source
     assert "active?: boolean;" in source

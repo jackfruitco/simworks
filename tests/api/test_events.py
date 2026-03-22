@@ -90,13 +90,13 @@ def test_events_catchup_enriches_chat_media_payload(
     message.media.add(media)
 
     OutboxEvent.objects.create(
-        event_type="chat.message_created",
+        event_type="message.item.created",
         simulation_id=simulation.id,
         payload={
             "message_id": message.id,
             "content": message.content,
         },
-        idempotency_key=f"chat.message_created:{message.id}:test",
+        idempotency_key=f"message.item.created:{message.id}:test",
     )
 
     response = auth_client.get(f"/api/v1/simulations/{simulation.id}/events/")
@@ -105,7 +105,7 @@ def test_events_catchup_enriches_chat_media_payload(
     assert payload["items"]
 
     event = payload["items"][0]
-    assert event["event_type"] == "chat.message_created"
+    assert event["event_type"] == "message.item.created"
     assert "media_list" in event["payload"]
     assert "mediaList" in event["payload"]
     assert len(event["payload"]["media_list"]) == 1
