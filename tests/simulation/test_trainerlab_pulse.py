@@ -5,6 +5,7 @@ from uuid import uuid4
 from pydantic import ValidationError
 import pytest
 
+from apps.common.outbox.event_types import PATIENT_PULSE_CREATED, PATIENT_PULSE_UPDATED
 from apps.trainerlab.orca.schemas.runtime import (
     RuntimePulseChange,
     RuntimeSnapshotPulse,
@@ -436,7 +437,7 @@ class TestPulseAssessmentPersistence:
 
         pulse_events = OutboxEvent.objects.filter(
             simulation_id=pulse_context.simulation_id,
-            event_type="trainerlab.pulse.created",
+            event_type=PATIENT_PULSE_CREATED,
         )
         assert await pulse_events.acount() == 8
 
@@ -554,7 +555,7 @@ class TestApplyPulseChange:
 
         event = OutboxEvent.objects.filter(
             simulation_id=simulation.id,
-            event_type="trainerlab.pulse.updated",
+            event_type=PATIENT_PULSE_UPDATED,
         ).first()
         assert event is not None
         assert event.payload["location"] == "femoral_left"

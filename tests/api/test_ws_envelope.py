@@ -17,6 +17,7 @@ import pytest
 from apps.chatlab.consumers import ChatConsumer
 from apps.common.consumers import NotificationsConsumer
 from apps.common.outbox import build_ws_envelope
+from apps.common.outbox.event_types import MESSAGE_CREATED, SIMULATION_STATUS_UPDATED
 
 
 class TestBuildEnvelopeHelper:
@@ -257,7 +258,7 @@ class TestNotificationsConsumerOutboxEventHandler:
                 "type": "outbox.event",
                 "event": {
                     "event_id": "notif-event-123",
-                    "event_type": "simulation.ended",
+                    "event_type": SIMULATION_STATUS_UPDATED,
                     "created_at": "2024-01-15T11:00:00Z",
                     "correlation_id": None,
                     "payload": {
@@ -272,7 +273,7 @@ class TestNotificationsConsumerOutboxEventHandler:
         sent_data = json.loads(sent_messages[0])
 
         assert sent_data["event_id"] == "notif-event-123"
-        assert sent_data["event_type"] == "simulation.ended"
+        assert sent_data["event_type"] == SIMULATION_STATUS_UPDATED
         assert sent_data["payload"]["simulation_id"] == 789
 
     @pytest.mark.asyncio
@@ -312,7 +313,7 @@ class TestEnvelopeFormatConsistency:
 
         # Create an outbox event
         event = OutboxEvent.objects.create(
-            event_type="chat.message_created",
+            event_type=MESSAGE_CREATED,
             simulation_id=42,
             payload={
                 "id": 100,
@@ -338,7 +339,7 @@ class TestEnvelopeFormatConsistency:
         assert envelope["event_id"] == str(event.id)
 
         # Event type preserved
-        assert envelope["event_type"] == "chat.message_created"
+        assert envelope["event_type"] == MESSAGE_CREATED
 
         # Correlation ID preserved
         assert envelope["correlation_id"] == "request-corr-id"

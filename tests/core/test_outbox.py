@@ -24,6 +24,7 @@ from apps.common.outbox import (
     enqueue_event_sync,
     get_events_for_simulation,
 )
+from apps.common.outbox.event_types import PATIENT_VITAL_CREATED
 
 
 @pytest.fixture
@@ -169,7 +170,7 @@ class TestEnqueueEvent:
         """UUID values in payload are normalized to strings."""
         call_id = uuid4()
         event = enqueue_event_sync(
-            event_type="trainerlab.vital.created",
+            event_type=PATIENT_VITAL_CREATED,
             simulation_id=1,
             payload={"call_id": call_id, "nested": {"ids": [call_id]}},
             idempotency_key="uuid-sync:1",

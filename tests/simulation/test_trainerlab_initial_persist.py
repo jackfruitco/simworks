@@ -3,6 +3,11 @@ from uuid import uuid4
 from pydantic import ValidationError
 import pytest
 
+from apps.common.outbox.event_types import (
+    PATIENT_PROBLEM_CREATED,
+    PATIENT_RECOMMENDED_INTERVENTION_CREATED,
+    PATIENT_RECOMMENDATION_EVALUATION_CREATED,
+)
 from apps.trainerlab.models import (
     ETCO2,
     SPO2,
@@ -364,7 +369,7 @@ class TestTrainerLabInitialPersistence:
         problem_event = (
             await OutboxEvent.objects.filter(
                 simulation_id=context.simulation_id,
-                event_type="problem.created",
+                event_type=PATIENT_PROBLEM_CREATED,
             )
             .order_by("created_at", "id")
             .afirst()
@@ -386,7 +391,7 @@ class TestTrainerLabInitialPersistence:
 
         recommendation_events = OutboxEvent.objects.filter(
             simulation_id=context.simulation_id,
-            event_type="recommended_intervention.created",
+            event_type=PATIENT_RECOMMENDED_INTERVENTION_CREATED,
         ).order_by("created_at", "id")
         assert await recommendation_events.acount() == 3
 
@@ -401,7 +406,7 @@ class TestTrainerLabInitialPersistence:
         evaluation_event = (
             await OutboxEvent.objects.filter(
                 simulation_id=context.simulation_id,
-                event_type="trainerlab.recommendation_evaluation.created",
+                event_type=PATIENT_RECOMMENDATION_EVALUATION_CREATED,
             )
             .order_by("created_at", "id")
             .afirst()

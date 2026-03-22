@@ -42,10 +42,11 @@ class VitalCreateInSchemaTests(SimpleTestCase):
 
 def test_apply_preset_outbox_idempotency_key_includes_command_id():
     source = Path("SimWorks/api/v1/endpoints/trainerlab.py").read_text()
+    (legacy_preset_alias,) = outbox_events.legacy_aliases_for(outbox_events.SIMULATION_PRESET_APPLIED)
 
     assert "outbox_events.SIMULATION_PRESET_APPLIED" in source
     assert ":{session.id}:{instruction.id}:{command.id}" in source
-    assert "trainerlab.preset.applied:{session.id}:{instruction.id}:{command.id}" not in source
+    assert f"{legacy_preset_alias}:{{session.id}}:{{instruction.id}}:{{command.id}}" not in source
 
 
 class TrainerSessionLifecycleEventTests(TestCase):
@@ -87,8 +88,11 @@ class TrainerSessionLifecycleEventTests(TestCase):
         self.assertNotIn("from", outbox_event.payload)
         self.assertNotIn("to", outbox_event.payload)
         self.assertEqual(runtime_event.event_type, outbox_events.SIMULATION_STATUS_UPDATED)
-        self.assertFalse(OutboxEvent.objects.filter(event_type="session.seeded").exists())
-        self.assertFalse(RuntimeEvent.objects.filter(event_type="session.seeded").exists())
+        legacy_status_aliases = outbox_events.legacy_aliases_for(
+            outbox_events.SIMULATION_STATUS_UPDATED
+        )
+        self.assertFalse(OutboxEvent.objects.filter(event_type__in=legacy_status_aliases).exists())
+        self.assertFalse(RuntimeEvent.objects.filter(event_type__in=legacy_status_aliases).exists())
 
     @patch("apps.trainerlab.services.generate_fake_name", new_callable=AsyncMock)
     def test_create_session_seeded_emits_seeded_status_updated(self, mock_name: AsyncMock) -> None:
@@ -114,7 +118,10 @@ class TrainerSessionLifecycleEventTests(TestCase):
         self.assertEqual(outbox_event.payload["phase"], "seeded")
         self.assertEqual(outbox_event.payload["scenario_spec"]["modifiers"], ["trauma"])
         self.assertEqual(outbox_event.payload["state_revision"], 0)
-        self.assertFalse(OutboxEvent.objects.filter(event_type="session.seeded").exists())
+        legacy_status_aliases = outbox_events.legacy_aliases_for(
+            outbox_events.SIMULATION_STATUS_UPDATED
+        )
+        self.assertFalse(OutboxEvent.objects.filter(event_type__in=legacy_status_aliases).exists())
 
     @patch("apps.trainerlab.services.generate_fake_name", new_callable=AsyncMock)
     def test_complete_initial_generation_updates_state_and_emits_seeded_status_event(
@@ -158,5 +165,8 @@ class TrainerSessionLifecycleEventTests(TestCase):
             seeded_event.payload["state_revision"], session.runtime_state_json["state_revision"]
         )
         self.assertEqual(seeded_event.payload["call_id"], "call-123")
-        self.assertFalse(OutboxEvent.objects.filter(event_type="session.seeded").exists())
-        self.assertFalse(RuntimeEvent.objects.filter(event_type="session.seeded").exists())
+        legacy_status_aliases = outbox_events.legacy_aliases_for(
+            outbox_events.SIMULATION_STATUS_UPDATED
+        )
+        self.assertFalse(OutboxEvent.objects.filter(event_type__in=legacy_status_aliases).exists())
+        self.assertFalse(RuntimeEvent.objects.filter(event_type__in=legacy_status_aliases).exists())

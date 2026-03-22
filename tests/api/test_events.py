@@ -8,6 +8,7 @@ from PIL import Image
 import pytest
 
 from api.v1.auth import create_access_token
+from apps.common.outbox.event_types import MESSAGE_CREATED, PATIENT_RESULTS_UPDATED
 
 
 @pytest.fixture
@@ -90,13 +91,13 @@ def test_events_catchup_enriches_chat_media_payload(
     message.media.add(media)
 
     OutboxEvent.objects.create(
-        event_type="message.item.created",
+        event_type=MESSAGE_CREATED,
         simulation_id=simulation.id,
         payload={
             "message_id": message.id,
             "content": message.content,
         },
-        idempotency_key=f"message.item.created:{message.id}:test",
+        idempotency_key=f"{MESSAGE_CREATED}:{message.id}:test",
     )
 
     response = auth_client.get(f"/api/v1/simulations/{simulation.id}/events/")
@@ -105,7 +106,7 @@ def test_events_catchup_enriches_chat_media_payload(
     assert payload["items"]
 
     event = payload["items"][0]
-    assert event["event_type"] == "message.item.created"
+    assert event["event_type"] == MESSAGE_CREATED
     assert "media_list" in event["payload"]
     assert "mediaList" in event["payload"]
     assert len(event["payload"]["media_list"]) == 1
@@ -118,7 +119,7 @@ def test_events_catchup_preserves_metadata_results_payload(auth_client, simulati
     from apps.common.models import OutboxEvent
 
     OutboxEvent.objects.create(
-        event_type="simulation.metadata.results_created",
+        event_type=PATIENT_RESULTS_UPDATED,
         simulation_id=simulation.id,
         payload={
             "tool": "patient_results",
@@ -130,7 +131,7 @@ def test_events_catchup_preserves_metadata_results_payload(auth_client, simulati
                 }
             ],
         },
-        idempotency_key=f"simulation.metadata.results_created:{simulation.id}:501",
+        idempotency_key=f"{PATIENT_RESULTS_UPDATED}:{simulation.id}:501",
         correlation_id="corr-501",
     )
 
@@ -140,6 +141,6 @@ def test_events_catchup_preserves_metadata_results_payload(auth_client, simulati
     assert payload["items"]
 
     event = payload["items"][0]
-    assert event["event_type"] == "simulation.metadata.results_created"
+    assert event["event_type"] == PATIENT_RESULTS_UPDATED
     assert event["payload"]["tool"] == "patient_results"
     assert event["payload"]["results"][0]["key"] == "lab_results_available"

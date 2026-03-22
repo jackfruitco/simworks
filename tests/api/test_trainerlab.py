@@ -8,6 +8,7 @@ from django.test import Client
 import pytest
 
 from api.v1.auth import create_access_token
+from apps.common.outbox.event_types import SIMULATION_STATUS_UPDATED
 
 
 class FakeClock:
@@ -1485,10 +1486,10 @@ class TestTrainerLabEvents:
             )
 
         streamed = OutboxEvent.objects.create(
-            event_type="session.seeded",
+            event_type=SIMULATION_STATUS_UPDATED,
             simulation_id=simulation_id,
-            payload={"status": "seeded"},
-            idempotency_key=f"session.seeded:{simulation_id}:streamed",
+            payload={"status": "seeded", "phase": "seeded"},
+            idempotency_key=f"{SIMULATION_STATUS_UPDATED}:{simulation_id}:streamed",
         )
 
         response = client.get(
@@ -1506,7 +1507,7 @@ class TestTrainerLabEvents:
 
         assert f"id: {streamed.id}\n" in payload
         assert "event: sim\n" in payload
-        assert "session.seeded" in payload
+        assert SIMULATION_STATUS_UPDATED in payload
         assert '"status": "seeded"' in payload
 
     def test_sse_stream_endpoint_emits_idle_keep_alive(

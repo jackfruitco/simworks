@@ -12,6 +12,7 @@ import pytest
 
 from api.v1.sse import stream_outbox_events
 from apps.common.models import OutboxEvent
+from apps.common.outbox.event_types import MESSAGE_CREATED, SIMULATION_STATUS_UPDATED
 
 
 class FakeClock:
@@ -57,14 +58,14 @@ class TestStreamOutboxEvents:
 
         first = await OutboxEvent.objects.acreate(
             id=event_id_1,
-            event_type="message.created",
+            event_type=MESSAGE_CREATED,
             simulation_id=7,
             payload={"message_id": 1},
             idempotency_key="same-ts:1",
         )
         second = await OutboxEvent.objects.acreate(
             id=event_id_2,
-            event_type="message.created",
+            event_type=MESSAGE_CREATED,
             simulation_id=7,
             payload={"message_id": 2},
             idempotency_key="same-ts:2",
@@ -136,10 +137,10 @@ class TestStreamOutboxEvents:
         monkeypatch.setattr("api.v1.sse.asyncio.sleep", clock.sleep)
 
         event = await OutboxEvent.objects.acreate(
-            event_type="trainerlab.session.seeded",
+            event_type=SIMULATION_STATUS_UPDATED,
             simulation_id=8,
-            payload={"status": "seeded"},
-            idempotency_key="trainerlab.seeded:test",
+            payload={"status": "seeded", "phase": "seeded"},
+            idempotency_key="simulation.status.updated:seeded:test",
         )
 
         response = await _stream(
@@ -153,7 +154,7 @@ class TestStreamOutboxEvents:
         assert chunks[0] == ": keep-alive\n\n"
         assert chunks[1] == f"id: {event.id}\n"
         assert chunks[2] == "event: simulation\n"
-        assert '"trainerlab.session.seeded"' in chunks[3]
+        assert f'"{SIMULATION_STATUS_UPDATED}"' in chunks[3]
         assert chunks[4] == ": keep-alive\n\n"
         assert clock.current == pytest.approx(10.0)
 
