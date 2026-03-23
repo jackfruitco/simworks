@@ -191,6 +191,24 @@ ORCHESTRAI = {
     "MODE": "single",
     "DEFAULT_MODEL": os.getenv("ORCA_DEFAULT_MODEL", "openai-responses:gpt-5o-mini"),
 }
+ORCA_MAX_ATTEMPTS = int_from_env("ORCA_MAX_ATTEMPTS", default=4, minimum=1)
+ORCA_RETRY_BACKOFF_BASE = int_from_env("ORCA_RETRY_BACKOFF_BASE", default=5, minimum=1)
+ORCA_RETRY_BACKOFF_MAX = int_from_env("ORCA_RETRY_BACKOFF_MAX", default=60, minimum=1)
+TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS = int_from_env(
+    "TRAINERLAB_RUNTIME_MAX_PROMPT_TOKENS",
+    default=7000,
+    minimum=1000,
+)
+TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS = int_from_env(
+    "TRAINERLAB_RUNTIME_MAX_OUTPUT_TOKENS",
+    default=1200,
+    minimum=128,
+)
+TRAINERLAB_RUNTIME_MAX_BATCH_REASONS = int_from_env(
+    "TRAINERLAB_RUNTIME_MAX_BATCH_REASONS",
+    default=8,
+    minimum=1,
+)
 
 # JWT Configuration (for mobile API clients)
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "django-insecure-jwt-ci-placeholder")

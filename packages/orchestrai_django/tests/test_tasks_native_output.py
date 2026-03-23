@@ -247,7 +247,12 @@ def test_run_service_call_emits_generic_success_signal(monkeypatch):
                 "service_identity": call.service_identity,
                 "provider_response_id": "resp-123",
                 "output_data": {"answer": "ok"},
-                "context": {"_service_call_attempt_id": "attempt-1"},
+                "context": {
+                    "call_id": call.id,
+                    "service_call_id": call.id,
+                    "attempt": 1,
+                    "_service_call_attempt_id": "attempt-1",
+                },
             }
         ]
     finally:
@@ -525,6 +530,7 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
 
     call = RetryCall()
     enqueued_retry_call_ids = []
+    scheduled_run_afters = []
     observed_failures = []
 
     def _select_for_update(*args, **kwargs):
@@ -540,6 +546,14 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
         def __exit__(self, exc_type, exc, tb):
             return False
 
+    class _RetryTaskProxy:
+        def using(self, **kwargs):
+            scheduled_run_afters.append(kwargs.get("run_after"))
+            return self
+
+        def enqueue(self, call_id):
+            enqueued_retry_call_ids.append(call_id)
+
     ai_response_failed.connect(_capture_failure, weak=False)
     try:
         monkeypatch.setattr(
@@ -547,11 +561,8 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
         )
         monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
         monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
-        monkeypatch.setattr(
-            tasks,
-            "run_service_call_task",
-            types.SimpleNamespace(enqueue=lambda call_id: enqueued_retry_call_ids.append(call_id)),
-        )
+        monkeypatch.setattr(tasks, "run_service_call_task", _RetryTaskProxy())
+        monkeypatch.setattr(tasks.random, "uniform", lambda _a, _b: 0.0)
 
         result = tasks.run_service_call(call.id)
     finally:
@@ -559,8 +570,101 @@ def test_run_service_call_retry_does_not_emit_non_terminal_failure_signal(monkey
 
     assert result["status"] == "in_progress"
     assert enqueued_retry_call_ids == [call.id]
+    assert scheduled_run_afters
     # No failure signal should be emitted until retries are exhausted.
     assert observed_failures == []
+
+
+def test_run_service_call_rate_limit_retry_honors_retry_after(monkeypatch):
+    from django.utils import timezone
+
+    class RetryAttempt:
+        def __init__(self):
+            self.attempt = 1
+            self.is_retryable = True
+            self.marked_error = None
+
+        def mark_dispatched(self):
+            return None
+
+        def mark_error(self, error, is_retryable=True):
+            self.marked_error = error
+            self.is_retryable = is_retryable
+
+    class RetryAttempts:
+        @staticmethod
+        def count():
+            return 0
+
+        def filter(self, **kwargs):
+            return self
+
+        @staticmethod
+        def first():
+            return None
+
+    class RetryCall(DummyCall):
+        def __init__(self):
+            super().__init__()
+            self.context = {"simulation_id": 9}
+            self.attempts = RetryAttempts()
+            self._attempt = RetryAttempt()
+
+        def allocate_attempt(self):
+            return self._attempt
+
+    class RateLimitedError(RuntimeError):
+        def __init__(self):
+            super().__init__("rate limit exceeded")
+            self.status_code = 429
+            self.response = types.SimpleNamespace(
+                status_code=429,
+                headers={"Retry-After": "17"},
+            )
+
+    class RateLimitedService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def arun(self, **payload):
+            raise RateLimitedError()
+
+    call = RetryCall()
+    scheduled_run_afters = []
+    enqueued_retry_call_ids = []
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _RetryTaskProxy:
+        def using(self, **kwargs):
+            scheduled_run_afters.append(kwargs.get("run_after"))
+            return self
+
+        def enqueue(self, call_id):
+            enqueued_retry_call_ids.append(call_id)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        tasks, "ensure_service_registry", lambda app=None: DummyRegistry(RateLimitedService)
+    )
+    monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+    monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+    monkeypatch.setattr(tasks, "run_service_call_task", _RetryTaskProxy())
+
+    before = timezone.now()
+    result = tasks.run_service_call(call.id)
+
+    assert result["status"] == "in_progress"
+    assert enqueued_retry_call_ids == [call.id]
+    assert len(scheduled_run_afters) == 1
+    assert 16 <= int((scheduled_run_afters[0] - before).total_seconds()) <= 18
 
 
 def test_run_service_call_skips_when_in_flight_attempt_exists(monkeypatch):
