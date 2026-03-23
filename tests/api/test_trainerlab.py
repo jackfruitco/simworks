@@ -66,6 +66,15 @@ def other_instructor_user(django_user_model, user_role):
 
 
 @pytest.fixture
+def billing_admin_user(django_user_model, user_role):
+    return django_user_model.objects.create_user(
+        password="testpass123",
+        email="trainer-billing@example.com",
+        role=user_role,
+    )
+
+
+@pytest.fixture
 def trainerlab_lab(db):
     from apps.accounts.models import Lab
 
@@ -375,6 +384,41 @@ class TestTrainerLabAccess:
         body = response.json()
         assert body["lab_slug"] == "trainerlab"
         assert body["access_level"] == "instructor"
+
+    def test_access_denies_billing_admin_account_member(
+        self,
+        auth_client_factory,
+        instructor_user,
+        billing_admin_user,
+    ):
+        from apps.accounts.models import AccountMembership
+        from apps.accounts.services import create_organization_account
+        from apps.billing.models import Entitlement
+
+        org_account = create_organization_account(name="Trainer Billing Org", owner_user=instructor_user)
+        AccountMembership.objects.create(
+            account=org_account,
+            user=billing_admin_user,
+            invite_email=billing_admin_user.email,
+            role=AccountMembership.Role.BILLING_ADMIN,
+            status=AccountMembership.Status.ACTIVE,
+        )
+        Entitlement.objects.create(
+            account=org_account,
+            source_type=Entitlement.SourceType.MANUAL,
+            source_ref="manual:trainerlab",
+            scope_type=Entitlement.ScopeType.ACCOUNT,
+            product_code="trainerlab",
+            status=Entitlement.Status.ACTIVE,
+        )
+
+        client = auth_client_factory(billing_admin_user)
+        response = client.get(
+            "/api/v1/trainerlab/access/me/",
+            HTTP_X_ACCOUNT_UUID=str(org_account.uuid),
+        )
+
+        assert response.status_code == 403
 
 
 @pytest.mark.django_db

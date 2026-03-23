@@ -29,7 +29,6 @@ def _derived_membership(user, account, *, lab_slug: str = LAB_SLUG) -> LabMember
     if not has_product_access(user, account, lab_slug):
         return None
     membership = get_account_membership(user, account)
-    access_level = LabMembership.AccessLevel.INSTRUCTOR
     if (membership is None and account.owner_user_id == getattr(user, "id", None)) or (
         membership and membership.role == membership.Role.ORG_ADMIN
     ):
@@ -39,7 +38,7 @@ def _derived_membership(user, account, *, lab_slug: str = LAB_SLUG) -> LabMember
     elif membership and membership.role == membership.Role.GENERAL_USER:
         access_level = LabMembership.AccessLevel.VIEWER
     else:
-        access_level = LabMembership.AccessLevel.INSTRUCTOR
+        return None
     return LabMembership(access_level=access_level)
 
 

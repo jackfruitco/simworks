@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from urllib.parse import parse_qs
+from uuid import UUID
 
 from apps.accounts.models import Account
 from apps.accounts.permissions import can_access_account
@@ -39,7 +40,11 @@ def resolve_account_for_user(user, *, account_uuid: str | None = None):
 
     account = None
     if account_uuid:
-        account = Account.objects.filter(uuid=account_uuid, is_active=True).first()
+        try:
+            parsed_account_uuid = UUID(str(account_uuid))
+        except (TypeError, ValueError):
+            return None
+        account = Account.objects.filter(uuid=parsed_account_uuid, is_active=True).first()
         if account is None:
             return None
     else:

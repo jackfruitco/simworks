@@ -86,7 +86,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         is_authenticated = bool(scope_user and getattr(scope_user, "is_authenticated", False))
         has_access = bool(
             is_authenticated
-            and can_access_simulation_in_scope(scope_user, self.simulation, self.scope)
+            and await sync_to_async(can_access_simulation_in_scope)(
+                scope_user, self.simulation, self.scope
+            )
         )
         if not has_access:
             await self.accept()

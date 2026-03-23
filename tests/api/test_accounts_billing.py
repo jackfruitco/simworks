@@ -97,6 +97,19 @@ def test_accounts_api_lists_selects_and_returns_access_snapshot(owner_user, auth
 
 
 @pytest.mark.django_db
+def test_accounts_access_snapshot_rejects_malformed_account_uuid(owner_user, auth_client_factory):
+    client = auth_client_factory(owner_user)
+
+    response = client.get(
+        "/api/v1/accounts/me/access/",
+        HTTP_X_ACCOUNT_UUID="not-a-uuid",
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Account access denied"
+
+
+@pytest.mark.django_db
 def test_membership_invite_and_approve_flow(owner_user, member_user, auth_client_factory):
     client = auth_client_factory(owner_user)
     org_account = create_organization_account(name="Org Alpha", owner_user=owner_user)
