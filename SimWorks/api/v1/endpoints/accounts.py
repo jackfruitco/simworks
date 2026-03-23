@@ -112,7 +112,9 @@ def create_organization(request: HttpRequest, body: OrganizationCreateIn) -> tup
     user = request.auth
     parent_account = None
     if body.parent_account_uuid:
-        parent_account = Account.objects.filter(uuid=body.parent_account_uuid, is_active=True).first()
+        parent_account = Account.objects.filter(
+            uuid=body.parent_account_uuid, is_active=True
+        ).first()
         if parent_account is None or not can_manage_members(user, parent_account):
             raise HttpError(403, "Parent account management access required")
     try:
@@ -125,7 +127,9 @@ def create_organization(request: HttpRequest, body: OrganizationCreateIn) -> tup
         )
     except ValidationError as exc:
         raise HttpError(400, str(exc)) from None
-    return 201, _account_to_out(account, user=user, active_account_id=getattr(user.active_account, "id", None))
+    return 201, _account_to_out(
+        account, user=user, active_account_id=getattr(user.active_account, "id", None)
+    )
 
 
 @router.get("/me/access/", response=AccessSnapshotOut, summary="Get current access snapshot")
@@ -135,7 +139,9 @@ def current_access_snapshot(request: HttpRequest) -> AccessSnapshotOut:
     return _access_snapshot_to_out(get_access_snapshot(user, account))
 
 
-@router.get("/memberships/", response=list[MembershipOut], summary="List memberships for current account")
+@router.get(
+    "/memberships/", response=list[MembershipOut], summary="List memberships for current account"
+)
 def list_memberships(request: HttpRequest) -> list[MembershipOut]:
     user = request.auth
     account = get_account_for_request(request, user)
@@ -145,7 +151,11 @@ def list_memberships(request: HttpRequest) -> list[MembershipOut]:
     return [_membership_to_out(membership) for membership in queryset.order_by("-created_at")]
 
 
-@router.post("/memberships/invite/", response={201: MembershipOut}, summary="Invite a member to the current account")
+@router.post(
+    "/memberships/invite/",
+    response={201: MembershipOut},
+    summary="Invite a member to the current account",
+)
 def invite_membership(
     request: HttpRequest,
     body: MembershipInviteIn,
@@ -190,16 +200,24 @@ def approve_membership(request: HttpRequest, membership_uuid: str) -> Membership
     return _membership_to_out(membership)
 
 
-@router.get("/billing-summary/", response=BillingSummaryOut, summary="Get billing summary for the current account")
+@router.get(
+    "/billing-summary/",
+    response=BillingSummaryOut,
+    summary="Get billing summary for the current account",
+)
 def billing_summary(request: HttpRequest) -> BillingSummaryOut:
     user = request.auth
     account = get_account_for_request(request, user)
     if not can_manage_billing(user, account):
         raise HttpError(403, "Billing management access required")
 
-    billing_accounts = BillingAccount.objects.filter(account=account).order_by("provider_type", "id")
+    billing_accounts = BillingAccount.objects.filter(account=account).order_by(
+        "provider_type", "id"
+    )
     subscriptions = Subscription.objects.filter(account=account).order_by("-created_at")
-    entitlements = Entitlement.objects.filter(account=account).order_by("product_code", "created_at")
+    entitlements = Entitlement.objects.filter(account=account).order_by(
+        "product_code", "created_at"
+    )
     return BillingSummaryOut(
         account_uuid=str(account.uuid),
         billing_accounts=[

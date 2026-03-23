@@ -9,7 +9,6 @@ from apps.accounts.permissions import get_account_membership
 from apps.accounts.services import get_personal_account_for_user
 from apps.billing.models import Entitlement, SeatAllocation, SeatAssignment
 
-
 ACTIVE_STATUSES = {Entitlement.Status.ACTIVE, Entitlement.Status.SCHEDULED}
 
 
@@ -19,9 +18,7 @@ def _is_current(entitlement: Entitlement, at=None) -> bool:
         return False
     if entitlement.starts_at and entitlement.starts_at > at:
         return False
-    if entitlement.ends_at and entitlement.ends_at < at:
-        return False
-    return True
+    return not (entitlement.ends_at and entitlement.ends_at < at)
 
 
 def _current_entitlements_for_account(account, *, user=None):
@@ -62,11 +59,15 @@ def _has_active_seat(account, user, product_code: str, *, at=None) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
     at = at or timezone.now()
-    if not SeatAllocation.objects.filter(
-        account=account,
-        product_code=product_code,
-        effective_from__lte=at,
-    ).filter(models.Q(effective_to__isnull=True) | models.Q(effective_to__gte=at)).exists():
+    if (
+        not SeatAllocation.objects.filter(
+            account=account,
+            product_code=product_code,
+            effective_from__lte=at,
+        )
+        .filter(models.Q(effective_to__isnull=True) | models.Q(effective_to__gte=at))
+        .exists()
+    ):
         return True
     return SeatAssignment.objects.filter(
         account=account,
@@ -102,9 +103,12 @@ def has_product_access(user, account, product_code: str) -> bool:
             continue
         if entitlement.feature_code or entitlement.limit_code:
             continue
-        if entitlement.account_id == account.id and not entitlement.portable_across_accounts:
-            if not _has_active_seat(account, user, product_code):
-                continue
+        if (
+            entitlement.account_id == account.id
+            and not entitlement.portable_across_accounts
+            and not _has_active_seat(account, user, product_code)
+        ):
+            continue
         return True
     return False
 
@@ -112,9 +116,12 @@ def has_product_access(user, account, product_code: str) -> bool:
 def has_feature_access(user, account, product_code: str, feature_code: str) -> bool:
     for entitlement in get_effective_entitlements(user, account):
         if entitlement.product_code == product_code and entitlement.feature_code == feature_code:
-            if entitlement.account_id == account.id and not entitlement.portable_across_accounts:
-                if not _has_active_seat(account, user, product_code):
-                    continue
+            if (
+                entitlement.account_id == account.id
+                and not entitlement.portable_across_accounts
+                and not _has_active_seat(account, user, product_code)
+            ):
+                continue
             return True
     return False
 

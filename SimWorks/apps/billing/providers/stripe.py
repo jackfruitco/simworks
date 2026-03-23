@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import hashlib
 import hmac
 import json
-from datetime import UTC, datetime
 
 from django.conf import settings
 from django.utils import timezone
@@ -26,7 +26,7 @@ def verify_stripe_signature(payload: bytes, signature_header: str, secret: str) 
             signatures.append(value)
     if not timestamp or not signatures:
         return False
-    signed_payload = f"{timestamp}.{payload.decode('utf-8')}".encode("utf-8")
+    signed_payload = f"{timestamp}.{payload.decode('utf-8')}".encode()
     expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
     return any(hmac.compare_digest(expected, signature) for signature in signatures)
 
@@ -41,10 +41,14 @@ def _resolve_account_from_payload(payload: dict):
     if customer_id:
         from apps.billing.models import BillingAccount
 
-        billing_account = BillingAccount.objects.filter(
-            provider_type=ProviderType.STRIPE,
-            provider_customer_id=customer_id,
-        ).select_related("account").first()
+        billing_account = (
+            BillingAccount.objects.filter(
+                provider_type=ProviderType.STRIPE,
+                provider_customer_id=customer_id,
+            )
+            .select_related("account")
+            .first()
+        )
         if billing_account:
             return billing_account.account
     return None

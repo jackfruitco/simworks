@@ -44,7 +44,9 @@ def stripe_webhook(request: HttpRequest) -> StripeWebhookReceiptOut:
 def apple_sync(request: HttpRequest, body: AppleTransactionIn) -> StripeWebhookReceiptOut:
     user = request.auth
     account = get_personal_account_for_user(user)
-    event = sync_apple_transaction_event(account=account, payload=body.model_dump(exclude_none=True))
+    event = sync_apple_transaction_event(
+        account=account, payload=body.model_dump(exclude_none=True)
+    )
     return StripeWebhookReceiptOut(event_id=event.event_id, status=event.status)
 
 

@@ -108,7 +108,9 @@ class Subscription(models.Model):
         ]
 
     def __str__(self):
-        provider_ref = self.provider_subscription_id or self.provider_original_transaction_id or "n/a"
+        provider_ref = (
+            self.provider_subscription_id or self.provider_original_transaction_id or "n/a"
+        )
         return f"{self.account_id}:{self.provider_type}:{provider_ref}"
 
 
@@ -190,7 +192,9 @@ class Entitlement(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["account", "status", "product_code"], name="idx_entitlement_product"),
+            models.Index(
+                fields=["account", "status", "product_code"], name="idx_entitlement_product"
+            ),
             models.Index(
                 fields=["subject_user", "status", "product_code"],
                 name="idx_entitlement_user_product",

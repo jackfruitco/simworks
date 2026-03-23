@@ -52,7 +52,13 @@ def revoke_entitlements(modeladmin, request, queryset):
 
 @admin.register(BillingAccount)
 class BillingAccountAdmin(admin.ModelAdmin):
-    list_display = ("account", "provider_type", "provider_customer_id", "billing_email", "is_active")
+    list_display = (
+        "account",
+        "provider_type",
+        "provider_customer_id",
+        "billing_email",
+        "is_active",
+    )
     list_filter = ("provider_type", "is_active")
     search_fields = ("account__name", "provider_customer_id", "billing_email")
 
@@ -61,12 +67,23 @@ class BillingAccountAdmin(admin.ModelAdmin):
 class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ("account", "provider_type", "plan_code", "status", "current_period_end")
     list_filter = ("provider_type", "status", "plan_code")
-    search_fields = ("account__name", "provider_subscription_id", "provider_original_transaction_id")
+    search_fields = (
+        "account__name",
+        "provider_subscription_id",
+        "provider_original_transaction_id",
+    )
 
 
 @admin.register(Entitlement)
 class EntitlementAdmin(admin.ModelAdmin):
-    list_display = ("account", "product_code", "feature_code", "limit_code", "status", "subject_user")
+    list_display = (
+        "account",
+        "product_code",
+        "feature_code",
+        "limit_code",
+        "status",
+        "subject_user",
+    )
     list_filter = ("status", "product_code", "scope_type", "source_type")
     search_fields = ("account__name", "source_ref", "subject_user__email")
     actions = (grant_comp_access, revoke_entitlements)
@@ -74,7 +91,14 @@ class EntitlementAdmin(admin.ModelAdmin):
 
 @admin.register(SeatAllocation)
 class SeatAllocationAdmin(admin.ModelAdmin):
-    list_display = ("account", "product_code", "seat_limit", "seat_used", "effective_from", "effective_to")
+    list_display = (
+        "account",
+        "product_code",
+        "seat_limit",
+        "seat_used",
+        "effective_from",
+        "effective_to",
+    )
     list_filter = ("product_code",)
 
 
@@ -87,7 +111,14 @@ class SeatAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(WebhookEvent)
 class WebhookEventAdmin(admin.ModelAdmin):
-    list_display = ("provider_type", "event_id", "event_type", "status", "received_at", "processed_at")
+    list_display = (
+        "provider_type",
+        "event_id",
+        "event_type",
+        "status",
+        "received_at",
+        "processed_at",
+    )
     list_filter = ("provider_type", "status", "event_type")
     search_fields = ("event_id", "event_type")
     actions = (replay_webhook_events,)

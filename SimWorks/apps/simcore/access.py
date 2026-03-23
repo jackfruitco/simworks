@@ -10,7 +10,9 @@ def get_simulation_queryset_for_account(user, account):
     from apps.simcore.models import Simulation
 
     legacy_fallback = Q(pk__in=[])
-    if getattr(account, "is_personal", False) and account.owner_user_id == getattr(user, "id", None):
+    if getattr(account, "is_personal", False) and account.owner_user_id == getattr(
+        user, "id", None
+    ):
         legacy_fallback = Q(account__isnull=True, user=user)
     queryset = Simulation.objects.filter(Q(account=account) | legacy_fallback).select_related(
         "account", "user"

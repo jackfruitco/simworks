@@ -99,12 +99,10 @@ def maybe_claim_pending_memberships_for_user(user):
 
 
 def get_personal_account_for_user(user):
-    account = (
-        Account.objects.filter(
-            owner_user=user,
-            account_type=Account.AccountType.PERSONAL,
-        ).first()
-    )
+    account = Account.objects.filter(
+        owner_user=user,
+        account_type=Account.AccountType.PERSONAL,
+    ).first()
     if account is None:
         account = maybe_create_personal_account_for_user(user)
     return account

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 PRODUCT_CHATLAB = "chatlab"
 PRODUCT_TRAINERLAB = "trainerlab"
 
@@ -121,7 +120,12 @@ PLANS = {
         code=PLAN_PERSONAL_PRO,
         display_name="Personal Pro",
         product_codes=(PRODUCT_CHATLAB, PRODUCT_TRAINERLAB),
-        feature_codes=(FEATURE_EXPORTS, FEATURE_ANALYTICS, FEATURE_ADVANCED_CASES, FEATURE_INSTRUCTOR_TOOLS),
+        feature_codes=(
+            FEATURE_EXPORTS,
+            FEATURE_ANALYTICS,
+            FEATURE_ADVANCED_CASES,
+            FEATURE_INSTRUCTOR_TOOLS,
+        ),
         limit_values={
             LIMIT_MONTHLY_RUNS: 1000,
             LIMIT_MONTHLY_AI_MESSAGES: 20000,

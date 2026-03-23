@@ -4,9 +4,14 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.services import create_account_audit_event
-from apps.billing.models import BillingAccount, Entitlement, ProviderType, Subscription, WebhookEvent
+from apps.billing.models import (
+    BillingAccount,
+    Entitlement,
+    ProviderType,
+    Subscription,
+    WebhookEvent,
+)
 from apps.billing.registry import iter_plan_grants
-
 
 ACTIVE_SUBSCRIPTION_STATUSES = {
     Subscription.Status.TRIALING,
@@ -57,9 +62,9 @@ def _subscription_scope(subscription):
 def _subscription_is_active(subscription) -> bool:
     if subscription.status not in ACTIVE_SUBSCRIPTION_STATUSES:
         return False
-    if subscription.current_period_end and subscription.current_period_end < timezone.now():
-        return False
-    return True
+    return not (
+        subscription.current_period_end and subscription.current_period_end < timezone.now()
+    )
 
 
 @transaction.atomic
@@ -99,7 +104,7 @@ def reconcile_subscription_entitlements(subscription: Subscription, *, actor_use
                 "status": Entitlement.Status.ACTIVE if active else Entitlement.Status.EXPIRED,
                 "portable_across_accounts": scope["portable_across_accounts"],
                 "starts_at": subscription.starts_at or subscription.current_period_start,
-                "ends_at": subscription.current_period_end if not active else subscription.current_period_end,
+                "ends_at": subscription.current_period_end,
                 "metadata": {
                     "plan_code": subscription.plan_code,
                     "provider_type": subscription.provider_type,
