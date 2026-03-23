@@ -395,7 +395,9 @@ class TestTrainerLabAccess:
         from apps.accounts.services import create_organization_account
         from apps.billing.models import Entitlement
 
-        org_account = create_organization_account(name="Trainer Billing Org", owner_user=instructor_user)
+        org_account = create_organization_account(
+            name="Trainer Billing Org", owner_user=instructor_user
+        )
         AccountMembership.objects.create(
             account=org_account,
             user=billing_admin_user,
