@@ -263,7 +263,7 @@ class OrchestrAIDjangoConfig(AppConfig):
         try:
             use_django_task_proxy()
         except Exception:
-            logger.debug("Failed to install Django task proxy", exc_info=True)
+            logger.debug("Failed to install Django task proxy during app ready", exc_info=True)
 
         # Allow opt-out for special cases (tests, one-off management commands, etc.)
         if not _autostart_enabled():
