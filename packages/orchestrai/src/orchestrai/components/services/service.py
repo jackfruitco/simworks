@@ -704,11 +704,15 @@ class BaseService[T: BaseModel](
                 message_history = working_ctx.get("message_history")
 
                 model_settings = None
+                context_model_settings = working_ctx.get("model_settings")
+                if isinstance(context_model_settings, dict):
+                    model_settings = dict(context_model_settings)
                 previous_response_id = working_ctx.get(
                     "previous_provider_response_id"
                 ) or working_ctx.get("previous_response_id")
                 if previous_response_id:
                     model_settings = {
+                        **dict(model_settings or {}),
                         "openai_previous_response_id": previous_response_id,
                     }
 

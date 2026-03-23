@@ -15,6 +15,7 @@ from apps.common.retries import has_user_retries_remaining
 from apps.simcore.models import Simulation
 from apps.simcore.utils import generate_fake_name
 from config.logging import get_logger
+from orchestrai_django.models import ServiceCall as ServiceCallModel
 
 from .event_payloads import (
     serialize_assessment_finding_summary,
@@ -61,11 +62,16 @@ from .recommendations import (
     generate_rule_based_recommendations,
     validate_and_normalize_recommendation,
 )
+from .runtime_llm import (
+    enforce_runtime_token_budget,
+    get_runtime_max_batch_reasons,
+    get_runtime_max_output_tokens,
+    get_runtime_max_prompt_tokens,
+)
 
 MIN_TICK_INTERVAL = 5
 MAX_TICK_INTERVAL = 60
 DEFAULT_TICK_INTERVAL = 15
-RUNTIME_BATCH_SIZE = 25
 TERMINAL_SESSION_STATUSES = {SessionStatus.COMPLETED, SessionStatus.FAILED}
 logger = get_logger(__name__)
 
@@ -172,6 +178,7 @@ def build_runtime_state_defaults(
             "queued_reasons": [],
             "currently_processing_reasons": [],
             "last_processed_reasons": [],
+            "last_request_profile": {},
             "last_failed_step": "",
             "last_failed_error": "",
             "last_patch_evaluation": {},
@@ -1269,6 +1276,160 @@ def append_pending_runtime_reason(
     return reason
 
 
+RUNTIME_TURN_USER_MESSAGE = (
+    "Process the next TrainerLab runtime turn and return the authoritative patient update."
+)
+
+
+def _runtime_reason_priority(reason: dict[str, Any]) -> int:
+    reason_kind = str(reason.get("reason_kind") or "")
+    payload = dict(reason.get("payload") or {})
+    if reason_kind.endswith("_recorded"):
+        if reason_kind == "note_recorded":
+            return 100 if payload.get("send_to_ai") else 80
+        return 100
+    if reason_kind in {"adjustment", "steer_prompt", "preset_applied"}:
+        return 80
+    if reason_kind in {"run_started", "run_resumed", "manual_tick"}:
+        return 60
+    if reason_kind == "tick":
+        return 20
+    return 40
+
+
+def _select_runtime_batch_reasons(
+    *,
+    pending: list[dict[str, Any]],
+    session_status: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    max_batch_reasons = get_runtime_max_batch_reasons()
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    discarded_indices: set[int] = set()
+
+    for index, reason in enumerate(pending):
+        if session_status != SessionStatus.RUNNING and reason.get("reason_kind") == "tick":
+            discarded_indices.add(index)
+            continue
+        candidates.append((index, reason))
+
+    selected_indices = {
+        index
+        for index, _reason in sorted(
+            candidates,
+            key=lambda item: (-_runtime_reason_priority(item[1]), item[0]),
+        )[:max_batch_reasons]
+    }
+    selected = [reason for index, reason in enumerate(pending) if index in selected_indices]
+    remaining = [
+        reason
+        for index, reason in enumerate(pending)
+        if index not in selected_indices and index not in discarded_indices
+    ]
+    return selected, remaining
+
+
+def _update_runtime_request_profile(*, session_id: int, metrics: dict[str, Any]) -> None:
+    metrics = _normalize_runtime_request_metrics(metrics)
+    with transaction.atomic():
+        session = TrainerSession.objects.select_for_update().get(pk=session_id)
+        state = get_runtime_state(session)
+        debug = dict(state.get("control_plane_debug") or {})
+        debug["last_request_profile"] = dict(metrics)
+        state["control_plane_debug"] = debug
+        session.runtime_state_json = state
+        session.save(update_fields=["runtime_state_json", "modified_at"])
+
+
+def _persist_runtime_request_metrics(*, call_id: str, metrics: dict[str, Any]) -> None:
+    metrics = _normalize_runtime_request_metrics(metrics)
+    with transaction.atomic():
+        call = ServiceCallModel.objects.select_for_update().get(pk=call_id)
+        context = dict(call.context or {})
+        context["runtime_request_metrics"] = dict(metrics)
+        call.context = context
+        call.save(update_fields=["context"])
+
+
+def _normalize_runtime_request_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(metrics)
+    if normalized.get("service_call_id") is not None:
+        normalized["service_call_id"] = str(normalized["service_call_id"])
+    if normalized.get("correlation_id") is not None:
+        normalized["correlation_id"] = str(normalized["correlation_id"])
+    return normalized
+
+
+def _emit_runtime_failure_event(
+    *,
+    session_id: int,
+    reasons: list[dict[str, Any]],
+    correlation_id: str | None,
+    error: str,
+    reason_code: str | None = None,
+    retryable: bool | None = None,
+    service_call_id: str | None = None,
+) -> None:
+    session = TrainerSession.objects.select_related("simulation").get(pk=session_id)
+    payload = {
+        "error": error,
+        "reasons": reasons,
+    }
+    if reason_code:
+        payload["reason_code"] = reason_code
+    if retryable is not None:
+        payload["retryable"] = retryable
+    if service_call_id:
+        payload["service_call_id"] = service_call_id
+    emit_runtime_event(
+        session=session,
+        event_type=outbox_events.SIMULATION_RUNTIME_FAILED,
+        payload=payload,
+        correlation_id=correlation_id,
+        idempotency_key=(
+            f"{outbox_events.SIMULATION_RUNTIME_FAILED}:{session.id}:{timezone.now().timestamp()}"
+        ),
+    )
+
+
+def _build_runtime_request_batch(batch: dict[str, Any]) -> dict[str, Any]:
+    from .orca.services import GenerateTrainerRuntimeTurn
+
+    session = TrainerSession.objects.select_related("simulation").get(pk=batch["session_id"])
+    request_model = GenerateTrainerRuntimeTurn(
+        context={
+            "simulation_id": batch["simulation_id"],
+            "session_id": batch["session_id"],
+        }
+    ).effective_model
+    budget_result = enforce_runtime_token_budget(
+        service_cls=GenerateTrainerRuntimeTurn,
+        session=session,
+        current_snapshot=batch["current_snapshot"],
+        runtime_reasons=batch["reasons"],
+        active_elapsed_seconds=batch["active_elapsed_seconds"],
+        user_message=RUNTIME_TURN_USER_MESSAGE,
+        request_model=request_model,
+        max_prompt_tokens=get_runtime_max_prompt_tokens(),
+        max_output_tokens=get_runtime_max_output_tokens(),
+        max_reasons=get_runtime_max_batch_reasons(),
+    )
+    metrics = {
+        **budget_result.metrics,
+        "correlation_id": batch.get("correlation_id"),
+        "service_call_id": None,
+    }
+    return {
+        **batch,
+        "request_model": request_model,
+        "runtime_llm_context": budget_result.runtime_llm_context,
+        "runtime_reasons": budget_result.runtime_reasons,
+        "runtime_request_metrics": metrics,
+        "budget_allowed": budget_result.allowed,
+        "budget_error_code": budget_result.error_code,
+        "budget_error_message": budget_result.error_message,
+    }
+
+
 def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
     with transaction.atomic():
         session = (
@@ -1293,17 +1454,10 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         if not pending:
             return None
 
-        if session.status == SessionStatus.RUNNING:
-            reasons = pending[:RUNTIME_BATCH_SIZE]
-            remaining = pending[RUNTIME_BATCH_SIZE:]
-        else:
-            reasons = [item for item in pending if item.get("reason_kind") != "tick"][
-                :RUNTIME_BATCH_SIZE
-            ]
-            skipped_tick_ids = {id(item) for item in pending if item.get("reason_kind") == "tick"}
-            remaining = [
-                item for item in pending if item not in reasons and id(item) not in skipped_tick_ids
-            ]
+        reasons, remaining = _select_runtime_batch_reasons(
+            pending=pending,
+            session_status=session.status,
+        )
 
         if not reasons:
             state["pending_runtime_reasons"] = remaining
@@ -1323,6 +1477,10 @@ def _claim_runtime_turn_batch(session_id: int) -> dict[str, Any] | None:
         debug["currently_processing_reasons"] = reasons
         debug["last_failed_step"] = ""
         debug["last_failed_error"] = ""
+        debug["status_flags"] = {
+            **dict(debug.get("status_flags") or {}),
+            "runtime_processing": True,
+        }
         state["control_plane_debug"] = debug
         session.runtime_state_json = state
         session.save(update_fields=["runtime_state_json", "modified_at"])
@@ -1359,6 +1517,15 @@ def _restore_runtime_turn_batch(
         state["currently_processing_reasons"] = []
         state["runtime_processing"] = False
         state["last_runtime_error"] = error[:500]
+        debug = dict(state.get("control_plane_debug") or {})
+        debug["queued_reasons"] = state["pending_runtime_reasons"]
+        debug["currently_processing_reasons"] = []
+        debug["last_failed_error"] = error[:500]
+        debug["status_flags"] = {
+            **dict(debug.get("status_flags") or {}),
+            "runtime_processing": False,
+        }
+        state["control_plane_debug"] = debug
         session.runtime_state_json = state
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
@@ -1366,17 +1533,26 @@ def _restore_runtime_turn_batch(
 def enqueue_runtime_turn_service_call(batch: dict[str, Any]) -> str:
     from .orca.services import GenerateTrainerRuntimeTurn
 
-    return GenerateTrainerRuntimeTurn.task.using(
-        context={
-            "simulation_id": batch["simulation_id"],
-            "session_id": batch["session_id"],
-            "runtime_reasons": batch["reasons"],
-            "active_elapsed_seconds": batch["active_elapsed_seconds"],
-            "current_snapshot": batch["current_snapshot"],
-            "correlation_id": batch.get("correlation_id"),
+    context = {
+        "simulation_id": batch["simulation_id"],
+        "session_id": batch["session_id"],
+        "runtime_reasons": batch["runtime_reasons"],
+        "active_elapsed_seconds": batch["active_elapsed_seconds"],
+        "runtime_llm_context": batch["runtime_llm_context"],
+        "runtime_request_metrics": batch["runtime_request_metrics"],
+        "model_settings": {
+            "max_tokens": get_runtime_max_output_tokens(),
         },
-    ).enqueue(
-        user_message="Process the next TrainerLab runtime turn and return the authoritative patient update.",
+        "correlation_id": batch.get("correlation_id"),
+    }
+    context.pop("previous_response_id", None)
+    context.pop("previous_provider_response_id", None)
+    return str(
+        GenerateTrainerRuntimeTurn.task.using(
+            context=context,
+        ).enqueue(
+            user_message=RUNTIME_TURN_USER_MESSAGE,
+        )
     )
 
 
@@ -1386,7 +1562,52 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
         return None
 
     try:
-        return enqueue_runtime_turn_service_call(batch)
+        request_batch = _build_runtime_request_batch(batch)
+        _update_runtime_request_profile(
+            session_id=session_id,
+            metrics=request_batch["runtime_request_metrics"],
+        )
+        logger.info(
+            "trainerlab.runtime.request_profiled",
+            **request_batch["runtime_request_metrics"],
+        )
+    except Exception as exc:
+        logger.exception("trainerlab.runtime.request_build_failed", session_id=session_id)
+        _restore_runtime_turn_batch(
+            session_id=session_id,
+            reasons=batch["reasons"],
+            error=str(exc),
+        )
+        _emit_runtime_failure_event(
+            session_id=session_id,
+            reasons=batch["reasons"],
+            correlation_id=batch.get("correlation_id"),
+            error=str(exc),
+            reason_code="runtime_request_build_failed",
+            retryable=False,
+        )
+        return None
+
+    if not request_batch["budget_allowed"]:
+        error_message = request_batch["budget_error_message"] or "Runtime prompt budget exceeded"
+        _restore_runtime_turn_batch(
+            session_id=session_id,
+            reasons=batch["reasons"],
+            error=error_message,
+        )
+        _emit_runtime_failure_event(
+            session_id=session_id,
+            reasons=batch["reasons"],
+            correlation_id=batch.get("correlation_id"),
+            error=error_message,
+            reason_code=request_batch["budget_error_code"],
+            retryable=False,
+        )
+        return None
+
+    try:
+        call_id = enqueue_runtime_turn_service_call(request_batch)
+        return call_id
     except Exception as exc:
         logger.exception("trainerlab.runtime.enqueue_failed", session_id=session_id)
         _restore_runtime_turn_batch(
@@ -1394,20 +1615,29 @@ def process_runtime_turn_queue(*, session_id: int) -> str | None:
             reasons=batch["reasons"],
             error=str(exc),
         )
-        session = TrainerSession.objects.select_related("simulation").get(pk=session_id)
-        emit_runtime_event(
-            session=session,
-            event_type=outbox_events.SIMULATION_RUNTIME_FAILED,
-            payload={
-                "error": str(exc),
-                "reasons": batch["reasons"],
-            },
+        _emit_runtime_failure_event(
+            session_id=session_id,
+            reasons=batch["reasons"],
             correlation_id=batch.get("correlation_id"),
-            idempotency_key=(
-                f"{outbox_events.SIMULATION_RUNTIME_FAILED}:{session.id}:{timezone.now().timestamp()}"
-            ),
+            error=str(exc),
+            retryable=True,
         )
         raise
+    finally:
+        if "call_id" in locals():
+            request_metrics = {
+                **request_batch["runtime_request_metrics"],
+                "service_call_id": call_id,
+            }
+            try:
+                _persist_runtime_request_metrics(call_id=call_id, metrics=request_metrics)
+                _update_runtime_request_profile(session_id=session_id, metrics=request_metrics)
+            except Exception:
+                logger.exception(
+                    "trainerlab.runtime.request_profile_persist_failed",
+                    session_id=session_id,
+                    service_call_id=call_id,
+                )
 
 
 def clear_runtime_processing(
@@ -1429,6 +1659,15 @@ def clear_runtime_processing(
         state["currently_processing_reasons"] = []
         state["runtime_processing"] = False
         state["last_runtime_error"] = error[:500]
+        debug = dict(state.get("control_plane_debug") or {})
+        debug["queued_reasons"] = pending
+        debug["currently_processing_reasons"] = []
+        debug["last_failed_error"] = error[:500]
+        debug["status_flags"] = {
+            **dict(debug.get("status_flags") or {}),
+            "runtime_processing": False,
+        }
+        state["control_plane_debug"] = debug
         session.runtime_state_json = state
         session.save(update_fields=["runtime_state_json", "modified_at"])
 
@@ -2446,6 +2685,27 @@ def _apply_intervention_effect(
     )
 
 
+def _driver_intervention_ids(reasons: list[dict[str, Any]]) -> list[int]:
+    driver_ids: list[int] = []
+    for reason in reasons:
+        payload = dict(reason.get("payload") or {})
+        intervention_id = payload.get("intervention_event_id")
+        if intervention_id is None and payload.get("event_kind") == "intervention":
+            intervention_id = payload.get("domain_event_id")
+        if isinstance(intervention_id, int) and intervention_id not in driver_ids:
+            driver_ids.append(intervention_id)
+    return driver_ids
+
+
+def _driver_reason_kinds(reasons: list[dict[str, Any]]) -> list[str]:
+    kinds: list[str] = []
+    for reason in reasons:
+        reason_kind = str(reason.get("reason_kind") or "")
+        if reason_kind and reason_kind not in kinds:
+            kinds.append(reason_kind)
+    return kinds
+
+
 def apply_runtime_turn_output(
     *,
     session_id: int,
@@ -2466,11 +2726,15 @@ def apply_runtime_turn_output(
             session.save(update_fields=["runtime_state_json", "modified_at"])
             return state
         processed_reasons = list(state.get("currently_processing_reasons") or [])
+        touched_domains: list[str] = []
 
         state_changes = dict(output_payload.get("state_changes") or {})
 
         evaluation_summary = {
             "worker_kind": "core_runtime",
+            "domains": touched_domains,
+            "driver_reason_kinds": _driver_reason_kinds(processed_reasons),
+            "driver_intervention_ids": _driver_intervention_ids(processed_reasons),
             "accepted": [],
             "normalized": [],
             "rejected": [],
@@ -2483,6 +2747,8 @@ def apply_runtime_turn_output(
                 observation=observation,
                 correlation_id=correlation_id,
             )
+            if "problem" not in touched_domains:
+                touched_domains.append("problem")
             evaluation_summary["accepted"].append(
                 {"domain": "problem", "kind": "problem_observation"}
             )
@@ -2494,6 +2760,8 @@ def apply_runtime_turn_output(
                 change=change,
                 correlation_id=correlation_id,
             )
+            if "physiology" not in touched_domains:
+                touched_domains.append("physiology")
             evaluation_summary["normalized"].append(
                 {
                     "domain": "physiology",
@@ -2508,6 +2776,8 @@ def apply_runtime_turn_output(
                 change=change,
                 correlation_id=correlation_id,
             )
+            if "physiology" not in touched_domains:
+                touched_domains.append("physiology")
             evaluation_summary["normalized"].append(
                 {
                     "domain": "physiology",
@@ -2522,6 +2792,8 @@ def apply_runtime_turn_output(
                 change=change,
                 correlation_id=correlation_id,
             )
+            if "finding" not in touched_domains:
+                touched_domains.append("finding")
             evaluation_summary["accepted"].append({"domain": "finding", "kind": "finding_update"})
 
         for change in state_changes.get("intervention_assessments", []):
@@ -2531,6 +2803,8 @@ def apply_runtime_turn_output(
                 state=state,
                 correlation_id=correlation_id,
             )
+            if "intervention" not in touched_domains:
+                touched_domains.append("intervention")
             evaluation_summary["accepted"].append(
                 {"domain": "intervention", "kind": "intervention_assessment"}
             )
@@ -2546,6 +2820,8 @@ def apply_runtime_turn_output(
             correlation_id=correlation_id,
         )
         if state_changes.get("recommendation_suggestions"):
+            if "recommendation" not in touched_domains:
+                touched_domains.append("recommendation")
             evaluation_summary["normalized"].append(
                 {
                     "domain": "recommendation",
@@ -2559,6 +2835,8 @@ def apply_runtime_turn_output(
             base_status=dict(output_payload.get("patient_status") or {}),
         )
         if output_payload.get("patient_status") or output_payload.get("instructor_intent"):
+            if "narrative" not in touched_domains:
+                touched_domains.append("narrative")
             evaluation_summary["normalized"].append(
                 {
                     "domain": "narrative",

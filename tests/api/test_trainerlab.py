@@ -1837,8 +1837,10 @@ class TestTrainerLabDictionaries:
         intervention = Intervention.objects.filter(
             simulation_id=simulation_id, intervention_type="tourniquet"
         ).latest("timestamp")
+        captured_batch: dict[str, object] = {}
 
         def _inline_enqueue(batch):
+            captured_batch.update(batch)
             apply_runtime_turn_output(
                 session_id=batch["session_id"],
                 output_payload=_inline_runtime_payload(
@@ -1861,6 +1863,11 @@ class TestTrainerLabDictionaries:
         call_id = process_runtime_turn_queue(session_id=trainer_session.id)
 
         assert call_id == "inline-runtime-call"
+        assert captured_batch["runtime_request_metrics"]["previous_response_id_present"] is False
+        assert "runtime_llm_context" in captured_batch
+        assert "current_snapshot" in captured_batch
+        assert "pending_runtime_reasons" in captured_batch["runtime_llm_context"]
+        assert "read_aloud_brief" not in str(captured_batch["runtime_llm_context"])
 
         trainer_session.refresh_from_db()
         current_snapshot = trainer_session.runtime_state_json["current_snapshot"]
