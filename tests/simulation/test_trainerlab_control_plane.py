@@ -204,10 +204,9 @@ def test_runtime_service_call_persists_compact_context_and_request_profile(
     assert "current_snapshot" not in call.context
     assert "previous_response_id" not in call.context
     assert "previous_provider_response_id" not in call.context
-    assert (
-        str(call.context["runtime_request_metrics"]["service_call_id"]).replace("-", "")
-        == str(call.id).replace("-", "")
-    )
+    assert str(call.context["runtime_request_metrics"]["service_call_id"]).replace("-", "") == str(
+        call.id
+    ).replace("-", "")
     assert call.context["runtime_request_metrics"]["previous_response_id_present"] is False
 
 

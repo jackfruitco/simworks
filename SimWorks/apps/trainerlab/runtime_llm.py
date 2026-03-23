@@ -252,9 +252,7 @@ def project_runtime_llm_snapshot(
                 "parent_problem_id": problem.get("parent_problem_id"),
                 "triggering_intervention_id": problem.get("triggering_intervention_id"),
                 "age_seconds": active_problem_ages.get(problem.get("problem_id")),
-                "description": _truncate(problem.get("description"), 180)
-                if trim_level < 2
-                else "",
+                "description": _truncate(problem.get("description"), 180) if trim_level < 2 else "",
             }
         )
         for problem in snapshot.get("problems", [])
@@ -305,9 +303,7 @@ def project_runtime_llm_snapshot(
                 "status": intervention.get("status"),
                 "effectiveness": intervention.get("effectiveness"),
                 "clinical_effect": _truncate(intervention.get("clinical_effect"), 120),
-                "notes": _truncate(intervention.get("notes"), 120)
-                if trim_level < 2
-                else "",
+                "notes": _truncate(intervention.get("notes"), 120) if trim_level < 2 else "",
                 "age_seconds": active_intervention_ages.get(intervention.get("intervention_id")),
             }
         )
@@ -866,8 +862,7 @@ def _vitals_indicate_hemodynamic_instability(vitals_summary: dict[str, Any]) -> 
     max_hr = heart_rate.get("max_value")
     min_sbp = blood_pressure.get("min_value")
     return bool(
-        (isinstance(max_hr, int) and max_hr >= 120)
-        or (isinstance(min_sbp, int) and min_sbp <= 90)
+        (isinstance(max_hr, int) and max_hr >= 120) or (isinstance(min_sbp, int) and min_sbp <= 90)
     )
 
 
@@ -877,8 +872,7 @@ def _vitals_indicate_respiratory_distress(vitals_summary: dict[str, Any]) -> boo
     min_spo2 = spo2.get("min_value")
     max_rr = respiratory_rate.get("max_value")
     return bool(
-        (isinstance(min_spo2, int) and min_spo2 < 92)
-        or (isinstance(max_rr, int) and max_rr >= 28)
+        (isinstance(min_spo2, int) and min_spo2 < 92) or (isinstance(max_rr, int) and max_rr >= 28)
     )
 
 
@@ -900,9 +894,7 @@ def _truncate(value: Any, limit: int) -> str:
 def _strip_empty(value: Any) -> Any:
     if isinstance(value, dict):
         cleaned = {
-            key: _strip_empty(item)
-            for key, item in value.items()
-            if item not in (None, "", [], {})
+            key: _strip_empty(item) for key, item in value.items() if item not in (None, "", [], {})
         }
         return {key: item for key, item in cleaned.items() if item not in (None, "", [], {})}
     if isinstance(value, list):
