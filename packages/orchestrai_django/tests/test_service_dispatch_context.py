@@ -238,3 +238,26 @@ def test_run_service_call_uses_autostart_returned_app_for_registry(monkeypatch):
     tasks.run_service_call("call-1")
 
     assert registry_apps == [autostart_app]
+
+
+def test_app_config_ready_installs_task_proxy_without_entrypoint(monkeypatch):
+    from orchestrai_django import apps as apps_module
+
+    installed: list[bool] = []
+    autostarted: list[bool] = []
+    config = apps_module.OrchestrAIDjangoConfig("orchestrai_django", apps_module)
+
+    monkeypatch.setattr(apps_module, "use_django_task_proxy", lambda: installed.append(True))
+    monkeypatch.setattr(apps_module, "_autostart_enabled", lambda: True)
+    monkeypatch.setattr(apps_module, "_should_skip_ready_command", lambda argv: None)
+    monkeypatch.setattr(apps_module, "_resolve_entrypoint", lambda: None)
+    monkeypatch.setattr(
+        apps_module,
+        "ensure_autostarted",
+        lambda **kwargs: autostarted.append(True),
+    )
+
+    config.ready()
+
+    assert installed == [True]
+    assert autostarted == []

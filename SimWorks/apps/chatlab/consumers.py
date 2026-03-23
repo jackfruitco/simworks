@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.common.outbox import event_types as outbox_events
+from apps.simcore.access import can_access_simulation_in_scope
 from apps.simcore.models import Simulation
 from apps.simcore.utils import get_user_initials
 from orchestrai.utils.json import json_default
@@ -57,7 +58,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Retrieve the simulation object
         self.simulation_id = self.scope["url_route"]["kwargs"]["simulation_id"]
         try:
-            self.simulation = await sync_to_async(Simulation.objects.get)(id=self.simulation_id)
+            self.simulation = await sync_to_async(
+                lambda: Simulation.objects.select_related("account", "user").get(
+                    id=self.simulation_id
+                )
+            )()
         except Simulation.DoesNotExist:
             error_message = f"Simulation with id {self.simulation_id} does not exist."
             ChatConsumer.log(func_name, error_message, level=logging.ERROR)
@@ -79,8 +84,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         scope_user = self.scope.get("user")
         is_authenticated = bool(scope_user and getattr(scope_user, "is_authenticated", False))
-        is_owner = bool(is_authenticated and self.simulation.user_id == scope_user.id)
-        if not is_owner:
+        has_access = bool(
+            is_authenticated
+            and can_access_simulation_in_scope(scope_user, self.simulation, self.scope)
+        )
+        if not has_access:
             await self.accept()
             await self.send(
                 text_data=json.dumps(

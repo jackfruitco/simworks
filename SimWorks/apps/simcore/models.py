@@ -259,7 +259,19 @@ class Simulation(models.Model):
         blank=True, null=True, help_text="Optional max duration for this simulation"
     )
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="simulations",
+    )
     openai_model = models.CharField(blank=True, null=True, max_length=128)
     metadata_checksum = models.CharField(max_length=64, blank=True, null=True)
 
@@ -284,6 +296,12 @@ class Simulation(models.Model):
 
     sim_patient_full_name = models.CharField(max_length=100, blank=True)
     sim_patient_display_name = models.CharField(max_length=100, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["account", "start_timestamp"], name="idx_sim_account_started"),
+            models.Index(fields=["account", "status"], name="idx_sim_account_status"),
+        ]
 
     def history(self, _format=None) -> list:
         """
@@ -592,9 +610,16 @@ class Simulation(models.Model):
             User = get_user_model()
             user = await User.objects.select_related("role").aget(pk=pk)
 
+        account = kwargs.pop("account", None)
+        if account is None and user is not None:
+            from apps.accounts.services import get_personal_account_for_user
+
+            account = await sync_to_async(get_personal_account_for_user)(user)
+
         create_kwargs = {k: v for k, v in kwargs.items() if k in model_field_names}
         instance = await cls.objects.acreate(
             user=user,
+            account=account,
             **create_kwargs,
         )
 
@@ -646,6 +671,11 @@ class Simulation(models.Model):
             updating_name = old.sim_patient_full_name != self.sim_patient_full_name
         else:
             updating_name = bool(self.sim_patient_full_name)
+
+        if self.account_id is None and self.user_id is not None:
+            from apps.accounts.services import get_default_account_for_user
+
+            self.account = get_default_account_for_user(self.user)
 
         if updating_name:
             self.sim_patient_display_name = randomize_display_name(self.sim_patient_full_name)

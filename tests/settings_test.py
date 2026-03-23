@@ -15,6 +15,7 @@ INSTALLED_APPS = [
     "orchestrai_django",  # core package under test
     # SimWorks apps for integration tests
     "apps.accounts",
+    "apps.billing",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
@@ -109,3 +110,9 @@ SOCIALACCOUNT_PROVIDERS = {
         }
     },
 }
+
+BILLING_STRIPE_PRICE_PLAN_MAP = {}
+BILLING_APPLE_PRODUCT_PLAN_MAP = {}
+BILLING_STRIPE_WEBHOOK_SECRET = "test-stripe-webhook-secret"
+BILLING_STRIPE_SECRET_KEY = "test-stripe-secret"
+BILLING_STRIPE_CHECKOUT_ENABLED = False

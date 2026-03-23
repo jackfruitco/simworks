@@ -20,6 +20,11 @@ from api.v1.schemas.simulations import (
     SimulationQuickCreate,
     simulation_to_out,
 )
+from api.v1.utils import (
+    get_account_for_request,
+    get_simulation_for_user,
+    get_simulation_queryset_for_request,
+)
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit
 from apps.common.retries import (
@@ -110,11 +115,10 @@ def list_simulations(
     ),
 ) -> PaginatedResponse[SimulationOut]:
     """List all simulations for the authenticated user."""
-    from apps.simcore.models import Simulation
 
     user = request.auth
     queryset = (
-        Simulation.objects.filter(user=user)
+        get_simulation_queryset_for_request(request, user)
         .select_related("chatlab_session")
         .order_by("-start_timestamp", "-pk")
     )
@@ -189,6 +193,7 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
     from apps.simcore.models import Simulation
 
     user = request.auth
+    account = get_account_for_request(request, user)
 
     time_limit = None
     if body.time_limit_seconds:
@@ -196,6 +201,7 @@ def create_simulation(request: HttpRequest, body: SimulationCreate) -> Simulatio
 
     sim = Simulation.objects.create(
         user=user,
+        account=account,
         diagnosis=body.diagnosis,
         chief_complaint=body.chief_complaint,
         sim_patient_full_name=body.patient_full_name,
@@ -228,8 +234,10 @@ def quick_create_simulation(
     from apps.chatlab.utils import create_new_simulation
 
     user = request.auth
+    account = get_account_for_request(request, user)
     simulation = async_to_sync(create_new_simulation)(
         user=user,
+        account=account,
         modifiers=body.modifiers,
     )
     return 201, simulation_to_out(simulation)
@@ -244,14 +252,8 @@ def quick_create_simulation(
 @api_rate_limit
 def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     """Get a specific simulation by ID."""
-    from apps.simcore.models import Simulation
-
     user = request.auth
-
-    try:
-        sim = Simulation.objects.select_related("chatlab_session").get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found") from None
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     return simulation_to_out(sim)
 
@@ -265,14 +267,8 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
 @api_rate_limit
 def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndResponse:
     """End a simulation."""
-    from apps.simcore.models import Simulation
-
     user = request.auth
-
-    try:
-        sim = Simulation.objects.get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found") from None
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     if sim.is_complete:
         raise HttpError(400, "Simulation is already ended")
@@ -300,10 +296,7 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
     from apps.simcore.models import Conversation, ConversationType, Simulation
 
     user = request.auth
-    try:
-        sim = Simulation.objects.select_related("chatlab_session").get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found") from None
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     if not _sim_has_chatlab_session(sim):
         raise HttpError(400, "Initial generation retry is only available for ChatLab simulations")
@@ -358,10 +351,7 @@ def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, Simul
     from apps.simcore.models import Simulation
 
     user = request.auth
-    try:
-        sim = Simulation.objects.get(pk=simulation_id, user=user)
-    except Simulation.DoesNotExist:
-        raise HttpError(404, "Simulation not found") from None
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     if sim.status not in {
         Simulation.SimulationStatus.COMPLETED,

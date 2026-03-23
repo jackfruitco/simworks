@@ -9,10 +9,12 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from api.v1.sse import stream_outbox_events
+from apps.accounts.context import resolve_request_account
 from apps.common.decorators import resolve_user
 from apps.common.models import OutboxEvent
 from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.watch import build_watch_page_context, build_watch_service_calls_context
+from apps.simcore.access import get_simulation_queryset_for_request
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import has_instructor_access
 from apps.trainerlab.utils import create_new_simulation
@@ -32,11 +34,13 @@ def index(request):
 async def run_simulation(request, simulation_id):
     """TrainerLab simulation runner — stub until fully implemented."""
     try:
-        await Simulation.objects.aget(id=simulation_id)
+        await sync_to_async(
+            lambda: get_simulation_queryset_for_request(request, request.user).get(id=simulation_id)
+        )()
     except Simulation.DoesNotExist as err:
         raise Http404("Simulation not found.") from err
 
-    if not await sync_to_async(has_instructor_access)(request.user):
+    if not await sync_to_async(has_instructor_access)(request.user, request=request):
         return HttpResponseForbidden("Instructor access required.")
 
     logger.debug("run_simulation: user=%s sim=%s", request.user.pk, simulation_id)
@@ -52,7 +56,14 @@ async def create_simulation(request):
 
     # Otherwise, request must be POST
     modifiers = request.POST.getlist("modifier")
-    simulation = await create_new_simulation(user=request.user, modifiers=modifiers)
+    account = await sync_to_async(resolve_request_account)(request, user=request.user)
+    if account is None:
+        return HttpResponseForbidden("Account access required.")
+    simulation = await create_new_simulation(
+        user=request.user,
+        modifiers=modifiers,
+        account=account,
+    )
     return redirect("trainerlab:run_simulation", simulation_id=simulation.id)
 
 
@@ -84,7 +95,7 @@ def watch_simulation(request, simulation_id):
         watch_url=reverse("trainerlab:watch_simulation", args=[simulation_id]),
         back_url=run_url,
         lab_name="TrainerLab",
-        can_go_to_simulation=has_instructor_access(request.user),
+        can_go_to_simulation=has_instructor_access(request.user, request=request),
         go_to_simulation_url=run_url,
     )
     return render(

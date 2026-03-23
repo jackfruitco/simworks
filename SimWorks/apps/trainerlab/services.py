@@ -732,6 +732,7 @@ def refresh_runtime_projection(
 def create_session(
     *,
     user,
+    account=None,
     scenario_spec: dict[str, Any] | None,
     directives: str | None,
     modifiers: list[str] | None,
@@ -748,6 +749,7 @@ def create_session(
 
     simulation = Simulation.objects.create(
         user=user,
+        account=account,
         sim_patient_full_name=patient_name,
         diagnosis=diagnosis,
         chief_complaint=chief_complaint,
@@ -990,6 +992,7 @@ def retry_initial_scenario_generation(
 def create_session_with_initial_generation(
     *,
     user,
+    account=None,
     scenario_spec: dict[str, Any] | None,
     directives: str | None,
     modifiers: list[str] | None,
@@ -997,6 +1000,7 @@ def create_session_with_initial_generation(
 ) -> tuple[TrainerSession, str | None]:
     session = create_session(
         user=user,
+        account=account,
         scenario_spec=scenario_spec,
         directives=directives,
         modifiers=modifiers,

@@ -36,7 +36,10 @@ async def await_if_needed(result):
 
 
 async def create_new_simulation(
-    user, modifiers: list | None = None, force: bool = False
+    user,
+    modifiers: list | None = None,
+    force: bool = False,
+    account=None,
 ) -> Simulation:
     """Create a new Simulation and ChatSession, and trigger celery task to get initial message(simulation)."""
     must_be_async()
@@ -53,6 +56,7 @@ async def create_new_simulation(
         # Create base Simulation
         simulation = await Simulation.abuild(
             user=user,
+            account=account,
             app_=APP_NAME,
             sim_patient_full_name=sim_patient_full_name,
             modifiers=modifiers,

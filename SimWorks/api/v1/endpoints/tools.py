@@ -43,7 +43,7 @@ def list_simulation_tools(
     from apps.simcore.tools import list_tools
 
     user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user)
+    simulation = get_simulation_for_user(simulation_id, user, request=request)
 
     if names:
         tool_names = [name.lower() for name in names]
@@ -72,7 +72,7 @@ def get_simulation_tool(
     tool_name: str,
 ) -> ToolOut:
     user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user)
+    simulation = get_simulation_for_user(simulation_id, user, request=request)
     tool_class = _resolve_tool_or_404(tool_name)
     return ToolOut(**tool_class(simulation).to_dict())
 
@@ -95,7 +95,7 @@ def sign_lab_orders(
         raise HttpError(400, "submitted_orders must include at least one item")
 
     user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user)
+    simulation = get_simulation_for_user(simulation_id, user, request=request)
 
     async def _enqueue():
         return await GenerateInitialFeedback.task.using(

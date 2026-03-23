@@ -292,7 +292,7 @@ def list_messages(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # Base queryset with select_related to avoid N+1 on conversation_type
     queryset = (
@@ -363,7 +363,7 @@ def create_message(
     from apps.chatlab.models import Message, RoleChoices
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # Resolve conversation and check per-conversation lock
     conversation = _resolve_conversation(sim, body.conversation_id)
@@ -429,7 +429,7 @@ def retry_message(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = Message.objects.select_related("conversation__conversation_type").get(
@@ -496,7 +496,7 @@ def get_message(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = (
@@ -526,7 +526,7 @@ def mark_message_read(
     from apps.chatlab.models import Message
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         message = (

@@ -6,12 +6,13 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from api.v1.sse import stream_outbox_events
+from apps.accounts.context import resolve_request_account
 from apps.chatlab.utils import (
     create_new_simulation,
     maybe_start_simulation,
@@ -24,6 +25,10 @@ from apps.common.retries import (
     is_initial_generation_retryable_reason,
 )
 from apps.common.watch import build_watch_page_context, build_watch_service_calls_context
+from apps.simcore.access import (
+    can_access_simulation_in_request,
+    get_simulation_queryset_for_request,
+)
 from apps.simcore.models import Simulation
 from apps.simcore.tools import aget_tool, alist_tools
 from orchestrai_django.models import ServiceCall
@@ -36,7 +41,7 @@ logger = logging.getLogger(__name__)
 @login_required
 def index(request):
     simulations = (
-        Simulation.objects.filter(user=request.user)
+        get_simulation_queryset_for_request(request, request.user)
         if request.user.is_authenticated
         else Simulation.objects.none()
     )
@@ -81,8 +86,15 @@ def index(request):
 @resolve_user
 async def create_simulation(request):
     modifiers = request.GET.getlist("modifier")
+    account = await sync_to_async(resolve_request_account)(request, user=request.user)
+    if account is None:
+        return HttpResponseForbidden("Account access required.")
     # Errors during AI service execution are handled via signal receivers
-    simulation = await create_new_simulation(user=request.user, modifiers=modifiers)
+    simulation = await create_new_simulation(
+        user=request.user,
+        modifiers=modifiers,
+        account=account,
+    )
     return await sync_to_async(redirect)("chatlab:run_simulation", simulation_id=simulation.id)
 
 
@@ -90,13 +102,7 @@ async def create_simulation(request):
 @resolve_user
 @simulation_required("simulation_id", owner_required=True)
 async def run_simulation(request, simulation_id, included_tools="__ALL__"):
-    try:
-        simulation = await Simulation.objects.select_related("user").aget(id=simulation_id)
-    except Simulation.DoesNotExist:
-        return Http404("Simulation not found.")
-
-    if simulation.user != request.user:
-        return HttpResponseForbidden("Waaaaaait a minute. This isn't your simulation!")
+    simulation = request.simulation
 
     tools = []
 
@@ -142,16 +148,20 @@ async def run_simulation(request, simulation_id, included_tools="__ALL__"):
 
 
 @require_GET
+@login_required
 def get_metadata_checksum(request, simulation_id):
     """Return simulation metadata checksum."""
-    simulation = get_object_or_404(Simulation, id=simulation_id)
+    simulation = get_object_or_404(
+        get_simulation_queryset_for_request(request, request.user),
+        id=simulation_id,
+    )
     return JsonResponse({"checksum": simulation.metadata_checksum})
 
 
 @require_GET
 @login_required
 def refresh_messages(request, simulation_id):
-    get_object_or_404(Simulation, id=simulation_id, user=request.user)
+    get_object_or_404(get_simulation_queryset_for_request(request, request.user), id=simulation_id)
     qs = Message.objects.filter(simulation_id=simulation_id)
 
     # Filter by conversation when specified (multi-conversation support)
@@ -167,10 +177,10 @@ def refresh_messages(request, simulation_id):
 @require_GET
 @login_required
 def load_older_messages(request, simulation_id):
-    get_object_or_404(Simulation, id=simulation_id, user=request.user)
+    get_object_or_404(get_simulation_queryset_for_request(request, request.user), id=simulation_id)
     before_id = request.GET.get("before")
     try:
-        before_message = Message.objects.get(id=before_id)
+        before_message = Message.objects.get(id=before_id, simulation_id=simulation_id)
     except Message.DoesNotExist:
         return JsonResponse({"error": "Message not found."}, status=404)
 
@@ -214,7 +224,10 @@ def modifier_selector(request):
 @require_POST
 @login_required
 def end_simulation(request, simulation_id):
-    simulation = get_object_or_404(Simulation, id=simulation_id, user=request.user)
+    simulation = get_object_or_404(
+        get_simulation_queryset_for_request(request, request.user),
+        id=simulation_id,
+    )
     if not simulation.end_timestamp:
         simulation.end()
     return redirect("chatlab:run_simulation", simulation_id=simulation.id)
@@ -224,7 +237,7 @@ def end_simulation(request, simulation_id):
 @login_required
 def get_single_message(request, simulation_id, message_id):
     """Return HTML for a single message (for HTMX append after WebSocket notification)."""
-    get_object_or_404(Simulation, id=simulation_id, user=request.user)
+    get_object_or_404(get_simulation_queryset_for_request(request, request.user), id=simulation_id)
     try:
         message = (
             Message.objects.select_related("sender")
@@ -276,7 +289,7 @@ def watch_simulation(request, simulation_id):
         back_url=run_url,
         lab_name="ChatLab",
         can_go_to_simulation=request.user.is_authenticated
-        and simulation.user_id == request.user.id,
+        and can_access_simulation_in_request(request.user, simulation, request),
         go_to_simulation_url=run_url,
     )
     return render(
