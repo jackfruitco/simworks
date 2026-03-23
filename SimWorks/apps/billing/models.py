@@ -103,7 +103,7 @@ class Subscription(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["account", "status"], name="idx_subscription_account_status"),
+            models.Index(fields=["account", "status"], name="idx_sub_account_status"),
             models.Index(fields=["plan_code", "status"], name="idx_subscription_plan_status"),
         ]
 
