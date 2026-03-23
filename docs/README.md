@@ -7,6 +7,7 @@ This folder contains technical documentation for the MedSim platform (formerly S
 - [`index.md`](index.md) — primary docs index
 - [`quick-start.md`](quick-start.md) — local setup and development workflow
 - [`architecture.md`](architecture.md) — architecture and boundaries
+- [`architecture/accounts-billing-entitlements.md`](architecture/accounts-billing-entitlements.md) — account ownership, billing ingestion, and entitlement resolution
 
 ## Documentation system
 

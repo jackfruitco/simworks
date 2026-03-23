@@ -79,7 +79,7 @@ def list_conversations(
     from apps.simcore.models import Conversation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     conversations = (
         Conversation.objects.filter(simulation=sim, is_archived=False)
@@ -108,7 +108,7 @@ def create_conversation(
     from apps.simcore.models import Conversation, ConversationType
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     # Resolve conversation type
     try:
@@ -167,7 +167,7 @@ def get_conversation(
     from apps.simcore.models import Conversation
 
     user = request.auth
-    sim = get_simulation_for_user(simulation_id, user)
+    sim = get_simulation_for_user(simulation_id, user, request=request)
 
     try:
         conv = (

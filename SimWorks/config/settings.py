@@ -17,6 +17,13 @@ from .auth_settings import (
     SITE_ID,
     SOCIALACCOUNT_PROVIDERS,
 )
+from .billing_settings import (
+    BILLING_APPLE_PRODUCT_PLAN_MAP,
+    BILLING_STRIPE_CHECKOUT_ENABLED,
+    BILLING_STRIPE_PRICE_PLAN_MAP,
+    BILLING_STRIPE_SECRET_KEY,
+    BILLING_STRIPE_WEBHOOK_SECRET,
+)
 from .logging import LOGGING
 from .privacy_settings import (
     PRIVACY_ANALYTICS_ENABLED,
@@ -87,6 +94,7 @@ INSTALLED_APPS = [
     "daphne",
     "channels",
     "apps.accounts",
+    "apps.billing",
     # "django_celery_beat",
     "django.contrib.admin",
     "django.contrib.auth",

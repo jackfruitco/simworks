@@ -42,7 +42,7 @@ def submit_lab_orders(
     from apps.simcore.models import Simulation
 
     user = request.auth
-    simulation = get_simulation_for_user(simulation_id, user)
+    simulation = get_simulation_for_user(simulation_id, user, request=request)
 
     if simulation.status != Simulation.Status.IN_PROGRESS:
         raise HttpError(400, "Lab orders can only be submitted for in-progress simulations")

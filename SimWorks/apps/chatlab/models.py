@@ -44,7 +44,12 @@ class Message(PersistModel):
         on_delete=models.CASCADE,
         related_name="messages",
     )
-    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     content = models.TextField(blank=True, null=True)
     role = models.CharField(
         max_length=2,

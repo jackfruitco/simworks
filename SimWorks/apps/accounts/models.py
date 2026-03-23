@@ -1,11 +1,13 @@
 # accounts/models.py
 from datetime import timedelta
+import uuid
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.timezone import now
 from imagekit.models import ImageSpecField
@@ -53,6 +55,13 @@ class User(AbstractUser):
         source="avatar", processors=[ResizeToFill(300, 300)], format="JPEG", options={"quality": 90}
     )
     bio = models.TextField(blank=True, null=True, help_text="Short bio or description")
+    active_account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="active_for_users",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["first_name", "last_name"]
@@ -63,6 +72,7 @@ class User(AbstractUser):
         within_weeks: float | None = None,
         within_months: float | None = None,
     ) -> models.QuerySet:
+        from apps.accounts.services.accounts import get_personal_account_for_user
         from apps.simcore.models import Simulation
 
         # Normalize the time window (days > weeks > months)
@@ -72,8 +82,11 @@ class User(AbstractUser):
             elif within_months is not None:
                 within_days = within_months * 30
 
+        personal_account = get_personal_account_for_user(self)
         qs = (
-            Simulation.objects.filter(user=self)
+            Simulation.objects.filter(
+                Q(account=personal_account) | Q(account__isnull=True, user=self)
+            )
             .exclude(diagnosis__isnull=True)
             .order_by("-start_timestamp")
         )
@@ -141,6 +154,201 @@ class RoleResource(models.Model):
 
     def __str__(self):
         return self.resource
+
+
+class Account(models.Model):
+    class AccountType(models.TextChoices):
+        PERSONAL = "personal", "Personal"
+        ORGANIZATION = "organization", "Organization"
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=100, unique=True)
+    account_type = models.CharField(
+        max_length=32,
+        choices=AccountType.choices,
+        default=AccountType.PERSONAL,
+    )
+    parent_account = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="child_accounts",
+    )
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_accounts",
+    )
+    is_active = models.BooleanField(default=True)
+    requires_join_approval = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("name", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner_user"],
+                condition=Q(
+                    owner_user__isnull=False,
+                    account_type="personal",
+                ),
+                name="uniq_personal_account_owner_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["account_type", "is_active"], name="idx_account_type_active"),
+            models.Index(fields=["owner_user"], name="idx_account_owner_user"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.account_type == self.AccountType.PERSONAL:
+            if self.parent_account_id is not None:
+                raise ValidationError("Personal accounts cannot have a parent account.")
+            if self.owner_user_id is None:
+                raise ValidationError("Personal accounts must have an owner user.")
+
+    @property
+    def is_personal(self) -> bool:
+        return self.account_type == self.AccountType.PERSONAL
+
+    @property
+    def is_organization(self) -> bool:
+        return self.account_type == self.AccountType.ORGANIZATION
+
+    def __str__(self):
+        return self.name
+
+
+class AccountMembership(models.Model):
+    class Role(models.TextChoices):
+        BILLING_ADMIN = "billing_admin", "Billing Admin"
+        ORG_ADMIN = "org_admin", "Org Admin"
+        INSTRUCTOR = "instructor", "Instructor"
+        GENERAL_USER = "general_user", "General User"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        PENDING = "pending", "Pending"
+        SUSPENDED = "suspended", "Suspended"
+        REMOVED = "removed", "Removed"
+
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="account_memberships",
+    )
+    invite_email = models.EmailField(blank=True, default="")
+    role = models.CharField(
+        max_length=32,
+        choices=Role.choices,
+        default=Role.GENERAL_USER,
+    )
+    status = models.CharField(
+        max_length=32,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="invited_account_memberships",
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_account_memberships",
+    )
+    joined_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("account_id", "invite_email", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "user"],
+                condition=Q(user__isnull=False, ended_at__isnull=True),
+                name="uniq_open_account_membership_user",
+            ),
+            models.UniqueConstraint(
+                fields=["account", "invite_email"],
+                condition=Q(invite_email__gt="", ended_at__isnull=True),
+                name="uniq_open_account_membership_email",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["account", "status", "role"],
+                name="idx_account_membership_acl",
+            ),
+            models.Index(fields=["user", "status"], name="idx_account_membership_user_status"),
+            models.Index(
+                fields=["invite_email", "status"],
+                name="idx_account_membership_invite_email",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.user_id and not self.invite_email:
+            raise ValidationError("Membership requires a linked user or invite_email.")
+
+    @property
+    def is_active_membership(self) -> bool:
+        return self.status == self.Status.ACTIVE and self.ended_at is None
+
+    def __str__(self):
+        identity = self.user_id or self.invite_email or "unknown"
+        return f"{self.account_id}:{identity}:{self.role}"
+
+
+class AccountAuditEvent(models.Model):
+    account = models.ForeignKey(
+        "accounts.Account",
+        on_delete=models.CASCADE,
+        related_name="audit_events",
+    )
+    actor_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="account_audit_events",
+    )
+    event_type = models.CharField(max_length=100)
+    target_type = models.CharField(max_length=100, blank=True, default="")
+    target_ref = models.CharField(max_length=255, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=["account", "created_at"], name="idx_account_audit_account"),
+            models.Index(fields=["event_type", "created_at"], name="idx_account_audit_type"),
+        ]
+
+    def __str__(self):
+        return f"{self.account_id}:{self.event_type}"
 
 
 class Lab(models.Model):

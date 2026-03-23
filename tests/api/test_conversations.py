@@ -106,6 +106,19 @@ def conversation(simulation, patient_type):
 class TestListConversations:
     """Tests for GET /simulations/{id}/conversations/."""
 
+    def test_simulation_defaults_to_users_active_account(self, test_user):
+        """New simulations inherit the user's default account context."""
+        from apps.simcore.models import Simulation
+
+        simulation = Simulation.objects.create(
+            user=test_user,
+            diagnosis="Test Diagnosis",
+            chief_complaint="Test Complaint",
+        )
+        test_user.refresh_from_db()
+
+        assert simulation.account_id == test_user.active_account_id
+
     def test_list_conversations_returns_conversations(self, auth_client, simulation, conversation):
         """Returns conversations for the simulation."""
         response = auth_client.get(f"/api/v1/simulations/{simulation.pk}/conversations/")

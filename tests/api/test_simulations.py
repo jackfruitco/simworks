@@ -440,8 +440,10 @@ class TestQuickCreateSimulation:
         data = response.json()
         assert data["id"] == sim.pk
         assert data["user_id"] == test_user.pk
+        test_user.refresh_from_db()
         mock_create.assert_awaited_once_with(
             user=test_user,
+            account=test_user.active_account,
             modifiers=["night_shift", "limited_resources"],
         )
 

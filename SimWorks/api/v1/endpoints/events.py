@@ -54,7 +54,7 @@ def list_events(
     user = request.auth
 
     # Verify user owns the simulation
-    get_simulation_for_user(simulation_id, user)
+    get_simulation_for_user(simulation_id, user, request=request)
 
     # Build queryset
     queryset = order_outbox_queryset(
@@ -164,7 +164,7 @@ def stream_events(
     ),
 ):
     user = request.auth
-    get_simulation_for_user(simulation_id, user)
+    get_simulation_for_user(simulation_id, user, request=request)
     return stream_outbox_events(
         simulation_id=simulation_id,
         cursor=cursor,
