@@ -14,7 +14,7 @@ from apps.common.decorators import resolve_user
 from apps.common.models import OutboxEvent
 from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.watch import build_watch_page_context, build_watch_service_calls_context
-from apps.simcore.access import get_simulation_queryset_for_request
+from apps.simcore.access import can_access_simulation_in_request
 from apps.simcore.models import Simulation
 from apps.trainerlab.access import has_instructor_access
 from apps.trainerlab.utils import create_new_simulation
@@ -34,11 +34,12 @@ def index(request):
 async def run_simulation(request, simulation_id):
     """TrainerLab simulation runner — stub until fully implemented."""
     try:
-        await sync_to_async(
-            lambda: get_simulation_queryset_for_request(request, request.user).get(id=simulation_id)
-        )()
+        simulation = await Simulation.objects.select_related("user", "account").aget(id=simulation_id)
     except Simulation.DoesNotExist as err:
         raise Http404("Simulation not found.") from err
+
+    if not await sync_to_async(can_access_simulation_in_request)(request.user, simulation, request):
+        return HttpResponseForbidden("This isn't your simulation.")
 
     if not await sync_to_async(has_instructor_access)(request.user, request=request):
         return HttpResponseForbidden("Instructor access required.")
