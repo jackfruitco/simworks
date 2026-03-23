@@ -34,7 +34,9 @@ def index(request):
 async def run_simulation(request, simulation_id):
     """TrainerLab simulation runner — stub until fully implemented."""
     try:
-        simulation = await Simulation.objects.select_related("user", "account").aget(id=simulation_id)
+        simulation = await Simulation.objects.select_related("user", "account").aget(
+            id=simulation_id
+        )
     except Simulation.DoesNotExist as err:
         raise Http404("Simulation not found.") from err
 
