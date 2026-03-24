@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
-
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -210,18 +208,21 @@ def grant_demo_product_access(
 
 def get_access_snapshot(user, account):
     membership = get_account_membership(user, account)
-    products: dict[str, dict] = defaultdict(lambda: {"features": [], "limits": {}})
+    products: dict[str, dict] = {}
+    seen: set[str] = set()
     for entitlement in get_effective_entitlements(user, account):
         if not _is_valid_base_product_entitlement(entitlement):
             continue
         canonical_product_code = _canonical_product_code(entitlement.product_code)
-        if not canonical_product_code:
+        if not canonical_product_code or canonical_product_code in seen:
             continue
-        products[canonical_product_code]["enabled"] = True
+        seen.add(canonical_product_code)
+        if has_product_access(user, account, canonical_product_code):
+            products[canonical_product_code] = {"enabled": True, "features": {}, "limits": {}}
     return {
         "account_uuid": str(account.uuid),
         "account_name": account.name,
         "account_type": account.account_type,
         "membership_role": membership.role if membership else "",
-        "products": dict(products),
+        "products": products,
     }

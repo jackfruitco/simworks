@@ -27,7 +27,7 @@ from apps.trainerlab.schemas import RuntimeInstructorIntent, RuntimePatientStatu
 
 class LabAccessOut(BaseModel):
     lab_slug: str
-    access_level: Literal["viewer", "instructor", "admin"]
+    has_access: bool
 
 
 class TrainerSessionCreateIn(BaseModel):

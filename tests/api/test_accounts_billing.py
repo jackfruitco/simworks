@@ -287,7 +287,7 @@ def test_access_snapshot_endpoint_ignores_malformed_entitlements(owner_user, aut
 
     assert response.status_code == 200
     assert response.json()["products"] == {
-        ProductCode.CHATLAB_GO.value: {"enabled": True, "features": [], "limits": {}}
+        ProductCode.CHATLAB_GO.value: {"enabled": True, "features": {}, "limits": {}}
     }
 
 

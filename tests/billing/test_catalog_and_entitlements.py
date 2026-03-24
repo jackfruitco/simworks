@@ -90,7 +90,7 @@ def test_valid_base_manual_entitlement_grants_access_and_snapshot(owner_user):
 
     assert has_product_access(owner_user, personal_account, ProductCode.CHATLAB_GO.value) is True
     assert get_access_snapshot(owner_user, personal_account)["products"] == {
-        ProductCode.CHATLAB_GO.value: {"enabled": True, "features": [], "limits": {}}
+        ProductCode.CHATLAB_GO.value: {"enabled": True, "features": {}, "limits": {}}
     }
 
 
@@ -291,3 +291,117 @@ def test_entitlement_admin_form_uses_catalog_choices_and_rejects_feature_limit_d
     )
 
     assert invalid_form.is_valid() is False
+
+
+@pytest.mark.django_db
+def test_snapshot_contract_shape(owner_user):
+    """Snapshot product entries must use dict for features and limits, bool for enabled."""
+    personal_account = get_personal_account_for_user(owner_user)
+    Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:shape-test",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=owner_user,
+        product_code=ProductCode.CHATLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
+    )
+
+    snapshot = get_access_snapshot(owner_user, personal_account)
+    product = snapshot["products"][ProductCode.CHATLAB_GO.value]
+
+    assert isinstance(product["enabled"], bool)
+    assert isinstance(product["features"], dict), "features must be a dict, not a list"
+    assert product["features"] != []
+    assert isinstance(product["limits"], dict)
+
+
+@pytest.mark.django_db
+def test_snapshot_runtime_consistency(owner_user):
+    """Snapshot enabled must match has_product_access() for the same product."""
+    personal_account = get_personal_account_for_user(owner_user)
+    Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:consistency",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=owner_user,
+        product_code=ProductCode.TRAINERLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
+    )
+
+    snapshot = get_access_snapshot(owner_user, personal_account)
+
+    # Product user has access to must appear as enabled
+    assert has_product_access(owner_user, personal_account, ProductCode.TRAINERLAB_GO.value) is True
+    assert snapshot["products"][ProductCode.TRAINERLAB_GO.value]["enabled"] is True
+
+    # Product user does not have access to must not appear
+    assert (
+        has_product_access(owner_user, personal_account, ProductCode.CHATLAB_PLUS.value) is False
+    )
+    assert ProductCode.CHATLAB_PLUS.value not in snapshot["products"]
+
+
+@pytest.mark.django_db
+def test_seat_gated_entitlement_without_seat_not_in_snapshot(owner_user):
+    """Entitlement without an active seat must not appear as enabled in snapshot."""
+    org_account = create_organization_account(name="Seat Gate Org", owner_user=owner_user)
+    Entitlement.objects.create(
+        account=org_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:seat-gate",
+        scope_type=Entitlement.ScopeType.ACCOUNT,
+        product_code=ProductCode.TRAINERLAB_PLUS.value,
+        status=Entitlement.Status.ACTIVE,
+    )
+    SeatAllocation.objects.create(
+        account=org_account,
+        product_code=ProductCode.TRAINERLAB_PLUS.value,
+        seat_limit=1,
+        effective_from=timezone.now(),
+    )
+    # No SeatAssignment for the user in the org account
+
+    assert (
+        has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_PLUS.value) is False
+    )
+    snapshot = get_access_snapshot(owner_user, org_account)
+    assert ProductCode.TRAINERLAB_PLUS.value not in snapshot["products"]
+
+
+@pytest.mark.django_db
+def test_seat_gated_entitlement_with_seat_in_snapshot(owner_user):
+    """Entitlement with an active seat must appear as enabled in snapshot."""
+    org_account = create_organization_account(name="Seat OK Org", owner_user=owner_user)
+    Entitlement.objects.create(
+        account=org_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:seat-ok",
+        scope_type=Entitlement.ScopeType.ACCOUNT,
+        product_code=ProductCode.TRAINERLAB_PLUS.value,
+        status=Entitlement.Status.ACTIVE,
+    )
+    SeatAllocation.objects.create(
+        account=org_account,
+        product_code=ProductCode.TRAINERLAB_PLUS.value,
+        seat_limit=1,
+        effective_from=timezone.now(),
+    )
+    SeatAssignment.objects.create(
+        account=org_account,
+        user=owner_user,
+        product_code=ProductCode.TRAINERLAB_PLUS.value,
+        assigned_by=owner_user,
+    )
+
+    assert (
+        has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_PLUS.value) is True
+    )
+    snapshot = get_access_snapshot(owner_user, org_account)
+    product = snapshot["products"][ProductCode.TRAINERLAB_PLUS.value]
+    assert product["enabled"] is True
+    assert isinstance(product["features"], dict)
+    assert isinstance(product["limits"], dict)
