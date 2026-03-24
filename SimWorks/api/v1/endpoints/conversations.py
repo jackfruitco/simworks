@@ -29,6 +29,7 @@ router = Router(tags=["conversations"], auth=DualAuth())
 def _require_chatlab_access(request: HttpRequest):
     return require_chatlab_access(request.auth, request=request)
 
+
 STITCH_GREETING_MESSAGE = (
     "Hey, what would you like to discuss? Do you have a specific question "
     "about your performance or this scenario?"
