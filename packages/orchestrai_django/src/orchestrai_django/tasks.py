@@ -32,7 +32,7 @@ from orchestrai_django.models import (
 from orchestrai_django.signals import emit_service_call_dispatched, emit_service_call_succeeded
 from orchestrai_django.utils.serialization import (
     pydantic_model_to_dict,
-    safe_serialize_run_messages,
+    serialize_run_messages_envelope,
 )
 
 logger = logging.getLogger(__name__)
@@ -618,13 +618,16 @@ def run_service_call(call_id: str):
                 timestamp_val = (
                     result.timestamp() if callable(result.timestamp) else result.timestamp
                 )
+                messages_envelope = serialize_run_messages_envelope(result)
 
                 result_json = {
                     "output": output_json,
-                    "messages": safe_serialize_run_messages(result),
+                    "messages": messages_envelope["messages"],
                     "run_id": str(result.run_id) if result.run_id else None,
                     "timestamp": timestamp_val.isoformat() if timestamp_val else None,
                 }
+                if messages_envelope["fallback"] is not None:
+                    result_json["messages_fallback"] = messages_envelope["fallback"]
                 call_output_data = output_json
             elif isinstance(result, dict):
                 result_json = result

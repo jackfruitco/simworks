@@ -208,6 +208,50 @@ def test_run_service_call_stores_output_and_schema(monkeypatch):
     assert any("schema_fqn" in fields for fields in call.saved_fields if fields)
 
 
+def test_run_service_call_persists_messages_as_list_without_fallback(monkeypatch):
+    call = DummyCall()
+
+    class DummyService:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def arun(self, **payload):
+            return FakeRunResult()
+
+    def _select_for_update(*args, **kwargs):
+        return types.SimpleNamespace(get=lambda **kw: call)
+
+    class _NoopAtomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        tasks, "ensure_service_registry", lambda app=None: DummyRegistry(DummyService)
+    )
+    monkeypatch.setattr(tasks.ServiceCallModel.objects, "select_for_update", _select_for_update)
+    monkeypatch.setattr(tasks.transaction, "atomic", lambda: _NoopAtomic())
+    monkeypatch.setattr(
+        tasks,
+        "_inline_persist_service_call",
+        lambda call: setattr(call, "domain_persisted", True),
+    )
+    monkeypatch.setattr(
+        tasks,
+        "_privacy_flag",
+        lambda name, default=False: name == "PRIVACY_PERSIST_RAW_AI_RESPONSES",
+    )
+
+    result = tasks.run_service_call(call.id)
+
+    assert result["status"] == "completed"
+    attempt = call.mark_attempt_args[0]
+    assert attempt.response_raw["messages"] == []
+    assert "messages_fallback" not in attempt.response_raw
+
+
 def test_run_service_call_falls_back_when_message_serialization_fails(monkeypatch):
     call = DummyCall()
 
@@ -248,12 +292,14 @@ def test_run_service_call_falls_back_when_message_serialization_fails(monkeypatc
 
     assert result["status"] == "completed"
     attempt = call.mark_attempt_args[0]
-    assert attempt.response_raw["messages"]["message_dump_unavailable"] is True
+    assert attempt.response_raw["messages"] == []
+    assert attempt.response_raw["messages_fallback"]["message_dump_unavailable"] is True
     assert (
         "Unable to serialize unknown type"
-        in attempt.response_raw["messages"]["serialization_error"]
+        in attempt.response_raw["messages_fallback"]["serialization_error"]
     )
-    assert attempt.response_raw["messages"]["message_count"] == 1
+    assert attempt.response_raw["messages_fallback"]["message_count"] == 1
+    assert attempt.response_raw["messages_fallback"]["message_types"] == ["ValueError"]
 
 
 def test_run_service_call_emits_generic_success_signal(monkeypatch):

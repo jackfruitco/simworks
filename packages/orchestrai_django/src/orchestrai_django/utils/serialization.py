@@ -59,29 +59,24 @@ def pydantic_model_to_dict(obj: Any) -> dict:
     return {"value": repr(obj)}
 
 
-def safe_serialize_run_messages(result: Any) -> list[Any] | dict[str, Any]:
-    """Serialize Pydantic AI message history without raising secondary failures.
+def serialize_run_messages_envelope(result: Any) -> dict[str, Any]:
+    """Serialize Pydantic AI message history into a stable envelope.
 
     The Pydantic AI ``all_messages_json()`` helper returns JSON bytes, but it
     can raise ``PydanticSerializationError`` when message history contains
     embedded exception objects or other unserializable values. This helper keeps
-    that observability path best-effort only.
+    that observability path best-effort only while preserving a stable list
+    shape for ``result_json["messages"]``.
     """
-    from orchestrai.utils.json import make_json_safe
-
     try:
         raw_messages = result.all_messages_json()
     except Exception as exc:
-        return _message_dump_fallback(result, exc)
+        return {"messages": [], "fallback": _message_dump_fallback(result, exc)}
 
     try:
-        if isinstance(raw_messages, (bytes, bytearray)):
-            return json.loads(raw_messages.decode("utf-8"))
-        if isinstance(raw_messages, str):
-            return json.loads(raw_messages)
-        return make_json_safe(raw_messages)
+        return {"messages": _deserialize_message_dump(raw_messages), "fallback": None}
     except Exception as exc:
-        return _message_dump_fallback(result, exc)
+        return {"messages": [], "fallback": _message_dump_fallback(result, exc)}
 
 
 def _extract_fields(obj: Any) -> dict:
@@ -116,6 +111,23 @@ def _extract_fields(obj: Any) -> dict:
             result[field_name] = None
 
     return result
+
+
+def _deserialize_message_dump(raw_messages: Any) -> list[Any]:
+    from orchestrai.utils.json import make_json_safe
+
+    if isinstance(raw_messages, (bytes, bytearray)):
+        parsed = json.loads(raw_messages.decode("utf-8"))
+    elif isinstance(raw_messages, str):
+        parsed = json.loads(raw_messages)
+    else:
+        parsed = make_json_safe(raw_messages)
+
+    if not isinstance(parsed, list):
+        raise TypeError(
+            f"all_messages_json() must decode to a list, received {type(parsed).__name__}"
+        )
+    return parsed
 
 
 def _message_dump_fallback(result: Any, exc: Exception) -> dict[str, Any]:
