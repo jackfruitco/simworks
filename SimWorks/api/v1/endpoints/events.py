@@ -12,6 +12,7 @@ from api.v1.schemas.common import PaginatedResponse
 from api.v1.schemas.events import EventEnvelope
 from api.v1.sse import stream_outbox_events
 from api.v1.utils import get_simulation_for_user
+from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
@@ -20,6 +21,10 @@ from config.logging import get_logger
 logger = get_logger(__name__)
 
 router = Router(tags=["events"], auth=JWTAuth())
+
+
+def _require_chatlab_access(request: HttpRequest):
+    return require_chatlab_access(request.auth, request=request)
 
 
 @router.get(
@@ -47,6 +52,7 @@ def list_events(
     3. Process returned events and update lastSeenEventId
     4. Continue fetching while has_more is True
     """
+    _require_chatlab_access(request)
     import uuid as uuid_module
 
     from apps.common.models import OutboxEvent
@@ -163,6 +169,7 @@ def stream_events(
         description="Optional event_type prefix filter (e.g. patient. or simulation.)",
     ),
 ):
+    _require_chatlab_access(request)
     user = request.auth
     get_simulation_for_user(simulation_id, user, request=request)
     return stream_outbox_events(

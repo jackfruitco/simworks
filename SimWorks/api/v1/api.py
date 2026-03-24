@@ -14,6 +14,7 @@ from api.v1.auth import JWTAuth
 from api.v1.endpoints.accounts import router as accounts_router
 from api.v1.endpoints.auth import router as auth_router
 from api.v1.endpoints.billing import router as billing_router
+from api.v1.endpoints.chatlab import router as chatlab_router
 from api.v1.endpoints.conversations import router as conversations_router
 from api.v1.endpoints.events import router as events_router
 from api.v1.endpoints.lab_orders import router as lab_orders_router
@@ -212,4 +213,5 @@ api.add_router(
 )  # Tools (JSON payloads/actions) nested under simulations
 api.add_router("/simulations", lab_orders_router)  # Lab order submission nested under simulations
 api.add_router("/config", modifiers_router)  # Configuration endpoints (modifiers, etc.)
+api.add_router("/chatlab", chatlab_router)
 api.add_router("/trainerlab", trainerlab_router)

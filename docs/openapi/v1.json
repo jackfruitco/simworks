@@ -1691,6 +1691,33 @@
         ]
       }
     },
+    "/api/v1/chatlab/access/me/": {
+      "get": {
+        "operationId": "api_v1_endpoints_chatlab_chatlab_access_me",
+        "summary": "Get ChatLab access for current user",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabAccessOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "chatlab"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/trainerlab/access/me/": {
       "get": {
         "operationId": "api_v1_endpoints_trainerlab_trainerlab_access_me",

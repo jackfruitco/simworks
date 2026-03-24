@@ -11,12 +11,17 @@ from ninja.errors import HttpError
 from api.v1.auth import DualAuth
 from api.v1.schemas.lab_orders import LabOrdersOut, LabOrderSubmit
 from api.v1.utils import get_simulation_for_user
+from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.ratelimit import api_rate_limit
 from config.logging import get_logger
 
 logger = get_logger(__name__)
 
 router = Router(tags=["lab-orders"], auth=DualAuth())
+
+
+def _require_chatlab_access(request: HttpRequest):
+    return require_chatlab_access(request.auth, request=request)
 
 
 @router.post(
@@ -38,6 +43,7 @@ def submit_lab_orders(
     body: LabOrderSubmit,
 ) -> tuple[int, LabOrdersOut]:
     """Submit signed lab orders and enqueue AI result generation."""
+    _require_chatlab_access(request)
     from apps.chatlab.orca.services.lab_orders import GenerateLabResults
     from apps.simcore.models import Simulation
 

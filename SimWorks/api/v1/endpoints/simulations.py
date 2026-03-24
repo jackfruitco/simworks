@@ -25,6 +25,7 @@ from api.v1.utils import (
     get_simulation_for_user,
     get_simulation_queryset_for_request,
 )
+from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit
 from apps.common.retries import (
@@ -37,6 +38,10 @@ from config.logging import get_logger
 logger = get_logger(__name__)
 
 router = Router(tags=["simulations"], auth=DualAuth())
+
+
+def _require_chatlab_access(request: HttpRequest):
+    return require_chatlab_access(request.auth, request=request)
 
 
 def _emit_feedback_event(simulation_id: int, event_type: str, payload: dict) -> None:
@@ -115,6 +120,7 @@ def list_simulations(
     ),
 ) -> PaginatedResponse[SimulationOut]:
     """List all simulations for the authenticated user."""
+    _require_chatlab_access(request)
 
     user = request.auth
     queryset = (
@@ -190,6 +196,7 @@ def list_simulations(
 @api_rate_limit
 def create_simulation(request: HttpRequest, body: SimulationCreate) -> SimulationOut:
     """Create a new simulation."""
+    _require_chatlab_access(request)
     from apps.simcore.models import Simulation
 
     user = request.auth
@@ -231,6 +238,7 @@ def quick_create_simulation(
     request: HttpRequest,
     body: SimulationQuickCreate,
 ) -> tuple[int, SimulationOut]:
+    _require_chatlab_access(request)
     from apps.chatlab.utils import create_new_simulation
 
     user = request.auth
@@ -252,6 +260,7 @@ def quick_create_simulation(
 @api_rate_limit
 def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
     """Get a specific simulation by ID."""
+    _require_chatlab_access(request)
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user, request=request)
 
@@ -267,6 +276,7 @@ def get_simulation(request: HttpRequest, simulation_id: int) -> SimulationOut:
 @api_rate_limit
 def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndResponse:
     """End a simulation."""
+    _require_chatlab_access(request)
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user, request=request)
 
@@ -293,6 +303,7 @@ def end_simulation(request: HttpRequest, simulation_id: int) -> SimulationEndRes
 )
 @api_rate_limit
 def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, SimulationOut]:
+    _require_chatlab_access(request)
     from apps.simcore.models import Conversation, ConversationType, Simulation
 
     user = request.auth
@@ -348,6 +359,7 @@ def retry_initial(request: HttpRequest, simulation_id: int) -> tuple[int, Simula
 )
 @api_rate_limit
 def retry_feedback(request: HttpRequest, simulation_id: int) -> tuple[int, SimulationOut]:
+    _require_chatlab_access(request)
     from apps.simcore.models import Simulation
 
     user = request.auth
