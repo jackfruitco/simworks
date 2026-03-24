@@ -2058,6 +2058,15 @@ class TestTrainerLabDictionaries:
             "apps.trainerlab.services.enqueue_runtime_turn_service_call", _inline_enqueue
         )
 
+        class _FakeEncoding:
+            def encode(self, text: str) -> list[int]:
+                return list(range(max(1, len(text) // 4)))
+
+        monkeypatch.setattr(
+            "apps.trainerlab.runtime_llm._encoding_for_model",
+            lambda model_name: _FakeEncoding(),
+        )
+
         call_id = process_runtime_turn_queue(session_id=trainer_session.id)
 
         assert call_id == "inline-runtime-call"

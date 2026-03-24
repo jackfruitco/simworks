@@ -167,7 +167,7 @@ def get_limit(user, account, product_code: str, limit_code: str):
 
 
 @transaction.atomic
-def grant_demo_product_access(
+def grant_manual_product_entitlement(
     user, account, product_code: str, source_ref: str = ""
 ) -> Entitlement:
     canonical_product_code = _canonical_product_code(product_code)
@@ -189,7 +189,7 @@ def grant_demo_product_access(
     return Entitlement.objects.update_or_create(
         account=account,
         source_type=Entitlement.SourceType.GRANT,
-        source_ref=source_ref or f"demo:{canonical_product_code}:{account.pk}",
+        source_ref=source_ref or f"manual:{canonical_product_code}:{account.pk}",
         scope_type=scope_type,
         subject_user_id=subject_user_id,
         product_code=canonical_product_code,
@@ -201,9 +201,12 @@ def grant_demo_product_access(
             "portable_across_accounts": portable_across_accounts,
             "starts_at": timezone.now(),
             "ends_at": None,
-            "metadata": {"granted_via": "grant_demo_product_access"},
+            "metadata": {"granted_via": "grant_manual_product_entitlement"},
         },
     )[0]
+
+
+grant_demo_product_access = grant_manual_product_entitlement
 
 
 def get_access_snapshot(user, account):
