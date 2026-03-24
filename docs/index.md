@@ -7,6 +7,7 @@ MedSim is a medical simulation and training platform with AI-assisted workflows.
 - [Architecture at a glance](architecture.md)
 - [Accounts, billing, and entitlements foundation](architecture/accounts-billing-entitlements.md)
 - [Quick start](quick-start.md)
+- [Management commands reference](management-commands.md)
 - [Deployment tags and release flow](DEPLOYMENT_TAGS.md)
 - [WebSocket event contract](WEBSOCKET_EVENTS.md)
 - [TrainerLab roadmap and improvements](TRAINERLAB_IMPROVEMENTS.md)

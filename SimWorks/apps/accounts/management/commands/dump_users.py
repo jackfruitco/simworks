@@ -13,7 +13,7 @@ class Command(BaseCommand):
             "--emails",
             nargs="+",
             type=str,
-            help="List of emails to include in the dump (default: all users). Separate multiple emails with spaces. Use '__ALL__' to include all users.",
+            help="One or more email addresses to include. If omitted, all users are exported.",
             default="__ALL__",
         )
         parser.add_argument(
@@ -24,13 +24,15 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        emails = options["emails"] or "__ALL__"
+        emails = options["emails"]
         output_file = options["output"]
 
-        if emails.upper() == "__ALL__":
+        if emails == "__ALL__" or emails == ["__ALL__"]:
             users = User.objects.all()
-        else:
+        elif isinstance(emails, list):
             users = User.objects.filter(email__in=emails)
+        else:
+            users = User.objects.all()
 
         model_label = f"{User._meta.app_label}.{User._meta.model_name}"
         if not users.exists():

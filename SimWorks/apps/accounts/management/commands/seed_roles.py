@@ -27,7 +27,7 @@ LEARNER_ROLES = [
 
 
 class Command(BaseCommand):
-    help = "Seed default roles and system users if they do not exist."
+    help = "Seed default UserRoles and inactive system users; idempotent (skips existing records)."
 
     def handle(self, *args, **options):
         from django.contrib.auth import get_user_model

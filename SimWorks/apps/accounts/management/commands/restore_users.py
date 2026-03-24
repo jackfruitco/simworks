@@ -7,7 +7,8 @@ from apps.accounts.models import User, UserRole
 
 class Command(BaseCommand):
     help = (
-        "Restore selected users from a JSON file with preserved passwords and roles (but new IDs)."
+        "Restore users from a dump_users JSON file; skips emails that already exist; "
+        "role IDs must match the target database."
     )
 
     def add_arguments(self, parser):
