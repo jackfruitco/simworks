@@ -1,3 +1,4 @@
+# apps/accounts/management/commands/create_demo_user.py
 import getpass
 import os
 import secrets
@@ -10,7 +11,7 @@ from apps.billing.catalog import ProductCode, all_product_codes
 from apps.billing.services.entitlements import grant_manual_product_entitlement
 
 DEFAULT_EMAIL = "demo@medsim.local"
-DEFAULT_PASSWORD = os.getenv("DEMO_USER_PASSWORD", "")
+DEFAULT_PASSWORD = ""
 DEFAULT_ROLE_NAME = "System"
 
 
@@ -34,7 +35,7 @@ class Command(BaseCommand):
         if password:
             return password
 
-        env_password = DEFAULT_PASSWORD.strip()
+        env_password = os.getenv("DEMO_USER_PASSWORD", "").strip()
         if env_password:
             self.stdout.write(self.style.WARNING("Using password from DEMO_USER_PASSWORD."))
             return env_password
@@ -92,7 +93,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--password",
-            default=DEFAULT_PASSWORD,
+            default="",
             help=("Password for the demo user. Falls back to DEMO_USER_PASSWORD when set."),
         )
         parser.add_argument(
@@ -124,7 +125,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--role",
             default=DEFAULT_ROLE_NAME,
-            help=f'UserRole name to assign. Defaults to "{DEFAULT_ROLE_NAME}".',
+            help=f'UserRole title or id to assign. Defaults to "{DEFAULT_ROLE_NAME}".',
         )
         parser.add_argument(
             "--first-name",
@@ -174,10 +175,17 @@ class Command(BaseCommand):
         source_ref = options["source_ref"].strip()
 
         try:
-            role = UserRole.objects.get(name=role_name)
+            if role_name.isdigit():
+                role = UserRole.objects.get(pk=int(role_name))
+            else:
+                role = UserRole.objects.get(title=role_name)
         except UserRole.DoesNotExist as exc:
             raise CommandError(
-                f'No UserRole found with name "{role_name}". Create it first.'
+                f'No UserRole found with title or id "{role_name}". Create it first.'
+            ) from exc
+        except UserRole.MultipleObjectsReturned as exc:
+            raise CommandError(
+                f'Multiple UserRole rows matched "{role_name}". Use a unique role title or id.'
             ) from exc
 
         user, created = User.objects.get_or_create(
@@ -192,36 +200,28 @@ class Command(BaseCommand):
             },
         )
 
-        updated_fields: list[str] = []
-
         if not created:
             if user.first_name != first_name:
                 user.first_name = first_name
-                updated_fields.append("first_name")
             if user.last_name != last_name:
                 user.last_name = last_name
-                updated_fields.append("last_name")
             if user.role_id != role.id:
                 user.role = role
-                updated_fields.append("role")
             if user.is_active is not True:
                 user.is_active = True
-                updated_fields.append("is_active")
             if user.is_staff != is_staff:
                 user.is_staff = is_staff
-                updated_fields.append("is_staff")
             if user.is_superuser != is_superuser:
                 user.is_superuser = is_superuser
-                updated_fields.append("is_superuser")
 
         user.set_password(password)
-        updated_fields.append("password")
 
         # save() instead of update_fields if role/password hashing/custom model save
         # logic makes partial updates brittle.
         user.save()
 
-        EmailAddress.objects.update_or_create(
+        EmailAddress.objects.filter(user=user).exclude(email=user.email).update(primary=False)
+        email_address, _ = EmailAddress.objects.get_or_create(
             user=user,
             email=user.email,
             defaults={
@@ -229,7 +229,10 @@ class Command(BaseCommand):
                 "primary": True,
             },
         )
-        EmailAddress.objects.filter(user=user).exclude(email=user.email).update(primary=False)
+        if email_address.primary is not True or email_address.verified is not True:
+            email_address.primary = True
+            email_address.verified = True
+            email_address.save(update_fields=["primary", "verified"])
 
         account = get_personal_account_for_user(user)
         entitlement = grant_manual_product_entitlement(

@@ -1,7 +1,6 @@
-from __future__ import annotations
+# tests/accounts/managment/commands/test_demo_user_commands.py
 
 import getpass
-import importlib
 from io import StringIO
 
 from allauth.account.models import EmailAddress
@@ -16,12 +15,10 @@ from apps.billing.models import Entitlement
 pytestmark = pytest.mark.django_db
 
 
-CREATE_DEMO_USER_MODULE = "apps.accounts.management.commands.create_demo_user"
-
-
 @pytest.fixture
 def system_role() -> UserRole:
-    return UserRole.objects.create(name="System")
+    role, _ = UserRole.objects.get_or_create(title="System")
+    return role
 
 
 def _run_command(name: str, *args, **kwargs) -> tuple[str, str]:
@@ -65,7 +62,7 @@ def test_create_demo_user_creates_default_user_with_explicit_password(system_rol
 def test_create_demo_user_updates_existing_user_and_demotes_other_primary_email(
     system_role: UserRole,
 ):
-    old_role = UserRole.objects.create(name="Old Role")
+    old_role = UserRole.objects.create(title="Old Role")
     user = User.objects.create(
         email="demo@medsim.local",
         first_name="Old",
@@ -129,9 +126,27 @@ def test_create_demo_user_supports_explicit_email_password_and_product(system_ro
     assert stderr == ""
 
 
+def test_create_demo_user_supports_role_id(system_role: UserRole):
+    stdout, stderr = _run_command(
+        "create_demo_user",
+        password="Sup3rS3cret!234",
+        role=str(system_role.id),
+    )
+
+    user = User.objects.get(email="demo@medsim.local")
+
+    assert user.role == system_role
+    assert "Created demo user: demo@medsim.local" in stdout
+    assert stderr == ""
+
+
 def test_create_demo_user_raises_when_role_is_missing():
-    with pytest.raises(CommandError, match='No UserRole found with name "System"'):
-        _run_command("create_demo_user", password="Sup3rS3cret!234")
+    with pytest.raises(CommandError, match='No UserRole found with title or id "Missing Role"'):
+        _run_command(
+            "create_demo_user",
+            password="Sup3rS3cret!234",
+            role="Missing Role",
+        )
 
 
 def test_create_demo_user_non_interactive_requires_explicit_allow_for_random_password(
@@ -193,24 +208,19 @@ def test_create_demo_user_interactive_can_generate_random_password(
     assert "Generated random password for demo user." in stderr
 
 
-def test_create_demo_user_uses_env_password_when_present(monkeypatch: pytest.MonkeyPatch):
+def test_create_demo_user_uses_env_password_when_present(
+    monkeypatch: pytest.MonkeyPatch,
+    system_role: UserRole,
+):
     monkeypatch.setenv("DEMO_USER_PASSWORD", "EnvPass!234")
-    module = importlib.import_module(CREATE_DEMO_USER_MODULE)
-    module = importlib.reload(module)
-    command = module.Command()
-    command.stdout = StringIO()
-    command.stderr = StringIO()
 
-    resolved = command._resolve_password(
-        {
-            "password": "",
-            "interactive": True,
-            "allow_random_password": False,
-        }
-    )
+    stdout, stderr = _run_command("create_demo_user")
 
-    assert resolved == "EnvPass!234"
-    assert "Using password from DEMO_USER_PASSWORD." in command.stdout.getvalue()
+    user = User.objects.get(email="demo@medsim.local")
+
+    assert user.check_password("EnvPass!234") is True
+    assert "Using password from DEMO_USER_PASSWORD." in stdout
+    assert stderr == ""
 
 
 def test_create_dev_user_skips_when_env_flags_are_disabled(system_role: UserRole):
