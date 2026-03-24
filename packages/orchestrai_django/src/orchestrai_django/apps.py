@@ -50,6 +50,14 @@ DEFAULT_SKIP_READY_COMMANDS = {
     "shell",
     "export_openapi",
     "create_dev_user",
+    "create_demo_user",
+    "dump_users",
+    "restore_users",
+    "seed_users",
+    "grant_manual_entitlement",
+    "export_openapi",
+    "reset_migrations",
+    "sim_debug",
 }
 
 
