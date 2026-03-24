@@ -55,7 +55,6 @@ DEFAULT_SKIP_READY_COMMANDS = {
     "restore_users",
     "seed_users",
     "grant_manual_entitlement",
-    "export_openapi",
     "reset_migrations",
     "sim_debug",
 }
