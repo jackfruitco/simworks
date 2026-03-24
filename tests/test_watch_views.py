@@ -68,13 +68,22 @@ def trainerlab_lab(db):
 
 
 @pytest.fixture
-def trainer_membership(trainer_member, trainerlab_lab):
-    from apps.accounts.models import LabMembership
+def trainer_membership(trainer_member):
+    """Grant entitlement-based TrainerLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
 
-    return LabMembership.objects.create(
-        user=trainer_member,
-        lab=trainerlab_lab,
-        access_level=LabMembership.AccessLevel.INSTRUCTOR,
+    personal_account = get_personal_account_for_user(trainer_member)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:trainerlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=trainer_member,
+        product_code=ProductCode.TRAINERLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
     )
 
 
