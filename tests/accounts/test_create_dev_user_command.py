@@ -17,7 +17,7 @@ def reset_user_state():
 
 @pytest.fixture
 def user_role():
-    return UserRole.objects.create(title="Test Role Dev User Command")
+    return UserRole.objects.create(title="System")
 
 
 def test_create_dev_user_skips_when_debug_disabled(monkeypatch):
@@ -51,7 +51,7 @@ def test_create_dev_user_force_bypasses_env_checks(monkeypatch, user_role):
     call_command("create_dev_user", force=True, stdout=out)
 
     user = User.objects.get(email=DEV_EMAIL)
-    assert "Created dev user" in out.getvalue()
+    assert "Created demo user" in out.getvalue()
     assert user.first_name == "Dev"
     assert user.last_name == "User"
     assert user.is_active is True

@@ -15,6 +15,21 @@ from orchestrai_django.models import CallStatus, ServiceCall
 from orchestrai_django.signals import ai_response_failed
 
 
+class _FakeEncoding:
+    """Fake tiktoken encoding that avoids network downloads in tests."""
+
+    def encode(self, text: str) -> list[int]:
+        return list(range(max(1, len(text) // 4)))
+
+
+@pytest.fixture(autouse=True)
+def _mock_tiktoken_encoding(monkeypatch):
+    monkeypatch.setattr(
+        "apps.trainerlab.runtime_llm._encoding_for_model",
+        lambda model_name: _FakeEncoding(),
+    )
+
+
 @pytest.mark.django_db
 def test_control_plane_execution_plan_progresses(django_user_model):
     role = UserRole.objects.create(title="TrainerLab CP Test Role")
