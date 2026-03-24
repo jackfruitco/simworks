@@ -453,9 +453,7 @@ class TestTrainerLabAccess:
         )
 
         assert response.status_code == 200
-        body = response.json()
-        assert body["lab_slug"] == "trainerlab"
-        assert body["has_access"] is True
+        assert response.json()["lab_slug"] == "trainerlab"
 
     def test_access_allows_billing_admin_with_entitlement(
         self,
@@ -495,8 +493,7 @@ class TestTrainerLabAccess:
         )
 
         assert response.status_code == 200
-        body = response.json()
-        assert body["has_access"] is True
+        assert response.json()["lab_slug"] == "trainerlab"
 
     def test_access_denies_user_without_entitlement(
         self,
@@ -575,7 +572,7 @@ class TestTrainerLabAccess:
         )
 
         assert response.status_code == 200
-        assert response.json()["has_access"] is True
+        assert response.json()["lab_slug"] == "trainerlab"
 
 
 @pytest.mark.django_db

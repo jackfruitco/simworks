@@ -5609,15 +5609,10 @@
           "lab_slug": {
             "title": "Lab Slug",
             "type": "string"
-          },
-          "has_access": {
-            "title": "Has Access",
-            "type": "boolean"
           }
         },
         "required": [
-          "lab_slug",
-          "has_access"
+          "lab_slug"
         ],
         "title": "LabAccessOut",
         "type": "object"

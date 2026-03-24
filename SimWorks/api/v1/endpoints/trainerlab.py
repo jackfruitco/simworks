@@ -329,7 +329,7 @@ def _get_instruction_for_user(
 @api_rate_limit
 def trainerlab_access_me(request: HttpRequest) -> LabAccessOut:
     _require_lab_access(request)
-    return LabAccessOut(lab_slug="trainerlab", has_access=True)
+    return LabAccessOut(lab_slug="trainerlab")
 
 
 @router.get(
