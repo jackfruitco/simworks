@@ -4,6 +4,10 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.services import create_account_audit_event
+from apps.billing.catalog import (
+    product_code_from_apple_product_id,
+    product_code_from_stripe_plan_code,
+)
 from apps.billing.models import (
     BillingAccount,
     Entitlement,
@@ -11,7 +15,6 @@ from apps.billing.models import (
     Subscription,
     WebhookEvent,
 )
-from apps.billing.registry import iter_plan_grants
 
 ACTIVE_SUBSCRIPTION_STATUSES = {
     Subscription.Status.TRIALING,
@@ -67,73 +70,58 @@ def _subscription_is_active(subscription) -> bool:
     )
 
 
+def _subscription_product_code(subscription: Subscription) -> str:
+    if subscription.provider_type == ProviderType.STRIPE:
+        return product_code_from_stripe_plan_code(subscription.plan_code)
+    if subscription.provider_type == ProviderType.APPLE:
+        return product_code_from_apple_product_id(subscription.plan_code)
+    return ""
+
+
 @transaction.atomic
 def reconcile_subscription_entitlements(subscription: Subscription, *, actor_user=None):
     source_ref = f"subscription:{subscription.pk}"
     scope = _subscription_scope(subscription)
     active = _subscription_is_active(subscription)
-    expected_keys = set()
+    product_code = _subscription_product_code(subscription)
+    if not product_code:
+        raise ValueError(
+            f"Unknown {subscription.provider_type} subscription plan_code: {subscription.plan_code}"
+        )
 
-    for grant in iter_plan_grants(subscription.plan_code):
-        lookup = {
-            "account": subscription.account,
-            "source_type": Entitlement.SourceType.SUBSCRIPTION,
-            "source_ref": source_ref,
-            "scope_type": scope["scope_type"],
-            "subject_user_id": scope["subject_user_id"],
-            "product_code": grant["product_code"],
-            "feature_code": grant["feature_code"],
-            "limit_code": grant["limit_code"],
-        }
-        expected_keys.add(
-            (
-                subscription.account_id,
-                Entitlement.SourceType.SUBSCRIPTION,
-                source_ref,
-                scope["scope_type"],
-                scope["subject_user_id"],
-                grant["product_code"],
-                grant["feature_code"],
-                grant["limit_code"],
-            )
-        )
-        Entitlement.objects.update_or_create(
-            **lookup,
-            defaults={
-                "limit_value": grant["limit_value"],
-                "status": Entitlement.Status.ACTIVE if active else Entitlement.Status.EXPIRED,
-                "portable_across_accounts": scope["portable_across_accounts"],
-                "starts_at": subscription.starts_at or subscription.current_period_start,
-                "ends_at": subscription.current_period_end,
-                "metadata": {
-                    "plan_code": subscription.plan_code,
-                    "provider_type": subscription.provider_type,
-                    "subscription_uuid": str(subscription.uuid),
-                },
+    entitlement, _ = Entitlement.objects.update_or_create(
+        account=subscription.account,
+        source_type=Entitlement.SourceType.SUBSCRIPTION,
+        source_ref=source_ref,
+        scope_type=scope["scope_type"],
+        subject_user_id=scope["subject_user_id"],
+        product_code=product_code,
+        feature_code="",
+        limit_code="",
+        defaults={
+            "limit_value": None,
+            "status": Entitlement.Status.ACTIVE if active else Entitlement.Status.EXPIRED,
+            "portable_across_accounts": scope["portable_across_accounts"],
+            "starts_at": subscription.starts_at or subscription.current_period_start,
+            "ends_at": subscription.current_period_end,
+            "metadata": {
+                "plan_code": subscription.plan_code,
+                "provider_type": subscription.provider_type,
+                "subscription_uuid": str(subscription.uuid),
+                "product_code": product_code,
             },
-        )
+        },
+    )
 
     source_rows = Entitlement.objects.filter(
         account=subscription.account,
         source_type=Entitlement.SourceType.SUBSCRIPTION,
         source_ref=source_ref,
     )
-    for entitlement in source_rows:
-        key = (
-            entitlement.account_id,
-            entitlement.source_type,
-            entitlement.source_ref,
-            entitlement.scope_type,
-            entitlement.subject_user_id,
-            entitlement.product_code,
-            entitlement.feature_code,
-            entitlement.limit_code,
-        )
-        if key in expected_keys:
-            continue
-        entitlement.status = Entitlement.Status.REVOKED
-        entitlement.ends_at = timezone.now()
-        entitlement.save(update_fields=["status", "ends_at"])
+    source_rows.exclude(pk=entitlement.pk).update(
+        status=Entitlement.Status.REVOKED,
+        ends_at=timezone.now(),
+    )
 
     create_account_audit_event(
         account=subscription.account,

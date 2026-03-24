@@ -56,11 +56,12 @@ graph TD
 ## Entitlement model
 
 - `Entitlement` is the runtime artifact used for authorization.
-- Product access, features, and limits are separate rows.
+- First-pass billing access now supports base product grants only.
 - `source_type` plus `source_ref` provides idempotent provenance.
 - `scope_type = account` grants access to an account context.
 - `scope_type = user` grants personal access to a specific user.
 - `portable_across_accounts = true` allows personal user-scoped grants to follow the user into another active account context.
+- `product_code` is internal-only and must be one of the canonical catalog codes.
 
 ## Effective entitlement resolution
 
@@ -70,7 +71,8 @@ graph TD
 - portable personal user entitlements from the user’s personal account
 - active subscription-derived grants
 - manual grants
-- seat assignment checks when seat allocations exist
+- seat assignment checks when seat allocations exist for seat-gated products
+- one automatic seat for the owning user in a personal account
 
 Rules:
 
@@ -79,16 +81,17 @@ Rules:
 - end-of-period cancellations remain active through `current_period_end`
 - provider APIs are not consulted during normal authorization
 
-## Plan registry
+## Product catalog
 
-`apps.billing.registry` holds code-defined products, features, limits, and plans:
+`apps.billing.catalog` is the source of truth for:
 
-- products: `chatlab`, `trainerlab`
-- features: `exports`, `analytics`, `advanced_cases`, `instructor_tools`
-- limits: `monthly_runs`, `monthly_ai_messages`, `image_generations`
-- plans: `personal_free`, `personal_plus`, `personal_pro`
+- canonical internal product codes
+- display names
+- seat-gated flags
+- Apple product ID mappings
+- Stripe plan or price mappings
 
-This registry is the translation layer between billing providers and MedSim entitlements. Pricing IDs stay in settings, not business logic.
+See [billing-product-catalog.md](./billing-product-catalog.md) for the active mapping and manual grant rules.
 
 ## Stripe flow
 
@@ -96,8 +99,8 @@ This registry is the translation layer between billing providers and MedSim enti
 2. MedSim verifies the signature.
 3. The payload is logged in `billing.WebhookEvent`.
 4. The account is resolved from `metadata.account_uuid` or an existing Stripe billing profile.
-5. MedSim upserts `BillingAccount` and `Subscription`.
-6. Subscription reconciliation updates `Entitlement` rows.
+5. MedSim upserts `BillingAccount` and `Subscription`, keeping the Stripe price code on `Subscription.plan_code`.
+6. Subscription reconciliation maps that provider code to a canonical internal `product_code` and updates `Entitlement` rows.
 
 Supported v1 lifecycle events:
 
@@ -111,8 +114,8 @@ Supported v1 lifecycle events:
 1. The signed-in iOS user posts normalized transaction data to `/api/v1/billing/apple/sync/`.
 2. MedSim always applies Apple subscriptions to that user’s personal account.
 3. The transaction is logged in `billing.WebhookEvent`.
-4. MedSim upserts the Apple `Subscription` by `original_transaction_id`.
-5. Subscription reconciliation updates `Entitlement` rows.
+4. MedSim upserts the Apple `Subscription` by `original_transaction_id`, keeping the Apple product ID on `Subscription.plan_code`.
+5. Subscription reconciliation maps that provider code to a canonical internal `product_code` and updates `Entitlement` rows.
 
 Notes:
 

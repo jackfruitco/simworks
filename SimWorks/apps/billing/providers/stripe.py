@@ -5,10 +5,10 @@ import hashlib
 import hmac
 import json
 
-from django.conf import settings
 from django.utils import timezone
 
 from apps.accounts.models import Account
+from apps.billing.catalog import product_code_from_stripe_plan_code
 from apps.billing.models import ProviderType, Subscription, WebhookEvent
 from apps.billing.services.subscriptions import record_webhook_event, sync_stripe_subscription
 
@@ -61,6 +61,8 @@ def _timestamp_to_datetime(value):
 
 
 def process_stripe_webhook(*, payload_bytes: bytes, signature_header: str):
+    from django.conf import settings
+
     secret = getattr(settings, "BILLING_STRIPE_WEBHOOK_SECRET", "")
     if not verify_stripe_signature(payload_bytes, signature_header, secret):
         raise ValueError("Invalid Stripe signature")
@@ -90,16 +92,16 @@ def process_stripe_webhook(*, payload_bytes: bytes, signature_header: str):
         obj["current_period_start"] = _timestamp_to_datetime(obj.get("current_period_start"))
         obj["current_period_end"] = _timestamp_to_datetime(obj.get("current_period_end"))
         obj["ended_at"] = _timestamp_to_datetime(obj.get("ended_at"))
-        plan_code = getattr(settings, "BILLING_STRIPE_PRICE_PLAN_MAP", {}).get(
-            ((obj.get("items") or {}).get("data") or [{}])[0].get("price", {}).get("id") or "",
-            "",
-        )
-        if not plan_code:
+        price_id = ((obj.get("items") or {}).get("data") or [{}])[0].get("price", {}).get(
+            "id"
+        ) or ""
+        product_code = product_code_from_stripe_plan_code(price_id)
+        if not product_code:
             event.status = WebhookEvent.Status.FAILED
             event.processing_error = "Unknown Stripe price id"
             event.save(update_fields=["status", "processing_error"])
             return event
-        sync_stripe_subscription(account=account, payload=obj, plan_code=plan_code)
+        sync_stripe_subscription(account=account, payload=obj, plan_code=price_id)
     elif event_type == "invoice.payment_failed":
         provider_subscription_id = obj.get("subscription") or ""
         if provider_subscription_id:

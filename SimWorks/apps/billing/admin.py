@@ -3,6 +3,11 @@ import json
 from django.contrib import admin
 from django.utils import timezone
 
+from apps.billing.forms import (
+    EntitlementAdminForm,
+    SeatAllocationAdminForm,
+    SeatAssignmentAdminForm,
+)
 from apps.billing.models import (
     BillingAccount,
     Entitlement,
@@ -76,6 +81,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
 
 @admin.register(Entitlement)
 class EntitlementAdmin(admin.ModelAdmin):
+    form = EntitlementAdminForm
     list_display = (
         "account",
         "product_code",
@@ -87,10 +93,24 @@ class EntitlementAdmin(admin.ModelAdmin):
     list_filter = ("status", "product_code", "scope_type", "source_type")
     search_fields = ("account__name", "source_ref", "subject_user__email")
     actions = (grant_comp_access, revoke_entitlements)
+    fields = (
+        "account",
+        "source_type",
+        "source_ref",
+        "scope_type",
+        "subject_user",
+        "product_code",
+        "status",
+        "portable_across_accounts",
+        "starts_at",
+        "ends_at",
+        "metadata",
+    )
 
 
 @admin.register(SeatAllocation)
 class SeatAllocationAdmin(admin.ModelAdmin):
+    form = SeatAllocationAdminForm
     list_display = (
         "account",
         "product_code",
@@ -104,6 +124,7 @@ class SeatAllocationAdmin(admin.ModelAdmin):
 
 @admin.register(SeatAssignment)
 class SeatAssignmentAdmin(admin.ModelAdmin):
+    form = SeatAssignmentAdminForm
     list_display = ("account", "user", "product_code", "assigned_by", "assigned_at", "ended_at")
     list_filter = ("product_code",)
     search_fields = ("account__name", "user__email")

@@ -385,6 +385,57 @@ class TestTrainerLabAccess:
         assert body["lab_slug"] == "trainerlab"
         assert body["access_level"] == "instructor"
 
+    @pytest.mark.parametrize(
+        "product_code",
+        (
+            "trainerlab_go",
+            "trainerlab_plus",
+            "medsim_one",
+            "medsim_one_plus",
+        ),
+    )
+    def test_access_allows_catalog_backed_products(
+        self,
+        auth_client_factory,
+        instructor_user,
+        other_instructor_user,
+        product_code,
+    ):
+        from apps.accounts.models import AccountMembership
+        from apps.accounts.services import create_organization_account
+        from apps.billing.models import Entitlement
+
+        org_account = create_organization_account(
+            name=f"Trainer Product {product_code}",
+            owner_user=other_instructor_user,
+        )
+        AccountMembership.objects.create(
+            account=org_account,
+            user=instructor_user,
+            invite_email=instructor_user.email,
+            role=AccountMembership.Role.INSTRUCTOR,
+            status=AccountMembership.Status.ACTIVE,
+        )
+        Entitlement.objects.create(
+            account=org_account,
+            source_type=Entitlement.SourceType.MANUAL,
+            source_ref=f"manual:{product_code}",
+            scope_type=Entitlement.ScopeType.ACCOUNT,
+            product_code=product_code,
+            status=Entitlement.Status.ACTIVE,
+        )
+
+        client = auth_client_factory(instructor_user)
+        response = client.get(
+            "/api/v1/trainerlab/access/me/",
+            HTTP_X_ACCOUNT_UUID=str(org_account.uuid),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["lab_slug"] == "trainerlab"
+        assert body["access_level"] == "instructor"
+
     def test_access_denies_billing_admin_account_member(
         self,
         auth_client_factory,
@@ -393,6 +444,7 @@ class TestTrainerLabAccess:
     ):
         from apps.accounts.models import AccountMembership
         from apps.accounts.services import create_organization_account
+        from apps.billing.catalog import ProductCode
         from apps.billing.models import Entitlement
 
         org_account = create_organization_account(
@@ -410,7 +462,7 @@ class TestTrainerLabAccess:
             source_type=Entitlement.SourceType.MANUAL,
             source_ref="manual:trainerlab",
             scope_type=Entitlement.ScopeType.ACCOUNT,
-            product_code="trainerlab",
+            product_code=ProductCode.TRAINERLAB_GO.value,
             status=Entitlement.Status.ACTIVE,
         )
 
