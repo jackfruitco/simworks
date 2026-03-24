@@ -22,6 +22,12 @@ K = TypeVar("K")
 T = TypeVar("T")
 
 
+def _component_fqcn(component_cls: type[Any]) -> str:
+    """Return a stable fully-qualified class name for registry diagnostics."""
+
+    return f"{component_cls.__module__}.{component_cls.__qualname__}"
+
+
 class BaseRegistry[K, T]:
     """Framework-agnostic registry keyed by an identity-like key K storing classes of T."""
 
@@ -44,8 +50,20 @@ class BaseRegistry[K, T]:
                     raise RegistryDuplicateError(f"Component already registered: {key}")
 
                 key_label = getattr(key, "as_str", None) or str(key)
-                existing_fqcn = f"{existing.__module__}.{existing.__name__}"
-                candidate_fqcn = f"{cls.__module__}.{cls.__name__}"
+                existing_fqcn = _component_fqcn(existing)
+                candidate_fqcn = _component_fqcn(cls)
+
+                # Module reloads can legitimately recreate the same logical class
+                # object. Treat those as idempotent updates rather than true
+                # identity collisions so registry-backed imports remain stable.
+                if existing_fqcn == candidate_fqcn:
+                    logger.debug(
+                        "Replacing reloaded component registration for %s (%s)",
+                        key_label,
+                        candidate_fqcn,
+                    )
+                    self._store[key] = cls
+                    return
 
                 raise RegistryCollisionError(
                     f"Key already registered to different instance: {key_label} "
