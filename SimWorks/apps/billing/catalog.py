@@ -18,6 +18,7 @@ class ProductDefinition:
     code: str
     display_name: str
     seat_gated: bool
+    included_labs: tuple[str, ...] = ()
     apple_product_ids: tuple[str, ...] = ()
     stripe_plan_codes: tuple[str, ...] = ()
 
@@ -27,6 +28,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         code=ProductCode.CHATLAB_GO.value,
         display_name="ChatLab Go",
         seat_gated=True,
+        included_labs=("chatlab",),
         apple_product_ids=("com.jackfruitco.medsim.chatlab.go.monthly",),
         stripe_plan_codes=("price_chatlab_go_monthly", "chatlab_go_monthly"),
     ),
@@ -34,6 +36,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         code=ProductCode.CHATLAB_PLUS.value,
         display_name="ChatLab Plus",
         seat_gated=True,
+        included_labs=("chatlab",),
         apple_product_ids=(
             "com.jackfruitco.medsim.chatlab.plus.monthly",
             "com.jackfruitco.medsim.individual.plus.monthly",
@@ -44,6 +47,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         code=ProductCode.TRAINERLAB_GO.value,
         display_name="TrainerLab Go",
         seat_gated=True,
+        included_labs=("trainerlab",),
         apple_product_ids=("com.jackfruitco.medsim.trainerlab.go.monthly",),
         stripe_plan_codes=("price_trainerlab_go_monthly", "trainerlab_go_monthly"),
     ),
@@ -51,6 +55,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         code=ProductCode.TRAINERLAB_PLUS.value,
         display_name="TrainerLab Plus",
         seat_gated=True,
+        included_labs=("trainerlab",),
         apple_product_ids=("com.jackfruitco.medsim.trainerlab.plus.monthly",),
         stripe_plan_codes=("price_trainerlab_plus_monthly", "trainerlab_plus_monthly"),
     ),
@@ -58,6 +63,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         code=ProductCode.MEDSIM_ONE.value,
         display_name="MedSim One",
         seat_gated=True,
+        included_labs=("chatlab", "trainerlab"),
         apple_product_ids=("com.jackfruitco.medsim.one.monthly",),
         stripe_plan_codes=("price_medsim_one_monthly", "medsim_one_monthly"),
     ),
@@ -65,6 +71,7 @@ PRODUCTS: dict[str, ProductDefinition] = {
         code=ProductCode.MEDSIM_ONE_PLUS.value,
         display_name="MedSim One Plus",
         seat_gated=True,
+        included_labs=("chatlab", "trainerlab"),
         apple_product_ids=("com.jackfruitco.medsim.one.plus.monthly",),
         stripe_plan_codes=("price_medsim_one_plus_monthly", "medsim_one_plus_monthly"),
     ),
@@ -116,3 +123,22 @@ def product_code_from_apple_product_id(product_id: str | None) -> str:
 
 def product_code_from_stripe_plan_code(plan_code: str | None) -> str:
     return STRIPE_PLAN_CODE_TO_PRODUCT_CODE.get((plan_code or "").strip(), "")
+
+
+def product_includes_lab(product_code: str | None, lab_slug: str | None) -> bool:
+    canonical_product_code = canonicalize_product_code(product_code)
+    if canonical_product_code not in PRODUCTS:
+        return False
+    normalized_lab_slug = (lab_slug or "").strip()
+    return normalized_lab_slug in PRODUCTS[canonical_product_code].included_labs
+
+
+def product_codes_for_lab(lab_slug: str | None) -> tuple[str, ...]:
+    normalized_lab_slug = (lab_slug or "").strip()
+    if not normalized_lab_slug:
+        return ()
+    return tuple(
+        product.code
+        for product in PRODUCTS.values()
+        if normalized_lab_slug in product.included_labs
+    )

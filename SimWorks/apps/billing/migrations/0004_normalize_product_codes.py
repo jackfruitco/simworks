@@ -41,18 +41,25 @@ PRODUCT_CODE_MAP = {
 def _normalize_entitlements(apps, db_alias: str):
     Entitlement = apps.get_model("billing", "Entitlement")
 
-    deleted_count, _ = Entitlement.objects.using(db_alias).exclude(
+    # Leave unsupported feature/limit rows intact for manual review. This migration
+    # should normalize known base product codes without destructively dropping
+    # entitlement data that may still be useful for audit or later recovery.
+    unsupported_count = Entitlement.objects.using(db_alias).exclude(
         feature_code="",
         limit_code="",
-    ).delete()
-    if deleted_count:
+    ).count()
+    if unsupported_count:
         print(
-            "[billing] Deleted",
-            deleted_count,
-            "legacy feature/limit entitlement rows during product-code normalization.",
+            "[billing] Left",
+            unsupported_count,
+            "legacy feature/limit entitlement rows untouched during product-code normalization.",
         )
 
-    queryset = Entitlement.objects.using(db_alias).filter(product_code__in=PRODUCT_CODE_MAP)
+    queryset = Entitlement.objects.using(db_alias).filter(
+        feature_code="",
+        limit_code="",
+        product_code__in=PRODUCT_CODE_MAP,
+    )
     for entitlement in queryset.iterator(chunk_size=250):
         canonical_product_code = PRODUCT_CODE_MAP[entitlement.product_code]
         duplicate = Entitlement.objects.using(db_alias).filter(
@@ -67,7 +74,13 @@ def _normalize_entitlements(apps, db_alias: str):
         )
         duplicate = duplicate.exclude(pk=entitlement.pk).first()
         if duplicate is not None:
-            entitlement.delete()
+            print(
+                "[billing] Skipped entitlement normalization for",
+                entitlement.pk,
+                "because canonical entitlement",
+                duplicate.pk,
+                "already exists.",
+            )
             continue
         entitlement.product_code = canonical_product_code
         entitlement.save(update_fields=["product_code"])
@@ -119,7 +132,13 @@ def _normalize_seat_assignments(apps, db_alias: str):
             )
             duplicate = duplicate.exclude(pk=assignment.pk).first()
             if duplicate is not None:
-                assignment.delete()
+                print(
+                    "[billing] Skipped seat assignment normalization for",
+                    assignment.pk,
+                    "because canonical open assignment",
+                    duplicate.pk,
+                    "already exists.",
+                )
                 continue
         assignment.product_code = canonical_product_code
         assignment.save(update_fields=["product_code"])

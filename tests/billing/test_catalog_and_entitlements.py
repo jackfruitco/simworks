@@ -11,6 +11,8 @@ from apps.billing.catalog import (
     all_product_codes,
     product_code_from_apple_product_id,
     product_code_from_stripe_plan_code,
+    product_codes_for_lab,
+    product_includes_lab,
 )
 from apps.billing.forms import EntitlementAdminForm
 from apps.billing.models import Entitlement, SeatAllocation, SeatAssignment
@@ -53,6 +55,21 @@ def test_provider_catalog_maps_to_internal_product_codes():
     assert (
         product_code_from_stripe_plan_code("price_trainerlab_plus_monthly")
         == ProductCode.TRAINERLAB_PLUS.value
+    )
+
+
+@pytest.mark.django_db
+def test_catalog_exposes_lab_capabilities():
+    assert product_includes_lab(ProductCode.TRAINERLAB_GO.value, "trainerlab") is True
+    assert product_includes_lab(ProductCode.TRAINERLAB_PLUS.value, "trainerlab") is True
+    assert product_includes_lab(ProductCode.MEDSIM_ONE.value, "trainerlab") is True
+    assert product_includes_lab(ProductCode.MEDSIM_ONE_PLUS.value, "trainerlab") is True
+    assert product_includes_lab(ProductCode.CHATLAB_GO.value, "trainerlab") is False
+    assert product_codes_for_lab("trainerlab") == (
+        ProductCode.TRAINERLAB_GO.value,
+        ProductCode.TRAINERLAB_PLUS.value,
+        ProductCode.MEDSIM_ONE.value,
+        ProductCode.MEDSIM_ONE_PLUS.value,
     )
 
 
@@ -172,7 +189,9 @@ def test_personal_account_non_owner_does_not_get_automatic_seat(owner_user, othe
         effective_from=timezone.now(),
     )
 
-    assert has_product_access(other_user, personal_account, ProductCode.TRAINERLAB_GO.value) is False
+    assert (
+        has_product_access(other_user, personal_account, ProductCode.TRAINERLAB_GO.value) is False
+    )
 
 
 @pytest.mark.django_db
@@ -247,7 +266,9 @@ def test_entitlement_admin_form_uses_catalog_choices_and_rejects_feature_limit_d
         }
     )
 
-    assert {code for code, _label in form.fields["product_code"].choices} == set(all_product_codes())
+    assert {code for code, _label in form.fields["product_code"].choices} == set(
+        all_product_codes()
+    )
     assert form.is_valid() is True
 
     invalid_form = EntitlementAdminForm(

@@ -13,7 +13,7 @@ The backend accepts only these internal `product_code` values for base access en
 - `medsim_one`
 - `medsim_one_plus`
 
-These codes live in [catalog.py](/Users/tylerjohnson/.codex/worktrees/639d/SimWorks/SimWorks/apps/billing/catalog.py).
+These codes live in [catalog.py](../../SimWorks/apps/billing/catalog.py).
 
 ## `plan_code` vs `product_code`
 
@@ -28,6 +28,9 @@ These codes live in [catalog.py](/Users/tylerjohnson/.codex/worktrees/639d/SimWo
 
 - Apple product IDs map to canonical internal products in `apps.billing.catalog`.
 - Stripe plan or price codes map to canonical internal products in `apps.billing.catalog`.
+- Product-to-lab capability rules also live in the catalog. Use helpers such as
+  `product_includes_lab(...)` or `product_codes_for_lab(...)` instead of hardcoding
+  product lists in lab-specific access code.
 - Billing ingestion validates the provider identifier first, stores the provider-facing identifier on `Subscription.plan_code`, then reconciles entitlements with the mapped internal `product_code`.
 - Legacy aliases such as `chatlab` and `trainerlab` are tolerated only for normalization and read-path hardening. New writes must use canonical internal codes.
 
@@ -51,7 +54,7 @@ Malformed or legacy rows are skipped in snapshot generation so bootstrap/login p
 
 ## Safe manual or demo access grants
 
-Use [grant_demo_product_access](/Users/tylerjohnson/.codex/worktrees/639d/SimWorks/SimWorks/apps/billing/services/entitlements.py) for base-product grants in scripts, tests, or support flows.
+Use [grant_demo_product_access](../../SimWorks/apps/billing/services/entitlements.py) for base-product grants in scripts, tests, or support flows.
 
 Behavior:
 

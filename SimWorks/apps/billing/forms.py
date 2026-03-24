@@ -20,7 +20,9 @@ class EntitlementAdminForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        feature_code = cleaned_data.get("feature_code") or getattr(self.instance, "feature_code", "")
+        feature_code = cleaned_data.get("feature_code") or getattr(
+            self.instance, "feature_code", ""
+        )
         limit_code = cleaned_data.get("limit_code") or getattr(self.instance, "limit_code", "")
         limit_value = cleaned_data.get("limit_value")
         if limit_value is None:

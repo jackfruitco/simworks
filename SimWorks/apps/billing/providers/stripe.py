@@ -92,7 +92,9 @@ def process_stripe_webhook(*, payload_bytes: bytes, signature_header: str):
         obj["current_period_start"] = _timestamp_to_datetime(obj.get("current_period_start"))
         obj["current_period_end"] = _timestamp_to_datetime(obj.get("current_period_end"))
         obj["ended_at"] = _timestamp_to_datetime(obj.get("ended_at"))
-        price_id = ((obj.get("items") or {}).get("data") or [{}])[0].get("price", {}).get("id") or ""
+        price_id = ((obj.get("items") or {}).get("data") or [{}])[0].get("price", {}).get(
+            "id"
+        ) or ""
         product_code = product_code_from_stripe_plan_code(price_id)
         if not product_code:
             event.status = WebhookEvent.Status.FAILED

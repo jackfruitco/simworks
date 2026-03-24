@@ -169,7 +169,9 @@ def get_limit(user, account, product_code: str, limit_code: str):
 
 
 @transaction.atomic
-def grant_demo_product_access(user, account, product_code: str, source_ref: str = "") -> Entitlement:
+def grant_demo_product_access(
+    user, account, product_code: str, source_ref: str = ""
+) -> Entitlement:
     canonical_product_code = _canonical_product_code(product_code)
     if not canonical_product_code:
         raise ValueError(f"Unknown product code: {product_code}")
