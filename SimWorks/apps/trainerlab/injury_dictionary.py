@@ -7,6 +7,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_KNOWN_CATEGORY_ALIASES: dict[str, str] = {"PFC": "PC"}
+
 __all__ = [
     "build_injury_codebook_instruction",
     "get_injury_dictionary_choices",
@@ -82,14 +84,28 @@ def _build_integrity_warnings() -> tuple[str, ...]:
     from apps.trainerlab.models import Problem
 
     warnings: list[str] = []
-    for member in Problem.MARCHCategory:
-        if "_" in member.name:
-            continue
-        if len(member.name) <= 4 and member.name != member.value:
+    for alias, expected_code in _KNOWN_CATEGORY_ALIASES.items():
+        member = getattr(Problem.MARCHCategory, alias, None)
+        if member is None:
             warnings.append(
-                "MARCHCategory member "
-                f"{member.name!r} maps to code {member.value!r}; review intent."
+                f"Expected MARCHCategory alias {alias!r} -> {expected_code!r} is missing."
             )
+        elif member.value != expected_code:
+            warnings.append(
+                "MARCHCategory alias "
+                f"{alias!r} maps to code {member.value!r}; expected {expected_code!r}."
+            )
+
+    for member in Problem.MARCHCategory:
+        if member.name == member.value:
+            continue
+        expected_code = _KNOWN_CATEGORY_ALIASES.get(member.name)
+        if expected_code == member.value:
+            continue
+        warnings.append(
+            "Unexpected MARCHCategory alias "
+            f"{member.name!r} maps to code {member.value!r}; review intent."
+        )
     return tuple(warnings)
 
 
@@ -101,6 +117,16 @@ def _build_bundle() -> _InjuryMappingBundle:
         field_name="march_category",
         choices=[(str(code), str(label)) for code, label in Problem.MARCHCategory.choices],
     )
+    for alias, code in _KNOWN_CATEGORY_ALIASES.items():
+        normalized_alias = _normalize_text(alias)
+        previous = category.normalized_to_code.get(normalized_alias)
+        if previous and previous != code:
+            msg = (
+                f"Ambiguous normalized token {normalized_alias!r} in march_category aliases: "
+                f"{previous!r} vs {code!r}"
+            )
+            raise RuntimeError(msg)
+        category.normalized_to_code[normalized_alias] = code
     location = _build_choice_index(
         field_name="injury_location",
         choices=[(str(code), str(label)) for code, label in Injury.InjuryLocation.choices],

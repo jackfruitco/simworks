@@ -11,6 +11,7 @@ from apps.trainerlab.finding_dictionary import build_finding_dictionary_instruct
 from apps.trainerlab.injury_dictionary import build_injury_codebook_instruction
 from apps.trainerlab.intervention_dictionary import list_intervention_definitions
 from apps.trainerlab.problem_dictionary import build_problem_dictionary_instruction
+from apps.trainerlab.recommendations import build_recommendation_compatibility_instruction
 from orchestrai.instructions import BaseInstruction
 from orchestrai_django.decorators import orca
 
@@ -38,6 +39,7 @@ class InjuryCodebookMixin(NsMixin, BaseInstruction):
             + build_problem_dictionary_instruction()
             + build_finding_dictionary_instruction()
             + build_diagnostic_dictionary_instruction()
+            + build_recommendation_compatibility_instruction()
             + "### Intervention Dictionary\n"
             + "- Use canonical intervention kinds from this list when possible.\n"
             + f"- Intervention kinds: {interventions}\n"
@@ -69,6 +71,10 @@ class InitialResponseMixin(NsMixin, BaseInstruction):
         "one cause via `cause_ref`.\n"
         "- One cause may create multiple problems.\n"
         "- Recommended interventions are suggestions only. They must target a problem, not a cause.\n"
+        "- Every `problems[*].recommendation_refs` entry must exactly equal a "
+        "`recommended_interventions[*].temp_id` value.\n"
+        "- Do not use recommendation titles, labels, or descriptive aliases inside "
+        "`recommendation_refs`.\n"
         "- If useful, also generate structured `assessment_findings`, `diagnostic_results`, "
         "`resources`, and `disposition` to support the simulation state.\n"
         "- Findings should describe what an examiner can detect now.\n"

@@ -142,7 +142,13 @@ class ProblemSeed(StrictBaseModel):
     anatomical_location: str = ""
     laterality: str = ""
     cause_ref: str
-    recommendation_refs: list[str] = Field(default_factory=list)
+    recommendation_refs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Canonical cross-references to recommended_interventions[*].temp_id values only. "
+            "Do not use labels, titles, or aliases here."
+        ),
+    )
     initial_status: Literal["active", "treated", "controlled", "resolved"] = "active"
 
     @model_validator(mode="after")
@@ -164,6 +170,7 @@ class RecommendedInterventionSeed(StrictBaseModel):
     temp_id: str = Field(
         ...,
         min_length=1,
+        description="Canonical temp_id used by problems[*].recommendation_refs.",
         validation_alias=AliasChoices("temp_id", "external_id"),
         serialization_alias="temp_id",
     )

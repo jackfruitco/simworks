@@ -292,6 +292,51 @@ class TestTrainerLabAdjudication:
         assert rejected.accepted is False
         assert rejected.validation_status == "rejected"
 
+    def test_hypoperfusion_shock_accepts_access_recommendations_and_rejects_unrelated_kind(
+        self, simulation
+    ):
+        cause = _injury(
+            simulation,
+            description="GSW left thigh",
+            location=Injury.InjuryLocation.LEG_LEFT_UPPER,
+            kind=Injury.InjuryKind.GSW,
+        )
+        shock = _problem(
+            simulation,
+            cause_injury=cause,
+            kind="hypoperfusion_shock",
+            title="Progressive hypoperfusion / shock",
+            march_category=Problem.MARCHCategory.C,
+            anatomical_location="Left thigh",
+        )
+
+        iv_access = validate_and_normalize_recommendation(
+            problem=shock,
+            raw_kind="IV Access",
+            raw_title="Establish IV access",
+        )
+        io_access = validate_and_normalize_recommendation(
+            problem=shock,
+            raw_kind="io_access",
+            raw_title="Establish IO access",
+        )
+        rejected = validate_and_normalize_recommendation(
+            problem=shock,
+            raw_kind="tourniquet",
+            raw_title="Tourniquet for shock",
+        )
+
+        assert iv_access.accepted is True
+        assert iv_access.kind == "iv_access"
+        assert io_access.accepted is True
+        assert io_access.kind == "io_access"
+        assert rejected.accepted is False
+        assert rejected.validation_status == "rejected"
+        assert (
+            rejected.metadata["rejection_reason"]
+            == "'tourniquet' is not a valid recommendation for 'hypoperfusion_shock'"
+        )
+
     def test_project_current_snapshot_does_not_regress_into_n_plus_one(self, simulation):
         from apps.trainerlab.recommendations import validate_and_normalize_recommendation
         from apps.trainerlab.services import create_session, project_current_snapshot

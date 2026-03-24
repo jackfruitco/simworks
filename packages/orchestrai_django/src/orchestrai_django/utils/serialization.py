@@ -13,6 +13,7 @@ pydantic_model_to_dict(obj)
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -58,6 +59,31 @@ def pydantic_model_to_dict(obj: Any) -> dict:
     return {"value": repr(obj)}
 
 
+def safe_serialize_run_messages(result: Any) -> list[Any] | dict[str, Any]:
+    """Serialize Pydantic AI message history without raising secondary failures.
+
+    The Pydantic AI ``all_messages_json()`` helper returns JSON bytes, but it
+    can raise ``PydanticSerializationError`` when message history contains
+    embedded exception objects or other unserializable values. This helper keeps
+    that observability path best-effort only.
+    """
+    from orchestrai.utils.json import make_json_safe
+
+    try:
+        raw_messages = result.all_messages_json()
+    except Exception as exc:
+        return _message_dump_fallback(result, exc)
+
+    try:
+        if isinstance(raw_messages, (bytes, bytearray)):
+            return json.loads(raw_messages.decode("utf-8"))
+        if isinstance(raw_messages, str):
+            return json.loads(raw_messages)
+        return make_json_safe(raw_messages)
+    except Exception as exc:
+        return _message_dump_fallback(result, exc)
+
+
 def _extract_fields(obj: Any) -> dict:
     """Recursively extract Pydantic model fields without calling model_dump.
 
@@ -90,3 +116,31 @@ def _extract_fields(obj: Any) -> dict:
             result[field_name] = None
 
     return result
+
+
+def _message_dump_fallback(result: Any, exc: Exception) -> dict[str, Any]:
+    fallback: dict[str, Any] = {
+        "message_dump_unavailable": True,
+        "serialization_error": str(exc),
+    }
+
+    try:
+        messages = result.all_messages() if hasattr(result, "all_messages") else None
+    except Exception as summary_exc:
+        fallback["message_summary_error"] = str(summary_exc)
+        return fallback
+
+    if not isinstance(messages, list):
+        return fallback
+
+    fallback["message_count"] = len(messages)
+    fallback["message_types"] = [type(message).__name__ for message in messages[:10]]
+    fallback["message_preview"] = [_truncate_repr(message) for message in messages[:3]]
+    return fallback
+
+
+def _truncate_repr(value: Any, limit: int = 200) -> str:
+    text = repr(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3]}..."
