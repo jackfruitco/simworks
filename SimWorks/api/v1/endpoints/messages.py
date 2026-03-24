@@ -18,6 +18,7 @@ from api.v1.schemas.messages import (
     message_to_out,
 )
 from api.v1.utils import get_simulation_for_user
+from apps.chatlab.access import require_lab_access as require_chatlab_access
 from apps.common.outbox import event_types as outbox_events
 from apps.common.ratelimit import api_rate_limit, message_rate_limit
 from apps.common.retries import has_user_retries_remaining
@@ -268,6 +269,10 @@ def _enqueue_ai_reply_and_handle_failure(
 router = Router(tags=["messages"], auth=DualAuth())
 
 
+def _require_chatlab_access(request: HttpRequest):
+    return require_chatlab_access(request.auth, request=request)
+
+
 @router.get(
     "/{simulation_id}/messages/",
     response=MessageListResponse,
@@ -289,6 +294,7 @@ def list_messages(
     ),
 ) -> MessageListResponse:
     """List messages in a simulation with cursor pagination."""
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
@@ -360,6 +366,7 @@ def create_message(
     Returns 201 if the message was created successfully, or
     202 if the message was created and an AI response is pending.
     """
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message, RoleChoices
 
     user = request.auth
@@ -426,6 +433,7 @@ def retry_message(
     simulation_id: int,
     message_id: int,
 ) -> tuple[int, MessageOut]:
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
@@ -493,6 +501,7 @@ def get_message(
     message_id: int,
 ) -> MessageOut:
     """Get a specific message by ID."""
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth
@@ -523,6 +532,7 @@ def mark_message_read(
     message_id: int,
 ) -> MessageOut:
     """Mark a message as read."""
+    _require_chatlab_access(request)
     from apps.chatlab.models import Message
 
     user = request.auth

@@ -16,7 +16,7 @@ from apps.common.outbox.outbox import order_outbox_queryset
 from apps.common.watch import build_watch_page_context, build_watch_service_calls_context
 from apps.simcore.access import can_access_simulation_in_request
 from apps.simcore.models import Simulation
-from apps.trainerlab.access import has_instructor_access
+from apps.trainerlab.access import has_lab_access_for_request
 from apps.trainerlab.utils import create_new_simulation
 from orchestrai_django.models import ServiceCall
 
@@ -43,8 +43,8 @@ async def run_simulation(request, simulation_id):
     if not await sync_to_async(can_access_simulation_in_request)(request.user, simulation, request):
         return HttpResponseForbidden("This isn't your simulation.")
 
-    if not await sync_to_async(has_instructor_access)(request.user, request=request):
-        return HttpResponseForbidden("Instructor access required.")
+    if not await sync_to_async(has_lab_access_for_request)(request.user, request=request):
+        return HttpResponseForbidden("TrainerLab access required.")
 
     logger.debug("run_simulation: user=%s sim=%s", request.user.pk, simulation_id)
     return HttpResponse("TrainerLab simulation runner — coming soon.", content_type="text/plain")
@@ -98,7 +98,7 @@ def watch_simulation(request, simulation_id):
         watch_url=reverse("trainerlab:watch_simulation", args=[simulation_id]),
         back_url=run_url,
         lab_name="TrainerLab",
-        can_go_to_simulation=has_instructor_access(request.user, request=request),
+        can_go_to_simulation=has_lab_access_for_request(request.user, request=request),
         go_to_simulation_url=run_url,
     )
     return render(

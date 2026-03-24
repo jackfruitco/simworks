@@ -86,35 +86,42 @@ def trainerlab_lab(db):
 
 
 @pytest.fixture
-def instructor_membership(instructor_user, trainerlab_lab):
-    from apps.accounts.models import LabMembership
+def instructor_membership(instructor_user):
+    """Grant entitlement-based TrainerLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
 
-    return LabMembership.objects.create(
-        user=instructor_user,
-        lab=trainerlab_lab,
-        access_level=LabMembership.AccessLevel.INSTRUCTOR,
+    personal_account = get_personal_account_for_user(instructor_user)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:trainerlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=instructor_user,
+        product_code=ProductCode.TRAINERLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
     )
 
 
 @pytest.fixture
-def other_instructor_membership(other_instructor_user, trainerlab_lab):
-    from apps.accounts.models import LabMembership
+def other_instructor_membership(other_instructor_user):
+    """Grant entitlement-based TrainerLab access on the user's personal account."""
+    from apps.accounts.services import get_personal_account_for_user
+    from apps.billing.catalog import ProductCode
+    from apps.billing.models import Entitlement
 
-    return LabMembership.objects.create(
-        user=other_instructor_user,
-        lab=trainerlab_lab,
-        access_level=LabMembership.AccessLevel.INSTRUCTOR,
-    )
-
-
-@pytest.fixture
-def viewer_membership(viewer_user, trainerlab_lab):
-    from apps.accounts.models import LabMembership
-
-    return LabMembership.objects.create(
-        user=viewer_user,
-        lab=trainerlab_lab,
-        access_level=LabMembership.AccessLevel.VIEWER,
+    personal_account = get_personal_account_for_user(other_instructor_user)
+    return Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:trainerlab-go",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=other_instructor_user,
+        product_code=ProductCode.TRAINERLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
     )
 
 
@@ -366,24 +373,38 @@ class TestTrainerLabAccess:
         response = client.get("/api/v1/trainerlab/access/me/")
         assert response.status_code == 403
 
-    def test_access_denies_viewer(self, auth_client_factory, viewer_user, viewer_membership):
+    def test_access_denies_legacy_viewer_membership(
+        self, auth_client_factory, viewer_user, trainerlab_lab
+    ):
+        """Legacy LabMembership alone no longer grants access."""
+        from apps.accounts.models import LabMembership
+
+        LabMembership.objects.create(
+            user=viewer_user,
+            lab=trainerlab_lab,
+            access_level=LabMembership.AccessLevel.VIEWER,
+        )
         client = auth_client_factory(viewer_user)
         response = client.get("/api/v1/trainerlab/access/me/")
         assert response.status_code == 403
 
-    def test_access_allows_instructor(
+    def test_access_denies_legacy_instructor_membership(
         self,
         auth_client_factory,
         instructor_user,
-        instructor_membership,
+        trainerlab_lab,
     ):
+        """Legacy LabMembership alone no longer grants access."""
+        from apps.accounts.models import LabMembership
+
+        LabMembership.objects.create(
+            user=instructor_user,
+            lab=trainerlab_lab,
+            access_level=LabMembership.AccessLevel.INSTRUCTOR,
+        )
         client = auth_client_factory(instructor_user)
         response = client.get("/api/v1/trainerlab/access/me/")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["lab_slug"] == "trainerlab"
-        assert body["access_level"] == "instructor"
+        assert response.status_code == 403
 
     @pytest.mark.parametrize(
         "product_code",
@@ -413,7 +434,7 @@ class TestTrainerLabAccess:
             account=org_account,
             user=instructor_user,
             invite_email=instructor_user.email,
-            role=AccountMembership.Role.INSTRUCTOR,
+            role=AccountMembership.Role.GENERAL_USER,
             status=AccountMembership.Status.ACTIVE,
         )
         Entitlement.objects.create(
@@ -432,16 +453,15 @@ class TestTrainerLabAccess:
         )
 
         assert response.status_code == 200
-        body = response.json()
-        assert body["lab_slug"] == "trainerlab"
-        assert body["access_level"] == "instructor"
+        assert response.json()["lab_slug"] == "trainerlab"
 
-    def test_access_denies_billing_admin_account_member(
+    def test_access_allows_billing_admin_with_entitlement(
         self,
         auth_client_factory,
         instructor_user,
         billing_admin_user,
     ):
+        """Billing admins with a valid product entitlement now get access."""
         from apps.accounts.models import AccountMembership
         from apps.accounts.services import create_organization_account
         from apps.billing.catalog import ProductCode
@@ -472,7 +492,87 @@ class TestTrainerLabAccess:
             HTTP_X_ACCOUNT_UUID=str(org_account.uuid),
         )
 
+        assert response.status_code == 200
+        assert response.json()["lab_slug"] == "trainerlab"
+
+    def test_access_denies_user_without_entitlement(
+        self,
+        auth_client_factory,
+        instructor_user,
+        other_instructor_user,
+    ):
+        """Account membership alone (without product entitlement) does not grant lab access."""
+        from apps.accounts.models import AccountMembership
+        from apps.accounts.services import create_organization_account
+
+        org_account = create_organization_account(
+            name="No Entitlement Org", owner_user=other_instructor_user
+        )
+        AccountMembership.objects.create(
+            account=org_account,
+            user=instructor_user,
+            invite_email=instructor_user.email,
+            role=AccountMembership.Role.INSTRUCTOR,
+            status=AccountMembership.Status.ACTIVE,
+        )
+
+        client = auth_client_factory(instructor_user)
+        response = client.get(
+            "/api/v1/trainerlab/access/me/",
+            HTTP_X_ACCOUNT_UUID=str(org_account.uuid),
+        )
+
         assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        "role",
+        (
+            "org_admin",
+            "instructor",
+            "general_user",
+            "billing_admin",
+        ),
+    )
+    def test_access_allows_any_role_with_entitlement(
+        self,
+        auth_client_factory,
+        instructor_user,
+        other_instructor_user,
+        role,
+    ):
+        """Any account membership role grants lab access when a product entitlement exists."""
+        from apps.accounts.models import AccountMembership
+        from apps.accounts.services import create_organization_account
+        from apps.billing.catalog import ProductCode
+        from apps.billing.models import Entitlement
+
+        org_account = create_organization_account(
+            name=f"Role Test {role}", owner_user=other_instructor_user
+        )
+        AccountMembership.objects.create(
+            account=org_account,
+            user=instructor_user,
+            invite_email=instructor_user.email,
+            role=role,
+            status=AccountMembership.Status.ACTIVE,
+        )
+        Entitlement.objects.create(
+            account=org_account,
+            source_type=Entitlement.SourceType.MANUAL,
+            source_ref=f"manual:role-test-{role}",
+            scope_type=Entitlement.ScopeType.ACCOUNT,
+            product_code=ProductCode.TRAINERLAB_GO.value,
+            status=Entitlement.Status.ACTIVE,
+        )
+
+        client = auth_client_factory(instructor_user)
+        response = client.get(
+            "/api/v1/trainerlab/access/me/",
+            HTTP_X_ACCOUNT_UUID=str(org_account.uuid),
+        )
+
+        assert response.status_code == 200
+        assert response.json()["lab_slug"] == "trainerlab"
 
 
 @pytest.mark.django_db

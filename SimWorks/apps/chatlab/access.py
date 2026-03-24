@@ -6,7 +6,7 @@ from apps.accounts.context import resolve_account_for_user, resolve_request_acco
 from apps.billing.catalog import product_codes_for_lab
 from apps.billing.services.entitlements import has_product_access
 
-LAB_SLUG = "trainerlab"
+LAB_SLUG = "chatlab"
 
 
 def has_lab_access(user, account, *, lab_slug: str = LAB_SLUG) -> bool:
@@ -38,5 +38,5 @@ def require_lab_access(user, *, lab_slug: str = LAB_SLUG, request=None) -> bool:
     if user.is_superuser:
         return True
     if not check_lab_access(user, lab_slug=lab_slug, request=request):
-        raise HttpError(403, "TrainerLab access required")
+        raise HttpError(403, "ChatLab access required")
     return True

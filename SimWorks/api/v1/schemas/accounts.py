@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -47,7 +48,7 @@ class MembershipOut(BaseModel):
 
 class ProductAccessOut(BaseModel):
     enabled: bool = False
-    features: list[str] = Field(default_factory=list)
+    features: dict[str, Any] = Field(default_factory=dict)
     limits: dict[str, int | None] = Field(default_factory=dict)
 
 

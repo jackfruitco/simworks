@@ -72,7 +72,7 @@ from apps.common.models import OutboxEvent
 from apps.common.outbox import event_types as outbox_events
 from apps.common.outbox.outbox import apply_outbox_cursor, order_outbox_queryset
 from apps.common.ratelimit import api_rate_limit
-from apps.trainerlab.access import require_instructor_membership
+from apps.trainerlab.access import require_lab_access
 from apps.trainerlab.adjudication import adjudicate_intervention
 from apps.trainerlab.diagnostic_dictionary import get_diagnostic_definition
 from apps.trainerlab.finding_dictionary import get_finding_definition
@@ -139,8 +139,8 @@ def _get_idempotency_key(request: HttpRequest) -> str:
     return key
 
 
-def _require_instructor_membership(request: HttpRequest):
-    return require_instructor_membership(request.auth, request=request)
+def _require_lab_access(request: HttpRequest):
+    return require_lab_access(request.auth, request=request)
 
 
 def _get_session_for_simulation(
@@ -328,8 +328,8 @@ def _get_instruction_for_user(
 )
 @api_rate_limit
 def trainerlab_access_me(request: HttpRequest) -> LabAccessOut:
-    membership = _require_instructor_membership(request)
-    return LabAccessOut(lab_slug="trainerlab", access_level=membership.access_level)
+    _require_lab_access(request)
+    return LabAccessOut(lab_slug="trainerlab")
 
 
 @router.get(
@@ -339,7 +339,7 @@ def trainerlab_access_me(request: HttpRequest) -> LabAccessOut:
 )
 @api_rate_limit
 def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]]:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     return {
         key: _build_dict_items(choices) for key, choices in get_injury_dictionary_choices().items()
     }
@@ -352,7 +352,7 @@ def injury_dictionary(request: HttpRequest) -> dict[str, list[DictionaryItemOut]
 )
 @api_rate_limit
 def intervention_dictionary(request: HttpRequest) -> list[InterventionDictionaryItemOut]:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     return [
         InterventionDictionaryItemOut(
             intervention_type=defn.type_code,
@@ -378,7 +378,7 @@ def list_presets(
     cursor: str | None = Query(default=None),
 ) -> PaginatedResponse[ScenarioInstructionOut]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     queryset = _instruction_queryset_for_user(user)
 
     if cursor:
@@ -411,7 +411,7 @@ def create_preset(
     request: HttpRequest, body: ScenarioInstructionCreateIn
 ) -> tuple[int, ScenarioInstructionOut]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = ScenarioInstruction.objects.create(
         owner=user,
         title=body.title,
@@ -432,7 +432,7 @@ def create_preset(
 @api_rate_limit
 def get_preset(request: HttpRequest, preset_id: int) -> ScenarioInstructionOut:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = _get_instruction_for_user(preset_id, user)
     return scenario_instruction_to_out(instruction)
 
@@ -447,7 +447,7 @@ def update_preset(
     request: HttpRequest, preset_id: int, body: ScenarioInstructionUpdateIn
 ) -> ScenarioInstructionOut:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = _get_instruction_for_user(preset_id, user, require_edit=True)
     updates = body.model_dump(exclude_none=True)
     if "injuries" in updates:
@@ -470,7 +470,7 @@ def update_preset(
 @api_rate_limit
 def delete_preset(request: HttpRequest, preset_id: int) -> tuple[int, None]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = _get_instruction_for_user(preset_id, user, require_delete=True)
     instruction.delete()
     return 204, None
@@ -484,7 +484,7 @@ def delete_preset(request: HttpRequest, preset_id: int) -> tuple[int, None]:
 @api_rate_limit
 def duplicate_preset(request: HttpRequest, preset_id: int) -> tuple[int, ScenarioInstructionOut]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     source = _get_instruction_for_user(preset_id, user, require_duplicate=True)
     metadata = dict(source.metadata_json or {})
     metadata["source_preset_id"] = source.id
@@ -510,7 +510,7 @@ def share_preset(
     request: HttpRequest, preset_id: int, body: ScenarioInstructionPermissionIn
 ) -> ScenarioInstructionPermissionOut:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = _get_instruction_for_user(preset_id, user, require_share=True)
     target = UserModel.objects.filter(pk=body.user_id, is_active=True).first()
     if target is None:
@@ -545,7 +545,7 @@ def unshare_preset(
     body: ScenarioInstructionUnshareIn,
 ) -> tuple[int, None]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = _get_instruction_for_user(preset_id, user, require_share=True)
     if body.user_id == instruction.owner_id:
         raise HttpError(400, "Owner permissions cannot be removed")
@@ -568,7 +568,7 @@ def apply_preset(
     body: ScenarioInstructionApplyIn,
 ) -> PresetApplyOut:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     instruction = _get_instruction_for_user(preset_id, user)
     session = _get_session_for_simulation(request, body.simulation_id, user)
     idempotency_key = _get_idempotency_key(request)
@@ -657,7 +657,7 @@ def create_trainer_session(
     request: HttpRequest, body: TrainerSessionCreateIn
 ) -> tuple[int, TrainerRunOut]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     account = get_account_for_request(request, user)
 
     idempotency_key = _get_idempotency_key(request)
@@ -711,7 +711,7 @@ def list_trainer_sessions(
     status: str | None = Query(default=None),
 ) -> PaginatedResponse[TrainerRunOut]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     simulation_queryset = get_simulation_queryset_for_request(request, user)
 
     queryset = (
@@ -751,7 +751,7 @@ def list_trainer_sessions(
 )
 @api_rate_limit
 def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunOut:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
     return trainer_run_to_out(session)
 
@@ -763,7 +763,7 @@ def get_trainer_session(request: HttpRequest, simulation_id: int) -> TrainerRunO
 )
 @api_rate_limit
 def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> TrainerRuntimeStateOut:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
     return trainer_state_to_out(session)
 
@@ -775,7 +775,7 @@ def get_trainer_runtime_state(request: HttpRequest, simulation_id: int) -> Train
 )
 @api_rate_limit
 def get_control_plane_debug(request: HttpRequest, simulation_id: int) -> ControlPlaneDebugOut:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
     return control_plane_debug_to_out(session)
 
@@ -791,7 +791,7 @@ def _process_run_command(
     request: HttpRequest, simulation_id: int, command_type: str
 ) -> TrainerRunOut:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
@@ -846,7 +846,7 @@ def retry_trainer_initial_generation(
     request: HttpRequest,
     simulation_id: int,
 ) -> tuple[int, TrainerRunOut]:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
 
     try:
@@ -912,7 +912,7 @@ def steer_prompt(
     request: HttpRequest, simulation_id: int, body: SteerPromptIn
 ) -> TrainerCommandAck:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
@@ -977,7 +977,7 @@ def adjust_simulation(
     body: SimulationAdjustIn,
 ) -> SimulationAdjustAck:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
@@ -1439,7 +1439,7 @@ def _inject_event_core(
     create_fn: Callable[[TrainerSession], Any],
 ) -> TrainerCommandAck:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     idempotency_key = _get_idempotency_key(request)
     correlation_id = _get_correlation_id(request)
 
@@ -1811,7 +1811,7 @@ def list_trainer_events(
     limit: int = Query(default=50, ge=1, le=100),
 ) -> PaginatedResponse[EventEnvelope]:
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id, user)
 
     queryset = order_outbox_queryset(
@@ -1862,7 +1862,7 @@ def list_trainer_events(
 )
 @api_rate_limit
 def get_run_summary(request: HttpRequest, simulation_id: int) -> RunSummaryOut:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
 
     summary = getattr(session, "summary", None)
@@ -1883,7 +1883,7 @@ async def stream_trainer_events(
 ) -> StreamingHttpResponse:
     from asgiref.sync import sync_to_async
 
-    await sync_to_async(_require_instructor_membership)(request)
+    await sync_to_async(_require_lab_access)(request)
     session = await sync_to_async(_get_session_for_simulation)(request, simulation_id)
 
     return stream_outbox_events(
@@ -1918,7 +1918,7 @@ def trigger_vitals_tick(
     and does not modify causes, problems, or interventions.
     """
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
@@ -1955,7 +1955,7 @@ def update_problem(
     from django.core.exceptions import ValidationError as DjangoValidationError
 
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
@@ -2003,7 +2003,7 @@ def trigger_tick(
     asynchronously.
     """
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
@@ -2042,7 +2042,7 @@ def create_annotation(
     generation context to improve post-session feedback quality.
     """
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
@@ -2069,7 +2069,7 @@ def list_annotations(
     request: HttpRequest,
     simulation_id: int,
 ) -> list[AnnotationOut]:
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id)
     return [annotation_to_out(a) for a in get_session_annotations(session=session)]
 
@@ -2100,7 +2100,7 @@ def update_scenario_brief_endpoint(
     Emits a `simulation.brief.updated` SSE event.
     """
     user = request.auth
-    _require_instructor_membership(request)
+    _require_lab_access(request)
     session = _get_session_for_simulation(request, simulation_id, user)
     correlation_id = _get_correlation_id(request)
 
