@@ -91,7 +91,7 @@ Rules:
 - Apple product ID mappings
 - Stripe plan or price mappings
 
-See [billing-product-catalog.md](/Users/tylerjohnson/.codex/worktrees/639d/SimWorks/docs/architecture/billing-product-catalog.md) for the active mapping and manual grant rules.
+See [billing-product-catalog.md](./billing-product-catalog.md) for the active mapping and manual grant rules.
 
 ## Stripe flow
 
