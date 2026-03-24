@@ -89,6 +89,33 @@ def test_registry_collision_is_domain_sensitive_and_mentions_both_classes():
     assert "DuplicateService" in message
 
 
+def test_registry_replaces_reloaded_class_with_same_fqcn():
+    registry = ComponentRegistry()
+    identity = Identity(domain=SERVICES_DOMAIN, namespace="demo", group="svc", name="item")
+
+    original = type(
+        "ImageGenerationInstruction",
+        (),
+        {
+            "__module__": "apps.chatlab.orca.instructions.image",
+            "identity": identity,
+        },
+    )
+    reloaded = type(
+        "ImageGenerationInstruction",
+        (),
+        {
+            "__module__": "apps.chatlab.orca.instructions.image",
+            "identity": identity,
+        },
+    )
+
+    registry.register(original)
+    registry.register(reloaded)
+
+    assert registry.get(identity) is reloaded
+
+
 def test_decorators_apply_domain_defaults_per_component_type():
     class NoopServiceDecorator(ServiceDecorator):
         def register(self, candidate):  # type: ignore[override]
