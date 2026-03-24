@@ -300,10 +300,10 @@ class AccountMembership(models.Model):
                 fields=["account", "status", "role"],
                 name="idx_account_membership_acl",
             ),
-            models.Index(fields=["user", "status"], name="idx_account_membership_user_status"),
+            models.Index(fields=["user", "status"], name="idx_acct_mship_user_status"),
             models.Index(
                 fields=["invite_email", "status"],
-                name="idx_account_membership_invite_email",
+                name="idx_acct_mship_invite_email",
             ),
         ]
 
