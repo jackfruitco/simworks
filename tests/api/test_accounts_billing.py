@@ -162,6 +162,20 @@ def test_account_scoped_simulation_listing_respects_org_roles(
         status=AccountMembership.Status.ACTIVE,
     )
 
+    # Grant ChatLab access so the entitlement gate does not block the request.
+    for user in (owner_user, member_user):
+        personal = get_personal_account_for_user(user)
+        Entitlement.objects.create(
+            account=personal,
+            source_type=Entitlement.SourceType.MANUAL,
+            source_ref="manual:chatlab-go",
+            scope_type=Entitlement.ScopeType.USER,
+            subject_user=user,
+            product_code=ProductCode.CHATLAB_GO.value,
+            status=Entitlement.Status.ACTIVE,
+            portable_across_accounts=True,
+        )
+
     admin_sim = Simulation.objects.create(
         user=owner_user, account=org_account, sim_patient_full_name="Admin"
     )
