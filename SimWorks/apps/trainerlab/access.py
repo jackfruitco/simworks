@@ -14,10 +14,7 @@ def has_lab_access(user, account, *, lab_slug: str = LAB_SLUG) -> bool:
     """Return True when *user* has effective product access for *lab_slug* in *account*."""
     if account is None:
         return False
-    return any(
-        has_product_access(user, account, pc)
-        for pc in product_codes_for_lab(lab_slug)
-    )
+    return any(has_product_access(user, account, pc) for pc in product_codes_for_lab(lab_slug))
 
 
 def _legacy_membership(user, *, lab_slug: str = LAB_SLUG) -> LabMembership | None:

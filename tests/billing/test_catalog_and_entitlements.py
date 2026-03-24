@@ -339,9 +339,7 @@ def test_snapshot_runtime_consistency(owner_user):
     assert snapshot["products"][ProductCode.TRAINERLAB_GO.value]["enabled"] is True
 
     # Product user does not have access to must not appear
-    assert (
-        has_product_access(owner_user, personal_account, ProductCode.CHATLAB_PLUS.value) is False
-    )
+    assert has_product_access(owner_user, personal_account, ProductCode.CHATLAB_PLUS.value) is False
     assert ProductCode.CHATLAB_PLUS.value not in snapshot["products"]
 
 
@@ -365,9 +363,7 @@ def test_seat_gated_entitlement_without_seat_not_in_snapshot(owner_user):
     )
     # No SeatAssignment for the user in the org account
 
-    assert (
-        has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_PLUS.value) is False
-    )
+    assert has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_PLUS.value) is False
     snapshot = get_access_snapshot(owner_user, org_account)
     assert ProductCode.TRAINERLAB_PLUS.value not in snapshot["products"]
 
@@ -397,9 +393,7 @@ def test_seat_gated_entitlement_with_seat_in_snapshot(owner_user):
         assigned_by=owner_user,
     )
 
-    assert (
-        has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_PLUS.value) is True
-    )
+    assert has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_PLUS.value) is True
     snapshot = get_access_snapshot(owner_user, org_account)
     product = snapshot["products"][ProductCode.TRAINERLAB_PLUS.value]
     assert product["enabled"] is True

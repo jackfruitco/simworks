@@ -3890,11 +3890,9 @@
             "type": "boolean"
           },
           "features": {
-            "items": {
-              "type": "string"
-            },
+            "additionalProperties": true,
             "title": "Features",
-            "type": "array"
+            "type": "object"
           },
           "limits": {
             "additionalProperties": {
@@ -5612,19 +5610,14 @@
             "title": "Lab Slug",
             "type": "string"
           },
-          "access_level": {
-            "enum": [
-              "viewer",
-              "instructor",
-              "admin"
-            ],
-            "title": "Access Level",
-            "type": "string"
+          "has_access": {
+            "title": "Has Access",
+            "type": "boolean"
           }
         },
         "required": [
           "lab_slug",
-          "access_level"
+          "has_access"
         ],
         "title": "LabAccessOut",
         "type": "object"
