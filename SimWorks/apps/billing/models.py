@@ -3,10 +3,12 @@ from __future__ import annotations
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 
 from apps.accounts.models import Account
+from apps.billing.catalog import is_valid_product_code
 
 
 class ProviderType(models.TextChoices):
@@ -206,6 +208,31 @@ class Entitlement(models.Model):
         target = self.subject_user_id or "account"
         return f"{self.account_id}:{target}:{self.product_code}:{self.feature_code or self.limit_code or 'access'}"
 
+    def clean(self):
+        super().clean()
+
+        errors = {}
+        if not is_valid_product_code(self.product_code):
+            errors["product_code"] = "Enter a valid internal product code."
+
+        if self.feature_code:
+            errors["feature_code"] = "Feature grants are not supported in this billing pass."
+        if self.limit_code:
+            errors["limit_code"] = "Limit grants are not supported in this billing pass."
+        if not self.limit_code and self.limit_value is not None:
+            errors["limit_value"] = "Limit value must be empty when limit code is blank."
+        if self.scope_type == self.ScopeType.USER and self.subject_user_id is None:
+            errors["subject_user"] = "User-scoped entitlements require a subject user."
+        if self.scope_type == self.ScopeType.ACCOUNT and self.subject_user_id is not None:
+            errors["subject_user"] = "Account-scoped entitlements cannot target a subject user."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
 
 class SeatAllocation(models.Model):
     account = models.ForeignKey(
@@ -229,6 +256,15 @@ class SeatAllocation(models.Model):
 
     def __str__(self):
         return f"{self.account_id}:{self.product_code}:{self.seat_limit}"
+
+    def clean(self):
+        super().clean()
+        if not is_valid_product_code(self.product_code):
+            raise ValidationError({"product_code": "Enter a valid internal product code."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class SeatAssignment(models.Model):
@@ -273,6 +309,15 @@ class SeatAssignment(models.Model):
 
     def __str__(self):
         return f"{self.account_id}:{self.user_id}:{self.product_code}"
+
+    def clean(self):
+        super().clean()
+        if not is_valid_product_code(self.product_code):
+            raise ValidationError({"product_code": "Enter a valid internal product code."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class WebhookEvent(models.Model):

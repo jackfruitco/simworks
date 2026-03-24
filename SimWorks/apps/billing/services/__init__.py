@@ -2,6 +2,7 @@ from .entitlements import (
     get_access_snapshot,
     get_effective_entitlements,
     get_limit,
+    grant_demo_product_access,
     has_feature_access,
     has_product_access,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "get_access_snapshot",
     "get_effective_entitlements",
     "get_limit",
+    "grant_demo_product_access",
     "has_feature_access",
     "has_product_access",
     "reconcile_subscription_entitlements",

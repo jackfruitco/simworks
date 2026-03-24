@@ -393,6 +393,7 @@ class TestTrainerLabAccess:
     ):
         from apps.accounts.models import AccountMembership
         from apps.accounts.services import create_organization_account
+        from apps.billing.catalog import ProductCode
         from apps.billing.models import Entitlement
 
         org_account = create_organization_account(
@@ -410,7 +411,7 @@ class TestTrainerLabAccess:
             source_type=Entitlement.SourceType.MANUAL,
             source_ref="manual:trainerlab",
             scope_type=Entitlement.ScopeType.ACCOUNT,
-            product_code="trainerlab",
+            product_code=ProductCode.TRAINERLAB_GO.value,
             status=Entitlement.Status.ACTIVE,
         )
 

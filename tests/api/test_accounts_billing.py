@@ -6,6 +6,7 @@ import pytest
 from api.v1.auth import create_access_token
 from apps.accounts.models import AccountMembership, UserRole
 from apps.accounts.services import create_organization_account, get_personal_account_for_user
+from apps.billing.catalog import ProductCode
 from apps.billing.models import Entitlement, Subscription
 from apps.billing.services.entitlements import has_product_access
 
@@ -199,7 +200,7 @@ def test_portable_personal_entitlements_union_with_org_access(owner_user):
         source_ref="manual:chatlab",
         scope_type=Entitlement.ScopeType.USER,
         subject_user=owner_user,
-        product_code="chatlab",
+        product_code=ProductCode.CHATLAB_GO.value,
         status=Entitlement.Status.ACTIVE,
         portable_across_accounts=True,
     )
@@ -208,19 +209,16 @@ def test_portable_personal_entitlements_union_with_org_access(owner_user):
         source_type=Entitlement.SourceType.MANUAL,
         source_ref="manual:trainerlab",
         scope_type=Entitlement.ScopeType.ACCOUNT,
-        product_code="trainerlab",
+        product_code=ProductCode.TRAINERLAB_GO.value,
         status=Entitlement.Status.ACTIVE,
     )
 
-    assert has_product_access(owner_user, org_account, "chatlab") is True
-    assert has_product_access(owner_user, org_account, "trainerlab") is True
+    assert has_product_access(owner_user, org_account, ProductCode.CHATLAB_GO.value) is True
+    assert has_product_access(owner_user, org_account, ProductCode.TRAINERLAB_GO.value) is True
 
 
 @pytest.mark.django_db
-def test_apple_sync_endpoint_is_idempotent(owner_user, auth_client_factory, settings):
-    settings.BILLING_APPLE_PRODUCT_PLAN_MAP = {
-        "com.jackfruitco.medsim.individual.plus.monthly": "personal_plus"
-    }
+def test_apple_sync_endpoint_is_idempotent(owner_user, auth_client_factory):
     client = auth_client_factory(owner_user)
 
     payload = {
@@ -246,11 +244,51 @@ def test_apple_sync_endpoint_is_idempotent(owner_user, auth_client_factory, sett
     assert first.status_code == 200
     assert second.status_code == 200
     assert Subscription.objects.filter(provider_type="apple").count() == 1
+    subscription = Subscription.objects.get(provider_type="apple")
+    assert subscription.plan_code == "com.jackfruitco.medsim.individual.plus.monthly"
     second_entitlement_count = Entitlement.objects.filter(
         source_type=Entitlement.SourceType.SUBSCRIPTION
     ).count()
     assert first_entitlement_count > 0
     assert second_entitlement_count == first_entitlement_count
+    assert Entitlement.objects.filter(
+        source_type=Entitlement.SourceType.SUBSCRIPTION,
+        product_code=ProductCode.CHATLAB_PLUS.value,
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_access_snapshot_endpoint_ignores_malformed_entitlements(owner_user, auth_client_factory):
+    personal_account = get_personal_account_for_user(owner_user)
+    Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:good",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=owner_user,
+        product_code=ProductCode.CHATLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
+    )
+    malformed = Entitlement.objects.create(
+        account=personal_account,
+        source_type=Entitlement.SourceType.MANUAL,
+        source_ref="manual:bad",
+        scope_type=Entitlement.ScopeType.USER,
+        subject_user=owner_user,
+        product_code=ProductCode.TRAINERLAB_GO.value,
+        status=Entitlement.Status.ACTIVE,
+        portable_across_accounts=True,
+    )
+    Entitlement.objects.filter(pk=malformed.pk).update(product_code="stripe:legacy-price-id")
+
+    client = auth_client_factory(owner_user)
+    response = client.get("/api/v1/accounts/me/access/")
+
+    assert response.status_code == 200
+    assert response.json()["products"] == {
+        ProductCode.CHATLAB_GO.value: {"enabled": True, "features": [], "limits": {}}
+    }
 
 
 @pytest.mark.django_db

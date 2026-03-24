@@ -5,9 +5,14 @@ from ninja.errors import HttpError
 from apps.accounts.context import resolve_account_for_user, resolve_request_account
 from apps.accounts.models import LabMembership
 from apps.accounts.permissions import get_account_membership
+from apps.billing.catalog import ProductCode
 from apps.billing.services.entitlements import has_product_access
 
 LAB_SLUG = "trainerlab"
+TRAINERLAB_PRODUCT_CODES = (
+    ProductCode.TRAINERLAB_GO.value,
+    ProductCode.TRAINERLAB_PLUS.value,
+)
 ACCESS_RANK = {
     LabMembership.AccessLevel.VIEWER: 10,
     LabMembership.AccessLevel.INSTRUCTOR: 20,
@@ -26,7 +31,7 @@ def _legacy_membership(user, *, lab_slug: str = LAB_SLUG) -> LabMembership | Non
 def _derived_membership(user, account, *, lab_slug: str = LAB_SLUG) -> LabMembership | None:
     if account is None:
         return None
-    if not has_product_access(user, account, lab_slug):
+    if not any(has_product_access(user, account, product_code) for product_code in TRAINERLAB_PRODUCT_CODES):
         return None
     membership = get_account_membership(user, account)
     if (membership is None and account.owner_user_id == getattr(user, "id", None)) or (
