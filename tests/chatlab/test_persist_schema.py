@@ -9,6 +9,7 @@ Tests:
 - Schema without __persist__ returns None
 """
 
+import importlib
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -626,6 +627,22 @@ class TestMROMerging:
 
         assert "messages" in persist_map
         assert persist_map["messages"] is persist_messages
+
+    def test_mro_merge_refreshes_reloaded_persist_handlers(self):
+        """Reloaded top-level persisters should resolve to the current module binding."""
+        import apps.chatlab.orca.persisters as persisters_module
+        from apps.chatlab.orca.schemas.mixins import PatientResponseBaseMixin
+        from orchestrai_django.persistence.engine import _merge_persist_from_mro
+
+        stale_handler = PatientResponseBaseMixin.__persist__["messages"]
+        reloaded_module = importlib.reload(persisters_module)
+        fresh_handler = reloaded_module.persist_messages
+
+        assert stale_handler is not fresh_handler
+
+        persist_map = _merge_persist_from_mro(PatientInitialOutputSchema)
+
+        assert persist_map["messages"] is fresh_handler
 
 
 @pytest.mark.asyncio
