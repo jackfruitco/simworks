@@ -14,12 +14,11 @@ from datetime import datetime
 from django.utils import timezone
 
 from .enums import (
+    NON_RUNNABLE_STATES,
+    RESUMABLE_GUARD_STATES,
     DenialReason,
     GuardState,
     LabType,
-    NON_RUNNABLE_STATES,
-    PauseReason,
-    RESUMABLE_GUARD_STATES,
 )
 from .models import SessionPresence
 from .policy import GuardPolicy
@@ -83,12 +82,11 @@ class RuntimeGuard:
     def may_resume_session(self) -> GuardDecision:
         """Check if a paused session may be resumed."""
         state = self.presence.guard_state
-        if state not in RESUMABLE_GUARD_STATES:
-            if state in NON_RUNNABLE_STATES:
-                return GuardDecision.deny(
-                    DenialReason.RUNTIME_CAP_REACHED,
-                    "Session cannot be resumed — runtime cap or terminal state reached.",
-                )
+        if state not in RESUMABLE_GUARD_STATES and state in NON_RUNNABLE_STATES:
+            return GuardDecision.deny(
+                DenialReason.RUNTIME_CAP_REACHED,
+                "Session cannot be resumed — runtime cap or terminal state reached.",
+            )
         return GuardDecision.allow()
 
     # ── Runtime operation gating ────────────────────────────────────────
@@ -169,8 +167,7 @@ class RuntimeGuard:
             if remaining < self.policy.chat_warning_threshold_tokens:
                 estimated_turns = max(1, remaining // self.policy.chat_send_min_safe_tokens)
                 warnings.append(
-                    f"Nearing usage limit — approximately {estimated_turns} "
-                    f"message(s) remaining."
+                    f"Nearing usage limit — approximately {estimated_turns} message(s) remaining."
                 )
             return GuardDecision.allow(warnings)
 

@@ -5,7 +5,6 @@ Provides heartbeat and guard-state retrieval for clients.
 
 from django.http import HttpRequest
 from ninja import Router
-from ninja.errors import HttpError
 
 from api.v1.auth import DualAuth
 from api.v1.schemas.guards import GuardStateOut, HeartbeatIn

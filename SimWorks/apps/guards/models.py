@@ -160,6 +160,5 @@ class UsageRecord(models.Model):
 
     def __str__(self) -> str:
         return (
-            f"UsageRecord(scope={self.scope_type}, lab={self.lab_type}, "
-            f"tokens={self.total_tokens})"
+            f"UsageRecord(scope={self.scope_type}, lab={self.lab_type}, tokens={self.total_tokens})"
         )

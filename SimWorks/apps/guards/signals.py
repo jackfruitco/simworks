@@ -11,7 +11,6 @@ from django.dispatch import receiver
 
 from config.logging import get_logger
 
-from .enums import LabType
 from .policy import _detect_lab_type, _resolve_product_code
 
 logger = get_logger(__name__)

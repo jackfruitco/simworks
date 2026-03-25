@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ninja import Schema
+from ninja import Field, Schema
 
 
 class HeartbeatIn(Schema):
@@ -20,6 +20,6 @@ class GuardStateOut(Schema):
     active_elapsed_seconds: int = 0
     runtime_cap_seconds: int | None = None
     wall_clock_expires_at: str | None = None
-    warnings: list[str] = []
+    warnings: list[str] = Field(default_factory=list)
     denial_reason: str | None = None
     denial_message: str | None = None

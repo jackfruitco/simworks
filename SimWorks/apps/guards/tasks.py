@@ -17,9 +17,7 @@ from .models import SessionPresence
 logger = get_logger(__name__)
 
 # Guard states that should be checked for inactivity / wall-clock.
-_ACTIVE_GUARD_STATES = frozenset(
-    {GuardState.ACTIVE, GuardState.IDLE, GuardState.WARNING}
-)
+_ACTIVE_GUARD_STATES = frozenset({GuardState.ACTIVE, GuardState.IDLE, GuardState.WARNING})
 
 
 @shared_task(ignore_result=True)

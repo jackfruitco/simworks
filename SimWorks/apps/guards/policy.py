@@ -21,7 +21,7 @@ from .enums import LabType
 class GuardPolicy:
     """Immutable policy bag returned by the resolver.
 
-    Every threshold is configurable per lab × product.  ``None`` means
+    Every threshold is configurable per lab x product.  ``None`` means
     "unlimited / not applicable".
     """
 

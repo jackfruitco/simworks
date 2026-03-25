@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-import pytest
 from django.utils import timezone
 
 from apps.guards.decisions import GuardDecision, RuntimeGuard

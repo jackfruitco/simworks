@@ -29,13 +29,12 @@ from config.logging import get_logger
 
 from .decisions import GuardDecision, RuntimeGuard
 from .enums import (
+    NON_RUNNABLE_STATES,
     ClientVisibility,
     DenialReason,
     GuardState,
     LabType,
-    NON_RUNNABLE_STATES,
     PauseReason,
-    RESUMABLE_GUARD_STATES,
     UsageScopeType,
 )
 from .models import SessionPresence, UsageRecord
@@ -273,17 +272,13 @@ def evaluate_inactivity(simulation_id: int) -> GuardState | None:
         if not warn_decision.allowed and presence.guard_state != GuardState.WARNING:
             presence.guard_state = GuardState.WARNING
             presence.warning_sent_at = now
-            presence.save(
-                update_fields=["guard_state", "warning_sent_at", "modified_at"]
-            )
+            presence.save(update_fields=["guard_state", "warning_sent_at", "modified_at"])
             _emit_guard_event(
                 simulation_id,
                 "guard.warning.updated",
                 {
                     "guard_state": GuardState.WARNING,
-                    "seconds_until_pause": int(
-                        policy.inactivity_pause_seconds - age
-                    ),
+                    "seconds_until_pause": int(policy.inactivity_pause_seconds - age),
                 },
             )
             logger.info(
@@ -737,9 +732,7 @@ def get_guard_state_for_simulation(
         if presence.last_presence_at:
             age = (timezone.now() - presence.last_presence_at).total_seconds()
         seconds_until_pause = max(0, int(policy.inactivity_pause_seconds - age))
-        warnings.append(
-            f"Inactivity warning — session will pause in {seconds_until_pause}s."
-        )
+        warnings.append(f"Inactivity warning — session will pause in {seconds_until_pause}s.")
 
     denial_reason = None
     denial_message = None
@@ -756,9 +749,7 @@ def get_guard_state_for_simulation(
         "active_elapsed_seconds": active_elapsed,
         "runtime_cap_seconds": policy.runtime_cap_seconds,
         "wall_clock_expires_at": (
-            presence.wall_clock_expires_at.isoformat()
-            if presence.wall_clock_expires_at
-            else None
+            presence.wall_clock_expires_at.isoformat() if presence.wall_clock_expires_at else None
         ),
         "warnings": warnings,
         "denial_reason": denial_reason,

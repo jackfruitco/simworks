@@ -7,16 +7,14 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-import pytest
 from django.utils import timezone
+import pytest
 
 from apps.guards.enums import (
     ClientVisibility,
-    DenialReason,
     GuardState,
     LabType,
     PauseReason,
-    UsageScopeType,
 )
 from apps.guards.models import SessionPresence, UsageRecord
 from apps.guards.services import (
@@ -120,9 +118,7 @@ class TestEvaluateInactivity:
         assert trainerlab_presence.pause_reason == PauseReason.INACTIVITY
         assert trainerlab_presence.engine_runnable is False
 
-    def test_paused_time_does_not_increase_active_runtime(
-        self, simulation, trainerlab_presence
-    ):
+    def test_paused_time_does_not_increase_active_runtime(self, simulation, trainerlab_presence):
         """Verify that once paused, the session's guard state stays paused
         and does not re-evaluate."""
         trainerlab_presence.guard_state = GuardState.PAUSED_INACTIVITY
