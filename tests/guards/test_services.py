@@ -251,8 +251,11 @@ class TestUsageAccounting:
     def test_multi_scope_recording(self, simulation):
         from django.contrib.auth import get_user_model
 
+        from apps.accounts.models import UserRole
+
         User = get_user_model()
-        user = User.objects.create_user(email="test@example.com", password="test")
+        role = UserRole.objects.create()
+        user = User.objects.create_user(email="test@example.com", password="test", role=role)
         simulation.user = user
         simulation.save()
 

@@ -7,8 +7,6 @@ whenever a ServiceCall completes.
 
 from __future__ import annotations
 
-from django.dispatch import receiver
-
 from config.logging import get_logger
 
 from .policy import _detect_lab_type, _resolve_product_code
@@ -16,10 +14,6 @@ from .policy import _detect_lab_type, _resolve_product_code
 logger = get_logger(__name__)
 
 
-@receiver(
-    "orchestrai_django.signals.service_call_succeeded",
-    dispatch_uid="guards_record_usage_on_service_call",
-)
 def on_service_call_succeeded(sender, **kwargs):
     """Record usage when an Orca service call completes successfully."""
     call = kwargs.get("call")
