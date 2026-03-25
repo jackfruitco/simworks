@@ -22,6 +22,7 @@ CANONICAL_DOMAINS = (
     "patient",
     "message",
     "feedback",
+    "guard",
 )
 EVENT_TYPE_PATTERN = re.compile(
     r"^[a-z]+\.[a-z]+\.(created|updated|removed|triggered|completed|failed)$"
@@ -85,6 +86,8 @@ PATIENT_VITAL_CREATED = "patient.vital.created"
 PATIENT_VITAL_UPDATED = "patient.vital.updated"
 PATIENT_PULSE_CREATED = "patient.pulse.created"
 PATIENT_PULSE_UPDATED = "patient.pulse.updated"
+GUARD_STATE_UPDATED = "guard.state.updated"
+GUARD_WARNING_UPDATED = "guard.warning.updated"
 
 
 EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
@@ -322,6 +325,16 @@ EVENT_TYPE_SPECS: tuple[EventTypeSpec, ...] = (
         PATIENT_PULSE_UPDATED,
         "A pulse assessment changed.",
         aliases=("trainerlab.pulse.updated",),
+    ),
+    EventTypeSpec(
+        GUARD_STATE_UPDATED,
+        "Guard state changed (pause, resume, lock, unlock).",
+        aliases=("guard.state_changed",),
+    ),
+    EventTypeSpec(
+        GUARD_WARNING_UPDATED,
+        "Guard warning issued (inactivity warning, nearing limit).",
+        aliases=("guard.warning_sent",),
     ),
 )
 

@@ -36,6 +36,44 @@ def trainerlab_runtime_tick(self, session_id: int, tick_nonce: int) -> None:
     if session.status != SessionStatus.RUNNING:
         return
 
+    # ── Guard: evaluate runtime cap on each tick ────────────────────
+    from .services import get_active_elapsed_seconds
+
+    active_elapsed = get_active_elapsed_seconds(session)
+    try:
+        from apps.guards.services import evaluate_runtime_cap
+
+        new_state = evaluate_runtime_cap(session.simulation_id, active_elapsed)
+        if new_state is not None:
+            # Runtime cap reached — trigger TrainerLab pause and stop ticking.
+            from .services import pause_session
+
+            session.refresh_from_db()
+            if session.status == SessionStatus.RUNNING:
+                pause_session(session=session, user=None, correlation_id=None)
+                from apps.guards.services import _transition_to_runtime_cap_paused
+                from apps.guards.models import SessionPresence
+
+                try:
+                    presence = SessionPresence.objects.get(
+                        simulation_id=session.simulation_id,
+                    )
+                    if presence.guard_state != "paused_runtime_cap":
+                        _transition_to_runtime_cap_paused(presence)
+                except SessionPresence.DoesNotExist:
+                    pass
+            logger.info(
+                "trainerlab.tick.runtime_cap_reached",
+                session_id=session.id,
+                active_elapsed=active_elapsed,
+            )
+            return  # Do not reschedule tick.
+    except Exception:
+        logger.exception(
+            "trainerlab.tick.guard_eval_failed",
+            session_id=session.id,
+        )
+
     append_pending_runtime_reason(
         session=session,
         reason_kind="tick",

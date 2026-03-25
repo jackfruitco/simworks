@@ -1565,8 +1565,24 @@ def _inject_event_core(
         domains=[event_kind],
     )
 
-    should_queue_runtime = session.status != SessionStatus.COMPLETED and (
-        event_kind != "note" or send_to_ai
+    # Guard: block runtime queueing if session is paused/locked — but
+    # allow the domain record itself to be created (manual-edit rule).
+    _engine_runnable = True
+    try:
+        from apps.guards.models import SessionPresence
+
+        _presence = SessionPresence.objects.filter(
+            simulation_id=session.simulation_id,
+        ).values_list("engine_runnable", flat=True).first()
+        if _presence is not None:
+            _engine_runnable = _presence
+    except Exception:
+        pass
+
+    should_queue_runtime = (
+        session.status != SessionStatus.COMPLETED
+        and _engine_runnable
+        and (event_kind != "note" or send_to_ai)
     )
     if should_queue_runtime:
         runtime_reason_payload = {

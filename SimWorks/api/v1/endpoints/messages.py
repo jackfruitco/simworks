@@ -372,6 +372,16 @@ def create_message(
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user, request=request)
 
+    # ── Guard: ChatLab send-lock check ──────────────────────────────
+    from apps.guards.services import check_chat_send_allowed
+
+    send_decision = check_chat_send_allowed(sim.pk)
+    if not send_decision.allowed:
+        raise HttpError(
+            403,
+            send_decision.denial_message or "Sending is locked due to usage limits.",
+        )
+
     # Resolve conversation and check per-conversation lock
     conversation = _resolve_conversation(sim, body.conversation_id)
     if conversation.is_locked:
@@ -438,6 +448,16 @@ def retry_message(
 
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user, request=request)
+
+    # ── Guard: ChatLab send-lock check ──────────────────────────────
+    from apps.guards.services import check_chat_send_allowed
+
+    send_decision = check_chat_send_allowed(sim.pk)
+    if not send_decision.allowed:
+        raise HttpError(
+            403,
+            send_decision.denial_message or "Sending is locked due to usage limits.",
+        )
 
     try:
         message = Message.objects.select_related("conversation__conversation_type").get(

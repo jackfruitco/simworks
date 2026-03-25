@@ -113,6 +113,7 @@ INSTALLED_APPS = [
     "django_htmx",
     "apps.common",
     "apps.simcore",
+    "apps.guards",
     "apps.chatlab",
     "apps.privacy",
     "apps.trainerlab",

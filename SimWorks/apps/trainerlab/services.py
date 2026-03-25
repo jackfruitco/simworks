@@ -1561,8 +1561,32 @@ def enqueue_runtime_turn_service_call(batch: dict[str, Any]) -> str:
 
 
 def process_runtime_turn_queue(*, session_id: int) -> str | None:
+    # ── Guard service entry ─────────────────────────────────────────
+    # Every runtime call passes through the shared guard entrypoint.
+    from apps.guards.services import guard_service_entry
+
     batch = _claim_runtime_turn_batch(session_id)
     if batch is None:
+        return None
+
+    guard_decision = guard_service_entry(
+        batch["simulation_id"],
+        active_elapsed=batch.get("active_elapsed_seconds", 0),
+    )
+    if not guard_decision.allowed:
+        _restore_runtime_turn_batch(
+            session_id=session_id,
+            reasons=batch["reasons"],
+            error=guard_decision.denial_message or "Guard denied",
+        )
+        _emit_runtime_failure_event(
+            session_id=session_id,
+            reasons=batch["reasons"],
+            correlation_id=batch.get("correlation_id"),
+            error=guard_decision.denial_message or "Guard denied",
+            reason_code=guard_decision.denial_reason or "guard_denied",
+            retryable=False,
+        )
         return None
 
     try:
@@ -2982,6 +3006,23 @@ def start_session(
     if session.status != SessionStatus.SEEDED:
         raise ValidationError("Session can only be started from seeded state")
 
+    # ── Guard: pre-session token budget admission check ─────────────
+    from apps.guards.enums import LabType
+    from apps.guards.services import check_pre_session_budget, ensure_session_presence
+
+    sim = session.simulation
+    if sim.user and sim.account:
+        from apps.guards.policy import _resolve_product_code
+
+        product_code = _resolve_product_code(sim, LabType.TRAINERLAB)
+        budget_decision = check_pre_session_budget(
+            sim.user, sim.account, LabType.TRAINERLAB, product_code,
+        )
+        if not budget_decision.allowed:
+            raise ValidationError(budget_decision.denial_message)
+
+    ensure_session_presence(session.simulation_id, LabType.TRAINERLAB)
+
     previous_status = session.status
     now = timezone.now()
     state = _set_active_elapsed_anchor(session, state=get_runtime_state(session), now=now)
@@ -3051,6 +3092,10 @@ def pause_session(
             "to": session.status,
         },
     )
+
+    # Sync guard state for manual pause.
+    _sync_guard_pause(session.simulation_id, pause_reason="manual")
+
     return session
 
 
@@ -3059,6 +3104,13 @@ def resume_session(
 ) -> TrainerSession:
     if session.status != SessionStatus.PAUSED:
         raise ValidationError("Session can only be resumed from paused state")
+
+    # ── Guard: check if resume is allowed (runtime-cap pause is terminal) ──
+    from apps.guards.services import resume_guard_state
+
+    guard_decision = resume_guard_state(session.simulation_id)
+    if not guard_decision.allowed:
+        raise ValidationError(guard_decision.denial_message)
 
     previous_status = session.status
     now = timezone.now()
@@ -3706,3 +3758,56 @@ def update_scenario_brief(
         idempotency_key=f"{outbox_events.SIMULATION_BRIEF_UPDATED}:{new_brief.id}",
     )
     return new_brief
+
+
+# ── Guard framework helpers ─────────────────────────────────────────────
+
+
+def _sync_guard_pause(simulation_id: int, pause_reason: str = "manual") -> None:
+    """Sync the guard SessionPresence when TrainerLab pauses a session.
+
+    Called from ``pause_session()`` and from guard-initiated autopause.
+    """
+    try:
+        from apps.guards.enums import GuardState, PauseReason
+        from apps.guards.models import SessionPresence
+
+        presence = SessionPresence.objects.filter(simulation_id=simulation_id).first()
+        if presence is None:
+            return
+
+        reason_map = {
+            "manual": (GuardState.PAUSED_INACTIVITY, PauseReason.MANUAL),
+            "inactivity": (GuardState.PAUSED_INACTIVITY, PauseReason.INACTIVITY),
+            "runtime_cap": (GuardState.PAUSED_RUNTIME_CAP, PauseReason.RUNTIME_CAP),
+        }
+        guard_state, mapped_reason = reason_map.get(
+            pause_reason,
+            (GuardState.PAUSED_INACTIVITY, PauseReason.MANUAL),
+        )
+
+        # Only update if the guard isn't already in a more severe state.
+        if presence.guard_state in {
+            GuardState.PAUSED_RUNTIME_CAP,
+            GuardState.ENDED,
+        }:
+            return
+
+        from django.utils import timezone as tz
+
+        now = tz.now()
+        presence.guard_state = guard_state
+        presence.pause_reason = mapped_reason
+        presence.paused_at = now
+        presence.engine_runnable = False
+        presence.save(
+            update_fields=[
+                "guard_state",
+                "pause_reason",
+                "paused_at",
+                "engine_runnable",
+                "modified_at",
+            ]
+        )
+    except Exception:
+        logger.exception("trainerlab.guard_sync_pause_failed", simulation_id=simulation_id)
