@@ -241,6 +241,10 @@ class RuntimeGuard:
                 DenialReason.SESSION_PAUSED,
                 "Session is paused due to inactivity.",
             ),
+            GuardState.PAUSED_MANUAL: (
+                DenialReason.SESSION_PAUSED,
+                "Session is manually paused.",
+            ),
             GuardState.PAUSED_RUNTIME_CAP: (
                 DenialReason.RUNTIME_CAP_REACHED,
                 "Session runtime cap reached — engine progression stopped.",

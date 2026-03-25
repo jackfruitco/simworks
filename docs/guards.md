@@ -30,6 +30,7 @@ SSE connection alone does **not** define active state.
 | `idle` | Reserved for future use |
 | `warning` | Inactivity warning sent (4m30s) |
 | `paused_inactivity` | Autopause due to inactivity (5m) — **resumable** |
+| `paused_manual` | User/instructor manually paused — **resumable** |
 | `paused_runtime_cap` | Runtime cap reached — **not resumable** for engine progression |
 | `locked_usage` | Token usage limit exceeded |
 | `ended` | Terminal (wall-clock expiry or explicit end) |
@@ -47,7 +48,7 @@ SSE connection alone does **not** define active state.
 
 ### Resumable vs Terminal Pause
 
-- **Resumable**: `paused_inactivity`, `locked_usage` — user can resume and continue
+- **Resumable**: `paused_inactivity`, `paused_manual`, `locked_usage` — user can resume and continue
 - **Terminal**: `paused_runtime_cap`, `ended` — engine progression is permanently stopped
   - The session data remains accessible
   - TrainerLab: manual record edits still allowed
@@ -162,3 +163,36 @@ Each level tracks: `input_tokens`, `output_tokens`, `reasoning_tokens`,
 
 The schema supports future "included quota + extra purchased quota" by keeping
 usage records independent of billing models.
+
+### Token Limit Enforcement
+
+Token limits (`session_token_limit`, `user_token_limit`, `account_token_limit`) are
+**optional** in `GuardPolicy`.  When a limit is `None` (the default), that scope is
+**unlimited** and no enforcement occurs.  The framework is fully wired, but no plan
+currently configures hard token caps — policy entries in `_POLICY_TABLE` may add them
+when billing requirements are defined.
+
+Concretely:
+- `check_pre_session_budget()` always allows if no limits are configured.
+- `check_chat_send_allowed()` always allows if no limits are configured.
+- `check_usage_limits()` always allows if no limits are configured.
+
+When limits _are_ set, all three checks enforce them correctly.
+
+### UsageRecord Integrity
+
+`UsageRecord` rows are aggregate counters (one per scope × period × lab × product).
+Three conditional `UniqueConstraint`s enforce uniqueness at the DB level, making the
+update-or-create upsert concurrency-safe even under parallel service call completions.
+
+## Scheduled Tasks (Celery Beat)
+
+`check_stale_sessions` runs every 15 seconds and:
+1. Evaluates inactivity for all active TrainerLab sessions.
+2. If stale, transitions `SessionPresence` to `PAUSED_INACTIVITY` **and** pauses the
+   actual TrainerLab session (stopping the tick loop, freezing elapsed time).
+3. Evaluates wall-clock expiry for all active sessions of any lab type.
+
+This task **must** be scheduled in Celery Beat.  It is registered in
+`config/celery.py::beat_schedule` under `check-stale-sessions-every-15-seconds`.
+Without Beat running, server-authoritative inactivity enforcement will not fire.

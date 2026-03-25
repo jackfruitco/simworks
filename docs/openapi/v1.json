@@ -1691,6 +1691,92 @@
         ]
       }
     },
+    "/api/v1/simulations/{simulation_id}/heartbeat/": {
+      "post": {
+        "operationId": "api_v1_endpoints_guards_heartbeat",
+        "summary": "Record a client heartbeat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardStateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Clients send this every 15 seconds to report presence and visibility. Returns the current guard state for UI rendering.",
+        "tags": [
+          "guards"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/simulations/{simulation_id}/guard-state/": {
+      "get": {
+        "operationId": "api_v1_endpoints_guards_get_guard_state",
+        "summary": "Get current guard state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "simulation_id",
+            "schema": {
+              "title": "Simulation Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardStateOut"
+                }
+              }
+            }
+          }
+        },
+        "description": "Returns the current guard state for a simulation.",
+        "tags": [
+          "guards"
+        ],
+        "security": [
+          {
+            "DualAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/chatlab/access/me/": {
       "get": {
         "operationId": "api_v1_endpoints_chatlab_chatlab_access_me",
@@ -5055,7 +5141,7 @@
             "type": "string"
           },
           "event_type": {
-            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, feedback.item.created, feedback.generation.failed, feedback.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated",
+            "description": "Canonical event types use the strict domain.subject.action contract with lowercase dot-separated segments. Supported canonical types: message.item.created, message.delivery.updated, patient.metadata.created, patient.results.updated, feedback.item.created, feedback.generation.failed, feedback.generation.updated, simulation.status.updated, simulation.brief.created, simulation.brief.updated, simulation.snapshot.updated, simulation.plan.updated, simulation.patch.completed, simulation.tick.triggered, simulation.summary.updated, simulation.runtime.failed, simulation.preset.updated, simulation.command.updated, simulation.adjustment.updated, simulation.note.created, simulation.annotation.created, patient.injury.created, patient.injury.updated, patient.illness.created, patient.illness.updated, patient.problem.created, patient.problem.updated, patient.recommendedintervention.created, patient.recommendedintervention.updated, patient.recommendedintervention.removed, patient.intervention.created, patient.intervention.updated, patient.assessmentfinding.created, patient.assessmentfinding.updated, patient.assessmentfinding.removed, patient.diagnosticresult.created, patient.diagnosticresult.updated, patient.resource.updated, patient.disposition.updated, patient.recommendationevaluation.created, patient.vital.created, patient.vital.updated, patient.pulse.created, patient.pulse.updated, guard.state.updated, guard.warning.updated",
             "examples": [
               "message.item.created",
               "message.delivery.updated",
@@ -5629,6 +5715,98 @@
           "description"
         ],
         "title": "ModifierOut",
+        "type": "object"
+      },
+      "GuardStateOut": {
+        "description": "Current guard state for a session.",
+        "properties": {
+          "guard_state": {
+            "title": "Guard State",
+            "type": "string"
+          },
+          "pause_reason": {
+            "title": "Pause Reason",
+            "type": "string"
+          },
+          "engine_runnable": {
+            "title": "Engine Runnable",
+            "type": "boolean"
+          },
+          "active_elapsed_seconds": {
+            "default": 0,
+            "title": "Active Elapsed Seconds",
+            "type": "integer"
+          },
+          "runtime_cap_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Cap Seconds"
+          },
+          "wall_clock_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Clock Expires At"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "denial_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Reason"
+          },
+          "denial_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denial Message"
+          }
+        },
+        "required": [
+          "guard_state",
+          "pause_reason",
+          "engine_runnable"
+        ],
+        "title": "GuardStateOut",
+        "type": "object"
+      },
+      "HeartbeatIn": {
+        "description": "Client heartbeat payload.",
+        "properties": {
+          "client_visibility": {
+            "default": "unknown",
+            "title": "Client Visibility",
+            "type": "string"
+          }
+        },
+        "title": "HeartbeatIn",
         "type": "object"
       },
       "LabAccessOut": {

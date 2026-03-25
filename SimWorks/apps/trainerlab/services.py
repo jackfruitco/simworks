@@ -3016,7 +3016,10 @@ def start_session(
 
         product_code = _resolve_product_code(sim, LabType.TRAINERLAB)
         budget_decision = check_pre_session_budget(
-            sim.user, sim.account, LabType.TRAINERLAB, product_code,
+            sim.user,
+            sim.account,
+            LabType.TRAINERLAB,
+            product_code,
         )
         if not budget_decision.allowed:
             raise ValidationError(budget_decision.denial_message)
@@ -3777,20 +3780,20 @@ def _sync_guard_pause(simulation_id: int, pause_reason: str = "manual") -> None:
             return
 
         reason_map = {
-            "manual": (GuardState.PAUSED_INACTIVITY, PauseReason.MANUAL),
+            "manual": (GuardState.PAUSED_MANUAL, PauseReason.MANUAL),
             "inactivity": (GuardState.PAUSED_INACTIVITY, PauseReason.INACTIVITY),
             "runtime_cap": (GuardState.PAUSED_RUNTIME_CAP, PauseReason.RUNTIME_CAP),
         }
         guard_state, mapped_reason = reason_map.get(
             pause_reason,
-            (GuardState.PAUSED_INACTIVITY, PauseReason.MANUAL),
+            (GuardState.PAUSED_MANUAL, PauseReason.MANUAL),
         )
 
-        # Only update if the guard isn't already in a more severe state.
-        if presence.guard_state in {
-            GuardState.PAUSED_RUNTIME_CAP,
-            GuardState.ENDED,
-        }:
+        # Skip if guard framework has already set a non-runnable state —
+        # the guard is authoritative and we must not overwrite it.
+        from apps.guards.enums import NON_RUNNABLE_STATES
+
+        if presence.guard_state in NON_RUNNABLE_STATES:
             return
 
         from django.utils import timezone as tz

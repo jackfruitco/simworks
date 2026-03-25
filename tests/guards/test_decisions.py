@@ -67,6 +67,14 @@ class TestMayStartRuntimeOperation:
         assert not decision.allowed
         assert decision.denial_reason == DenialReason.SESSION_PAUSED
 
+    def test_paused_manual_denied(self):
+        presence = _make_presence(guard_state=GuardState.PAUSED_MANUAL)
+        policy = GuardPolicy()
+        guard = RuntimeGuard(presence, policy)
+        decision = guard.may_start_runtime_operation(active_elapsed=0)
+        assert not decision.allowed
+        assert decision.denial_reason == DenialReason.SESSION_PAUSED
+
     def test_paused_runtime_cap_denied(self):
         presence = _make_presence(guard_state=GuardState.PAUSED_RUNTIME_CAP)
         policy = GuardPolicy()
@@ -148,10 +156,15 @@ class TestInactivity:
 
 
 class TestMayResumeSession:
-    """Resume logic: inactivity-paused is resumable, runtime-cap is not."""
+    """Resume logic: inactivity-paused and manual-paused are resumable, runtime-cap is not."""
 
     def test_inactivity_pause_resumable(self):
         presence = _make_presence(guard_state=GuardState.PAUSED_INACTIVITY)
+        guard = RuntimeGuard(presence, GuardPolicy())
+        assert guard.may_resume_session().allowed
+
+    def test_manual_pause_resumable(self):
+        presence = _make_presence(guard_state=GuardState.PAUSED_MANUAL)
         guard = RuntimeGuard(presence, GuardPolicy())
         assert guard.may_resume_session().allowed
 

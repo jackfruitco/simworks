@@ -265,6 +265,11 @@ def evaluate_inactivity(simulation_id: int) -> GuardState | None:
                 simulation_id=simulation_id,
                 age_seconds=int(age),
             )
+            # Also pause the actual TrainerLab session so the tick loop stops
+            # and active elapsed time is frozen.  Guard state was set first so
+            # the re-entrant _sync_guard_pause call inside pause_session()
+            # will see NON_RUNNABLE and short-circuit.
+            _autopause_trainerlab_session(simulation_id)
             return GuardState.PAUSED_INACTIVITY
 
         # Check warning.
@@ -289,6 +294,28 @@ def evaluate_inactivity(simulation_id: int) -> GuardState | None:
             return GuardState.WARNING
 
     return None
+
+
+def _autopause_trainerlab_session(simulation_id: int) -> None:
+    """Pause the TrainerLab session when guard inactivity fires.
+
+    Guard state is already set to PAUSED_INACTIVITY before this is called.
+    This stops the tick loop and freezes active elapsed time in TrainerLab.
+    The re-entrant _sync_guard_pause() inside pause_session() is a no-op
+    because it sees the presence already in NON_RUNNABLE_STATES.
+    """
+    try:
+        from apps.trainerlab.models import SessionStatus, TrainerSession
+        from apps.trainerlab.services import pause_session
+
+        session = TrainerSession.objects.get(simulation_id=simulation_id)
+        if session.status == SessionStatus.RUNNING:
+            pause_session(session=session, user=None, correlation_id=None)
+    except Exception:
+        logger.exception(
+            "guards.autopause.trainerlab_pause_failed",
+            simulation_id=simulation_id,
+        )
 
 
 # ───────────────────────────────────────────────────────────────────────
@@ -641,7 +668,14 @@ def _upsert_usage(
     reasoning_tokens: int,
     total_tokens: int,
 ) -> None:
-    """Atomic upsert: create-or-increment a UsageRecord row."""
+    """Concurrency-safe upsert: create-or-increment a UsageRecord row.
+
+    Uses select_for_update() to lock the row if it exists, then falls back
+    to a create protected by the unique constraint.  If a concurrent insert
+    wins the race, the IntegrityError is caught and we retry the update.
+    """
+    from django.db import IntegrityError
+
     lookup = {
         "scope_type": scope_type,
         "lab_type": lab_type,
@@ -655,36 +689,35 @@ def _upsert_usage(
     if account_id is not None:
         lookup["account_id"] = account_id
 
-    # Try to update an existing row first (most common path).
-    updated = UsageRecord.objects.filter(**lookup).update(
-        input_tokens=F("input_tokens") + input_tokens,
-        output_tokens=F("output_tokens") + output_tokens,
-        reasoning_tokens=F("reasoning_tokens") + reasoning_tokens,
-        total_tokens=F("total_tokens") + total_tokens,
-        service_call_count=F("service_call_count") + 1,
-    )
-    if updated:
-        return
+    increments = {
+        "input_tokens": F("input_tokens") + input_tokens,
+        "output_tokens": F("output_tokens") + output_tokens,
+        "reasoning_tokens": F("reasoning_tokens") + reasoning_tokens,
+        "total_tokens": F("total_tokens") + total_tokens,
+        "service_call_count": F("service_call_count") + 1,
+    }
 
-    # No existing row — create one.
-    try:
-        UsageRecord.objects.create(
-            **lookup,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            reasoning_tokens=reasoning_tokens,
-            total_tokens=total_tokens,
-            service_call_count=1,
-        )
-    except Exception:
-        # Race condition — another thread created the row.  Retry the update.
-        UsageRecord.objects.filter(**lookup).update(
-            input_tokens=F("input_tokens") + input_tokens,
-            output_tokens=F("output_tokens") + output_tokens,
-            reasoning_tokens=F("reasoning_tokens") + reasoning_tokens,
-            total_tokens=F("total_tokens") + total_tokens,
-            service_call_count=F("service_call_count") + 1,
-        )
+    with transaction.atomic():
+        # Lock any existing row so concurrent updates serialize correctly.
+        updated = UsageRecord.objects.filter(**lookup).select_for_update().update(**increments)
+        if updated:
+            return
+
+        # No existing row — create one.  The unique constraint prevents
+        # duplicate rows if two workers arrive here simultaneously.
+        try:
+            UsageRecord.objects.create(
+                **lookup,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                reasoning_tokens=reasoning_tokens,
+                total_tokens=total_tokens,
+                service_call_count=1,
+            )
+        except IntegrityError:
+            # A concurrent worker won the race and created the row first.
+            # Retry the update now that the row exists.
+            UsageRecord.objects.filter(**lookup).update(**increments)
 
 
 # ───────────────────────────────────────────────────────────────────────

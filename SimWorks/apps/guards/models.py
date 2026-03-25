@@ -157,6 +157,26 @@ class UsageRecord(models.Model):
                 name="idx_usage_lab_product",
             ),
         ]
+        constraints = [
+            # One aggregate row per session per period.
+            models.UniqueConstraint(
+                fields=["scope_type", "simulation_id", "lab_type", "product_code", "period_start"],
+                condition=models.Q(scope_type="session"),
+                name="uniq_usage_session",
+            ),
+            # One aggregate row per user per period.
+            models.UniqueConstraint(
+                fields=["scope_type", "user_id", "lab_type", "product_code", "period_start"],
+                condition=models.Q(scope_type="user"),
+                name="uniq_usage_user",
+            ),
+            # One aggregate row per account per period.
+            models.UniqueConstraint(
+                fields=["scope_type", "account_id", "lab_type", "product_code", "period_start"],
+                condition=models.Q(scope_type="account"),
+                name="uniq_usage_account",
+            ),
+        ]
 
     def __str__(self) -> str:
         return (

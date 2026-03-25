@@ -10,6 +10,7 @@ from api.v1.auth import DualAuth
 from api.v1.schemas.guards import GuardStateOut, HeartbeatIn
 from api.v1.utils import get_simulation_for_user
 from apps.common.ratelimit import api_rate_limit
+from apps.guards.models import SessionPresence
 from apps.guards.services import (
     get_guard_state_for_simulation,
     record_heartbeat,
@@ -42,11 +43,10 @@ def heartbeat(
 
     try:
         record_heartbeat(sim.pk, body.client_visibility)
-    except Exception:
-        logger.exception(
-            "guards.heartbeat.failed",
-            simulation_id=sim.pk,
-        )
+    except SessionPresence.DoesNotExist:
+        # Session not yet initialized with a presence row — heartbeat is a
+        # no-op.  Still return current guard state (defaults to ACTIVE).
+        logger.debug("guards.heartbeat.no_presence", simulation_id=sim.pk)
 
     state = get_guard_state_for_simulation(sim.pk)
     return GuardStateOut(**state)

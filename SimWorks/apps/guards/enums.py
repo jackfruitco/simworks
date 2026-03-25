@@ -16,6 +16,7 @@ class GuardState(models.TextChoices):
     IDLE = "idle", "Idle"
     WARNING = "warning", "Warning"
     PAUSED_INACTIVITY = "paused_inactivity", "Paused (Inactivity)"
+    PAUSED_MANUAL = "paused_manual", "Paused (Manual)"
     PAUSED_RUNTIME_CAP = "paused_runtime_cap", "Paused (Runtime Cap)"
     LOCKED_USAGE = "locked_usage", "Locked (Usage)"
     ENDED = "ended", "Ended"
@@ -25,6 +26,7 @@ class GuardState(models.TextChoices):
 NON_RUNNABLE_STATES = frozenset(
     {
         GuardState.PAUSED_INACTIVITY,
+        GuardState.PAUSED_MANUAL,
         GuardState.PAUSED_RUNTIME_CAP,
         GuardState.LOCKED_USAGE,
         GuardState.ENDED,
@@ -42,6 +44,7 @@ TERMINAL_GUARD_STATES = frozenset(
 RESUMABLE_GUARD_STATES = frozenset(
     {
         GuardState.PAUSED_INACTIVITY,
+        GuardState.PAUSED_MANUAL,
         GuardState.LOCKED_USAGE,
     }
 )

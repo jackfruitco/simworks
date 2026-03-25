@@ -45,23 +45,16 @@ def trainerlab_runtime_tick(self, session_id: int, tick_nonce: int) -> None:
 
         new_state = evaluate_runtime_cap(session.simulation_id, active_elapsed)
         if new_state is not None:
-            # Runtime cap reached — trigger TrainerLab pause and stop ticking.
+            # Runtime cap reached: evaluate_runtime_cap() already transitioned
+            # guard state to PAUSED_RUNTIME_CAP.  Now pause the TrainerLab
+            # session so the tick loop stops and elapsed time is frozen.
+            # _sync_guard_pause inside pause_session() will short-circuit because
+            # guard state is already in NON_RUNNABLE_STATES.
             from .services import pause_session
 
             session.refresh_from_db()
             if session.status == SessionStatus.RUNNING:
                 pause_session(session=session, user=None, correlation_id=None)
-                from apps.guards.services import _transition_to_runtime_cap_paused
-                from apps.guards.models import SessionPresence
-
-                try:
-                    presence = SessionPresence.objects.get(
-                        simulation_id=session.simulation_id,
-                    )
-                    if presence.guard_state != "paused_runtime_cap":
-                        _transition_to_runtime_cap_paused(presence)
-                except SessionPresence.DoesNotExist:
-                    pass
             logger.info(
                 "trainerlab.tick.runtime_cap_reached",
                 session_id=session.id,
