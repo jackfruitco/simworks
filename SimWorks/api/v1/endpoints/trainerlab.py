@@ -1571,9 +1571,13 @@ def _inject_event_core(
     try:
         from apps.guards.models import SessionPresence
 
-        _presence = SessionPresence.objects.filter(
-            simulation_id=session.simulation_id,
-        ).values_list("engine_runnable", flat=True).first()
+        _presence = (
+            SessionPresence.objects.filter(
+                simulation_id=session.simulation_id,
+            )
+            .values_list("engine_runnable", flat=True)
+            .first()
+        )
         if _presence is not None:
             _engine_runnable = _presence
     except Exception:
