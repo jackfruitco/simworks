@@ -19,7 +19,7 @@ dependencies = [
     "django-redis>=6.0.0",
     "faker==40.8.0",
     "httpcore>=1.0.9",
-    "logfire[django]==4.29.0",
+    "logfire[django]==4.31.0",
     "openai==2.26.0",
     "opentelemetry-instrumentation-httpx>=0.58b0",
     "pillow==12.1.1",
