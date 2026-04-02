@@ -11,6 +11,24 @@ from pydantic import BaseModel, Field
 T = TypeVar("T")
 
 
+class GuardDenialDetail(BaseModel):
+    """Structured guard denial signal embedded in error responses.
+
+    Matches the ``GuardSignalOut`` schema shape so clients get the same
+    typed object whether reading from the guard-state endpoint or from
+    a 403 error payload.
+    """
+
+    code: str = Field(..., description="Stable machine-readable denial code")
+    severity: str = Field(..., description="'warning' or 'error'")
+    title: str | None = Field(default=None, description="Short UI-ready title")
+    message: str = Field(..., description="Human-readable message")
+    resumable: bool | None = Field(default=None, description="Whether the session can be resumed")
+    terminal: bool | None = Field(default=None, description="Whether the state is permanent")
+    expires_in_seconds: int | None = Field(default=None)
+    metadata: dict = Field(default_factory=dict, description="Extra machine-readable context")
+
+
 class ErrorResponse(BaseModel):
     """RFC 7807-inspired error response format.
 
@@ -46,6 +64,10 @@ class ErrorResponse(BaseModel):
         default=None,
         description="Request correlation ID for tracing",
         examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
+    guard_denial: GuardDenialDetail | None = Field(
+        default=None,
+        description="Structured guard denial signal, present only on guard-denied errors",
     )
 
 

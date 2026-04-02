@@ -873,3 +873,99 @@ class TestMessageOutputFormat:
         item = data["media_list"][0]
         assert item["original_url"].startswith("http://testserver/")
         assert item["thumbnail_url"].startswith("http://testserver/")
+
+
+@pytest.mark.django_db
+class TestGuardDeniedChatSend:
+    """Tests that ChatLab send denial returns structured guard_denial.
+
+    Verifies the 403 response carries a typed ``guard_denial`` object
+    with the same canonical code and semantics as the guard-state endpoint.
+    """
+
+    @patch("apps.guards.services.check_chat_send_allowed")
+    def test_locked_usage_returns_structured_guard_denial(
+        self, mock_check, auth_client, simulation, conversation
+    ):
+        """A send on a locked_usage session returns guard_denied with canonical code."""
+        from apps.guards.decisions import GuardDecision
+        from apps.guards.enums import (
+            DenialReason,
+            GuardState,
+            LabType,
+            PauseReason,
+        )
+        from apps.guards.models import SessionPresence
+
+        SessionPresence.objects.create(
+            simulation=simulation,
+            lab_type=LabType.CHATLAB,
+            guard_state=GuardState.LOCKED_USAGE,
+            pause_reason=PauseReason.USAGE_LIMIT,
+            engine_runnable=False,
+        )
+        mock_check.return_value = GuardDecision.deny(
+            DenialReason.USAGE_LIMIT_REACHED,
+            "Session locked due to usage limits.",
+        )
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/messages/",
+            data={"content": "hello"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert data["type"] == "guard_denied"
+
+        denial = data.get("guard_denial")
+        assert denial is not None, "403 response missing guard_denial object"
+        assert denial["code"] == DenialReason.USAGE_LIMIT_REACHED
+        assert denial["severity"] == "error"
+        assert denial["resumable"] is True
+        assert denial["terminal"] is False
+        assert denial["metadata"]["guard_state"] == GuardState.LOCKED_USAGE
+        assert denial["metadata"]["guard_reason"] == PauseReason.USAGE_LIMIT
+        assert "pause_reason" not in denial["metadata"]
+
+    @patch("apps.guards.services.check_chat_send_allowed")
+    def test_paused_runtime_cap_returns_terminal_guard_denial(
+        self, mock_check, auth_client, simulation, conversation
+    ):
+        """A send on a runtime-capped session returns terminal denial."""
+        from apps.guards.decisions import GuardDecision
+        from apps.guards.enums import (
+            DenialReason,
+            GuardState,
+            LabType,
+            PauseReason,
+        )
+        from apps.guards.models import SessionPresence
+
+        SessionPresence.objects.create(
+            simulation=simulation,
+            lab_type=LabType.CHATLAB,
+            guard_state=GuardState.PAUSED_RUNTIME_CAP,
+            pause_reason=PauseReason.RUNTIME_CAP,
+            engine_runnable=False,
+        )
+        mock_check.return_value = GuardDecision.deny(
+            DenialReason.RUNTIME_CAP_REACHED,
+            "Engine progression is no longer available for this session.",
+        )
+
+        response = auth_client.post(
+            f"/api/v1/simulations/{simulation.pk}/messages/",
+            data={"content": "hello"},
+            content_type="application/json",
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert data["type"] == "guard_denied"
+
+        denial = data["guard_denial"]
+        assert denial["code"] == DenialReason.RUNTIME_CAP_REACHED
+        assert denial["resumable"] is False
+        assert denial["terminal"] is True

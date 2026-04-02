@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.google",
     "apps.common",
     "apps.simcore",
+    "apps.guards",
     "apps.chatlab",
     "apps.privacy",
     "apps.trainerlab",

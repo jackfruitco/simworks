@@ -372,6 +372,9 @@ def create_message(
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user, request=request)
 
+    # ── Guard: ChatLab send-lock check ──────────────────────────────
+    _guard_chat_send(sim)
+
     # Resolve conversation and check per-conversation lock
     conversation = _resolve_conversation(sim, body.conversation_id)
     if conversation.is_locked:
@@ -438,6 +441,9 @@ def retry_message(
 
     user = request.auth
     sim = get_simulation_for_user(simulation_id, user, request=request)
+
+    # ── Guard: ChatLab send-lock check ──────────────────────────────
+    _guard_chat_send(sim)
 
     try:
         message = Message.objects.select_related("conversation__conversation_type").get(
@@ -552,3 +558,37 @@ def mark_message_read(
         message.save(update_fields=["is_read"])
 
     return message_to_out(message, request=request)
+
+
+# ── Guard helper ──────────────────────────────────────────────────────
+
+
+def _guard_chat_send(sim) -> None:
+    """Check ChatLab send-lock and raise ``GuardDeniedError`` if denied.
+
+    Uses ``denial_for_state()`` when a ``SessionPresence`` exists so the
+    403 response carries the same canonical code, resumable/terminal
+    semantics, and metadata as the guard-state endpoint.
+    """
+    from api.v1.errors import GuardDeniedError
+    from apps.guards.models import SessionPresence
+    from apps.guards.presentation import denial_for_state, denial_from_reason
+    from apps.guards.services import check_chat_send_allowed
+
+    decision = check_chat_send_allowed(sim.pk)
+    if not decision.allowed:
+        # Try state-aware signal first for canonical semantics.
+        signal = None
+        try:
+            presence = SessionPresence.objects.get(simulation_id=sim.pk)
+            signal = denial_for_state(presence.guard_state, presence.pause_reason)
+        except SessionPresence.DoesNotExist:
+            pass
+
+        if signal is None:
+            # Non-state denial (e.g. budget exhaustion before state transition).
+            signal = denial_from_reason(
+                decision.denial_reason,
+                decision.denial_message,
+            )
+        raise GuardDeniedError(signal)
